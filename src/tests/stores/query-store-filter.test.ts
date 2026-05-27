@@ -62,7 +62,7 @@ describe('applyQueryFilters — apply and clear', () => {
       columns: COLUMNS,
       rows: ROWS,
       totalRows: 5,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     const conditions: FilterCondition[] = [{ column: 'name', operator: '==', value: 'Alice' }]
@@ -72,7 +72,7 @@ describe('applyQueryFilters — apply and clear', () => {
     expect(result.rows).toEqual([[1, 'Alice', 30]])
     expect(result.unfilteredRows).toEqual(ROWS)
     expect(result.filterModel).toEqual(conditions)
-    expect(result.currentPage).toBe(1)
+
   })
 
   it('clears filter and restores rows from unfilteredRows', () => {
@@ -82,7 +82,7 @@ describe('applyQueryFilters — apply and clear', () => {
       unfilteredRows: ROWS,
       filterModel: [{ column: 'name', operator: '==', value: 'Alice' }],
       totalRows: 5,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore.getState().applyQueryFilters('tab-1', 0, [])
@@ -91,7 +91,7 @@ describe('applyQueryFilters — apply and clear', () => {
     expect(result.rows).toEqual(ROWS)
     expect(result.unfilteredRows).toBeNull()
     expect(result.filterModel).toEqual([])
-    expect(result.currentPage).toBe(1)
+
   })
 
   it('re-applies a different filter from unfilteredRows (not currently filtered rows)', () => {
@@ -100,7 +100,7 @@ describe('applyQueryFilters — apply and clear', () => {
       columns: COLUMNS,
       rows: ROWS,
       totalRows: 5,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
     useQueryStore
       .getState()
@@ -124,7 +124,7 @@ describe('applyQueryFilters — operators', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -139,7 +139,7 @@ describe('applyQueryFilters — operators', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -155,7 +155,7 @@ describe('applyQueryFilters — operators', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -170,7 +170,7 @@ describe('applyQueryFilters — operators', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -187,7 +187,7 @@ describe('applyQueryFilters — operators', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -206,7 +206,7 @@ describe('applyQueryFilters — operators', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -219,39 +219,20 @@ describe('applyQueryFilters — operators', () => {
   })
 })
 
-describe('applyQueryFilters — pagination recalculation', () => {
-  it('recalculates totalPages based on filtered row count and pageSize', () => {
+describe('applyQueryFilters — row filtering', () => {
+  it('filters rows correctly with non-null operator', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 2,
+      rowLimit: 2,
     })
 
-    // Filter to 3 rows with pageSize 2 → totalPages should be 2
     useQueryStore
       .getState()
       .applyQueryFilters('tab-1', 0, [{ column: 'age', operator: 'IS NOT NULL', value: '' }])
 
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
     expect(result.rows).toHaveLength(4) // 4 non-null age rows
-    expect(result.totalPages).toBe(2) // ceil(4/2) = 2
-    expect(result.currentPage).toBe(1)
-  })
-
-  it('resets currentPage to 1 when filter is applied', () => {
-    setupTab('tab-1', {
-      columns: COLUMNS,
-      rows: ROWS,
-      pageSize: 1000,
-      currentPage: 3,
-    })
-
-    useQueryStore
-      .getState()
-      .applyQueryFilters('tab-1', 0, [{ column: 'name', operator: '==', value: 'Alice' }])
-
-    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
-    expect(result.currentPage).toBe(1)
   })
 })
 
@@ -265,7 +246,7 @@ describe('applyQueryFilters — edge cases', () => {
   })
 
   it('does nothing for out-of-range resultIndex', () => {
-    setupTab('tab-1', { columns: COLUMNS, rows: ROWS, pageSize: 1000 })
+    setupTab('tab-1', { columns: COLUMNS, rows: ROWS, rowLimit: 1000 })
 
     useQueryStore
       .getState()
@@ -282,7 +263,7 @@ describe('applyQueryFilters — edge cases', () => {
       rows: ROWS,
       unfilteredRows: null,
       filterModel: [],
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore.getState().applyQueryFilters('tab-1', 0, [])
@@ -292,11 +273,11 @@ describe('applyQueryFilters — edge cases', () => {
     expect(result.unfilteredRows).toBeNull()
   })
 
-  it('totalPages is at least 1 even when filter produces 0 rows', () => {
+  it('filter producing 0 rows results in empty rows array', () => {
     setupTab('tab-1', {
       columns: COLUMNS,
       rows: ROWS,
-      pageSize: 1000,
+      rowLimit: 1000,
     })
 
     useQueryStore
@@ -305,7 +286,6 @@ describe('applyQueryFilters — edge cases', () => {
 
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
     expect(result.rows).toHaveLength(0)
-    expect(result.totalPages).toBe(1) // Math.max(1, ...)
   })
 })
 

@@ -323,7 +323,7 @@ pub fn run() {
             commands::table_designer::apply_table_ddl,
             commands::session::select_database,
             commands::query::execute_query,
-            commands::query::fetch_result_page,
+            commands::query::fetch_cached_rows,
             commands::query::evict_results,
             commands::query::fetch_schema_metadata,
             commands::query::fetch_schema_metadata_full,

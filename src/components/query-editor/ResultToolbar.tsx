@@ -58,7 +58,7 @@ export function ResultToolbar({
   const executionTimeMs = activeResult.executionTimeMs
   const errorMessage = activeResult.errorMessage
   const autoLimitApplied = activeResult.autoLimitApplied
-  const configuredPageSize = useSettingsStore((s) => s.getSetting('results.pageSize')) || '500'
+  const configuredRowLimit = useSettingsStore((s) => s.getSetting('results.pageSize')) || '500'
   const viewMode = activeResult.viewMode
 
   // Edit state for Save/Discard buttons
@@ -86,7 +86,7 @@ export function ResultToolbar({
 
   // Auto-limit custom content
   const autoLimitContent = autoLimitApplied ? (
-    <span className={styles.autoLimit}>({configuredPageSize} row limit applied)</span>
+    <span className={styles.autoLimit}>({configuredRowLimit} row limit applied)</span>
   ) : undefined
 
   const handleViewMode = useCallback(

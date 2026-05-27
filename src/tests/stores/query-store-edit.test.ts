@@ -223,11 +223,11 @@ beforeEach(() => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [
+          rows: [
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
           ],
-          totalPages: 1,
+
           autoLimitApplied: false,
         }
       case 'analyze_query_for_edit':
@@ -303,11 +303,11 @@ describe('useQueryStore — setEditMode', () => {
             totalRows: 2,
             executionTimeMs: 10,
             affectedRows: 0,
-            firstPage: [
+            rows: [
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
             ],
-            totalPages: 1,
+  
             autoLimitApplied: false,
           }
         case 'analyze_query_for_edit':
@@ -358,8 +358,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+
           autoLimitApplied: false,
         }
       }
@@ -391,8 +391,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [['Alice']],
-          totalPages: 1,
+          rows: [['Alice']],
+
           autoLimitApplied: false,
         }
       }
@@ -428,8 +428,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 2]],
-          totalPages: 1,
+          rows: [[1, 'Alice', 2]],
+
           autoLimitApplied: false,
         }
       }
@@ -467,8 +467,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'Bob']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'Bob']],
+
           autoLimitApplied: false,
         }
       }
@@ -506,8 +506,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
+
           autoLimitApplied: false,
         }
       }
@@ -554,8 +554,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+
           autoLimitApplied: false,
         }
       }
@@ -649,8 +649,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', '2025-01-01 12:00:00', 101, '2025-01-02 09:30:00']],
-          totalPages: 1,
+          rows: [[1, 'Alice', '2025-01-01 12:00:00', 101, '2025-01-02 09:30:00']],
+
           autoLimitApplied: false,
         }
       }
@@ -690,8 +690,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[101]],
-          totalPages: 1,
+          rows: [[101]],
+
           autoLimitApplied: false,
         }
       }
@@ -727,8 +727,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[5, 'Alice']],
-          totalPages: 1,
+          rows: [[5, 'Alice']],
+
           autoLimitApplied: false,
         }
       }
@@ -760,8 +760,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[5]],
-          totalPages: 1,
+          rows: [[5]],
+
           autoLimitApplied: false,
         }
       }
@@ -790,8 +790,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[5]],
-          totalPages: 1,
+          rows: [[5]],
+
           autoLimitApplied: false,
         }
       }
@@ -821,8 +821,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[5, 'Alice']],
-          totalPages: 1,
+          rows: [[5, 'Alice']],
+
           autoLimitApplied: false,
         }
       }
@@ -859,8 +859,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice']],
-          totalPages: 1,
+          rows: [[1, 'Alice']],
+
           autoLimitApplied: false,
         }
       }
@@ -915,8 +915,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
+
           autoLimitApplied: false,
         }
       }
@@ -958,8 +958,8 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+
           autoLimitApplied: false,
         }
       }
@@ -1055,8 +1055,8 @@ describe('useQueryStore — cloneSelectedRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [['p-001', 'Alpha']],
-          totalPages: 1,
+          rows: [['p-001', 'Alpha']],
+
           autoLimitApplied: false,
         }
       }
@@ -1105,8 +1105,8 @@ describe('useQueryStore — cloneSelectedRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'alice@test.com']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'alice@test.com']],
+
           autoLimitApplied: false,
         }
       }
@@ -1164,8 +1164,8 @@ describe('useQueryStore — cloneSelectedRow', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+
           autoLimitApplied: false,
         }
       }
@@ -1342,11 +1342,11 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [
+          rows: [
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
           ],
-          totalPages: 1,
+
           autoLimitApplied: false,
         }
       }
@@ -1437,8 +1437,8 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+
           autoLimitApplied: false,
         }
       }
@@ -1506,11 +1506,11 @@ describe('useQueryStore — saveCurrentRow', () => {
             totalRows: 2,
             executionTimeMs: 10,
             affectedRows: 0,
-            firstPage: [
+            rows: [
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
             ],
-            totalPages: 1,
+  
             autoLimitApplied: false,
           }
         }
@@ -1524,12 +1524,12 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 3,
           executionTimeMs: 12,
           affectedRows: 0,
-          firstPage: [
+          rows: [
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
             [3, 'Alice', 'alice@test.com'],
           ],
-          totalPages: 1,
+
           autoLimitApplied: false,
         }
       }
@@ -1590,8 +1590,8 @@ describe('useQueryStore — saveCurrentRow', () => {
             totalRows: 1,
             executionTimeMs: 10,
             affectedRows: 0,
-            firstPage: [['p-001', 'Alpha']],
-            totalPages: 1,
+            rows: [['p-001', 'Alpha']],
+  
             autoLimitApplied: false,
           }
         }
@@ -1604,11 +1604,11 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [
+          rows: [
             ['p-001', 'Alpha'],
             ['p-002', 'Alpha'],
           ],
-          totalPages: 1,
+
           autoLimitApplied: false,
         }
       }
@@ -1657,8 +1657,8 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', '0xABCD']],
-          totalPages: 1,
+          rows: [[1, 'Alice', '0xABCD']],
+
           autoLimitApplied: false,
         }
       }
@@ -1736,11 +1736,11 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [
+          rows: [
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
           ],
-          totalPages: 1,
+
           autoLimitApplied: false,
         }
       }
@@ -1799,11 +1799,11 @@ describe('useQueryStore — saveCurrentRow', () => {
             totalRows: 2,
             executionTimeMs: 10,
             affectedRows: 0,
-            firstPage: [
+            rows: [
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
             ],
-            totalPages: 1,
+  
             autoLimitApplied: false,
           }
         }
@@ -1824,8 +1824,8 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 8,
           affectedRows: 0,
-          firstPage: [[9, 'Latest', 'latest@test.com']],
-          totalPages: 1,
+          rows: [[9, 'Latest', 'latest@test.com']],
+
           autoLimitApplied: false,
         }
       }
@@ -1856,12 +1856,11 @@ describe('useQueryStore — saveCurrentRow', () => {
       totalRows: 3,
       executionTimeMs: 15,
       affectedRows: 0,
-      firstPage: [
+      rows: [
         [1, 'Alice', 'alice@test.com'],
         [2, 'Bob', 'bob@test.com'],
         [3, 'Cloned', 'alice@test.com'],
       ],
-      totalPages: 1,
       autoLimitApplied: false,
     })
     await savePromise
@@ -1912,8 +1911,8 @@ describe('useQueryStore — discardCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
-          totalPages: 1,
+          rows: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+
           autoLimitApplied: false,
         }
       }
@@ -2158,8 +2157,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 0,
           executionTimeMs: 5,
           affectedRows: 3,
-          firstPage: [],
-          totalPages: 0,
+          rows: [],
           autoLimitApplied: false,
         }
       }
@@ -2187,8 +2185,8 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+
           autoLimitApplied: false,
         }
       }
@@ -2219,8 +2217,8 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 3,
           executionTimeMs: 5,
           affectedRows: 0,
-          firstPage: [['users'], ['orders'], ['products']],
-          totalPages: 1,
+          rows: [['users'], ['orders'], ['products']],
+
           autoLimitApplied: false,
         }
       }
@@ -2250,8 +2248,8 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+
           autoLimitApplied: false,
         }
       }
@@ -2393,10 +2391,10 @@ describe('useQueryStore — saveCurrentRow return value edge cases', () => {
 })
 
 // ---------------------------------------------------------------------------
-// changePageSize — clears edit state before re-execution
+// changeRowLimit — clears edit state before re-execution
 // ---------------------------------------------------------------------------
 
-describe('useQueryStore — changePageSize clears edit state', () => {
+describe('useQueryStore — changeRowLimit clears edit state', () => {
   it('clears edit mode, editableColumnMap, editTableMetadata, editState, and editingRowIndex', async () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
@@ -2411,7 +2409,7 @@ describe('useQueryStore — changePageSize clears edit state', () => {
     expect(Object.keys(before.editTableMetadata).length).toBeGreaterThan(0)
     expect(before.editingRowIndex).toBe(0)
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 500)
     await flushMicrotasks()
 
     const after = flat('tab-1')
@@ -2469,11 +2467,11 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [
+          rows: [
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
           ],
-          totalPages: 1,
+
           autoLimitApplied: false,
         }
       }
@@ -2485,7 +2483,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
             [2, 'Bob', 'bob@test.com'],
           ],
           page: 1,
-          totalPages: 1,
+
         }
       }
       if (cmd === 'evict_results') return null

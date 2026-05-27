@@ -5,9 +5,9 @@ commands.allow = ["execute_query"]
 commands.deny = []
 
 [[permission]]
-identifier = "allow-fetch-result-page"
-description = "Enables the fetch_result_page command without any pre-configured scope."
-commands.allow = ["fetch_result_page"]
+identifier = "allow-fetch-cached-rows"
+description = "Enables the fetch_cached_rows command without any pre-configured scope."
+commands.allow = ["fetch_cached_rows"]
 commands.deny = []
 
 [[permission]]

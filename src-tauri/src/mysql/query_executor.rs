@@ -47,7 +47,6 @@ pub struct StoredResult {
     pub execution_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
-    pub page_size: usize,
 }
 
 /// Response for `execute_query`.
@@ -59,18 +58,15 @@ pub struct ExecuteQueryResult {
     pub total_rows: usize,
     pub execution_time_ms: u64,
     pub affected_rows: u64,
-    pub first_page: Vec<Vec<serde_json::Value>>,
-    pub total_pages: usize,
+    pub rows: Vec<Vec<serde_json::Value>>,
     pub auto_limit_applied: bool,
 }
 
-/// Response for `fetch_result_page`.
+/// Response for `sort_results`: returns the full sorted cached row set.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FetchPageResult {
+pub struct SortedRowsResult {
     pub rows: Vec<Vec<serde_json::Value>>,
-    pub page: usize,
-    pub total_pages: usize,
 }
 
 /// Table metadata for the autocomplete schema cache.
@@ -139,14 +135,14 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
         // Check for block comment start `/*`
         if ch == '/' && iter.peek().map(|&(_, c)| c) == Some('*') {
             iter.next(); // consume '*'
-            // Check if it's an executable comment `/*!` or hint `/*+`
+                         // Check if it's an executable comment `/*!` or hint `/*+`
             if iter
                 .peek()
                 .map(|&(_, c)| c == '!' || c == '+')
                 .unwrap_or(false)
             {
                 let (_, special) = iter.next().unwrap(); // safe: peek above confirmed element exists
-                // Preserve this comment — copy until closing `*/`
+                                                         // Preserve this comment — copy until closing `*/`
                 result.push('/');
                 result.push('*');
                 result.push(special);
@@ -174,7 +170,7 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
         // Line comment `--`
         else if ch == '-' && iter.peek().map(|&(_, c)| c) == Some('-') {
             iter.next(); // consume second '-'
-            // Skip until end of line
+                         // Skip until end of line
             while iter.peek().map(|&(_, c)| c != '\n').unwrap_or(false) {
                 iter.next();
             }
@@ -747,35 +743,12 @@ fn serialize_row(row: &sqlx::mysql::MySqlRow) -> Vec<serde_json::Value> {
         .collect()
 }
 
-// ── Pagination helpers ─────────────────────────────────────────────────────────
-
-/// Calculate total pages from row count and page size.
-/// Always returns at least 1 (even for 0 rows).
-pub fn calculate_total_pages(total_rows: usize, page_size: usize) -> usize {
-    if page_size == 0 || total_rows == 0 {
-        return 1;
-    }
-    (total_rows + page_size - 1) / page_size
-}
-
-/// Extract a single page of rows from a full result set.
-/// `page` is 1-indexed. Returns the slice for the requested page.
-pub fn get_page_rows<'a>(
-    rows: &'a [Vec<serde_json::Value>],
-    page: usize,
-    page_size: usize,
-) -> &'a [Vec<serde_json::Value>] {
-    let start = (page - 1).saturating_mul(page_size);
-    let end = (start + page_size).min(rows.len());
-    &rows[start..end]
-}
-
 // ── Core impl functions ────────────────────────────────────────────────────────
 
 /// Inner helper: execute a single SQL statement on an already-acquired connection.
 ///
 /// Handles: auto-limit detection/injection, query vs DML execution, column extraction,
-/// row serialization, pagination, and StoredResult + MultiQueryResultItem construction.
+/// row serialization and StoredResult + MultiQueryResultItem construction.
 ///
 /// Callers are responsible for: pool retrieval, read-only enforcement, connection
 /// acquisition, thread-ID tracking, and storing the result in `state.results`.
@@ -784,12 +757,12 @@ async fn execute_single_statement_inner(
     conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
     pool: &sqlx::MySqlPool,
     sql: &str,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<(StoredResult, MultiQueryResultItem), String> {
     // Determine effective SQL (with auto-LIMIT if needed)
     let auto_limit_applied = needs_auto_limit(sql);
     let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, page_size)
+        inject_limit_into_select(sql, row_limit)
     } else {
         sql.to_string()
     };
@@ -857,24 +830,16 @@ async fn execute_single_statement_inner(
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = all_rows.len();
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
-    let total_pages = calculate_total_pages(total_rows, page_size_used);
-    let first_page: Vec<Vec<serde_json::Value>> = if auto_limit_applied {
-        get_page_rows(&all_rows, 1, page_size_used).to_vec()
-    } else {
-        all_rows.clone()
-    };
 
     let query_id = Uuid::new_v4().to_string();
 
     let stored = StoredResult {
         query_id: query_id.clone(),
         columns: columns.clone(),
-        rows: all_rows,
+        rows: all_rows.clone(),
         execution_time_ms,
         affected_rows,
         auto_limit_applied,
-        page_size: page_size_used,
     };
 
     let item = MultiQueryResultItem {
@@ -884,8 +849,7 @@ async fn execute_single_statement_inner(
         total_rows: total_rows as i64,
         execution_time_ms: execution_time_ms as i64,
         affected_rows,
-        first_page,
-        total_pages: total_pages as i64,
+        rows: all_rows,
         auto_limit_applied,
         error: None,
         re_executable: true,
@@ -902,7 +866,7 @@ async fn execute_single_statement_inner(
     _conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
     _pool: &sqlx::MySqlPool,
     sql: &str,
-    page_size: usize,
+    _row_limit: usize,
 ) -> Result<(StoredResult, MultiQueryResultItem), String> {
     let auto_limit_applied = needs_auto_limit(sql);
     let stripped = strip_non_executable_comments(sql);
@@ -918,8 +882,6 @@ async fn execute_single_statement_inner(
     }
 
     let query_id = Uuid::new_v4().to_string();
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
-
     Ok((
         StoredResult {
             query_id: query_id.clone(),
@@ -928,7 +890,6 @@ async fn execute_single_statement_inner(
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
-            page_size: page_size_used,
         },
         MultiQueryResultItem {
             query_id,
@@ -937,8 +898,7 @@ async fn execute_single_statement_inner(
             total_rows: 0,
             execution_time_ms: 0,
             affected_rows: 0,
-            first_page: vec![],
-            total_pages: 1,
+            rows: vec![],
             auto_limit_applied,
             error: None,
             re_executable: true,
@@ -952,7 +912,7 @@ pub async fn execute_query_impl(
     connection_id: &str,
     tab_id: &str,
     sql: &str,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<ExecuteQueryResult, String> {
     let pool = state
         .registry
@@ -982,7 +942,7 @@ pub async fn execute_query_impl(
         .await
         .insert(key.clone(), thread_id);
 
-    let result = execute_single_statement_inner(&mut conn, &pool, sql, page_size).await;
+    let result = execute_single_statement_inner(&mut conn, &pool, sql, row_limit).await;
 
     // Remove thread ID from running_queries (cleanup on both success and error)
     state.running_queries.write().await.remove(&key);
@@ -1000,8 +960,7 @@ pub async fn execute_query_impl(
         total_rows: item.total_rows as usize,
         execution_time_ms: item.execution_time_ms as u64,
         affected_rows: item.affected_rows,
-        first_page: item.first_page,
-        total_pages: item.total_pages as usize,
+        rows: item.rows,
         auto_limit_applied: item.auto_limit_applied,
     })
 }
@@ -1014,7 +973,7 @@ pub async fn execute_query_impl(
     connection_id: &str,
     tab_id: &str,
     sql: &str,
-    page_size: usize,
+    _row_limit: usize,
 ) -> Result<ExecuteQueryResult, String> {
     // Validate connection exists
     state
@@ -1029,8 +988,6 @@ pub async fn execute_query_impl(
 
     let auto_limit_applied = needs_auto_limit(sql);
     let query_id = Uuid::new_v4().to_string();
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
-
     // Exercise the same pure-function paths as the real impl so they are
     // covered without a live MySQL connection.
     let stripped = strip_non_executable_comments(sql);
@@ -1064,7 +1021,6 @@ pub async fn execute_query_impl(
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
-            page_size: page_size_used,
         }],
     );
 
@@ -1077,20 +1033,26 @@ pub async fn execute_query_impl(
         total_rows: 0,
         execution_time_ms: 0,
         affected_rows: 0,
-        first_page: vec![],
-        total_pages: 1,
+        rows: vec![],
         auto_limit_applied,
     })
 }
 
-pub fn fetch_result_page_impl(
+/// Response for `fetch_cached_rows`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchCachedRowsResult {
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub columns: Vec<ColumnMeta>,
+}
+
+pub fn fetch_cached_rows_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
     query_id: &str,
-    page: usize,
     result_index: Option<usize>,
-) -> Result<FetchPageResult, String> {
+) -> Result<FetchCachedRowsResult, String> {
     let cache_result = state.result_cache.get(connection_id, tab_id);
     if cache_result.is_expired() {
         return Err(
@@ -1117,20 +1079,9 @@ pub fn fetch_result_page_impl(
         );
     }
 
-    let page_size = stored.page_size;
-    let total_rows = stored.rows.len();
-    let total_pages = calculate_total_pages(total_rows, page_size);
-
-    if page < 1 || page > total_pages {
-        return Err(format!("Page {page} out of range (1..={total_pages})"));
-    }
-
-    let rows = get_page_rows(&stored.rows, page, page_size).to_vec();
-
-    Ok(FetchPageResult {
-        rows,
-        page,
-        total_pages,
+    Ok(FetchCachedRowsResult {
+        rows: stored.rows.clone(),
+        columns: stored.columns.clone(),
     })
 }
 
@@ -1566,7 +1517,7 @@ pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std:
     }
 }
 
-/// Sort a stored result set by a named column and return the first page.
+/// Sort a stored result set by a named column and return all sorted rows.
 ///
 /// Uses clone-on-write with `spawn_blocking`: clones the result vec from the
 /// cache, offloads the O(n log n) sort to the blocking thread pool, performs a
@@ -1578,7 +1529,7 @@ pub async fn sort_results_impl(
     column_name: &str,
     direction: &str, // "asc" or "desc"
     result_index: Option<usize>,
-) -> Result<FetchPageResult, String> {
+) -> Result<SortedRowsResult, String> {
     let cache_result = state.result_cache.get(connection_id, tab_id);
     if cache_result.is_expired() {
         return Err(
@@ -1647,9 +1598,10 @@ pub async fn sort_results_impl(
         .ok_or_else(|| expired_during_sort_msg.to_string())?;
 
     // Check if query_id changed (another query was executed during the sort)
-    let post_stored = post_entry.value.get(idx).ok_or_else(|| {
-        "Results were replaced during sort".to_string()
-    })?;
+    let post_stored = post_entry
+        .value
+        .get(idx)
+        .ok_or_else(|| "Results were replaced during sort".to_string())?;
     if post_stored.query_id != query_id {
         return Err("Results were refreshed during sort".to_string());
     }
@@ -1658,20 +1610,12 @@ pub async fn sort_results_impl(
     let mut fresh_vec = post_entry.value.to_vec();
     fresh_vec[idx].rows = rows;
 
-    let page_size = fresh_vec[idx].page_size;
-    let total_rows = fresh_vec[idx].rows.len();
-    let total_pages = calculate_total_pages(total_rows, page_size);
-
-    let first_page_rows = get_page_rows(&fresh_vec[idx].rows, 1, page_size).to_vec();
+    let all_rows = fresh_vec[idx].rows.clone();
 
     // Re-insert the modified result vec
     state.result_cache.insert(connection_id, tab_id, fresh_vec);
 
-    Ok(FetchPageResult {
-        rows: first_page_rows,
-        page: 1,
-        total_pages,
-    })
+    Ok(SortedRowsResult { rows: all_rows })
 }
 
 // ── Analyze query for edit ─────────────────────────────────────────────────────
@@ -1902,8 +1846,7 @@ pub struct MultiQueryResultItem {
     pub total_rows: i64,
     pub execution_time_ms: i64,
     pub affected_rows: u64,
-    pub first_page: Vec<Vec<serde_json::Value>>,
-    pub total_pages: i64,
+    pub rows: Vec<Vec<serde_json::Value>>,
     pub auto_limit_applied: bool,
     pub error: Option<String>,
     pub re_executable: bool,
@@ -1928,7 +1871,7 @@ pub async fn reexecute_single_result_impl(
     tab_id: &str,
     result_index: usize,
     sql: &str,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResultItem, String> {
     let pool = state
         .registry
@@ -1982,7 +1925,7 @@ pub async fn reexecute_single_result_impl(
         .await
         .insert(key.clone(), thread_id);
 
-    let result = execute_single_statement_inner(&mut conn, &pool, sql, page_size).await;
+    let result = execute_single_statement_inner(&mut conn, &pool, sql, row_limit).await;
 
     // Remove thread ID from running_queries
     state.running_queries.write().await.remove(&key);
@@ -2052,7 +1995,7 @@ pub async fn reexecute_single_result_impl(
     tab_id: &str,
     result_index: usize,
     sql: &str,
-    page_size: usize,
+    _row_limit: usize,
 ) -> Result<MultiQueryResultItem, String> {
     // Validate connection exists
     state
@@ -2080,8 +2023,6 @@ pub async fn reexecute_single_result_impl(
     }
 
     let query_id = Uuid::new_v4().to_string();
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
-
     // Verify result index exists and capture expected_query_id for staleness detection
     let expected_query_id: Option<String>;
     {
@@ -2136,7 +2077,6 @@ pub async fn reexecute_single_result_impl(
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
-            page_size: page_size_used,
         };
         state.result_cache.insert(connection_id, tab_id, result_vec);
     }
@@ -2148,8 +2088,7 @@ pub async fn reexecute_single_result_impl(
         total_rows: 0,
         execution_time_ms: 0,
         affected_rows: 0,
-        first_page: vec![],
-        total_pages: 1,
+        rows: vec![],
         auto_limit_applied,
         error: None,
         re_executable: true,
@@ -2169,7 +2108,7 @@ pub async fn execute_multi_query_impl(
     connection_id: &str,
     tab_id: &str,
     statements: Vec<String>,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
     // Validate connection exists
     state
@@ -2184,7 +2123,7 @@ pub async fn execute_multi_query_impl(
         connection_id,
         tab_id,
         &statements,
-        page_size,
+        row_limit,
         is_read_only,
     )
     .await?;
@@ -2208,7 +2147,7 @@ pub async fn execute_multi_query_impl(
     connection_id: &str,
     tab_id: &str,
     statements: Vec<String>,
-    page_size: usize,
+    _row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
     // Validate connection exists
     state
@@ -2217,8 +2156,6 @@ pub async fn execute_multi_query_impl(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     let is_read_only = state.registry.is_read_only(connection_id);
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
-
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
@@ -2239,7 +2176,6 @@ pub async fn execute_multi_query_impl(
                 execution_time_ms: 0,
                 affected_rows: 0,
                 auto_limit_applied: false,
-                page_size: page_size_used,
             });
             result_items.push(MultiQueryResultItem {
                 query_id,
@@ -2248,8 +2184,7 @@ pub async fn execute_multi_query_impl(
                 total_rows: 0,
                 execution_time_ms: 0,
                 affected_rows: 0,
-                first_page: vec![],
-                total_pages: 1,
+                rows: vec![],
                 auto_limit_applied: false,
                 error: Some("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string()),
                 re_executable: false,
@@ -2280,7 +2215,6 @@ pub async fn execute_multi_query_impl(
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
-            page_size: page_size_used,
         });
         result_items.push(MultiQueryResultItem {
             query_id,
@@ -2289,8 +2223,7 @@ pub async fn execute_multi_query_impl(
             total_rows: 0,
             execution_time_ms: 0,
             affected_rows: 0,
-            first_page: vec![],
-            total_pages: 1,
+            rows: vec![],
             auto_limit_applied,
             error: None,
             re_executable: !is_call,
@@ -2326,7 +2259,7 @@ pub async fn execute_call_query_impl(
     connection_id: &str,
     tab_id: &str,
     sql: &str,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
     // Validate connection exists
     state
@@ -2347,7 +2280,7 @@ pub async fn execute_call_query_impl(
         connection_id,
         tab_id,
         &statements,
-        page_size,
+        row_limit,
         is_read_only,
     )
     .await?;
@@ -2370,7 +2303,7 @@ pub async fn execute_call_query_impl(
     connection_id: &str,
     tab_id: &str,
     sql: &str,
-    page_size: usize,
+    _row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
     // Validate connection exists
     state
@@ -2388,7 +2321,6 @@ pub async fn execute_call_query_impl(
     // Exercise CALL detection
     let _is_call = crate::mysql::multi_result::is_call_statement(sql);
 
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
     let query_id = uuid::Uuid::new_v4().to_string();
 
     // Track a dummy thread ID to exercise the running_queries path
@@ -2407,7 +2339,6 @@ pub async fn execute_call_query_impl(
         execution_time_ms: 0,
         affected_rows: 0,
         auto_limit_applied: false,
-        page_size: page_size_used,
     };
 
     // Store result in state
@@ -2423,8 +2354,7 @@ pub async fn execute_call_query_impl(
             total_rows: 0,
             execution_time_ms: 0,
             affected_rows: 0,
-            first_page: vec![],
-            total_pages: 1,
+            rows: vec![],
             auto_limit_applied: false,
             error: None,
             re_executable: false,

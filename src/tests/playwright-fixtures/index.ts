@@ -10,7 +10,10 @@ import {
 import { ORDERS_FOREIGN_KEYS, ORDERS_LIST_COLUMNS, ORDERS_TABLE_DATA } from './orders'
 import {
   createCurrentDatabaseQueryResult,
+  DEFAULT_CACHED_ROWS_RESULT,
+  DEFAULT_SECOND_RESULT_CACHED_ROWS_RESULT,
   DEFAULT_EXECUTE_QUERY_RESULT,
+  JSON_CACHED_ROWS_RESULT,
   JSON_QUERY_RESULT,
   SCROLL_TEST_QUERY_RESULT,
 } from './query-results'
@@ -18,6 +21,7 @@ import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
 import type {
   PlaywrightAnalyzeQueryResult,
+  PlaywrightCachedRowsResult,
   PlaywrightForeignKey,
   PlaywrightListColumn,
   PlaywrightQueryResult,
@@ -34,6 +38,7 @@ type FixtureOverrideDomain =
   | 'foreignKeys'
   | 'schemaInfo'
   | 'queryResult'
+  | 'cachedRows'
   | 'analyzeQueryForEdit'
   | 'objectBody'
   | 'routineParams'
@@ -46,6 +51,7 @@ type FixtureOverrides = {
   foreignKeys: Record<string, PlaywrightForeignKey[]>
   schemaInfo: Record<string, PlaywrightSchemaInfo>
   queryResult: Record<string, QueryResultFixtureFactory>
+  cachedRows: Record<string, PlaywrightCachedRowsResult>
   analyzeQueryForEdit: Record<string, PlaywrightAnalyzeQueryResult>
   objectBody: Record<string, string>
   routineParams: Record<string, PlaywrightRoutineParametersResponse>
@@ -57,6 +63,7 @@ type FixtureOverrideValueMap = {
   foreignKeys: PlaywrightForeignKey[]
   schemaInfo: PlaywrightSchemaInfo
   queryResult: PlaywrightQueryResult
+  cachedRows: PlaywrightCachedRowsResult
   analyzeQueryForEdit: PlaywrightAnalyzeQueryResult
   objectBody: string
   routineParams: PlaywrightRoutineParametersResponse
@@ -71,6 +78,10 @@ type FixtureRegistryApi = {
     sql: string | null | undefined,
     activeMockDb: string | null
   ) => PlaywrightQueryResult
+  getCachedRowsFixture: (
+    queryId: string | null | undefined,
+    resultIndex: number | null | undefined
+  ) => PlaywrightCachedRowsResult
   getAnalyzeQueryForEditFixture: (sql: string | null | undefined) => PlaywrightAnalyzeQueryResult
   getObjectBodyFixture: (objectType: string | null | undefined) => string
   getRoutineParamsFixture: (
@@ -112,6 +123,13 @@ const DEFAULT_QUERY_RESULT_BY_KEY: Record<string, QueryResultFixtureFactory> = {
   default: () => DEFAULT_EXECUTE_QUERY_RESULT,
 }
 
+const DEFAULT_CACHED_ROWS_BY_KEY: Record<string, PlaywrightCachedRowsResult> = {
+  'mock-query-id-1__0': DEFAULT_CACHED_ROWS_RESULT,
+  'mock-query-id-1__1': DEFAULT_SECOND_RESULT_CACHED_ROWS_RESULT,
+  'mock-query-json__0': JSON_CACHED_ROWS_RESULT,
+  default: DEFAULT_CACHED_ROWS_RESULT,
+}
+
 const DEFAULT_ANALYZE_QUERY_FOR_EDIT_BY_KEY: Record<string, PlaywrightAnalyzeQueryResult> = {
   json_sample: JSON_ANALYZE_QUERY_RESULT,
   default: USERS_ANALYZE_QUERY_RESULT,
@@ -123,6 +141,7 @@ const overrides: FixtureOverrides = {
   foreignKeys: {},
   schemaInfo: {},
   queryResult: {},
+  cachedRows: {},
   analyzeQueryForEdit: {},
   objectBody: {},
   routineParams: {},
@@ -212,6 +231,29 @@ export function getQueryResultFixture(
   return (overrideFactory ?? defaultFactory)(activeMockDb)
 }
 
+function getCachedRowsLookupKey(
+  queryId: string | null | undefined,
+  resultIndex: number | null | undefined
+): string {
+  const normalizedQueryId = normalizeLookupKey(queryId)
+  const normalizedResultIndex = typeof resultIndex === 'number' ? resultIndex : 0
+  return `${normalizedQueryId}__${normalizedResultIndex}`
+}
+
+export function getCachedRowsFixture(
+  queryId: string | null | undefined,
+  resultIndex: number | null | undefined
+): PlaywrightCachedRowsResult {
+  const lookupKey = getCachedRowsLookupKey(queryId, resultIndex)
+
+  return (
+    overrides.cachedRows[lookupKey] ??
+    DEFAULT_CACHED_ROWS_BY_KEY[lookupKey] ??
+    overrides.cachedRows.default ??
+    DEFAULT_CACHED_ROWS_BY_KEY.default
+  )
+}
+
 export function getAnalyzeQueryForEditFixture(
   sql: string | null | undefined
 ): PlaywrightAnalyzeQueryResult {
@@ -274,6 +316,7 @@ export function resetFixtureOverrides(): void {
   overrides.foreignKeys = {}
   overrides.schemaInfo = {}
   overrides.queryResult = {}
+  overrides.cachedRows = {}
   overrides.analyzeQueryForEdit = {}
   overrides.objectBody = {}
   overrides.routineParams = {}
@@ -285,6 +328,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getForeignKeysFixture,
   getSchemaInfoFixture,
   getQueryResultFixture,
+  getCachedRowsFixture,
   getAnalyzeQueryForEditFixture,
   getObjectBodyFixture,
   getRoutineParamsFixture,

@@ -834,8 +834,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
             { name: 'name', dataType: 'VARCHAR' },
           ],
           rows: [[1, 'Alice']],
-          currentPage: 1,
-          pageSize: 1000,
+          rowLimit: 1000,
           editState: {
             rowKey: { id: 1 },
             originalValues: { id: 1, name: 'Alice' },

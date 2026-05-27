@@ -23,7 +23,7 @@ import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
-import { getDefaultPageSize, useQueryStore } from './query-store'
+import { getDefaultRowLimit, useQueryStore } from './query-store'
 import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
@@ -453,7 +453,7 @@ function createDefaultTabState(
     columns: [],
     rows: [],
     currentPage: 1,
-    pageSize: getDefaultPageSize(),
+    pageSize: getDefaultRowLimit(),
     primaryKey: null,
     executionTimeMs: 0,
     rowResidency: createResidentRowState(false),

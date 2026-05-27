@@ -1,7 +1,7 @@
 //! Integration tests for multi-query result storage and result_index handling.
 //!
 //! Tests verify:
-//! - `result_index` handling on fetch_result_page, sort_results, update_result_cell
+//! - `result_index` handling on fetch_cached_rows, sort_results, update_result_cell
 //! - `reexecute_single_result_impl` replaces only the targeted index
 //! - Export with `result_index=Some(1)` exports the second result
 
@@ -11,7 +11,7 @@ use common::test_app_state;
 use sqllumen_lib::commands::export::export_results_impl;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
 use sqllumen_lib::mysql::query_executor::{
-    fetch_result_page_impl, sort_results_impl, update_result_cell_impl, ColumnMeta, StoredResult,
+    fetch_cached_rows_impl, sort_results_impl, update_result_cell_impl, ColumnMeta, StoredResult,
 };
 use std::collections::HashMap;
 
@@ -42,7 +42,6 @@ fn two_results() -> Vec<StoredResult> {
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 10,
         },
         StoredResult {
             query_id: "q-second".to_string(),
@@ -63,51 +62,52 @@ fn two_results() -> Vec<StoredResult> {
             execution_time_ms: 3,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 10,
         },
     ]
 }
 
-// ── fetch_result_page with result_index ──────────────────────────────────────
+// ── fetch_cached_rows with result_index ──────────────────────────────────────
 
 #[test]
-fn fetch_result_page_with_result_index_zero() {
+fn fetch_cached_rows_with_explicit_index_zero() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let page = fetch_result_page_impl(&state, "c1", "t1", "q-first", 1, Some(0))
-        .expect("page fetch at index 0 should succeed");
-    assert_eq!(page.rows.len(), 3);
-    assert_eq!(page.rows[0][0], serde_json::json!(10));
+    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q-first", Some(0))
+        .expect("fetch at index 0 should succeed");
+    assert_eq!(result.rows.len(), 3);
+    assert_eq!(result.rows[0][0], serde_json::json!(10));
+    assert_eq!(result.columns.len(), 1);
 }
 
 #[test]
-fn fetch_result_page_with_result_index_one() {
+fn fetch_cached_rows_with_result_index_one() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let page = fetch_result_page_impl(&state, "c1", "t1", "q-second", 1, Some(1))
-        .expect("page fetch at index 1 should succeed");
-    assert_eq!(page.rows.len(), 2);
-    assert_eq!(page.rows[0][0], serde_json::json!("Alice"));
+    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q-second", Some(1))
+        .expect("fetch at index 1 should succeed");
+    assert_eq!(result.rows.len(), 2);
+    assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
+    assert_eq!(result.columns.len(), 2);
 }
 
 #[test]
-fn fetch_result_page_with_none_defaults_to_zero() {
+fn fetch_cached_rows_with_none_defaults_to_first() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let page = fetch_result_page_impl(&state, "c1", "t1", "q-first", 1, None)
-        .expect("page fetch with None should default to index 0");
-    assert_eq!(page.rows.len(), 3);
+    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q-first", None)
+        .expect("fetch with None should default to index 0");
+    assert_eq!(result.rows.len(), 3);
 }
 
 #[test]
-fn fetch_result_page_with_out_of_range_index_errors() {
+fn fetch_cached_rows_with_out_of_range_index_errors() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let err = fetch_result_page_impl(&state, "c1", "t1", "q-first", 1, Some(5))
+    let err = fetch_cached_rows_impl(&state, "c1", "t1", "q-first", Some(5))
         .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 5 out of range"));
 }
@@ -781,8 +781,7 @@ mod coverage_multi_query {
                 total_rows: 1,
                 execution_time_ms: 1,
                 affected_rows: 0,
-                first_page: vec![],
-                total_pages: 1,
+                rows: vec![],
                 auto_limit_applied: false,
                 error: None,
                 re_executable: true,
@@ -795,8 +794,7 @@ mod coverage_multi_query {
                 total_rows: 5,
                 execution_time_ms: 2,
                 affected_rows: 0,
-                first_page: vec![],
-                total_pages: 1,
+                rows: vec![],
                 auto_limit_applied: false,
                 error: None,
                 re_executable: false,
@@ -809,8 +807,7 @@ mod coverage_multi_query {
                 total_rows: 3,
                 execution_time_ms: 2,
                 affected_rows: 0,
-                first_page: vec![],
-                total_pages: 1,
+                rows: vec![],
                 auto_limit_applied: false,
                 error: None,
                 re_executable: false,
@@ -823,8 +820,7 @@ mod coverage_multi_query {
                 total_rows: 1,
                 execution_time_ms: 1,
                 affected_rows: 0,
-                first_page: vec![],
-                total_pages: 1,
+                rows: vec![],
                 auto_limit_applied: false,
                 error: None,
                 re_executable: true,
@@ -888,8 +884,7 @@ mod coverage_multi_query {
                         total_rows: 0,
                         execution_time_ms: 0,
                         affected_rows: 0,
-                        first_page: vec![],
-                        total_pages: 1,
+                        rows: vec![],
                         auto_limit_applied: false,
                         error: None,
                         re_executable: false,
@@ -903,8 +898,7 @@ mod coverage_multi_query {
                     total_rows: 0,
                     execution_time_ms: 0,
                     affected_rows: 0,
-                    first_page: vec![],
-                    total_pages: 1,
+                    rows: vec![],
                     auto_limit_applied: false,
                     error: None,
                     re_executable: true,

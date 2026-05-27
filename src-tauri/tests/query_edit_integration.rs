@@ -49,7 +49,6 @@ fn update_result_cell_successful() {
             execution_time_ms: 10,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -105,7 +104,6 @@ fn update_result_cell_row_index_out_of_bounds() {
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -147,7 +145,6 @@ fn update_result_cell_multiple_columns() {
             execution_time_ms: 10,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 

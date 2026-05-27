@@ -37,13 +37,12 @@ beforeEach(() => {
     totalRows: 0,
     executionTimeMs: 0,
     affectedRows: 0,
-    totalPages: 1,
     autoLimitApplied: false,
-    firstPage: [],
+    rows: [],
   }))
-  ipc.override('fetch_result_page', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('fetch_cached_rows', () => ({ rows: [], columns: [] }))
   ipc.override('evict_results', () => undefined)
-  ipc.override('sort_results', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('sort_results', () => ({ rows: [] }))
   ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 2 }))
   ipc.override('fetch_table_data', () => ({
     columns: [],

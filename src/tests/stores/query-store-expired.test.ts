@@ -148,21 +148,6 @@ describe('query-store expired result handling', () => {
     vi.useRealTimers()
   })
 
-  it('fetchPage sets isExpired when error contains results_expired', async () => {
-    setupTabWithResult()
-
-    ipc.override('fetch_result_page', () => {
-      throw new Error('results_expired: Results for this tab have expired.')
-    })
-
-    await act(async () => {
-      await useQueryStore.getState().fetchPage(CONN_ID, TAB_ID, 2)
-    })
-
-    const tab = useQueryStore.getState().tabs[TAB_ID]
-    expect(tab?.results.every((result) => result.isExpired)).toBe(true)
-  })
-
   it('validateActiveTabResults marks expired when touch_results returns expired', async () => {
     setupTabWithResult()
 
@@ -280,10 +265,9 @@ describe('query-store expired result handling', () => {
     })
 
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_result_page', () => ({
+    ipc.override('fetch_cached_rows', () => ({
       rows: [[1], [2]],
-      page: 1,
-      totalPages: 1,
+      columns: [{ name: 'id', dataType: 'INT' }],
     }))
 
     await act(async () => {
@@ -297,11 +281,10 @@ describe('query-store expired result handling', () => {
     expect(result?.rows).toEqual([[2]])
     expect(result?.unfilteredRows).toEqual([[1], [2]])
     expect(ipc.calls('touch_results')).toHaveLength(1)
-    expect(ipc.calls('fetch_result_page')[0]).toMatchObject({
+    expect(ipc.calls('fetch_cached_rows')[0]).toMatchObject({
       connectionId: CONN_ID,
       tabId: TAB_ID,
       queryId: 'q-test-1',
-      page: 1,
       resultIndex: 0,
     })
   })
@@ -333,11 +316,11 @@ describe('query-store expired result handling', () => {
     })
 
     const deferred: {
-      resolve?: (value: { rows: unknown[][]; page: number; totalPages: number }) => void
+      resolve?: (value: { rows: unknown[][]; columns: Array<{ name: string; dataType: string }> }) => void
     } = {}
     ipc.override('touch_results', () => ({ status: 'available' }))
     ipc.override(
-      'fetch_result_page',
+      'fetch_cached_rows',
       () =>
         new Promise((resolve) => {
           deferred.resolve = resolve
@@ -346,15 +329,15 @@ describe('query-store expired result handling', () => {
 
     const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
     await waitFor(() => {
-      expect(ipc.calls('fetch_result_page')).toHaveLength(1)
+      expect(ipc.calls('fetch_cached_rows')).toHaveLength(1)
     })
     act(() => {
       useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 1)
     })
     if (!deferred.resolve) {
-      throw new Error('Expected fetch_result_page resolver')
+      throw new Error('Expected fetch_cached_rows resolver')
     }
-    deferred.resolve({ rows: [[22]], page: 1, totalPages: 1 })
+    deferred.resolve({ rows: [[22]], columns: [{ name: 'id', dataType: 'INT' }] })
     await restorePromise
 
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
@@ -393,11 +376,11 @@ describe('query-store expired result handling', () => {
     })
 
     const deferred: {
-      resolve?: (value: { rows: unknown[][]; page: number; totalPages: number }) => void
+      resolve?: (value: { rows: unknown[][]; columns: Array<{ name: string; dataType: string }> }) => void
     } = {}
     ipc.override('touch_results', () => ({ status: 'available' }))
     ipc.override(
-      'fetch_result_page',
+      'fetch_cached_rows',
       () =>
         new Promise((resolve) => {
           deferred.resolve = resolve
@@ -406,7 +389,7 @@ describe('query-store expired result handling', () => {
 
     const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
     await waitFor(() => {
-      expect(ipc.calls('fetch_result_page')).toHaveLength(1)
+      expect(ipc.calls('fetch_cached_rows')).toHaveLength(1)
     })
 
     act(() => {
@@ -418,9 +401,9 @@ describe('query-store expired result handling', () => {
     expect(useQueryStore.getState().tabs[TAB_ID]?.tabStatus).toBe('restoring')
 
     if (!deferred.resolve) {
-      throw new Error('Expected fetch_result_page resolver')
+      throw new Error('Expected fetch_cached_rows resolver')
     }
-    deferred.resolve({ rows: [[22]], page: 1, totalPages: 1 })
+    deferred.resolve({ rows: [[22]], columns: [{ name: 'id', dataType: 'INT' }] })
     await restorePromise
   })
 
@@ -461,7 +444,7 @@ describe('query-store expired result handling', () => {
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
     expect(result?.isExpired).toBe(true)
     expect(result?.rowResidency.status).toBe('evicted')
-    expect(ipc.calls('fetch_result_page')).toHaveLength(0)
+    expect(ipc.calls('fetch_cached_rows')).toHaveLength(0)
   })
 
   it('resets restoring status back to evicted when restore fetch throws', async () => {
@@ -494,7 +477,7 @@ describe('query-store expired result handling', () => {
     })
 
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_result_page', () => {
+    ipc.override('fetch_cached_rows', () => {
       throw new Error('restore failed')
     })
 
@@ -580,10 +563,9 @@ describe('query-store expired result handling', () => {
     })
 
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_result_page', () => ({
+    ipc.override('fetch_cached_rows', () => ({
       rows: [[22]],
-      page: 1,
-      totalPages: 1,
+      columns: [{ name: 'id', dataType: 'INT' }],
     }))
 
     await act(async () => {
@@ -635,8 +617,8 @@ describe('query-store expired result handling', () => {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
     }))
 
@@ -710,11 +692,10 @@ describe('query-store expired result handling', () => {
       sourceSql: string
       reExecutable: boolean
       columns: { name: string; dataType: string }[]
-      firstPage: unknown[][]
+      rows: unknown[][]
       totalRows: number
       executionTimeMs: number
       affectedRows: number
-      totalPages: number
       autoLimitApplied: boolean
       queryId: string
       error: null
@@ -745,11 +726,11 @@ describe('query-store expired result handling', () => {
         sourceSql: 'SELECT * FROM users',
         reExecutable: true,
         columns: [{ name: 'id', dataType: 'INT' }],
-        firstPage: [[5]],
+        rows: [[5]],
         totalRows: 1,
         executionTimeMs: 3,
         affectedRows: 0,
-        totalPages: 1,
+  
         autoLimitApplied: false,
         queryId: 'q-reexec-1',
         error: null,
@@ -779,7 +760,7 @@ describe('query-store expired result handling', () => {
     expect(tab?.results.every((result) => result.isExpired)).toBe(true)
   })
 
-  it('changePageSize sets all tab results expired when re-execution returns results_expired', async () => {
+  it('changeRowLimit sets all tab results expired when re-execution returns results_expired', async () => {
     setupMultiResultTab()
 
     ipc.override('reexecute_single_result', () => {
@@ -787,7 +768,7 @@ describe('query-store expired result handling', () => {
     })
 
     await act(async () => {
-      await useQueryStore.getState().changePageSize(CONN_ID, TAB_ID, 50)
+      await useQueryStore.getState().changeRowLimit(CONN_ID, TAB_ID, 50)
     })
 
     expect(useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)).toBe(
@@ -865,8 +846,8 @@ describe('query-store expired result handling', () => {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
     }))
 

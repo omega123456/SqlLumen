@@ -1,38 +1,38 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
+  ColumnMeta,
   MultiQueryResult,
   MultiQueryResultItem,
   QueryResultMeta,
   QueryTableEditInfo,
-  ResultPage,
   SchemaMetadataResponse,
   SchemaMetadataFull,
 } from '../types/schema'
 
 export interface ExecuteQueryResult extends QueryResultMeta {
-  firstPage: unknown[][]
+  rows: unknown[][]
 }
 
 export async function executeQuery(
   connectionId: string,
   tabId: string,
   sql: string,
-  pageSize = 1000
+  rowLimit = 1000
 ): Promise<ExecuteQueryResult> {
-  return invoke<ExecuteQueryResult>('execute_query', { connectionId, tabId, sql, pageSize })
+  return invoke<ExecuteQueryResult>('execute_query', { connectionId, tabId, sql, rowLimit })
 }
 
 export async function executeMultiQuery(
   connectionId: string,
   tabId: string,
   statements: string[],
-  pageSize: number
+  rowLimit: number
 ): Promise<MultiQueryResult> {
   return invoke<MultiQueryResult>('execute_multi_query', {
     connectionId,
     tabId,
     statements,
-    pageSize,
+    rowLimit,
   })
 }
 
@@ -40,13 +40,13 @@ export async function executeCallQuery(
   connectionId: string,
   tabId: string,
   sql: string,
-  pageSize: number
+  rowLimit: number
 ): Promise<MultiQueryResult> {
   return invoke<MultiQueryResult>('execute_call_query', {
     connectionId,
     tabId,
     sql,
-    pageSize,
+    rowLimit,
   })
 }
 
@@ -55,29 +55,32 @@ export async function reexecuteSingleResult(
   tabId: string,
   resultIndex: number,
   sql: string,
-  pageSize: number
+  rowLimit: number
 ): Promise<MultiQueryResultItem> {
   return invoke<MultiQueryResultItem>('reexecute_single_result', {
     connectionId,
     tabId,
     resultIndex,
     sql,
-    pageSize,
+    rowLimit,
   })
 }
 
-export async function fetchResultPage(
+export interface FetchCachedRowsResult {
+  rows: unknown[][]
+  columns: ColumnMeta[]
+}
+
+export async function fetchCachedRows(
   connectionId: string,
   tabId: string,
   queryId: string,
-  page: number,
   resultIndex?: number
-): Promise<ResultPage> {
-  return invoke<ResultPage>('fetch_result_page', {
+): Promise<FetchCachedRowsResult> {
+  return invoke<FetchCachedRowsResult>('fetch_cached_rows', {
     connectionId,
     tabId,
     queryId,
-    page,
     ...(resultIndex !== undefined ? { resultIndex } : {}),
   })
 }
@@ -86,14 +89,18 @@ export async function evictResults(connectionId: string, tabId: string): Promise
   return invoke<void>('evict_results', { connectionId, tabId })
 }
 
+export interface SortedRowsResult {
+  rows: unknown[][]
+}
+
 export async function sortResults(
   connectionId: string,
   tabId: string,
   columnName: string,
   direction: string,
   resultIndex?: number
-): Promise<ResultPage> {
-  return invoke<ResultPage>('sort_results', {
+): Promise<SortedRowsResult> {
+  return invoke<SortedRowsResult>('sort_results', {
     connectionId,
     tabId,
     columnName,

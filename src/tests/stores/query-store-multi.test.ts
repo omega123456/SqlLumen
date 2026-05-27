@@ -18,7 +18,7 @@ const QUERY_STORE_MULTI_COMMANDS = [
   'evict_results',
   'execute_call_query',
   'execute_multi_query',
-  'fetch_result_page',
+  'fetch_cached_rows',
   'reexecute_single_result',
   'sort_results',
 ] as const
@@ -33,8 +33,8 @@ const multiQueryResult = {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
       error: null,
       reExecutable: true,
@@ -46,8 +46,8 @@ const multiQueryResult = {
       totalRows: 0,
       executionTimeMs: 3,
       affectedRows: 1,
-      firstPage: [],
-      totalPages: 1,
+      rows: [],
+
       autoLimitApplied: false,
       error: null,
       reExecutable: true,
@@ -59,8 +59,8 @@ const multiQueryResult = {
       totalRows: 2,
       executionTimeMs: 10,
       affectedRows: 0,
-      firstPage: [['Alice'], ['Bob']],
-      totalPages: 1,
+      rows: [['Alice'], ['Bob']],
+
       autoLimitApplied: false,
       error: null,
       reExecutable: true,
@@ -765,149 +765,13 @@ describe('useQueryStore — cancelQuery', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// Additional coverage: fetchPage
-// ---------------------------------------------------------------------------
-
-describe('useQueryStore — fetchPage', () => {
-  function setupTabWithResult() {
-    useQueryStore.setState({
-      tabs: {
-        'tab-1': {
-          content: 'SELECT id FROM users',
-          selectedText: '',
-          filePath: null,
-          tabStatus: 'success',
-          prevTabStatus: 'idle',
-          cursorPosition: null,
-          connectionId: 'conn-1',
-          results: [
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q1',
-              columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1], [2], [3]],
-              totalRows: 10,
-              totalPages: 4,
-              currentPage: 1,
-              reExecutable: true,
-              lastExecutedSql: 'SELECT id FROM users',
-            },
-          ],
-          activeResultIndex: 0,
-          pendingNavigationAction: null,
-          executionStartedAt: null,
-          isCancelling: false,
-          wasCancelled: false,
-          activeBottomPanelItem: { type: 'result' },
-        },
-      },
-    })
-  }
-
-  it('updates rows and page after successful fetch', async () => {
-    setupTabWithResult()
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
-      if (cmd === 'fetch_result_page')
-        return {
-          rows: [[4], [5], [6]],
-          page: 2,
-          totalPages: 4,
-        }
-      return null
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-1', 2)
-
-    const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].rows).toEqual([[4], [5], [6]])
-    expect(tab.results[0].currentPage).toBe(2)
-    expect(tab.results[0].totalPages).toBe(4)
-  })
-
-  it('does nothing when tab does not exist', async () => {
-    const spy = vi.fn()
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
-      spy()
-      return null
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'nonexistent', 1)
-    expect(spy).not.toHaveBeenCalled()
-  })
-
-  it('does nothing when result has no queryId', async () => {
-    useQueryStore.setState({
-      tabs: {
-        'tab-1': {
-          content: '',
-          selectedText: '',
-          filePath: null,
-          tabStatus: 'idle',
-          prevTabStatus: 'idle',
-          cursorPosition: null,
-          connectionId: 'conn-1',
-          results: [{ ...DEFAULT_RESULT_STATE }],
-          activeResultIndex: 0,
-          pendingNavigationAction: null,
-          executionStartedAt: null,
-          isCancelling: false,
-          wasCancelled: false,
-          activeBottomPanelItem: { type: 'result' },
-        },
-      },
-    })
-
-    const spy = vi.fn()
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
-      spy()
-      return null
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-1', 1)
-    expect(spy).not.toHaveBeenCalled()
-  })
-
-  it('handles invalid fetchPage payload gracefully', async () => {
-    setupTabWithResult()
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
-      if (cmd === 'fetch_result_page') return { invalid: true }
-      return null
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-1', 2)
-
-    // Rows should remain unchanged
-    const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].rows).toEqual([[1], [2], [3]])
-    expect(tab.results[0].currentPage).toBe(1)
-    consoleSpy.mockRestore()
-  })
-
-  it('handles fetchPage error gracefully', async () => {
-    setupTabWithResult()
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
-      if (cmd === 'fetch_result_page') throw new Error('Fetch failed')
-      return null
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-1', 2)
-
-    // Rows should remain unchanged
-    const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].rows).toEqual([[1], [2], [3]])
-    consoleSpy.mockRestore()
-  })
-})
+// fetchPage tests removed — fetchPage action was removed in Phase 1
 
 // ---------------------------------------------------------------------------
-// Additional coverage: changePageSize with non-reExecutable
+// Additional coverage: changeRowLimit with non-reExecutable
 // ---------------------------------------------------------------------------
 
-describe('useQueryStore — changePageSize', () => {
+describe('useQueryStore — changeRowLimit', () => {
   it('shows warning toast for non-reExecutable results', async () => {
     useQueryStore.setState({
       tabs: {
@@ -941,11 +805,11 @@ describe('useQueryStore — changePageSize', () => {
       },
     })
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 50)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 50)
 
     // Page size should NOT have changed (non-reExecutable)
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].pageSize).toBe(DEFAULT_RESULT_STATE.pageSize)
+    expect(tab.results[0].rowLimit).toBe(DEFAULT_RESULT_STATE.rowLimit)
   })
 })
 
@@ -1094,7 +958,7 @@ describe('useQueryStore — sortResults', () => {
         return {
           rows: [[1], [2], [3]],
           page: 1,
-          totalPages: 1,
+    
         }
       return null
     })
@@ -1203,8 +1067,8 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          firstPage: [[42]],
-          totalPages: 1,
+          rows: [[42]],
+    
           autoLimitApplied: false,
           error: null,
           reExecutable: true,
@@ -1225,10 +1089,10 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Stale re-execution discard: changePageSize on multi-result tabs
+// Stale re-execution discard: changeRowLimit on multi-result tabs
 // ---------------------------------------------------------------------------
 
-describe('useQueryStore — changePageSize stale re-execution discard', () => {
+describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
   function setupMultiResultForPageSize() {
     useQueryStore.setState({
       tabs: {
@@ -1273,7 +1137,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
     })
   }
 
-  it('discards stale changePageSize re-execution when queryId changes during await', async () => {
+  it('discards stale changeRowLimit re-execution when queryId changes during await', async () => {
     setupMultiResultForPageSize()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -1303,8 +1167,8 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          firstPage: [[42]],
-          totalPages: 1,
+          rows: [[42]],
+    
           autoLimitApplied: false,
           error: null,
           reExecutable: true,
@@ -1313,7 +1177,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
       return null
     })
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 50)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 50)
 
     // The stale result should have been discarded
     const tab = useQueryStore.getState().tabs['tab-1']!
@@ -1323,7 +1187,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
     warnSpy.mockRestore()
   })
 
-  it('applies changePageSize normally when queryId is unchanged', async () => {
+  it('applies changeRowLimit normally when queryId is unchanged', async () => {
     setupMultiResultForPageSize()
 
     overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
@@ -1335,8 +1199,8 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          firstPage: [[42]],
-          totalPages: 1,
+          rows: [[42]],
+    
           autoLimitApplied: false,
           error: null,
           reExecutable: true,
@@ -1346,12 +1210,12 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
       return null
     })
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 50)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 50)
 
     // The result should have been applied normally
     const tab = useQueryStore.getState().tabs['tab-1']!
     expect(tab.results[0].rows).toEqual([[42]])
     expect(tab.results[0].queryId).toBe('new-q1')
-    expect(tab.results[0].pageSize).toBe(50)
+    expect(tab.results[0].rowLimit).toBe(50)
   })
 })

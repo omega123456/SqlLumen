@@ -15,7 +15,7 @@ const CACHE_TTL_OPTIONS = [
 export function ResultsSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
 
-  const pageSize = useSettingValue('results.pageSize')
+  const rowLimit = useSettingValue('results.pageSize')
   const nullDisplay = useSettingValue('results.nullDisplay')
   const tableTabsInBottomPanel = useSettingValue('results.tableTabsInBottomPanel')
   const cacheTTL = useSettingValue('results.cacheTTL')
@@ -28,14 +28,14 @@ export function ResultsSettings() {
             htmlFor="settings-page-size"
             style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
           >
-            Page size (rows per page)
+            Row limit
           </label>
           <TextInput
             id="settings-page-size"
             type="number"
             min={10}
             max={10000}
-            value={pageSize}
+            value={rowLimit}
             onChange={(e) => setPendingChange('results.pageSize', e.target.value)}
             data-testid="settings-page-size"
             style={{ width: 120 }}

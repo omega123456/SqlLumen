@@ -763,7 +763,9 @@ fn serialize_table_value(
         if is_pk {
             if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
                 return match v {
-                    Some(bytes) => serde_json::Value::String(format!("0x{}", hex::encode_upper(bytes))),
+                    Some(bytes) => {
+                        serde_json::Value::String(format!("0x{}", hex::encode_upper(bytes)))
+                    }
                     None => serde_json::Value::Null,
                 };
             }
@@ -1555,8 +1557,9 @@ pub async fn insert_table_row_impl(
                 .map(|i| {
                     let col_name = row.column(i).name().to_string();
                     let col_meta = columns.get(i);
-                    let is_boolean_alias =
-                        col_meta.map(|column| column.is_boolean_alias).unwrap_or(false);
+                    let is_boolean_alias = col_meta
+                        .map(|column| column.is_boolean_alias)
+                        .unwrap_or(false);
                     let is_binary = col_meta.map(|column| column.is_binary).unwrap_or(false);
                     let is_pk = col_meta
                         .map(|column| pk_col_set.contains(column.name.as_str()))

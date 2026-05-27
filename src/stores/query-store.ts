@@ -14,7 +14,7 @@ import {
   executeMultiQuery as executeMultiQueryCmd,
   executeCallQuery as executeCallQueryCmd,
   reexecuteSingleResult as reexecuteSingleResultCmd,
-  fetchResultPage as fetchResultPageCmd,
+  fetchCachedRows as fetchCachedRowsCmd,
   evictResults as evictResultsCmd,
   sortResults as sortResultsCmd,
   analyzeQueryForEdit as analyzeQueryForEditCmd,
@@ -54,24 +54,22 @@ import {
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
-/** Default page-size fallback used when settings have not been loaded (e.g. in tests). */
-const FALLBACK_PAGE_SIZE = 1000
-
-/** @deprecated Removed — use getDefaultPageSize() instead. */
+/** Default row-limit fallback used when settings have not been loaded (e.g. in tests). */
+const FALLBACK_ROW_LIMIT = 1000
 
 /**
- * Read the default page size from the settings store.
+ * Read the default row limit from the settings store.
  * Returns the settings value if settings have been loaded; otherwise falls back
- * to FALLBACK_PAGE_SIZE (1000) so that existing tests are not affected.
+ * to FALLBACK_ROW_LIMIT (1000) so that existing tests are not affected.
  */
-export function getDefaultPageSize(): number {
+export function getDefaultRowLimit(): number {
   const state = useSettingsStore.getState()
   // Settings are loaded if the settings map has keys
   if (Object.keys(state.settings).length > 0) {
     const parsed = parseInt(state.getSetting('results.pageSize'), 10)
     if (!isNaN(parsed) && parsed > 0) return parsed
   }
-  return FALLBACK_PAGE_SIZE
+  return FALLBACK_ROW_LIMIT
 }
 
 /**
@@ -96,20 +94,16 @@ export function isCallSql(sql: string): boolean {
   return getFirstSqlKeyword(sql) === 'CALL'
 }
 
-/** Ensures IPC returned a usable result page (avoids TypeError on null mocks). */
-function parseResultPagePayload(value: unknown): {
-  rows: unknown[][]
-  page: number
-  totalPages: number
-} | null {
+/** Validates a sort response payload contains an array of rows. */
+function parseSortedRowsPayload(value: unknown): { rows: unknown[][] } | null {
   if (value == null || typeof value !== 'object') {
     return null
   }
   const o = value as Record<string, unknown>
-  if (!Array.isArray(o.rows) || typeof o.page !== 'number' || typeof o.totalPages !== 'number') {
+  if (!Array.isArray(o.rows)) {
     return null
   }
-  return { rows: o.rows, page: o.page, totalPages: o.totalPages }
+  return { rows: o.rows }
 }
 
 function isQueryTabVisibleInWorkspace(tabId: string): boolean {
@@ -124,18 +118,6 @@ function isQueryTabVisibleInWorkspace(tabId: string): boolean {
   }
 
   return false
-}
-
-function isQueryResultVisibleInWorkspace(tabId: string, resultIndex: number): boolean {
-  if (!isQueryTabVisibleInWorkspace(tabId)) {
-    return false
-  }
-
-  const tab = useQueryStore.getState().tabs[tabId]
-  return (
-    tab?.activeBottomPanelItem.type === 'result' &&
-    Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1)) === resultIndex
-  )
 }
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
@@ -161,14 +143,10 @@ export interface SingleResultState {
   executionTimeMs: number
   /** Affected rows (for non-SELECT). */
   affectedRows: number
-  /** Query ID for pagination. */
+  /** Query ID for cache/sort/restore guards. */
   queryId: string | null
-  /** Current page number (1-indexed). */
-  currentPage: number
-  /** Total pages. */
-  totalPages: number
-  /** Page size. */
-  pageSize: number
+  /** Row limit (auto-limit cap). */
+  rowLimit: number
   /** Whether 1000-row auto-LIMIT was applied. */
   autoLimitApplied: boolean
   /** Error message if status === 'error'. */
@@ -292,9 +270,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   executionTimeMs: 0,
   affectedRows: 0,
   queryId: null,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: FALLBACK_PAGE_SIZE,
+  rowLimit: FALLBACK_ROW_LIMIT,
   autoLimitApplied: false,
   errorMessage: null,
   viewMode: 'grid',
@@ -488,7 +464,7 @@ function matchesFilter(row: unknown[], columns: ColumnMeta[], condition: FilterC
 
 /**
  * If the given result has an active filter, re-apply it to `newRows` and return
- * a patch object that sets rows/unfilteredRows/currentPage/totalPages correctly.
+ * a patch object that sets rows/unfilteredRows correctly.
  * If no filter is active, returns a minimal patch with the new rows as-is.
  */
 function reapplyFilterIfActive(
@@ -502,12 +478,9 @@ function reapplyFilterIfActive(
   const filteredRows = newRows.filter((row) =>
     result.filterModel.every((cond) => matchesFilter(row, columns, cond))
   )
-  const pageSize = result.pageSize
   return {
     rows: filteredRows,
     unfilteredRows: newRows,
-    currentPage: 1,
-    totalPages: Math.max(1, Math.ceil(filteredRows.length / pageSize)),
   }
 }
 
@@ -594,10 +567,10 @@ function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[]
 /** Build a SingleResultState from a MultiQueryResultItem. */
 function buildSingleResultFromItem(
   item: MultiQueryResultItem,
-  defaultPageSize: number,
+  defaultRowLimit: number,
   isActive = false
 ): SingleResultState {
-  const normalizedRows = normalizeQueryRows(item.columns, item.firstPage)
+  const normalizedRows = normalizeQueryRows(item.columns, item.rows)
   const resultStatus: ExecutionStatus = item.error ? 'error' : 'success'
   return {
     ...DEFAULT_RESULT_STATE,
@@ -608,9 +581,7 @@ function buildSingleResultFromItem(
     executionTimeMs: item.executionTimeMs,
     affectedRows: item.affectedRows,
     queryId: item.queryId,
-    currentPage: 1,
-    totalPages: item.totalPages,
-    pageSize: defaultPageSize,
+    rowLimit: defaultRowLimit,
     autoLimitApplied: item.autoLimitApplied,
     errorMessage: item.error ?? null,
     lastExecutedSql: item.sourceSql,
@@ -658,9 +629,6 @@ interface QueryState {
   /** Set the active bottom-panel item for a query tab. */
   setActiveBottomPanelItem: (tabId: string, item: ActiveBottomPanelItem) => void
 
-  /** Fetch a page of results for a tab. */
-  fetchPage: (connectionId: string, tabId: string, page: number) => Promise<void>
-
   /** Clean up state for a tab (called on tab close). */
   cleanupTab: (connectionId: string, tabId: string) => void
 
@@ -696,8 +664,8 @@ interface QueryState {
     direction: 'asc' | 'desc' | null
   ) => Promise<void>
 
-  /** Change page size and re-execute the query with new pagination. */
-  changePageSize: (connectionId: string, tabId: string, size: number) => Promise<void>
+  /** Change row limit and re-execute the query. */
+  changeRowLimit: (connectionId: string, tabId: string, size: number) => Promise<void>
 
   /** Cancel a running query for a tab. */
   cancelQuery: (connectionId: string, tabId: string) => Promise<void>
@@ -1015,7 +983,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       cancelAllResultLifecycleTimers(tabId, currentState?.results.length ?? 0)
 
       const results = multiResult.results.map((item, index) =>
-        buildSingleResultFromItem(item, getDefaultPageSize(), index === 0)
+        buildSingleResultFromItem(item, getDefaultRowLimit(), index === 0)
       )
 
       // Tab-level status: 'success' if at least one result exists
@@ -1084,20 +1052,20 @@ export const useQueryStore = create<QueryState>()((set, get) => {
    * guard against stale responses, normalize rows, patch the result, and schedule analysis.
    *
    * Does NOT set tab-level status to 'running'. Used by `sortResults` (sort-clear)
-   * and `changePageSize` for the multi-result path.
+   * and `changeRowLimit` for the multi-result path.
    *
-   * @param extraPatch - additional fields to merge into the patched result (e.g. sortColumn reset, pageSize)
+   * @param extraPatch - additional fields to merge into the patched result (e.g. sortColumn reset, rowLimit)
    */
   const reexecuteAndPatchResult = async (
     connectionId: string,
     tabId: string,
     resultIndex: number,
     sql: string,
-    pageSize: number,
+    rowLimit: number,
     capturedQueryId: string | null,
     extraPatch: Partial<SingleResultState>
   ) => {
-    const reResult = await reexecuteSingleResultCmd(connectionId, tabId, resultIndex, sql, pageSize)
+    const reResult = await reexecuteSingleResultCmd(connectionId, tabId, resultIndex, sql, rowLimit)
 
     if (!get().tabs[tabId]) return
 
@@ -1117,7 +1085,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       return
     }
 
-    const normalizedRows = normalizeQueryRows(reResult.columns, reResult.firstPage)
+    const normalizedRows = normalizeQueryRows(reResult.columns, reResult.rows)
     // Re-apply active filter if one exists on this result
     const filterPatch = reapplyFilterIfActive(
       postResult ?? { ...DEFAULT_RESULT_STATE },
@@ -1127,8 +1095,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     patchResultByIndex(tabId, resultIndex, {
       ...filterPatch,
       columns: reResult.columns,
-      currentPage: filterPatch.currentPage ?? 1,
-      totalPages: filterPatch.totalPages ?? reResult.totalPages,
       totalRows: reResult.totalRows,
       queryId: reResult.queryId,
       executionTimeMs: reResult.executionTimeMs,
@@ -1204,7 +1170,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       tabId,
       resultIndex,
       result.lastExecutedSql!,
-      result.pageSize,
+      result.rowLimit,
       capturedQueryId,
       {
         isStale: false,
@@ -1224,9 +1190,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       connectionId,
       tabId,
       result.lastExecutedSql!,
-      result.pageSize
+      result.rowLimit
     )
-    const normalizedRows = normalizeQueryRows(execResult.columns, execResult.firstPage)
+    const normalizedRows = normalizeQueryRows(execResult.columns, execResult.rows)
 
     if (!get().tabs[tabId]) return
 
@@ -1250,8 +1216,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     patchResultByIndex(tabId, resultIndex, {
       ...filterPatch,
       columns: execResult.columns,
-      currentPage: filterPatch.currentPage ?? 1,
-      totalPages: filterPatch.totalPages ?? execResult.totalPages,
       totalRows: execResult.totalRows,
       queryId: execResult.queryId,
       executionTimeMs: execResult.executionTimeMs,
@@ -1329,12 +1293,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       beginExecution(tabId)
 
       try {
-        const result = await executeQueryCmd(connectionId, tabId, sql, getDefaultPageSize())
+        const result = await executeQueryCmd(connectionId, tabId, sql, getDefaultRowLimit())
 
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
 
-        const normalizedRows = normalizeQueryRows(result.columns, result.firstPage)
+        const normalizedRows = normalizeQueryRows(result.columns, result.rows)
 
         const singleResult: SingleResultState = {
           ...DEFAULT_RESULT_STATE,
@@ -1345,9 +1309,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           executionTimeMs: result.executionTimeMs,
           affectedRows: result.affectedRows,
           queryId: result.queryId,
-          currentPage: 1,
-          totalPages: result.totalPages,
-          pageSize: getDefaultPageSize(),
+          rowLimit: getDefaultRowLimit(),
           autoLimitApplied: result.autoLimitApplied,
           lastExecutedSql: sql,
           reExecutable: true,
@@ -1424,7 +1386,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       await runMultiResultExecution(
         connectionId,
         tabId,
-        () => executeMultiQueryCmd(connectionId, tabId, statements, getDefaultPageSize()),
+        () => executeMultiQueryCmd(connectionId, tabId, statements, getDefaultRowLimit()),
         true
       )
     },
@@ -1433,7 +1395,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       await runMultiResultExecution(
         connectionId,
         tabId,
-        () => executeCallQueryCmd(connectionId, tabId, sql, getDefaultPageSize()),
+        () => executeCallQueryCmd(connectionId, tabId, sql, getDefaultRowLimit()),
         false
       )
     },
@@ -1556,29 +1518,22 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           return
         }
 
-        const raw = await fetchResultPageCmd(
+        const cached = await fetchCachedRowsCmd(
           tab.connectionId,
           tabId,
           result.queryId,
-          result.currentPage,
           targetIndex
         )
-        const parsed = parseResultPagePayload(raw)
-        if (!parsed) {
-          throw new Error('invalid fetch_result_page payload during frontend restore')
-        }
 
         if (!get().tabs[tabId]) return
 
         const latestResult = get().tabs[tabId]?.results[targetIndex] ?? result
-        const normalizedRows = normalizeQueryRows(result.columns, parsed.rows)
+        const normalizedRows = normalizeQueryRows(result.columns, cached.rows)
         const filterPatch = reapplyFilterIfActive(latestResult, normalizedRows, result.columns)
         const latestResidency = latestResult.rowResidency
 
         patchResultByIndex(tabId, targetIndex, {
           ...filterPatch,
-          currentPage: filterPatch.currentPage ?? parsed.page,
-          totalPages: filterPatch.totalPages ?? parsed.totalPages,
           isExpired: false,
           rowsEvictedAt: null,
           rowResidency: {
@@ -1737,71 +1692,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
     },
 
-    fetchPage: async (connectionId: string, tabId: string, page: number) => {
-      const tab = get().tabs[tabId]
-      if (!tab) return
-      const resultIndex = getActiveIndex(tabId)
-      const result = tab.results[resultIndex]
-      if (!result?.queryId) return
-
-      try {
-        const raw = await fetchResultPageCmd(connectionId, tabId, result.queryId, page, resultIndex)
-        const parsed = parseResultPagePayload(raw)
-        if (!parsed) {
-          logFrontend(
-            'error',
-            [
-              '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)',
-            ]
-              .map(String)
-              .join(' ')
-          )
-          return
-        }
-        const normalizedRows = normalizeQueryRows(result.columns, parsed.rows)
-
-        // Guard: if the tab was closed while fetching, skip the update
-        if (!get().tabs[tabId]) return
-
-        // Re-apply active filter if one exists
-        const currentResultForFilter = get().tabs[tabId]?.results[resultIndex]
-        const filterPatch = reapplyFilterIfActive(
-          currentResultForFilter ?? result,
-          normalizedRows,
-          result.columns
-        )
-        const isStillVisible = isQueryResultVisibleInWorkspace(tabId, resultIndex)
-
-        patchResultByIndex(tabId, resultIndex, {
-          ...filterPatch,
-          currentPage: filterPatch.currentPage ?? parsed.page,
-          totalPages: filterPatch.totalPages ?? parsed.totalPages,
-          isExpired: false,
-          rowsEvictedAt: null,
-          rowResidency: {
-            ...(currentResultForFilter?.rowResidency ?? result.rowResidency),
-            status: 'resident',
-            isActive: isStillVisible,
-            inactiveSince: isStillVisible
-              ? null
-              : ((currentResultForFilter?.rowResidency.inactiveSince ??
-                  result.rowResidency.inactiveSince) ??
-                Date.now()),
-          },
-        })
-
-        if (!isStillVisible) {
-          get().markResultSurfaceInactive(tabId, resultIndex)
-        }
-      } catch (err) {
-        logFrontend('error', ['[query-store] fetchPage failed:', err].map(String).join(' '))
-        const errMsg = err instanceof Error ? err.message : String(err)
-        if (errMsg.includes('results_expired')) {
-          markTabResultsExpired(tabId)
-        }
-      }
-    },
-
     cleanupTab: (connectionId: string, tabId: string) => {
       cancelAllResultLifecycleTimers(tabId, get().tabs[tabId]?.results.length ?? 0)
       // Fire-and-forget eviction
@@ -1921,13 +1811,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (conditions.length === 0) {
         // Clear filter — restore original rows if we have them
         const restoredRows = result.unfilteredRows ?? result.rows
-        const pageSize = result.pageSize
         patchResultByIndex(tabId, resultIndex, {
           rows: restoredRows,
           unfilteredRows: null,
           filterModel: [],
-          currentPage: 1,
-          totalPages: Math.max(1, Math.ceil(restoredRows.length / pageSize)),
         })
         return
       }
@@ -1940,13 +1827,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         conditions.every((cond) => matchesFilter(row, columns, cond))
       )
 
-      const pageSize = result.pageSize
       patchResultByIndex(tabId, resultIndex, {
         rows: filteredRows,
         unfilteredRows: sourceRows,
         filterModel: conditions,
-        currentPage: 1,
-        totalPages: Math.max(1, Math.ceil(filteredRows.length / pageSize)),
       })
     },
 
@@ -1998,7 +1882,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 tabId,
                 resultIndex,
                 lastSql,
-                getDefaultPageSize(),
+                getDefaultRowLimit(),
                 capturedQueryId,
                 { sortColumn: null, sortDirection: null }
               )
@@ -2008,9 +1892,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 connectionId,
                 tabId,
                 lastSql,
-                getDefaultPageSize()
+                getDefaultRowLimit()
               )
-              const normalizedRows = normalizeQueryRows(execResult.columns, execResult.firstPage)
+              const normalizedRows = normalizeQueryRows(execResult.columns, execResult.rows)
 
               if (!get().tabs[tabId]) return
 
@@ -2027,8 +1911,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 sortDirection: null,
                 ...filterPatch,
                 columns: execResult.columns,
-                currentPage: filterPatch.currentPage ?? 1,
-                totalPages: filterPatch.totalPages ?? execResult.totalPages,
                 totalRows: execResult.totalRows,
                 queryId: execResult.queryId,
                 executionTimeMs: execResult.executionTimeMs,
@@ -2076,12 +1958,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const currentColumns = currentResult?.columns ?? []
 
         const raw = await sortResultsCmd(connectionId, tabId, column, direction, resultIndex)
-        const parsed = parseResultPagePayload(raw)
+        const parsed = parseSortedRowsPayload(raw)
         if (!parsed) {
           logFrontend(
             'error',
             [
-              '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)',
+              '[query-store] sortResults failed: invalid sort_results payload (expected rows)',
             ]
               .map(String)
               .join(' ')
@@ -2105,8 +1987,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           sortColumn: column,
           sortDirection: direction,
           ...filterPatch,
-          currentPage: filterPatch.currentPage ?? parsed.page,
-          totalPages: filterPatch.totalPages ?? parsed.totalPages,
           isExpired: false,
           rowsEvictedAt: null,
           rowResidency: {
@@ -2127,7 +2007,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
     },
 
-    changePageSize: async (connectionId: string, tabId: string, size: number) => {
+    changeRowLimit: async (connectionId: string, tabId: string, size: number) => {
       const tab = get().tabs[tabId]
       const resultIndex = getActiveIndex(tabId)
       const result = tab?.results[resultIndex]
@@ -2137,7 +2017,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       // Cache-only results: show toast and do nothing
       if (!result.reExecutable) {
         showWarningToast(
-          'Cannot change page size',
+          'Cannot change row limit',
           'This result is from a stored procedure and cannot be re-executed.'
         )
         return
@@ -2147,7 +2027,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const capturedQueryId = result.queryId
 
       // Clear edit state before re-execution
-      patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS, pageSize: size })
+      patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS, rowLimit: size })
       clearExpiredFlags(tabId)
 
       // For multi-result tabs, use reexecuteSingleResult (no tab-level running status)
@@ -2160,7 +2040,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             result.lastExecutedSql,
             size,
             capturedQueryId,
-            { pageSize: size, sortColumn: null, sortDirection: null }
+            { rowLimit: size, sortColumn: null, sortDirection: null }
           )
         } catch (error) {
           if (!get().tabs[tabId]) return
@@ -2170,7 +2050,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (capturedQueryId && postResult?.queryId !== capturedQueryId) {
             logFrontend(
               'warn',
-              ['[query-store] changePageSize: discarding stale error (queryId mismatch)']
+              ['[query-store] changeRowLimit: discarding stale error (queryId mismatch)']
                 .map(String)
                 .join(' ')
             )
@@ -2197,7 +2077,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             result.lastExecutedSql,
             size
           )
-          const normalizedRows = normalizeQueryRows(execResult.columns, execResult.firstPage)
+          const normalizedRows = normalizeQueryRows(execResult.columns, execResult.rows)
 
           if (!get().tabs[tabId]) return
 
@@ -2206,10 +2086,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             resultStatus: 'success',
             rows: normalizedRows,
             columns: execResult.columns,
-            currentPage: 1,
-            totalPages: execResult.totalPages,
             totalRows: execResult.totalRows,
-            pageSize: size,
+            rowLimit: size,
             queryId: execResult.queryId,
             executionTimeMs: execResult.executionTimeMs,
             affectedRows: execResult.affectedRows,
@@ -3007,7 +2885,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             tabId,
             activeResultIndex,
             plan.payload,
-            result.pageSize,
+            result.rowLimit,
             result.queryId,
             { isExpired: false, errorMessage: null }
           )

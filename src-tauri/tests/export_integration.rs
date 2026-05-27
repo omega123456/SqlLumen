@@ -873,7 +873,6 @@ fn test_export_results_impl_with_query_id() {
                 execution_time_ms: 1,
                 affected_rows: 0,
                 auto_limit_applied: false,
-                page_size: 1000,
             },
             StoredResult {
                 query_id: "second-q".to_string(),
@@ -885,7 +884,6 @@ fn test_export_results_impl_with_query_id() {
                 execution_time_ms: 2,
                 affected_rows: 0,
                 auto_limit_applied: false,
-                page_size: 1000,
             },
         ],
     );
@@ -928,7 +926,6 @@ fn test_export_results_impl_invalid_query_id() {
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -1030,7 +1027,6 @@ fn test_export_results_impl_sql_default_table_name() {
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -1078,7 +1074,6 @@ fn test_export_results_impl_with_row_indices() {
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -1123,7 +1118,6 @@ fn test_export_results_impl_with_row_indices_out_of_bounds_skipped() {
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 

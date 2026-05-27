@@ -10,7 +10,6 @@ mod binary_projection_integration {
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use sqlx::mysql::MySqlPoolOptions;
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_data as table_data_commands;
@@ -21,6 +20,7 @@ mod binary_projection_integration {
     };
     use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
+    use sqlx::mysql::MySqlPoolOptions;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};

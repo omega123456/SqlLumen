@@ -18,7 +18,6 @@ fn stub_result(query_id: &str) -> StoredResult {
         execution_time_ms: 0,
         affected_rows: 0,
         auto_limit_applied: false,
-        page_size: 500,
     }
 }
 
@@ -48,7 +47,6 @@ fn stub_result_with_numbers(query_id: &str) -> StoredResult {
         execution_time_ms: 123,
         affected_rows: 0,
         auto_limit_applied: false,
-        page_size: 500,
     }
 }
 

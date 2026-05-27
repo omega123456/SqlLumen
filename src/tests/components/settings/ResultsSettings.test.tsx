@@ -19,6 +19,7 @@ describe('ResultsSettings', () => {
     render(<ResultsSettings />)
 
     expect(screen.getByTestId('settings-results')).toBeInTheDocument()
+    expect(screen.getByText('Row limit')).toBeInTheDocument()
     expect(screen.getByTestId('settings-page-size')).toHaveValue(500)
     expect(screen.getByTestId('settings-null-display')).toHaveValue('NULL')
   })
@@ -44,11 +45,11 @@ describe('ResultsSettings', () => {
     const user = userEvent.setup()
     render(<ResultsSettings />)
 
-    const pageSize = screen.getByTestId('settings-page-size') as HTMLInputElement
+    const rowLimit = screen.getByTestId('settings-page-size') as HTMLInputElement
     const nullDisplay = screen.getByTestId('settings-null-display') as HTMLInputElement
 
-    await user.clear(pageSize)
-    await user.type(pageSize, '750')
+    await user.clear(rowLimit)
+    await user.type(rowLimit, '750')
     await user.clear(nullDisplay)
     await user.type(nullDisplay, '(null)')
 

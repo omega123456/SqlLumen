@@ -12,11 +12,14 @@ use common::mock_mysql_server::{
 };
 use opensrv_mysql::{ColumnFlags, ColumnType};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
-use sqllumen_lib::mysql::query_executor::{execute_query_impl, ExecuteQueryResult};
+use sqllumen_lib::mysql::query_executor::{
+    execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
+    reexecute_single_result_impl, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
+};
 use sqllumen_lib::state::AppState;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
@@ -31,7 +34,10 @@ fn build_query_commands_app() -> (
         .invoke_handler(tauri::generate_handler![
             save_connection,
             open_connection,
-            execute_query
+            execute_query,
+            execute_multi_query,
+            execute_call_query,
+            reexecute_single_result
         ])
         .build(mock_context(noop_assets()))
         .expect("should build test app");
@@ -62,7 +68,7 @@ async fn execute_query(
     connection_id: String,
     tab_id: String,
     sql: String,
-    page_size: Option<usize>,
+    row_limit: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
     execute_query_impl(
@@ -70,7 +76,63 @@ async fn execute_query(
         &connection_id,
         &tab_id,
         &sql,
-        page_size.unwrap_or(1000),
+        row_limit.unwrap_or(1000),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn execute_multi_query(
+    connection_id: String,
+    tab_id: String,
+    statements: Vec<String>,
+    row_limit: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<MultiQueryResult, String> {
+    execute_multi_query_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        statements,
+        row_limit.unwrap_or(1000),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn execute_call_query(
+    connection_id: String,
+    tab_id: String,
+    sql: String,
+    row_limit: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<MultiQueryResult, String> {
+    execute_call_query_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &sql,
+        row_limit.unwrap_or(1000),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn reexecute_single_result(
+    connection_id: String,
+    tab_id: String,
+    result_index: usize,
+    sql: String,
+    row_limit: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<MultiQueryResultItem, String> {
+    reexecute_single_result_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        result_index,
+        &sql,
+        row_limit.unwrap_or(1000),
     )
     .await
 }
@@ -159,7 +221,7 @@ struct OpenConnectionResultDto {
     server_version: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct ColumnMetaDto {
@@ -176,9 +238,58 @@ struct ExecuteQueryResultDto {
     total_rows: usize,
     execution_time_ms: u64,
     affected_rows: u64,
-    first_page: Vec<Vec<serde_json::Value>>,
-    total_pages: usize,
+    rows: Vec<Vec<serde_json::Value>>,
     auto_limit_applied: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct MultiQueryResultItemDto {
+    query_id: String,
+    source_sql: String,
+    columns: Vec<ColumnMetaDto>,
+    total_rows: i64,
+    execution_time_ms: i64,
+    affected_rows: u64,
+    rows: Vec<Vec<serde_json::Value>>,
+    auto_limit_applied: bool,
+    error: Option<String>,
+    re_executable: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct MultiQueryResultDto {
+    results: Vec<MultiQueryResultItemDto>,
+}
+
+async fn open_mock_connection(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    port: u16,
+) -> OpenConnectionResultDto {
+    let profile_id: String = invoke_tauri_command(
+        webview,
+        "save_connection",
+        json!({ "data": save_input_json(port) }),
+    )
+    .expect("save_connection IPC should succeed");
+
+    let open_result: OpenConnectionResultDto = invoke_tauri_command(
+        webview,
+        "open_connection",
+        json!({
+            "payload": {
+                "profileId": profile_id,
+            }
+        }),
+    )
+    .expect("open_connection IPC should succeed");
+
+    assert!(!open_result.session_id.is_empty());
+
+    open_result
 }
 
 async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResultDto {
@@ -198,26 +309,7 @@ async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResu
     ])
     .await;
     let (_app, webview) = build_query_commands_app();
-
-    let profile_id: String = invoke_tauri_command(
-        &webview,
-        "save_connection",
-        json!({ "data": save_input_json(server.port) }),
-    )
-    .expect("save_connection IPC should succeed");
-
-    let open_result: OpenConnectionResultDto = invoke_tauri_command(
-        &webview,
-        "open_connection",
-        json!({
-            "payload": {
-                "profileId": profile_id,
-            }
-        }),
-    )
-    .expect("open_connection IPC should succeed");
-
-    assert!(!open_result.session_id.is_empty());
+    let open_result = open_mock_connection(&webview, server.port).await;
 
     invoke_tauri_command(
         &webview,
@@ -226,10 +318,92 @@ async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResu
             "connectionId": open_result.session_id,
             "tabId": "tab-1",
             "sql": sql,
-            "pageSize": 1000,
+            "rowLimit": 1000,
         }),
     )
     .expect("execute_query IPC should succeed")
+}
+
+async fn execute_multi_query_via_mock(
+    steps: Vec<MockQueryStep>,
+    statements: Vec<&'static str>,
+    row_limit: usize,
+) -> (MultiQueryResultDto, serde_json::Value) {
+    let server = MockMySqlServer::start_script(steps).await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+
+    let request_body = json!({
+        "connectionId": open_result.session_id,
+        "tabId": "tab-1",
+        "statements": statements,
+        "rowLimit": row_limit,
+    });
+
+    let result = invoke_tauri_command(&webview, "execute_multi_query", request_body.clone())
+        .expect("execute_multi_query IPC should succeed");
+
+    (result, request_body)
+}
+
+async fn execute_call_query_via_mock(
+    steps: Vec<MockQueryStep>,
+    sql: &'static str,
+    row_limit: usize,
+) -> (MultiQueryResultDto, serde_json::Value) {
+    let server = MockMySqlServer::start_script(steps).await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+
+    let request_body = json!({
+        "connectionId": open_result.session_id,
+        "tabId": "tab-1",
+        "sql": sql,
+        "rowLimit": row_limit,
+    });
+
+    let result = invoke_tauri_command(&webview, "execute_call_query", request_body.clone())
+        .expect("execute_call_query IPC should succeed");
+
+    (result, request_body)
+}
+
+async fn reexecute_single_result_via_mock(
+    initial_steps: Vec<MockQueryStep>,
+    reexecute_step: MockQueryStep,
+    sql: &'static str,
+    row_limit: usize,
+) -> (MultiQueryResultItemDto, serde_json::Value) {
+    let mut steps = initial_steps;
+    steps.push(reexecute_step);
+    let server = MockMySqlServer::start_script(steps).await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+
+    let _initial: MultiQueryResultDto = invoke_tauri_command(
+        &webview,
+        "execute_multi_query",
+        json!({
+            "connectionId": open_result.session_id,
+            "tabId": "tab-1",
+            "statements": [sql],
+            "rowLimit": 25,
+        }),
+    )
+    .expect("seed execute_multi_query IPC should succeed");
+
+    let request_body = json!({
+        "connectionId": open_result.session_id,
+        "tabId": "tab-1",
+        "resultIndex": 0,
+        "sql": sql,
+        "rowLimit": row_limit,
+    });
+
+    let result = invoke_tauri_command(&webview, "reexecute_single_result", request_body.clone())
+        .expect("reexecute_single_result IPC should succeed");
+
+    (result, request_body)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -281,9 +455,9 @@ async fn execute_query_ipc_serializes_mysql_result_values_instead_of_nulls() {
         vec!["id", "type", "consumption", "created_at"]
     );
     assert_eq!(result.total_rows, 1);
-    assert_eq!(result.first_page.len(), 1);
+    assert_eq!(result.rows.len(), 1);
     assert_eq!(
-        result.first_page[0],
+        result.rows[0],
         vec![
             serde_json::json!(1),
             serde_json::json!("electric"),
@@ -385,7 +559,7 @@ async fn execute_query_ipc_serializes_unsafe_integers_as_strings() {
 
     assert_eq!(result.total_rows, 1);
     assert_eq!(
-        result.first_page[0],
+        result.rows[0],
         vec![
             serde_json::json!(9_007_199_254_740_991i64),
             serde_json::json!("-9007199254740992"),
@@ -431,7 +605,7 @@ async fn execute_query_ipc_preserves_fractional_datetime_and_mysql_time_strings(
 
     assert_eq!(result.total_rows, 1);
     assert_eq!(
-        result.first_page[0],
+        result.rows[0],
         vec![
             serde_json::json!("2023-10-01 12:34:56.123456"),
             serde_json::json!("07:15:00.123456"),
@@ -475,7 +649,7 @@ async fn execute_query_ipc_serializes_timestamp_and_negative_mysql_time_strings(
 
     assert_eq!(result.total_rows, 1);
     assert_eq!(
-        result.first_page[0],
+        result.rows[0],
         vec![
             serde_json::json!("2023-10-02 01:02:03.654321"),
             serde_json::json!("-27:15:00.123456"),
@@ -513,5 +687,155 @@ async fn execute_query_ipc_treats_call_as_dml_after_call_removal_from_select_lik
         "CALL should be treated as DML — no columns"
     );
     assert_eq!(result.total_rows, 0);
-    assert!(result.first_page.is_empty());
+    assert!(result.rows.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_total_pages() {
+    let statements = vec!["SELECT 1 AS id", "SELECT 2 AS id"];
+    let steps = vec![
+        MockQueryStep {
+            query: "SELECT CONNECTION_ID()",
+            columns: vec![MockColumnDef {
+                name: "CONNECTION_ID()",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U64(42)]],
+            error: None,
+        },
+        MockQueryStep {
+            query: "SELECT 1 AS id",
+            columns: vec![MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U32(1)]],
+            error: None,
+        },
+        MockQueryStep {
+            query: "SELECT 2 AS id",
+            columns: vec![MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U32(2)]],
+            error: None,
+        },
+    ];
+
+    let (result, request_body) = execute_multi_query_via_mock(steps, statements, 321).await;
+
+    assert_eq!(request_body.get("rowLimit"), Some(&json!(321)));
+    assert_eq!(result.results.len(), 2);
+    let serialized = serde_json::to_value(&result).expect("result should serialize");
+    assert!(serialized.pointer("/results/0/rows").is_some());
+    assert!(serialized.pointer("/results/1/rows").is_some());
+    assert!(serialized.pointer("/results/0/totalPages").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total_pages() {
+    let sql = "CALL sp_list_users()";
+    let steps = vec![
+        MockQueryStep {
+            query: "SELECT CONNECTION_ID()",
+            columns: vec![MockColumnDef {
+                name: "CONNECTION_ID()",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U64(42)]],
+            error: None,
+        },
+        MockQueryStep {
+            query: sql,
+            columns: vec![
+                MockColumnDef {
+                    name: "id",
+                    coltype: ColumnType::MYSQL_TYPE_LONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "name",
+                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                    colflags: ColumnFlags::empty(),
+                },
+            ],
+            rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"Alice")]],
+            error: None,
+        },
+    ];
+
+    let (result, request_body) = execute_call_query_via_mock(steps, sql, 654).await;
+
+    assert_eq!(request_body.get("rowLimit"), Some(&json!(654)));
+    assert_eq!(result.results.len(), 1);
+    let serialized = serde_json::to_value(&result).expect("result should serialize");
+    assert!(serialized.pointer("/results/0/rows").is_some());
+    assert!(serialized.pointer("/results/0/totalPages").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_total_pages() {
+    let sql = "SELECT id, name FROM users";
+    let initial_step = MockQueryStep {
+        query: "SELECT CONNECTION_ID()",
+        columns: vec![MockColumnDef {
+            name: "CONNECTION_ID()",
+            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+            colflags: ColumnFlags::UNSIGNED_FLAG,
+        }],
+        rows: vec![vec![MockCell::U64(42)]],
+        error: None,
+    };
+    let seeded_query_step = MockQueryStep {
+        query: sql,
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            },
+            MockColumnDef {
+                name: "name",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"Alice")]],
+        error: None,
+    };
+    let reexecute_step = MockQueryStep {
+        query: sql,
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            },
+            MockColumnDef {
+                name: "name",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        rows: vec![vec![MockCell::U32(2), MockCell::Bytes(b"Bob")]],
+        error: None,
+    };
+
+    let (result, request_body) = reexecute_single_result_via_mock(
+        vec![initial_step, seeded_query_step],
+        reexecute_step,
+        sql,
+        777,
+    )
+    .await;
+
+    assert_eq!(request_body.get("rowLimit"), Some(&json!(777)));
+    let serialized = serde_json::to_value(&result).expect("result should serialize");
+    assert!(serialized.get("rows").is_some());
+    assert!(serialized.get("totalPages").is_none());
 }

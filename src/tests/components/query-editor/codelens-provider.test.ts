@@ -57,8 +57,7 @@ beforeEach(() => {
     totalRows: 0,
     executionTimeMs: 1,
     affectedRows: 0,
-    firstPage: [],
-    totalPages: 0,
+    rows: [],
     autoLimitApplied: false,
   }))
   ipc.override('execute_call_query', () => ({ results: [] }))

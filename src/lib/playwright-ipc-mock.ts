@@ -2,6 +2,7 @@ import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 import {
   getAnalyzeQueryForEditFixture,
+  getCachedRowsFixture,
   getColumnsFixture,
   getForeignKeysFixture,
   getObjectBodyFixture,
@@ -500,11 +501,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             totalRows: 2,
             executionTimeMs: 15,
             affectedRows: 0,
-            firstPage: [
+            rows: [
               [1, 'Alice'],
               [2, 'Bob'],
             ],
-            totalPages: 1,
+
             autoLimitApplied: false,
             error: null,
             reExecutable: true,
@@ -519,11 +520,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             totalRows: 2,
             executionTimeMs: 8,
             affectedRows: 0,
-            firstPage: [
+            rows: [
               [101, '29.99'],
               [102, '49.99'],
             ],
-            totalPages: 1,
+
             autoLimitApplied: false,
             error: null,
             reExecutable: true,
@@ -535,8 +536,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             totalRows: 0,
             executionTimeMs: 3,
             affectedRows: 1,
-            firstPage: [],
-            totalPages: 0,
+            rows: [],
+
             autoLimitApplied: false,
             error: null,
             reExecutable: true,
@@ -557,11 +558,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             totalRows: 2,
             executionTimeMs: 20,
             affectedRows: 0,
-            firstPage: [
+            rows: [
               [1, '150.00'],
               [2, '230.50'],
             ],
-            totalPages: 1,
+
             autoLimitApplied: false,
             error: null,
             reExecutable: false,
@@ -576,8 +577,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             totalRows: 1,
             executionTimeMs: 5,
             affectedRows: 0,
-            firstPage: [['total_orders', 42]],
-            totalPages: 1,
+            rows: [['total_orders', 42]],
+
             autoLimitApplied: false,
             error: null,
             reExecutable: false,
@@ -596,22 +597,25 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         totalRows: 2,
         executionTimeMs: 10,
         affectedRows: 0,
-        firstPage: [
+        rows: [
           [1, 'Alice'],
           [2, 'Bob'],
         ],
-        totalPages: 1,
         autoLimitApplied: false,
         error: null,
         reExecutable: true,
       }
 
-    case 'fetch_result_page':
+    case 'fetch_cached_rows': {
+      const cachedRows = getCachedRowsFixture(
+        typeof args?.queryId === 'string' ? args.queryId : null,
+        typeof args?.resultIndex === 'number' ? args.resultIndex : null
+      )
       return {
-        rows: [[1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00']],
-        page: 1,
-        totalPages: 1,
+        rows: cachedRows.rows,
+        columns: cachedRows.columns,
       }
+    }
 
     case 'evict_results':
       return null
@@ -630,7 +634,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     }
 
     case 'sort_results':
-      // Returns FetchPageResult shape (same as fetch_result_page)
+      // Returns SortedRowsResult shape (rows only)
       return {
         rows: [
           [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
@@ -639,8 +643,6 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
           [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
         ],
-        page: 1,
-        totalPages: 1,
       }
 
     case 'analyze_query_for_edit':

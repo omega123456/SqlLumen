@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ipc } from '../ipc-mock'
 import {
   executeQuery,
-  fetchResultPage,
+  fetchCachedRows,
   evictResults,
   fetchSchemaMetadata,
   readFile,
@@ -23,11 +23,11 @@ const mockExecuteQueryFn = vi.fn(() => ({
   totalRows: 1,
   executionTimeMs: 5,
   affectedRows: 0,
-  firstPage: [[1]],
-  totalPages: 1,
+  rows: [[1]],
+
   autoLimitApplied: false,
 }))
-const mockFetchResultPageFn = vi.fn(() => ({ rows: [[1]], page: 1, totalPages: 1 }))
+const mockFetchCachedRowsFn = vi.fn(() => ({ rows: [[1]], columns: [{ name: 'id', dataType: 'INT' }] }))
 const mockEvictResultsFn = vi.fn(() => null)
 const mockFetchSchemaMetadataFn = vi.fn(() => ({
   databases: ['mydb'],
@@ -39,7 +39,7 @@ const mockFetchSchemaMetadataFn = vi.fn(() => ({
 }))
 const mockReadFileFn = vi.fn(() => 'SELECT 1;')
 const mockWriteFileFn = vi.fn(() => null)
-const mockSortResultsFn = vi.fn(() => ({ rows: [[1], [2], [3]], page: 1, totalPages: 1 }))
+const mockSortResultsFn = vi.fn(() => ({ rows: [[1], [2], [3]] }))
 const mockSelectDatabaseFn = vi.fn(() => null)
 const mockAnalyzeQueryForEditFn = vi.fn(() => [
   {
@@ -74,8 +74,8 @@ const mockExecuteMultiQueryFn = vi.fn(() => ({
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+    
       autoLimitApplied: false,
       error: null,
       reExecutable: true,
@@ -91,8 +91,8 @@ const mockExecuteCallQueryFn = vi.fn(() => ({
       totalRows: 1,
       executionTimeMs: 10,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+    
       autoLimitApplied: false,
       error: null,
       reExecutable: false,
@@ -106,8 +106,8 @@ const mockReexecuteSingleResultFn = vi.fn(() => ({
   totalRows: 1,
   executionTimeMs: 3,
   affectedRows: 0,
-  firstPage: [[1]],
-  totalPages: 1,
+  rows: [[1]],
+
   autoLimitApplied: false,
   error: null,
   reExecutable: true,
@@ -116,7 +116,7 @@ const mockTouchResultsFn = vi.fn(() => ({ status: 'available' as const }))
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
-  mockFetchResultPageFn.mockClear()
+  mockFetchCachedRowsFn.mockClear()
   mockEvictResultsFn.mockClear()
   mockFetchSchemaMetadataFn.mockClear()
   mockReadFileFn.mockClear()
@@ -130,7 +130,7 @@ beforeEach(() => {
   mockReexecuteSingleResultFn.mockClear()
   mockTouchResultsFn.mockClear()
   ipc.override('execute_query', () => mockExecuteQueryFn())
-  ipc.override('fetch_result_page', () => mockFetchResultPageFn())
+  ipc.override('fetch_cached_rows', () => mockFetchCachedRowsFn())
   ipc.override('evict_results', () => mockEvictResultsFn())
   ipc.override('fetch_schema_metadata', () => mockFetchSchemaMetadataFn())
   ipc.override('read_file', () => mockReadFileFn())
@@ -150,13 +150,13 @@ describe('query-commands', () => {
     const result = await executeQuery('conn-1', 'tab-1', 'SELECT 1')
     expect(result.queryId).toBe('q1')
     expect(result.columns).toHaveLength(1)
-    expect(result.firstPage).toEqual([[1]])
+    expect(result.rows).toEqual([[1]])
   })
 
-  it('fetchResultPage invokes fetch_result_page command', async () => {
-    const result = await fetchResultPage('conn-1', 'tab-1', 'q1', 1)
+  it('fetchCachedRows invokes fetch_cached_rows command', async () => {
+    const result = await fetchCachedRows('conn-1', 'tab-1', 'q1')
     expect(result.rows).toEqual([[1]])
-    expect(result.page).toBe(1)
+    expect(result.columns).toHaveLength(1)
   })
 
   it('evictResults invokes evict_results command', async () => {
@@ -183,8 +183,6 @@ describe('query-commands', () => {
   it('sortResults invokes sort_results command', async () => {
     const result = await sortResults('conn-1', 'tab-1', 'id', 'asc')
     expect(result.rows).toEqual([[1], [2], [3]])
-    expect(result.page).toBe(1)
-    expect(result.totalPages).toBe(1)
     expect(mockSortResultsFn).toHaveBeenCalled()
   })
 
@@ -216,6 +214,23 @@ describe('query-commands', () => {
     expect(result.results[0].sourceSql).toBe('SELECT 1')
     expect(result.results[0].reExecutable).toBe(true)
     expect(mockExecuteMultiQueryFn).toHaveBeenCalled()
+    expect(ipc.calls('execute_multi_query')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statements: ['SELECT 1', 'SELECT 2'],
+      rowLimit: 1000,
+    })
+  })
+
+  it('passes rowLimit to executeQuery IPC', async () => {
+    await executeQuery('conn-1', 'tab-1', 'SELECT 1', 250)
+    expect(mockExecuteQueryFn).toHaveBeenCalled()
+    expect(ipc.calls('execute_query')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      sql: 'SELECT 1',
+      rowLimit: 250,
+    })
   })
 
   it('executeCallQuery invokes execute_call_query command', async () => {
@@ -225,6 +240,12 @@ describe('query-commands', () => {
     expect(result.results[0].sourceSql).toBe('CALL sp_test()')
     expect(result.results[0].reExecutable).toBe(false)
     expect(mockExecuteCallQueryFn).toHaveBeenCalled()
+    expect(ipc.calls('execute_call_query')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      sql: 'CALL sp_test()',
+      rowLimit: 1000,
+    })
   })
 
   it('reexecuteSingleResult invokes reexecute_single_result command', async () => {
@@ -233,6 +254,13 @@ describe('query-commands', () => {
     expect(result.sourceSql).toBe('SELECT 1')
     expect(result.reExecutable).toBe(true)
     expect(mockReexecuteSingleResultFn).toHaveBeenCalled()
+    expect(ipc.calls('reexecute_single_result')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      resultIndex: 0,
+      sql: 'SELECT 1',
+      rowLimit: 1000,
+    })
   })
 
   it('touchResults invokes touch_results command', async () => {
@@ -243,15 +271,15 @@ describe('query-commands', () => {
 
   // --- resultIndex optional parameter tests ---
 
-  it('fetchResultPage does not include resultIndex when omitted', async () => {
-    await fetchResultPage('conn-1', 'tab-1', 'q1', 1)
-    const args = ipc.calls('fetch_result_page')[0] as Record<string, unknown>
+  it('fetchCachedRows does not include resultIndex when omitted', async () => {
+    await fetchCachedRows('conn-1', 'tab-1', 'q1')
+    const args = ipc.calls('fetch_cached_rows')[0] as Record<string, unknown>
     expect('resultIndex' in args).toBe(false)
   })
 
-  it('fetchResultPage includes resultIndex when provided', async () => {
-    await fetchResultPage('conn-1', 'tab-1', 'q1', 1, 2)
-    expect((ipc.calls('fetch_result_page')[0] as Record<string, unknown>).resultIndex).toBe(2)
+  it('fetchCachedRows includes resultIndex when provided', async () => {
+    await fetchCachedRows('conn-1', 'tab-1', 'q1', 2)
+    expect((ipc.calls('fetch_cached_rows')[0] as Record<string, unknown>).resultIndex).toBe(2)
   })
 
   it('sortResults does not include resultIndex when omitted', async () => {

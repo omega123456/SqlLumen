@@ -1,4 +1,4 @@
-//! Tauri IPC command wrappers for SQL query execution, result pagination,
+//! Tauri IPC command wrappers for SQL query execution, cached result retrieval,
 //! file I/O, and schema metadata.
 //!
 //! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
@@ -13,11 +13,11 @@ use crate::commands::query_history_bridge::{
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
-    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl, fetch_result_page_impl,
+    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl, fetch_cached_rows_impl,
     fetch_schema_metadata_full_impl, fetch_schema_metadata_impl, read_file_impl,
     reexecute_single_result_impl, sort_results_impl, touch_results_impl, update_result_cell_impl,
-    write_file_impl, ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
-    QueryTableEditInfo, SchemaMetadata, SchemaMetadataFull,
+    write_file_impl, ExecuteQueryResult, FetchCachedRowsResult, MultiQueryResult,
+    MultiQueryResultItem, QueryTableEditInfo, SchemaMetadata, SchemaMetadataFull, SortedRowsResult,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;
@@ -32,7 +32,7 @@ pub async fn execute_query(
     connection_id: String,
     tab_id: String,
     sql: String,
-    page_size: Option<usize>,
+    row_limit: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
     execute_query_bridge(
@@ -40,31 +40,23 @@ pub async fn execute_query(
         &connection_id,
         &tab_id,
         &sql,
-        page_size.unwrap_or(1000),
+        row_limit.unwrap_or(1000),
     )
     .await
 }
 
-// ── fetch_result_page ─────────────────────────────────────────────────────────
+// ── fetch_cached_rows ─────────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn fetch_result_page(
+pub fn fetch_cached_rows(
     connection_id: String,
     tab_id: String,
     query_id: String,
-    page: usize,
     result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
-) -> Result<FetchPageResult, String> {
-    fetch_result_page_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        &query_id,
-        page,
-        result_index,
-    )
+) -> Result<FetchCachedRowsResult, String> {
+    fetch_cached_rows_impl(&state, &connection_id, &tab_id, &query_id, result_index)
 }
 
 // ── evict_results ─────────────────────────────────────────────────────────────
@@ -130,7 +122,7 @@ pub async fn sort_results(
     direction: String,
     result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
-) -> Result<FetchPageResult, String> {
+) -> Result<SortedRowsResult, String> {
     sort_results_impl(
         &state,
         &connection_id,
@@ -197,7 +189,7 @@ pub async fn reexecute_single_result(
     tab_id: String,
     result_index: usize,
     sql: String,
-    page_size: Option<usize>,
+    row_limit: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResultItem, String> {
     let result = reexecute_single_result_impl(
@@ -206,7 +198,7 @@ pub async fn reexecute_single_result(
         &tab_id,
         result_index,
         &sql,
-        page_size.unwrap_or(1000),
+        row_limit.unwrap_or(1000),
     )
     .await;
 
@@ -256,7 +248,7 @@ pub async fn execute_multi_query(
     connection_id: String,
     tab_id: String,
     statements: Vec<String>,
-    page_size: Option<usize>,
+    row_limit: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResult, String> {
     execute_multi_query_bridge(
@@ -264,7 +256,7 @@ pub async fn execute_multi_query(
         &connection_id,
         &tab_id,
         statements,
-        page_size.unwrap_or(1000),
+        row_limit.unwrap_or(1000),
     )
     .await
 }
@@ -277,7 +269,7 @@ pub async fn execute_call_query(
     connection_id: String,
     tab_id: String,
     sql: String,
-    page_size: Option<usize>,
+    row_limit: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResult, String> {
     execute_call_query_bridge(
@@ -285,7 +277,7 @@ pub async fn execute_call_query(
         &connection_id,
         &tab_id,
         &sql,
-        page_size.unwrap_or(1000),
+        row_limit.unwrap_or(1000),
     )
     .await
 }

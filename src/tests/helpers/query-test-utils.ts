@@ -37,9 +37,7 @@ interface ResultOverrides {
   executionTimeMs?: number
   affectedRows?: number
   queryId?: string | null
-  currentPage?: number
-  totalPages?: number
-  pageSize?: number
+  rowLimit?: number
   autoLimitApplied?: boolean
   errorMessage?: string | null
   viewMode?: ViewMode
@@ -89,9 +87,8 @@ const RESULT_KEYS = new Set<string>([
   'executionTimeMs',
   'affectedRows',
   'queryId',
-  'currentPage',
-  'totalPages',
-  'pageSize',
+
+  'rowLimit',
   'autoLimitApplied',
   'errorMessage',
   'viewMode',

@@ -37,9 +37,15 @@ export interface PlaywrightQueryResult {
   totalRows: number
   executionTimeMs: number
   affectedRows: number
-  firstPage: unknown[][]
-  totalPages: number
+  rows: unknown[][]
   autoLimitApplied: boolean
+}
+
+export interface PlaywrightCachedRowsResult {
+  queryId: string
+  resultIndex: number
+  columns: Array<{ name: string; dataType: string }>
+  rows: unknown[][]
 }
 
 export interface PlaywrightTableColumn {

@@ -247,14 +247,7 @@ export interface QueryResultMeta {
   totalRows: number
   executionTimeMs: number
   affectedRows: number
-  totalPages: number
   autoLimitApplied: boolean
-}
-
-export interface ResultPage {
-  rows: unknown[][]
-  page: number
-  totalPages: number
 }
 
 export type FrontendRowResidencyStatus = 'resident' | 'evicted' | 'restoring'
@@ -547,8 +540,7 @@ export interface MultiQueryResultItem {
   totalRows: number
   executionTimeMs: number
   affectedRows: number
-  firstPage: unknown[][]
-  totalPages: number
+  rows: unknown[][]
   autoLimitApplied: boolean
   error: string | null
   reExecutable: boolean

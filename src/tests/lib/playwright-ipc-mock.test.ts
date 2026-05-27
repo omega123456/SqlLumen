@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { playwrightIpcMockHandler } from '../../lib/playwright-ipc-mock'
+import { overrideFixture, resetFixtureOverrides } from '../playwright-fixtures'
 import type {
   MultiQueryResult,
   MultiQueryResultItem,
@@ -17,6 +18,7 @@ function clearSchemaOverride() {
 describe('playwrightIpcMockHandler', () => {
   afterEach(() => {
     clearSchemaOverride()
+    resetFixtureOverrides()
   })
 
   it('returns the schema metadata override for fetch_schema_metadata when present', () => {
@@ -252,7 +254,7 @@ describe('playwrightIpcMockHandler', () => {
         'SELECT product_id, price FROM products',
         "UPDATE users SET status = 'active' WHERE id = 1",
       ],
-      pageSize: 1000,
+      rowLimit: 1000,
     }) as MultiQueryResult
 
     expect(result.results).toHaveLength(3)
@@ -265,7 +267,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r1.columns[0]).toEqual({ name: 'id', dataType: 'BIGINT' })
     expect(r1.columns[1]).toEqual({ name: 'name', dataType: 'VARCHAR' })
     expect(r1.totalRows).toBe(2)
-    expect(r1.firstPage).toEqual([
+    expect(r1.rows).toEqual([
       [1, 'Alice'],
       [2, 'Bob'],
     ])
@@ -279,7 +281,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r2.sourceSql).toBe('SELECT product_id, price FROM products')
     expect(r2.columns).toHaveLength(2)
     expect(r2.totalRows).toBe(2)
-    expect(r2.firstPage).toEqual([
+    expect(r2.rows).toEqual([
       [101, '29.99'],
       [102, '49.99'],
     ])
@@ -291,7 +293,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r3.columns).toHaveLength(0)
     expect(r3.totalRows).toBe(0)
     expect(r3.affectedRows).toBe(1)
-    expect(r3.firstPage).toEqual([])
+    expect(r3.rows).toEqual([])
     expect(r3.reExecutable).toBe(true)
   })
 
@@ -300,7 +302,7 @@ describe('playwrightIpcMockHandler', () => {
       connectionId: 'conn-1',
       tabId: 'tab-1',
       sql: 'CALL sp_get_orders()',
-      pageSize: 1000,
+      rowLimit: 1000,
     }) as MultiQueryResult
 
     expect(result.results).toHaveLength(2)
@@ -311,7 +313,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r1.sourceSql).toBe('CALL sp_get_orders()')
     expect(r1.columns).toHaveLength(2)
     expect(r1.totalRows).toBe(2)
-    expect(r1.firstPage).toEqual([
+    expect(r1.rows).toEqual([
       [1, '150.00'],
       [2, '230.50'],
     ])
@@ -323,7 +325,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r2.sourceSql).toBe('CALL sp_get_orders()')
     expect(r2.columns).toHaveLength(2)
     expect(r2.totalRows).toBe(1)
-    expect(r2.firstPage).toEqual([['total_orders', 42]])
+    expect(r2.rows).toEqual([['total_orders', 42]])
     expect(r2.reExecutable).toBe(false)
   })
 
@@ -333,14 +335,14 @@ describe('playwrightIpcMockHandler', () => {
       tabId: 'tab-1',
       resultIndex: 0,
       sql: 'SELECT id, name FROM users',
-      pageSize: 1000,
+      rowLimit: 1000,
     }) as MultiQueryResultItem
 
     expect(result.queryId).toBe('mock-reexec-q1')
     expect(result.sourceSql).toBe('SELECT id, name FROM users')
     expect(result.columns).toHaveLength(2)
     expect(result.totalRows).toBe(2)
-    expect(result.firstPage).toEqual([
+    expect(result.rows).toEqual([
       [1, 'Alice'],
       [2, 'Bob'],
     ])
@@ -354,10 +356,72 @@ describe('playwrightIpcMockHandler', () => {
       tabId: 'tab-1',
       resultIndex: 1,
       sql: 'SELECT product_id FROM products',
-      pageSize: 500,
+      rowLimit: 500,
     }) as MultiQueryResultItem
 
     expect(result.sourceSql).toBe('SELECT product_id FROM products')
+  })
+
+  it('fetch_cached_rows returns the default restore fixture when no query-specific match exists', () => {
+    const result = playwrightIpcMockHandler('fetch_cached_rows', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      queryId: 'unknown-query-id',
+    }) as Record<string, unknown>
+
+    expect(result.columns).toEqual([
+      { name: 'id', dataType: 'BIGINT' },
+      { name: 'name', dataType: 'VARCHAR' },
+      { name: 'email', dataType: 'VARCHAR' },
+      { name: 'status', dataType: 'VARCHAR' },
+      { name: 'created_at', dataType: 'DATETIME' },
+    ])
+    expect(result.rows).toEqual([
+      [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
+      [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
+      [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
+      [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
+      [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
+    ])
+  })
+
+  it('fetch_cached_rows resolves indexed restore fixtures by queryId and resultIndex', () => {
+    const result = playwrightIpcMockHandler('fetch_cached_rows', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      queryId: 'mock-query-id-1',
+      resultIndex: 1,
+    }) as Record<string, unknown>
+
+    expect(result.columns).toEqual([
+      { name: 'order_id', dataType: 'INT' },
+      { name: 'total', dataType: 'DECIMAL' },
+    ])
+    expect(result.rows).toEqual([
+      [1, '150.00'],
+      [2, '230.50'],
+    ])
+  })
+
+  it('fetch_cached_rows honors query-specific fixture overrides from the registry', () => {
+    overrideFixture('cachedRows', 'custom-query__2', {
+      queryId: 'custom-query',
+      resultIndex: 2,
+      columns: [{ name: 'payload', dataType: 'JSON' }],
+      rows: [['{"ok":true}']],
+    })
+
+    const result = playwrightIpcMockHandler('fetch_cached_rows', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      queryId: 'custom-query',
+      resultIndex: 2,
+    }) as Record<string, unknown>
+
+    expect(result).toEqual({
+      columns: [{ name: 'payload', dataType: 'JSON' }],
+      rows: [['{"ok":true}']],
+    })
   })
 
   // --- AI mock handler tests ---

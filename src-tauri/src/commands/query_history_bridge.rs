@@ -91,9 +91,9 @@ pub async fn execute_query_bridge(
     session_id: &str,
     tab_id: &str,
     sql: &str,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<ExecuteQueryResult, String> {
-    let result = execute_query_impl(state, session_id, tab_id, sql, page_size).await;
+    let result = execute_query_impl(state, session_id, tab_id, sql, row_limit).await;
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 
@@ -141,9 +141,9 @@ pub async fn execute_multi_query_bridge(
     session_id: &str,
     tab_id: &str,
     statements: Vec<String>,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
-    let result = execute_multi_query_impl(state, session_id, tab_id, statements, page_size).await;
+    let result = execute_multi_query_impl(state, session_id, tab_id, statements, row_limit).await;
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 
@@ -195,9 +195,9 @@ pub async fn execute_call_query_bridge(
     session_id: &str,
     tab_id: &str,
     sql: &str,
-    page_size: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
-    let result = execute_call_query_impl(state, session_id, tab_id, sql, page_size).await;
+    let result = execute_call_query_impl(state, session_id, tab_id, sql, row_limit).await;
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 

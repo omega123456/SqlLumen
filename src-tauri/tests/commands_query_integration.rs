@@ -6,10 +6,10 @@ use rusqlite::Connection;
 use sqllumen_lib::mysql::query_executor::ColumnMeta;
 use sqllumen_lib::mysql::query_executor::StoredResult;
 use sqllumen_lib::mysql::query_executor::{
-    calculate_total_pages, evict_results_impl, fetch_result_page_impl, find_with_main_keyword,
-    get_first_keyword, get_page_rows, has_top_level_limit, inject_limit_into_select,
-    is_read_only_allowed, is_select_like, needs_auto_limit, read_file_impl,
-    strip_non_executable_comments, touch_results_impl, write_file_impl,
+    evict_results_impl, fetch_cached_rows_impl, find_with_main_keyword, get_first_keyword,
+    has_top_level_limit, inject_limit_into_select, is_read_only_allowed, is_select_like,
+    needs_auto_limit, read_file_impl, strip_non_executable_comments, touch_results_impl,
+    write_file_impl,
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
@@ -35,6 +35,37 @@ fn test_state() -> AppState {
         table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
             1800,
             std::env::temp_dir().join("sqllumen-test-cmdquery-table-data"),
+        )),
+        log_filter_reload: Mutex::new(None),
+        running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+    }
+}
+
+fn test_state_with_zero_ttl() -> AppState {
+    common::ensure_fake_backend_once();
+    let conn = Connection::open_in_memory().expect("should open in-memory db");
+    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    AppState {
+        db: Arc::new(Mutex::new(conn)),
+        registry: ConnectionRegistry::new(),
+        app_handle: None,
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                0,
+                std::env::temp_dir().join("sqllumen-test-cmdquery-zero-ttl"),
+            ),
+        ),
+        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+            0,
+            std::env::temp_dir().join("sqllumen-test-cmdquery-zero-ttl-td"),
         )),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
@@ -493,7 +524,6 @@ fn evict_results_removes_stored_result() {
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -531,7 +561,6 @@ fn touch_results_reports_available_for_cached_entry() {
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -563,7 +592,6 @@ fn touch_results_reports_expired_for_removed_entry() {
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
     state.result_cache.remove("conn-1", "tab-1");
@@ -591,7 +619,6 @@ fn touch_results_reports_available_after_spill_rewarm() {
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
@@ -613,14 +640,14 @@ fn touch_results_reports_available_after_spill_rewarm() {
     assert_eq!(status, serde_json::json!({ "status": "available" }));
 }
 
-// ── Fetch result page ─────────────────────────────────────────────────────────
+// ── Fetch cached rows ───────────────────────────────────────────────────────
 
 #[test]
-fn fetch_result_page_returns_correct_slice() {
+fn fetch_cached_rows_happy_path() {
     let state = test_state();
 
     let rows: Vec<Vec<serde_json::Value>> =
-        (1i64..=25).map(|i| vec![serde_json::json!(i)]).collect();
+        (1i64..=5).map(|i| vec![serde_json::json!(i)]).collect();
 
     state.result_cache.insert(
         "c1",
@@ -631,26 +658,22 @@ fn fetch_result_page_returns_correct_slice() {
                 name: "n".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows,
+            rows: rows.clone(),
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 10,
         }],
     );
 
-    let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1, None).expect("page 1 ok");
-    assert_eq!(page1.rows.len(), 10);
-    assert_eq!(page1.page, 1);
-    assert_eq!(page1.total_pages, 3);
-
-    let page3 = fetch_result_page_impl(&state, "c1", "t1", "q1", 3, None).expect("page 3 ok");
-    assert_eq!(page3.rows.len(), 5); // 25 - 20 = 5 remaining
+    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q1", None).expect("should succeed");
+    assert_eq!(result.rows.len(), 5);
+    assert_eq!(result.columns.len(), 1);
+    assert_eq!(result.columns[0].name, "n");
 }
 
 #[test]
-fn fetch_result_page_errors_on_wrong_query_id() {
-    let state = test_state();
+fn fetch_cached_rows_errors_on_expired() {
+    let state = test_state_with_zero_ttl();
 
     state.result_cache.insert(
         "c1",
@@ -662,25 +685,25 @@ fn fetch_result_page_errors_on_wrong_query_id() {
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
-    let err = fetch_result_page_impl(&state, "c1", "t1", "wrong-id", 1, None)
-        .expect_err("wrong query_id should error");
-    assert!(err.contains("Query ID mismatch") || err.contains("mismatch"));
+    // With zero TTL the entry expires immediately
+    let err = fetch_cached_rows_impl(&state, "c1", "t1", "q1", None)
+        .expect_err("expired cache should error");
+    assert!(err.contains("results_expired"));
 }
 
 #[test]
-fn fetch_result_page_errors_when_not_found() {
+fn fetch_cached_rows_errors_when_missing() {
     let state = test_state();
-    let err = fetch_result_page_impl(&state, "conn-missing", "tab-missing", "q1", 1, None)
+    let err = fetch_cached_rows_impl(&state, "conn-missing", "tab-missing", "q1", None)
         .expect_err("missing result should error");
     assert!(err.contains("No results found") || err.contains("not found"));
 }
 
 #[test]
-fn fetch_result_page_errors_on_page_zero() {
+fn fetch_cached_rows_errors_on_query_id_mismatch() {
     let state = test_state();
 
     state.result_cache.insert(
@@ -689,67 +712,16 @@ fn fetch_result_page_errors_on_page_zero() {
         vec![StoredResult {
             query_id: "q1".to_string(),
             columns: vec![],
-            rows: vec![vec![serde_json::json!(1)]],
-            execution_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-            page_size: 1000,
-        }],
-    );
-
-    let err =
-        fetch_result_page_impl(&state, "c1", "t1", "q1", 0, None).expect_err("page 0 should error");
-    assert!(err.contains("out of range"));
-}
-
-#[test]
-fn fetch_result_page_errors_on_page_beyond_total() {
-    let state = test_state();
-
-    state.result_cache.insert(
-        "c1",
-        "t1",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![],
-            rows: vec![vec![serde_json::json!(1)]],
-            execution_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-            page_size: 1000,
-        }],
-    );
-
-    let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 2, None)
-        .expect_err("page beyond total should error");
-    assert!(err.contains("out of range"));
-}
-
-#[test]
-fn fetch_result_page_empty_result_set() {
-    let state = test_state();
-
-    state.result_cache.insert(
-        "c1",
-        "t1",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![ColumnMeta {
-                name: "id".to_string(),
-                data_type: "INT".to_string(),
-            }],
             rows: vec![],
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size: 1000,
         }],
     );
 
-    // Empty result sets have 1 total page; page 1 returns 0 rows
-    let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1, None).expect("page 1 ok");
-    assert_eq!(page1.rows.len(), 0);
-    assert_eq!(page1.total_pages, 1);
+    let err = fetch_cached_rows_impl(&state, "c1", "t1", "wrong-id", None)
+        .expect_err("wrong query_id should error");
+    assert!(err.contains("Query ID mismatch") || err.contains("mismatch"));
 }
 
 // ── File I/O ──────────────────────────────────────────────────────────────────
@@ -804,73 +776,6 @@ fn write_file_creates_parent_directories() {
 
     // Cleanup
     let _ = std::fs::remove_dir_all(dir.join(format!("test_nested_{}", std::process::id())));
-}
-
-// ── Pagination helper tests ───────────────────────────────────────────────────
-
-#[test]
-fn calculate_total_pages_normal() {
-    assert_eq!(calculate_total_pages(100, 10), 10);
-    assert_eq!(calculate_total_pages(101, 10), 11);
-    assert_eq!(calculate_total_pages(99, 10), 10);
-    assert_eq!(calculate_total_pages(10, 10), 1);
-    assert_eq!(calculate_total_pages(1, 10), 1);
-}
-
-#[test]
-fn calculate_total_pages_zero_rows() {
-    assert_eq!(calculate_total_pages(0, 10), 1);
-    assert_eq!(calculate_total_pages(0, 1000), 1);
-}
-
-#[test]
-fn calculate_total_pages_zero_page_size() {
-    assert_eq!(calculate_total_pages(100, 0), 1);
-    assert_eq!(calculate_total_pages(0, 0), 1);
-}
-
-#[test]
-fn get_page_rows_first_page() {
-    let rows = vec![
-        vec![serde_json::json!(1)],
-        vec![serde_json::json!(2)],
-        vec![serde_json::json!(3)],
-    ];
-    let page = get_page_rows(&rows, 1, 2);
-    assert_eq!(page.len(), 2);
-    assert_eq!(page[0][0], serde_json::json!(1));
-    assert_eq!(page[1][0], serde_json::json!(2));
-}
-
-#[test]
-fn get_page_rows_last_page_partial() {
-    let rows = vec![
-        vec![serde_json::json!(1)],
-        vec![serde_json::json!(2)],
-        vec![serde_json::json!(3)],
-    ];
-    let page = get_page_rows(&rows, 2, 2);
-    assert_eq!(page.len(), 1);
-    assert_eq!(page[0][0], serde_json::json!(3));
-}
-
-#[test]
-fn get_page_rows_empty() {
-    let rows: Vec<Vec<serde_json::Value>> = vec![];
-    let page = get_page_rows(&rows, 1, 10);
-    assert_eq!(page.len(), 0);
-}
-
-#[test]
-fn get_page_rows_full_page() {
-    let rows = vec![
-        vec![serde_json::json!(1)],
-        vec![serde_json::json!(2)],
-        vec![serde_json::json!(3)],
-        vec![serde_json::json!(4)],
-    ];
-    let page = get_page_rows(&rows, 1, 4);
-    assert_eq!(page.len(), 4);
 }
 
 // ── Coverage-mode tests for execute_query_impl / fetch_schema_metadata_impl ──
@@ -938,7 +843,6 @@ mod coverage_stubs {
         assert!(!result.query_id.is_empty());
         assert!(result.auto_limit_applied);
         assert_eq!(result.total_rows, 0);
-        assert_eq!(result.total_pages, 1);
     }
 
     #[tokio::test]
@@ -974,14 +878,14 @@ mod coverage_stubs {
     }
 
     #[tokio::test]
-    async fn execute_query_impl_coverage_page_size_zero() {
+    async fn execute_query_impl_coverage_row_limit_zero() {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
         let result = execute_query_impl(&state, "conn-cov", "tab-1", "SHOW TABLES", 0)
             .await
-            .expect("page_size 0 should fallback to 1000");
-        assert_eq!(result.total_pages, 1);
+            .expect("row_limit 0 should fallback to 1000");
+        assert!(result.rows.is_empty());
     }
 
     #[tokio::test]
@@ -1007,9 +911,9 @@ mod coverage_stubs {
             .expect("stub should succeed");
 
         // Verify result is stored and can be fetched
-        let page = fetch_result_page_impl(&state, "conn-cov", "tab-1", &result.query_id, 1, None)
-            .expect("page fetch should succeed");
-        assert_eq!(page.total_pages, 1);
+        let cached = fetch_cached_rows_impl(&state, "conn-cov", "tab-1", &result.query_id, None)
+            .expect("cached rows fetch should succeed");
+        assert_eq!(cached.rows.len(), 0);
     }
 
     // ── fetch_schema_metadata_impl ────────────────────────────────────────

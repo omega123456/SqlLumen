@@ -137,8 +137,7 @@ describe('ResultPanel — expired state', () => {
       totalRows: number
       executionTimeMs: number
       affectedRows: number
-      firstPage: unknown[][]
-      totalPages: number
+      rows: unknown[][]
       autoLimitApplied: boolean
     }) => void) | null = null
 
@@ -152,8 +151,7 @@ describe('ResultPanel — expired state', () => {
           totalRows: number
           executionTimeMs: number
           affectedRows: number
-          firstPage: unknown[][]
-          totalPages: number
+          rows: unknown[][]
           autoLimitApplied: boolean
         }>((resolve) => {
           resolveExecute = resolve
@@ -178,8 +176,7 @@ describe('ResultPanel — expired state', () => {
             totalRows: number
             executionTimeMs: number
             affectedRows: number
-            firstPage: unknown[][]
-            totalPages: number
+            rows: unknown[][]
             autoLimitApplied: boolean
           }) => void)
         | null
@@ -189,8 +186,7 @@ describe('ResultPanel — expired state', () => {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
       autoLimitApplied: false,
     })
 

@@ -37,7 +37,7 @@ const QUERY_STORE_COMMANDS = [
   'evict_results',
   'execute_multi_query',
   'execute_query',
-  'fetch_result_page',
+  'fetch_cached_rows',
   'sort_results',
 ] as const
 
@@ -58,11 +58,11 @@ beforeEach(() => {
       totalRows: 3,
       executionTimeMs: 10,
       affectedRows: 0,
-      firstPage: [[1], [2], [3]],
-      totalPages: 1,
+      rows: [[1], [2], [3]],
+
       autoLimitApplied: false,
     }),
-    fetch_result_page: () => ({ rows: [[4], [5]], page: 2, totalPages: 2 }),
+    fetch_cached_rows: () => ({ rows: [[4], [5]], columns: [{ name: 'id', dataType: 'INT' }] }),
     evict_results: () => null,
   })
 })
@@ -349,15 +349,15 @@ describe('useQueryStore — executeQuery', () => {
     expect(flat('tab-1').lastExecutedSql).toBe('SELECT * FROM users')
   })
 
-  it('uses stored pageSize for the IPC call', async () => {
+  it('uses stored rowLimit for the IPC call', async () => {
     // Set a custom page size before executing
     useQueryStore.getState().setContent('tab-ps', 'SELECT 1')
-    patchResult('tab-ps', { pageSize: 500 })
+    patchResult('tab-ps', { rowLimit: 500 })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-ps', 'SELECT 1')
     const state = useQueryStore.getState().getTabState('tab-ps')
     expect(state.tabStatus).toBe('success')
-    // The query still succeeds (the mock doesn't validate pageSize,
+    // The query still succeeds (the mock doesn't validate rowLimit,
     // but the code path passes it)
     expect(flat('tab-ps').rows).toEqual([[1], [2], [3]])
   })
@@ -386,8 +386,8 @@ describe('useQueryStore — executeQuery', () => {
         totalRows: 1,
         executionTimeMs: 10,
         affectedRows: 0,
-        firstPage: [[true, false, 'flagged']],
-        totalPages: 1,
+        rows: [[true, false, 'flagged']],
+  
         autoLimitApplied: false,
       }),
       evict_results: () => null,
@@ -406,8 +406,8 @@ describe('useQueryStore — executeQuery', () => {
         totalRows: 1,
         executionTimeMs: 10,
         affectedRows: 0,
-        firstPage: [['\u0001', '\u0000', 'flagged']],
-        totalPages: 1,
+        rows: [['\u0001', '\u0000', 'flagged']],
+  
         autoLimitApplied: false,
       }),
       evict_results: () => null,
@@ -427,8 +427,8 @@ describe('useQueryStore — executeQuery', () => {
         totalRows: 1,
         executionTimeMs: 1,
         affectedRows: 0,
-        firstPage: [[1]],
-        totalPages: 1,
+        rows: [[1]],
+  
         autoLimitApplied: false,
       }),
       analyze_query_for_edit: () => null,
@@ -460,8 +460,8 @@ describe('useQueryStore — executeQuery', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+    
           autoLimitApplied: false,
         }
       },
@@ -497,12 +497,12 @@ describe('useQueryStore — multi-result execution', () => {
         results: [
           {
             columns: [{ name: 'id', dataType: 'INT' }],
-            firstPage: [[1]],
+            rows: [[1]],
             totalRows: 1,
             executionTimeMs: 5,
             affectedRows: 0,
             queryId: 'multi-1',
-            totalPages: 1,
+      
             autoLimitApplied: false,
             error: null,
             sourceSql: 'SELECT 1',
@@ -510,12 +510,12 @@ describe('useQueryStore — multi-result execution', () => {
           },
           {
             columns: [{ name: 'name', dataType: 'VARCHAR' }],
-            firstPage: [['alice']],
+            rows: [['alice']],
             totalRows: 1,
             executionTimeMs: 5,
             affectedRows: 0,
             queryId: 'multi-2',
-            totalPages: 1,
+      
             autoLimitApplied: false,
             error: null,
             sourceSql: 'SELECT 2',
@@ -542,111 +542,7 @@ describe('useQueryStore — multi-result execution', () => {
   })
 })
 
-describe('useQueryStore — fetchPage', () => {
-  it('updates rows for new page', async () => {
-    // First set up a query result
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-1', 2)
-    const f = flat('tab-1')
-    expect(f.rows).toEqual([[4], [5]])
-    expect(f.currentPage).toBe(2)
-  })
-
-  it('does nothing when no queryId', async () => {
-    await useQueryStore.getState().fetchPage('conn-1', 'no-query-tab', 1)
-    // Should not throw
-  })
-
-  it('handles null fetch_result_page without throwing', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    overrideCommands({
-      execute_query: () => ({
-        queryId: 'q-null-fetch',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        totalRows: 1,
-        executionTimeMs: 1,
-        affectedRows: 0,
-        firstPage: [[1]],
-        totalPages: 2,
-        autoLimitApplied: false,
-      }),
-      fetch_result_page: () => null,
-      evict_results: () => null,
-    })
-
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-null-fetch', 'SELECT 1')
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-null-fetch', 2)
-
-    expect(flat('tab-null-fetch').currentPage).toBe(1)
-    expect(consoleSpy).not.toHaveBeenCalled()
-    consoleSpy.mockRestore()
-  })
-
-  it('normalizes tinyint boolean aliases to integer rows on fetchPage', async () => {
-    overrideCommands({
-      fetch_result_page: () => ({ rows: [[false, true, 'page-2']], page: 2, totalPages: 2 }),
-      evict_results: () => null,
-    })
-
-    useQueryStore.getState().setContent('tab-bool-page', 'SELECT 1')
-    patchResult('tab-bool-page', {
-      queryId: 'q-bool-page',
-      columns: BOOLEAN_ALIAS_COLUMNS,
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-bool-page', 2)
-
-    const f = flat('tab-bool-page')
-    expect(f.rows).toEqual([[0, 1, 'page-2']])
-    expect(f.currentPage).toBe(2)
-  })
-
-  it('keeps a hidden fetch completion inactive and immediately starts the TTL lifecycle', async () => {
-    vi.useFakeTimers()
-    useQueryStore.getState().setContent('tab-hidden-fetch', 'SELECT 1')
-    patchResult('tab-hidden-fetch', {
-      queryId: 'q-hidden-fetch',
-      columns: [{ name: 'id', dataType: 'INT' }],
-      rowResidency: {
-        status: 'resident',
-        isActive: false,
-        inactiveSince: 321,
-      },
-    })
-    useWorkspaceStore.setState({
-      tabsByConnection: {
-        'conn-1': [
-          { id: 'tab-hidden-fetch', type: 'query-editor', label: 'Query 1', connectionId: 'conn-1' },
-          { id: 'tab-visible', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
-        ],
-      },
-      activeTabByConnection: {
-        'conn-1': 'tab-visible',
-      },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
-    })
-
-    await useQueryStore.getState().fetchPage('conn-1', 'tab-hidden-fetch', 2)
-
-    const result = useQueryStore.getState().tabs['tab-hidden-fetch'].results[0]
-    expect(result.rows).toEqual([[4], [5]])
-    expect(result.rowResidency).toEqual({
-      status: 'resident',
-      isActive: false,
-      inactiveSince: expect.any(Number),
-    })
-
-    await vi.advanceTimersByTimeAsync(30 * 60 * 1000)
-
-    expect(useQueryStore.getState().tabs['tab-hidden-fetch'].results[0].rowResidency.status).toBe(
-      'evicted'
-    )
-    vi.useRealTimers()
-  })
-})
+// fetchPage tests removed — fetchPage action was removed in Phase 1
 
 describe('useQueryStore — cleanupTab', () => {
   it('removes tab state', () => {
@@ -718,8 +614,8 @@ describe('useQueryStore — stale query guard', () => {
       totalRows: 1,
       executionTimeMs: 10,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
     })
     await promise
@@ -919,12 +815,12 @@ describe('useQueryStore — sortResults', () => {
             totalRows: 3,
             executionTimeMs: 10,
             affectedRows: 0,
-            firstPage: [[3], [1], [2]],
-            totalPages: 1,
+            rows: [[3], [1], [2]],
+      
             autoLimitApplied: false,
           }
         case 'sort_results':
-          return { rows: [[1], [2], [3]], page: 1, totalPages: 1 }
+          return { rows: [[1], [2], [3]] }
         case 'evict_results':
           return null
         default:
@@ -941,7 +837,7 @@ describe('useQueryStore — sortResults', () => {
     expect(f.sortColumn).toBe('id')
     expect(f.sortDirection).toBe('asc')
     expect(f.rows).toEqual([[1], [2], [3]])
-    expect(f.currentPage).toBe(1)
+
   })
 
   it('clears sort state when direction is null and re-executes query', async () => {
@@ -955,8 +851,8 @@ describe('useQueryStore — sortResults', () => {
             totalRows: 3,
             executionTimeMs: 8,
             affectedRows: 0,
-            firstPage: [[3], [1], [2]],
-            totalPages: 1,
+            rows: [[3], [1], [2]],
+      
             autoLimitApplied: false,
           }
         case 'evict_results':
@@ -1004,8 +900,8 @@ describe('useQueryStore — sortResults', () => {
             totalRows: 1,
             executionTimeMs: 8,
             affectedRows: 0,
-            firstPage: [[true, false, 'reexec']],
-            totalPages: 1,
+            rows: [[true, false, 'reexec']],
+      
             autoLimitApplied: false,
           }
         case 'evict_results':
@@ -1080,8 +976,8 @@ describe('useQueryStore — sortResults', () => {
             totalRows: 2,
             executionTimeMs: 1,
             affectedRows: 0,
-            firstPage: [[2], [1]],
-            totalPages: 1,
+            rows: [[2], [1]],
+      
             autoLimitApplied: false,
           }
         case 'sort_results':
@@ -1123,7 +1019,7 @@ describe('useQueryStore — sortResults', () => {
     expect(useQueryStore.getState().tabs['tab-stale-sort']).toBeUndefined()
 
     // Resolve the sort
-    resolveSortPromise!({ rows: [[1]], page: 1, totalPages: 1 })
+    resolveSortPromise!({ rows: [[1]] })
     await promise
 
     // Tab should remain undefined
@@ -1133,7 +1029,7 @@ describe('useQueryStore — sortResults', () => {
   it('normalizes tinyint boolean aliases to integer rows on sortResults', async () => {
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'sort_results') {
-        return { rows: [[false, true, 'sorted']], page: 1, totalPages: 1 }
+        return { rows: [[false, true, 'sorted']] }
       }
       if (cmd === 'evict_results') return null
       return null
@@ -1153,7 +1049,7 @@ describe('useQueryStore — sortResults', () => {
   })
 })
 
-describe('useQueryStore — changePageSize', () => {
+describe('useQueryStore — changeRowLimit', () => {
   it('re-executes query with new page size', async () => {
     const executeFn = vi.fn(() => ({
       queryId: 'q-new',
@@ -1161,8 +1057,7 @@ describe('useQueryStore — changePageSize', () => {
       totalRows: 100,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1], [2]],
-      totalPages: 2,
+      rows: [[1], [2]],
       autoLimitApplied: false,
     }))
 
@@ -1190,20 +1085,20 @@ describe('useQueryStore — changePageSize', () => {
       },
     }))
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 500)
     const f = flat('tab-1')
     expect(f.resultStatus).toBe('success')
-    expect(f.pageSize).toBe(500)
+    expect(f.rowLimit).toBe(500)
     expect(f.queryId).toBe('q-new')
     expect(f.totalRows).toBe(100)
     expect(f.rows).toEqual([[1], [2]])
-    expect(f.currentPage).toBe(1)
+
     expect(f.sortColumn).toBeNull()
     expect(f.sortDirection).toBeNull()
     expect(f.selectedRowIndex).toBeNull()
   })
 
-  it('normalizes tinyint boolean aliases when changePageSize re-executes the query', async () => {
+  it('normalizes tinyint boolean aliases when changeRowLimit re-executes the query', async () => {
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
@@ -1212,8 +1107,8 @@ describe('useQueryStore — changePageSize', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          firstPage: [[false, true, 'resized']],
-          totalPages: 1,
+          rows: [[false, true, 'resized']],
+    
           autoLimitApplied: false,
         }
       }
@@ -1237,16 +1132,16 @@ describe('useQueryStore — changePageSize', () => {
       },
     }))
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-bool-size', 250)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-bool-size', 250)
 
     const f = flat('tab-bool-size')
     expect(f.rows).toEqual([[0, 1, 'resized']])
-    expect(f.pageSize).toBe(250)
+    expect(f.rowLimit).toBe(250)
   })
 
   it('does nothing when no lastExecutedSql', async () => {
     useQueryStore.getState().setContent('tab-1', '')
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 500)
     // Should not throw; status should remain unchanged
     expect(useQueryStore.getState().getTabState('tab-1').tabStatus).toBe('idle')
   })
@@ -1273,13 +1168,13 @@ describe('useQueryStore — changePageSize', () => {
       },
     }))
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-1', 500)
     const f = flat('tab-1')
     expect(f.resultStatus).toBe('error')
     expect(f.errorMessage).toContain('Query failed')
   })
 
-  it('skips state update if tab was cleaned up during changePageSize', async () => {
+  it('skips state update if tab was cleaned up during changeRowLimit', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
@@ -1306,7 +1201,7 @@ describe('useQueryStore — changePageSize', () => {
       },
     }))
 
-    const promise = useQueryStore.getState().changePageSize('conn-1', 'tab-stale-ps', 500)
+    const promise = useQueryStore.getState().changeRowLimit('conn-1', 'tab-stale-ps', 500)
 
     // Simulate tab close mid-flight
     useQueryStore.getState().cleanupTab('conn-1', 'tab-stale-ps')
@@ -1319,8 +1214,8 @@ describe('useQueryStore — changePageSize', () => {
       totalRows: 10,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
     })
     await promise
@@ -1329,7 +1224,7 @@ describe('useQueryStore — changePageSize', () => {
     expect(useQueryStore.getState().tabs['tab-stale-ps']).toBeUndefined()
   })
 
-  it('skips error update if tab was cleaned up during failed changePageSize', async () => {
+  it('skips error update if tab was cleaned up during failed changeRowLimit', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
@@ -1356,7 +1251,7 @@ describe('useQueryStore — changePageSize', () => {
       },
     }))
 
-    const promise = useQueryStore.getState().changePageSize('conn-1', 'tab-stale-ps2', 100)
+    const promise = useQueryStore.getState().changeRowLimit('conn-1', 'tab-stale-ps2', 100)
 
     // Simulate tab close mid-flight
     useQueryStore.getState().cleanupTab('conn-1', 'tab-stale-ps2')
@@ -1392,7 +1287,7 @@ describe('useQueryStore — changePageSize', () => {
       },
     }))
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-ps-error-state', 250)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-ps-error-state', 250)
 
     const state = flat('tab-ps-error-state')
     expect(state.resultStatus).toBe('error')
@@ -1431,8 +1326,8 @@ describe('useQueryStore — executeQuery execution timing', () => {
       totalRows: 1,
       executionTimeMs: 10,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
     })
     await promise
@@ -1515,7 +1410,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
   })
 })
 
-describe('useQueryStore — changePageSize execution timing', () => {
+describe('useQueryStore — changeRowLimit execution timing', () => {
   it('sets executionStartedAt when entering running state', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
@@ -1544,7 +1439,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
     }))
 
     const beforeMs = Date.now()
-    const promise = useQueryStore.getState().changePageSize('conn-1', 'tab-ps-timing', 500)
+    const promise = useQueryStore.getState().changeRowLimit('conn-1', 'tab-ps-timing', 500)
 
     // While running, executionStartedAt should be set
     const runningState = useQueryStore.getState().getTabState('tab-ps-timing')
@@ -1559,8 +1454,8 @@ describe('useQueryStore — changePageSize execution timing', () => {
       totalRows: 10,
       executionTimeMs: 5,
       affectedRows: 0,
-      firstPage: [[1]],
-      totalPages: 1,
+      rows: [[1]],
+
       autoLimitApplied: false,
     })
     await promise
@@ -1593,7 +1488,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
       },
     }))
 
-    await useQueryStore.getState().changePageSize('conn-1', 'tab-ps-err-timing', 500)
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-ps-err-timing', 500)
 
     const state = useQueryStore.getState().getTabState('tab-ps-err-timing')
     expect(state.tabStatus).toBe('error')
@@ -1617,8 +1512,8 @@ describe('useQueryStore — cancelQuery', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
+          rows: [[1]],
+    
           autoLimitApplied: false,
         }
       }

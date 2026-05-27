@@ -347,7 +347,7 @@ async fn execute_single_select_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     auto_limit_applied: bool,
-    page_size_used: usize,
+    row_limit_used: usize,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -356,13 +356,12 @@ async fn execute_single_select_statement(
     String,
 > {
     use crate::mysql::query_executor::{
-        calculate_total_pages, get_page_rows, inject_limit_into_select, ColumnMeta,
-        MultiQueryResultItem, StoredResult,
+        inject_limit_into_select, ColumnMeta, MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 
     let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, page_size_used)
+        inject_limit_into_select(sql, row_limit_used)
     } else {
         sql.to_string()
     };
@@ -403,23 +402,16 @@ async fn execute_single_select_statement(
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = serialized_rows.len();
-    let total_pages = calculate_total_pages(total_rows, page_size_used);
-    let first_page = if auto_limit_applied {
-        get_page_rows(&serialized_rows, 1, page_size_used).to_vec()
-    } else {
-        serialized_rows.clone()
-    };
     let query_id = uuid::Uuid::new_v4().to_string();
 
     Ok((
         StoredResult {
             query_id: query_id.clone(),
             columns: columns.clone(),
-            rows: serialized_rows,
+            rows: serialized_rows.clone(),
             execution_time_ms,
             affected_rows: 0,
             auto_limit_applied,
-            page_size: page_size_used,
         },
         MultiQueryResultItem {
             query_id,
@@ -428,8 +420,7 @@ async fn execute_single_select_statement(
             total_rows: total_rows as i64,
             execution_time_ms: execution_time_ms as i64,
             affected_rows: 0,
-            first_page,
-            total_pages: total_pages as i64,
+            rows: serialized_rows,
             auto_limit_applied,
             error: None,
             re_executable: true,
@@ -445,7 +436,7 @@ async fn execute_single_select_statement(
 async fn execute_single_dml_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
-    page_size_used: usize,
+    _row_limit_used: usize,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -478,7 +469,6 @@ async fn execute_single_dml_statement(
             execution_time_ms,
             affected_rows: affected,
             auto_limit_applied: false,
-            page_size: page_size_used,
         },
         MultiQueryResultItem {
             query_id,
@@ -487,8 +477,7 @@ async fn execute_single_dml_statement(
             total_rows: 0,
             execution_time_ms: execution_time_ms as i64,
             affected_rows: affected,
-            first_page: vec![],
-            total_pages: 1,
+            rows: vec![],
             auto_limit_applied: false,
             error: None,
             re_executable: true,
@@ -506,7 +495,7 @@ async fn execute_single_dml_statement(
 async fn execute_call_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
-    page_size_used: usize,
+    _row_limit_used: usize,
 ) -> Result<
     Vec<(
         crate::mysql::query_executor::StoredResult,
@@ -514,9 +503,7 @@ async fn execute_call_statement(
     )>,
     String,
 > {
-    use crate::mysql::query_executor::{
-        calculate_total_pages, ColumnMeta, MultiQueryResultItem, StoredResult,
-    };
+    use crate::mysql::query_executor::{ColumnMeta, MultiQueryResultItem, StoredResult};
     use mysql_async::prelude::Queryable;
 
     let start = std::time::Instant::now();
@@ -570,8 +557,7 @@ async fn execute_call_statement(
 
         let execution_time_ms = start.elapsed().as_millis() as u64;
         let total_rows = serialized_rows.len();
-        let total_pages = calculate_total_pages(total_rows, page_size_used);
-        let first_page = serialized_rows.clone();
+        let rows = serialized_rows.clone();
         let query_id = uuid::Uuid::new_v4().to_string();
 
         pairs.push((
@@ -582,7 +568,6 @@ async fn execute_call_statement(
                 execution_time_ms,
                 affected_rows: 0,
                 auto_limit_applied: false,
-                page_size: page_size_used,
             },
             MultiQueryResultItem {
                 query_id,
@@ -591,8 +576,7 @@ async fn execute_call_statement(
                 total_rows: total_rows as i64,
                 execution_time_ms: execution_time_ms as i64,
                 affected_rows: 0,
-                first_page,
-                total_pages: total_pages as i64,
+                rows,
                 auto_limit_applied: false,
                 error: None,
                 re_executable: false,
@@ -617,7 +601,6 @@ async fn execute_call_statement(
                 execution_time_ms,
                 affected_rows: call_last_affected,
                 auto_limit_applied: false,
-                page_size: page_size_used,
             },
             MultiQueryResultItem {
                 query_id,
@@ -626,8 +609,7 @@ async fn execute_call_statement(
                 total_rows: 0,
                 execution_time_ms: execution_time_ms as i64,
                 affected_rows: call_last_affected,
-                first_page: vec![],
-                total_pages: 1,
+                rows: vec![],
                 auto_limit_applied: false,
                 error: None,
                 re_executable: false,
@@ -653,7 +635,7 @@ pub async fn execute_multi_query_internal(
     connection_id: &str,
     tab_id: &str,
     statements: &[String],
-    page_size: usize,
+    row_limit: usize,
     is_read_only: bool,
 ) -> Result<
     (
@@ -690,7 +672,7 @@ pub async fn execute_multi_query_internal(
         .await
         .insert(key.clone(), thread_id);
 
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
+    let row_limit_used = if row_limit == 0 { 1000 } else { row_limit };
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
@@ -716,7 +698,6 @@ pub async fn execute_multi_query_internal(
                     execution_time_ms: 0,
                     affected_rows: 0,
                     auto_limit_applied: false,
-                    page_size: page_size_used,
                 });
                 result_items.push(MultiQueryResultItem {
                     query_id,
@@ -725,8 +706,7 @@ pub async fn execute_multi_query_internal(
                     total_rows: 0,
                     execution_time_ms: 0,
                     affected_rows: 0,
-                    first_page: vec![],
-                    total_pages: 1,
+                    rows: vec![],
                     auto_limit_applied: false,
                     error: Some(error_msg),
                     re_executable: false,
@@ -739,7 +719,7 @@ pub async fn execute_multi_query_internal(
 
             if is_call_statement(sql) {
                 // Handle CALL statement — may produce multiple result sets
-                match execute_call_statement(&mut conn, sql, page_size_used).await {
+                match execute_call_statement(&mut conn, sql, row_limit_used).await {
                     Ok(pairs) => {
                         for (sr, ri) in pairs {
                             stored_results.push(sr);
@@ -757,7 +737,6 @@ pub async fn execute_multi_query_internal(
                             execution_time_ms,
                             affected_rows: 0,
                             auto_limit_applied: false,
-                            page_size: page_size_used,
                         });
                         result_items.push(MultiQueryResultItem {
                             query_id,
@@ -766,8 +745,7 @@ pub async fn execute_multi_query_internal(
                             total_rows: 0,
                             execution_time_ms: execution_time_ms as i64,
                             affected_rows: 0,
-                            first_page: vec![],
-                            total_pages: 1,
+                            rows: vec![],
                             auto_limit_applied: false,
                             error: Some(error_msg),
                             re_executable: false,
@@ -787,9 +765,9 @@ pub async fn execute_multi_query_internal(
                 let auto_limit_applied = needs_auto_limit(sql);
 
                 let stmt_result = if is_result_set {
-                    execute_single_select_statement(&mut conn, sql, auto_limit_applied, page_size_used).await
+                    execute_single_select_statement(&mut conn, sql, auto_limit_applied, row_limit_used).await
                 } else {
-                    execute_single_dml_statement(&mut conn, sql, page_size_used).await
+                    execute_single_dml_statement(&mut conn, sql, row_limit_used).await
                 };
 
                 match stmt_result {
@@ -807,7 +785,6 @@ pub async fn execute_multi_query_internal(
                             execution_time_ms: 0,
                             affected_rows: 0,
                             auto_limit_applied: false,
-                            page_size: page_size_used,
                         });
                         result_items.push(MultiQueryResultItem {
                             query_id,
@@ -816,8 +793,7 @@ pub async fn execute_multi_query_internal(
                             total_rows: 0,
                             execution_time_ms: 0,
                             affected_rows: 0,
-                            first_page: vec![],
-                            total_pages: 1,
+                            rows: vec![],
                             auto_limit_applied: false,
                             error: Some(error_msg),
                             re_executable: false,

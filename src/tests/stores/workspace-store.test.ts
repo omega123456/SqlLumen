@@ -831,7 +831,7 @@ describe('useWorkspaceStore — closeTab', () => {
       },
     })
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_result_page', () => ({ rows: [[77]], page: 1, totalPages: 1 }))
+    ipc.override('fetch_cached_rows', () => ({ rows: [[77]], columns: [{ name: 'id', dataType: 'INT' }] }))
 
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
     const tableTabId = useWorkspaceStore
@@ -1336,7 +1336,7 @@ describe('useWorkspaceStore — forceCloseTab', () => {
       },
     })
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_result_page', () => ({ rows: [[88]], page: 1, totalPages: 1 }))
+    ipc.override('fetch_cached_rows', () => ({ rows: [[88]], columns: [{ name: 'id', dataType: 'INT' }] }))
 
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
     const tableTabId = useWorkspaceStore

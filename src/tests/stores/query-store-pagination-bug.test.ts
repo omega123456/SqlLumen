@@ -5,19 +5,19 @@ import { flat } from '../helpers/query-test-utils'
 
 /**
  * Regression test: When the user provides an explicit LIMIT (autoLimitApplied=false),
- * the backend should send ALL fetched rows in firstPage so the query result view
- * displays every row without needing pagination.
+ * the backend should send ALL fetched rows in the response so the query result view
+ * displays every row.
  */
 
 const overrideCommands = overrideIpcCommands
 
-describe('query result view should show all returned rows regardless of page size', () => {
+describe('query result view should show all returned rows regardless of row limit', () => {
   beforeEach(() => {
     useQueryStore.setState({ tabs: {} })
   })
 
-  it('displays all rows when totalRows exceeds firstPage length', async () => {
-    // With the fix, the backend sends all 100 rows in firstPage when autoLimitApplied=false
+  it('displays all rows when totalRows matches response rows length', async () => {
+    // The backend sends all 100 rows in `rows` when autoLimitApplied=false
     const allRows = Array.from({ length: 100 }, (_, i) => [i + 1])
     const totalRows = 100
 
@@ -28,8 +28,7 @@ describe('query result view should show all returned rows regardless of page siz
         totalRows,
         executionTimeMs: 10,
         affectedRows: 0,
-        firstPage: allRows,
-        totalPages: 1,
+        rows: allRows,
         autoLimitApplied: false,
       }),
       evict_results: () => null,

@@ -52,7 +52,7 @@ fn insert_result(
     tab_id: &str,
     columns: Vec<ColumnMeta>,
     rows: Vec<Vec<serde_json::Value>>,
-    page_size: usize,
+    _row_limit: usize,
 ) {
     state.result_cache.insert(
         conn_id,
@@ -64,7 +64,6 @@ fn insert_result(
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
-            page_size,
         }],
     );
 }
@@ -190,7 +189,6 @@ async fn sort_string_column_asc() {
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][0], serde_json::json!("Charlie"));
-    assert_eq!(result.page, 1);
 }
 
 #[tokio::test]
@@ -390,10 +388,10 @@ async fn sort_missing_entry_returns_error() {
 }
 
 #[tokio::test]
-async fn sort_returns_first_page_with_correct_pagination() {
+async fn sort_returns_all_rows() {
     let state = test_state();
 
-    // Create 25 rows with page_size = 10
+    // Create 25 rows
     let rows: Vec<Vec<serde_json::Value>> =
         (1i64..=25).map(|i| vec![serde_json::json!(i)]).collect();
 
@@ -403,16 +401,12 @@ async fn sort_returns_first_page_with_correct_pagination() {
         .await
         .expect("sort ok");
 
-    // First page should have 10 rows
-    assert_eq!(result.rows.len(), 10);
-    // Total pages: ceil(25/10) = 3
-    assert_eq!(result.total_pages, 3);
-    // Page number should be 1
-    assert_eq!(result.page, 1);
+    // All 25 rows should be returned
+    assert_eq!(result.rows.len(), 25);
     // First row should be 25 (desc)
     assert_eq!(result.rows[0][0], serde_json::json!(25));
-    // Last row on page should be 16 (25-9=16)
-    assert_eq!(result.rows[9][0], serde_json::json!(16));
+    // Last row should be 1 (desc)
+    assert_eq!(result.rows[24][0], serde_json::json!(1));
 }
 
 #[tokio::test]
@@ -454,8 +448,6 @@ async fn sort_empty_result_set() {
         .await
         .expect("sort ok");
     assert_eq!(result.rows.len(), 0);
-    assert_eq!(result.total_pages, 1);
-    assert_eq!(result.page, 1);
 }
 
 #[tokio::test]
