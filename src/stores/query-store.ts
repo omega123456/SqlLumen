@@ -214,6 +214,8 @@ export interface SingleResultState {
   rowResidency: FrontendRowResidencyState
   /** Timestamp recorded when frontend rows were evicted from memory. */
   rowsEvictedAt: number | null
+  /** True while a sort operation is in flight. */
+  isSorting: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +309,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
     inactiveSince: null,
   },
   rowsEvictedAt: null,
+  isSorting: false,
 }
 
 const DEFAULT_TAB_STATE: TabQueryState = {
@@ -1851,6 +1854,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       direction: 'asc' | 'desc' | null
     ) => {
       const resultIndex = getActiveIndex(tabId)
+      patchResultByIndex(tabId, resultIndex, { isSorting: true })
 
       try {
         if (!direction) {
@@ -2003,6 +2007,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const errMsg = error instanceof Error ? error.message : String(error)
         if (errMsg.includes('results_expired')) {
           markTabResultsExpired(tabId)
+        }
+      } finally {
+        if (get().tabs[tabId]) {
+          patchResultByIndex(tabId, resultIndex, { isSorting: false })
         }
       }
     },

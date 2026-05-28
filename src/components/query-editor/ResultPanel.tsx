@@ -98,6 +98,7 @@ export function ResultPanel({
   const totalRows = activeResult.totalRows ?? 0
   const isExpired = activeResult.isExpired ?? false
   const rowResidencyStatus = activeResult.rowResidency?.status ?? 'resident'
+  const isSorting = activeResult.isSorting ?? false
 
   // Edit mode state from active result
   const editMode = activeResult.editMode ?? null
@@ -600,6 +601,18 @@ export function ResultPanel({
         <>
           {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
           {renderResultBody(gridTabPanelClassName)}
+          {isSorting && (
+            <div
+              className={styles.restoringOverlay}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              data-testid="query-result-sort-overlay"
+            >
+              <div className={styles.spinner} aria-hidden="true" />
+              <span>Sorting…</span>
+            </div>
+          )}
         </>
       )}
 

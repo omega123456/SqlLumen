@@ -206,6 +206,18 @@ export function TableDataTab({
           {viewMode === 'form' && (
             <TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />
           )}
+          {isLoading && columns.length > 0 && (
+            <div
+              className={styles.restoringOverlay}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              data-testid="table-data-sort-overlay"
+            >
+              <div className={styles.spinner} aria-hidden="true" />
+              <span>Loading…</span>
+            </div>
+          )}
           {isRestoring && (
             <div
               className={styles.restoringOverlay}
