@@ -301,10 +301,15 @@ fn startup_cleanup_wipes_spill_dir() {
 #[test]
 fn ram_pressure_eviction_triggers_spill() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
+    let cache = ResultCache::new_for_test_with_ram_pressure_idle(
+        3600,
+        tmp.path().to_path_buf(),
+        Duration::from_millis(1),
+    );
 
     cache.insert("conn1", "tab1", vec![stub_result("q1")]);
     cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+    thread::sleep(Duration::from_millis(5));
 
     // Simulate low memory: 100 MB available out of 8 GB
     // Threshold = min(4GB, 8GB * 10%) = 800 MB
@@ -327,12 +332,17 @@ fn ram_pressure_eviction_triggers_spill() {
 #[test]
 fn ram_pressure_stops_after_memory_recovers() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
+    let cache = ResultCache::new_for_test_with_ram_pressure_idle(
+        3600,
+        tmp.path().to_path_buf(),
+        Duration::from_millis(1),
+    );
 
     cache.insert("conn1", "tab1", vec![stub_result("q1")]);
     cache.insert("conn1", "tab2", vec![stub_result("q2")]);
     cache.insert("conn1", "tab3", vec![stub_result("q3")]);
     cache.insert("conn1", "tab4", vec![stub_result("q4")]);
+    thread::sleep(Duration::from_millis(5));
 
     let snapshot = StepMemorySnapshot::new(
         vec![100 * 1024 * 1024, 900 * 1024 * 1024, 900 * 1024 * 1024],
@@ -404,9 +414,14 @@ fn replacement_does_not_leave_orphan_spill() {
 #[test]
 fn stale_eviction_notification_does_not_write_outdated_spill_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
+    let cache = ResultCache::new_for_test_with_ram_pressure_idle(
+        3600,
+        tmp.path().to_path_buf(),
+        Duration::from_millis(1),
+    );
 
     cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    thread::sleep(Duration::from_millis(5));
 
     let low_memory = FakeMemorySnapshot::new(100 * 1024 * 1024, 8 * 1024 * 1024 * 1024);
     let mut low_memory = low_memory;
@@ -425,12 +440,17 @@ fn stale_eviction_notification_does_not_write_outdated_spill_file() {
 #[test]
 fn maintenance_refreshes_memory_between_passes() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
+    let cache = ResultCache::new_for_test_with_ram_pressure_idle(
+        3600,
+        tmp.path().to_path_buf(),
+        Duration::from_millis(1),
+    );
 
     cache.insert("conn1", "tab1", vec![stub_result("q1")]);
     cache.insert("conn1", "tab2", vec![stub_result("q2")]);
     cache.insert("conn1", "tab3", vec![stub_result("q3")]);
     cache.insert("conn1", "tab4", vec![stub_result("q4")]);
+    thread::sleep(Duration::from_millis(5));
 
     let mut snapshot = StepMemorySnapshot::new(
         vec![100 * 1024 * 1024, 900 * 1024 * 1024, 900 * 1024 * 1024],
@@ -444,6 +464,32 @@ fn maintenance_refreshes_memory_between_passes() {
         cache.entry_count(),
         1,
         "maintenance should stop after one eviction batch once refreshed memory recovers"
+    );
+}
+
+#[test]
+fn ram_pressure_skips_recently_touched_entries_until_idle_threshold() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+
+    let snapshot = FakeMemorySnapshot::new(100 * 1024 * 1024, 8 * 1024 * 1024 * 1024);
+    let mut snapshot = snapshot;
+    cache.run_maintenance(&mut snapshot);
+    cache.flush_spill_jobs();
+
+    let spill1 = cache.spill_file_path("conn1", "tab1");
+    let spill2 = cache.spill_file_path("conn1", "tab2");
+    assert!(
+        !spill1.exists() && !spill2.exists(),
+        "recently touched entries should not spill under RAM pressure before the idle threshold"
+    );
+    assert_eq!(
+        cache.entry_count(),
+        2,
+        "recently touched entries should remain resident until they have been idle long enough"
     );
 }
 

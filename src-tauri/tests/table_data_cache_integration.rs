@@ -334,11 +334,20 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
 fn shared_maintenance_refresh_can_spare_table_data_cache_after_result_eviction() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let spill_root = tmp.path().to_path_buf();
-    let result_cache = ResultCache::new_for_test(1800, spill_root.clone());
-    let table_data_cache = TableDataCache::new_for_test(1800, spill_root);
+    let result_cache = ResultCache::new_for_test_with_ram_pressure_idle(
+        1800,
+        spill_root.clone(),
+        Duration::from_millis(1),
+    );
+    let table_data_cache = TableDataCache::new_for_test_with_ram_pressure_idle(
+        1800,
+        spill_root,
+        Duration::from_millis(1),
+    );
 
     result_cache.insert("conn-1", "results-tab", vec![stub_result("query-1")]);
     table_data_cache.insert("conn-1", "table-tab", sample_response(21));
+    thread::sleep(Duration::from_millis(5));
 
     let total = 64_u64 * 1024 * 1024 * 1024;
     let low_available = 512_u64 * 1024 * 1024;

@@ -1241,11 +1241,9 @@ pub async fn fetch_table_pk_cached(
     table: &str,
     metadata_cache: &MetadataCache,
 ) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
-    Ok(
-        metadata_cache
-            .get(connection_id, database, table)
-            .unwrap_or_else(|| (None, Vec::new())),
-    )
+    Ok(metadata_cache
+        .get(connection_id, database, table)
+        .unwrap_or_else(|| (None, Vec::new())))
 }
 
 // ── fetch_table_data_impl ──────────────────────────────────────────────────────

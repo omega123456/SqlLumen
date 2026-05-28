@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use moka::notification::RemovalCause;
 use moka::sync::Cache;
@@ -112,7 +112,9 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
         }
         // macOS: sysinfo returns 0 for available_memory; approximate as total − used
         // (used = active + wired, so the remainder includes free + inactive + purgeable)
-        self.sys.total_memory().saturating_sub(self.sys.used_memory())
+        self.sys
+            .total_memory()
+            .saturating_sub(self.sys.used_memory())
     }
 
     fn total_bytes(&self) -> u64 {
@@ -172,8 +174,11 @@ where
     spill_dir: PathBuf,
     session_id: String,
     ttl_secs: Arc<AtomicU64>,
+    ram_pressure_min_idle: Duration,
     /// Parallel LRU order for RAM-pressure eviction (front = least recent).
     lru_order: RwLock<VecDeque<(String, String)>>,
+    /// Last access time per key used to debounce RAM-pressure spill attempts.
+    last_touched_at: RwLock<HashMap<(String, String), Instant>>,
     /// Next generation token (monotonically increasing per cache instance).
     next_generation: AtomicU64,
     /// Keys that have ever been inserted (to distinguish NeverStored vs Expired).
@@ -195,6 +200,8 @@ impl<V> GenericCache<V>
 where
     V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
 {
+    const DEFAULT_RAM_PRESSURE_MIN_IDLE: Duration = Duration::from_secs(10 * 60);
+
     /// Create a new `GenericCache`.
     ///
     /// - `ttl_seconds`: initial time-to-idle in seconds
@@ -205,6 +212,18 @@ where
 
     /// Create a cache that reads TTL from a shared atomic source.
     pub fn new_with_shared_ttl(ttl: Arc<AtomicU64>, spill_dir: PathBuf) -> Self {
+        Self::new_with_shared_ttl_and_ram_pressure_idle(
+            ttl,
+            spill_dir,
+            Self::DEFAULT_RAM_PRESSURE_MIN_IDLE,
+        )
+    }
+
+    fn new_with_shared_ttl_and_ram_pressure_idle(
+        ttl: Arc<AtomicU64>,
+        spill_dir: PathBuf,
+        ram_pressure_min_idle: Duration,
+    ) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
         let spillable_removals: Arc<RwLock<HashSet<(String, String, u64)>>> =
             Arc::new(RwLock::new(HashSet::new()));
@@ -402,7 +421,9 @@ where
             spill_dir,
             session_id,
             ttl_secs,
+            ram_pressure_min_idle,
             lru_order: RwLock::new(VecDeque::new()),
+            last_touched_at: RwLock::new(HashMap::new()),
             next_generation: AtomicU64::new(1),
             known_keys: RwLock::new(HashSet::new()),
             generations,
@@ -417,6 +438,19 @@ where
     /// Test constructor that accepts a pre-created temporary directory path.
     pub fn new_for_test(ttl_seconds: u64, spill_dir: PathBuf) -> Self {
         Self::new(ttl_seconds, spill_dir)
+    }
+
+    /// Test constructor with a custom RAM-pressure idle threshold.
+    pub fn new_for_test_with_ram_pressure_idle(
+        ttl_seconds: u64,
+        spill_dir: PathBuf,
+        ram_pressure_min_idle: Duration,
+    ) -> Self {
+        Self::new_with_shared_ttl_and_ram_pressure_idle(
+            Arc::new(AtomicU64::new(ttl_seconds)),
+            spill_dir,
+            ram_pressure_min_idle,
+        )
     }
 
     /// Retrieve a cached value by connection and tab ID.
@@ -571,6 +605,7 @@ where
         let key = (connection_id.to_string(), tab_id.to_string());
         self.cache.invalidate(&key);
         self.remove_from_lru(&key);
+        self.remove_last_touched(&key);
     }
 
     /// Remove a cached value and any associated spill artifacts.
@@ -600,6 +635,7 @@ where
         let _ = fs::remove_file(&spill_path);
 
         self.remove_from_lru(&key);
+        self.remove_last_touched(&key);
         {
             let mut kk = self.known_keys.write().expect("known_keys lock poisoned");
             kk.remove(&key);
@@ -692,10 +728,31 @@ where
 
             let keys_to_evict: Vec<(String, String)> = {
                 let lru = self.lru_order.read().expect("lru_order lock poisoned");
-                lru.iter().take(EVICTION_BATCH_SIZE).cloned().collect()
+                let last_touched = self
+                    .last_touched_at
+                    .read()
+                    .expect("last_touched_at lock poisoned");
+                let now = Instant::now();
+                lru.iter()
+                    .filter(|key| {
+                        last_touched
+                            .get(*key)
+                            .map(|touched_at| {
+                                now.saturating_duration_since(*touched_at)
+                                    >= self.ram_pressure_min_idle
+                            })
+                            .unwrap_or(false)
+                    })
+                    .take(EVICTION_BATCH_SIZE)
+                    .cloned()
+                    .collect()
             };
 
             if keys_to_evict.is_empty() {
+                tracing::debug!(
+                    min_idle_secs = self.ram_pressure_min_idle.as_secs(),
+                    "RAM pressure detected, but no cache entries are idle enough to spill"
+                );
                 break;
             }
 
@@ -746,11 +803,26 @@ where
         let mut lru = self.lru_order.write().expect("lru_order lock poisoned");
         lru.retain(|k| k != key);
         lru.push_back(key.clone());
+        drop(lru);
+
+        let mut last_touched = self
+            .last_touched_at
+            .write()
+            .expect("last_touched_at lock poisoned");
+        last_touched.insert(key.clone(), Instant::now());
     }
 
     fn remove_from_lru(&self, key: &(String, String)) {
         let mut lru = self.lru_order.write().expect("lru_order lock poisoned");
         lru.retain(|k| k != key);
+    }
+
+    fn remove_last_touched(&self, key: &(String, String)) {
+        let mut last_touched = self
+            .last_touched_at
+            .write()
+            .expect("last_touched_at lock poisoned");
+        last_touched.remove(key);
     }
 }
 
