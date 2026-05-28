@@ -52,7 +52,7 @@ export function computeFilterMatchIds(
   const lowerFilter = filterText.toLowerCase()
 
   for (const [id, node] of Object.entries(nodes)) {
-    if (node.type === 'column') {
+    if (node.type === 'column' || node.type === 'category') {
       continue
     }
 
@@ -90,7 +90,7 @@ export function computeScopedFilterMatchIds(
     if (!isNodeUnderFilterScope(id, scopeRootId, nodes)) {
       continue
     }
-    if (node.type === 'column') {
+    if (node.type === 'column' || node.type === 'category') {
       continue
     }
     if (!node.label.toLowerCase().includes(lowerFilter)) {
@@ -106,8 +106,13 @@ export function computeScopedFilterMatchIds(
     }
   }
 
-  // Keep the scope root visible even when no label in the subtree matches.
-  matchIds.add(scopeRootId)
+  // Always include the scope root and all its ancestors so the containing
+  // database/category nodes remain in the match set and the tree path stays open.
+  let ancestorId: string | null = scopeRootId
+  while (ancestorId) {
+    matchIds.add(ancestorId)
+    ancestorId = nodes[ancestorId]?.parentId ?? null
+  }
 
   return matchIds
 }

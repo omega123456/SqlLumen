@@ -126,6 +126,7 @@ interface SchemaState {
   loadDatabases: (connectionId: string) => Promise<void>
   loadChildren: (connectionId: string, nodeId: string) => Promise<void>
   toggleExpand: (nodeId: string, connectionId: string) => void
+  ensurePathExpanded: (connectionId: string, nodeId: string) => void
   selectNode: (nodeId: string, connectionId: string) => void
   setFilter: (text: string, connectionId: string) => void
   refreshDatabase: (connectionId: string, databaseName: string) => Promise<void>
@@ -407,6 +408,27 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
         void get().loadChildren(connectionId, nodeId)
       }
     }
+  },
+
+  // ------ ensurePathExpanded ------
+
+  ensurePathExpanded: (connectionId: string, nodeId: string) => {
+    set((s) => {
+      const connState = getConnState(s, connectionId)
+      const newExpanded = new Set(connState.expandedNodes)
+      let changed = false
+      let cur: string | null = nodeId
+      while (cur) {
+        const nd: TreeNode | undefined = connState.nodes[cur]
+        if (!nd) break
+        if (nd.hasChildren && !newExpanded.has(cur)) {
+          newExpanded.add(cur)
+          changed = true
+        }
+        cur = nd.parentId
+      }
+      return changed ? setConnState(s, connectionId, { expandedNodes: newExpanded }) : s
+    })
   },
 
   // ------ selectNode ------

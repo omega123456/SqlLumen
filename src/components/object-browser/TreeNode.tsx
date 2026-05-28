@@ -62,7 +62,15 @@ function getEffectiveFilterMatchIds(
     return filterMatchIds
   }
 
-  return isNodeUnderFilterScope(nodeId, filterScopeRootId, nodes) ? filterMatchIds : undefined
+  if (isNodeUnderFilterScope(nodeId, filterScopeRootId, nodes)) {
+    return filterMatchIds
+  }
+
+  if (isNodeUnderFilterScope(filterScopeRootId, nodeId, nodes)) {
+    return filterMatchIds
+  }
+
+  return undefined
 }
 
 function shouldRenderNodeInFilter(
@@ -153,6 +161,8 @@ export interface TreeNodeProps {
    * `null` means the filter applies to the whole tree.
    */
   filterScopeRootId?: string | null
+  /** Called when the user collapses a node that the filter is holding open */
+  onClearFilter?: () => void
   /** True if this is the first visible node in the tree (for roving tabindex) */
   isFirstVisible?: boolean
 }
@@ -208,6 +218,7 @@ export function TreeNode({
   onActivate,
   filterMatchIds,
   filterScopeRootId = null,
+  onClearFilter,
   isFirstVisible,
 }: TreeNodeProps) {
   const node = useSchemaStore(
@@ -267,12 +278,22 @@ export function TreeNode({
       ] ?? EMPTY_CHILDREN
   )
 
+  const isSuppressedByScope = useMemo(() => {
+    if (!filterMatchIds || !filterScopeRootId || isExpanded) return false
+    const scopeParent = nodesMap[filterScopeRootId]?.parentId
+    return (
+      scopeParent != null &&
+      nodesMap[nodeId]?.parentId === scopeParent &&
+      nodeId !== filterScopeRootId
+    )
+  }, [filterMatchIds, filterScopeRootId, nodesMap, nodeId, isExpanded])
+
   const childIds = useMemo(() => {
     if (!node) return []
-    // Show children if expanded OR if filter forces expansion (paths to matches)
+    if (isSuppressedByScope) return []
     if (!isExpanded && !filterDrivesExpand) return []
     return indexedChildIds
-  }, [isExpanded, node, indexedChildIds, filterDrivesExpand])
+  }, [isExpanded, node, indexedChildIds, filterDrivesExpand, isSuppressedByScope])
 
   const selectedNodeIsVisible = useMemo(
     () =>
@@ -297,7 +318,7 @@ export function TreeNode({
 
   const isSelected = selectedNodeId === nodeId
   const { hasChildren } = node
-  const showExpandedChrome = isExpanded || filterDrivesExpand
+  const showExpandedChrome = isExpanded || (filterDrivesExpand && !isSuppressedByScope)
   const { icon, className: iconClassName } = getNodeIcon(node.type, showExpandedChrome)
 
   const activateNode = () => {
@@ -307,6 +328,14 @@ export function TreeNode({
   const selectCurrentNode = () => {
     selectNode(nodeId, connectionId)
     onSelect?.(nodeId)
+  }
+
+  const collapseOrClearFilter = () => {
+    if (!isExpanded && filterDrivesExpand) {
+      onClearFilter?.()
+    } else {
+      toggleExpand(nodeId, connectionId)
+    }
   }
 
   const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -320,14 +349,14 @@ export function TreeNode({
     }
 
     if (hasChildren) {
-      toggleExpand(nodeId, connectionId)
+      collapseOrClearFilter()
     }
   }
 
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     selectCurrentNode()
-    toggleExpand(nodeId, connectionId)
+    collapseOrClearFilter()
   }
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -347,19 +376,19 @@ export function TreeNode({
         if (isKeyboardActivatableNodeType(node.type)) {
           activateNode()
         } else if (hasChildren) {
-          toggleExpand(nodeId, connectionId)
+          collapseOrClearFilter()
         }
         e.preventDefault()
         break
       case 'ArrowRight':
-        if (hasChildren && !isExpanded) {
+        if (hasChildren && !isExpanded && !filterDrivesExpand) {
           toggleExpand(nodeId, connectionId)
           e.preventDefault()
         }
         break
       case 'ArrowLeft':
-        if (hasChildren && isExpanded) {
-          toggleExpand(nodeId, connectionId)
+        if (hasChildren && (isExpanded || filterDrivesExpand)) {
+          collapseOrClearFilter()
           e.preventDefault()
         }
         break
@@ -409,9 +438,7 @@ export function TreeNode({
       <div
         className={rowClassName}
         role="treeitem"
-        aria-expanded={
-          hasChildren ? isExpanded || (filterDrivesExpand && childIds.length > 0) : undefined
-        }
+        aria-expanded={hasChildren ? showChildren : undefined}
         aria-level={level + 1}
         aria-selected={isSelected}
         tabIndex={isSelected || (isFirstVisible && !selectedNodeIsVisible) ? 0 : -1}
@@ -469,6 +496,7 @@ export function TreeNode({
               onActivate={onActivate}
               filterMatchIds={filterMatchIds}
               filterScopeRootId={filterScopeRootId}
+              onClearFilter={onClearFilter}
             />
           ))}
         </div>

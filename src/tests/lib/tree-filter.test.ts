@@ -225,8 +225,66 @@ describe('tree-filter', () => {
         }),
       }
       const ids = computeScopedFilterMatchIds(nodes, 'nomatch', catId)
-      expect(ids.size).toBe(1)
       expect(ids.has(catId)).toBe(true)
+      expect(ids.has(dbId)).toBe(true)
+      expect(ids.size).toBe(2)
+    })
+
+    it('scopes correctly when scope root is a procedure category', () => {
+      const dbId = makeNodeId('database', 'a', 'a')
+      const tableCatId = makeNodeId('category', 'a', 'table')
+      const procCatId = makeNodeId('category', 'a', 'procedure')
+      const tableId = makeNodeId('table', 'a', 'get_users')
+      const procId = makeNodeId('procedure', 'a', 'get_users')
+      const nodes: Record<string, TreeNode> = {
+        [dbId]: n({
+          id: dbId,
+          label: 'a',
+          type: 'database',
+          parentId: null,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [tableCatId]: n({
+          id: tableCatId,
+          label: 'Tables',
+          type: 'category',
+          parentId: dbId,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [procCatId]: n({
+          id: procCatId,
+          label: 'Procedures',
+          type: 'category',
+          parentId: dbId,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [tableId]: n({
+          id: tableId,
+          label: 'get_users',
+          type: 'table',
+          parentId: tableCatId,
+          hasChildren: false,
+          isLoaded: true,
+        }),
+        [procId]: n({
+          id: procId,
+          label: 'get_users',
+          type: 'procedure',
+          parentId: procCatId,
+          hasChildren: false,
+          isLoaded: true,
+        }),
+      }
+
+      const ids = computeScopedFilterMatchIds(nodes, 'get', procCatId)
+      expect(ids.has(procId)).toBe(true)
+      expect(ids.has(procCatId)).toBe(true)
+      expect(ids.has(dbId)).toBe(true)
+      expect(ids.has(tableId)).toBe(false)
+      expect(ids.has(tableCatId)).toBe(false)
     })
 
     it('ignores column labels when matching within scope', () => {
@@ -271,10 +329,11 @@ describe('tree-filter', () => {
 
       const ids = computeScopedFilterMatchIds(nodes, 'id', catId)
 
-      expect(ids.size).toBe(1)
       expect(ids.has(catId)).toBe(true)
+      expect(ids.has(dbId)).toBe(true)
       expect(ids.has(tableId)).toBe(false)
       expect(ids.has(columnId)).toBe(false)
+      expect(ids.size).toBe(2)
     })
   })
 

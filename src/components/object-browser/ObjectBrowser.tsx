@@ -1,6 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MagnifyingGlass, X } from '@phosphor-icons/react'
-import { useSchemaStore, parseNodeId, type ConnectionTreeState } from '../../stores/schema-store'
+import {
+  useSchemaStore,
+  parseNodeId,
+  makeNodeId,
+  type ConnectionTreeState,
+} from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
@@ -9,7 +14,7 @@ import { TextInput } from '../common/TextInput'
 import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
-import type { ObjectType } from '../../types/schema'
+import type { NodeType, ObjectType } from '../../types/schema'
 import { computeScopedFilterMatchIds, isNodeUnderFilterScope } from '../../lib/tree-filter'
 import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
@@ -35,6 +40,15 @@ interface ContextMenuState {
 
 const CLOSED_MENU: ContextMenuState = { visible: false, x: 0, y: 0, nodeId: null }
 
+const SCHEMA_OBJECT_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  'table',
+  'view',
+  'procedure',
+  'function',
+  'trigger',
+  'event',
+])
+
 // ---------------------------------------------------------------------------
 // SQL dump dialog state
 // ---------------------------------------------------------------------------
@@ -59,6 +73,7 @@ export function ObjectBrowser({
     (state) => state.activeConnections[connectionId] ?? null
   )
   const loadDatabases = useSchemaStore((state) => state.loadDatabases)
+  const loadChildren = useSchemaStore((state) => state.loadChildren)
   const refreshDatabase = useSchemaStore((state) => state.refreshDatabase)
   const setFilter = useSchemaStore((state) => state.setFilter)
   const filterText = useSchemaStore(
@@ -126,12 +141,18 @@ export function ObjectBrowser({
       return null
     }
 
-    if (selectedNode.type === 'table' || selectedNode.type === 'view') {
+    if (SCHEMA_OBJECT_TYPES.has(selectedNode.type)) {
       return selectedNode.parentId ?? null
     }
 
     if (selectedNode.type === 'column') {
       return nodes?.[selectedNode.parentId ?? '']?.parentId ?? null
+    }
+
+    if (selectedNode.type === 'database') {
+      const dbName = selectedNode.databaseName ?? parseNodeId(selectedNode.id).database
+      const tableCatId = makeNodeId('category', dbName, 'table')
+      return nodes?.[tableCatId] ? tableCatId : selectedNode.id
     }
 
     return selectedNode.id
@@ -149,6 +170,13 @@ export function ObjectBrowser({
       setFilter('', connectionId)
     }
   }, [effectiveScopeRoot, connectionId, setFilter])
+
+  useEffect(() => {
+    if (!filterText.trim() || !effectiveScopeRoot || !nodes) return
+    const scopeNode = nodes[effectiveScopeRoot]
+    if (!scopeNode || scopeNode.type !== 'category' || scopeNode.isLoaded) return
+    void loadChildren(connectionId, effectiveScopeRoot)
+  }, [filterText, effectiveScopeRoot, nodes, connectionId, loadChildren])
 
   const filterMatchIds = useMemo(() => {
     const trimmed = filterText.trim()
@@ -183,10 +211,14 @@ export function ObjectBrowser({
     setFilter(e.target.value, connectionId)
   }
 
+  const ensurePathExpanded = useSchemaStore((state) => state.ensurePathExpanded)
   const handleClearFilter = useCallback(() => {
+    if (effectiveScopeRoot && filterText.trim()) {
+      ensurePathExpanded(connectionId, effectiveScopeRoot)
+    }
     setFilter('', connectionId)
     filterInputRef.current?.focus()
-  }, [connectionId, setFilter])
+  }, [connectionId, setFilter, effectiveScopeRoot, filterText, ensurePathExpanded])
 
   const handleTreeKeyDownCapture = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -407,6 +439,7 @@ export function ObjectBrowser({
                     onSelect={handleNodeSelect}
                     filterMatchIds={filterMatchIds}
                     filterScopeRootId={effectiveScopeRoot}
+                    onClearFilter={handleClearFilter}
                     isFirstVisible={index === 0}
                   />
                 ))}
