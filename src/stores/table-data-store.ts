@@ -788,9 +788,9 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     sortByColumn: async (tabId, column, direction) => {
       if (direction === null) {
-        patchTab(tabId, { sort: null, ...RESET_SCROLL_CELL })
+        patchTab(tabId, { sort: null, scrollRow: 0 })
       } else {
-        patchTab(tabId, { sort: { column, direction }, ...RESET_SCROLL_CELL })
+        patchTab(tabId, { sort: { column, direction }, scrollRow: 0 })
       }
       await get().fetchPage(tabId, 1)
     },

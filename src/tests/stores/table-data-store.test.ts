@@ -192,7 +192,7 @@ describe('useTableDataStore — setScrollCell', () => {
 
     ipc.override('fetch_table_data', () => mockResponse)
     await useTableDataStore.getState().sortByColumn('tab-1', 'name', 'asc')
-    expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
+    expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 3 })
 
     useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
     ipc.override('fetch_table_data', () => mockResponse)
