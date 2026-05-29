@@ -23,13 +23,15 @@ pub fn list_history_impl(
     page: i64,
     page_size: i64,
     search: Option<&str>,
+    since: Option<&str>,
 ) -> Result<HistoryPage, String> {
     let resolved_id = state
         .registry
         .get_profile_id(connection_id)
         .unwrap_or_else(|| connection_id.to_string());
     let conn = lock_db(state)?;
-    history::list_history(&conn, &resolved_id, page, page_size, search).map_err(|e| e.to_string())
+    history::list_history(&conn, &resolved_id, page, page_size, search, since)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -39,9 +41,17 @@ pub fn list_history(
     page: i64,
     page_size: i64,
     search: Option<String>,
+    since: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<HistoryPage, String> {
-    list_history_impl(&state, &connection_id, page, page_size, search.as_deref())
+    list_history_impl(
+        &state,
+        &connection_id,
+        page,
+        page_size,
+        search.as_deref(),
+        since.as_deref(),
+    )
 }
 
 // ── delete_history_entry ─────────────────────────────────────────────────────

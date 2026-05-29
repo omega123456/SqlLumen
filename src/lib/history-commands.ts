@@ -5,13 +5,15 @@ export async function listHistory(
   connectionId: string,
   page: number,
   pageSize: number,
-  search?: string | null
+  search?: string | null,
+  since?: string | null
 ): Promise<HistoryPage> {
   return invoke<HistoryPage>('list_history', {
     connectionId,
     page,
     pageSize,
     ...(search ? { search } : {}),
+    ...(since ? { since } : {}),
   })
 }
 

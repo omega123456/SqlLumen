@@ -210,7 +210,7 @@ describe('HistoryPanel', () => {
     render(<HistoryPanel connectionId="conn-1" />)
 
     await user.click(screen.getByTestId('history-retry'))
-    expect(loadHistorySpy).toHaveBeenCalledWith('conn-1', 1, '')
+    expect(loadHistorySpy).toHaveBeenCalledWith('conn-1', { page: 1, search: '' })
   })
 
   it('hides entries and empty state when error is set', () => {

@@ -10,24 +10,49 @@ import { showErrorToast, showSuccessToast } from './toast-store'
 import { logFrontend } from '../lib/app-log-commands'
 const DEFAULT_PAGE_SIZE = 50
 
+/** Options for {@link HistoryState.loadHistory}. */
+interface LoadHistoryOptions {
+  /** 1-indexed page to fetch. Defaults to the connection's current page (or 1). */
+  page?: number
+  /** Search term. Defaults to the connection's stored search. */
+  search?: string
+  /**
+   * RFC-3339 lower bound on `timestamp`; only entries at/after this instant are
+   * returned and counted. `null` means "no time filter". Defaults to the
+   * connection's stored `since`.
+   */
+  since?: string | null
+  /**
+   * When `true`, append the fetched rows to the existing list ("load more")
+   * instead of replacing it. Uses `isLoadingMoreByConnection` for the spinner
+   * and never raises the full-panel error state.
+   */
+  append?: boolean
+}
+
 interface HistoryState {
-  /** Entries keyed by connection ID. */
+  /** Entries keyed by connection ID (accumulated when loading more). */
   entriesByConnection: Record<string, HistoryEntry[]>
-  /** Total count per connection (for pagination). */
+  /** Total count per connection within the current search/time-range filter. */
   totalByConnection: Record<string, number>
-  /** Current page per connection (1-indexed). */
+  /** Highest page loaded per connection (1-indexed). */
   pageByConnection: Record<string, number>
   /** Search filter per connection. */
   searchByConnection: Record<string, string>
-  /** Loading state per connection. */
+  /** RFC-3339 time-range lower bound per connection (`null` = no filter). */
+  sinceByConnection: Record<string, string | null>
+  /** Loading state per connection (initial / replace load). */
   isLoadingByConnection: Record<string, boolean>
+  /** Loading state per connection for "load more" (append) requests. */
+  isLoadingMoreByConnection: Record<string, boolean>
   /** Error message per connection. */
   errorByConnection: Record<string, string | null>
   /** Page size (global constant). */
   pageSize: number
 
   // Actions
-  loadHistory: (connectionId: string, page?: number, search?: string) => Promise<void>
+  loadHistory: (connectionId: string, opts?: LoadHistoryOptions) => Promise<void>
+  loadMore: (connectionId: string) => Promise<void>
   deleteEntry: (connectionId: string, id: number) => Promise<void>
   clearAll: (connectionId: string) => Promise<void>
   setSearch: (connectionId: string, search: string) => void
@@ -42,7 +67,9 @@ const INITIAL_STATE = {
   totalByConnection: {} as Record<string, number>,
   pageByConnection: {} as Record<string, number>,
   searchByConnection: {} as Record<string, string>,
+  sinceByConnection: {} as Record<string, string | null>,
   isLoadingByConnection: {} as Record<string, boolean>,
+  isLoadingMoreByConnection: {} as Record<string, boolean>,
   errorByConnection: {} as Record<string, string | null>,
   pageSize: DEFAULT_PAGE_SIZE,
 }
@@ -50,38 +77,77 @@ const INITIAL_STATE = {
 export const useHistoryStore = create<HistoryState>()((set, get) => ({
   ...INITIAL_STATE,
 
-  loadHistory: async (connectionId: string, page?: number, search?: string) => {
+  loadHistory: async (connectionId: string, opts: LoadHistoryOptions = {}) => {
     const state = get()
-    const currentPage = page ?? state.pageByConnection[connectionId] ?? 1
-    const currentSearch = search ?? state.searchByConnection[connectionId] ?? ''
+    const append = opts.append ?? false
+    const page = opts.page ?? state.pageByConnection[connectionId] ?? 1
+    const search =
+      opts.search !== undefined ? opts.search : (state.searchByConnection[connectionId] ?? '')
+    const since =
+      opts.since !== undefined ? opts.since : (state.sinceByConnection[connectionId] ?? null)
 
-    set({
-      isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: true },
-      errorByConnection: { ...get().errorByConnection, [connectionId]: null },
-    })
+    if (append) {
+      set({
+        isLoadingMoreByConnection: {
+          ...get().isLoadingMoreByConnection,
+          [connectionId]: true,
+        },
+      })
+    } else {
+      set({
+        isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: true },
+        errorByConnection: { ...get().errorByConnection, [connectionId]: null },
+      })
+    }
 
     try {
       const result: HistoryPage = await listHistoryCmd(
         connectionId,
-        currentPage,
+        page,
         get().pageSize,
-        currentSearch || null
+        search || null,
+        since
       )
 
+      const previous = get().entriesByConnection[connectionId] ?? []
+      const entries = append ? [...previous, ...result.entries] : result.entries
+
       set({
-        entriesByConnection: { ...get().entriesByConnection, [connectionId]: result.entries },
+        entriesByConnection: { ...get().entriesByConnection, [connectionId]: entries },
         totalByConnection: { ...get().totalByConnection, [connectionId]: result.total },
-        pageByConnection: { ...get().pageByConnection, [connectionId]: result.page },
+        pageByConnection: { ...get().pageByConnection, [connectionId]: page },
+        searchByConnection: { ...get().searchByConnection, [connectionId]: search },
+        sinceByConnection: { ...get().sinceByConnection, [connectionId]: since },
         isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
+        isLoadingMoreByConnection: {
+          ...get().isLoadingMoreByConnection,
+          [connectionId]: false,
+        },
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logFrontend('error', ['[history-store] loadHistory failed:', err].map(String).join(' '))
-      set({
-        isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
-        errorByConnection: { ...get().errorByConnection, [connectionId]: msg },
-      })
+      if (append) {
+        // Keep the already-loaded rows visible; surface the failure as a toast.
+        set({
+          isLoadingMoreByConnection: {
+            ...get().isLoadingMoreByConnection,
+            [connectionId]: false,
+          },
+        })
+        showErrorToast('Failed to load more history', msg)
+      } else {
+        set({
+          isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
+          errorByConnection: { ...get().errorByConnection, [connectionId]: msg },
+        })
+      }
     }
+  },
+
+  loadMore: async (connectionId: string) => {
+    const nextPage = (get().pageByConnection[connectionId] ?? 1) + 1
+    await get().loadHistory(connectionId, { page: nextPage, append: true })
   },
 
   deleteEntry: async (connectionId: string, id: number) => {
@@ -90,8 +156,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       // Refresh current page for the connection
       const state = get()
       const page = state.pageByConnection[connectionId] ?? 1
-      const search = state.searchByConnection[connectionId] ?? ''
-      await get().loadHistory(connectionId, page, search)
+      await get().loadHistory(connectionId, { page })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logFrontend('error', ['[history-store] deleteEntry failed:', err].map(String).join(' '))
@@ -116,19 +181,12 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
   },
 
   setSearch: (connectionId: string, search: string) => {
-    set({
-      searchByConnection: { ...get().searchByConnection, [connectionId]: search },
-      pageByConnection: { ...get().pageByConnection, [connectionId]: 1 },
-    })
-    get().loadHistory(connectionId, 1, search)
+    // A new search resets the load-more window back to the first page.
+    void get().loadHistory(connectionId, { page: 1, search })
   },
 
   setPage: (connectionId: string, page: number) => {
-    set({
-      pageByConnection: { ...get().pageByConnection, [connectionId]: page },
-    })
-    const search = get().searchByConnection[connectionId] ?? ''
-    get().loadHistory(connectionId, page, search)
+    void get().loadHistory(connectionId, { page })
   },
 
   reset: () => {
@@ -140,9 +198,9 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     // Only refresh if history has been loaded (panel is open) for this connection.
     // Use `in` to distinguish "never loaded" (key absent) from "loaded but empty" ([]).
     if (connectionId in state.entriesByConnection) {
-      const search = state.searchByConnection[connectionId] ?? ''
-      // Re-fetch the first page to show the new query at the top
-      void get().loadHistory(connectionId, 1, search)
+      // Re-fetch the first page so the new query shows at the top; this also
+      // resets any "load more" window, preserving the active search/time range.
+      void get().loadHistory(connectionId, { page: 1 })
     }
   },
 }))

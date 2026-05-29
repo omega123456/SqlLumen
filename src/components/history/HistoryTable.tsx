@@ -21,18 +21,20 @@ export function HistoryTable({
   connectionId,
 }: HistoryTableProps) {
   const total = useHistoryStore((state) => state.totalByConnection[connectionId] ?? 0)
-  const page = useHistoryStore((state) => state.pageByConnection[connectionId] ?? 1)
-  const pageSize = useHistoryStore((state) => state.pageSize)
-  const setPage = useHistoryStore((state) => state.setPage)
+  const isLoadingMore = useHistoryStore(
+    (state) => state.isLoadingMoreByConnection[connectionId] ?? false
+  )
+  const loadMore = useHistoryStore((state) => state.loadMore)
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  const hasMore = page < totalPages
+  // Time-range aware: only offer "load more" while fewer rows are loaded than
+  // exist within the active time window (`total` is already scoped to it).
+  const hasMore = entries.length < total
 
   const handleLoadMore = useCallback(() => {
-    if (hasMore) {
-      setPage(connectionId, page + 1)
+    if (hasMore && !isLoadingMore) {
+      void loadMore(connectionId)
     }
-  }, [hasMore, setPage, connectionId, page])
+  }, [hasMore, isLoadingMore, loadMore, connectionId])
 
   return (
     <div className={styles.container} data-testid="history-table">
@@ -125,9 +127,10 @@ export function HistoryTable({
             type="button"
             className={styles.loadMoreButton}
             onClick={handleLoadMore}
+            disabled={isLoadingMore}
             data-testid="history-load-more"
           >
-            Load older history
+            {isLoadingMore ? 'Loading…' : 'Load more results'}
           </button>
         </div>
       )}

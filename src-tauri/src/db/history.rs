@@ -89,48 +89,64 @@ pub fn insert_history_batch(conn: &Connection, entries: &[NewHistoryEntry]) -> R
 }
 
 /// List history entries for a connection with pagination, newest first.
-/// Supports optional search text (LIKE match on sql_text).
+///
+/// Supports optional `search` text (LIKE match on `sql_text`) and an optional
+/// `since` lower bound (RFC-3339 timestamp string); entries with
+/// `timestamp >= since` are included. When `since` is supplied, `total` reflects
+/// the count of entries **within that time window** — this lets callers decide
+/// whether a "load more" affordance is warranted for the selected time range.
 pub fn list_history(
     conn: &Connection,
     connection_id: &str,
     page: i64,
     page_size: i64,
     search: Option<&str>,
+    since: Option<&str>,
 ) -> Result<HistoryPage> {
+    use rusqlite::types::Value;
+
     let offset = (page.max(1) - 1) * page_size;
 
-    let (count_sql, list_sql);
-    let total: i64;
-    let entries: Vec<HistoryEntry>;
+    // Build the shared WHERE clause and its bound parameters dynamically so the
+    // search/since filters compose without a combinatorial explosion of SQL.
+    let mut where_clause = String::from("WHERE connection_id = ?1");
+    let mut filter_params: Vec<Value> = vec![Value::Text(connection_id.to_string())];
+    let mut next_idx = 2;
 
     if let Some(term) = search {
-        let pattern = format!("%{term}%");
-
-        count_sql =
-            "SELECT COUNT(*) FROM query_history WHERE connection_id = ?1 AND sql_text LIKE ?2";
-        total = conn.query_row(count_sql, params![connection_id, pattern], |row| row.get(0))?;
-
-        list_sql = "SELECT id, connection_id, database_name, sql_text, timestamp, duration_ms, row_count, affected_rows, success, error_message
-                     FROM query_history
-                     WHERE connection_id = ?1 AND sql_text LIKE ?2
-                     ORDER BY timestamp DESC
-                     LIMIT ?3 OFFSET ?4";
-        let mut stmt = conn.prepare(list_sql)?;
-        let rows = stmt.query_map(params![connection_id, pattern, page_size, offset], map_row)?;
-        entries = rows.collect::<Result<Vec<_>>>()?;
-    } else {
-        count_sql = "SELECT COUNT(*) FROM query_history WHERE connection_id = ?1";
-        total = conn.query_row(count_sql, params![connection_id], |row| row.get(0))?;
-
-        list_sql = "SELECT id, connection_id, database_name, sql_text, timestamp, duration_ms, row_count, affected_rows, success, error_message
-                     FROM query_history
-                     WHERE connection_id = ?1
-                     ORDER BY timestamp DESC
-                     LIMIT ?2 OFFSET ?3";
-        let mut stmt = conn.prepare(list_sql)?;
-        let rows = stmt.query_map(params![connection_id, page_size, offset], map_row)?;
-        entries = rows.collect::<Result<Vec<_>>>()?;
+        where_clause.push_str(&format!(" AND sql_text LIKE ?{next_idx}"));
+        filter_params.push(Value::Text(format!("%{term}%")));
+        next_idx += 1;
     }
+    if let Some(cutoff) = since {
+        where_clause.push_str(&format!(" AND timestamp >= ?{next_idx}"));
+        filter_params.push(Value::Text(cutoff.to_string()));
+        next_idx += 1;
+    }
+
+    let count_sql = format!("SELECT COUNT(*) FROM query_history {where_clause}");
+    let total: i64 = conn.query_row(
+        &count_sql,
+        rusqlite::params_from_iter(filter_params.iter()),
+        |row| row.get(0),
+    )?;
+
+    let list_sql = format!(
+        "SELECT id, connection_id, database_name, sql_text, timestamp, duration_ms, row_count, affected_rows, success, error_message
+         FROM query_history
+         {where_clause}
+         ORDER BY timestamp DESC
+         LIMIT ?{limit_idx} OFFSET ?{offset_idx}",
+        limit_idx = next_idx,
+        offset_idx = next_idx + 1,
+    );
+    let mut list_params = filter_params;
+    list_params.push(Value::Integer(page_size));
+    list_params.push(Value::Integer(offset));
+
+    let mut stmt = conn.prepare(&list_sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(list_params.iter()), map_row)?;
+    let entries = rows.collect::<Result<Vec<_>>>()?;
 
     Ok(HistoryPage {
         entries,

@@ -55,7 +55,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
   }, [page, totalPages, setPage, connectionId])
 
   const handleRetry = useCallback(() => {
-    loadHistory(connectionId, page, search)
+    loadHistory(connectionId, { page, search })
   }, [loadHistory, connectionId, page, search])
 
   return (

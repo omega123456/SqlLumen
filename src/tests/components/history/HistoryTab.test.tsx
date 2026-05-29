@@ -77,7 +77,9 @@ beforeEach(() => {
     totalByConnection: {},
     pageByConnection: {},
     searchByConnection: {},
+    sinceByConnection: {},
     isLoadingByConnection: {},
+    isLoadingMoreByConnection: {},
     errorByConnection: {},
     pageSize: 50,
   })
@@ -120,7 +122,7 @@ describe('HistoryTab', () => {
     })
   })
 
-  it('loads history on mount', async () => {
+  it('loads history on mount with no time-range cutoff', async () => {
     const conn = makeActiveConnection()
     useConnectionStore.setState({
       activeConnections: { 'conn-1': conn },
@@ -133,11 +135,33 @@ describe('HistoryTab', () => {
     render(<HistoryTab tab={TAB} />)
 
     await waitFor(() => {
-      expect(loadHistorySpy).toHaveBeenCalledWith('conn-1')
+      expect(loadHistorySpy).toHaveBeenCalledWith('conn-1', { page: 1, since: null })
     })
   })
 
-  it('time range filter changes filtered entries', async () => {
+  it('does not load history while the tab is inactive', async () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    const loadHistorySpy = vi.fn()
+    useHistoryStore.setState({ loadHistory: loadHistorySpy })
+
+    const { rerender } = render(<HistoryTab tab={TAB} isActive={false} />)
+
+    // Nothing requested while hidden.
+    expect(loadHistorySpy).not.toHaveBeenCalled()
+
+    // Becoming active refreshes (covers the "open the tab" auto-refresh).
+    rerender(<HistoryTab tab={TAB} isActive />)
+    await waitFor(() => {
+      expect(loadHistorySpy).toHaveBeenCalledWith('conn-1', { page: 1, since: null })
+    })
+  })
+
+  it('changing the time range reloads with the matching cutoff', async () => {
     const user = userEvent.setup()
     const conn = makeActiveConnection()
     useConnectionStore.setState({
@@ -145,38 +169,28 @@ describe('HistoryTab', () => {
       activeTabId: 'conn-1',
     })
 
-    const now = Date.now()
-    const recentEntry = makeHistoryEntry({
-      id: 1,
-      timestamp: new Date(now - 1000 * 60 * 60).toISOString(), // 1 hour ago
-      sqlText: 'SELECT recent',
-    })
-    const oldEntry = makeHistoryEntry({
-      id: 2,
-      timestamp: new Date(now - 1000 * 60 * 60 * 48).toISOString(), // 48 hours ago
-      sqlText: 'SELECT old',
-    })
-
-    useHistoryStore.setState({
-      entriesByConnection: { 'conn-1': [recentEntry, oldEntry] },
-      totalByConnection: { 'conn-1': 2 },
-    })
+    const loadHistorySpy = vi.fn()
+    useHistoryStore.setState({ loadHistory: loadHistorySpy })
 
     render(<HistoryTab tab={TAB} />)
 
-    // All entries visible initially
     await waitFor(() => {
-      expect(screen.getByTestId('history-table-row-1')).toBeInTheDocument()
-      expect(screen.getByTestId('history-table-row-2')).toBeInTheDocument()
+      expect(loadHistorySpy).toHaveBeenCalledWith('conn-1', { page: 1, since: null })
     })
 
-    // Filter to Past 24h
+    // Switch to "Past 24h" — backend reload requested with a ~24h cutoff.
     await user.click(screen.getByTestId('filter-24h'))
 
-    // Only recent entry should be visible
     await waitFor(() => {
-      expect(screen.getByTestId('history-table-row-1')).toBeInTheDocument()
-      expect(screen.queryByTestId('history-table-row-2')).not.toBeInTheDocument()
+      const calls = loadHistorySpy.mock.calls
+      const lastCall = calls[calls.length - 1]
+      expect(lastCall?.[0]).toBe('conn-1')
+      expect(lastCall?.[1].page).toBe(1)
+      const since = lastCall?.[1].since as string
+      const ageMs = Date.now() - new Date(since).getTime()
+      // Within a small tolerance of 24 hours.
+      expect(ageMs).toBeGreaterThan(23 * 60 * 60 * 1000)
+      expect(ageMs).toBeLessThan(25 * 60 * 60 * 1000)
     })
   })
 
@@ -195,9 +209,12 @@ describe('HistoryTab', () => {
       success: true,
     })
 
+    // Mock loadHistory so the on-activation refresh does not replace the
+    // pre-seeded rows with the empty default IPC fixture.
     useHistoryStore.setState({
       entriesByConnection: { 'conn-1': [entry] },
       totalByConnection: { 'conn-1': 1 },
+      loadHistory: vi.fn(),
     })
 
     render(<HistoryTab tab={TAB} />)
@@ -236,6 +253,7 @@ describe('HistoryTab', () => {
     useHistoryStore.setState({
       entriesByConnection: { 'conn-1': [entry] },
       totalByConnection: { 'conn-1': 1 },
+      loadHistory: vi.fn(),
     })
 
     render(<HistoryTab tab={TAB} />)
@@ -303,6 +321,6 @@ describe('HistoryTab', () => {
     })
 
     await user.click(screen.getByTestId('history-retry'))
-    expect(loadHistorySpy).toHaveBeenCalledWith('conn-1')
+    expect(loadHistorySpy).toHaveBeenCalledWith('conn-1', { page: 1, since: null })
   })
 })

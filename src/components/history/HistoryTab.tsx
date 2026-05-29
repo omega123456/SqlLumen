@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useHistoryStore } from '../../stores/history-store'
@@ -26,8 +26,16 @@ const RANGE_MS: Record<Exclude<TimeRange, 'all'>, number> = {
   '30d': 30 * 24 * 60 * 60 * 1000,
 }
 
+/**
+ * Convert a {@link TimeRange} into an RFC-3339 lower bound for the backend
+ * query, or `null` for the unbounded "all history" range.
+ */
+function rangeToSince(range: TimeRange): string | null {
+  if (range === 'all') return null
+  return new Date(Date.now() - RANGE_MS[range]).toISOString()
+}
+
 export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
-  const hasLoadedRef = useRef(false)
   const activeConnections = useConnectionStore((state) => state.activeConnections)
   const activeConnection = activeConnections[tab.connectionId]
   const connectionId = activeConnection ? tab.connectionId : null
@@ -45,31 +53,32 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
 
   const [timeRange, setTimeRange] = useState<TimeRange>('all')
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null)
-  const [cutoffTimestamp, setCutoffTimestamp] = useState<number | null>(null)
 
   const handleTimeRangeChange = useCallback((range: TimeRange) => {
     setTimeRange(range)
-    setCutoffTimestamp(range === 'all' ? null : Date.now() - RANGE_MS[range])
+    setSelectedEntryId(null)
   }, [])
 
-  // Load history on mount or when connectionId changes
+  const reload = useCallback(
+    (range: TimeRange) => {
+      if (!connectionId) return
+      void loadHistory(connectionId, { page: 1, since: rangeToSince(range) })
+    },
+    [connectionId, loadHistory]
+  )
+
+  // Refresh whenever the tab becomes active, the connection changes, or the
+  // time range changes. Re-fetching on activation keeps the view current and
+  // resets any "load more" window so stale rows are never shown.
   useEffect(() => {
-    if (isActive && connectionId && !hasLoadedRef.current) {
-      hasLoadedRef.current = true
-      loadHistory(connectionId)
-    }
-  }, [isActive, connectionId, loadHistory])
+    if (!isActive || !connectionId) return
+    reload(timeRange)
+  }, [isActive, connectionId, timeRange, reload])
 
-  // Derive filtered entries based on time range
-  const filteredEntries = useMemo(() => {
-    if (!cutoffTimestamp) return entries
-    return entries.filter((entry) => new Date(entry.timestamp).getTime() >= cutoffTimestamp)
-  }, [entries, cutoffTimestamp])
-
-  // Find the selected entry from filtered list
+  // Find the selected entry from the current list
   const selectedEntry = useMemo(
-    () => filteredEntries.find((e) => e.id === selectedEntryId) ?? null,
-    [filteredEntries, selectedEntryId]
+    () => entries.find((e) => e.id === selectedEntryId) ?? null,
+    [entries, selectedEntryId]
   )
 
   // Handle "Open in Editor" — reuse active query tab if one exists
@@ -100,11 +109,7 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
       {error ? (
         <div className={styles.errorState} data-testid="history-error">
           <p className={styles.errorMessage}>{error}</p>
-          <Button
-            variant="ghost"
-            onClick={() => loadHistory(connectionId)}
-            data-testid="history-retry"
-          >
+          <Button variant="ghost" onClick={() => reload(timeRange)} data-testid="history-retry">
             Retry
           </Button>
         </div>
@@ -116,7 +121,7 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
         <Group orientation="horizontal" className={styles.panelGroup}>
           <Panel defaultSize="65%" minSize="30%" className={styles.tablePanel}>
             <HistoryTable
-              entries={filteredEntries}
+              entries={entries}
               selectedEntryId={selectedEntryId}
               onSelectEntry={setSelectedEntryId}
               onOpenInEditor={handleOpenInEditor}

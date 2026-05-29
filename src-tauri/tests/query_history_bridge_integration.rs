@@ -77,7 +77,7 @@ fn test_history_new_schema_fields() {
 
     drop(conn);
 
-    let page = list_history_impl(&state, "conn-1", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "conn-1", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 1);
     assert_eq!(page.entries[0].sql_text, "SELECT 42");
     assert_eq!(page.entries[0].duration_ms, Some(15));
@@ -105,7 +105,7 @@ fn test_history_error_entry() {
 
     drop(conn);
 
-    let page = list_history_impl(&state, "conn-err", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "conn-err", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 1);
     assert!(!page.entries[0].success);
     assert_eq!(
@@ -137,7 +137,7 @@ fn test_history_batch_insert() {
 
     drop(conn);
 
-    let page = list_history_impl(&state, "conn-batch", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "conn-batch", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 5);
 }
 
@@ -168,7 +168,7 @@ fn test_history_pruning() {
 
     // Verify all still present
     drop(conn);
-    let page = list_history_impl(&state, "conn-prune", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "conn-prune", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 3);
 }
 
@@ -266,7 +266,7 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify history entry was logged
-        let page = list_history_impl(&state, "profile-1", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "profile-1", 1, 50, None, None).expect("list");
         assert_eq!(page.total, 1);
         assert!(page.entries[0].success);
         assert_eq!(page.entries[0].sql_text, "SELECT * FROM users");
@@ -291,7 +291,7 @@ mod coverage_bridge_tests {
 
         // Verify error history entry was logged
         // The session_id "missing-sess" becomes the connection_id since registry lookup fails
-        let page = list_history_impl(&state, "missing-sess", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "missing-sess", 1, 50, None, None).expect("list");
         assert_eq!(page.total, 1);
         assert!(!page.entries[0].success);
         assert!(page.entries[0].error_message.is_some());
@@ -320,7 +320,7 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify batch history entries were logged
-        let page = list_history_impl(&state, "profile-2", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "profile-2", 1, 50, None, None).expect("list");
         assert!(
             page.total >= 1,
             "at least one history entry should be logged"
@@ -411,7 +411,7 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify error entry was logged
-        let page = list_history_impl(&state, "missing", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "missing", 1, 50, None, None).expect("list");
         assert_eq!(page.total, 1);
         assert!(!page.entries[0].success);
         assert_eq!(page.entries[0].sql_text, "(multi-query batch)");
@@ -433,7 +433,7 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify history entry was logged
-        let page = list_history_impl(&state, "profile-3", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "profile-3", 1, 50, None, None).expect("list");
         assert_eq!(page.total, 1);
         assert!(page.entries[0].success);
         assert_eq!(page.entries[0].sql_text, "CALL my_proc()");
@@ -455,7 +455,7 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // Verify error entry was logged
-        let page = list_history_impl(&state, "missing", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "missing", 1, 50, None, None).expect("list");
         assert_eq!(page.total, 1);
         assert!(!page.entries[0].success);
         assert_eq!(page.entries[0].sql_text, "CALL bad()");
@@ -476,12 +476,12 @@ mod coverage_bridge_tests {
         wait_for_history_logging().await;
 
         // History is logged under profile_id "profile-xyz" (bridge resolves session→profile)
-        let page = list_history_impl(&state, "profile-xyz", 1, 50, None).expect("list");
+        let page = list_history_impl(&state, "profile-xyz", 1, 50, None, None).expect("list");
         assert_eq!(page.total, 1);
 
         // Querying by session_id also resolves to profile_id and returns the same results —
         // list_history_impl resolves session_id→profile_id via the registry before querying.
-        let page_sess = list_history_impl(&state, "session-abc", 1, 50, None).expect("list");
+        let page_sess = list_history_impl(&state, "session-abc", 1, 50, None, None).expect("list");
         assert_eq!(page_sess.total, 1);
         assert_eq!(page_sess.entries[0].sql_text, "SELECT 42");
     }

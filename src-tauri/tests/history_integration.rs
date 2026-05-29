@@ -28,7 +28,7 @@ fn insert_sample_entries(state: &sqllumen_lib::state::AppState, connection_id: &
 #[test]
 fn test_list_history_empty() {
     let state = common::test_app_state();
-    let page = list_history_impl(&state, "p1", 1, 10, None).expect("should list");
+    let page = list_history_impl(&state, "p1", 1, 10, None, None).expect("should list");
     assert_eq!(page.entries.len(), 0);
     assert_eq!(page.total, 0);
 }
@@ -37,7 +37,7 @@ fn test_list_history_empty() {
 fn test_list_history_with_entries() {
     let state = common::test_app_state();
     insert_sample_entries(&state, "p1", 5);
-    let page = list_history_impl(&state, "p1", 1, 10, None).expect("should list");
+    let page = list_history_impl(&state, "p1", 1, 10, None, None).expect("should list");
     assert_eq!(page.entries.len(), 5);
     assert_eq!(page.total, 5);
 }
@@ -46,11 +46,11 @@ fn test_list_history_with_entries() {
 fn test_list_history_pagination() {
     let state = common::test_app_state();
     insert_sample_entries(&state, "p1", 15);
-    let page1 = list_history_impl(&state, "p1", 1, 10, None).expect("page 1");
+    let page1 = list_history_impl(&state, "p1", 1, 10, None, None).expect("page 1");
     assert_eq!(page1.entries.len(), 10);
     assert_eq!(page1.total, 15);
 
-    let page2 = list_history_impl(&state, "p1", 2, 10, None).expect("page 2");
+    let page2 = list_history_impl(&state, "p1", 2, 10, None, None).expect("page 2");
     assert_eq!(page2.entries.len(), 5);
     assert_eq!(page2.total, 15);
 }
@@ -75,7 +75,7 @@ fn test_list_history_search() {
         history::insert_history(&conn, &entry).expect("insert");
     }
 
-    let page = list_history_impl(&state, "p1", 1, 50, Some("special_table")).expect("search");
+    let page = list_history_impl(&state, "p1", 1, 50, Some("special_table"), None).expect("search");
     assert_eq!(page.entries.len(), 1);
     assert!(page.entries[0].sql_text.contains("special_table"));
 }
@@ -86,10 +86,10 @@ fn test_list_history_connection_isolation() {
     insert_sample_entries(&state, "p1", 3);
     insert_sample_entries(&state, "p2", 2);
 
-    let page1 = list_history_impl(&state, "p1", 1, 50, None).expect("p1");
+    let page1 = list_history_impl(&state, "p1", 1, 50, None, None).expect("p1");
     assert_eq!(page1.total, 3);
 
-    let page2 = list_history_impl(&state, "p2", 1, 50, None).expect("p2");
+    let page2 = list_history_impl(&state, "p2", 1, 50, None, None).expect("p2");
     assert_eq!(page2.total, 2);
 }
 
@@ -115,7 +115,7 @@ fn test_delete_history_entry() {
     assert!(deleted);
 
     // Verify it's gone
-    let page = list_history_impl(&state, "p1", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "p1", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 0);
 }
 
@@ -136,11 +136,11 @@ fn test_clear_history() {
     assert_eq!(cleared, 5);
 
     // p1 should be empty
-    let page1 = list_history_impl(&state, "p1", 1, 50, None).expect("p1");
+    let page1 = list_history_impl(&state, "p1", 1, 50, None, None).expect("p1");
     assert_eq!(page1.total, 0);
 
     // p2 should still have 3
-    let page2 = list_history_impl(&state, "p2", 1, 50, None).expect("p2");
+    let page2 = list_history_impl(&state, "p2", 1, 50, None, None).expect("p2");
     assert_eq!(page2.total, 3);
 }
 
@@ -154,7 +154,7 @@ fn test_list_history_unknown_session_id_falls_back_to_raw_id() {
 
     // When the registry has no entry for "profile-abc", get_profile_id returns None
     // and unwrap_or_else falls back to the raw id — so we still find the entries.
-    let page = list_history_impl(&state, "profile-abc", 1, 50, None).expect("should list");
+    let page = list_history_impl(&state, "profile-abc", 1, 50, None, None).expect("should list");
     assert_eq!(page.total, 3);
     assert_eq!(page.entries.len(), 3);
 }
@@ -168,7 +168,7 @@ fn test_clear_history_unknown_session_id_falls_back_to_raw_id() {
     let cleared = clear_history_impl(&state, "profile-xyz").expect("should clear");
     assert_eq!(cleared, 4);
 
-    let page = list_history_impl(&state, "profile-xyz", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "profile-xyz", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 0);
 }
 
@@ -205,7 +205,7 @@ fn test_insert_history_batch_empty() {
     history::insert_history_batch(&conn, &[]).expect("empty batch should succeed");
 
     drop(conn);
-    let page = list_history_impl(&state, "any", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "any", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 0);
 }
 
@@ -216,7 +216,7 @@ fn test_list_history_page_zero_clamps_to_one() {
     let state = common::test_app_state();
     insert_sample_entries(&state, "p1", 5);
     // Page 0 should be clamped to page 1 internally
-    let page = list_history_impl(&state, "p1", 0, 10, None).expect("page 0 should work");
+    let page = list_history_impl(&state, "p1", 0, 10, None, None).expect("page 0 should work");
     assert_eq!(page.entries.len(), 5);
     assert_eq!(page.page, 1);
 }
@@ -241,7 +241,7 @@ fn test_list_history_error_entry_fields() {
         history::insert_history(&conn, &entry).expect("insert");
     }
 
-    let page = list_history_impl(&state, "p1", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "p1", 1, 50, None, None).expect("list");
     assert_eq!(page.entries.len(), 1);
     let e = &page.entries[0];
     assert!(!e.success);
@@ -256,9 +256,119 @@ fn test_list_history_error_entry_fields() {
 fn test_list_history_search_no_matches() {
     let state = common::test_app_state();
     insert_sample_entries(&state, "p1", 5);
-    let page = list_history_impl(&state, "p1", 1, 50, Some("NONEXISTENT_KEYWORD")).expect("search");
+    let page =
+        list_history_impl(&state, "p1", 1, 50, Some("NONEXISTENT_KEYWORD"), None).expect("search");
     assert_eq!(page.entries.len(), 0);
     assert_eq!(page.total, 0);
+}
+
+// ── Time-range (`since`) filtering ────────────────────────────────────────
+
+/// Insert a history entry with an explicit `timestamp` so time-range filters
+/// can be exercised deterministically.
+fn insert_entry_at(
+    state: &sqllumen_lib::state::AppState,
+    connection_id: &str,
+    sql_text: &str,
+    timestamp: &str,
+) {
+    let conn = state.db.lock().expect("db lock");
+    conn.execute(
+        "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, success)
+         VALUES (?1, NULL, ?2, ?3, 1)",
+        rusqlite::params![connection_id, sql_text, timestamp],
+    )
+    .expect("insert with explicit timestamp");
+}
+
+#[test]
+fn test_list_history_since_filters_total_and_entries() {
+    let state = common::test_app_state();
+    // Two recent (within 24h) and three old (well beyond) entries.
+    insert_entry_at(&state, "p1", "SELECT recent_a", "2025-05-29T10:00:00+00:00");
+    insert_entry_at(&state, "p1", "SELECT recent_b", "2025-05-29T09:00:00+00:00");
+    insert_entry_at(&state, "p1", "SELECT old_a", "2025-01-01T00:00:00+00:00");
+    insert_entry_at(&state, "p1", "SELECT old_b", "2025-01-02T00:00:00+00:00");
+    insert_entry_at(&state, "p1", "SELECT old_c", "2025-01-03T00:00:00+00:00");
+
+    // Without a cutoff, all five are visible.
+    let all = list_history_impl(&state, "p1", 1, 50, None, None).expect("all");
+    assert_eq!(all.total, 5);
+    assert_eq!(all.entries.len(), 5);
+
+    // With a cutoff in mid-May, both `total` and `entries` reflect only the
+    // two recent entries — the count is scoped to the time window.
+    let recent = list_history_impl(&state, "p1", 1, 50, None, Some("2025-05-01T00:00:00+00:00"))
+        .expect("recent");
+    assert_eq!(recent.total, 2, "total must be scoped to the time window");
+    assert_eq!(recent.entries.len(), 2);
+    assert!(recent.entries.iter().all(|e| e.sql_text.contains("recent")));
+}
+
+#[test]
+fn test_list_history_since_combined_with_search() {
+    let state = common::test_app_state();
+    insert_entry_at(
+        &state,
+        "p1",
+        "SELECT * FROM orders",
+        "2025-05-29T10:00:00+00:00",
+    );
+    insert_entry_at(
+        &state,
+        "p1",
+        "SELECT * FROM users",
+        "2025-05-29T09:00:00+00:00",
+    );
+    insert_entry_at(
+        &state,
+        "p1",
+        "SELECT * FROM orders",
+        "2025-01-01T00:00:00+00:00",
+    );
+
+    // search + since must compose: only recent "orders" queries.
+    let page = list_history_impl(
+        &state,
+        "p1",
+        1,
+        50,
+        Some("orders"),
+        Some("2025-05-01T00:00:00+00:00"),
+    )
+    .expect("search + since");
+    assert_eq!(page.total, 1);
+    assert_eq!(page.entries.len(), 1);
+    assert!(page.entries[0].sql_text.contains("orders"));
+}
+
+#[test]
+fn test_list_history_since_paginates_within_window() {
+    let state = common::test_app_state();
+    // Five recent entries (descending timestamps) and one old entry.
+    for i in 0..5 {
+        insert_entry_at(
+            &state,
+            "p1",
+            &format!("SELECT recent_{i}"),
+            &format!("2025-05-29T1{i}:00:00+00:00"),
+        );
+    }
+    insert_entry_at(&state, "p1", "SELECT old", "2025-01-01T00:00:00+00:00");
+
+    let since = Some("2025-05-01T00:00:00+00:00");
+    let page1 = list_history_impl(&state, "p1", 1, 2, None, since).expect("page 1");
+    assert_eq!(
+        page1.total, 5,
+        "total counts only entries within the window"
+    );
+    assert_eq!(page1.entries.len(), 2);
+
+    // Page 3 (offset 4) yields the final recent entry; the old one is excluded.
+    let page3 = list_history_impl(&state, "p1", 3, 2, None, since).expect("page 3");
+    assert_eq!(page3.total, 5);
+    assert_eq!(page3.entries.len(), 1);
+    assert!(page3.entries[0].sql_text.contains("recent"));
 }
 
 #[test]
@@ -271,8 +381,8 @@ fn test_list_history_returns_error_when_db_lock_is_poisoned() {
         panic!("poison the db mutex");
     }));
 
-    let error =
-        list_history_impl(&state, "p1", 1, 10, None).expect_err("poisoned db lock should fail");
+    let error = list_history_impl(&state, "p1", 1, 10, None, None)
+        .expect_err("poisoned db lock should fail");
     assert!(
         error.contains("poison") || error.contains("Poison"),
         "expected poison-lock error, got: {error}"
@@ -312,7 +422,7 @@ fn test_insert_history_batch_with_mixed_entries() {
         history::insert_history_batch(&conn, &entries).expect("batch insert");
     }
 
-    let page = list_history_impl(&state, "p1", 1, 50, None).expect("list");
+    let page = list_history_impl(&state, "p1", 1, 50, None, None).expect("list");
     assert_eq!(page.total, 2);
     // Entries are ordered by timestamp DESC; both have the same timestamp, so check presence
     let has_success = page
@@ -339,7 +449,7 @@ fn test_list_history_impl_error_when_table_missing() {
         conn.execute_batch("DROP TABLE IF EXISTS query_history")
             .expect("drop");
     }
-    let result = list_history_impl(&state, "p1", 1, 10, None);
+    let result = list_history_impl(&state, "p1", 1, 10, None, None);
     assert!(
         result.is_err(),
         "should error when query_history table is missing"

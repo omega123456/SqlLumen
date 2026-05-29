@@ -27,7 +27,9 @@ beforeEach(() => {
     totalByConnection: {},
     pageByConnection: {},
     searchByConnection: {},
+    sinceByConnection: {},
     isLoadingByConnection: {},
+    isLoadingMoreByConnection: {},
     errorByConnection: {},
     pageSize: 50,
   })
@@ -144,13 +146,13 @@ describe('HistoryTable', () => {
     expect(screen.getByTestId('history-count-badge')).toHaveTextContent('1 entry')
   })
 
-  it('"Load older history" button calls setPage (load more)', async () => {
+  it('"Load more results" button calls loadMore when more rows exist in range', async () => {
     const user = userEvent.setup()
-    const setPageSpy = vi.fn()
+    const loadMoreSpy = vi.fn()
+    // Only 1 of 100 in-range rows loaded, so "load more" is offered.
     useHistoryStore.setState({
       totalByConnection: { 'conn-1': 100 },
-      pageByConnection: { 'conn-1': 1 },
-      setPage: setPageSpy,
+      loadMore: loadMoreSpy,
     })
 
     const entries = [makeHistoryEntry({ id: 1 })]
@@ -166,15 +168,15 @@ describe('HistoryTable', () => {
     )
 
     const loadMoreBtn = screen.getByTestId('history-load-more')
-    expect(loadMoreBtn).toBeInTheDocument()
+    expect(loadMoreBtn).toHaveTextContent('Load more results')
     await user.click(loadMoreBtn)
-    expect(setPageSpy).toHaveBeenCalledWith('conn-1', 2)
+    expect(loadMoreSpy).toHaveBeenCalledWith('conn-1')
   })
 
-  it('does not show "Load older history" button when on last page', () => {
+  it('does not show "Load more results" when all in-range rows are loaded', () => {
+    // entries.length === total → nothing more to load within the time window.
     useHistoryStore.setState({
-      totalByConnection: { 'conn-1': 10 },
-      pageByConnection: { 'conn-1': 1 },
+      totalByConnection: { 'conn-1': 1 },
     })
 
     const entries = [makeHistoryEntry({ id: 1 })]
@@ -190,6 +192,29 @@ describe('HistoryTable', () => {
     )
 
     expect(screen.queryByTestId('history-load-more')).not.toBeInTheDocument()
+  })
+
+  it('disables the load-more button and shows a label while appending', () => {
+    useHistoryStore.setState({
+      totalByConnection: { 'conn-1': 100 },
+      isLoadingMoreByConnection: { 'conn-1': true },
+    })
+
+    const entries = [makeHistoryEntry({ id: 1 })]
+
+    render(
+      <HistoryTable
+        entries={entries}
+        selectedEntryId={null}
+        onSelectEntry={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        connectionId="conn-1"
+      />
+    )
+
+    const btn = screen.getByTestId('history-load-more')
+    expect(btn).toBeDisabled()
+    expect(btn).toHaveTextContent('Loading')
   })
 
   it('renders database and timestamp columns', () => {
