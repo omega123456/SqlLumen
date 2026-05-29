@@ -1,0 +1,451 @@
+/* CopyToHostDialog — modal for copying selected schema objects to a different host.
+   Uses DialogShell for the outer shell; each section is a static elevated surface card.
+   Token-only styling (mirrors SqlDumpDialog patterns). */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  /* Match the application object browser (left sidebar) surface. */
+  background: var(--surface-container-low);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  background: transparent;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-size-xl);
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+.closeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--on-surface-variant);
+}
+
+.closeButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.closeButton svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ── Body (scrolls) ─────────────────────────────────────────────────────── */
+
+.body {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Elevated section cards ─────────────────────────────────────────────── */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--ui-elevated-surface-bg);
+  border-radius: var(--ui-elevated-surface-radius);
+  box-shadow: var(--ui-elevated-surface-shadow);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--type-size-sm);
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Form fields ────────────────────────────────────────────────────────── */
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.fieldGroup:last-child {
+  margin-bottom: 0;
+}
+
+.fieldLabel {
+  font-size: var(--type-size-2xs);
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.newDbGroup {
+  margin-top: 8px;
+}
+
+/* ── Warning note ───────────────────────────────────────────────────────── */
+
+.warningNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  font-size: var(--type-size-2xs);
+  font-family: var(--font-body);
+  color: var(--warning);
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  color: var(--warning);
+}
+
+.infoNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: var(--type-size-2xs);
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.infoIcon {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
+/* ── Object tree ────────────────────────────────────────────────────────── */
+
+.objectTree {
+  max-height: 460px;
+  overflow-y: auto;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  border-radius: 8px;
+  background: var(--surface-container-high);
+  padding: 8px;
+}
+
+.objectCategory {
+  margin-bottom: 4px;
+}
+
+.objectCategoryHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.caretButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--on-surface-variant);
+}
+
+.caret {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+.objectCategoryLabel {
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.objectCategoryCount {
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  color: var(--on-surface-variant);
+}
+
+.objectItems {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.objectItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 2px 32px;
+}
+
+.objectItemLabel {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: rgba(var(--on-surface-rgb), 0.8);
+}
+
+/* ── Options groups ─────────────────────────────────────────────────────── */
+
+.optionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.15s ease;
+}
+
+.optionGroupLabel {
+  font-size: var(--type-size-2xs);
+  font-weight: 700;
+  font-family: var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+}
+
+.dimmed {
+  opacity: 0.45;
+}
+
+.divider {
+  height: 0;
+  border-top: var(--ui-section-divider-border);
+  margin: 12px 0;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.warningAccent {
+  border-left: 2px solid var(--warning);
+  padding-left: 8px;
+}
+
+.checkboxLabel {
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  color: rgba(var(--on-surface-rgb), 0.8);
+  user-select: none;
+  cursor: pointer;
+}
+
+.notApplicable {
+  margin: 0;
+  font-size: var(--type-size-2xs);
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  font-style: italic;
+}
+
+/* ── Progress ───────────────────────────────────────────────────────────── */
+
+.progressSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 24px;
+  background: rgba(var(--outline-variant-rgb), 0.06);
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  /* Pinned above the footer — never collapses while the body scrolls. */
+  flex-shrink: 0;
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressLabel {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  min-width: 56px;
+  flex-shrink: 0;
+}
+
+.currentObjectName {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: var(--on-surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.macroBar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(var(--outline-variant-rgb), 0.2);
+  overflow: hidden;
+}
+
+.macroFill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-container));
+  transition: width 0.3s ease;
+}
+
+.microBar {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(var(--outline-variant-rgb), 0.2);
+  overflow: hidden;
+}
+
+.microFill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--tertiary);
+  transition: width 0.3s ease;
+}
+
+.progressCount {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: var(--on-surface);
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.typeBadge {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tertiary);
+  white-space: nowrap;
+}
+
+.statusSuccess {
+  margin: 0;
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--tertiary);
+}
+
+.statusCancel {
+  margin: 0;
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--warning);
+}
+
+.statusError {
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--error);
+  padding: 8px 12px;
+  background: rgba(var(--error-rgb), 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+  line-height: 1.4;
+}
+
+/* ── Loading / error states ─────────────────────────────────────────────── */
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+}
+
+.error {
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--error);
+  padding: 8px 12px;
+  background: rgba(var(--error-rgb), 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+}
+
+/* ── Footer actions ─────────────────────────────────────────────────────── */
+
+.footerActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  flex-shrink: 0;
+}
+
+/* ── Footer hint ────────────────────────────────────────────────────────── */
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  background: rgba(var(--outline-variant-rgb), 0.08);
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.05);
+  flex-shrink: 0;
+}
+
+.footerIcon {
+  flex-shrink: 0;
+  color: rgba(var(--primary-rgb), 0.7);
+}
+
+.footerText {
+  margin: 0;
+  font-size: 11px;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+}

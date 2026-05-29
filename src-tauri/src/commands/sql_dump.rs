@@ -716,7 +716,7 @@ fn cleanup_stale_dump_jobs(jobs: &mut HashMap<String, DumpJobProgress>) {
 ///
 /// This avoids the old bug where every cell was read as `Option<String>` and
 /// then parsed back into a number (destroying leading zeros, failing on BLOBs, etc.).
-fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpValue {
+pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpValue {
     let raw_value = match row.try_get_raw(i) {
         Ok(value) => value,
         Err(_) => return SqlDumpValue::Null,

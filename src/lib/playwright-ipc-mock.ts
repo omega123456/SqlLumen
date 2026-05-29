@@ -2,6 +2,10 @@ import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 import {
   getAnalyzeQueryForEditFixture,
+  getCancelCopyFixture,
+  getCopyableObjectsFixture,
+  getCopyProgressFixture,
+  getCopyToHostStartFixture,
   getCachedRowsFixture,
   getColumnsFixture,
   getForeignKeysFixture,
@@ -10,6 +14,7 @@ import {
   getRoutineParamsFixture,
   getSchemaInfoFixture,
   getTableDataFixture,
+  getTargetDatabasesFixture,
 } from '../tests/playwright-fixtures'
 
 const MOCK_TS = '2025-01-01T00:00:00.000Z'
@@ -281,7 +286,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- Schema read commands ---
     case 'list_databases':
-      return ['ecommerce_db', 'analytics_db', 'staging_db']
+      return getTargetDatabasesFixture()
+    case 'list_copyable_objects': {
+      const database = (args as Record<string, unknown>)?.database
+      return getCopyableObjectsFixture(typeof database === 'string' ? database : undefined)
+    }
     case 'list_schema_objects': {
       const objectType = (args as Record<string, unknown>)?.objectType
       switch (objectType) {
@@ -326,6 +335,18 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       ]
     case 'list_collations':
       return [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
+
+    // --- Copy to another host ---
+    case 'start_copy_to_host':
+      return getCopyToHostStartFixture()
+    case 'get_copy_progress': {
+      const jobId = (args as Record<string, unknown>)?.jobId
+      return getCopyProgressFixture(typeof jobId === 'string' ? jobId : undefined)
+    }
+    case 'cancel_copy': {
+      const jobId = (args as Record<string, unknown>)?.jobId
+      return getCancelCopyFixture(typeof jobId === 'string' ? jobId : undefined)
+    }
 
     // --- Table designer ---
     case 'load_table_for_designer':

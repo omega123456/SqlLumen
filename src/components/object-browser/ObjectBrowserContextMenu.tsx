@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowsClockwise,
+  ArrowSquareOut,
   CopySimple,
   Database,
   Export,
@@ -20,6 +21,7 @@ import {
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { clampContextMenuPosition, writeClipboardText } from '../../lib/context-menu-utils'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
+import type { CopyObjectCategory, CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { parseNodeId, useSchemaStore, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { NodeType, ObjectType, EditableObjectType } from '../../types/schema'
@@ -59,6 +61,10 @@ export interface ObjectBrowserContextMenuProps {
   // SQL dump export callbacks (Phase 9.5a)
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
+  onCopyToHost?: (
+    databaseName: string,
+    objectSelection?: CopyObjectSelection
+  ) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -82,8 +88,30 @@ interface Separator {
 
 type MenuEntry = MenuItem | Separator
 
+type CopyToHostAction = (databaseName: string, objectSelection?: CopyObjectSelection) => void
+
 function isSeparator(entry: MenuEntry): entry is Separator {
   return 'separator' in entry && entry.separator
+}
+
+function copyToHostMenuItem(args: {
+  databaseName: string
+  onCopyToHost?: CopyToHostAction
+  closeMenu: () => void
+  objectSelection?: CopyObjectSelection
+}): MenuItem {
+  const { databaseName, onCopyToHost, closeMenu, objectSelection } = args
+  return {
+    key: 'copy-to-host',
+    label: 'Copy to Another Host...',
+    icon: <ArrowSquareOut size={18} weight="regular" />,
+    disabled: !onCopyToHost,
+    destructive: false,
+    action: () => {
+      onCopyToHost?.(databaseName, objectSelection)
+      closeMenu()
+    },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +141,7 @@ export function ObjectBrowserContextMenu({
   onExecuteRoutine,
   onExportDump,
   onExportDdl,
+  onCopyToHost,
 }: ObjectBrowserContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openTab = useWorkspaceStore((state) => state.openTab)
@@ -258,6 +287,7 @@ export function ObjectBrowserContextMenu({
     onExecuteRoutine,
     onExportDump,
     onExportDdl,
+    onCopyToHost,
     closeMenu,
   })
 
@@ -343,6 +373,7 @@ interface BuildMenuArgs {
   ) => void
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
+  onCopyToHost?: CopyToHostAction
   closeMenu: () => void
 }
 
@@ -372,6 +403,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
     onExecuteRoutine,
     onExportDump,
     onExportDdl,
+    onCopyToHost,
     closeMenu,
   } = args
 
@@ -389,6 +421,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onCreateObject,
         onExportDump,
         onExportDdl,
+        onCopyToHost,
         closeMenu,
       })
     case 'table':
@@ -406,6 +439,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onCreateTable,
         onExportDump,
         onExportDdl,
+        onCopyToHost,
         closeMenu,
       })
     case 'view':
@@ -434,6 +468,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onAlterObject,
         onDropObject,
         onExecuteRoutine,
+        onCopyToHost,
         closeMenu,
       })
     case 'trigger':
@@ -448,6 +483,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         refreshNode,
         onAlterObject,
         onDropObject,
+        onCopyToHost,
         closeMenu,
       })
     case 'category':
@@ -488,6 +524,7 @@ function buildDatabaseMenu(args: {
   onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
+  onCopyToHost?: CopyToHostAction
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -502,6 +539,7 @@ function buildDatabaseMenu(args: {
     onCreateObject,
     onExportDump,
     onExportDdl,
+    onCopyToHost,
     closeMenu,
   } = args
 
@@ -518,6 +556,7 @@ function buildDatabaseMenu(args: {
           closeMenu()
         },
       },
+      copyToHostMenuItem({ databaseName, onCopyToHost, closeMenu }),
       {
         key: 'export-ddl',
         label: 'Export Schema DDL...',
@@ -653,6 +692,7 @@ function buildDatabaseMenu(args: {
         closeMenu()
       },
     },
+    copyToHostMenuItem({ databaseName, onCopyToHost, closeMenu }),
     {
       key: 'export-ddl',
       label: 'Export Schema DDL...',
@@ -702,6 +742,7 @@ function buildTableMenu(args: {
   onCreateTable?: (databaseName: string) => void
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
+  onCopyToHost?: CopyToHostAction
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -718,6 +759,7 @@ function buildTableMenu(args: {
     onCreateTable,
     onExportDump,
     onExportDdl,
+    onCopyToHost,
     closeMenu,
   } = args
 
@@ -743,6 +785,12 @@ function buildTableMenu(args: {
         },
       },
       { key: 'sep-ro-1', separator: true },
+      copyToHostMenuItem({
+        databaseName,
+        onCopyToHost,
+        closeMenu,
+        objectSelection: { category: 'tables', name: objectName },
+      }),
       {
         key: 'copy-name',
         label: 'Copy Table Name',
@@ -815,6 +863,12 @@ function buildTableMenu(args: {
         closeMenu()
       },
     },
+    copyToHostMenuItem({
+      databaseName,
+      onCopyToHost,
+      closeMenu,
+      objectSelection: { category: 'tables', name: objectName },
+    }),
     {
       key: 'export-ddl',
       label: 'Export Schema DDL...',
@@ -1092,6 +1146,7 @@ function buildRoutineMenu(args: {
     routineName: string,
     routineType: 'procedure' | 'function'
   ) => void
+  onCopyToHost?: CopyToHostAction
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -1105,8 +1160,10 @@ function buildRoutineMenu(args: {
     onAlterObject,
     onDropObject,
     onExecuteRoutine,
+    onCopyToHost,
     closeMenu,
   } = args
+  const category: CopyObjectCategory = nodeType === 'procedure' ? 'procedures' : 'functions'
   const typeLabel = nodeType === 'procedure' ? 'Procedure' : 'Function'
 
   if (isReadOnly) {
@@ -1119,6 +1176,12 @@ function buildRoutineMenu(args: {
         destructive: false,
         action: openSchemaInfoTab,
       },
+      copyToHostMenuItem({
+        databaseName,
+        onCopyToHost,
+        closeMenu,
+        objectSelection: { category, name: objectName },
+      }),
       {
         key: 'copy-name',
         label: 'Copy Name',
@@ -1182,6 +1245,12 @@ function buildRoutineMenu(args: {
       },
     },
     { key: 'sep-2', separator: true },
+    copyToHostMenuItem({
+      databaseName,
+      onCopyToHost,
+      closeMenu,
+      objectSelection: { category, name: objectName },
+    }),
     {
       key: 'copy-name',
       label: 'Copy Name',
@@ -1211,6 +1280,7 @@ function buildTriggerEventMenu(args: {
   refreshNode: () => void
   onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
   onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onCopyToHost?: CopyToHostAction
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -1223,8 +1293,10 @@ function buildTriggerEventMenu(args: {
     refreshNode,
     onAlterObject,
     onDropObject,
+    onCopyToHost,
     closeMenu,
   } = args
+  const category: CopyObjectCategory = nodeType === 'trigger' ? 'triggers' : 'events'
   const typeLabel = nodeType === 'trigger' ? 'Trigger' : 'Event'
 
   if (isReadOnly) {
@@ -1237,6 +1309,12 @@ function buildTriggerEventMenu(args: {
         destructive: false,
         action: openSchemaInfoTab,
       },
+      copyToHostMenuItem({
+        databaseName,
+        onCopyToHost,
+        closeMenu,
+        objectSelection: { category, name: objectName },
+      }),
       {
         key: 'copy-name',
         label: 'Copy Name',
@@ -1289,6 +1367,12 @@ function buildTriggerEventMenu(args: {
       },
     },
     { key: 'sep-2', separator: true },
+    copyToHostMenuItem({
+      databaseName,
+      onCopyToHost,
+      closeMenu,
+      objectSelection: { category, name: objectName },
+    }),
     {
       key: 'copy-name',
       label: 'Copy Name',

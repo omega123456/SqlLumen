@@ -1,4 +1,10 @@
 import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
+import {
+  COPY_TO_HOST_OBJECTS,
+  COPY_TO_HOST_PROGRESS_COMPLETED,
+  COPY_TO_HOST_START_JOB_ID,
+  COPY_TO_HOST_TARGET_DATABASES,
+} from './copy-to-host'
 import { DEFAULT_TABLE_DATA, DEFAULT_TABLE_LIST_COLUMNS } from './default-table'
 import { JSON_ANALYZE_QUERY_RESULT, JSON_TABLE_DATA, JSON_TABLE_LIST_COLUMNS } from './json-table'
 import {
@@ -19,6 +25,7 @@ import {
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
+import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type {
   PlaywrightAnalyzeQueryResult,
   PlaywrightCachedRowsResult,
@@ -29,7 +36,12 @@ import type {
   PlaywrightSchemaInfo,
   PlaywrightTableDataResult,
 } from './types'
-import { USERS_ANALYZE_QUERY_RESULT, USERS_FOREIGN_KEYS, USERS_LIST_COLUMNS, USERS_TABLE_DATA } from './users'
+import {
+  USERS_ANALYZE_QUERY_RESULT,
+  USERS_FOREIGN_KEYS,
+  USERS_LIST_COLUMNS,
+  USERS_TABLE_DATA,
+} from './users'
 import { USER_STATS_VIEW_TABLE_DATA } from './user-stats-view'
 
 type FixtureOverrideDomain =
@@ -42,6 +54,11 @@ type FixtureOverrideDomain =
   | 'analyzeQueryForEdit'
   | 'objectBody'
   | 'routineParams'
+  | 'copyableObjects'
+  | 'targetDatabases'
+  | 'copyToHostStart'
+  | 'copyProgress'
+  | 'copyCancel'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -55,6 +72,11 @@ type FixtureOverrides = {
   analyzeQueryForEdit: Record<string, PlaywrightAnalyzeQueryResult>
   objectBody: Record<string, string>
   routineParams: Record<string, PlaywrightRoutineParametersResponse>
+  copyableObjects: Record<string, CopyableObjects>
+  targetDatabases: Record<string, string[]>
+  copyToHostStart: Record<string, string>
+  copyProgress: Record<string, CopyProgress>
+  copyCancel: Record<string, null>
 }
 
 type FixtureOverrideValueMap = {
@@ -67,6 +89,11 @@ type FixtureOverrideValueMap = {
   analyzeQueryForEdit: PlaywrightAnalyzeQueryResult
   objectBody: string
   routineParams: PlaywrightRoutineParametersResponse
+  copyableObjects: CopyableObjects
+  targetDatabases: string[]
+  copyToHostStart: string
+  copyProgress: CopyProgress
+  copyCancel: null
 }
 
 type FixtureRegistryApi = {
@@ -87,6 +114,11 @@ type FixtureRegistryApi = {
   getRoutineParamsFixture: (
     routineType: string | null | undefined
   ) => PlaywrightRoutineParametersResponse
+  getCopyableObjectsFixture: (database: string | null | undefined) => CopyableObjects
+  getTargetDatabasesFixture: () => string[]
+  getCopyToHostStartFixture: () => string
+  getCopyProgressFixture: (jobId: string | null | undefined) => CopyProgress
+  getCancelCopyFixture: (jobId: string | null | undefined) => null
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -135,6 +167,28 @@ const DEFAULT_ANALYZE_QUERY_FOR_EDIT_BY_KEY: Record<string, PlaywrightAnalyzeQue
   default: USERS_ANALYZE_QUERY_RESULT,
 }
 
+const DEFAULT_COPYABLE_OBJECTS_BY_KEY: Record<string, CopyableObjects> = {
+  ecommerce_db: COPY_TO_HOST_OBJECTS,
+  default: COPY_TO_HOST_OBJECTS,
+}
+
+const DEFAULT_TARGET_DATABASES_BY_KEY: Record<string, string[]> = {
+  default: COPY_TO_HOST_TARGET_DATABASES,
+}
+
+const DEFAULT_COPY_TO_HOST_START_BY_KEY: Record<string, string> = {
+  default: COPY_TO_HOST_START_JOB_ID,
+}
+
+const DEFAULT_COPY_PROGRESS_BY_KEY: Record<string, CopyProgress> = {
+  [COPY_TO_HOST_START_JOB_ID]: COPY_TO_HOST_PROGRESS_COMPLETED,
+  default: COPY_TO_HOST_PROGRESS_COMPLETED,
+}
+
+const DEFAULT_COPY_CANCEL_BY_KEY: Record<string, null> = {
+  default: null,
+}
+
 const overrides: FixtureOverrides = {
   tableData: {},
   columns: {},
@@ -145,6 +199,11 @@ const overrides: FixtureOverrides = {
   analyzeQueryForEdit: {},
   objectBody: {},
   routineParams: {},
+  copyableObjects: {},
+  targetDatabases: {},
+  copyToHostStart: {},
+  copyProgress: {},
+  copyCancel: {},
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -291,6 +350,47 @@ export function getRoutineParamsFixture(
   )
 }
 
+export function getCopyableObjectsFixture(database: string | null | undefined): CopyableObjects {
+  const databaseKey = normalizeLookupKey(database)
+
+  return (
+    overrides.copyableObjects[databaseKey] ??
+    DEFAULT_COPYABLE_OBJECTS_BY_KEY[databaseKey] ??
+    overrides.copyableObjects.default ??
+    DEFAULT_COPYABLE_OBJECTS_BY_KEY.default
+  )
+}
+
+export function getTargetDatabasesFixture(): string[] {
+  return overrides.targetDatabases.default ?? DEFAULT_TARGET_DATABASES_BY_KEY.default
+}
+
+export function getCopyToHostStartFixture(): string {
+  return overrides.copyToHostStart.default ?? DEFAULT_COPY_TO_HOST_START_BY_KEY.default
+}
+
+export function getCopyProgressFixture(jobId: string | null | undefined): CopyProgress {
+  const jobKey = normalizeLookupKey(jobId)
+
+  return (
+    overrides.copyProgress[jobKey] ??
+    DEFAULT_COPY_PROGRESS_BY_KEY[jobKey] ??
+    overrides.copyProgress.default ??
+    DEFAULT_COPY_PROGRESS_BY_KEY.default
+  )
+}
+
+export function getCancelCopyFixture(jobId: string | null | undefined): null {
+  const jobKey = normalizeLookupKey(jobId)
+
+  return (
+    overrides.copyCancel[jobKey] ??
+    DEFAULT_COPY_CANCEL_BY_KEY[jobKey] ??
+    overrides.copyCancel.default ??
+    DEFAULT_COPY_CANCEL_BY_KEY.default
+  )
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -320,6 +420,11 @@ export function resetFixtureOverrides(): void {
   overrides.analyzeQueryForEdit = {}
   overrides.objectBody = {}
   overrides.routineParams = {}
+  overrides.copyableObjects = {}
+  overrides.targetDatabases = {}
+  overrides.copyToHostStart = {}
+  overrides.copyProgress = {}
+  overrides.copyCancel = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -332,6 +437,11 @@ const fixtureRegistry: FixtureRegistryApi = {
   getAnalyzeQueryForEditFixture,
   getObjectBodyFixture,
   getRoutineParamsFixture,
+  getCopyableObjectsFixture,
+  getTargetDatabasesFixture,
+  getCopyToHostStartFixture,
+  getCopyProgressFixture,
+  getCancelCopyFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

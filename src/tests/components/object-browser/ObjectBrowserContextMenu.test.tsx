@@ -222,6 +222,64 @@ describe('ObjectBrowserContextMenu', () => {
     expect(screen.queryByTestId('object-browser-context-menu')).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['database', () => makeNodes().dbId, false],
+    ['database (read-only)', () => makeNodes().dbId, true],
+    ['table', () => makeNodes().tableId, false],
+    ['table (read-only)', () => makeNodes().tableId, true],
+    ['procedure', () => makeNodes().procId, false],
+    ['procedure (read-only)', () => makeNodes().procId, true],
+    ['function', () => makeNodes().funcId, false],
+    ['function (read-only)', () => makeNodes().funcId, true],
+    ['trigger', () => makeNodes().triggerId, false],
+    ['trigger (read-only)', () => makeNodes().triggerId, true],
+    ['event', () => makeNodes().eventId, false],
+    ['event (read-only)', () => makeNodes().eventId, true],
+  ] as const)('shows "Copy to Another Host..." for %s menus', (_, getNodeId, isReadOnly) => {
+    const { nodes } = makeNodes()
+    setNodes(nodes)
+
+    render(
+      <ObjectBrowserContextMenu
+        visible
+        x={100}
+        y={100}
+        nodeId={getNodeId()}
+        connectionId={CONN_ID}
+        isReadOnly={isReadOnly}
+        onClose={vi.fn()}
+        onCopyToHost={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText('Copy to Another Host...')).toBeInTheDocument()
+    expect(screen.getByTestId('ctx-copy-to-host')).toBeInTheDocument()
+  })
+
+  it('invokes onCopyToHost with table preselection', async () => {
+    const user = userEvent.setup()
+    const { nodes, tableId } = makeNodes()
+    const onCopyToHost = vi.fn()
+    setNodes(nodes)
+
+    render(
+      <ObjectBrowserContextMenu
+        visible
+        x={100}
+        y={100}
+        nodeId={tableId}
+        connectionId={CONN_ID}
+        isReadOnly={false}
+        onClose={vi.fn()}
+        onCopyToHost={onCopyToHost}
+      />
+    )
+
+    await user.click(screen.getByTestId('ctx-copy-to-host'))
+
+    expect(onCopyToHost).toHaveBeenCalledWith('testdb', { category: 'tables', name: 'users' })
+  })
+
   it('shows correct items for database node', () => {
     const { nodes, dbId } = makeNodes()
     setNodes(nodes)

@@ -156,6 +156,7 @@ fn schema_cache_impls_surface_poisoned_db_lock_errors() {
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),

@@ -182,6 +182,72 @@ function setupDatabaseNodes() {
   })
 }
 
+function setupCopyableObjectNodes(nodeType: 'procedure' | 'function' | 'trigger' | 'event') {
+  const databaseId = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+  const categoryId = makeNodeId('category', 'ecommerce_db', nodeType)
+  const objectNameMap = {
+    procedure: 'sp_recalc',
+    function: 'fn_total',
+    trigger: 'trg_audit',
+    event: 'nightly_cleanup',
+  } as const
+  const labelMap = {
+    procedure: 'Procedures',
+    function: 'Functions',
+    trigger: 'Triggers',
+    event: 'Events',
+  } as const
+  const objectName = objectNameMap[nodeType]
+  const nodeId = makeNodeId(nodeType, 'ecommerce_db', objectName)
+
+  const nodes: Record<string, TreeNodeType> = {
+    [databaseId]: {
+      id: databaseId,
+      label: 'ecommerce_db',
+      type: 'database',
+      parentId: null,
+      hasChildren: true,
+      isLoaded: true,
+    },
+    [categoryId]: {
+      id: categoryId,
+      label: labelMap[nodeType],
+      type: 'category',
+      parentId: databaseId,
+      hasChildren: true,
+      isLoaded: true,
+      metadata: { categoryType: nodeType, databaseName: 'ecommerce_db' },
+    },
+    [nodeId]: {
+      id: nodeId,
+      label: objectName,
+      type: nodeType,
+      parentId: categoryId,
+      hasChildren: false,
+      isLoaded: true,
+      metadata: { databaseName: 'ecommerce_db' },
+    },
+  }
+
+  act(() => {
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          nodes,
+          childIdsByParentId: buildChildIndex(nodes),
+          expandedNodes: new Set([databaseId, categoryId]),
+          loadingNodes: new Set(),
+          selectedNodeId: null,
+          filterText: '',
+          loadGeneration: 0,
+        },
+      },
+    })
+  })
+
+  return { objectName }
+}
+
 function setupFilteredTableNodes() {
   const dbId = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
   const tablesId = makeNodeId('category', 'ecommerce_db', 'table')
@@ -947,6 +1013,78 @@ describe('ObjectBrowser', () => {
       label: 'users',
     })
   })
+
+  it('copy-to-host on a database menu opens the dialog with source context and no preselection', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await openContextMenu(user, 'ecommerce_db')
+    await user.click(screen.getByText('Copy to Another Host...'))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Copy to Another Host' })
+    ).toBeInTheDocument()
+    expect((screen.getByTestId('copy-source-connection') as HTMLInputElement).value).toBe('Test DB')
+    expect((screen.getByTestId('copy-source-database') as HTMLInputElement).value).toBe(
+      'ecommerce_db'
+    )
+    expect(await screen.findByTestId('copy-object-tables-users')).toBeInTheDocument()
+    expect((screen.getByTestId('copy-object-tables-users') as HTMLInputElement).checked).toBe(false)
+  })
+
+  it.each([
+    ['table', 'users', 'copy-object-tables-users'],
+    ['procedure', 'sp_recalc', 'copy-object-procedures-sp_recalc'],
+    ['function', 'fn_total', 'copy-object-functions-fn_total'],
+    ['trigger', 'trg_audit', 'copy-object-triggers-trg_audit'],
+    ['event', 'nightly_cleanup', 'copy-object-events-nightly_cleanup'],
+  ] as const)(
+    'copy-to-host on a %s menu opens the dialog with the correct preselection',
+    async (nodeType, nodeLabel, expectedCheckboxTestId) => {
+      const user = userEvent.setup()
+      setupConnectedState()
+      if (nodeType === 'event') {
+        ipc.override('list_copyable_objects', () => ({
+          tables: [
+            { name: 'users', estimatedRows: 100 },
+            { name: 'orders', estimatedRows: 500 },
+          ],
+          procedures: ['sp_recalc'],
+          functions: ['fn_total'],
+          triggers: ['trg_audit'],
+          events: ['nightly_cleanup'],
+        }))
+      }
+
+      if (nodeType === 'table') {
+        setupDatabaseNodes()
+        expandToTable()
+      } else {
+        setupCopyableObjectNodes(nodeType)
+      }
+
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
+
+      await openContextMenu(user, nodeLabel)
+      await user.click(screen.getByText('Copy to Another Host...'))
+
+      expect(
+        await screen.findByRole('heading', { name: 'Copy to Another Host' })
+      ).toBeInTheDocument()
+      expect((await screen.findByTestId(expectedCheckboxTestId)) as HTMLInputElement).toBeChecked()
+    }
+  )
 
   it('create table context menu item on table node opens designer in create mode', async () => {
     const user = userEvent.setup()

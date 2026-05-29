@@ -257,37 +257,60 @@ pub fn write_data_inserts<W: Write>(
     Ok(total_rows)
 }
 
-/// Write a single SQL dump value with correct quoting and escaping.
-fn write_value<W: Write>(writer: &mut W, val: &SqlDumpValue) -> io::Result<()> {
+/// Render a single [`SqlDumpValue`] as the exact SQL literal it produces inside
+/// an `INSERT ... VALUES` row (e.g. `'abc'`, `42`, `NULL`, `0xAB`).
+///
+/// Shared between the file-based dump writer ([`write_value`]) and the
+/// copy-to-host engine, which builds `INSERT` statements as in-memory strings
+/// for a target pool and needs to measure each literal's serialized byte size
+/// for adaptive batching. Keeping a single source of truth guarantees the
+/// measured size matches the bytes actually sent.
+pub fn value_to_literal(val: &SqlDumpValue) -> String {
     match val {
-        SqlDumpValue::Null => write!(writer, "NULL"),
-        SqlDumpValue::Int(n) => write!(writer, "{}", n),
-        SqlDumpValue::UInt(n) => write!(writer, "{}", n),
+        SqlDumpValue::Null => "NULL".to_string(),
+        SqlDumpValue::Int(n) => n.to_string(),
+        SqlDumpValue::UInt(n) => n.to_string(),
         SqlDumpValue::Float(f) => {
             if f.is_nan() || f.is_infinite() {
-                write!(writer, "NULL")
+                "NULL".to_string()
             } else {
-                write!(writer, "{}", f)
+                f.to_string()
             }
         }
-        SqlDumpValue::Decimal(s) => write!(writer, "{}", s),
-        SqlDumpValue::QuotedString(s) => {
-            let escaped = escape_string_value(s);
-            write!(writer, "'{}'", escaped)
-        }
+        SqlDumpValue::Decimal(s) => s.clone(),
+        SqlDumpValue::QuotedString(s) => format!("'{}'", escape_string_value(s)),
         SqlDumpValue::HexBytes(bytes) => {
             if bytes.is_empty() {
-                write!(writer, "0x")
+                "0x".to_string()
             } else {
-                write!(writer, "0x")?;
+                let mut out = String::with_capacity(2 + bytes.len() * 2);
+                out.push_str("0x");
                 for b in bytes {
-                    write!(writer, "{:02X}", b)?;
+                    use std::fmt::Write as _;
+                    let _ = write!(out, "{:02X}", b);
                 }
-                Ok(())
+                out
             }
         }
-        SqlDumpValue::Bool(b) => write!(writer, "{}", if *b { 1 } else { 0 }),
+        SqlDumpValue::Bool(b) => {
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
     }
+}
+
+/// Serialized byte length of a single value's SQL literal (as produced by
+/// [`value_to_literal`]). Used by the copy engine's byte-budgeted batching.
+pub fn value_byte_len(val: &SqlDumpValue) -> usize {
+    value_to_literal(val).len()
+}
+
+/// Write a single SQL dump value with correct quoting and escaping.
+fn write_value<W: Write>(writer: &mut W, val: &SqlDumpValue) -> io::Result<()> {
+    write!(writer, "{}", value_to_literal(val))
 }
 
 /// Write transaction wrappers (SET AUTOCOMMIT=0 at start, COMMIT at end).

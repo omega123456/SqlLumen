@@ -173,6 +173,26 @@ impl ConnectionRegistry {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(session_id).map(|e| e.profile_id.clone())
     }
+
+    /// Reverse lookup: find a live, *connected*, writable session bound to the
+    /// given saved profile id and return a cheap `Arc` clone of its pool.
+    ///
+    /// Used by the copy-to-host engine to reuse an already-open target session's
+    /// pool (the "reuse-if-open" half of target resolution) instead of opening a
+    /// fresh internal pool. Only entries whose status is
+    /// [`ConnectionStatus::Connected`] and whose live registry entry is not
+    /// read-only are considered, so a reconnecting, disconnected, or read-only
+    /// session is never reused. Returns `None` if no such session exists.
+    pub fn get_pool_by_profile(&self, profile_id: &str) -> Option<MySqlPool> {
+        let map = self.entries.read().expect("registry lock poisoned");
+        map.values()
+            .find(|e| {
+                e.profile_id == profile_id
+                    && e.status == ConnectionStatus::Connected
+                    && !e.read_only
+            })
+            .map(|e| e.pool.clone())
+    }
 }
 
 impl Default for ConnectionRegistry {

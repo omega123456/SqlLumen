@@ -75,8 +75,9 @@ describe('playwrightIpcMockHandler', () => {
   })
 
   it('returns available status for touch_results', () => {
-    expect(playwrightIpcMockHandler('touch_results', { connectionId: 'conn-1', tabId: 'tab-1' }))
-      .toEqual({ status: 'available' })
+    expect(
+      playwrightIpcMockHandler('touch_results', { connectionId: 'conn-1', tabId: 'tab-1' })
+    ).toEqual({ status: 'available' })
   })
 
   it('returns available status for touch_table_data', () => {
@@ -110,6 +111,62 @@ describe('playwrightIpcMockHandler', () => {
     ])
     expect(result).not.toHaveProperty('totalRows')
     expect(result).not.toHaveProperty('totalPages')
+  })
+
+  it('returns copy-to-host object fixtures for list_copyable_objects', () => {
+    const result = playwrightIpcMockHandler('list_copyable_objects', {
+      connectionId: 'conn-1',
+      database: 'ecommerce_db',
+    }) as Record<string, unknown>
+
+    expect(result.tables).toEqual([
+      { name: 'users', estimatedRows: 1240 },
+      { name: 'orders', estimatedRows: 5820 },
+      { name: 'audit_log', estimatedRows: 18422 },
+    ])
+    expect(result.procedures).toEqual(['sp_refresh_user_rollups'])
+  })
+
+  it('returns target database fixtures for database listing', () => {
+    const result = playwrightIpcMockHandler('list_databases', { connectionId: 'session-target' })
+
+    expect(result).toEqual(['ecommerce_db', 'analytics_db', 'staging_db'])
+  })
+
+  it('returns registry-backed copy progress fixtures', () => {
+    overrideFixture('copyToHostStart', 'default', 'copy-job-custom')
+    overrideFixture('copyProgress', 'copy-job-custom', {
+      jobId: 'copy-job-custom',
+      status: 'completed',
+      objectsTotal: 2,
+      objectsDone: 2,
+      currentObject: null,
+      currentObjectType: null,
+      rowsTotal: null,
+      rowsDone: null,
+      errorMessage: null,
+      cancelRequested: false,
+    })
+
+    expect(playwrightIpcMockHandler('start_copy_to_host', { params: {} })).toBe('copy-job-custom')
+    expect(
+      playwrightIpcMockHandler('get_copy_progress', { jobId: 'copy-job-custom' })
+    ).toMatchObject({
+      jobId: 'copy-job-custom',
+      status: 'completed',
+      objectsDone: 2,
+      objectsTotal: 2,
+    })
+    expect(playwrightIpcMockHandler('cancel_copy', { jobId: 'copy-job-custom' })).toBeNull()
+  })
+
+  it('returns completed copy progress by default', () => {
+    expect(playwrightIpcMockHandler('get_copy_progress', { jobId: 'copy-job-1' })).toMatchObject({
+      jobId: 'copy-job-1',
+      status: 'completed',
+      objectsDone: 4,
+      objectsTotal: 4,
+    })
   })
 
   it('returns a realistic table designer schema mock', () => {

@@ -35,7 +35,9 @@ async function ensureTheme(page: Page, theme: 'light' | 'dark') {
   throw new Error(`Could not apply theme "${theme}"`)
 }
 
-type BoundingBoxable = { boundingBox: () => Promise<{ x: number; y: number; width: number; height: number } | null> }
+type BoundingBoxable = {
+  boundingBox: () => Promise<{ x: number; y: number; width: number; height: number } | null>
+}
 
 async function getUnionClip(page: Page, locators: BoundingBoxable[], padding = 8) {
   const boxes = (await Promise.all(locators.map((locator) => locator.boundingBox()))).filter(
@@ -179,6 +181,142 @@ async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
   await expect(page.getByTestId('workspace-tabs')).toBeVisible()
   await expect(page.getByTestId('schema-info-tab')).toBeVisible()
   await expect(page.getByTestId('stats-row')).toBeVisible()
+}
+
+async function seedCopyToHostTargets(page: Page) {
+  await page.evaluate(() => {
+    const connectionStore = (window as unknown as Record<string, unknown>).__connectionStore__ as {
+      setState: (
+        fn: (state: {
+          savedConnections: Array<Record<string, unknown>>
+          activeConnections: Record<string, Record<string, unknown>>
+        }) => Record<string, unknown>
+      ) => void
+    }
+
+    const targetConnections = [
+      {
+        id: 'conn-playwright-2',
+        name: 'Warehouse Replica',
+        host: '10.20.30.40',
+        port: 3306,
+        username: 'replica_user',
+        hasPassword: true,
+        defaultDatabase: 'warehouse_db',
+        sslEnabled: false,
+        sslCaPath: null,
+        sslCertPath: null,
+        sslKeyPath: null,
+        color: '#0f766e',
+        groupId: null,
+        readOnly: false,
+        sortOrder: 1,
+        connectTimeoutSecs: 10,
+        keepaliveIntervalSecs: 60,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'conn-playwright-3',
+        name: 'Readonly Archive',
+        host: '10.20.30.50',
+        port: 3306,
+        username: 'archive_user',
+        hasPassword: true,
+        defaultDatabase: 'archive_db',
+        sslEnabled: false,
+        sslCaPath: null,
+        sslCertPath: null,
+        sslKeyPath: null,
+        color: '#7c3aed',
+        groupId: null,
+        readOnly: true,
+        sortOrder: 2,
+        connectTimeoutSecs: 10,
+        keepaliveIntervalSecs: 60,
+        createdAt: '2025-01-01T00:00:00.000Z',
+        updatedAt: '2025-01-01T00:00:00.000Z',
+      },
+    ]
+
+    // Register the writable target as an open session so the dialog can enumerate its
+    // databases (the Database dropdown only lists when the target connection is active).
+    const writableTarget = targetConnections[0]
+    connectionStore.setState((state) => ({
+      savedConnections: [...state.savedConnections, ...targetConnections],
+      activeConnections: {
+        ...state.activeConnections,
+        'session-copy-target': {
+          id: 'session-copy-target',
+          profile: writableTarget,
+          status: 'connected',
+          serverVersion: '8.0.33-mock',
+        },
+      },
+    }))
+  })
+}
+
+async function configureCopyToHostFixtures(page: Page, mode: 'default' | 'progress') {
+  await page.evaluate((fixtureMode) => {
+    const registry = (window as unknown as Record<string, unknown>)
+      .__PLAYWRIGHT_FIXTURE_REGISTRY__ as {
+      resetFixtureOverrides: () => void
+      overrideFixture: (domain: string, key: string, data: unknown) => void
+    }
+
+    registry.resetFixtureOverrides()
+
+    if (fixtureMode === 'progress') {
+      registry.overrideFixture('copyToHostStart', 'default', 'copy-job-progress')
+      registry.overrideFixture('copyProgress', 'copy-job-progress', {
+        jobId: 'copy-job-progress',
+        status: 'running',
+        objectsTotal: 4,
+        objectsDone: 2,
+        currentObject: 'orders',
+        currentObjectType: 'table',
+        rowsTotal: 5820,
+        rowsDone: 2140,
+        errorMessage: null,
+        cancelRequested: false,
+      })
+    }
+  }, mode)
+}
+
+async function openCopyToHostDialog(
+  page: Page,
+  source: 'database' | 'table',
+  fixtureMode: 'default' | 'progress' = 'default'
+) {
+  await connectToSample(page)
+  await seedCopyToHostTargets(page)
+  await configureCopyToHostFixtures(page, fixtureMode)
+
+  const objectBrowser = page.getByTestId('object-browser')
+  await expect(objectBrowser.getByText('ecommerce_db')).toBeVisible()
+  await objectBrowser.getByText('ecommerce_db').click()
+
+  if (source === 'table') {
+    await objectBrowser.getByText('Tables').click()
+    await expect(objectBrowser.getByText('users')).toBeVisible()
+    await objectBrowser.getByText('users').click({ button: 'right' })
+  } else {
+    await objectBrowser.getByText('ecommerce_db').click({ button: 'right' })
+  }
+
+  await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+  await page.getByTestId('ctx-copy-to-host').click()
+  await expect(page.getByTestId('copy-to-host-dialog')).toBeVisible()
+  await expect(page.getByTestId('copy-object-tree')).toBeVisible()
+}
+
+async function chooseCopyToHostTarget(page: Page) {
+  await page.getByTestId('copy-target-connection').click()
+  await page.getByTestId('copy-target-connection-option-conn-playwright-2').click()
+  await page.getByTestId('copy-target-database').click()
+  await page.getByTestId('copy-target-database-option-staging_db').click()
 }
 
 /** Open a query editor tab via the "+" button after connecting. */
@@ -396,9 +534,7 @@ async function openQueryEditorWithJsonResults(page: Page) {
       const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
         getState: () => { setContent: (id: string, c: string) => void }
       }
-      qStore
-        .getState()
-        .setContent(tabIds[0], 'SELECT id, profile, updated_at FROM json_sample;')
+      qStore.getState().setContent(tabIds[0], 'SELECT id, profile, updated_at FROM json_sample;')
     }
   })
 
@@ -466,39 +602,46 @@ async function openScopedTableDataBottomPanel(page: Page) {
 
   await expect(page.getByTestId('bottom-panel-tabs')).toBeVisible({ timeout: APP_READY_MS })
   await expect(
-    page.getByTestId('bottom-panel-tabs').locator('[data-testid^="bottom-panel-table-tab-"]').first()
+    page
+      .getByTestId('bottom-panel-tabs')
+      .locator('[data-testid^="bottom-panel-table-tab-"]')
+      .first()
   ).toBeVisible({ timeout: APP_READY_MS })
-  await page.waitForFunction(() => {
-    const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
-      getState: () => {
-        tabs: Record<
-          string,
-          { activeBottomPanelItem?: { type: 'result' } | { type: 'table-data'; tabId: string } }
-        >
+  await page.waitForFunction(
+    () => {
+      const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+        getState: () => {
+          tabs: Record<
+            string,
+            { activeBottomPanelItem?: { type: 'result' } | { type: 'table-data'; tabId: string } }
+          >
+        }
       }
-    }
-    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
-      getState: () => {
-        activeTabByConnection: Record<string, string | null>
+      const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        getState: () => {
+          activeTabByConnection: Record<string, string | null>
+        }
       }
-    }
-    const tableDataStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
-      getState: () => {
-        tabs: Record<string, { isLoading: boolean; columns: Array<unknown> }>
+      const tableDataStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+        getState: () => {
+          tabs: Record<string, { isLoading: boolean; columns: Array<unknown> }>
+        }
       }
+
+      const queryTabId = workspaceStore.getState().activeTabByConnection['session-playwright-1']
+      if (!queryTabId) return false
+
+      const activeBottomPanelItem = queryStore.getState().tabs[queryTabId]?.activeBottomPanelItem
+      if (!activeBottomPanelItem || activeBottomPanelItem.type !== 'table-data') return false
+
+      const tableTabState = tableDataStore.getState().tabs[activeBottomPanelItem.tabId]
+      return Boolean(tableTabState && !tableTabState.isLoading && tableTabState.columns.length > 0)
+    },
+    null,
+    {
+      timeout: APP_READY_MS,
     }
-
-    const queryTabId = workspaceStore.getState().activeTabByConnection['session-playwright-1']
-    if (!queryTabId) return false
-
-    const activeBottomPanelItem = queryStore.getState().tabs[queryTabId]?.activeBottomPanelItem
-    if (!activeBottomPanelItem || activeBottomPanelItem.type !== 'table-data') return false
-
-    const tableTabState = tableDataStore.getState().tabs[activeBottomPanelItem.tabId]
-    return Boolean(tableTabState && !tableTabState.isLoading && tableTabState.columns.length > 0)
-  }, null, {
-    timeout: APP_READY_MS,
-  })
+  )
   const activeTableTabId = await page.evaluate(() => {
     const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
       getState: () => {
@@ -1414,6 +1557,42 @@ for (const theme of themes) {
       await expect(page).toHaveScreenshot(`create-database-dialog-${theme}.png`, {
         animations: 'disabled',
       })
+    })
+
+    test('CopyToHostDialog — configuration state', async ({ page }) => {
+      await openCopyToHostDialog(page, 'database')
+      await chooseCopyToHostTarget(page)
+      await page.getByTestId('copy-object-tables-users').click()
+      await page.getByTestId('copy-object-procedures-sp_refresh_user_rollups').click()
+      await expect(page.getByTestId('copy-to-host-dialog')).toHaveScreenshot(
+        `copy-to-host-dialog-config-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CopyToHostDialog — options expanded', async ({ page }) => {
+      await openCopyToHostDialog(page, 'table')
+      await chooseCopyToHostTarget(page)
+      await page.getByTestId('copy-target-database').click()
+      await page.getByTestId('copy-target-database-option-__new__').click()
+      await page.getByTestId('copy-new-database-name').fill('warehouse_clone')
+      await page.getByTestId('copy-type').click()
+      await page.getByTestId('copy-type-option-structureOnly').click()
+      await expect(page.getByTestId('copy-to-host-dialog')).toHaveScreenshot(
+        `copy-to-host-dialog-options-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CopyToHostDialog — progress state', async ({ page }) => {
+      await openCopyToHostDialog(page, 'table', 'progress')
+      await chooseCopyToHostTarget(page)
+      await page.getByTestId('copy-submit-button').click()
+      await expect(page.getByTestId('copy-progress')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('copy-to-host-dialog')).toHaveScreenshot(
+        `copy-to-host-dialog-progress-${theme}.png`,
+        { animations: 'disabled' }
+      )
     })
 
     // --- Query Editor states ---
@@ -2799,7 +2978,8 @@ for (const theme of themes) {
       await openQueryEditorWithResults(page)
 
       await page.evaluate(() => {
-        const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        const workspaceStore = (window as unknown as Record<string, unknown>)
+          .__workspaceStore__ as {
           getState: () => {
             activeTabByConnection: Record<string, string | null>
           }
@@ -2863,7 +3043,8 @@ for (const theme of themes) {
       await openQueryEditorWithResults(page)
 
       await page.evaluate(() => {
-        const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        const workspaceStore = (window as unknown as Record<string, unknown>)
+          .__workspaceStore__ as {
           getState: () => {
             activeTabByConnection: Record<string, string | null>
           }
@@ -2918,12 +3099,16 @@ for (const theme of themes) {
       await openTableDataTab(page)
 
       await page.evaluate(() => {
-        const tableDataStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+        const tableDataStore = (window as unknown as Record<string, unknown>)
+          .__tableDataStore__ as {
           setState: (
-            updater: (state: { tabs: Record<string, Record<string, unknown>> }) => Record<string, unknown>
+            updater: (state: {
+              tabs: Record<string, Record<string, unknown>>
+            }) => Record<string, unknown>
           ) => void
         }
-        const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        const workspaceStore = (window as unknown as Record<string, unknown>)
+          .__workspaceStore__ as {
           getState: () => {
             tabsByConnection: Record<string, Array<{ id: string; type: string }>>
           }

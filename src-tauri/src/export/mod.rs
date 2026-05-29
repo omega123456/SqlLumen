@@ -1,3 +1,4 @@
+pub mod copy_to_host;
 pub mod csv_writer;
 pub mod json_writer;
 pub mod sql_dump;

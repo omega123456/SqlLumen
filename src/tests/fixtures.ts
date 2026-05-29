@@ -285,6 +285,32 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   }),
   cancel_import: () => undefined,
 
+  // --- Copy to host ---
+  list_copyable_objects: () => ({
+    tables: [
+      { name: 'users', estimatedRows: 100 },
+      { name: 'orders', estimatedRows: 500 },
+    ],
+    procedures: ['sp_recalc'],
+    functions: ['fn_total'],
+    triggers: ['trg_audit'],
+    events: [],
+  }),
+  start_copy_to_host: () => 'copy-job-1',
+  get_copy_progress: () => ({
+    jobId: 'copy-job-1',
+    status: 'completed',
+    objectsTotal: 5,
+    objectsDone: 5,
+    currentObject: null,
+    currentObjectType: null,
+    rowsTotal: null,
+    rowsDone: null,
+    errorMessage: null,
+    cancelRequested: false,
+  }),
+  cancel_copy: () => null,
+
   // --- Process list ---
   get_processlist: () => [],
   kill_queries: () => [],

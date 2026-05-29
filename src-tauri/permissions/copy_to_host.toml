@@ -1,0 +1,23 @@
+[[permission]]
+identifier = "allow-list-copyable-objects"
+description = "Enables the list_copyable_objects command without any pre-configured scope."
+commands.allow = ["list_copyable_objects"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-start-copy-to-host"
+description = "Enables the start_copy_to_host command without any pre-configured scope."
+commands.allow = ["start_copy_to_host"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-copy-progress"
+description = "Enables the get_copy_progress command without any pre-configured scope."
+commands.allow = ["get_copy_progress"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-cancel-copy"
+description = "Enables the cancel_copy command without any pre-configured scope."
+commands.allow = ["cancel_copy"]
+commands.deny = []

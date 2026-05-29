@@ -4,8 +4,6 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 
 https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 
-
-
 ## Contents
 
 - **Install & downloads**
@@ -29,6 +27,7 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 
 - **Connections** — save and open connections; test connectivity from the connection dialog
 - **Object browser** — navigate databases, tables, views, and related objects
+- **Copy to Another Host** — copy selected tables, routines, triggers, and events from one database to a different saved host with progress tracking and cancel support
 - **Query editor** — Monaco-based SQL editing with formatting and completion-oriented tooling
 - **Workspace tabs** — inline query-tab rename plus context-menu and drag/drop reordering for workspace and connection tabs
 - **Result sets** — grid, form, and text views; execution feedback and toolbars
@@ -40,6 +39,18 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 - **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally; current workspace session restored on relaunch and auto-saved on close / every 5 minutes when enabled. The Results settings page includes a "Show table data tabs in bottom panel" toggle (opt-in, off by default) that scopes table-data tabs to the active query editor and shows them alongside query results in the query editor's lower result panel.
 - **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with per-tab panel state preserved across workspace tab switches, longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, stable hidden schema/SQL context prefixes for better follow-up prompt-cache reuse on compatible local providers, and OpenAI-compatible Responses API chaining with automatic chat-completions fallback where supported. Use `/remember <text>` in the AI chat to save per-connection memories that persist across sessions and improve future AI responses. Manage saved memories in AI Settings.
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
+
+## Copy To Another Host
+
+Use **Copy to Another Host...** from the object browser context menu on a database, table, view-adjacent routine node, trigger, or event to open the transfer dialog.
+
+- Choose a saved target connection on a different host. Read-only profiles and the source host are excluded from the target picker.
+- Pick an existing target database or select **+ New database...** to create one as part of the copy.
+- Select the objects to copy. Launching from a single object preselects that object; launching from a database starts with the full object list available.
+- Expand **Options** to switch between `Structure + Data`, `Structure only`, or `Data only`, and to control `DROP IF EXISTS`, `CREATE IF NOT EXISTS`, insert mode, truncation, and `Ignore Definer`.
+- Start the copy to monitor object-level progress, table row progress when available, and to cancel the job before it completes.
+
+The target copy workflow temporarily disables foreign-key checks on the destination and restores them when the operation finishes.
 
 ## Stack
 

@@ -3,6 +3,7 @@ pub mod ai_memory;
 pub mod app_info;
 pub mod connection_groups;
 pub mod connections;
+pub mod copy_to_host;
 pub mod export;
 pub mod favorites;
 pub mod frontend_log;

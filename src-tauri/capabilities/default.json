@@ -116,6 +116,10 @@
     "allow-delete-memory",
     "allow-search-memories",
     "allow-reembed-memories",
-    "allow-touch-results"
+    "allow-touch-results",
+    "allow-list-copyable-objects",
+    "allow-start-copy-to-host",
+    "allow-get-copy-progress",
+    "allow-cancel-copy"
   ]
 }

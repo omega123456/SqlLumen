@@ -43,6 +43,40 @@ pub struct DumpJobProgress {
     pub completed_at: Option<std::time::SystemTime>,
 }
 
+/// Status of a copy-to-host job.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum CopyJobStatus {
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+/// Progress info for an active or completed copy-to-host job.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyJobProgress {
+    pub job_id: String,
+    pub status: CopyJobStatus,
+    pub objects_total: usize,
+    pub objects_done: usize,
+    /// Name of the object currently being copied (None before/after work).
+    pub current_object: Option<String>,
+    /// Type of the object currently being copied (e.g. "table", "procedure").
+    pub current_object_type: Option<String>,
+    /// Total rows for the current table (None for non-table objects).
+    pub rows_total: Option<u64>,
+    /// Rows copied so far for the current table (None for non-table objects).
+    pub rows_done: Option<u64>,
+    pub error_message: Option<String>,
+    pub cancel_requested: bool,
+    /// When the job reached a terminal state (Completed/Failed/Cancelled).
+    /// Used for lazy cleanup of stale entries.
+    #[serde(skip)]
+    pub completed_at: Option<std::time::SystemTime>,
+}
+
 /// Status of a SQL import job.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +139,8 @@ pub struct AppState {
     pub dump_jobs: Arc<RwLock<HashMap<String, DumpJobProgress>>>,
     /// Progress tracking for SQL import jobs.
     pub import_jobs: Arc<RwLock<HashMap<String, ImportJobProgress>>>,
+    /// Progress tracking for copy-to-host jobs.
+    pub copy_jobs: Arc<RwLock<HashMap<String, CopyJobProgress>>>,
     /// Cancellation tokens for in-progress AI chat streams, keyed by stream_id.
     pub ai_requests: Arc<Mutex<HashMap<String, CancellationToken>>>,
     /// Cancellation tokens for in-progress schema index builds, keyed by profile_id.

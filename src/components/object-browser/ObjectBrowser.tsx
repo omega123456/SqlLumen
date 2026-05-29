@@ -10,6 +10,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
+import type { CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { TextInput } from '../common/TextInput'
 import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
@@ -20,6 +21,7 @@ import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
 
 const SqlDumpDialog = lazy(() => import('../dialogs/SqlDumpDialog'))
+const CopyToHostDialog = lazy(() => import('../dialogs/CopyToHostDialog'))
 
 export interface ObjectBrowserProps {
   connectionId: string
@@ -62,6 +64,14 @@ interface SqlDumpDialogState {
 
 const CLOSED_DUMP_DIALOG: SqlDumpDialogState = { open: false }
 
+interface CopyToHostDialogState {
+  open: boolean
+  database?: string
+  objectSelection?: CopyObjectSelection
+}
+
+const CLOSED_COPY_TO_HOST_DIALOG: CopyToHostDialogState = { open: false }
+
 export function ObjectBrowser({
   connectionId,
   favouritesOpen,
@@ -102,6 +112,8 @@ export function ObjectBrowser({
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(CLOSED_MENU)
   const [dumpDialog, setDumpDialog] = useState<SqlDumpDialogState>(CLOSED_DUMP_DIALOG)
+  const [copyToHostDialog, setCopyToHostDialog] =
+    useState<CopyToHostDialogState>(CLOSED_COPY_TO_HOST_DIALOG)
 
   const isReadOnly = activeConnection?.profile?.readOnly ?? false
 
@@ -318,6 +330,24 @@ export function ObjectBrowser({
     setDumpDialog(CLOSED_DUMP_DIALOG)
   }, [])
 
+  const handleCopyToHost = useCallback(
+    (
+      databaseName: string,
+      objectSelection?: CopyObjectSelection
+    ) => {
+      setCopyToHostDialog({
+        open: true,
+        database: databaseName,
+        objectSelection,
+      })
+    },
+    []
+  )
+
+  const handleCloseCopyToHostDialog = useCallback(() => {
+    setCopyToHostDialog(CLOSED_COPY_TO_HOST_DIALOG)
+  }, [])
+
   // ---------------------------------------------------------------------------
   // Object activation handler — uses node.databaseName (Simplification 5)
   // ---------------------------------------------------------------------------
@@ -472,6 +502,7 @@ export function ObjectBrowser({
         onExecuteRoutine={actions.onExecuteRoutine}
         onExportDump={handleExportDump}
         onExportDdl={handleExportDdl}
+        onCopyToHost={handleCopyToHost}
       />
 
       {actions.dialogs}
@@ -484,6 +515,19 @@ export function ObjectBrowser({
             initialTable={dumpDialog.table}
             schemaOnly={dumpDialog.schemaOnly}
             onClose={handleCloseDumpDialog}
+          />
+        </Suspense>
+      )}
+
+      {copyToHostDialog.open && copyToHostDialog.database && activeConnection?.profile && (
+        <Suspense fallback={null}>
+          <CopyToHostDialog
+            isOpen
+            onClose={handleCloseCopyToHostDialog}
+            sourceConnectionId={connectionId}
+            sourceConnectionLabel={activeConnection.profile.name}
+            sourceDatabase={copyToHostDialog.database}
+            preSelectedObject={copyToHostDialog.objectSelection}
           />
         </Suspense>
       )}

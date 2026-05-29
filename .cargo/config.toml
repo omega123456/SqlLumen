@@ -155,6 +155,10 @@ sqllumen-test-integration = [
   "ddl_detector_integration",
   "--test",
   "sql_dump_streaming_integration",
+  "--test",
+  "copy_to_host_commands_integration",
+  "--test",
+  "copy_to_host_engine_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -162,7 +166,7 @@ sqllumen-llvm-cov = [
   "nextest",
   "--summary-only",
   "--ignore-filename-regex",
-  "src-tauri.*src.*credentials\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*tests.*common|cargo.*registry|src-tauri.*src.*commands.export\\.rs|src-tauri.*src.*export.xlsx_writer\\.rs|src-tauri.*src.*mysql.query_log\\.rs|src-tauri.*src.*commands.sql_dump\\.rs|src-tauri.*src.*export.sql_import\\.rs|src-tauri.*src.*commands.ai_memory\\.rs|src-tauri.*src.*ai_memory.search\\.rs|src-tauri.*src.*ai_memory.reembed\\.rs",
+  "src-tauri.*src.*credentials\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*tests.*common|cargo.*registry|src-tauri.*src.*commands.export\\.rs|src-tauri.*src.*export.xlsx_writer\\.rs|src-tauri.*src.*mysql.query_log\\.rs|src-tauri.*src.*commands.sql_dump\\.rs|src-tauri.*src.*commands.copy_to_host\\.rs|src-tauri.*src.*export.sql_import\\.rs|src-tauri.*src.*commands.ai_memory\\.rs|src-tauri.*src.*ai_memory.search\\.rs|src-tauri.*src.*ai_memory.reembed\\.rs",
   "--manifest-path",
   "src-tauri/Cargo.toml",
   "--features",
@@ -311,6 +315,10 @@ sqllumen-llvm-cov = [
   "metadata_cache_integration",
   "--test",
   "sql_dump_streaming_integration",
+  "--test",
+  "copy_to_host_commands_integration",
+  "--test",
+  "copy_to_host_engine_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

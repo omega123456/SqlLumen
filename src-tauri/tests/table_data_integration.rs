@@ -119,6 +119,9 @@ mod type_aware_filter_integration {
             import_jobs: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            copy_jobs: std::sync::Arc::new(
+                std::sync::RwLock::new(std::collections::HashMap::new()),
+            ),
             ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
             index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
             session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),

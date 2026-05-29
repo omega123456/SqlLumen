@@ -34,6 +34,7 @@ fn test_state() -> AppState {
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
+        copy_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         ai_requests: Arc::new(Mutex::new(HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(HashMap::new())),
         session_profile_map: Arc::new(Mutex::new(HashMap::new())),
