@@ -1,1 +1,1 @@
-See release assets for platform installers.
+Added copy to another host feature 
