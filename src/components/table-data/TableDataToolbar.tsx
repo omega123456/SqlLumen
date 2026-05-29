@@ -41,6 +41,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const insertNewRow = useTableDataStore((state) => state.insertNewRow)
   const cloneSelectedRow = useTableDataStore((state) => state.cloneSelectedRow)
   const deleteRow = useTableDataStore((state) => state.deleteRow)
+  const deleteRows = useTableDataStore((state) => state.deleteRows)
+  const setCheckedRowKeys = useTableDataStore((state) => state.setCheckedRowKeys)
   const saveCurrentRow = useTableDataStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useTableDataStore((state) => state.discardCurrentRow)
   const refreshData = useTableDataStore((state) => state.refreshData)
@@ -62,6 +64,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const currentPage = tabState?.currentPage ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const selectedRowKey = tabState?.selectedRowKey ?? null
+  const checkedRowKeys = useMemo(
+    () => tabState?.checkedRowKeys ?? [],
+    [tabState?.checkedRowKeys]
+  )
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const filterModel = useMemo<FilterCondition[]>(() => tabState?.filterModel ?? [], [tabState])
   const selectedCell = tabState?.selectedCell ?? null
@@ -109,10 +115,14 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     })
   }, [withNavigationGuard, insertNewRow, tabId])
 
+  // Bulk delete targets checked rows when any are checked; otherwise the single
+  // visually selected row.
+  const deleteTargetCount = checkedRowKeys.length > 0 ? checkedRowKeys.length : selectedRowKey ? 1 : 0
+
   const handleDeleteRow = useCallback(() => {
-    if (!selectedRowKey) return
+    if (deleteTargetCount === 0) return
     setShowDeleteConfirm(true)
-  }, [selectedRowKey])
+  }, [deleteTargetCount])
 
   const handleCloneRow = useCallback(() => {
     withNavigationGuard(() => {
@@ -123,7 +133,37 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const handleConfirmDelete = useCallback(async () => {
     setShowDeleteConfirm(false)
 
-    // Always delete the visually selected row, not editState.rowKey
+    // Bulk delete: delete every checked row.
+    if (checkedRowKeys.length > 0) {
+      let rowKeysToDelete = checkedRowKeys
+      let discardedDraftCount = 0
+
+      // If we're editing one of the targeted rows, discard unsaved changes first.
+      // For a draft row this already removes it from `rows`, so drop it from the
+      // list handed to deleteRows to avoid removing the same slot twice (which
+      // would otherwise pop a real persisted row out of the grid).
+      if (editState && checkedRowKeys.some((key) => isSameRowKey(editState.rowKey, key))) {
+        discardCurrentRow(tabId)
+        if (editState.isNewRow) {
+          discardedDraftCount = 1
+          rowKeysToDelete = checkedRowKeys.filter((key) => !isSameRowKey(editState.rowKey, key))
+        }
+      }
+
+      const deletedCount = (await deleteRows(tabId, rowKeysToDelete)) + discardedDraftCount
+      setCheckedRowKeys(tabId, [])
+
+      const newState = useTableDataStore.getState().tabs[tabId]
+      if (newState && !newState.error && deletedCount > 0) {
+        showSuccess(
+          'Rows deleted',
+          `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted successfully.`
+        )
+      }
+      return
+    }
+
+    // Single delete: always delete the visually selected row, not editState.rowKey
     if (!selectedRowKey) return
 
     // If we're editing this row, discard unsaved changes first
@@ -138,7 +178,17 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     if (newState && !newState.error) {
       showSuccess('Row deleted', 'Row deleted successfully.')
     }
-  }, [selectedRowKey, editState, discardCurrentRow, deleteRow, tabId, showSuccess])
+  }, [
+    checkedRowKeys,
+    selectedRowKey,
+    editState,
+    discardCurrentRow,
+    deleteRow,
+    deleteRows,
+    setCheckedRowKeys,
+    tabId,
+    showSuccess,
+  ])
 
   const handleCancelDelete = useCallback(() => {
     setShowDeleteConfirm(false)
@@ -231,7 +281,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     })
   }, [withNavigationGuard, applyFilters, tabId, showSuccess])
 
-  const canDelete = !isMutationDisabled && selectedRowKey !== null && !selectedIsNewRow
+  const canDelete =
+    !isMutationDisabled &&
+    deleteTargetCount > 0 &&
+    (checkedRowKeys.length > 0 || !selectedIsNewRow)
 
   return (
     <div className={styles.toolbar} data-testid="table-data-toolbar">
@@ -306,11 +359,11 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
               className={styles.toolbarButton}
               disabled={!canDelete || isBusy}
               onClick={handleDeleteRow}
-              title="Delete row"
+              title={deleteTargetCount > 1 ? `Delete ${deleteTargetCount} rows` : 'Delete row'}
               data-testid="btn-delete-row"
             >
               <Trash size={16} weight="regular" />
-              <span>Delete</span>
+              <span>{deleteTargetCount > 1 ? `Delete (${deleteTargetCount})` : 'Delete'}</span>
             </button>
 
             <button
@@ -395,8 +448,12 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title="Delete Row"
-        message="Are you sure you want to delete this row?"
+        title={deleteTargetCount > 1 ? 'Delete Rows' : 'Delete Row'}
+        message={
+          deleteTargetCount > 1
+            ? `Are you sure you want to delete these ${deleteTargetCount} rows?`
+            : 'Are you sure you want to delete this row?'
+        }
         confirmLabel="Delete"
         isDestructive={true}
         onConfirm={handleConfirmDelete}

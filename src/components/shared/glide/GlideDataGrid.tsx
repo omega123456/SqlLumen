@@ -255,6 +255,10 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     [columns]
   )
   const rowMarkerWidth = rowMarkers === 'none' ? 0 : DEFAULT_ROW_MARKER_WIDTH
+  // Glide only paints an *unchecked* 'checkbox' marker at hover opacity, which makes the
+  // column look empty (white, borderless) until the pointer is over a row. Promote it to
+  // 'checkbox-visible' so every row's box is always drawn at full opacity.
+  const dataEditorRowMarkers = rowMarkers === 'checkbox' ? 'checkbox-visible' : rowMarkers
 
   return (
     <div
@@ -283,7 +287,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           theme={theme}
           rowHeight={rowHeight}
           headerHeight={headerHeight}
-          rowMarkers={rowMarkers}
+          rowMarkers={dataEditorRowMarkers}
           gridSelection={activeSelection}
           onGridSelectionChange={handleSelectionChange}
           onColumnResize={handleColumnResize}
@@ -302,6 +306,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           cellActivationBehavior="second-click"
           rangeSelect="cell"
           rowSelect={rowMarkers === 'none' ? 'none' : 'multi'}
+          rowSelectionMode="multi"
+          rowSelectionBlending="mixed"
           columnSelect="none"
           getCellsForSelection={true}
         />

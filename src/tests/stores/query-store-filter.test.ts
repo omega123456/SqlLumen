@@ -117,6 +117,40 @@ describe('applyQueryFilters — apply and clear', () => {
     expect(result.unfilteredRows).toEqual(ROWS)
     expect(result.filterModel).toEqual([{ column: 'name', operator: '==', value: 'Bob' }])
   })
+
+  it('resets checkedRowIndices when applying a filter (stale indices would target wrong rows)', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      totalRows: 5,
+      rowLimit: 1000,
+      checkedRowIndices: [0, 2, 4],
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'name', operator: '==', value: 'Alice' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(result.checkedRowIndices).toEqual([])
+  })
+
+  it('resets checkedRowIndices when clearing a filter', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: [[1, 'Alice', 30]],
+      unfilteredRows: ROWS,
+      filterModel: [{ column: 'name', operator: '==', value: 'Alice' }],
+      totalRows: 5,
+      rowLimit: 1000,
+      checkedRowIndices: [0],
+    })
+
+    useQueryStore.getState().applyQueryFilters('tab-1', 0, [])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(result.checkedRowIndices).toEqual([])
+  })
 })
 
 describe('applyQueryFilters — operators', () => {

@@ -2,7 +2,7 @@ import React from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
-import { useQueryStore } from '../../../stores/query-store'
+import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
 
@@ -109,6 +109,61 @@ describe('ResultGridView', () => {
     }
     expect(props.columns.map((column) => column.displayName)).toEqual(['id', 'name'])
     expect(props.rows[0]).toMatchObject({ col_0: 1, col_1: 'Ada', __rowIdx: 0 })
+  })
+
+  it('enables the checkbox row marker in read-only mode', () => {
+    render(<ResultGridView {...baseProps} editMode={null} />)
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rowMarkers: string }
+    expect(props.rowMarkers).toBe('checkbox')
+  })
+
+  it('disables the checkbox row marker in edit mode', () => {
+    render(<ResultGridView {...baseProps} editMode="users" />)
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rowMarkers: string }
+    expect(props.rowMarkers).toBe('none')
+  })
+
+  it('forwards checked rows to the store as page-local row indices', () => {
+    const setCheckedRowIndices = vi.spyOn(useQueryStore.getState(), 'setCheckedRowIndices')
+    render(<ResultGridView {...baseProps} />)
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      onRowMarkersChange: (rows: Record<string, unknown>[]) => void
+    }
+    act(() => {
+      props.onRowMarkersChange([
+        { __rowIdx: 0, col_0: 1 },
+        { __rowIdx: 1, col_0: 2 },
+      ])
+    })
+    expect(setCheckedRowIndices).toHaveBeenCalledWith('tab-1', [0, 1])
+  })
+
+  it('bumps resetSelectionKey when the store checked set clears after a delete', () => {
+    function seedCheckedIndices(indices: number[]) {
+      act(() => {
+        useQueryStore.setState({
+          tabs: {
+            'tab-1': {
+              results: [{ ...DEFAULT_RESULT_STATE, checkedRowIndices: indices }],
+              activeResultIndex: 0,
+            },
+          },
+        } as unknown as Parameters<typeof useQueryStore.setState>[0])
+      })
+    }
+
+    seedCheckedIndices([0, 1])
+    const { rerender } = render(<ResultGridView {...baseProps} />)
+    const initialKey = (mockCanvasBaseGridView.mock.lastCall?.[0] as { resetSelectionKey: number })
+      .resetSelectionKey
+
+    // The toolbar clears checkedRowIndices to [] on delete.
+    seedCheckedIndices([])
+    rerender(<ResultGridView {...baseProps} />)
+    const clearedKey = (mockCanvasBaseGridView.mock.lastCall?.[0] as { resetSelectionKey: number })
+      .resetSelectionKey
+
+    expect(clearedKey).toBe(initialKey + 1)
   })
 
   it('fires onSortChanged when sort is triggered', () => {

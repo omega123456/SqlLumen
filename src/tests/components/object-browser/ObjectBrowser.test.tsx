@@ -1962,4 +1962,121 @@ describe('ObjectBrowser', () => {
     expect(refreshMock).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db')
     setSchemaState({ refreshDatabase: origRefresh })
   })
+
+  it('preserves each connection per-tab search state when switching connection tabs', async () => {
+    const CONN_A = 'conn-A'
+    const CONN_B = 'conn-B'
+
+    const dbId = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+    const tablesId = makeNodeId('category', 'ecommerce_db', 'table')
+    const usersId = makeNodeId('table', 'ecommerce_db', 'users')
+    const ordersId = makeNodeId('table', 'ecommerce_db', 'orders')
+
+    const nodes: Record<string, TreeNodeType> = {
+      [dbId]: {
+        id: dbId,
+        label: 'ecommerce_db',
+        type: 'database',
+        parentId: null,
+        hasChildren: true,
+        isLoaded: true,
+        databaseName: 'ecommerce_db',
+        objectName: 'ecommerce_db',
+      },
+      [tablesId]: {
+        id: tablesId,
+        label: 'Tables',
+        type: 'category',
+        parentId: dbId,
+        hasChildren: true,
+        isLoaded: true,
+        databaseName: 'ecommerce_db',
+        metadata: { categoryType: 'table', databaseName: 'ecommerce_db' },
+      },
+      [usersId]: {
+        id: usersId,
+        label: 'users',
+        type: 'table',
+        parentId: tablesId,
+        hasChildren: false,
+        isLoaded: true,
+        databaseName: 'ecommerce_db',
+        objectName: 'users',
+        metadata: { databaseName: 'ecommerce_db' },
+      },
+      [ordersId]: {
+        id: ordersId,
+        label: 'orders',
+        type: 'table',
+        parentId: tablesId,
+        hasChildren: false,
+        isLoaded: true,
+        databaseName: 'ecommerce_db',
+        objectName: 'orders',
+        metadata: { databaseName: 'ecommerce_db' },
+      },
+    }
+
+    setConnectionState({
+      activeConnections: {
+        [CONN_A]: makeActiveConnection({ id: CONN_A }),
+        [CONN_B]: makeActiveConnection({ id: CONN_B }),
+      },
+      activeTabId: CONN_A,
+    })
+
+    // Connection A: no selection (scope = whole tree), keyword "users".
+    // Connection B: Tables category selected (scope = tablesId), keyword "orders".
+    setSchemaState({
+      connectionStates: {
+        [CONN_A]: {
+          nodes,
+          childIdsByParentId: buildChildIndex(nodes),
+          expandedNodes: new Set([dbId, tablesId]),
+          loadingNodes: new Set(),
+          selectedNodeId: null,
+          filterText: 'users',
+          loadGeneration: 0,
+        },
+        [CONN_B]: {
+          nodes,
+          childIdsByParentId: buildChildIndex(nodes),
+          expandedNodes: new Set([dbId, tablesId]),
+          loadingNodes: new Set(),
+          selectedNodeId: tablesId,
+          filterText: 'orders',
+          loadGeneration: 0,
+        },
+      },
+    })
+
+    const { rerender } = render(
+      <ObjectBrowser connectionId={CONN_A} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    expect(screen.getByTestId('filter-input')).toHaveValue('users')
+
+    // Switch to connection B (same component instance, new connectionId prop).
+    setConnectionState({ activeTabId: CONN_B })
+    rerender(
+      <ObjectBrowser connectionId={CONN_B} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('filter-input')).toHaveValue('orders')
+    })
+    // B's keyword must NOT be wiped by the scope-change effect on tab switch.
+    expect(useSchemaStore.getState().connectionStates[CONN_B].filterText).toBe('orders')
+
+    // Switch back to connection A; its original keyword must be intact.
+    setConnectionState({ activeTabId: CONN_A })
+    rerender(
+      <ObjectBrowser connectionId={CONN_A} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('filter-input')).toHaveValue('users')
+    })
+    expect(useSchemaStore.getState().connectionStates[CONN_A].filterText).toBe('users')
+  })
 })

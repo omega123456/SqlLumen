@@ -516,9 +516,18 @@ export interface TableDataStore {
   insertNewRow: (tabId: string) => void
   cloneSelectedRow: (tabId: string) => void
   deleteRow: (tabId: string, rowKey: Record<string, unknown>) => Promise<void>
+  /**
+   * Delete multiple rows by their row keys. Persisted rows are removed from the
+   * database via IPC (one call per row); unsaved draft rows are dropped locally.
+   * Stops and records an error on the first failed delete, leaving already
+   * deleted rows removed.
+   */
+  deleteRows: (tabId: string, rowKeys: Record<string, unknown>[]) => Promise<number>
 
   setViewMode: (tabId: string, mode: 'grid' | 'form') => void
   setSelectedRow: (tabId: string, rowKey: Record<string, unknown> | null) => void
+  /** Replace the set of checkbox-checked row keys for bulk operations. */
+  setCheckedRowKeys: (tabId: string, rowKeys: Record<string, unknown>[]) => void
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
   setColumnWidth: (tabId: string, column: string, width: number) => void
   setPageSize: (tabId: string, newPageSize: number) => Promise<void>
@@ -761,6 +770,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           executionTimeMs: result.executionTimeMs,
           rowsEvictedAt: null,
           selectedRowKey: null,
+          checkedRowKeys: [],
           isLoading: false,
           rowResidency: {
             status: 'resident',
@@ -863,6 +873,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
               rows: [],
               rowsEvictedAt: Date.now(),
               selectedRowKey: null,
+              checkedRowKeys: [],
               selectedCell: null,
               editState: null,
               saveError: null,
@@ -1281,6 +1292,74 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       }
     },
 
+    // ------ deleteRows (bulk) ------
+
+    deleteRows: async (tabId, rowKeys) => {
+      if (rowKeys.length === 0) return 0
+
+      let deletedCount = 0
+
+      // Separate unsaved draft rows (handled locally) from persisted rows.
+      const draftKeys = rowKeys.filter((key) => '__tempId' in key)
+      const persistedKeys = rowKeys.filter((key) => !('__tempId' in key))
+
+      // Drop unsaved draft rows locally (temp rows always live at the end).
+      for (const key of draftKeys) {
+        const tab = get().tabs[tabId]
+        if (!tab) return deletedCount
+        const newRows = [...tab.rows]
+        newRows.pop()
+        patchTab(tabId, {
+          rows: newRows,
+          editState: tab.editState?.tempId === key.__tempId ? null : tab.editState,
+          saveError: null,
+        })
+        deletedCount += 1
+      }
+
+      const tabAfterDrafts = get().tabs[tabId]
+      if (!tabAfterDrafts || !tabAfterDrafts.primaryKey) return deletedCount
+
+      for (const rowKey of persistedKeys) {
+        const tab = get().tabs[tabId]
+        if (!tab || !tab.primaryKey) break
+
+        try {
+          await deleteTableRowCmd({
+            connectionId: tab.connectionId,
+            database: tab.database,
+            table: tab.table,
+            pkColumns: tab.primaryKey.keyColumns,
+            pkValues: rowKey,
+          })
+
+          const latest = get().tabs[tabId]
+          if (!latest) return deletedCount
+
+          const rowIdx = findRowIndexByKey(latest.rows, latest.columns, rowKey)
+          if (rowIdx !== -1) {
+            const newRows = [...latest.rows]
+            newRows.splice(rowIdx, 1)
+            await syncPatchedTableDataCache('delete', tabId, newRows)
+            markTableDataResident(
+              tabId,
+              { rows: newRows, editState: null, saveError: null },
+              { preserveActiveState: true }
+            )
+          }
+          deletedCount += 1
+        } catch (err) {
+          if (!get().tabs[tabId]) return deletedCount
+          patchTab(tabId, {
+            error: err instanceof Error ? err.message : String(err),
+          })
+          break
+        }
+      }
+
+      return deletedCount
+    },
+
     // ------ setViewMode ------
 
     setViewMode: (tabId, mode) => {
@@ -1291,6 +1370,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     setSelectedRow: (tabId, rowKey) => {
       patchTab(tabId, { selectedRowKey: rowKey })
+    },
+
+    // ------ setCheckedRowKeys ------
+
+    setCheckedRowKeys: (tabId, rowKeys) => {
+      patchTab(tabId, { checkedRowKeys: rowKeys })
     },
 
     // ------ setSelectedCell ------

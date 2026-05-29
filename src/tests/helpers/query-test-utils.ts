@@ -44,6 +44,7 @@ interface ResultOverrides {
   sortColumn?: string | null
   sortDirection?: 'asc' | 'desc' | null
   selectedRowIndex?: number | null
+  checkedRowIndices?: number[]
   exportDialogOpen?: boolean
   lastExecutedSql?: string | null
   reExecutable?: boolean
@@ -95,6 +96,7 @@ const RESULT_KEYS = new Set<string>([
   'sortColumn',
   'sortDirection',
   'selectedRowIndex',
+  'checkedRowIndices',
   'exportDialogOpen',
   'lastExecutedSql',
   'reExecutable',

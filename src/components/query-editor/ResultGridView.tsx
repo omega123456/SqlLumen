@@ -11,7 +11,7 @@
  * The external props interface remains unchanged — ResultPanel.tsx does not need modification.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import {
   EditorCallbacksContext,
@@ -109,10 +109,16 @@ export function ResultGridView({
 }: ResultGridViewProps) {
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
   const storeSetResultScrollCell = useQueryStore((state) => state.setResultScrollCell)
+  const storeSetCheckedRowIndices = useQueryStore((state) => state.setCheckedRowIndices)
   const selectedCell = useQueryStore((state) => {
     const tab = state.tabs[tabId]
     const activeResultIndex = tab?.activeResultIndex ?? 0
     return tab?.results[activeResultIndex]?.selectedCell ?? null
+  })
+  const checkedRowCount = useQueryStore((state) => {
+    const tab = state.tabs[tabId]
+    const activeResultIndex = tab?.activeResultIndex ?? 0
+    return tab?.results[activeResultIndex]?.checkedRowIndices?.length ?? 0
   })
   const storeScrollRow = useQueryStore((state) => {
     const tab = state.tabs[tabId]
@@ -135,6 +141,34 @@ export function ResultGridView({
     },
     [storeSetResultScrollCell, tabId]
   )
+
+  // Multi-select checkbox column — track checked rows by their page-local index
+  // so the toolbar can remove them from the in-memory (read-only) result set.
+  const handleRowMarkersChange = useCallback(
+    (selectedRows: Record<string, unknown>[]) => {
+      const indices = selectedRows
+        .map((row) => row.__rowIdx)
+        .filter((index): index is number => typeof index === 'number')
+      storeSetCheckedRowIndices(tabId, indices)
+    },
+    [storeSetCheckedRowIndices, tabId]
+  )
+
+  // When the store's checked set transitions from non-empty to empty (e.g. the
+  // toolbar cleared it after a bulk delete), push a reset signal down to the
+  // grid so its internal CompactSelection.rows checkmarks are cleared too.
+  // Uses the documented "adjust state during render" pattern: track the
+  // previous count in state and bump the reset key on the non-empty→empty
+  // transition, so the signal is computed synchronously without an effect.
+  const [selectionResetState, setSelectionResetState] = useState({ resetKey: 0, prevCount: 0 })
+  if (selectionResetState.prevCount !== checkedRowCount) {
+    setSelectionResetState((current) => ({
+      resetKey:
+        current.prevCount > 0 && checkedRowCount === 0 ? current.resetKey + 1 : current.resetKey,
+      prevCount: checkedRowCount,
+    }))
+  }
+  const resetSelectionKey = selectionResetState.resetKey
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -734,6 +768,9 @@ export function ResultGridView({
         isActive={isActive}
         onScrollCellChange={handleScrollCellChange}
         initialScrollCell={initialScrollCell}
+        rowMarkers={!editMode ? 'checkbox' : 'none'}
+        onRowMarkersChange={handleRowMarkersChange}
+        resetSelectionKey={resetSelectionKey}
         testId="result-grid"
       />
     </EditorCallbacksContext.Provider>

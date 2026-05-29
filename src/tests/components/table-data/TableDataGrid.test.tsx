@@ -113,6 +113,56 @@ describe('TableDataGrid', () => {
     expect(props.rows[0]).toMatchObject({ id: 1, name: 'Ada' })
   })
 
+  it('enables the checkbox row marker for editable (PK) tables', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as { rowMarkers: string }
+    expect(props.rowMarkers).toBe('checkbox')
+  })
+
+  it('disables the checkbox row marker in read-only mode', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={true} />)
+    const props = canvasCalls[canvasCalls.length - 1] as { rowMarkers: string }
+    expect(props.rowMarkers).toBe('none')
+  })
+
+  it('disables the checkbox row marker when the table has no primary key', () => {
+    act(() => useTableDataStore.setState({ tabs: { t1: tab({ primaryKey: null }) } }))
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as { rowMarkers: string }
+    expect(props.rowMarkers).toBe('none')
+  })
+
+  it('forwards checked rows to the store as primary-key row keys', () => {
+    const setCheckedRowKeys = vi.spyOn(useTableDataStore.getState(), 'setCheckedRowKeys')
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onRowMarkersChange: (rows: Record<string, unknown>[]) => void
+    }
+    act(() => {
+      props.onRowMarkersChange([{ __rowIndex: 0, id: 1, name: 'Ada' }])
+    })
+    expect(setCheckedRowKeys).toHaveBeenCalledWith('t1', [{ id: 1 }])
+  })
+
+  it('bumps resetSelectionKey when the store checked set clears after a delete', () => {
+    act(() => {
+      useTableDataStore.setState({ tabs: { t1: tab({ checkedRowKeys: [{ id: 1 }] }) } })
+    })
+    const { rerender } = render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const initialKey = (canvasCalls[canvasCalls.length - 1] as { resetSelectionKey: number })
+      .resetSelectionKey
+
+    // The toolbar clears checkedRowKeys to [] after a bulk delete.
+    act(() => {
+      useTableDataStore.setState({ tabs: { t1: tab({ checkedRowKeys: [] }) } })
+    })
+    rerender(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const clearedKey = (canvasCalls[canvasCalls.length - 1] as { resetSelectionKey: number })
+      .resetSelectionKey
+
+    expect(clearedKey).toBe(initialKey + 1)
+  })
+
   it('auto-size ignores in-progress edit text when computing widths', () => {
     act(() => {
       useTableDataStore.setState({

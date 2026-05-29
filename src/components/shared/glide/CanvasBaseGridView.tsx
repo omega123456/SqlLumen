@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
+import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
 import {
   CompactSelection,
   type CellClickedEventArgs,
@@ -58,6 +60,10 @@ import { getGlideEditor } from './glide-editors'
 import { parseSetCellValue, serializeSetCellValue } from '../../table-data/enum-field-utils'
 
 import { logFrontend } from '../../../lib/app-log-commands'
+import {
+  getContextMenuPortalRoot,
+  positionContextMenuInPortal,
+} from '../../../lib/context-menu-utils'
 type GridRow = Record<string, unknown>
 type GlideKeyDownEvent = GridKeyEventArgs
 type GlideDropdownOption = string | { value: string; label: string }
@@ -133,6 +139,14 @@ export interface CanvasBaseGridViewProps extends BaseGridViewProps {
   onInfoCellClick?: (row: GridRow, anchorRect: DOMRect) => void
   onSelectedRowChange?: (row: GridRow | null, rowIndex: number | null) => void
   onRowDoubleClicked?: (row: GridRow) => void
+  /**
+   * Monotonic signal used by callers to force the grid to clear its internal
+   * row-marker (checkbox) selection. Whenever this value changes, the grid
+   * resets `gridSelection.rows` to empty. This lets stores that own the
+   * checked-row state (e.g. after a bulk delete) push a reset down to the grid
+   * so stale visual checkmarks no longer point at shifted rows.
+   */
+  resetSelectionKey?: number
 }
 
 function toGridColumn(
@@ -343,13 +357,22 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     showInfoColumn = false,
     isActive = true,
     runCellClickGuardOnKeyboardSelection = false,
+    resetSelectionKey,
   } = props
   const gridRef = useRef<GridHandle | null>(null)
   useImperativeHandle(ref, () => gridRef.current as GridHandle, [])
   const [internalSelectedRowIndex, setInternalSelectedRowIndex] = useState<number | null>(null)
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
+  const [lastResetSelectionKey, setLastResetSelectionKey] = useState<number | undefined>(
+    resetSelectionKey
+  )
   const [internalColumnWidths, setInternalColumnWidths] = useState<Record<string, number>>({})
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    portalRoot: HTMLElement
+  } | null>(null)
+  const clipboardMenuRef = useRef<HTMLDivElement>(null)
   const lastInteractedCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const lastSelectedListCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const lastAppliedInitialScrollRef = useRef<{ scrollRow: number; scrollCol: number } | null>(null)
@@ -519,6 +542,20 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       gridRef.current?.selectCell({ rowIdx: scrollToRowIndex, idx: 0 }, { shouldFocusCell: true })
     })
   }, [scrollToRowIndex])
+
+  // Clear the internal row-marker (checkbox) selection when the caller bumps
+  // resetSelectionKey. After a bulk delete the rows array shrinks and the stale
+  // CompactSelection.rows would otherwise keep visual checkmarks on shifted
+  // rows even though the owning store's checked set is already empty. Uses the
+  // "adjust state during render" pattern (not an effect) so the marks clear in
+  // the same render that observes the new key.
+  if (resetSelectionKey != null && lastResetSelectionKey !== resetSelectionKey) {
+    setLastResetSelectionKey(resetSelectionKey)
+    setGridSelection((current) => {
+      if (!current || current.rows.length === 0) return current
+      return { ...current, rows: CompactSelection.empty() }
+    })
+  }
 
   const getCellContent = useCallback(
     ([colIndex, rowIndex]: Item): GridCell => {
@@ -1388,10 +1425,31 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const handleContextMenu = useCallback<React.MouseEventHandler<HTMLDivElement>>((event) => {
     event.preventDefault()
-    setContextMenu({ x: event.clientX, y: event.clientY })
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      portalRoot: getContextMenuPortalRoot(event.target as Element | null),
+    })
   }, [])
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  // Clamp the menu inside its portal root after it renders so it stays attached to the pointer
+  // and never overflows the viewport / dialog edge.
+  useLayoutEffect(() => {
+    if (!contextMenu || !clipboardMenuRef.current) return
+    const el = clipboardMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const pos = positionContextMenuInPortal(
+      contextMenu.portalRoot,
+      contextMenu.x,
+      contextMenu.y,
+      rect.width,
+      rect.height
+    )
+    el.style.left = `${pos.x}px`
+    el.style.top = `${pos.y}px`
+  }, [contextMenu])
 
   useEffect(() => {
     if (isActive) return
@@ -1537,55 +1595,66 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         aria-label={testId ? `${testId} data grid` : 'Data grid'}
         data-testid={testId}
       />
-      {contextMenu ? (
-        <ul
-          className="ui-context-menu"
-          role="menu"
-          data-testid={testId ? `${testId}-clipboard-menu` : 'grid-clipboard-menu'}
-          style={{ left: contextMenu.x, top: contextMenu.y, position: 'fixed' }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <li role="none">
-            <button
-              type="button"
-              className="ui-context-menu__item"
-              role="menuitem"
-              onClick={() => {
-                void copySelectionToClipboard()
-                closeContextMenu()
-              }}
+      {contextMenu
+        ? createPortal(
+            <div
+              ref={clipboardMenuRef}
+              className="ui-context-menu"
+              role="menu"
+              data-testid={testId ? `${testId}-clipboard-menu` : 'grid-clipboard-menu'}
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onPointerDown={(event) => event.stopPropagation()}
             >
-              Copy
-            </button>
-          </li>
-          <li role="none">
-            <button
-              type="button"
-              className="ui-context-menu__item"
-              role="menuitem"
-              onClick={() => {
-                void cutSelectionToClipboard()
-                closeContextMenu()
-              }}
-            >
-              Cut
-            </button>
-          </li>
-          <li role="none">
-            <button
-              type="button"
-              className="ui-context-menu__item"
-              role="menuitem"
-              onClick={() => {
-                void pasteClipboardAtSelection()
-                closeContextMenu()
-              }}
-            >
-              Paste
-            </button>
-          </li>
-        </ul>
-      ) : null}
+              <button
+                type="button"
+                className="ui-context-menu__item"
+                role="menuitem"
+                onClick={() => {
+                  void copySelectionToClipboard()
+                  closeContextMenu()
+                }}
+              >
+                <CopySimple
+                  className="ui-context-menu__icon"
+                  size={18}
+                  weight="regular"
+                  aria-hidden
+                />
+                <span>Copy</span>
+              </button>
+              <button
+                type="button"
+                className="ui-context-menu__item"
+                role="menuitem"
+                onClick={() => {
+                  void cutSelectionToClipboard()
+                  closeContextMenu()
+                }}
+              >
+                <Scissors className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                <span>Cut</span>
+              </button>
+              <button
+                type="button"
+                className="ui-context-menu__item"
+                role="menuitem"
+                onClick={() => {
+                  void pasteClipboardAtSelection()
+                  closeContextMenu()
+                }}
+              >
+                <ClipboardText
+                  className="ui-context-menu__icon"
+                  size={18}
+                  weight="regular"
+                  aria-hidden
+                />
+                <span>Paste</span>
+              </button>
+            </div>,
+            contextMenu.portalRoot
+          )
+        : null}
     </div>
   )
 }

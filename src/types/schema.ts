@@ -506,6 +506,8 @@ export interface TableDataTabState {
 
   // Selection
   selectedCell: SelectedCellInfo | null
+  /** Row keys checked via the multi-select checkbox column (bulk delete target). */
+  checkedRowKeys?: Record<string, unknown>[]
 
   // Filter/sort
   filterModel: FilterCondition[]

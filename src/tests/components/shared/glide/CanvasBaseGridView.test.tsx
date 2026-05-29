@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentType } from 'react'
-import { GridCellKind } from '@glideapps/glide-data-grid'
+import { CompactSelection, GridCellKind, type GridSelection } from '@glideapps/glide-data-grid'
 import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBaseGridView'
 import * as GlideDataGridModule from '../../../../components/shared/glide/GlideDataGrid'
 
@@ -787,6 +787,53 @@ describe('CanvasBaseGridView', () => {
     props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
     expect(props.selection?.rows.length ?? 0).toBe(0)
     expect(onRowMarkersChange).not.toHaveBeenCalled()
+  })
+
+  it('clears row-marker checkmarks when resetSelectionKey changes', () => {
+    const onRowMarkersChange = vi.fn()
+    const multiRow = [
+      { id: 1, name: 'alpha' },
+      { id: 2, name: 'beta' },
+    ]
+    const { rerender } = render(
+      <CanvasBaseGridView
+        rows={multiRow}
+        columns={columns}
+        editState={null}
+        rowMarkers="checkbox"
+        onRowMarkersChange={onRowMarkersChange}
+        resetSelectionKey={0}
+      />
+    )
+
+    const captureProps = () =>
+      mockGlideDataGrid.mock.lastCall?.[0] as {
+        onSelectionChange: (selection: GridSelection) => void
+        selection?: GridSelection
+      }
+
+    // Simulate the user checking both row markers via the grid.
+    act(() => {
+      captureProps().onSelectionChange({
+        columns: CompactSelection.empty(),
+        rows: CompactSelection.empty().add(0).add(1),
+      } as GridSelection)
+    })
+    expect(captureProps().selection?.rows.length ?? 0).toBe(2)
+
+    // Bumping resetSelectionKey (what a caller does after a bulk delete clears
+    // the store's checked set) must clear the grid's visual checkmarks.
+    rerender(
+      <CanvasBaseGridView
+        rows={multiRow}
+        columns={columns}
+        editState={null}
+        rowMarkers="checkbox"
+        onRowMarkersChange={onRowMarkersChange}
+        resetSelectionKey={1}
+      />
+    )
+    expect(captureProps().selection?.rows.length ?? 0).toBe(0)
   })
 
   it('persists visible scroll cells from range coordinates instead of pixel transforms', () => {

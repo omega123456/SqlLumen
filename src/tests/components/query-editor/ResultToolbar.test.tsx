@@ -538,4 +538,54 @@ describe('ResultToolbar', () => {
     expect(result.editingRowIndex).toBe(1)
     expect(result.editState?.isNewRow).toBe(true)
   })
+
+  describe('delete checked rows (read-only result view)', () => {
+    const props = {
+      filterModel: [],
+      onFilterClick: () => {},
+      onClearFilterClick: () => {},
+    }
+
+    it('does not render the delete button when no rows are checked', () => {
+      setupTabState(tabId, {
+        status: 'success',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        rows: [[1], [2]],
+        totalRows: 2,
+        checkedRowIndices: [],
+      })
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      expect(screen.queryByTestId('query-delete-rows-button')).not.toBeInTheDocument()
+    })
+
+    it('renders a delete button with the checked count when rows are checked', () => {
+      setupTabState(tabId, {
+        status: 'success',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        rows: [[1], [2], [3]],
+        totalRows: 3,
+        checkedRowIndices: [0, 2],
+      })
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      expect(screen.getByTestId('query-delete-rows-button')).toHaveTextContent('Delete (2)')
+    })
+
+    it('removes checked rows from the in-memory result on click', () => {
+      setupTabState(tabId, {
+        status: 'success',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        rows: [[1], [2], [3]],
+        totalRows: 3,
+        checkedRowIndices: [0, 2],
+      })
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+
+      fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+
+      const result = flat(tabId)
+      expect(result.rows).toEqual([[2]])
+      expect(result.totalRows).toBe(1)
+      expect(result.checkedRowIndices).toEqual([])
+    })
+  })
 })

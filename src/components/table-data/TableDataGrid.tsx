@@ -81,6 +81,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const startEditing = useTableDataStore((state) => state.startEditing)
   const commitEditingRowIfNeeded = useTableDataStore((state) => state.commitEditingRowIfNeeded)
   const setSelectedRow = useTableDataStore((state) => state.setSelectedRow)
+  const setCheckedRowKeys = useTableDataStore((state) => state.setCheckedRowKeys)
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
   const sortByColumn = useTableDataStore((state) => state.sortByColumn)
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
@@ -143,6 +144,37 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     },
     [setColumnWidth, tabId]
   )
+
+  // ---------------------------------------------------------------------------
+  // Multi-select checkbox column — track checked rows as row keys so the toolbar
+  // can issue a bulk delete. Unsaved draft rows carry __tempId in their key.
+  // ---------------------------------------------------------------------------
+  const handleRowMarkersChange = useCallback(
+    (selectedRows: Record<string, unknown>[]) => {
+      const keys = selectedRows.map((row) => {
+        if (row.__tempId) return { __tempId: row.__tempId }
+        return getRowKey(row, pkColumns)
+      })
+      setCheckedRowKeys(tabId, keys)
+    },
+    [pkColumns, setCheckedRowKeys, tabId]
+  )
+
+  // When the store's checked set transitions from non-empty to empty (e.g. the
+  // toolbar cleared it after a bulk delete), push a reset signal down to the
+  // grid so its internal CompactSelection.rows checkmarks are cleared too.
+  // Uses the documented "adjust state during render" pattern: track the
+  // previous count in state and bump the reset key on the non-empty→empty
+  // transition, so the signal is computed synchronously without an effect.
+  const checkedRowCount = tabState?.checkedRowKeys?.length ?? 0
+  const [selectionResetState, setSelectionResetState] = useState({ resetKey: 0, prevCount: 0 })
+  if (selectionResetState.prevCount !== checkedRowCount) {
+    setSelectionResetState((current) => ({
+      resetKey: current.prevCount > 0 && checkedRowCount === 0 ? current.resetKey + 1 : current.resetKey,
+      prevCount: checkedRowCount,
+    }))
+  }
+  const resetSelectionKey = selectionResetState.resetKey
 
   // ---------------------------------------------------------------------------
   // Editor callbacks context — provides real updateCellValue to editors inside
@@ -837,6 +869,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           }}
           scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
           onFkCellAction={handleFkCellAction}
+          rowMarkers={!isReadOnly && hasPk ? 'checkbox' : 'none'}
+          onRowMarkersChange={handleRowMarkersChange}
+          resetSelectionKey={resetSelectionKey}
           testId="table-data-grid"
           isActive={isActive}
         />

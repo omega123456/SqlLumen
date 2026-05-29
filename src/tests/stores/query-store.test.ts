@@ -840,6 +840,35 @@ describe('useQueryStore — sortResults', () => {
 
   })
 
+  it('resets checkedRowIndices after a sort (stale indices would target wrong rows)', async () => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-mock',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 3,
+            executionTimeMs: 10,
+            affectedRows: 0,
+            rows: [[3], [1], [2]],
+            autoLimitApplied: false,
+          }
+        case 'sort_results':
+          return { rows: [[1], [2], [3]] }
+        default:
+          return null
+      }
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id FROM t')
+    useQueryStore.getState().setCheckedRowIndices('tab-1', [0, 2])
+    expect(flat('tab-1').checkedRowIndices).toEqual([0, 2])
+
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+
+    expect(flat('tab-1').checkedRowIndices).toEqual([])
+  })
+
   it('clears sort state when direction is null and re-executes query', async () => {
     // Set up mock IPC with execute_query handler (for re-execution)
     overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
@@ -1770,5 +1799,70 @@ describe('useQueryStore — setResultScrollCell', () => {
     const result = useQueryStore.getState().tabs['tab-1']!.results[0]
     expect(result.scrollRow).toBe(0)
     expect(result.scrollCol).toBe(0)
+  })
+})
+
+describe('useQueryStore — setCheckedRowIndices', () => {
+  it('replaces the checked row indices for the active result', () => {
+    useQueryStore.getState().setContent('tab-chk', 'SELECT 1')
+    patchResult('tab-chk', { checkedRowIndices: [] })
+
+    useQueryStore.getState().setCheckedRowIndices('tab-chk', [0, 2])
+    expect(flat('tab-chk').checkedRowIndices).toEqual([0, 2])
+
+    useQueryStore.getState().setCheckedRowIndices('tab-chk', [])
+    expect(flat('tab-chk').checkedRowIndices).toEqual([])
+  })
+})
+
+describe('useQueryStore — deleteResultRows', () => {
+  it('removes rows from the in-memory result by index without DB calls', () => {
+    useQueryStore.getState().setContent('tab-del', 'SELECT 1')
+    patchResult('tab-del', {
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1], [2], [3]],
+      totalRows: 3,
+      selectedRowIndex: 1,
+    })
+
+    useQueryStore.getState().deleteResultRows('tab-del', [0, 2])
+
+    const result = flat('tab-del')
+    expect(result.rows).toEqual([[2]])
+    expect(result.totalRows).toBe(1)
+    expect(result.selectedRowIndex).toBeNull()
+    expect(result.checkedRowIndices).toEqual([])
+  })
+
+  it('removes deleted rows from unfilteredRows when a filter is active', () => {
+    useQueryStore.getState().setContent('tab-del-f', 'SELECT 1')
+    const rowA = [1]
+    const rowB = [2]
+    const rowC = [3]
+    patchResult('tab-del-f', {
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [rowA, rowC],
+      unfilteredRows: [rowA, rowB, rowC],
+      totalRows: 2,
+    })
+
+    useQueryStore.getState().deleteResultRows('tab-del-f', [0])
+
+    const result = flat('tab-del-f')
+    expect(result.rows).toEqual([rowC])
+    // rowA removed from the unfiltered originals, rowB (filtered out) preserved.
+    expect(result.unfilteredRows).toEqual([rowB, rowC])
+  })
+
+  it('no-ops for an empty index list', () => {
+    useQueryStore.getState().setContent('tab-del-empty', 'SELECT 1')
+    patchResult('tab-del-empty', {
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1], [2]],
+      totalRows: 2,
+    })
+
+    useQueryStore.getState().deleteResultRows('tab-del-empty', [])
+    expect(flat('tab-del-empty').rows).toEqual([[1], [2]])
   })
 })

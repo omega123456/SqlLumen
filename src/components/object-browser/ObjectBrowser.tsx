@@ -170,10 +170,18 @@ export function ObjectBrowser({
     return selectedNode.id
   }, [nodes, selectedNode])
 
-  // Clear filter when scope (selected database) changes
+  // Clear filter when scope (selected database) changes *within the same
+  // connection*. The single ObjectBrowser instance is reused across connection
+  // tabs (only the connectionId prop changes), so we must reset the tracked
+  // scope when the connection changes — otherwise switching tabs is mistaken
+  // for a scope change and wipes the newly-active connection's restored filter.
   const prevScopeRootRef = useRef<string | null | undefined>(undefined)
+  const prevConnectionIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (prevScopeRootRef.current === undefined) {
+    const connectionChanged = prevConnectionIdRef.current !== connectionId
+    prevConnectionIdRef.current = connectionId
+
+    if (connectionChanged || prevScopeRootRef.current === undefined) {
       prevScopeRootRef.current = effectiveScopeRoot
       return
     }

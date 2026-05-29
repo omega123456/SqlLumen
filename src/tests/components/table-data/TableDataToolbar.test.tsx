@@ -473,6 +473,82 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('btn-delete-row')).not.toBeDisabled()
   })
 
+  it('Delete button is enabled and shows the checked count for bulk selection', () => {
+    setupConnection()
+    setupTabState({
+      editState: null,
+      selectedRowKey: null,
+      checkedRowKeys: [{ id: 1 }, { id: 2 }],
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+    const deleteBtn = screen.getByTestId('btn-delete-row')
+    expect(deleteBtn).not.toBeDisabled()
+    expect(deleteBtn).toHaveTextContent('Delete (2)')
+  })
+
+  it('bulk delete confirmation shows the row count and deletes all checked rows', async () => {
+    const user = userEvent.setup()
+    setupConnection()
+    setupTabState({
+      editState: null,
+      selectedRowKey: null,
+      checkedRowKeys: [{ id: 1 }, { id: 2 }],
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('btn-delete-row'))
+    expect(screen.getByText('Delete Rows')).toBeInTheDocument()
+    expect(
+      screen.getByText('Are you sure you want to delete these 2 rows?')
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('confirm-confirm-button'))
+
+    await waitFor(() => {
+      expect(ipc.calls('delete_table_row').length).toBe(2)
+    })
+    // Checked selection is cleared after the bulk delete.
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
+  })
+
+  it('bulk delete of a checked draft row removes only the draft, not a persisted row', async () => {
+    const user = userEvent.setup()
+    setupConnection()
+    // Three persisted rows plus one appended draft row at the end.
+    setupTabState({
+      rows: [[1], [2], [3], [null]],
+      selectedRowKey: { __tempId: 'temp-1' },
+      checkedRowKeys: [{ id: 2 }, { __tempId: 'temp-1' }],
+      editState: {
+        rowKey: { __tempId: 'temp-1' },
+        originalValues: {},
+        currentValues: { id: null },
+        modifiedColumns: new Set(['id']),
+        isNewRow: true,
+        tempId: 'temp-1',
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('btn-delete-row'))
+    await user.click(screen.getByTestId('confirm-confirm-button'))
+
+    // Exactly one persisted-row delete IPC call (id: 2). The draft is dropped
+    // locally without IPC, and must not cause a second persisted row to vanish.
+    await waitFor(() => {
+      expect(ipc.calls('delete_table_row').length).toBe(1)
+    })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    // Draft (appended) and persisted row id=2 removed; rows 1 and 3 remain.
+    expect(state?.rows).toEqual([[1], [3]])
+    expect(state?.editState).toBeNull()
+    expect(state?.checkedRowKeys).toEqual([])
+
+    // Success toast reports both deletions (draft + persisted), not over-counted.
+    await expectToast('success', '2 rows deleted successfully.')
+  })
+
   it('confirming delete discards edits when deleting the editing row', async () => {
     setupConnection()
     setupTabState({

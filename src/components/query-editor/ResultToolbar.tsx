@@ -10,8 +10,9 @@
  * Reads per-result state from the active result via getActiveResult.
  */
 
-import { useCallback } from 'react'
-import { Copy, FloppyDisk } from '@phosphor-icons/react'
+import { useCallback, useMemo } from 'react'
+import { Copy, FloppyDisk, Trash } from '@phosphor-icons/react'
+import { useToastStore } from '../../stores/toast-store'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { EditModeDropdown } from './EditModeDropdown'
@@ -50,6 +51,8 @@ export function ResultToolbar({
   const cloneSelectedRow = useQueryStore((state) => state.cloneSelectedRow)
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
+  const deleteResultRows = useQueryStore((state) => state.deleteResultRows)
+  const showSuccess = useToastStore((state) => state.showSuccess)
 
   const status = activeResult.resultStatus
   const totalRows = activeResult.totalRows
@@ -64,6 +67,13 @@ export function ResultToolbar({
   // Edit state for Save/Discard buttons
   const editState = activeResult.editState
   const hasModifications = editState !== null && editState.modifiedColumns.size > 0
+
+  // Checkbox-selected rows for in-memory (read-only) removal.
+  const checkedRowIndices = useMemo(
+    () => activeResult.checkedRowIndices ?? [],
+    [activeResult.checkedRowIndices]
+  )
+  const checkedCount = checkedRowIndices.length
 
   const truncatedError =
     errorMessage && errorMessage.length > 200 ? errorMessage.slice(0, 200) + '\u2026' : errorMessage
@@ -112,6 +122,16 @@ export function ResultToolbar({
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
 
+  const handleDeleteChecked = useCallback(() => {
+    if (checkedRowIndices.length === 0) return
+    const count = checkedRowIndices.length
+    deleteResultRows(tabId, checkedRowIndices)
+    showSuccess(
+      'Rows removed',
+      `${count} row${count === 1 ? '' : 's'} removed from the result view.`
+    )
+  }, [checkedRowIndices, deleteResultRows, tabId, showSuccess])
+
   return (
     <div className={styles.toolbar} data-testid="result-toolbar">
       {/* Left: View mode toggle — shared component */}
@@ -138,6 +158,22 @@ export function ResultToolbar({
           >
             <Copy size={16} weight="regular" />
             <span>Clone</span>
+          </button>
+        </div>
+      )}
+
+      {/* Delete checked rows — read-only in-memory removal from the result view */}
+      {editState === null && checkedCount > 0 && (
+        <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
+          <button
+            type="button"
+            className={styles.discardButton}
+            onClick={handleDeleteChecked}
+            title={`Remove ${checkedCount} selected row${checkedCount === 1 ? '' : 's'} from the result view`}
+            data-testid="query-delete-rows-button"
+          >
+            <Trash size={16} weight="regular" />
+            <span>Delete ({checkedCount})</span>
           </button>
         </div>
       )}

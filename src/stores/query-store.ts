@@ -159,6 +159,8 @@ export interface SingleResultState {
   sortDirection: 'asc' | 'desc' | null
   /** Index of the selected row (null = none). */
   selectedRowIndex: number | null
+  /** Page-local row indices checked via the multi-select checkbox column. */
+  checkedRowIndices: number[]
   /** Whether the export dialog is open. */
   exportDialogOpen: boolean
   /** The SQL that produced this result set. */
@@ -279,6 +281,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   sortColumn: null,
   sortDirection: null,
   selectedRowIndex: null,
+  checkedRowIndices: [],
   exportDialogOpen: false,
   lastExecutedSql: null,
   reExecutable: true,
@@ -444,8 +447,9 @@ function matchesFilter(row: unknown[], columns: ColumnMeta[], condition: FilterC
           return strVal < strCond
         case '<=':
           return strVal <= strCond
+        default:
+          return false
       }
-      return false
     }
     case 'LIKE':
     case 'NOT LIKE': {
@@ -643,6 +647,16 @@ interface QueryState {
 
   /** Set the selected row index. */
   setSelectedRow: (tabId: string, index: number | null) => void
+
+  /** Replace the set of checkbox-checked row indices for the active result. */
+  setCheckedRowIndices: (tabId: string, indices: number[]) => void
+
+  /**
+   * Remove rows from the active result's in-memory display by their page-local
+   * indices. Query results are read-only, so this performs no DB operation — it
+   * only updates the displayed (and unfiltered, when present) row arrays.
+   */
+  deleteResultRows: (tabId: string, rowIndices: number[]) => void
 
   /** Set the selected cell info (column + value) for filter dialog auto-population. */
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
@@ -1106,6 +1120,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       resultStatus: 'success',
       errorMessage: reResult.error ?? null,
       selectedRowIndex: null,
+      checkedRowIndices: [],
       isExpired: false,
       rowsEvictedAt: null,
       rowResidency: {
@@ -1786,6 +1801,41 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchResultByIndex(tabId, resultIndex, { selectedRowIndex: index })
     },
 
+    setCheckedRowIndices: (tabId: string, indices: number[]) => {
+      const resultIndex = getActiveIndex(tabId)
+      const result = get().tabs[tabId]?.results[resultIndex]
+      if (!result) return
+      patchResultByIndex(tabId, resultIndex, { checkedRowIndices: indices })
+    },
+
+    deleteResultRows: (tabId: string, rowIndices: number[]) => {
+      const resultIndex = getActiveIndex(tabId)
+      const result = get().tabs[tabId]?.results[resultIndex]
+      if (!result || rowIndices.length === 0) return
+
+      const removalSet = new Set(rowIndices.filter((index) => index >= 0 && index < result.rows.length))
+      if (removalSet.size === 0) return
+
+      const removedRowRefs = new Set([...removalSet].map((index) => result.rows[index]))
+      const newRows = result.rows.filter((_, index) => !removalSet.has(index))
+
+      // When a filter is active, `rows` is a reference-preserving subset of
+      // unfilteredRows. Remove the same row references there so clearing the
+      // filter does not resurrect deleted rows.
+      const newUnfilteredRows = result.unfilteredRows
+        ? result.unfilteredRows.filter((row) => !removedRowRefs.has(row))
+        : null
+
+      patchResultByIndex(tabId, resultIndex, {
+        rows: newRows,
+        unfilteredRows: newUnfilteredRows,
+        totalRows: Math.max(0, result.totalRows - removalSet.size),
+        selectedRowIndex: null,
+        selectedCell: null,
+        checkedRowIndices: [],
+      })
+    },
+
     setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => {
       const resultIndex = getActiveIndex(tabId)
       const currentCell = get().tabs[tabId]?.results[resultIndex]?.selectedCell ?? null
@@ -1818,6 +1868,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           rows: restoredRows,
           unfilteredRows: null,
           filterModel: [],
+          checkedRowIndices: [],
         })
         return
       }
@@ -1834,6 +1885,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         rows: filteredRows,
         unfilteredRows: sourceRows,
         filterModel: conditions,
+        checkedRowIndices: [],
       })
     },
 
@@ -1923,6 +1975,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 resultStatus: 'success',
                 errorMessage: null,
                 selectedRowIndex: null,
+                checkedRowIndices: [],
                 isExpired: false,
                 rowsEvictedAt: null,
                 rowResidency: {
@@ -1991,6 +2044,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           sortColumn: column,
           sortDirection: direction,
           ...filterPatch,
+          checkedRowIndices: [],
           isExpired: false,
           rowsEvictedAt: null,
           rowResidency: {

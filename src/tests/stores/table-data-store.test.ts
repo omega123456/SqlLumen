@@ -305,6 +305,45 @@ describe('useTableDataStore — fetchPage', () => {
     expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
   })
 
+  it('clears checkedRowKeys after a successful page fetch (avoids deleting stale rows)', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }, { id: 2 }])
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([{ id: 1 }, { id: 2 }])
+
+    await useTableDataStore.getState().fetchPage('tab-1', 2)
+
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
+  })
+
+  it('clears checkedRowKeys after sorting (sort funnels through fetchPage)', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }])
+
+    await useTableDataStore.getState().sortByColumn('tab-1', 'name', 'asc')
+
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
+  })
+
+  it('clears checkedRowKeys after applying a filter', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 2 }])
+
+    await useTableDataStore
+      .getState()
+      .applyFilters('tab-1', [{ column: 'name', operator: '==' as const, value: 'Alice' }])
+
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
+  })
+
+  it('clears checkedRowKeys after refreshing data', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }])
+
+    await useTableDataStore.getState().refreshData('tab-1')
+
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
+  })
+
   it('resets rowsEvictedAt after a successful page fetch', async () => {
     await setupTabWithData()
     useTableDataStore.setState((state) => ({
@@ -591,6 +630,7 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
   it('evicts inactive resident rows while preserving metadata and clearing clean edit state', async () => {
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }, { id: 2 }])
     useTableDataStore.getState().markTableDataSurfaceInactive('tab-1')
 
     expect(frontendCacheLifecycle.hasInactiveTimer('table-data:tab-1')).toBe(true)
@@ -603,6 +643,8 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
     expect(tab.primaryKey).toEqual(mockPrimaryKey)
     expect(tab.editState).toBeNull()
     expect(tab.selectedRowKey).toBeNull()
+    // Stale checked keys must be cleared so a later delete cannot hit unintended rows.
+    expect(tab.checkedRowKeys).toEqual([])
     expect(tab.rowResidency).toMatchObject({
       status: 'evicted',
       isActive: false,
@@ -2048,5 +2090,75 @@ describe('BIT column value coercion in buildInsertPayload', () => {
       tempId: 'tmp-1',
     })
     expect(result.col_bit).toBe('128')
+  })
+})
+
+describe('useTableDataStore — setCheckedRowKeys', () => {
+  it('replaces the checked row keys for the tab', async () => {
+    await setupTabWithData('tab-1')
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }, { id: 2 }])
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([
+      { id: 1 },
+      { id: 2 },
+    ])
+
+    useTableDataStore.getState().setCheckedRowKeys('tab-1', [])
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([])
+  })
+})
+
+describe('useTableDataStore — deleteRows (bulk)', () => {
+  it('deletes multiple persisted rows via IPC and removes them from the grid', async () => {
+    const deleteCalls: unknown[] = []
+    ipc.override('delete_table_row', (args) => {
+      deleteCalls.push(args)
+      return undefined
+    })
+
+    await setupTabWithData('tab-1')
+    expect(useTableDataStore.getState().tabs['tab-1'].rows).toHaveLength(2)
+
+    const deletedCount = await useTableDataStore
+      .getState()
+      .deleteRows('tab-1', [{ id: 1 }, { id: 2 }])
+
+    expect(deletedCount).toBe(2)
+    expect(deleteCalls).toHaveLength(2)
+    expect(useTableDataStore.getState().tabs['tab-1'].rows).toHaveLength(0)
+  })
+
+  it('returns 0 and performs no IPC when given an empty list', async () => {
+    const deleteCalls: unknown[] = []
+    ipc.override('delete_table_row', (args) => {
+      deleteCalls.push(args)
+      return undefined
+    })
+
+    await setupTabWithData('tab-1')
+    const deletedCount = await useTableDataStore.getState().deleteRows('tab-1', [])
+
+    expect(deletedCount).toBe(0)
+    expect(deleteCalls).toHaveLength(0)
+    expect(useTableDataStore.getState().tabs['tab-1'].rows).toHaveLength(2)
+  })
+
+  it('stops at the first failed delete and records the error', async () => {
+    let callCount = 0
+    ipc.override('delete_table_row', () => {
+      callCount += 1
+      if (callCount === 1) return undefined
+      throw new Error('FK constraint')
+    })
+
+    await setupTabWithData('tab-1')
+    const deletedCount = await useTableDataStore
+      .getState()
+      .deleteRows('tab-1', [{ id: 1 }, { id: 2 }])
+
+    expect(deletedCount).toBe(1)
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.error).toContain('FK constraint')
+    // Only the first (successfully deleted) row was removed.
+    expect(tab.rows).toHaveLength(1)
   })
 })
