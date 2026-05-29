@@ -10,9 +10,8 @@
  * Reads per-result state from the active result via getActiveResult.
  */
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Copy, FloppyDisk, Trash } from '@phosphor-icons/react'
-import { useToastStore } from '../../stores/toast-store'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { EditModeDropdown } from './EditModeDropdown'
@@ -20,6 +19,7 @@ import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import { FilterToolbarButton } from '../shared/FilterToolbarButton'
+import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import type { ViewMode, StatusType } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import styles from './ResultToolbar.module.css'
@@ -52,7 +52,7 @@ export function ResultToolbar({
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
   const deleteResultRows = useQueryStore((state) => state.deleteResultRows)
-  const showSuccess = useToastStore((state) => state.showSuccess)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const status = activeResult.resultStatus
   const totalRows = activeResult.totalRows
@@ -66,6 +66,7 @@ export function ResultToolbar({
 
   // Edit state for Save/Discard buttons
   const editState = activeResult.editState
+  const editMode = activeResult.editMode
   const hasModifications = editState !== null && editState.modifiedColumns.size > 0
 
   // Checkbox-selected rows for in-memory (read-only) removal.
@@ -124,13 +125,19 @@ export function ResultToolbar({
 
   const handleDeleteChecked = useCallback(() => {
     if (checkedRowIndices.length === 0) return
-    const count = checkedRowIndices.length
-    deleteResultRows(tabId, checkedRowIndices)
-    showSuccess(
-      'Rows removed',
-      `${count} row${count === 1 ? '' : 's'} removed from the result view.`
-    )
-  }, [checkedRowIndices, deleteResultRows, tabId, showSuccess])
+    setShowDeleteConfirm(true)
+  }, [checkedRowIndices.length])
+
+  const handleConfirmDelete = useCallback(() => {
+    setShowDeleteConfirm(false)
+    if (checkedRowIndices.length === 0) return
+    // Success / error toasts are surfaced by the store action.
+    void deleteResultRows(tabId, checkedRowIndices)
+  }, [checkedRowIndices, deleteResultRows, tabId])
+
+  const handleCancelDelete = useCallback(() => {
+    setShowDeleteConfirm(false)
+  }, [])
 
   return (
     <div className={styles.toolbar} data-testid="result-toolbar">
@@ -162,14 +169,16 @@ export function ResultToolbar({
         </div>
       )}
 
-      {/* Delete checked rows — read-only in-memory removal from the result view */}
-      {editState === null && checkedCount > 0 && (
+      {/* Delete checked rows — real DB delete against the bound source table.
+          Only available in edit mode (a table with a primary/unique key whose
+          key columns are present), matching the cell-edit gating. */}
+      {editMode !== null && checkedCount > 0 && (
         <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
           <button
             type="button"
             className={styles.discardButton}
             onClick={handleDeleteChecked}
-            title={`Remove ${checkedCount} selected row${checkedCount === 1 ? '' : 's'} from the result view`}
+            title={`Delete ${checkedCount} selected row${checkedCount === 1 ? '' : 's'} from the database`}
             data-testid="query-delete-rows-button"
           >
             <Trash size={16} weight="regular" />
@@ -228,6 +237,20 @@ export function ResultToolbar({
       />
 
       <ExportButton disabled={!hasResults} onClick={handleExport} testId="export-button" />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title={checkedCount > 1 ? 'Delete Rows' : 'Delete Row'}
+        message={
+          checkedCount > 1
+            ? `Are you sure you want to delete these ${checkedCount} rows from the database?`
+            : 'Are you sure you want to delete this row from the database?'
+        }
+        confirmLabel="Delete"
+        isDestructive={true}
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
   )
 }

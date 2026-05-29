@@ -374,6 +374,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   } | null>(null)
   const clipboardMenuRef = useRef<HTMLDivElement>(null)
   const lastInteractedCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
+  // Tracks the previously reported row-marker selection so we only notify the
+  // parent (and write to the store) when the checked rows actually change —
+  // plain cell clicks / keyboard navigation must not churn checkbox state.
+  const prevMarkedRowsRef = useRef<number[]>([])
   const lastSelectedListCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const lastAppliedInitialScrollRef = useRef<{ scrollRow: number; scrollCol: number } | null>(null)
   const lastReportedScrollCellRef = useRef<ScrollCell | null>(null)
@@ -1415,10 +1419,20 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           ? { idx: selection.current.cell[0], rowIdx: selection.current.cell[1] }
           : null
       }
-      const selected = [...selection.rows]
-        .map((rowIndex) => rows[rowIndex])
-        .filter((row): row is GridRow => row != null)
-      onRowMarkersChange?.(selected)
+      if (onRowMarkersChange) {
+        const selectedRowIndices = [...selection.rows]
+        const prev = prevMarkedRowsRef.current
+        const rowsChanged =
+          selectedRowIndices.length !== prev.length ||
+          selectedRowIndices.some((value, i) => value !== prev[i])
+        if (rowsChanged) {
+          prevMarkedRowsRef.current = selectedRowIndices
+          const selected = selectedRowIndices
+            .map((rowIndex) => rows[rowIndex])
+            .filter((row): row is GridRow => row != null)
+          onRowMarkersChange(selected)
+        }
+      }
     },
     [gridColumns, onRowMarkersChange, rows]
   )

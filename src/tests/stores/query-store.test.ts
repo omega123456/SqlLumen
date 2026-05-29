@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ipc, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
+import { ipc, expectToast, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useTableDataStore } from '../../stores/table-data-store'
@@ -1816,37 +1816,84 @@ describe('useQueryStore — setCheckedRowIndices', () => {
 })
 
 describe('useQueryStore — deleteResultRows', () => {
-  it('removes rows from the in-memory result by index without DB calls', () => {
-    useQueryStore.getState().setContent('tab-del', 'SELECT 1')
-    patchResult('tab-del', {
-      columns: [{ name: 'id', dataType: 'INT' }],
-      rows: [[1], [2], [3]],
+  const editMetadata = {
+    users: {
+      database: 'testdb',
+      table: 'users',
+      columns: [],
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      foreignKeys: [],
+    },
+  }
+
+  // Build an edit-mode result: a result bound to `users` with `id` as its key
+  // column, present at result column index 0. `lastExecutedSql: null` keeps the
+  // post-delete cache refresh disabled so tests can observe the optimistic
+  // in-memory removal directly (the refresh path is covered separately).
+  function setupEditableResult(tabId: string, overrides: Record<string, unknown> = {}) {
+    useQueryStore.getState().setContent(tabId, 'SELECT id, name FROM users')
+    patchResult(tabId, {
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'name', dataType: 'VARCHAR' },
+      ],
+      rows: [
+        [1, 'a'],
+        [2, 'b'],
+        [3, 'c'],
+      ],
       totalRows: 3,
       selectedRowIndex: 1,
+      editMode: 'users',
+      editConnectionId: 'conn-1',
+      lastExecutedSql: null,
+      editTableMetadata: editMetadata,
+      editBoundColumnIndexMap: new Map([
+        ['id', 0],
+        ['name', 1],
+      ]),
+      checkedRowIndices: [0, 2],
+      ...overrides,
     })
+  }
 
-    useQueryStore.getState().deleteResultRows('tab-del', [0, 2])
+  it('deletes checked rows from the DB by key value, then removes them from the view', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del')
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del', [0, 2])
+
+    expect(count).toBe(2)
+    const calls = ipc.calls('delete_table_row') as Array<Record<string, unknown>>
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toMatchObject({
+      database: 'testdb',
+      table: 'users',
+      pkColumns: ['id'],
+      pkValues: { id: 1 },
+    })
+    expect(calls[1]).toMatchObject({ pkValues: { id: 3 } })
 
     const result = flat('tab-del')
-    expect(result.rows).toEqual([[2]])
+    expect(result.rows).toEqual([[2, 'b']])
     expect(result.totalRows).toBe(1)
     expect(result.selectedRowIndex).toBeNull()
     expect(result.checkedRowIndices).toEqual([])
   })
 
-  it('removes deleted rows from unfilteredRows when a filter is active', () => {
-    useQueryStore.getState().setContent('tab-del-f', 'SELECT 1')
-    const rowA = [1]
-    const rowB = [2]
-    const rowC = [3]
-    patchResult('tab-del-f', {
-      columns: [{ name: 'id', dataType: 'INT' }],
+  it('removes deleted rows from unfilteredRows when a filter is active', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    const rowA = [1, 'a']
+    const rowB = [2, 'b']
+    const rowC = [3, 'c']
+    setupEditableResult('tab-del-f', {
       rows: [rowA, rowC],
       unfilteredRows: [rowA, rowB, rowC],
       totalRows: 2,
+      checkedRowIndices: [0],
     })
 
-    useQueryStore.getState().deleteResultRows('tab-del-f', [0])
+    await useQueryStore.getState().deleteResultRows('tab-del-f', [0])
 
     const result = flat('tab-del-f')
     expect(result.rows).toEqual([rowC])
@@ -1854,15 +1901,115 @@ describe('useQueryStore — deleteResultRows', () => {
     expect(result.unfilteredRows).toEqual([rowB, rowC])
   })
 
-  it('no-ops for an empty index list', () => {
-    useQueryStore.getState().setContent('tab-del-empty', 'SELECT 1')
-    patchResult('tab-del-empty', {
-      columns: [{ name: 'id', dataType: 'INT' }],
-      rows: [[1], [2]],
-      totalRows: 2,
+  it('refuses to delete and warns when the result is not in edit mode', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-ro', { editMode: null })
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-ro', [0, 2])
+
+    expect(count).toBe(0)
+    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(flat('tab-del-ro').rows).toHaveLength(3)
+    await expectToast('error', 'Enable edit mode')
+  })
+
+  it('refuses to delete when the key columns are absent from the result set', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-nokey', { editBoundColumnIndexMap: new Map([['name', 1]]) })
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-nokey', [0])
+
+    expect(count).toBe(0)
+    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    await expectToast('error', 'key columns')
+  })
+
+  it('stops on the first failed delete and records the error', async () => {
+    let callCount = 0
+    ipc.override('delete_table_row', () => {
+      callCount += 1
+      if (callCount === 2) throw new Error('FK constraint')
+      return undefined
+    })
+    setupEditableResult('tab-del-err')
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-err', [0, 2])
+
+    expect(count).toBe(1)
+    const result = flat('tab-del-err')
+    // Only the first (id=1) row was removed before the failure on id=3.
+    expect(result.rows).toEqual([
+      [2, 'b'],
+      [3, 'c'],
+    ])
+    expect(result.saveError).toBe('FK constraint')
+    await expectToast('error', 'FK constraint')
+  })
+
+  it('records the error and removes nothing when the first delete fails', async () => {
+    ipc.override('delete_table_row', () => {
+      throw new Error('access denied')
+    })
+    setupEditableResult('tab-del-first-err')
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-first-err', [0, 2])
+
+    expect(count).toBe(0)
+    const result = flat('tab-del-first-err')
+    expect(result.rows).toHaveLength(3)
+    expect(result.saveError).toBe('access denied')
+    await expectToast('error', 'access denied')
+  })
+
+  it('refreshes the result cache after a successful delete', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-refresh', { lastExecutedSql: 'SELECT id, name FROM users' })
+
+    await useQueryStore.getState().deleteResultRows('tab-del-refresh', [0])
+
+    // The single-result refresh path re-runs execute_query (the beforeEach mock
+    // returns three id-only rows), proving the cache was refreshed.
+    const result = flat('tab-del-refresh')
+    expect(result.rows).toEqual([[1], [2], [3]])
+  })
+
+  it('refreshes the cache on a partial failure and skips the success toast', async () => {
+    useToastStore.setState({ toasts: [] })
+    let callCount = 0
+    ipc.override('delete_table_row', () => {
+      callCount += 1
+      if (callCount === 2) throw new Error('FK constraint')
+      return undefined
+    })
+    setupEditableResult('tab-del-partial-refresh', {
+      lastExecutedSql: 'SELECT id, name FROM users',
     })
 
-    useQueryStore.getState().deleteResultRows('tab-del-empty', [])
-    expect(flat('tab-del-empty').rows).toEqual([[1], [2]])
+    const count = await useQueryStore
+      .getState()
+      .deleteResultRows('tab-del-partial-refresh', [0, 2])
+
+    expect(count).toBe(1)
+    // The cache refresh ran despite the failure: rows now reflect the id-only
+    // execute_query mock rather than the optimistic in-memory removal.
+    const result = flat('tab-del-partial-refresh')
+    expect(result.rows).toEqual([[1], [2], [3]])
+    await expectToast('error', 'FK constraint')
+    // The failure already surfaced an error toast; no "Rows deleted" success.
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some((toast) => toast.variant === 'success' && toast.title === 'Rows deleted')
+    ).toBe(false)
+  })
+
+  it('no-ops for an empty index list', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-empty')
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-empty', [])
+    expect(count).toBe(0)
+    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(flat('tab-del-empty').rows).toHaveLength(3)
   })
 })

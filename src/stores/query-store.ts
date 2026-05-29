@@ -25,6 +25,7 @@ import {
 import {
   insertTableRow as insertTableRowCmd,
   updateTableRow as updateTableRowCmd,
+  deleteTableRow as deleteTableRowCmd,
 } from '../lib/table-data-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
 import { useTableDataStore } from './table-data-store'
@@ -652,11 +653,15 @@ interface QueryState {
   setCheckedRowIndices: (tabId: string, indices: number[]) => void
 
   /**
-   * Remove rows from the active result's in-memory display by their page-local
-   * indices. Query results are read-only, so this performs no DB operation — it
-   * only updates the displayed (and unfiltered, when present) row arrays.
+   * Delete rows from the bound source table by their page-local indices, then
+   * remove them from the displayed result. Only valid when the result is in
+   * edit mode (a table with a primary/unique key whose key columns are present
+   * in the result set) — the same gating as cell editing. Each row is deleted
+   * via its key values; the backend result cache is refreshed afterwards so
+   * exports / sorts do not resurrect deleted rows. Resolves with the number of
+   * rows successfully deleted.
    */
-  deleteResultRows: (tabId: string, rowIndices: number[]) => void
+  deleteResultRows: (tabId: string, rowIndices: number[]) => Promise<number>
 
   /** Set the selected cell info (column + value) for filter dialog auto-population. */
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
@@ -1176,7 +1181,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     return { row, modifiedColumns, insertEligibleColumns }
   }
 
-  const reexecuteSingleResultAfterInsert = async (
+  const reexecuteSingleResultAfterMutation = async (
     connectionId: string,
     tabId: string,
     resultIndex: number,
@@ -1197,7 +1202,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     )
   }
 
-  const reexecuteOnlyResultAfterInsert = async (
+  const reexecuteOnlyResultAfterMutation = async (
     connectionId: string,
     tabId: string,
     resultIndex: number,
@@ -1220,7 +1225,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       logFrontend(
         'warn',
         [
-          '[query-store] reexecuteOnlyResultAfterInsert: discarding stale refresh result (queryId mismatch)',
+          '[query-store] reexecuteOnlyResultAfterMutation: discarding stale refresh result (queryId mismatch)',
         ]
           .map(String)
           .join(' ')
@@ -1808,32 +1813,141 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchResultByIndex(tabId, resultIndex, { checkedRowIndices: indices })
     },
 
-    deleteResultRows: (tabId: string, rowIndices: number[]) => {
+    deleteResultRows: async (tabId: string, rowIndices: number[]): Promise<number> => {
       const resultIndex = getActiveIndex(tabId)
       const result = get().tabs[tabId]?.results[resultIndex]
-      if (!result || rowIndices.length === 0) return
+      if (!result || rowIndices.length === 0) return 0
 
-      const removalSet = new Set(rowIndices.filter((index) => index >= 0 && index < result.rows.length))
-      if (removalSet.size === 0) return
+      // Delete is gated to the same conditions as editing: a bound table with a
+      // primary/unique key whose key columns are present in the result set.
+      if (!result.editMode) {
+        showErrorToast('Delete failed', 'Enable edit mode to delete rows from the database.')
+        return 0
+      }
+      const tableInfo = result.editTableMetadata[result.editMode]
+      if (!tableInfo?.primaryKey) {
+        showErrorToast(
+          'Delete failed',
+          `Cannot delete ${result.editMode}: no primary or unique key.`
+        )
+        return 0
+      }
+      if (!result.editConnectionId) {
+        showErrorToast('Delete failed', 'No active connection available for deletion.')
+        return 0
+      }
 
-      const removedRowRefs = new Set([...removalSet].map((index) => result.rows[index]))
-      const newRows = result.rows.filter((_, index) => !removalSet.has(index))
+      const keyColumns = tableInfo.primaryKey.keyColumns
+      const keyColIndices = keyColumns.map(
+        (column) => result.editBoundColumnIndexMap.get(column.toLowerCase()) ?? -1
+      )
+      if (keyColIndices.some((index) => index < 0)) {
+        showErrorToast(
+          'Delete failed',
+          `Result set does not contain the key columns (${keyColumns.join(', ')}).`
+        )
+        return 0
+      }
 
-      // When a filter is active, `rows` is a reference-preserving subset of
-      // unfilteredRows. Remove the same row references there so clearing the
-      // filter does not resurrect deleted rows.
-      const newUnfilteredRows = result.unfilteredRows
-        ? result.unfilteredRows.filter((row) => !removedRowRefs.has(row))
-        : null
+      const uniqueIndices = [...new Set(rowIndices)].filter(
+        (index) => index >= 0 && index < result.rows.length
+      )
+      if (uniqueIndices.length === 0) return 0
 
-      patchResultByIndex(tabId, resultIndex, {
-        rows: newRows,
-        unfilteredRows: newUnfilteredRows,
-        totalRows: Math.max(0, result.totalRows - removalSet.size),
-        selectedRowIndex: null,
-        selectedCell: null,
-        checkedRowIndices: [],
+      // Capture key values + row references up front — row indices shift as the
+      // displayed array mutates, but object references stay stable.
+      const targets = uniqueIndices.map((index) => {
+        const row = result.rows[index]
+        const pkValues: Record<string, unknown> = {}
+        keyColumns.forEach((column, i) => {
+          pkValues[column] = row[keyColIndices[i]]
+        })
+        return { row, pkValues }
       })
+
+      const connectionId = result.editConnectionId
+      let deletedCount = 0
+      let failureMessage: string | null = null
+      for (const target of targets) {
+        if (!get().tabs[tabId]) return deletedCount
+        try {
+          await deleteTableRowCmd({
+            connectionId,
+            database: tableInfo.database,
+            table: tableInfo.table,
+            pkColumns: keyColumns,
+            pkValues: target.pkValues,
+          })
+          deletedCount += 1
+        } catch (err) {
+          failureMessage = err instanceof Error ? err.message : String(err)
+          showErrorToast('Delete failed', failureMessage)
+          break
+        }
+      }
+
+      if (deletedCount === 0) {
+        if (failureMessage) patchResultByIndex(tabId, resultIndex, { saveError: failureMessage })
+        return 0
+      }
+
+      // Optimistically remove successfully deleted rows from the displayed (and
+      // unfiltered, when a filter is active) arrays by reference.
+      const deletedRefs = new Set(targets.slice(0, deletedCount).map((target) => target.row))
+      const afterResult = get().tabs[tabId]?.results[resultIndex]
+      if (afterResult) {
+        const newRows = afterResult.rows.filter((row) => !deletedRefs.has(row))
+        const newUnfilteredRows = afterResult.unfilteredRows
+          ? afterResult.unfilteredRows.filter((row) => !deletedRefs.has(row))
+          : null
+        patchResultByIndex(tabId, resultIndex, {
+          rows: newRows,
+          unfilteredRows: newUnfilteredRows,
+          totalRows: Math.max(0, afterResult.totalRows - deletedCount),
+          selectedRowIndex: null,
+          selectedCell: null,
+          editState: null,
+          editingRowIndex: null,
+          checkedRowIndices: [],
+          saveError: failureMessage,
+        })
+      }
+
+      // Refresh the backend result cache so exports / sorts / restores do not
+      // resurrect deleted rows — this runs even on a partial failure, since the
+      // cache would otherwise still hold the rows we already removed from view.
+      // Mirrors the insert refresh path: a refresh failure only marks the result
+      // stale and keeps the optimistic removal.
+      if (result.lastExecutedSql) {
+        try {
+          if ((get().tabs[tabId]?.results.length ?? 0) > 1) {
+            await reexecuteSingleResultAfterMutation(connectionId, tabId, resultIndex, result)
+          } else {
+            await reexecuteOnlyResultAfterMutation(connectionId, tabId, resultIndex, result)
+          }
+        } catch (refreshErr) {
+          if (get().tabs[tabId]) {
+            patchResultByIndex(tabId, resultIndex, { isStale: true })
+          }
+          const errorMessage =
+            refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+          showErrorToast(
+            'Refresh failed',
+            `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted, but the query result could not be refreshed: ${errorMessage}`
+          )
+          return deletedCount
+        }
+      }
+
+      // The "Delete failed" error toast was already shown on the partial failure;
+      // don't also claim success.
+      if (!failureMessage) {
+        showSuccessToast(
+          'Rows deleted',
+          `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted successfully.`
+        )
+      }
+      return deletedCount
     },
 
     setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => {
@@ -2620,14 +2734,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
           try {
             if ((tab?.results.length ?? 0) > 1) {
-              await reexecuteSingleResultAfterInsert(
+              await reexecuteSingleResultAfterMutation(
                 result.editConnectionId,
                 tabId,
                 resultIndex,
                 result
               )
             } else {
-              await reexecuteOnlyResultAfterInsert(
+              await reexecuteOnlyResultAfterMutation(
                 result.editConnectionId,
                 tabId,
                 resultIndex,

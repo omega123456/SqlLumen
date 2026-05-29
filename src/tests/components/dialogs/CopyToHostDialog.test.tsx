@@ -130,18 +130,20 @@ async function waitForLoaded() {
   await screen.findByTestId('copy-object-tree')
 }
 
-async function selectFromDropdown(user: UserEvent, triggerTestId: string, optionValue: string) {
+async function selectFromDropdown(_user: UserEvent, triggerTestId: string, optionValue: string) {
   const trigger = screen.getByTestId(triggerTestId)
-  await user.click(trigger)
-  if (trigger.getAttribute('aria-expanded') !== 'true') {
-    fireEvent.click(trigger)
-  }
-  await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'true'))
-  const option = await screen.findByTestId(`${triggerTestId}-option-${optionValue}`)
-  await user.click(option)
-  await waitFor(() =>
-    expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  )
+  const optionTestId = `${triggerTestId}-option-${optionValue}`
+  // The shared Dropdown focuses its listbox on open and closes on blur. Under suite
+  // load jsdom can spuriously bounce focus during an await, closing the panel. Drive
+  // open + select synchronously inside a single waitFor tick so no async boundary lets
+  // the panel blur, while still retrying until async-loaded options appear.
+  await waitFor(() => {
+    if (trigger.getAttribute('aria-expanded') !== 'true') {
+      fireEvent.click(trigger)
+    }
+    fireEvent.click(screen.getByTestId(optionTestId))
+  })
+  await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
 }
 
 async function chooseTarget(user: UserEvent, connectionValue: string, databaseValue: string) {
@@ -206,10 +208,9 @@ describe('CopyToHostDialog', () => {
     await waitForLoaded()
 
     fireEvent.click(screen.getByTestId('copy-target-connection'))
-    // Target host is selectable
-    expect(
-      await screen.findByTestId('copy-target-connection-option-target-profile')
-    ).toBeInTheDocument()
+    // Options render synchronously when the dropdown opens; read them without an
+    // intervening await so a spurious focus-blur cannot close the panel mid-assertion.
+    expect(screen.getByTestId('copy-target-connection-option-target-profile')).toBeInTheDocument()
     // Source host and read-only host are excluded
     expect(
       screen.queryByTestId('copy-target-connection-option-source-profile')
@@ -232,10 +233,13 @@ describe('CopyToHostDialog', () => {
     await selectFromDropdown(user, 'copy-target-connection', 'target-profile')
     expect(ipc.calls('list_databases')).toEqual([{ connectionId: 'session-target' }])
 
-    fireEvent.click(screen.getByTestId('copy-target-database'))
-    expect(
-      await screen.findByTestId('copy-target-database-option-target_existing')
-    ).toBeInTheDocument()
+    const dbTrigger = screen.getByTestId('copy-target-database')
+    await waitFor(() => {
+      if (dbTrigger.getAttribute('aria-expanded') !== 'true') {
+        fireEvent.click(dbTrigger)
+      }
+      expect(screen.getByTestId('copy-target-database-option-target_existing')).toBeInTheDocument()
+    })
   })
 
   it('does not call list_databases with a saved profile id when target is not open', async () => {
@@ -255,7 +259,7 @@ describe('CopyToHostDialog', () => {
     expect(screen.getByTestId('copy-target-database-notice')).toHaveTextContent(
       'Open this target connection first'
     )
-    await user.click(screen.getByTestId('copy-target-database'))
+    fireEvent.click(screen.getByTestId('copy-target-database'))
     expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
   })
 
@@ -280,7 +284,7 @@ describe('CopyToHostDialog', () => {
 
     fireEvent.click(screen.getByTestId('copy-target-connection'))
     expect(screen.queryByTestId('copy-target-connection-option-same-profile')).not.toBeInTheDocument()
-    expect(await screen.findByTestId('copy-target-connection-option-target-profile')).toBeInTheDocument()
+    expect(screen.getByTestId('copy-target-connection-option-target-profile')).toBeInTheDocument()
   })
 
   it('shows an error toast when target databases fail to load', async () => {
@@ -295,7 +299,7 @@ describe('CopyToHostDialog', () => {
     await selectFromDropdown(user, 'copy-target-connection', 'target-profile')
 
     await expectToast('error', 'Failed to load target databases')
-    await user.click(screen.getByTestId('copy-target-database'))
+    fireEvent.click(screen.getByTestId('copy-target-database'))
     expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
     expect(screen.queryByTestId('copy-target-database-option-target_existing')).not.toBeInTheDocument()
   })

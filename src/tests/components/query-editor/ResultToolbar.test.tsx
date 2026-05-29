@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore } from '../../../stores/query-store'
 import { makeTabState, flat } from '../../helpers/query-test-utils'
+import { ipc } from '../../ipc-mock'
 
 /** Helper to set up store state for a tab. */
 function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
@@ -539,53 +540,98 @@ describe('ResultToolbar', () => {
     expect(result.editState?.isNewRow).toBe(true)
   })
 
-  describe('delete checked rows (read-only result view)', () => {
+  describe('delete checked rows (edit-mode DB delete)', () => {
     const props = {
       filterModel: [],
       onFilterClick: () => {},
       onClearFilterClick: () => {},
     }
 
-    it('does not render the delete button when no rows are checked', () => {
+    const editMetadata = {
+      users: {
+        database: 'testdb',
+        table: 'users',
+        columns: [],
+        primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+        foreignKeys: [],
+      },
+    } as unknown as Record<string, import('../../../types/schema').QueryTableEditInfo>
+
+    /** Edit-mode result bound to `users` with `id` (result index 0) as its key. */
+    function setupDeletableTab(overrides: Record<string, unknown> = {}) {
       setupTabState(tabId, {
         status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        rows: [[1], [2]],
-        totalRows: 2,
-        checkedRowIndices: [],
+        columns: [
+          { name: 'id', dataType: 'INT' },
+          { name: 'name', dataType: 'VARCHAR' },
+        ],
+        rows: [
+          [1, 'a'],
+          [2, 'b'],
+          [3, 'c'],
+        ],
+        totalRows: 3,
+        editMode: 'users',
+        editConnectionId: connectionId,
+        lastExecutedSql: null,
+        editTableMetadata: editMetadata,
+        editBoundColumnIndexMap: new Map([
+          ['id', 0],
+          ['name', 1],
+        ]),
+        checkedRowIndices: [0, 2],
+        ...overrides,
       })
+    }
+
+    it('does not render the delete button when no rows are checked', () => {
+      setupDeletableTab({ checkedRowIndices: [] })
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
       expect(screen.queryByTestId('query-delete-rows-button')).not.toBeInTheDocument()
     })
 
-    it('renders a delete button with the checked count when rows are checked', () => {
-      setupTabState(tabId, {
-        status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        rows: [[1], [2], [3]],
-        totalRows: 3,
-        checkedRowIndices: [0, 2],
-      })
+    it('does not render the delete button when not in edit mode (no unique key)', () => {
+      setupDeletableTab({ editMode: null })
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+      expect(screen.queryByTestId('query-delete-rows-button')).not.toBeInTheDocument()
+    })
+
+    it('renders a delete button with the checked count when rows are checked in edit mode', () => {
+      setupDeletableTab()
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
       expect(screen.getByTestId('query-delete-rows-button')).toHaveTextContent('Delete (2)')
     })
 
-    it('removes checked rows from the in-memory result on click', () => {
-      setupTabState(tabId, {
-        status: 'success',
-        columns: [{ name: 'id', dataType: 'INT' }],
-        rows: [[1], [2], [3]],
-        totalRows: 3,
-        checkedRowIndices: [0, 2],
+    it('confirms then deletes the checked rows from the database on click', async () => {
+      ipc.override('delete_table_row', () => undefined)
+      setupDeletableTab()
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
+
+      // First click only opens the confirmation dialog — no delete yet.
+      fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+      expect(ipc.calls('delete_table_row')).toHaveLength(0)
+
+      fireEvent.click(screen.getByTestId('confirm-confirm-button'))
+
+      await waitFor(() => {
+        expect(flat(tabId).rows).toEqual([[2, 'b']])
       })
+      const calls = ipc.calls('delete_table_row') as Array<Record<string, unknown>>
+      expect(calls.map((c) => c.pkValues)).toEqual([{ id: 1 }, { id: 3 }])
+      expect(flat(tabId).totalRows).toBe(1)
+      expect(flat(tabId).checkedRowIndices).toEqual([])
+    })
+
+    it('does not delete when the confirmation is cancelled', async () => {
+      ipc.override('delete_table_row', () => undefined)
+      setupDeletableTab()
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} {...props} />)
 
       fireEvent.click(screen.getByTestId('query-delete-rows-button'))
+      fireEvent.click(screen.getByTestId('confirm-cancel-button'))
 
-      const result = flat(tabId)
-      expect(result.rows).toEqual([[2]])
-      expect(result.totalRows).toBe(1)
-      expect(result.checkedRowIndices).toEqual([])
+      expect(ipc.calls('delete_table_row')).toHaveLength(0)
+      expect(flat(tabId).rows).toHaveLength(3)
     })
   })
 })

@@ -111,14 +111,14 @@ describe('ResultGridView', () => {
     expect(props.rows[0]).toMatchObject({ col_0: 1, col_1: 'Ada', __rowIdx: 0 })
   })
 
-  it('enables the checkbox row marker in read-only mode', () => {
-    render(<ResultGridView {...baseProps} editMode={null} />)
+  it('enables the checkbox row marker in edit mode', () => {
+    render(<ResultGridView {...baseProps} editMode="users" />)
     const props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rowMarkers: string }
     expect(props.rowMarkers).toBe('checkbox')
   })
 
-  it('disables the checkbox row marker in edit mode', () => {
-    render(<ResultGridView {...baseProps} editMode="users" />)
+  it('disables the checkbox row marker in read-only mode', () => {
+    render(<ResultGridView {...baseProps} editMode={null} />)
     const props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rowMarkers: string }
     expect(props.rowMarkers).toBe('none')
   })
