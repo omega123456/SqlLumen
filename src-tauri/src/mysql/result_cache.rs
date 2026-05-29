@@ -32,7 +32,7 @@ struct SpillWriteJob<V> {
     connection_id: String,
     tab_id: String,
     generation: u64,
-    value: V,
+    entry: Arc<CachedEntry<V>>,
 }
 
 enum SpillWorkerMessage<V> {
@@ -300,7 +300,7 @@ where
                         let safe_name = safe_spill_filename(&job.connection_id, &job.tab_id);
                         let path = session_dir.join(format!("{safe_name}.msgpack"));
 
-                        match rmp_serde::to_vec_named(&job.value) {
+                        match rmp_serde::to_vec_named(&job.entry.value) {
                             Ok(bytes) => {
                                 if let Err(e) = fs::write(&path, &bytes) {
                                     tracing::warn!(
@@ -351,7 +351,7 @@ where
             })
             .eviction_listener(move |key, value, cause| {
                 let key: &(String, String) = &key;
-                let entry: &Arc<CachedEntry<V>> = &value;
+                let entry: Arc<CachedEntry<V>> = value;
                 let generation = entry.generation;
 
                 {
@@ -385,13 +385,12 @@ where
                     return;
                 }
 
-                let value = entry.value.clone();
                 let send_result =
                     spill_worker_tx_for_listener.send(SpillWorkerMessage::Write(SpillWriteJob {
                         connection_id: key.0.clone(),
                         tab_id: key.1.clone(),
                         generation,
-                        value,
+                        entry,
                     }));
                 if let Err(e) = send_result {
                     let mut spillable = spillable_for_listener

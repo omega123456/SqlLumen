@@ -73,6 +73,7 @@ keyring = { version = "3", features = [
 tokio = { version = "1", features = ["rt", "macros", "time", "test-util"] }
 tauri = { version = "2", features = ["test"] }
 tempfile = "3"
+rmp-serde = "1"
 async-trait = "0.1.89"
 opensrv-mysql = "0.7.0"
 wiremock = "0.6"

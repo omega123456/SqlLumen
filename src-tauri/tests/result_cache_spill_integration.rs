@@ -558,6 +558,58 @@ fn drop_cleans_up_current_session_spill_directory() {
     );
 }
 
+// ── Spilled payload is the bare value, not the CachedEntry wrapper ───────────
+
+#[test]
+fn spilled_file_serializes_bare_value_without_generation_metadata() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
+
+    let original = vec![stub_result_with_numbers("q-roundtrip")];
+    cache.insert("conn1", "tab1", original.clone());
+
+    // Trigger eviction via TTL expiry, then synchronize on the spill worker.
+    thread::sleep(Duration::from_millis(1500));
+    cache.run_pending_tasks();
+    cache.flush_spill_jobs();
+
+    let spill_path = cache.spill_file_path("conn1", "tab1");
+    assert!(spill_path.exists(), "spill file should exist after eviction");
+
+    // Deserialize straight off disk as the bare value. This only succeeds if the
+    // worker serialized `entry.value` rather than the `CachedEntry` wrapper —
+    // a wrapped payload would be a map with `value`/`generation` keys and fail
+    // to decode into a top-level sequence.
+    let bytes = std::fs::read(&spill_path).expect("read spill file");
+    let decoded: Vec<StoredResult> =
+        rmp_serde::from_slice(&bytes).expect("spill payload should decode as the bare value");
+
+    assert_eq!(decoded.len(), original.len());
+    assert_eq!(decoded[0].query_id, original[0].query_id);
+    assert_eq!(decoded[0].rows, original[0].rows);
+    assert_eq!(decoded[0].columns.len(), original[0].columns.len());
+
+    // Confirm the wrapper metadata never reached disk: a `generation` field would
+    // have produced a map, so decoding the same bytes into a struct carrying that
+    // field must fail.
+    #[derive(serde::Deserialize)]
+    struct WrapperProbe {
+        #[allow(dead_code)]
+        generation: u64,
+    }
+    assert!(
+        rmp_serde::from_slice::<WrapperProbe>(&bytes).is_err(),
+        "serialized payload must not contain CachedEntry generation metadata"
+    );
+
+    // And the value re-warms cleanly through the cache.
+    let entry = cache
+        .get("conn1", "tab1")
+        .into_entry()
+        .expect("should re-warm from spill");
+    assert_eq!(entry.value[0].query_id, "q-roundtrip");
+}
+
 // ── In-memory hit returns Found variant ──────────────────────────────────────
 
 #[test]
