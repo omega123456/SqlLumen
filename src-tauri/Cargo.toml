@@ -50,6 +50,9 @@ hex = "0.4"
 moka = { version = "0.12", features = ["sync"] }
 sysinfo = "0.31"
 rmp-serde = "1"
+# Pin below 2.12: bitflags 2.12's __bitflags_flag_name! macro hits rustc's recursion limit when
+# expanding dispatch2's large generated bitflags blocks (macOS release builds).
+bitflags = "~2.11.1"
 
 # keyring v3 has no default features — without these, the mock backend is used (no OS persistence).
 [target.'cfg(target_os = "windows")'.dependencies]
