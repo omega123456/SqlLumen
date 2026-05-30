@@ -221,3 +221,113 @@ fn generation_increments_on_insert() {
 
     assert!(g2 > g1);
 }
+
+/// Helper: build a `StoredResult` with the given rows.
+fn stub_result_with_rows(query_id: &str, rows: Vec<Vec<serde_json::Value>>) -> StoredResult {
+    StoredResult {
+        query_id: query_id.to_string(),
+        rows: std::sync::Arc::new(rows),
+        ..stub_result(query_id)
+    }
+}
+
+#[test]
+fn update_rows_in_place_matching_version_swaps_rows() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![
+            stub_result_with_rows("q1", vec![vec![serde_json::json!(2)]]),
+            stub_result_with_rows("q-sibling", vec![vec![serde_json::json!("sib")]]),
+        ],
+    );
+
+    let version = cache.current_invalidation_version("conn1", "tab1");
+    let new_rows = std::sync::Arc::new(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
+
+    let applied = cache.update_rows_in_place_if_current(
+        "conn1",
+        "tab1",
+        version,
+        0,
+        std::sync::Arc::clone(&new_rows),
+    );
+    assert!(applied, "matching version should apply the swap");
+
+    let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
+    // Target slot rows were swapped.
+    assert_eq!(entry.value[0].rows.as_ref(), new_rows.as_ref());
+    // Sibling slot untouched.
+    assert_eq!(entry.value[1].query_id, "q-sibling");
+    assert_eq!(entry.value[1].rows.len(), 1);
+    // Version unchanged (no generation bump / invalidation churn).
+    assert_eq!(cache.current_invalidation_version("conn1", "tab1"), version);
+}
+
+#[test]
+fn update_rows_in_place_mismatched_version_is_noop() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows("q1", vec![vec![serde_json::json!(2)]])],
+    );
+    let stale_version = cache.current_invalidation_version("conn1", "tab1");
+
+    // Simulate a query re-run / invalidation during the sort: bump the version
+    // and re-insert fresh results.
+    cache.remove_with_spill_cleanup("conn1", "tab1");
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows("q2", vec![vec![serde_json::json!(99)]])],
+    );
+
+    let new_rows = std::sync::Arc::new(vec![vec![serde_json::json!(1)]]);
+    let applied =
+        cache.update_rows_in_place_if_current("conn1", "tab1", stale_version, 0, new_rows);
+    assert!(!applied, "stale version should be a no-op");
+
+    // The fresh results must be untouched.
+    let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
+    assert_eq!(entry.value[0].query_id, "q2");
+    assert_eq!(entry.value[0].rows.as_ref(), &vec![vec![serde_json::json!(99)]]);
+}
+
+#[test]
+fn update_rows_in_place_out_of_range_idx_returns_false() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    let version = cache.current_invalidation_version("conn1", "tab1");
+
+    let applied = cache.update_rows_in_place_if_current(
+        "conn1",
+        "tab1",
+        version,
+        5,
+        std::sync::Arc::new(vec![]),
+    );
+    assert!(!applied, "out-of-range slot index should be a no-op");
+}
+
+#[test]
+fn update_rows_in_place_missing_entry_returns_false() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    let applied = cache.update_rows_in_place_if_current(
+        "conn-missing",
+        "tab-missing",
+        0,
+        0,
+        std::sync::Arc::new(vec![]),
+    );
+    assert!(!applied, "missing entry should be a no-op");
+}

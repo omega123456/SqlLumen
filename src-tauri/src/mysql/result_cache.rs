@@ -921,6 +921,74 @@ where
     }
 }
 
+/// Result-set-specific cache operations that need to reach into the
+/// `Vec<StoredResult>` value (the generic `GenericCache<V>` impl cannot index
+/// into an opaque `V`).
+impl GenericCache<Vec<StoredResult>> {
+    /// Swap the `rows` Arc of a single result slot in place, only when the
+    /// invalidation version still matches `expected_invalidation_version`. The
+    /// version check is best-effort: it is not atomic with the moka mutation, so
+    /// a narrow race remains (same shape as
+    /// [`GenericCache::insert_if_current`]).
+    ///
+    /// Unlike [`GenericCache::insert_if_current`], this updates in place: it does
+    /// **not** bump the generation, remove spill files, or churn LRU
+    /// bookkeeping. Only `value[idx].rows` changes. `Arc::make_mut` avoids
+    /// cloning the underlying `Vec<StoredResult>` only when the entry Arc is
+    /// uniquely held (best-effort); if another reader still holds it, the vec is
+    /// cloned. In the common case it mutates the cached entry directly with no
+    /// sibling-`columns` clone.
+    ///
+    /// Returns `true` if the swap was applied, `false` if the version no longer
+    /// matched (a query was re-run / invalidated during the sort) or the entry /
+    /// slot was gone.
+    pub fn update_rows_in_place_if_current(
+        &self,
+        connection_id: &str,
+        tab_id: &str,
+        expected_invalidation_version: u64,
+        idx: usize,
+        new_rows: Arc<Vec<Vec<serde_json::Value>>>,
+    ) -> bool {
+        let key = (connection_id.to_string(), tab_id.to_string());
+
+        if self.current_invalidation_version(connection_id, tab_id) != expected_invalidation_version
+        {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                expected_invalidation_version,
+                "in-place rows update skipped: invalidation version changed"
+            );
+            return false;
+        }
+
+        let Some(mut entry) = self.cache.get(&key) else {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                "in-place rows update skipped: entry no longer cached"
+            );
+            return false;
+        };
+
+        let cached = Arc::make_mut(&mut entry);
+        let Some(slot) = cached.value.get_mut(idx) else {
+            tracing::warn!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                idx,
+                "in-place rows update skipped: result slot index out of range"
+            );
+            return false;
+        };
+
+        slot.rows = new_rows;
+        self.cache.insert(key, entry);
+        true
+    }
+}
+
 pub type ResultCache = GenericCache<Vec<StoredResult>>;
 pub type CachedResultEntry = CachedEntry<Vec<StoredResult>>;
 pub type ResultCacheGet = CacheGet<Vec<StoredResult>>;

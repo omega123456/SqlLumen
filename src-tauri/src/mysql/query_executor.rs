@@ -1544,18 +1544,26 @@ pub async fn sort_results_impl(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
-    let mut result_vec = entry.value.clone();
+    // Capture the invalidation version up front so the post-sort write-back can
+    // skip its update if a new query bumped the version during sorting.
+    let expected_invalidation_version = state
+        .result_cache
+        .current_invalidation_version(connection_id, tab_id);
 
     let idx = result_index.unwrap_or(0);
-    if idx >= result_vec.len() {
-        return Err(format!(
+
+    // Borrow the target slot instead of cloning the whole `Vec<StoredResult>`.
+    // We only need `col_idx` (a usize), the small `query_id` String, and the
+    // slot's rows Arc — cloning every sibling result's `columns` would be waste.
+    let stored = entry.value.get(idx).ok_or_else(|| {
+        format!(
             "Result index {idx} out of range (total: {})",
-            result_vec.len()
-        ));
-    }
+            entry.value.len()
+        )
+    })?;
 
     // Find column index (validation before spawn_blocking for fast error returns)
-    let col_idx = result_vec[idx]
+    let col_idx = stored
         .columns
         .iter()
         .position(|c| c.name == column_name)
@@ -1564,12 +1572,13 @@ pub async fn sort_results_impl(
     let is_asc = direction == "asc";
 
     // Capture query_id for staleness guard
-    let query_id = result_vec[idx].query_id.clone();
+    let query_id = stored.query_id.clone();
 
-    // Extract rows to move into the blocking closure as an owned Vec.
-    // We cannot hold an `Arc::make_mut` borrow across the `.await`, so take the
-    // slot's Arc and unwrap it to an owned buffer (cloning only if shared).
-    let taken = std::mem::take(&mut result_vec[idx].rows);
+    // Clone the slot's rows Arc to move into the blocking closure as an owned
+    // Vec. We cannot hold a borrow across the `.await`, so unwrap the Arc to an
+    // owned buffer (cloning only if the cache still shares it).
+    let taken = Arc::clone(&stored.rows);
+    drop(entry);
     let mut rows = Arc::try_unwrap(taken).unwrap_or_else(|a| (*a).clone());
 
     // Offload the sort to the blocking thread pool
@@ -1612,15 +1621,35 @@ pub async fn sort_results_impl(
         return Err("Results were refreshed during sort".to_string());
     }
 
-    // Use the fresh cache entry as the base and apply sorted rows.
+    // Drop the post-sort read borrow before the in-place write so `make_mut`
+    // can mutate the cached entry directly instead of cloning it.
+    drop(post_entry);
+
     // Wrap the sorted buffer in ONE fresh Arc, shared between the cache
     // write-back and the IPC return value (no extra deep copy).
-    let mut fresh_vec = post_entry.value.clone();
     let sorted_rows = Arc::new(rows);
-    fresh_vec[idx].rows = Arc::clone(&sorted_rows);
 
-    // Re-insert the modified result vec
-    state.result_cache.insert(connection_id, tab_id, fresh_vec);
+    // Apply the sorted rows in place under the captured invalidation version.
+    // This swaps only `value[idx].rows` (no sibling-`columns` clone) and is
+    // skipped if a new query bumped the invalidation version before the write.
+    // Note: the version check and the cache write are not a single atomic step,
+    // so a very narrow race remains (same as `insert_if_current`); the
+    // `query_id` re-check above is the defense-in-depth guard.
+    let applied = state.result_cache.update_rows_in_place_if_current(
+        connection_id,
+        tab_id,
+        expected_invalidation_version,
+        idx,
+        Arc::clone(&sorted_rows),
+    );
+    if !applied {
+        tracing::info!(
+            connection_id = %connection_id,
+            tab_id = %tab_id,
+            "sort write-back skipped: results invalidated during sort"
+        );
+        return Err("Results were refreshed during sort".to_string());
+    }
 
     Ok(SortedRowsResult { rows: sorted_rows })
 }
