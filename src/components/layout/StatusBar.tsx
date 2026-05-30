@@ -154,136 +154,150 @@ export function StatusBar() {
       </button>
     ) : null
 
+  const hasActivity =
+    showIndexBuilding || showIndexReady || showIndexError || showRunningInfo || showQueryInfo
+
   if (!activeConnection) {
     return (
       <div className={styles.statusBar} data-testid="status-bar">
-        <span className={styles.statusText}>Ready</span>
-        <div aria-live="polite">{updateIndicator}</div>
+        <div className={styles.left}>
+          <span className={styles.statusText}>Ready</span>
+        </div>
+        <div className={styles.spacer} />
+        <div className={styles.right}>
+          <div className={styles.activity} aria-live="polite">
+            {updateIndicator}
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
     <div className={styles.statusBar} data-testid="status-bar">
-      <div className={styles.statusLeft}>
-        <ConnectionStatusIndicator status={activeConnection.status} size={10} />
-        <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>
-      </div>
-      <div aria-live="polite">
-        {showIndexBuilding &&
-          indexState &&
-          (isCountBasedProgressPhase ? (
-            <div
-              className={styles.indexingIndicator}
-              data-testid="indexing-indicator"
-              data-phase={indexPhase ?? 'preparing'}
-              role="progressbar"
-              aria-valuenow={indexState.tablesDone}
-              aria-valuemin={0}
-              aria-valuemax={indexState.tablesTotal}
-              aria-valuetext={`Schema indexing progress: ${indexState.tablesDone} of ${indexState.tablesTotal}`}
-            >
-              <Database
-                size={12}
-                className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
-              />
-              <span className={styles.indexingText} data-testid="indexing-text">
-                {indexingLabel}
-              </span>
-            </div>
-          ) : (
-            <div
-              className={styles.indexingIndicator}
-              data-testid="indexing-indicator"
-              data-phase={indexPhase ?? 'preparing'}
-              role="status"
-              aria-label={indexingLabel}
-            >
-              <Database
-                size={12}
-                className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
-              />
-              <span className={styles.indexingText} data-testid="indexing-text">
-                {indexingLabel}
-              </span>
-            </div>
-          ))}
-        {showIndexReady && (
-          <div
-            className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}
-            data-testid="indexing-ready"
-          >
-            <CheckCircle
-              size={12}
-              weight="fill"
-              className={`${styles.indexingIcon} ${styles.indexingReady}`}
-            />
-            <span className={`${styles.indexingText} ${styles.indexingReady}`}>
-              {resolvedTheme === 'dark' ? 'Index ready' : 'INDEX READY'}
-            </span>
-          </div>
-        )}
-        {showIndexError && (
-          <div
-            className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}
-            data-testid="indexing-error"
-          >
-            <WarningCircle
-              size={12}
-              weight="fill"
-              className={`${styles.indexingIcon} ${styles.indexingError}`}
-            />
-            <span className={`${styles.indexingText} ${styles.indexingError}`}>
-              {resolvedTheme === 'dark' ? 'Index error' : 'INDEX ERROR'}
-            </span>
-          </div>
-        )}
-      </div>
-      {showRunningInfo && (
-        <div className={styles.queryRunningInfo} data-testid="query-running-info">
-          <span className={styles.queryRunningSpinner} />
-          <span className={styles.queryRunningText}>Running...</span>
+      <div className={styles.left}>
+        <div className={styles.segment}>
+          <ConnectionStatusIndicator status={activeConnection.status} size={10} />
+          <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>
         </div>
-      )}
-      {showQueryInfo && activeResultState && (
-        <div className={styles.queryInfo} data-testid="query-info">
-          {resolvedTheme === 'dark' ? (
-            <>
-              <span className={styles.queryInfoItem} data-testid="query-rows">
-                Rows: {activeResultState.totalRows}
-              </span>
-              <span className={styles.queryInfoItem} data-testid="query-time">
-                {activeResultState.executionTimeMs}ms
-              </span>
-            </>
-          ) : (
-            <>
-              <span
-                className={`${styles.queryInfoItem} ${styles.queryInfoTime}`}
-                data-testid="query-time"
-              >
-                QUERY: {activeResultState.executionTimeMs}ms
-              </span>
-              <span
-                className={`${styles.queryInfoItem} ${styles.queryInfoRows}`}
-                data-testid="query-rows"
-              >
-                ROWS: {activeResultState.totalRows}
-              </span>
-            </>
-          )}
-        </div>
-      )}
-      <div className={styles.statusCenter}>
-        <span className={styles.statusText}>
+        <span className={styles.divider} aria-hidden="true" />
+        <span className={`${styles.statusText} ${styles.connName}`}>
           {activeConnection.profile.name} — {activeConnection.profile.host}:
           {activeConnection.profile.port}
         </span>
       </div>
-      <div className={styles.statusRight}>
-        <span aria-live="polite" aria-atomic="true">
-          {updateIndicator}
-        </span>
+
+      <div className={styles.spacer} />
+
+      <div className={styles.right}>
+        <div className={styles.activity} aria-live="polite">
+          {showIndexBuilding &&
+            indexState &&
+            (isCountBasedProgressPhase ? (
+              <div
+                className={styles.indexingIndicator}
+                data-testid="indexing-indicator"
+                data-phase={indexPhase ?? 'preparing'}
+                role="progressbar"
+                aria-valuenow={indexState.tablesDone}
+                aria-valuemin={0}
+                aria-valuemax={indexState.tablesTotal}
+                aria-valuetext={`Schema indexing progress: ${indexState.tablesDone} of ${indexState.tablesTotal}`}
+              >
+                <Database
+                  size={12}
+                  className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
+                />
+                <span className={styles.indexingText} data-testid="indexing-text">
+                  {indexingLabel}
+                </span>
+              </div>
+            ) : (
+              <div
+                className={styles.indexingIndicator}
+                data-testid="indexing-indicator"
+                data-phase={indexPhase ?? 'preparing'}
+                role="status"
+                aria-label={indexingLabel}
+              >
+                <Database
+                  size={12}
+                  className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
+                />
+                <span className={styles.indexingText} data-testid="indexing-text">
+                  {indexingLabel}
+                </span>
+              </div>
+            ))}
+          {showIndexReady && (
+            <div
+              className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}
+              data-testid="indexing-ready"
+            >
+              <CheckCircle
+                size={12}
+                weight="fill"
+                className={`${styles.indexingIcon} ${styles.indexingReady}`}
+              />
+              <span className={`${styles.indexingText} ${styles.indexingReady}`}>
+                {resolvedTheme === 'dark' ? 'Index ready' : 'INDEX READY'}
+              </span>
+            </div>
+          )}
+          {showIndexError && (
+            <div
+              className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}
+              data-testid="indexing-error"
+            >
+              <WarningCircle
+                size={12}
+                weight="fill"
+                className={`${styles.indexingIcon} ${styles.indexingError}`}
+              />
+              <span className={`${styles.indexingText} ${styles.indexingError}`}>
+                {resolvedTheme === 'dark' ? 'Index error' : 'INDEX ERROR'}
+              </span>
+            </div>
+          )}
+          {showRunningInfo && (
+            <div className={styles.queryRunningInfo} data-testid="query-running-info">
+              <span className={styles.queryRunningSpinner} />
+              <span className={styles.queryRunningText}>Running...</span>
+            </div>
+          )}
+          {showQueryInfo && activeResultState && (
+            <div className={styles.queryInfo} data-testid="query-info">
+              {resolvedTheme === 'dark' ? (
+                <>
+                  <span className={styles.queryInfoItem} data-testid="query-rows">
+                    Rows: {activeResultState.totalRows}
+                  </span>
+                  <span className={styles.queryInfoItem} data-testid="query-time">
+                    {activeResultState.executionTimeMs}ms
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span
+                    className={`${styles.queryInfoItem} ${styles.queryInfoTime}`}
+                    data-testid="query-time"
+                  >
+                    QUERY: {activeResultState.executionTimeMs}ms
+                  </span>
+                  <span
+                    className={`${styles.queryInfoItem} ${styles.queryInfoRows}`}
+                    data-testid="query-rows"
+                  >
+                    ROWS: {activeResultState.totalRows}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        {hasActivity && updateIndicator && <span className={styles.divider} aria-hidden="true" />}
+        {updateIndicator}
+        {(hasActivity || updateIndicator) && <span className={styles.divider} aria-hidden="true" />}
         <span className={styles.statusText}>{activeConnection.serverVersion}</span>
       </div>
     </div>

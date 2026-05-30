@@ -3,33 +3,77 @@
   background-color: var(--status-bar-surface);
   display: flex;
   align-items: center;
-  padding: 0 var(--space-sm);
+  gap: var(--space-md);
+  padding: 0 var(--space-md);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .statusText {
   font-family: var(--font-mono);
   font-size: var(--type-status);
   color: var(--on-surface-variant);
+  white-space: nowrap;
 }
 
-.statusLeft {
+/* ---------- Left cluster (connection identity, anchored left) ---------- */
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.segment {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
   flex-shrink: 0;
 }
 
-.statusCenter {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.connName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
-.statusRight {
+/* ---------- Flexible spacer keeps the two clusters apart ---------- */
+
+.spacer {
+  flex: 1 1 auto;
+  min-width: var(--space-lg);
+}
+
+/* ---------- Right cluster (activity + meta, anchored right) ---------- */
+
+.right {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-md);
+  flex-shrink: 0;
+}
+
+/* Contextual activity slot: collapses to zero width when empty so the
+   surrounding meta items (update, version) never shift as transient
+   indicators appear and disappear. */
+.activity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.activity:empty {
+  display: none;
+}
+
+.divider {
+  width: 1px;
+  height: 13px;
+  background-color: rgba(var(--outline-variant-rgb), 0.45);
   flex-shrink: 0;
 }
 
@@ -40,19 +84,13 @@
   align-items: center;
   gap: var(--space-sm);
   flex-shrink: 0;
-  margin-left: var(--space-md);
-}
-
-[data-theme='dark'] .queryInfo {
-  order: 1;
-  margin-left: var(--space-sm);
 }
 
 .queryInfoItem {
   font-family: var(--font-mono);
   font-size: var(--type-size-xs);
   color: var(--on-surface-variant);
-  opacity: 0.4;
+  opacity: 0.6;
   white-space: nowrap;
 }
 
@@ -76,12 +114,6 @@
   align-items: center;
   gap: var(--space-xs);
   flex-shrink: 0;
-  margin-left: var(--space-md);
-}
-
-[data-theme='dark'] .queryRunningInfo {
-  order: 1;
-  margin-left: var(--space-sm);
 }
 
 .queryRunningSpinner {
@@ -121,15 +153,9 @@
   align-items: center;
   gap: var(--space-xs);
   flex-shrink: 0;
-  margin-left: var(--space-md);
   transition:
     opacity 0.5s ease,
     transform 0.5s ease;
-}
-
-[data-theme='dark'] .indexingIndicator {
-  order: 1;
-  margin-left: var(--space-sm);
 }
 
 .indexingIcon {
@@ -193,20 +219,17 @@
   transform: translateX(-4px);
 }
 
+/* ---------- Update Indicator ---------- */
+
 .updateButton {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  margin-left: var(--space-md);
   padding: 0;
   background: transparent;
   border: 0;
   cursor: pointer;
-}
-
-[data-theme='dark'] .updateButton {
-  order: 1;
-  margin-left: var(--space-sm);
+  flex-shrink: 0;
 }
 
 .updateButtonText {
