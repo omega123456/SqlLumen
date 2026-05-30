@@ -236,6 +236,118 @@ describe('applyQueryFilters — operators', () => {
     ])
   })
 
+  it('>= operator — numeric comparison (inclusive)', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'age', operator: '>=', value: '30' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    // Alice (30) and Charlie (35); 30 is included
+    expect(result.rows).toEqual([
+      [1, 'Alice', 30],
+      [3, 'Charlie', 35],
+    ])
+  })
+
+  it('< operator — numeric comparison', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'age', operator: '<', value: '28' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    // Bob (25) only — Diana (null) fails comparison
+    expect(result.rows).toEqual([[2, 'Bob', 25]])
+  })
+
+  it('<= operator — numeric comparison (inclusive)', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'age', operator: '<=', value: '28' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    // Bob (25) and Eve (28); 28 is included
+    expect(result.rows).toEqual([
+      [2, 'Bob', 25],
+      [5, 'Eve', 28],
+    ])
+  })
+
+  it('>= operator — string fallback when condition value is non-numeric', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'name', operator: '>=', value: 'Charlie' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    // Names >= 'Charlie' lexicographically: Charlie, Diana, Eve
+    expect(result.rows).toEqual([
+      [3, 'Charlie', 35],
+      [4, 'Diana', null],
+      [5, 'Eve', 28],
+    ])
+  })
+
+  it('< operator — string fallback when condition value is non-numeric', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'name', operator: '<', value: 'Charlie' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    // Names < 'Charlie' lexicographically: Alice, Bob
+    expect(result.rows).toEqual([
+      [1, 'Alice', 30],
+      [2, 'Bob', 25],
+    ])
+  })
+
+  it('<= operator — string fallback when condition value is non-numeric', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'name', operator: '<=', value: 'Bob' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    // Names <= 'Bob' lexicographically: Alice, Bob
+    expect(result.rows).toEqual([
+      [1, 'Alice', 30],
+      [2, 'Bob', 25],
+    ])
+  })
+
   it('unknown column in condition — row passes (skip condition)', () => {
     setupTab('tab-1', {
       columns: COLUMNS,

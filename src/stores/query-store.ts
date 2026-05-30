@@ -393,81 +393,109 @@ function compositeTableKey(database: string, table: string): string {
 }
 
 /**
- * Test whether a single row matches a FilterCondition.
+ * A condition precompiled for fast per-row evaluation. `colIndex` and any
+ * regex / parsed numeric value are computed once, so the row loop only runs
+ * `test(cell)`.
+ */
+type PreparedCondition = { colIndex: number; test: (cell: unknown) => boolean }
+
+/**
+ * Precompute per-condition state (column index, compiled regex, parsed numeric
+ * value) once so it is not recomputed on every row.
  *
  * - IS NULL / IS NOT NULL: null/undefined checks
  * - ==: string equality
  * - >, >=, <, <=: numeric if both sides parse as numbers, otherwise string comparison
  * - LIKE / NOT LIKE: SQL LIKE → regex (% → .*, _ → ., case-insensitive)
+ *
+ * Conditions whose column is not found are skipped (always-true test).
  */
-function matchesFilter(row: unknown[], columns: ColumnMeta[], condition: FilterCondition): boolean {
-  const colIndex = columns.findIndex((c) => c.name === condition.column)
-  if (colIndex < 0) return true // column not found — skip condition
-  const value = row[colIndex]
+function prepareConditions(
+  columns: ColumnMeta[],
+  filterModel: FilterCondition[]
+): PreparedCondition[] {
+  return filterModel.map((condition) => {
+    const colIndex = columns.findIndex((c) => c.name === condition.column)
+    if (colIndex < 0) {
+      return { colIndex, test: () => true } // column not found — skip condition
+    }
 
-  switch (condition.operator) {
-    case 'IS NULL':
-      return value === null || value === undefined
-    case 'IS NOT NULL':
-      return value !== null && value !== undefined
-    case '==':
-      return String(value) === condition.value
-    case '>':
-    case '>=':
-    case '<':
-    case '<=': {
-      // Null/undefined cell values never satisfy comparison operators
-      if (value === null || value === undefined) return false
+    switch (condition.operator) {
+      case 'IS NULL':
+        return { colIndex, test: (cell) => cell === null || cell === undefined }
+      case 'IS NOT NULL':
+        return { colIndex, test: (cell) => cell !== null && cell !== undefined }
+      case '==': {
+        const condValue = condition.value
+        return { colIndex, test: (cell) => String(cell) === condValue }
+      }
+      case '>':
+      case '>=':
+      case '<':
+      case '<=': {
+        const operator = condition.operator
+        const strCond = condition.value
+        const condNonEmpty = strCond !== ''
+        const numCond = condNonEmpty ? Number(strCond) : NaN
+        const condNumeric = condNonEmpty && Number.isFinite(numCond)
+        return {
+          colIndex,
+          test: (cell) => {
+            // Null/undefined cell values never satisfy comparison operators
+            if (cell === null || cell === undefined) return false
 
-      // Only use numeric comparison when both values are non-empty
-      // and parse to finite numbers. Otherwise fall back to string comparison.
-      const condNonEmpty = condition.value !== ''
-      const numVal = Number(value)
-      const numCond = condNonEmpty ? Number(condition.value) : NaN
-      if (condNonEmpty && Number.isFinite(numVal) && Number.isFinite(numCond)) {
-        switch (condition.operator) {
-          case '>':
-            return numVal > numCond
-          case '>=':
-            return numVal >= numCond
-          case '<':
-            return numVal < numCond
-          case '<=':
-            return numVal <= numCond
+            // Use numeric comparison only when both sides parse to finite
+            // numbers; otherwise fall back to string comparison.
+            const numVal = Number(cell)
+            if (condNumeric && Number.isFinite(numVal)) {
+              switch (operator) {
+                case '>':
+                  return numVal > numCond
+                case '>=':
+                  return numVal >= numCond
+                case '<':
+                  return numVal < numCond
+                case '<=':
+                  return numVal <= numCond
+              }
+            }
+            const strVal = String(cell)
+            switch (operator) {
+              case '>':
+                return strVal > strCond
+              case '>=':
+                return strVal >= strCond
+              case '<':
+                return strVal < strCond
+              case '<=':
+                return strVal <= strCond
+            }
+          },
         }
       }
-      // Fall back to string comparison
-      const strVal = String(value)
-      const strCond = condition.value
-      switch (condition.operator) {
-        case '>':
-          return strVal > strCond
-        case '>=':
-          return strVal >= strCond
-        case '<':
-          return strVal < strCond
-        case '<=':
-          return strVal <= strCond
-        default:
-          return false
+      case 'LIKE':
+      case 'NOT LIKE': {
+        const likePattern = condition.value
+          .split('')
+          .map((ch) => {
+            if (ch === '%') return '.*'
+            if (ch === '_') return '.'
+            // Escape regex-special characters
+            return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          })
+          .join('')
+        const regex = new RegExp(`^${likePattern}$`, 'i')
+        const negate = condition.operator === 'NOT LIKE'
+        return {
+          colIndex,
+          test: (cell) => {
+            const matches = regex.test(String(cell))
+            return negate ? !matches : matches
+          },
+        }
       }
     }
-    case 'LIKE':
-    case 'NOT LIKE': {
-      const likePattern = condition.value
-        .split('')
-        .map((ch) => {
-          if (ch === '%') return '.*'
-          if (ch === '_') return '.'
-          // Escape regex-special characters
-          return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        })
-        .join('')
-      const regex = new RegExp(`^${likePattern}$`, 'i')
-      const matches = regex.test(String(value))
-      return condition.operator === 'LIKE' ? matches : !matches
-    }
-  }
+  })
 }
 
 /**
@@ -483,9 +511,8 @@ function reapplyFilterIfActive(
   if (result.filterModel.length === 0) {
     return { rows: newRows, unfilteredRows: null }
   }
-  const filteredRows = newRows.filter((row) =>
-    result.filterModel.every((cond) => matchesFilter(row, columns, cond))
-  )
+  const prepared = prepareConditions(columns, result.filterModel)
+  const filteredRows = newRows.filter((row) => prepared.every((p) => p.test(row[p.colIndex])))
   return {
     rows: filteredRows,
     unfilteredRows: newRows,
@@ -1991,9 +2018,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const sourceRows = result.unfilteredRows ?? result.rows
       const columns = result.columns
 
-      const filteredRows = sourceRows.filter((row) =>
-        conditions.every((cond) => matchesFilter(row, columns, cond))
-      )
+      const prepared = prepareConditions(columns, conditions)
+      const filteredRows = sourceRows.filter((row) => prepared.every((p) => p.test(row[p.colIndex])))
 
       patchResultByIndex(tabId, resultIndex, {
         rows: filteredRows,
