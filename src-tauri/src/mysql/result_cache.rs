@@ -106,12 +106,22 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
     }
 
     fn available_bytes(&self) -> u64 {
+        // macOS: sysinfo's available_memory() excludes the large pool of
+        // inactive (reclaimable) pages, so on a machine with plenty of free
+        // RAM it reports only a few GB and spuriously triggers RAM-pressure
+        // eviction. Read the reclaimable total straight from Mach instead.
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(bytes) = macos_reclaimable_bytes() {
+                return bytes;
+            }
+        }
+
         let available = self.sys.available_memory();
         if available > 0 {
             return available;
         }
-        // macOS: sysinfo returns 0 for available_memory; approximate as total − used
-        // (used = active + wired, so the remainder includes free + inactive + purgeable)
+        // Fallback: approximate as total − used.
         self.sys
             .total_memory()
             .saturating_sub(self.sys.used_memory())
@@ -119,6 +129,63 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
 
     fn total_bytes(&self) -> u64 {
         self.sys.total_memory()
+    }
+}
+
+/// Reclaimable memory on macOS = (free + inactive + speculative) pages.
+///
+/// These are the pages the kernel can hand back under pressure. We
+/// deliberately exclude `compressor` pages (holding live compressed data)
+/// and `wired`/`active` pages. Returns `None` if the Mach call fails, so the
+/// caller can fall back to `sysinfo`.
+#[cfg(target_os = "macos")]
+fn macos_reclaimable_bytes() -> Option<u64> {
+    use std::mem;
+
+    // Not re-exported by libc 0.2; declared here so the `mach_host_self()` send
+    // right can be released. Stable Mach syscall: releases a reference to the
+    // named port right in the given task's IPC space.
+    extern "C" {
+        fn mach_port_deallocate(
+            task: libc::mach_port_t,
+            name: libc::mach_port_t,
+        ) -> libc::kern_return_t;
+    }
+
+    // SAFETY: the Mach call operates on a stack-owned, zero-initialized
+    // out-param with an explicitly sized count, and we check the return code
+    // before reading the result. `mach_host_self` is deprecated in libc in
+    // favor of the `mach2` crate, but the symbol is stable; we avoid the extra
+    // dependency.
+    #[allow(deprecated)]
+    unsafe {
+        let page_size = libc::vm_page_size as u64;
+        if page_size == 0 {
+            return None;
+        }
+
+        // `mach_host_self()` returns an owned send right that must be released,
+        // otherwise this periodically-called function leaks a port name per call.
+        let host = libc::mach_host_self();
+
+        let mut stats: libc::vm_statistics64 = mem::zeroed();
+        let mut count = libc::HOST_VM_INFO64_COUNT;
+        let ret = libc::host_statistics64(
+            host,
+            libc::HOST_VM_INFO64,
+            &mut stats as *mut _ as *mut libc::integer_t,
+            &mut count,
+        );
+        mach_port_deallocate(libc::mach_task_self(), host);
+
+        if ret != libc::KERN_SUCCESS {
+            return None;
+        }
+
+        let reclaimable_pages = stats.free_count as u64
+            + stats.inactive_count as u64
+            + stats.speculative_count as u64;
+        Some(reclaimable_pages.saturating_mul(page_size))
     }
 }
 

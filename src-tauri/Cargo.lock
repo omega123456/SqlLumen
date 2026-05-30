@@ -5513,6 +5513,7 @@ dependencies = [
  "futures",
  "hex",
  "keyring",
+ "libc",
  "moka",
  "mysql_async",
  "opensrv-mysql",

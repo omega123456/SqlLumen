@@ -4,7 +4,7 @@
 mod common;
 
 use sqllumen_lib::mysql::query_executor::StoredResult;
-use sqllumen_lib::mysql::result_cache::ResultCache;
+use sqllumen_lib::mysql::result_cache::{MemorySnapshot, ResultCache, SysinfoMemorySnapshot};
 use std::thread;
 use std::time::Duration;
 
@@ -180,6 +180,32 @@ fn insert_replaces_existing_entry() {
     assert_eq!(entry.value[0].query_id, "q2");
     cache.run_pending_tasks();
     assert_eq!(cache.entry_count(), 1);
+}
+
+#[test]
+fn sysinfo_snapshot_reports_sane_available_memory() {
+    let mut snapshot = SysinfoMemorySnapshot::new();
+    snapshot.refresh();
+
+    let total = snapshot.total_bytes();
+    let available = snapshot.available_bytes();
+
+    // A real machine always has some total RAM and some reclaimable RAM.
+    assert!(total > 0, "total memory should be reported");
+    assert!(available > 0, "available memory should be reported");
+    // Available can never exceed total.
+    assert!(
+        available <= total,
+        "available ({available}) must not exceed total ({total})"
+    );
+    // Regression guard: on macOS the previous implementation undercounted
+    // reclaimable (inactive) pages so badly that available looked like a tiny
+    // sliver of total, firing false RAM-pressure on idle machines. Reclaimable
+    // memory should be a meaningful fraction of total (>1%).
+    assert!(
+        available > total / 100,
+        "available ({available}) is implausibly small vs total ({total})"
+    );
 }
 
 #[test]
