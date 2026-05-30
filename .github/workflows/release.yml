@@ -67,7 +67,8 @@ jobs:
           uploadUpdaterJson: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --target aarch64-apple-darwin --bundles dmg,app
+          # Trailing `-- --locked` forwards to cargo: build fails if Cargo.lock is out of sync with Cargo.toml.
+          args: --target aarch64-apple-darwin --bundles dmg,app -- --locked
 
       - name: Retry tauri release on transient dmg bundling failure
         if: steps.tauri_release_first_attempt.outcome == 'failure'
@@ -86,7 +87,7 @@ jobs:
           uploadUpdaterJson: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --target aarch64-apple-darwin --bundles dmg,app
+          args: --target aarch64-apple-darwin --bundles dmg,app -- --locked
 
   publish-tauri-linux-x64:
     permissions:
@@ -147,7 +148,7 @@ jobs:
           uploadUpdaterJson: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --bundles appimage,deb
+          args: --bundles appimage,deb -- --locked
 
   publish-tauri-windows:
     permissions:
@@ -206,7 +207,7 @@ jobs:
           updaterJsonPreferNsis: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --bundles msi,nsis
+          args: --bundles msi,nsis -- --locked
 
   validate-release:
     needs:
