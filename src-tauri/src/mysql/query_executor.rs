@@ -20,6 +20,7 @@ use sqlx::Value;
 #[cfg(not(coverage))]
 use sqlx::ValueRef;
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 #[cfg(not(coverage))]
@@ -43,7 +44,7 @@ pub struct ColumnMeta {
 pub struct StoredResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
-    pub rows: Vec<Vec<serde_json::Value>>,
+    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub execution_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
@@ -58,7 +59,7 @@ pub struct ExecuteQueryResult {
     pub total_rows: usize,
     pub execution_time_ms: u64,
     pub affected_rows: u64,
-    pub rows: Vec<Vec<serde_json::Value>>,
+    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub auto_limit_applied: bool,
 }
 
@@ -66,7 +67,7 @@ pub struct ExecuteQueryResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SortedRowsResult {
-    pub rows: Vec<Vec<serde_json::Value>>,
+    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
 }
 
 /// Table metadata for the autocomplete schema cache.
@@ -833,10 +834,12 @@ async fn execute_single_statement_inner(
 
     let query_id = Uuid::new_v4().to_string();
 
+    let shared_rows = Arc::new(all_rows);
+
     let stored = StoredResult {
         query_id: query_id.clone(),
         columns: columns.clone(),
-        rows: all_rows.clone(),
+        rows: Arc::clone(&shared_rows),
         execution_time_ms,
         affected_rows,
         auto_limit_applied,
@@ -849,7 +852,7 @@ async fn execute_single_statement_inner(
         total_rows: total_rows as i64,
         execution_time_ms: execution_time_ms as i64,
         affected_rows,
-        rows: all_rows,
+        rows: shared_rows,
         auto_limit_applied,
         error: None,
         re_executable: true,
@@ -886,7 +889,7 @@ async fn execute_single_statement_inner(
         StoredResult {
             query_id: query_id.clone(),
             columns: vec![],
-            rows: vec![],
+            rows: Arc::new(vec![]),
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
@@ -898,7 +901,7 @@ async fn execute_single_statement_inner(
             total_rows: 0,
             execution_time_ms: 0,
             affected_rows: 0,
-            rows: vec![],
+            rows: Arc::new(vec![]),
             auto_limit_applied,
             error: None,
             re_executable: true,
@@ -1017,7 +1020,7 @@ pub async fn execute_query_impl(
         vec![StoredResult {
             query_id: query_id.clone(),
             columns: vec![],
-            rows: vec![],
+            rows: Arc::new(vec![]),
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
@@ -1033,7 +1036,7 @@ pub async fn execute_query_impl(
         total_rows: 0,
         execution_time_ms: 0,
         affected_rows: 0,
-        rows: vec![],
+        rows: Arc::new(vec![]),
         auto_limit_applied,
     })
 }
@@ -1042,7 +1045,7 @@ pub async fn execute_query_impl(
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchCachedRowsResult {
-    pub rows: Vec<Vec<serde_json::Value>>,
+    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub columns: Vec<ColumnMeta>,
 }
 
@@ -1563,8 +1566,11 @@ pub async fn sort_results_impl(
     // Capture query_id for staleness guard
     let query_id = result_vec[idx].query_id.clone();
 
-    // Extract rows to move into the blocking closure
-    let mut rows = std::mem::take(&mut result_vec[idx].rows);
+    // Extract rows to move into the blocking closure as an owned Vec.
+    // We cannot hold an `Arc::make_mut` borrow across the `.await`, so take the
+    // slot's Arc and unwrap it to an owned buffer (cloning only if shared).
+    let taken = std::mem::take(&mut result_vec[idx].rows);
+    let mut rows = Arc::try_unwrap(taken).unwrap_or_else(|a| (*a).clone());
 
     // Offload the sort to the blocking thread pool
     rows = tokio::task::spawn_blocking(move || {
@@ -1606,16 +1612,17 @@ pub async fn sort_results_impl(
         return Err("Results were refreshed during sort".to_string());
     }
 
-    // Use the fresh cache entry as the base and apply sorted rows
-    let mut fresh_vec = post_entry.value.to_vec();
-    fresh_vec[idx].rows = rows;
-
-    let all_rows = fresh_vec[idx].rows.clone();
+    // Use the fresh cache entry as the base and apply sorted rows.
+    // Wrap the sorted buffer in ONE fresh Arc, shared between the cache
+    // write-back and the IPC return value (no extra deep copy).
+    let mut fresh_vec = post_entry.value.clone();
+    let sorted_rows = Arc::new(rows);
+    fresh_vec[idx].rows = Arc::clone(&sorted_rows);
 
     // Re-insert the modified result vec
     state.result_cache.insert(connection_id, tab_id, fresh_vec);
 
-    Ok(SortedRowsResult { rows: all_rows })
+    Ok(SortedRowsResult { rows: sorted_rows })
 }
 
 // ── Analyze query for edit ─────────────────────────────────────────────────────
@@ -1823,9 +1830,13 @@ pub fn update_result_cell_impl(
         ));
     }
 
+    // Copy-on-write: `make_mut` clones the inner buffer only if it is still
+    // shared with another holder (e.g. a previously returned IPC payload),
+    // so an already-returned buffer is never mutated in place.
+    let rows_mut = Arc::make_mut(&mut stored.rows);
     for (col_index, new_value) in updates {
-        if col_index < stored.rows[row_index].len() {
-            stored.rows[row_index][col_index] = new_value;
+        if col_index < rows_mut[row_index].len() {
+            rows_mut[row_index][col_index] = new_value;
         }
     }
 
@@ -1846,7 +1857,7 @@ pub struct MultiQueryResultItem {
     pub total_rows: i64,
     pub execution_time_ms: i64,
     pub affected_rows: u64,
-    pub rows: Vec<Vec<serde_json::Value>>,
+    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub auto_limit_applied: bool,
     pub error: Option<String>,
     pub re_executable: bool,
@@ -2073,7 +2084,7 @@ pub async fn reexecute_single_result_impl(
         result_vec[result_index] = StoredResult {
             query_id: query_id.clone(),
             columns: vec![],
-            rows: vec![],
+            rows: Arc::new(vec![]),
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
@@ -2088,7 +2099,7 @@ pub async fn reexecute_single_result_impl(
         total_rows: 0,
         execution_time_ms: 0,
         affected_rows: 0,
-        rows: vec![],
+        rows: Arc::new(vec![]),
         auto_limit_applied,
         error: None,
         re_executable: true,
@@ -2172,7 +2183,7 @@ pub async fn execute_multi_query_impl(
             stored_results.push(StoredResult {
                 query_id: query_id.clone(),
                 columns: vec![],
-                rows: vec![],
+                rows: Arc::new(vec![]),
                 execution_time_ms: 0,
                 affected_rows: 0,
                 auto_limit_applied: false,
@@ -2184,7 +2195,7 @@ pub async fn execute_multi_query_impl(
                 total_rows: 0,
                 execution_time_ms: 0,
                 affected_rows: 0,
-                rows: vec![],
+                rows: Arc::new(vec![]),
                 auto_limit_applied: false,
                 error: Some("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string()),
                 re_executable: false,
@@ -2211,7 +2222,7 @@ pub async fn execute_multi_query_impl(
         stored_results.push(StoredResult {
             query_id: query_id.clone(),
             columns: vec![],
-            rows: vec![],
+            rows: Arc::new(vec![]),
             execution_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
@@ -2223,7 +2234,7 @@ pub async fn execute_multi_query_impl(
             total_rows: 0,
             execution_time_ms: 0,
             affected_rows: 0,
-            rows: vec![],
+            rows: Arc::new(vec![]),
             auto_limit_applied,
             error: None,
             re_executable: !is_call,
@@ -2335,7 +2346,7 @@ pub async fn execute_call_query_impl(
     let stored = StoredResult {
         query_id: query_id.clone(),
         columns: vec![],
-        rows: vec![],
+        rows: Arc::new(vec![]),
         execution_time_ms: 0,
         affected_rows: 0,
         auto_limit_applied: false,
@@ -2354,7 +2365,7 @@ pub async fn execute_call_query_impl(
             total_rows: 0,
             execution_time_ms: 0,
             affected_rows: 0,
-            rows: vec![],
+            rows: Arc::new(vec![]),
             auto_limit_applied: false,
             error: None,
             re_executable: false,

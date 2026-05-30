@@ -159,6 +159,8 @@ sqllumen-test-integration = [
   "copy_to_host_commands_integration",
   "--test",
   "copy_to_host_engine_integration",
+  "--test",
+  "arc_result_rows_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -319,6 +321,8 @@ sqllumen-llvm-cov = [
   "copy_to_host_commands_integration",
   "--test",
   "copy_to_host_engine_integration",
+  "--test",
+  "arc_result_rows_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

@@ -10,6 +10,7 @@
 //! Cancel support is provided via thread ID registration before any statements execute.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use std::sync::Arc;
 
 /// Maximum safe integer in JavaScript (Number.MAX_SAFE_INTEGER = 2^53 - 1).
 pub const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
@@ -404,11 +405,13 @@ async fn execute_single_select_statement(
     let total_rows = serialized_rows.len();
     let query_id = uuid::Uuid::new_v4().to_string();
 
+    let shared_rows = Arc::new(serialized_rows);
+
     Ok((
         StoredResult {
             query_id: query_id.clone(),
             columns: columns.clone(),
-            rows: serialized_rows.clone(),
+            rows: Arc::clone(&shared_rows),
             execution_time_ms,
             affected_rows: 0,
             auto_limit_applied,
@@ -420,7 +423,7 @@ async fn execute_single_select_statement(
             total_rows: total_rows as i64,
             execution_time_ms: execution_time_ms as i64,
             affected_rows: 0,
-            rows: serialized_rows,
+            rows: shared_rows,
             auto_limit_applied,
             error: None,
             re_executable: true,
@@ -465,7 +468,7 @@ async fn execute_single_dml_statement(
         StoredResult {
             query_id: query_id.clone(),
             columns: vec![],
-            rows: vec![],
+            rows: Arc::new(vec![]),
             execution_time_ms,
             affected_rows: affected,
             auto_limit_applied: false,
@@ -477,7 +480,7 @@ async fn execute_single_dml_statement(
             total_rows: 0,
             execution_time_ms: execution_time_ms as i64,
             affected_rows: affected,
-            rows: vec![],
+            rows: Arc::new(vec![]),
             auto_limit_applied: false,
             error: None,
             re_executable: true,
@@ -557,14 +560,14 @@ async fn execute_call_statement(
 
         let execution_time_ms = start.elapsed().as_millis() as u64;
         let total_rows = serialized_rows.len();
-        let rows = serialized_rows.clone();
+        let shared_rows = Arc::new(serialized_rows);
         let query_id = uuid::Uuid::new_v4().to_string();
 
         pairs.push((
             StoredResult {
                 query_id: query_id.clone(),
                 columns: columns.clone(),
-                rows: serialized_rows,
+                rows: Arc::clone(&shared_rows),
                 execution_time_ms,
                 affected_rows: 0,
                 auto_limit_applied: false,
@@ -576,7 +579,7 @@ async fn execute_call_statement(
                 total_rows: total_rows as i64,
                 execution_time_ms: execution_time_ms as i64,
                 affected_rows: 0,
-                rows,
+                rows: shared_rows,
                 auto_limit_applied: false,
                 error: None,
                 re_executable: false,
@@ -597,7 +600,7 @@ async fn execute_call_statement(
             StoredResult {
                 query_id: query_id.clone(),
                 columns: vec![],
-                rows: vec![],
+                rows: Arc::new(vec![]),
                 execution_time_ms,
                 affected_rows: call_last_affected,
                 auto_limit_applied: false,
@@ -609,7 +612,7 @@ async fn execute_call_statement(
                 total_rows: 0,
                 execution_time_ms: execution_time_ms as i64,
                 affected_rows: call_last_affected,
-                rows: vec![],
+                rows: Arc::new(vec![]),
                 auto_limit_applied: false,
                 error: None,
                 re_executable: false,
@@ -618,6 +621,46 @@ async fn execute_call_statement(
     }
 
     Ok(pairs)
+}
+
+// ── Error result helper ────────────────────────────────────────────────────────
+
+/// Push a matching `(StoredResult, MultiQueryResultItem)` pair representing a
+/// failed statement onto the running result vectors.
+///
+/// Generates a fresh query id internally and fills both structs with empty rows,
+/// zeroed numerics, `re_executable: false`, and the given error message.
+#[cfg(not(coverage))]
+fn push_error_result(
+    stored: &mut Vec<crate::mysql::query_executor::StoredResult>,
+    items: &mut Vec<crate::mysql::query_executor::MultiQueryResultItem>,
+    sql: &str,
+    error_msg: String,
+) {
+    use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
+
+    let query_id = uuid::Uuid::new_v4().to_string();
+
+    stored.push(StoredResult {
+        query_id: query_id.clone(),
+        columns: vec![],
+        rows: Arc::new(vec![]),
+        execution_time_ms: 0,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    });
+    items.push(MultiQueryResultItem {
+        query_id,
+        source_sql: sql.to_string(),
+        columns: vec![],
+        total_rows: 0,
+        execution_time_ms: 0,
+        affected_rows: 0,
+        rows: Arc::new(vec![]),
+        auto_limit_applied: false,
+        error: Some(error_msg),
+        re_executable: false,
+    });
 }
 
 // ── Batch executor ─────────────────────────────────────────────────────────────
@@ -688,29 +731,8 @@ pub async fn execute_multi_query_internal(
 
             // Read-only enforcement per statement
             if is_read_only && !is_read_only_allowed(sql) {
-                let query_id = uuid::Uuid::new_v4().to_string();
                 let error_msg = "This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string();
-
-                stored_results.push(StoredResult {
-                    query_id: query_id.clone(),
-                    columns: vec![],
-                    rows: vec![],
-                    execution_time_ms: 0,
-                    affected_rows: 0,
-                    auto_limit_applied: false,
-                });
-                result_items.push(MultiQueryResultItem {
-                    query_id,
-                    source_sql: sql.to_string(),
-                    columns: vec![],
-                    total_rows: 0,
-                    execution_time_ms: 0,
-                    affected_rows: 0,
-                    rows: vec![],
-                    auto_limit_applied: false,
-                    error: Some(error_msg),
-                    re_executable: false,
-                });
+                push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
                 break; // Stop on read-only violation
             }
 
@@ -727,29 +749,7 @@ pub async fn execute_multi_query_internal(
                         }
                     }
                     Err(error_msg) => {
-                        let execution_time_ms = 0u64;
-                        let query_id = uuid::Uuid::new_v4().to_string();
-
-                        stored_results.push(StoredResult {
-                            query_id: query_id.clone(),
-                            columns: vec![],
-                            rows: vec![],
-                            execution_time_ms,
-                            affected_rows: 0,
-                            auto_limit_applied: false,
-                        });
-                        result_items.push(MultiQueryResultItem {
-                            query_id,
-                            source_sql: sql.to_string(),
-                            columns: vec![],
-                            total_rows: 0,
-                            execution_time_ms: execution_time_ms as i64,
-                            affected_rows: 0,
-                            rows: vec![],
-                            auto_limit_applied: false,
-                            error: Some(error_msg),
-                            re_executable: false,
-                        });
+                        push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
                         break; // Stop on error
                     }
                 }
@@ -776,28 +776,7 @@ pub async fn execute_multi_query_internal(
                         result_items.push(ri);
                     }
                     Err(error_msg) => {
-                        let query_id = uuid::Uuid::new_v4().to_string();
-
-                        stored_results.push(StoredResult {
-                            query_id: query_id.clone(),
-                            columns: vec![],
-                            rows: vec![],
-                            execution_time_ms: 0,
-                            affected_rows: 0,
-                            auto_limit_applied: false,
-                        });
-                        result_items.push(MultiQueryResultItem {
-                            query_id,
-                            source_sql: sql.to_string(),
-                            columns: vec![],
-                            total_rows: 0,
-                            execution_time_ms: 0,
-                            affected_rows: 0,
-                            rows: vec![],
-                            auto_limit_applied: false,
-                            error: Some(error_msg),
-                            re_executable: false,
-                        });
+                        push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
                         break; // Stop on error
                     }
                 }

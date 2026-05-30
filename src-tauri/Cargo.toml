@@ -20,7 +20,7 @@ tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-prevent-default = "4"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 csv = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }

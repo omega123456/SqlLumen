@@ -1687,8 +1687,9 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-fallback", 1, 50, None, None)
-            .expect("list history");
+        let page =
+            sqllumen_lib::db::history::list_history(&conn, "hist-fallback", 1, 50, None, None)
+                .expect("list history");
         assert_eq!(page.total, 1);
 
         let entry = &page.entries[0];
@@ -1736,8 +1737,9 @@ mod command_wrapper_coverage {
         // (the pool lookup fails before the impl call), so we expect NO history entry
         // since the error path logs with the session_id fallback
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "missing-conn", 1, 50, None, None)
-            .expect("list history");
+        let page =
+            sqllumen_lib::db::history::list_history(&conn, "missing-conn", 1, 50, None, None)
+                .expect("list history");
         // No history logged because the error happens before the impl call
         // and the wrapper returns Err before reaching the history logging code
         assert_eq!(
@@ -1823,8 +1825,9 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = sqllumen_lib::db::history::list_history(&conn, "hist-export-sf", 1, 50, None, None)
-            .expect("list history");
+        let page =
+            sqllumen_lib::db::history::list_history(&conn, "hist-export-sf", 1, 50, None, None)
+                .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
         assert!(entry.success);

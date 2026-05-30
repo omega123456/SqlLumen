@@ -19,8 +19,8 @@ use sqllumen_lib::export::copy_to_host::{
     apply_create_if_not_exists, batch_byte_budget, begin_object, complete_object,
     drop_if_exists_statement, has_cross_database_non_table_copy, mark_cancelled, mark_completed,
     mark_failed, new_running_progress, plan_batches, qualified_drop_if_exists_statement,
-    qualify_table_ddl_schema, render_row, rewrite_non_table_ddl_schema, should_cancel, strip_definer,
-    validate_cross_database_non_table_copy, validate_mysql_identifier_token,
+    qualify_table_ddl_schema, render_row, rewrite_non_table_ddl_schema, should_cancel,
+    strip_definer, validate_cross_database_non_table_copy, validate_mysql_identifier_token,
     validate_selection_for_options, CopyObjectType, CopyOptions, CopySelection, InsertMode,
     COPY_BATCH_ROW_CAP, FALLBACK_PACKET_BYTES, FK_CHECKS_DISABLE, FK_CHECKS_ENABLE,
 };
@@ -257,14 +257,12 @@ fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_procedure() {
 #[test]
 fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_function_same_db_name() {
     let ddl = "CREATE FUNCTION fn_total() RETURNS INT RETURN 1";
-    let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Function,
-        ddl,
-        "shop",
-        "shop",
-        "fn_total",
+    let out =
+        rewrite_non_table_ddl_schema(CopyObjectType::Function, ddl, "shop", "shop", "fn_total");
+    assert_eq!(
+        out,
+        "CREATE FUNCTION `shop`.`fn_total`() RETURNS INT RETURN 1"
     );
-    assert_eq!(out, "CREATE FUNCTION `shop`.`fn_total`() RETURNS INT RETURN 1");
 }
 
 #[test]
@@ -284,13 +282,8 @@ fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_trigger_name_only() {
 #[test]
 fn test_rewrite_non_table_ddl_schema_qualifies_unqualified_event() {
     let ddl = "CREATE EVENT ev_nightly ON SCHEDULE EVERY 1 DAY DO SELECT 'ev_nightly'";
-    let out = rewrite_non_table_ddl_schema(
-        CopyObjectType::Event,
-        ddl,
-        "shop",
-        "archive",
-        "ev_nightly",
-    );
+    let out =
+        rewrite_non_table_ddl_schema(CopyObjectType::Event, ddl, "shop", "archive", "ev_nightly");
     assert!(out.starts_with("CREATE EVENT `archive`.`ev_nightly` ON SCHEDULE"));
     assert!(out.contains("'ev_nightly'"));
 }
@@ -728,7 +721,8 @@ fn test_copy_engine_keeps_internal_pool_fallback() {
 #[test]
 fn test_copy_engine_fully_qualifies_target_table_statements() {
     let source = include_str!("../src/export/copy_to_host.rs");
-    assert!(source.contains("qualified_drop_if_exists_statement(object_type, target_database, &escaped)"));
+    assert!(source
+        .contains("qualified_drop_if_exists_statement(object_type, target_database, &escaped)"));
     assert!(source.contains("TRUNCATE TABLE {safe_target_db}.{safe_target_table}"));
     assert!(source.contains("{safe_target_db}.{safe_target_table}"));
     assert!(source.contains("qualify_table_ddl_schema(ddl, target_database, name)"));

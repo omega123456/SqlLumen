@@ -34,7 +34,7 @@ fn update_result_cell_successful() {
                     data_type: "VARCHAR".to_string(),
                 },
             ],
-            rows: vec![
+            rows: std::sync::Arc::new(vec![
                 vec![
                     serde_json::json!(1),
                     serde_json::json!("Alice"),
@@ -45,7 +45,7 @@ fn update_result_cell_successful() {
                     serde_json::json!("Bob"),
                     serde_json::json!("bob@example.com"),
                 ],
-            ],
+            ]),
             execution_time_ms: 10,
             affected_rows: 0,
             auto_limit_applied: false,
@@ -100,7 +100,7 @@ fn update_result_cell_row_index_out_of_bounds() {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: vec![vec![serde_json::json!(1)]],
+            rows: std::sync::Arc::new(vec![vec![serde_json::json!(1)]]),
             execution_time_ms: 5,
             affected_rows: 0,
             auto_limit_applied: false,
@@ -137,11 +137,11 @@ fn update_result_cell_multiple_columns() {
                     data_type: "VARCHAR".to_string(),
                 },
             ],
-            rows: vec![vec![
+            rows: std::sync::Arc::new(vec![vec![
                 serde_json::json!(1),
                 serde_json::json!("Alice"),
                 serde_json::json!("alice@example.com"),
-            ]],
+            ]]),
             execution_time_ms: 10,
             affected_rows: 0,
             auto_limit_applied: false,

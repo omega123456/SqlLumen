@@ -62,7 +62,7 @@ fn insert_result(
         vec![StoredResult {
             query_id: "q-sort-test".to_string(),
             columns,
-            rows,
+            rows: Arc::new(rows),
             execution_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
