@@ -58,7 +58,9 @@ export function ResultToolbar({
   const totalRows = activeResult.totalRows
   const affectedRows = activeResult.affectedRows
   const columnsCount = activeResult.columns.length
-  const executionTimeMs = activeResult.executionTimeMs
+  // The toolbar badge shows the combined (total) timing, unchanged in magnitude
+  // from before the execution/total split — so feed totalTimeMs into StatusArea.
+  const totalTimeMs = activeResult.totalTimeMs
   const errorMessage = activeResult.errorMessage
   const autoLimitApplied = activeResult.autoLimitApplied
   const configuredRowLimit = useSettingsStore((s) => s.getSetting('results.pageSize')) || '500'
@@ -219,9 +221,7 @@ export function ResultToolbar({
         <StatusArea
           status={statusAreaStatus}
           totalRows={statusTotalRows}
-          executionTimeMs={
-            executionTimeMs != null && executionTimeMs > 0 ? executionTimeMs : undefined
-          }
+          executionTimeMs={totalTimeMs > 0 ? totalTimeMs : undefined}
           errorMessage={truncatedError || undefined}
           customContent={autoLimitContent}
         />

@@ -90,21 +90,15 @@
   font-family: var(--font-mono);
   font-size: var(--type-size-xs);
   color: var(--on-surface-variant);
-  opacity: 0.6;
   white-space: nowrap;
 }
 
-[data-theme='light'] .queryInfoItem {
-  letter-spacing: 0.05em;
-  opacity: 1;
+.queryInfoLabel {
+  color: var(--on-surface-variant);
 }
 
 .queryInfoTime {
   color: var(--primary);
-}
-
-.queryInfoRows {
-  color: var(--on-surface-variant);
 }
 
 /* ---------- Query Running Indicator ---------- */

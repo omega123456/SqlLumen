@@ -8,6 +8,7 @@ export function createCurrentDatabaseQueryResult(
     columns: [{ name: 'DATABASE()', dataType: 'VARCHAR' }],
     totalRows: 1,
     executionTimeMs: 7,
+    totalTimeMs: 9,
     affectedRows: 0,
     rows: [[activeMockDatabase]],
   
@@ -24,6 +25,7 @@ export const SCROLL_TEST_QUERY_RESULT: PlaywrightQueryResult = {
   ],
   totalRows: 120,
   executionTimeMs: 42,
+  totalTimeMs: 58,
   affectedRows: 0,
   rows: Array.from({ length: 120 }, (_, index) => [
     index + 1,
@@ -45,6 +47,7 @@ export const DEFAULT_EXECUTE_QUERY_RESULT: PlaywrightQueryResult = {
   ],
   totalRows: 5,
   executionTimeMs: 42,
+  totalTimeMs: 51,
   affectedRows: 0,
   rows: [
     [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
@@ -66,6 +69,7 @@ export const JSON_QUERY_RESULT: PlaywrightQueryResult = {
   ],
   totalRows: 2,
   executionTimeMs: 18,
+  totalTimeMs: 24,
   affectedRows: 0,
   rows: [
     [

@@ -136,10 +136,11 @@ describe('ResultToolbar', () => {
     expect(screen.queryByTestId('page-size-select')).not.toBeInTheDocument()
   })
 
-  it('shows execution time', () => {
+  it('shows total time', () => {
     setupTabState(tabId, {
       status: 'success',
-      executionTimeMs: 42,
+      executionTimeMs: 12,
+      totalTimeMs: 42,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
     render(

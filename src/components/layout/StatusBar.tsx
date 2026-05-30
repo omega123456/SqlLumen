@@ -267,31 +267,18 @@ export function StatusBar() {
           )}
           {showQueryInfo && activeResultState && (
             <div className={styles.queryInfo} data-testid="query-info">
-              {resolvedTheme === 'dark' ? (
-                <>
-                  <span className={styles.queryInfoItem} data-testid="query-rows">
-                    Rows: {activeResultState.totalRows}
-                  </span>
-                  <span className={styles.queryInfoItem} data-testid="query-time">
-                    {activeResultState.executionTimeMs}ms
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span
-                    className={`${styles.queryInfoItem} ${styles.queryInfoTime}`}
-                    data-testid="query-time"
-                  >
-                    QUERY: {activeResultState.executionTimeMs}ms
-                  </span>
-                  <span
-                    className={`${styles.queryInfoItem} ${styles.queryInfoRows}`}
-                    data-testid="query-rows"
-                  >
-                    ROWS: {activeResultState.totalRows}
-                  </span>
-                </>
-              )}
+              <span className={styles.queryInfoItem} data-testid="query-rows">
+                <span className={styles.queryInfoLabel}>Rows:</span>{' '}
+                {activeResultState.totalRows}
+              </span>
+              <span className={styles.queryInfoItem} data-testid="query-time">
+                <span className={styles.queryInfoLabel}>Exec:</span>{' '}
+                <span className={styles.queryInfoTime}>{activeResultState.executionTimeMs}ms</span>
+              </span>
+              <span className={styles.queryInfoItem} data-testid="query-total-time">
+                <span className={styles.queryInfoLabel}>Total:</span>{' '}
+                <span className={styles.queryInfoTime}>{activeResultState.totalTimeMs}ms</span>
+              </span>
             </div>
           )}
         </div>

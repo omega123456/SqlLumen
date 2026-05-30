@@ -200,7 +200,8 @@ describe('StatusBar', () => {
       content: 'SELECT * FROM users',
       status: 'success',
       totalRows: 42,
-      executionTimeMs: 150,
+      executionTimeMs: 12,
+      totalTimeMs: 150,
       queryId: 'q1',
     })
 
@@ -225,7 +226,7 @@ describe('StatusBar', () => {
       })
     }
 
-    it('shows row count and execution time in dark theme when query-editor has success status', () => {
+    it('shows row count, exec time, and total time in dark theme when query-editor has success status', () => {
       useThemeStore.setState({ resolvedTheme: 'dark' })
       setupQueryEditorTab()
       useQueryStore.setState({ tabs: { 'tab-1': successQueryState } })
@@ -234,19 +235,27 @@ describe('StatusBar', () => {
 
       expect(screen.getByTestId('query-info')).toBeInTheDocument()
       expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows: 42')
-      expect(screen.getByTestId('query-time')).toHaveTextContent('150ms')
+      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec: 12ms')
+      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total: 150ms')
     })
 
-    it('shows uppercase query info in light theme when query-editor has success status', () => {
-      useThemeStore.setState({ resolvedTheme: 'light' })
+    it('renders the query-info cluster identically in light and dark themes', () => {
       setupQueryEditorTab()
       useQueryStore.setState({ tabs: { 'tab-1': successQueryState } })
 
-      render(<StatusBar />)
+      useThemeStore.setState({ resolvedTheme: 'dark' })
+      const { unmount } = render(<StatusBar />)
+      const darkInfo = screen.getByTestId('query-info').textContent
+      unmount()
 
-      expect(screen.getByTestId('query-info')).toBeInTheDocument()
-      expect(screen.getByTestId('query-time')).toHaveTextContent('QUERY: 150ms')
-      expect(screen.getByTestId('query-rows')).toHaveTextContent('ROWS: 42')
+      useThemeStore.setState({ resolvedTheme: 'light' })
+      render(<StatusBar />)
+      const lightInfo = screen.getByTestId('query-info').textContent
+
+      expect(lightInfo).toBe(darkInfo)
+      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows: 42')
+      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec: 12ms')
+      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total: 150ms')
     })
 
     it('does not show query info when active tab is not query-editor', () => {

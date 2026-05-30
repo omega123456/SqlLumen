@@ -212,7 +212,7 @@ pub async fn reexecute_single_result(
                     connection_id: conn_id,
                     database_name,
                     sql_text: sql,
-                    duration_ms: Some(item.execution_time_ms),
+                    duration_ms: Some(item.total_time_ms as i64),
                     row_count: Some(item.total_rows),
                     affected_rows: Some(item.affected_rows as i64),
                     success: item.error.is_none(),

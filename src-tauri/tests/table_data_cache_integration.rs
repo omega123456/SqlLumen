@@ -69,6 +69,7 @@ fn stub_result(query_id: &str) -> StoredResult {
         columns: vec![],
         rows: std::sync::Arc::new(vec![]),
         execution_time_ms: 0,
+        total_time_ms: 0,
         affected_rows: 0,
         auto_limit_applied: false,
     }

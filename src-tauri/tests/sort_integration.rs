@@ -64,6 +64,7 @@ fn insert_result(
             columns,
             rows: Arc::new(rows),
             execution_time_ms: 1,
+            total_time_ms: 1,
             affected_rows: 0,
             auto_limit_applied: false,
         }],

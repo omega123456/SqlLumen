@@ -246,6 +246,7 @@ export interface QueryResultMeta {
   columns: ColumnMeta[]
   totalRows: number
   executionTimeMs: number
+  totalTimeMs: number
   affectedRows: number
   autoLimitApplied: boolean
 }
@@ -541,6 +542,7 @@ export interface MultiQueryResultItem {
   columns: ColumnMeta[]
   totalRows: number
   executionTimeMs: number
+  totalTimeMs: number
   affectedRows: number
   rows: unknown[][]
   autoLimitApplied: boolean

@@ -139,7 +139,7 @@ pub async fn execute_query_bridge(
                     connection_id,
                     database_name,
                     sql_text: sql.to_string(),
-                    duration_ms: Some(r.execution_time_ms as i64),
+                    duration_ms: Some(r.total_time_ms as i64),
                     row_count: Some(r.total_rows as i64),
                     affected_rows: Some(r.affected_rows as i64),
                     success: true,
@@ -196,7 +196,7 @@ pub async fn execute_multi_query_bridge(
                     connection_id: connection_id.clone(),
                     database_name: database_name.clone(),
                     sql_text: item.source_sql.clone(),
-                    duration_ms: Some(item.execution_time_ms),
+                    duration_ms: Some(item.total_time_ms as i64),
                     row_count: Some(item.total_rows),
                     affected_rows: Some(item.affected_rows as i64),
                     success: item.error.is_none(),
@@ -243,8 +243,8 @@ pub async fn execute_call_query_bridge(
 
     match &result {
         Ok(multi) => {
-            // Aggregate: sum execution time, total rows from all result sets.
-            let total_time: i64 = multi.results.iter().map(|r| r.execution_time_ms).sum();
+            // Aggregate: sum total time, total rows from all result sets.
+            let total_time: i64 = multi.results.iter().map(|r| r.total_time_ms as i64).sum();
             let total_rows: i64 = multi.results.iter().map(|r| r.total_rows).sum();
             let total_affected: i64 = multi.results.iter().map(|r| r.affected_rows as i64).sum();
             let has_error = multi.results.iter().any(|r| r.error.is_some());

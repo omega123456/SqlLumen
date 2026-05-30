@@ -45,7 +45,11 @@ pub struct StoredResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
     pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    /// Server-execution-only time (narrow): up to first row / header availability.
     pub execution_time_ms: u64,
+    /// Combined time (execution + row transfer + serialization). Equals the
+    /// single value reported before the timing split.
+    pub total_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
 }
@@ -57,7 +61,10 @@ pub struct ExecuteQueryResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
     pub total_rows: usize,
+    /// Server-execution-only time (narrow).
     pub execution_time_ms: u64,
+    /// Combined time (execution + transfer + serialization).
+    pub total_time_ms: u64,
     pub affected_rows: u64,
     pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub auto_limit_applied: bool,
@@ -780,56 +787,109 @@ async fn execute_single_statement_inner(
 
     let start = std::time::Instant::now();
 
-    let (columns, all_rows, affected_rows) = if is_result_set {
-        crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-        match sqlx::query(&sql_to_execute).fetch_all(&mut **conn).await {
-            Ok(rows) => {
-                crate::mysql::query_log::log_mysql_rows(&rows);
+    // `needs_describe` defers the empty-result column-metadata fallback until
+    // after the stream is dropped so the metadata-only describe round-trip is
+    // excluded from both the execution and total timings.
+    let (columns, all_rows, affected_rows, execution_time_ms, total_time_ms, needs_describe) =
+        if is_result_set {
+            use futures::TryStreamExt;
 
-                let columns: Vec<ColumnMeta> = if let Some(first_row) = rows.first() {
-                    first_row
-                        .columns()
-                        .iter()
-                        .map(|c| ColumnMeta {
-                            name: c.name().to_string(),
-                            data_type: c.type_info().name().to_string(),
-                        })
-                        .collect()
-                } else {
-                    // Empty result set — try to get column metadata via PREPARE/describe
-                    crate::mysql::query_log::log_sqlx_describe(sql_to_execute.as_str());
-                    match pool.describe(sql_to_execute.as_str()).await {
-                        Ok(desc) => desc
-                            .columns
-                            .iter()
-                            .map(|c| ColumnMeta {
-                                name: c.name().to_string(),
-                                data_type: c.type_info().name().to_string(),
-                            })
-                            .collect(),
-                        Err(_) => vec![],
+            crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
+
+            let mut stream = sqlx::query(&sql_to_execute).fetch(&mut **conn);
+
+            let mut columns: Vec<ColumnMeta> = vec![];
+            let mut raw_rows: Vec<sqlx::mysql::MySqlRow> = vec![];
+            let mut serialized_rows: Vec<Vec<serde_json::Value>> = vec![];
+            let mut execution_time_ms: u64 = 0;
+            let mut first_row_seen = false;
+
+            loop {
+                match stream.try_next().await {
+                    Ok(Some(row)) => {
+                        if !first_row_seen {
+                            // First row available — server execution finished and
+                            // the result header arrived. Record execution time and
+                            // capture column metadata from this row.
+                            execution_time_ms = start.elapsed().as_millis() as u64;
+                            first_row_seen = true;
+                            columns = row
+                                .columns()
+                                .iter()
+                                .map(|c| ColumnMeta {
+                                    name: c.name().to_string(),
+                                    data_type: c.type_info().name().to_string(),
+                                })
+                                .collect();
+                        }
+                        serialized_rows.push(serialize_row(&row));
+                        raw_rows.push(row);
                     }
-                };
-
-                let serialized_rows: Vec<Vec<serde_json::Value>> =
-                    rows.iter().map(serialize_row).collect();
-
-                Ok((columns, serialized_rows, 0u64))
+                    Ok(None) => {
+                        if !first_row_seen {
+                            // Empty result set — the stream completed with no rows;
+                            // execution time is the elapsed time at stream completion.
+                            execution_time_ms = start.elapsed().as_millis() as u64;
+                        }
+                        break;
+                    }
+                    Err(e) => {
+                        return Err(format!("Query failed: {e}"));
+                    }
+                }
             }
-            Err(e) => Err(format!("Query failed: {e}")),
+
+            // Drop the stream to release the borrow on `conn` before any further
+            // (post-timing) use of the connection or pool.
+            drop(stream);
+
+            crate::mysql::query_log::log_mysql_rows(&raw_rows);
+
+            let total_time_ms = start.elapsed().as_millis() as u64;
+            let needs_describe = columns.is_empty();
+
+            (
+                columns,
+                serialized_rows,
+                0u64,
+                execution_time_ms,
+                total_time_ms,
+                needs_describe,
+            )
+        } else {
+            crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
+            match sqlx::query(&sql_to_execute).execute(&mut **conn).await {
+                Ok(result) => {
+                    crate::mysql::query_log::log_execute_result(&result);
+                    // DML / DDL: no separate row-transfer phase, so execution and
+                    // total time are the same elapsed value.
+                    let elapsed = start.elapsed().as_millis() as u64;
+                    (vec![], vec![], result.rows_affected(), elapsed, elapsed, false)
+                }
+                Err(e) => return Err(format!("Query failed: {e}")),
+            }
+        };
+
+    // Empty-result column-metadata fallback. Runs AFTER the stream is dropped and
+    // is intentionally excluded from both `execution_time_ms` and `total_time_ms`
+    // because `describe` is metadata-only and not part of executing the statement.
+    let columns = if needs_describe {
+        crate::mysql::query_log::log_sqlx_describe(sql_to_execute.as_str());
+        match pool.describe(sql_to_execute.as_str()).await {
+            Ok(desc) => desc
+                .columns
+                .iter()
+                .map(|c| ColumnMeta {
+                    name: c.name().to_string(),
+                    data_type: c.type_info().name().to_string(),
+                })
+                .collect(),
+            Err(_) => vec![],
         }
     } else {
-        crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-        match sqlx::query(&sql_to_execute).execute(&mut **conn).await {
-            Ok(result) => {
-                crate::mysql::query_log::log_execute_result(&result);
-                Ok((vec![], vec![], result.rows_affected()))
-            }
-            Err(e) => Err(format!("Query failed: {e}")),
-        }
-    }?;
+        columns
+    };
 
-    let execution_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = all_rows.len();
 
     let query_id = Uuid::new_v4().to_string();
@@ -841,6 +901,7 @@ async fn execute_single_statement_inner(
         columns: columns.clone(),
         rows: Arc::clone(&shared_rows),
         execution_time_ms,
+        total_time_ms,
         affected_rows,
         auto_limit_applied,
     };
@@ -850,7 +911,8 @@ async fn execute_single_statement_inner(
         source_sql: sql.to_string(),
         columns,
         total_rows: total_rows as i64,
-        execution_time_ms: execution_time_ms as i64,
+        execution_time_ms,
+        total_time_ms,
         affected_rows,
         rows: shared_rows,
         auto_limit_applied,
@@ -891,6 +953,7 @@ async fn execute_single_statement_inner(
             columns: vec![],
             rows: Arc::new(vec![]),
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
         },
@@ -900,6 +963,7 @@ async fn execute_single_statement_inner(
             columns: vec![],
             total_rows: 0,
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             rows: Arc::new(vec![]),
             auto_limit_applied,
@@ -961,7 +1025,8 @@ pub async fn execute_query_impl(
         query_id: item.query_id,
         columns: item.columns,
         total_rows: item.total_rows as usize,
-        execution_time_ms: item.execution_time_ms as u64,
+        execution_time_ms: item.execution_time_ms,
+        total_time_ms: item.total_time_ms,
         affected_rows: item.affected_rows,
         rows: item.rows,
         auto_limit_applied: item.auto_limit_applied,
@@ -1022,6 +1087,7 @@ pub async fn execute_query_impl(
             columns: vec![],
             rows: Arc::new(vec![]),
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
         }],
@@ -1035,6 +1101,7 @@ pub async fn execute_query_impl(
         columns: vec![],
         total_rows: 0,
         execution_time_ms: 0,
+        total_time_ms: 0,
         affected_rows: 0,
         rows: Arc::new(vec![]),
         auto_limit_applied,
@@ -1884,7 +1951,10 @@ pub struct MultiQueryResultItem {
     pub source_sql: String,
     pub columns: Vec<ColumnMeta>,
     pub total_rows: i64,
-    pub execution_time_ms: i64,
+    /// Server-execution-only time (narrow).
+    pub execution_time_ms: u64,
+    /// Combined time (execution + transfer + serialization).
+    pub total_time_ms: u64,
     pub affected_rows: u64,
     pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub auto_limit_applied: bool,
@@ -2115,6 +2185,7 @@ pub async fn reexecute_single_result_impl(
             columns: vec![],
             rows: Arc::new(vec![]),
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
         };
@@ -2127,6 +2198,7 @@ pub async fn reexecute_single_result_impl(
         columns: vec![],
         total_rows: 0,
         execution_time_ms: 0,
+        total_time_ms: 0,
         affected_rows: 0,
         rows: Arc::new(vec![]),
         auto_limit_applied,
@@ -2214,6 +2286,7 @@ pub async fn execute_multi_query_impl(
                 columns: vec![],
                 rows: Arc::new(vec![]),
                 execution_time_ms: 0,
+                total_time_ms: 0,
                 affected_rows: 0,
                 auto_limit_applied: false,
             });
@@ -2223,6 +2296,7 @@ pub async fn execute_multi_query_impl(
                 columns: vec![],
                 total_rows: 0,
                 execution_time_ms: 0,
+                total_time_ms: 0,
                 affected_rows: 0,
                 rows: Arc::new(vec![]),
                 auto_limit_applied: false,
@@ -2253,6 +2327,7 @@ pub async fn execute_multi_query_impl(
             columns: vec![],
             rows: Arc::new(vec![]),
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             auto_limit_applied,
         });
@@ -2262,6 +2337,7 @@ pub async fn execute_multi_query_impl(
             columns: vec![],
             total_rows: 0,
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             rows: Arc::new(vec![]),
             auto_limit_applied,
@@ -2377,6 +2453,7 @@ pub async fn execute_call_query_impl(
         columns: vec![],
         rows: Arc::new(vec![]),
         execution_time_ms: 0,
+        total_time_ms: 0,
         affected_rows: 0,
         auto_limit_applied: false,
     };
@@ -2393,6 +2470,7 @@ pub async fn execute_call_query_impl(
             columns: vec![],
             total_rows: 0,
             execution_time_ms: 0,
+            total_time_ms: 0,
             affected_rows: 0,
             rows: Arc::new(vec![]),
             auto_limit_applied: false,

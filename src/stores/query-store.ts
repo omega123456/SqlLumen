@@ -140,8 +140,10 @@ export interface SingleResultState {
   rows: unknown[][]
   /** Total row count. */
   totalRows: number
-  /** Execution time (ms). */
+  /** Server execution time only (ms), excluding row transfer/serialization. */
   executionTimeMs: number
+  /** Total time (ms): execution + row transfer + serialization. */
+  totalTimeMs: number
   /** Affected rows (for non-SELECT). */
   affectedRows: number
   /** Query ID for cache/sort/restore guards. */
@@ -273,6 +275,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   rows: [],
   totalRows: 0,
   executionTimeMs: 0,
+  totalTimeMs: 0,
   affectedRows: 0,
   queryId: null,
   rowLimit: FALLBACK_ROW_LIMIT,
@@ -614,6 +617,7 @@ function buildSingleResultFromItem(
     rows: normalizedRows,
     totalRows: item.totalRows,
     executionTimeMs: item.executionTimeMs,
+    totalTimeMs: item.totalTimeMs,
     affectedRows: item.affectedRows,
     queryId: item.queryId,
     rowLimit: defaultRowLimit,
@@ -1147,6 +1151,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       totalRows: reResult.totalRows,
       queryId: reResult.queryId,
       executionTimeMs: reResult.executionTimeMs,
+      totalTimeMs: reResult.totalTimeMs,
       affectedRows: reResult.affectedRows,
       autoLimitApplied: reResult.autoLimitApplied,
       resultStatus: 'success',
@@ -1269,6 +1274,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       totalRows: execResult.totalRows,
       queryId: execResult.queryId,
       executionTimeMs: execResult.executionTimeMs,
+      totalTimeMs: execResult.totalTimeMs,
       affectedRows: execResult.affectedRows,
       autoLimitApplied: execResult.autoLimitApplied,
       resultStatus: 'success',
@@ -1357,6 +1363,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           rows: normalizedRows,
           totalRows: result.totalRows,
           executionTimeMs: result.executionTimeMs,
+          totalTimeMs: result.totalTimeMs,
           affectedRows: result.affectedRows,
           queryId: result.queryId,
           rowLimit: getDefaultRowLimit(),
@@ -2110,6 +2117,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 totalRows: execResult.totalRows,
                 queryId: execResult.queryId,
                 executionTimeMs: execResult.executionTimeMs,
+                totalTimeMs: execResult.totalTimeMs,
                 affectedRows: execResult.affectedRows,
                 autoLimitApplied: execResult.autoLimitApplied,
                 resultStatus: 'success',
@@ -2292,6 +2300,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             rowLimit: size,
             queryId: execResult.queryId,
             executionTimeMs: execResult.executionTimeMs,
+            totalTimeMs: execResult.totalTimeMs,
             affectedRows: execResult.affectedRows,
             autoLimitApplied: execResult.autoLimitApplied,
             lastExecutedSql: result.lastExecutedSql,

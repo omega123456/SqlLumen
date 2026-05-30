@@ -2013,3 +2013,100 @@ describe('useQueryStore — deleteResultRows', () => {
     expect(flat('tab-del-empty').rows).toHaveLength(3)
   })
 })
+
+describe('useQueryStore — totalTimeMs propagation', () => {
+  it('captures totalTimeMs from execute_query on a fresh result', async () => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
+      if (cmd === 'execute_query')
+        return {
+          queryId: 'q-total',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 3,
+          executionTimeMs: 10,
+          totalTimeMs: 45,
+          affectedRows: 0,
+          rows: [[1], [2], [3]],
+          autoLimitApplied: false,
+        }
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-total', 'SELECT id FROM t')
+
+    const f = flat('tab-total')
+    expect(f.executionTimeMs).toBe(10)
+    expect(f.totalTimeMs).toBe(45)
+  })
+
+  it('preserves totalTimeMs after sortResults re-executes (clear sort)', async () => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
+      if (cmd === 'execute_query')
+        return {
+          queryId: 'q-sort-total',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 3,
+          executionTimeMs: 8,
+          totalTimeMs: 33,
+          affectedRows: 0,
+          rows: [[3], [1], [2]],
+          autoLimitApplied: false,
+        }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-sort-total', 'SELECT 1')
+    patchResult('tab-sort-total', {
+      sortColumn: 'id',
+      sortDirection: 'asc' as const,
+      lastExecutedSql: 'SELECT id FROM t',
+      queryId: 'q-old',
+      resultStatus: 'success' as const,
+    })
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-sort-total': { ...prev.tabs['tab-sort-total']!, tabStatus: 'success' as const },
+      },
+    }))
+
+    await useQueryStore.getState().sortResults('conn-1', 'tab-sort-total', 'id', null)
+
+    expect(flat('tab-sort-total').totalTimeMs).toBe(33)
+  })
+
+  it('preserves totalTimeMs after changeRowLimit re-executes', async () => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
+      if (cmd === 'execute_query')
+        return {
+          queryId: 'q-limit-total',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 100,
+          executionTimeMs: 5,
+          totalTimeMs: 27,
+          affectedRows: 0,
+          rows: [[1], [2]],
+          autoLimitApplied: false,
+        }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-limit-total', 'SELECT id FROM t')
+    patchResult('tab-limit-total', {
+      lastExecutedSql: 'SELECT id FROM t',
+      resultStatus: 'success' as const,
+      queryId: 'q-old',
+    })
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-limit-total': { ...prev.tabs['tab-limit-total']!, tabStatus: 'success' as const },
+      },
+    }))
+
+    await useQueryStore.getState().changeRowLimit('conn-1', 'tab-limit-total', 500)
+
+    expect(flat('tab-limit-total').totalTimeMs).toBe(27)
+  })
+})

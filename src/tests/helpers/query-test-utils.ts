@@ -35,6 +35,7 @@ interface ResultOverrides {
   rows?: unknown[][]
   totalRows?: number
   executionTimeMs?: number
+  totalTimeMs?: number
   affectedRows?: number
   queryId?: string | null
   rowLimit?: number
@@ -86,6 +87,7 @@ const RESULT_KEYS = new Set<string>([
   'rows',
   'totalRows',
   'executionTimeMs',
+  'totalTimeMs',
   'affectedRows',
   'queryId',
 

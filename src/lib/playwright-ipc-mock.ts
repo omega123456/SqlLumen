@@ -522,6 +522,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             ],
             totalRows: 2,
             executionTimeMs: 15,
+            totalTimeMs: 19,
             affectedRows: 0,
             rows: [
               [1, 'Alice'],
@@ -541,6 +542,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             ],
             totalRows: 2,
             executionTimeMs: 8,
+            totalTimeMs: 11,
             affectedRows: 0,
             rows: [
               [101, '29.99'],
@@ -557,6 +559,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             columns: [],
             totalRows: 0,
             executionTimeMs: 3,
+            totalTimeMs: 3,
             affectedRows: 1,
             rows: [],
 
@@ -579,6 +582,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             ],
             totalRows: 2,
             executionTimeMs: 20,
+            totalTimeMs: 26,
             affectedRows: 0,
             rows: [
               [1, '150.00'],
@@ -598,6 +602,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             ],
             totalRows: 1,
             executionTimeMs: 5,
+            totalTimeMs: 7,
             affectedRows: 0,
             rows: [['total_orders', 42]],
 
@@ -618,6 +623,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         ],
         totalRows: 2,
         executionTimeMs: 10,
+        totalTimeMs: 13,
         affectedRows: 0,
         rows: [
           [1, 'Alice'],

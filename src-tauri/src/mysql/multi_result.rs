@@ -374,6 +374,9 @@ async fn execute_single_select_statement(
         .await
         .map_err(|e| map_mysql_error(&e))?;
 
+    // Result header is available — record execution time before row transfer.
+    let execution_time_ms = start.elapsed().as_millis() as u64;
+
     let columns_ref = result.columns_ref();
     let columns: Vec<ColumnMeta> = columns_ref
         .iter()
@@ -401,7 +404,8 @@ async fn execute_single_select_statement(
         .map(|row| serialize_row(row, &col_types))
         .collect();
 
-    let execution_time_ms = start.elapsed().as_millis() as u64;
+    // All rows collected and serialized — record total time.
+    let total_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = serialized_rows.len();
     let query_id = uuid::Uuid::new_v4().to_string();
 
@@ -413,6 +417,7 @@ async fn execute_single_select_statement(
             columns: columns.clone(),
             rows: Arc::clone(&shared_rows),
             execution_time_ms,
+            total_time_ms,
             affected_rows: 0,
             auto_limit_applied,
         },
@@ -421,7 +426,8 @@ async fn execute_single_select_statement(
             source_sql: sql.to_string(),
             columns,
             total_rows: total_rows as i64,
-            execution_time_ms: execution_time_ms as i64,
+            execution_time_ms,
+            total_time_ms,
             affected_rows: 0,
             rows: shared_rows,
             auto_limit_applied,
@@ -457,11 +463,15 @@ async fn execute_single_dml_statement(
         .await
         .map_err(|e| map_mysql_error(&e))?;
 
+    // Statement executed (header available) — record execution time.
+    let execution_time_ms = start.elapsed().as_millis() as u64;
+
     let affected = result.affected_rows();
     // Drain remaining result
     let _: Vec<mysql_async::Row> = result.collect().await.unwrap_or_default();
 
-    let execution_time_ms = start.elapsed().as_millis() as u64;
+    // No row-transfer phase for DML; total time is measured after draining.
+    let total_time_ms = start.elapsed().as_millis() as u64;
     let query_id = uuid::Uuid::new_v4().to_string();
 
     Ok((
@@ -470,6 +480,7 @@ async fn execute_single_dml_statement(
             columns: vec![],
             rows: Arc::new(vec![]),
             execution_time_ms,
+            total_time_ms,
             affected_rows: affected,
             auto_limit_applied: false,
         },
@@ -478,7 +489,8 @@ async fn execute_single_dml_statement(
             source_sql: sql.to_string(),
             columns: vec![],
             total_rows: 0,
-            execution_time_ms: execution_time_ms as i64,
+            execution_time_ms,
+            total_time_ms,
             affected_rows: affected,
             rows: Arc::new(vec![]),
             auto_limit_applied: false,
@@ -515,6 +527,11 @@ async fn execute_call_statement(
         .query_iter(sql)
         .await
         .map_err(|e| map_mysql_error(&e))?;
+
+    // Procedure executed and the first result-set header is available — record
+    // execution time once. All result sets share this single header time; each
+    // set's total time is recorded at its own collection point.
+    let execution_time_ms = start.elapsed().as_millis() as u64;
 
     let mut pairs: Vec<(StoredResult, MultiQueryResultItem)> = Vec::new();
     let mut call_has_results = false;
@@ -558,7 +575,9 @@ async fn execute_call_statement(
             .map(|row| serialize_row(row, &col_types))
             .collect();
 
-        let execution_time_ms = start.elapsed().as_millis() as u64;
+        // This result set's rows are collected and serialized — record its total
+        // time. Execution time is the shared header time captured above.
+        let total_time_ms = start.elapsed().as_millis() as u64;
         let total_rows = serialized_rows.len();
         let shared_rows = Arc::new(serialized_rows);
         let query_id = uuid::Uuid::new_v4().to_string();
@@ -569,6 +588,7 @@ async fn execute_call_statement(
                 columns: columns.clone(),
                 rows: Arc::clone(&shared_rows),
                 execution_time_ms,
+                total_time_ms,
                 affected_rows: 0,
                 auto_limit_applied: false,
             },
@@ -577,7 +597,8 @@ async fn execute_call_statement(
                 source_sql: sql.to_string(),
                 columns,
                 total_rows: total_rows as i64,
-                execution_time_ms: execution_time_ms as i64,
+                execution_time_ms,
+                total_time_ms,
                 affected_rows: 0,
                 rows: shared_rows,
                 auto_limit_applied: false,
@@ -593,7 +614,8 @@ async fn execute_call_statement(
 
     // If no row-bearing result was seen, emit a single synthetic DML-style success entry.
     if !call_has_results {
-        let execution_time_ms = start.elapsed().as_millis() as u64;
+        // No row-bearing result set; total time is measured after draining.
+        let total_time_ms = start.elapsed().as_millis() as u64;
         let query_id = uuid::Uuid::new_v4().to_string();
 
         pairs.push((
@@ -602,6 +624,7 @@ async fn execute_call_statement(
                 columns: vec![],
                 rows: Arc::new(vec![]),
                 execution_time_ms,
+                total_time_ms,
                 affected_rows: call_last_affected,
                 auto_limit_applied: false,
             },
@@ -610,7 +633,8 @@ async fn execute_call_statement(
                 source_sql: sql.to_string(),
                 columns: vec![],
                 total_rows: 0,
-                execution_time_ms: execution_time_ms as i64,
+                execution_time_ms,
+                total_time_ms,
                 affected_rows: call_last_affected,
                 rows: Arc::new(vec![]),
                 auto_limit_applied: false,
@@ -646,6 +670,7 @@ fn push_error_result(
         columns: vec![],
         rows: Arc::new(vec![]),
         execution_time_ms: 0,
+        total_time_ms: 0,
         affected_rows: 0,
         auto_limit_applied: false,
     });
@@ -655,6 +680,7 @@ fn push_error_result(
         columns: vec![],
         total_rows: 0,
         execution_time_ms: 0,
+        total_time_ms: 0,
         affected_rows: 0,
         rows: Arc::new(vec![]),
         auto_limit_applied: false,

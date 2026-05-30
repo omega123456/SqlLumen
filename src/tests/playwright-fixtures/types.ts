@@ -36,6 +36,7 @@ export interface PlaywrightQueryResult {
   columns: Array<{ name: string; dataType: string }>
   totalRows: number
   executionTimeMs: number
+  totalTimeMs: number
   affectedRows: number
   rows: unknown[][]
   autoLimitApplied: boolean

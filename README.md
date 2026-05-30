@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 - **Copy to Another Host** — copy selected tables, routines, triggers, and events from one database to a different saved host with progress tracking and cancel support
 - **Query editor** — Monaco-based SQL editing with formatting and completion-oriented tooling
 - **Workspace tabs** — inline query-tab rename plus context-menu and drag/drop reordering for workspace and connection tabs
-- **Result sets** — grid, form, and text views; execution feedback and toolbars
+- **Result sets** — grid, form, and text views; execution feedback and toolbars. For a successful query-editor result, the bottom status bar shows three values, rendered identically in light and dark themes: `Rows: <n>` (row count), `Exec: <n>ms` (server execution time only, up to when the first row / result header is available), and `Total: <n>ms` (execution plus row transfer and serialization). For DML/DDL or empty result sets, `Exec` and `Total` are equal. The result-editor toolbar badge and Query History `duration_ms` continue to report the combined total time.
 - **Table data** — browse and edit rows with validation and related UI (foreign keys, unsaved changes)
 - **Table designer** — column, index, and foreign-key editing with DDL preview and apply flow
 - **Schema information** — columns, indexes, foreign keys, DDL, and stats-style panels where supported
