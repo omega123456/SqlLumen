@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   base64ToBytes,
   blobPlaceholder,
+  blobTypeLabel,
   bytesEnvelope,
   bytesToBase64,
   decodeUtf8BestEffort,
@@ -13,6 +14,7 @@ import {
   isBlobEnvelope,
   nullEnvelope,
   parsePastedBytes,
+  readImageDimensions,
   sniffImageMime,
 } from '../../lib/blob-utils'
 
@@ -211,6 +213,140 @@ describe('detectBlobExtension', () => {
   it('defaults to .bin for unknown content', () => {
     expect(detectBlobExtension(new Uint8Array([0x00, 0x11, 0x22, 0x33]))).toBe('.bin')
     expect(detectBlobExtension(new Uint8Array([]))).toBe('.bin')
+  })
+})
+
+describe('readImageDimensions', () => {
+  it('reads PNG dimensions from the IHDR chunk', () => {
+    const bytes = new Uint8Array(24)
+    bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0)
+    bytes.set([0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52], 8)
+    // width 800 = 0x0320, height 600 = 0x0258 (big-endian U32).
+    bytes.set([0x00, 0x00, 0x03, 0x20], 16)
+    bytes.set([0x00, 0x00, 0x02, 0x58], 20)
+    expect(readImageDimensions(bytes)).toEqual({ width: 800, height: 600 })
+  })
+
+  it('reads JPEG dimensions by scanning to the SOF0 marker', () => {
+    const bytes = new Uint8Array([
+      0xff,
+      0xd8, // SOI
+      0xff,
+      0xe0,
+      0x00,
+      0x04,
+      0x00,
+      0x00, // APP0 (length 4, 2 payload bytes)
+      0xff,
+      0xc0,
+      0x00,
+      0x11, // SOF0 marker + length 17
+      0x08, // precision
+      0x01,
+      0x90, // height 400
+      0x02,
+      0x80, // width 640
+    ])
+    expect(readImageDimensions(bytes)).toEqual({ width: 640, height: 400 })
+  })
+
+  it('reads GIF dimensions from the logical screen descriptor', () => {
+    const bytes = new Uint8Array([
+      0x47,
+      0x49,
+      0x46,
+      0x38,
+      0x39,
+      0x61, // "GIF89a"
+      0x20,
+      0x00, // width 32 (LE)
+      0x10,
+      0x00, // height 16 (LE)
+    ])
+    expect(readImageDimensions(bytes)).toEqual({ width: 32, height: 16 })
+  })
+
+  it('reads BMP dimensions from the DIB header (absolute height)', () => {
+    const bytes = new Uint8Array(26)
+    bytes.set([0x42, 0x4d], 0)
+    // width 100 = 0x64, height -50 (top-down) -> reported as 50.
+    bytes.set([0x64, 0x00, 0x00, 0x00], 18)
+    bytes.set([0xce, 0xff, 0xff, 0xff], 22)
+    expect(readImageDimensions(bytes)).toEqual({ width: 100, height: 50 })
+  })
+
+  it('reads WebP (VP8) dimensions', () => {
+    const bytes = new Uint8Array(32)
+    bytes.set([0x52, 0x49, 0x46, 0x46], 0) // RIFF
+    bytes.set([0x57, 0x45, 0x42, 0x50], 8) // WEBP
+    bytes.set([0x56, 0x50, 0x38, 0x20], 12) // "VP8 "
+    // width 256 = 0x0100, height 128 = 0x0080 (14-bit LE at 26/28).
+    bytes.set([0x00, 0x01], 26)
+    bytes.set([0x80, 0x00], 28)
+    expect(readImageDimensions(bytes)).toEqual({ width: 256, height: 128 })
+  })
+
+  it('reads WebP (VP8X) dimensions', () => {
+    const bytes = new Uint8Array(30)
+    bytes.set([0x52, 0x49, 0x46, 0x46], 0)
+    bytes.set([0x57, 0x45, 0x42, 0x50], 8)
+    bytes.set([0x56, 0x50, 0x38, 0x58], 12) // "VP8X"
+    // (width-1) and (height-1) as U24LE at 24/27. width 100, height 50.
+    bytes.set([0x63, 0x00, 0x00], 24)
+    bytes.set([0x31, 0x00, 0x00], 27)
+    expect(readImageDimensions(bytes)).toEqual({ width: 100, height: 50 })
+  })
+
+  it('reads WebP (VP8L) dimensions', () => {
+    const bytes = new Uint8Array(25)
+    bytes.set([0x52, 0x49, 0x46, 0x46], 0)
+    bytes.set([0x57, 0x45, 0x42, 0x50], 8)
+    bytes.set([0x56, 0x50, 0x38, 0x4c], 12) // "VP8L"
+    bytes[20] = 0x2f
+    // width 321, height 123 -> store (width-1)/(height-1) in packed LE form.
+    const packed = 320 | (122 << 14)
+    bytes[21] = packed & 0xff
+    bytes[22] = (packed >>> 8) & 0xff
+    bytes[23] = (packed >>> 16) & 0xff
+    bytes[24] = (packed >>> 24) & 0xff
+    expect(readImageDimensions(bytes)).toEqual({ width: 321, height: 123 })
+  })
+
+  it('returns null for non-image bytes', () => {
+    expect(readImageDimensions(new Uint8Array([0x00, 0x11, 0x22, 0x33]))).toBeNull()
+    expect(readImageDimensions(new Uint8Array([]))).toBeNull()
+  })
+
+  it('returns null for truncated PNG and JPEG headers', () => {
+    expect(
+      readImageDimensions(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    ).toBeNull()
+    expect(readImageDimensions(new Uint8Array([0xff, 0xd8, 0xff]))).toBeNull()
+  })
+})
+
+describe('blobTypeLabel', () => {
+  it('labels each recognised format', () => {
+    expect(blobTypeLabel(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(
+      'PNG image'
+    )
+    expect(blobTypeLabel(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe('JPEG image')
+    expect(blobTypeLabel(new Uint8Array([0x47, 0x49, 0x46, 0x38]))).toBe('GIF image')
+    expect(blobTypeLabel(new Uint8Array([0x42, 0x4d]))).toBe('BMP image')
+    expect(
+      blobTypeLabel(
+        new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50])
+      )
+    ).toBe('WebP image')
+    expect(blobTypeLabel(new TextEncoder().encode('<svg></svg>'))).toBe('SVG image')
+    expect(blobTypeLabel(new Uint8Array([0x25, 0x50, 0x44, 0x46]))).toBe('PDF document')
+    expect(blobTypeLabel(new Uint8Array([0x50, 0x4b, 0x03, 0x04]))).toBe('ZIP archive')
+    expect(blobTypeLabel(new Uint8Array([0x1f, 0x8b]))).toBe('Gzip archive')
+  })
+
+  it('defaults to "Binary" for unknown content', () => {
+    expect(blobTypeLabel(new Uint8Array([0x00, 0x11, 0x22, 0x33]))).toBe('Binary')
+    expect(blobTypeLabel(new Uint8Array([]))).toBe('Binary')
   })
 })
 

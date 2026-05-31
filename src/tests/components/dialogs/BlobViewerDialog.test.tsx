@@ -19,6 +19,35 @@ const PNG_BYTES = new Uint8Array([
 ])
 const PNG_B64 = bytesToBase64(PNG_BYTES)
 
+// A fuller PNG header with a valid IHDR chunk encoding a 2 × 3 image.
+const PNG_WITH_DIMS = new Uint8Array([
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a, // signature
+  0x00,
+  0x00,
+  0x00,
+  0x0d, // IHDR length
+  0x49,
+  0x48,
+  0x44,
+  0x52, // "IHDR"
+  0x00,
+  0x00,
+  0x00,
+  0x02, // width = 2
+  0x00,
+  0x00,
+  0x00,
+  0x03, // height = 3
+])
+const PNG_WITH_DIMS_B64 = bytesToBase64(PNG_WITH_DIMS)
+
 const TEXT_BYTES = new TextEncoder().encode('hello world')
 const TEXT_B64 = bytesToBase64(TEXT_BYTES)
 
@@ -91,7 +120,7 @@ describe('BlobViewerDialog', () => {
     expect(await screen.findByTestId('blob-not-image')).toBeInTheDocument()
   })
 
-  it('shows the cap warning and suppresses content when tooLarge', async () => {
+  it('shows the warning-tinted size chip and in-panel warning when tooLarge', async () => {
     const loader = vi.fn(
       async (): Promise<BlobValueResponse> => ({
         base64: null,
@@ -100,20 +129,50 @@ describe('BlobViewerDialog', () => {
       })
     )
     render(<BlobViewerDialog {...baseProps} loader={loader} />)
-    expect(await screen.findByTestId('blob-cap-warning')).toBeInTheDocument()
-    expect(screen.getByTestId('blob-too-large-content')).toBeInTheDocument()
+    // The byte-size chip carries the warning tint and an alert role.
+    const sizeChip = await screen.findByTestId('blob-chip-size')
+    expect(sizeChip).toHaveAttribute('role', 'alert')
+    expect(screen.getByTestId('blob-too-large-content')).toHaveTextContent('Preview limit reached')
     // Save-to-file disabled (no bytes held).
     expect(screen.getByTestId('blob-save-file')).toBeDisabled()
   })
 
+  it('renders the chip row with type, size, and image dimensions', async () => {
+    render(<BlobViewerDialog {...baseProps} mode="view" initialBase64={PNG_B64} />)
+    await screen.findByTestId('blob-image')
+
+    expect(screen.getByTestId('blob-chip-type')).toHaveTextContent('PNG image')
+    expect(screen.getByTestId('blob-chip-size')).toHaveTextContent(`${PNG_BYTES.length} bytes`)
+  })
+
+  it('shows the dimensions chip for a parseable image', async () => {
+    render(<BlobViewerDialog {...baseProps} mode="view" initialBase64={PNG_WITH_DIMS_B64} />)
+    await screen.findByTestId('blob-image')
+    expect(await screen.findByTestId('blob-chip-dimensions')).toHaveTextContent('2 × 3')
+  })
+
+  it('omits the chip row for NULL values', async () => {
+    render(<BlobViewerDialog {...baseProps} mode="view" initialBase64={null} />)
+    await screen.findByTestId('blob-null-state')
+    expect(screen.queryByTestId('blob-chip-row')).not.toBeInTheDocument()
+  })
+
   it('renders the NULL state for a null value', async () => {
     render(<BlobViewerDialog {...baseProps} mode="view" initialBase64={null} />)
-    expect(await screen.findByTestId('blob-null-state')).toHaveTextContent('Value is NULL')
+    expect(await screen.findByTestId('blob-null-state')).toHaveTextContent('NULL value')
   })
 
   it('renders the empty state for zero-length bytes', async () => {
     render(<BlobViewerDialog {...baseProps} mode="view" initialBase64="" />)
     expect(await screen.findByTestId('blob-empty-state')).toHaveTextContent('Empty')
+  })
+
+  it('shows the Binary type chip for zero-length bytes', async () => {
+    render(<BlobViewerDialog {...baseProps} mode="view" initialBase64="" />)
+
+    expect(await screen.findByTestId('blob-empty-state')).toBeInTheDocument()
+    expect(screen.getByTestId('blob-chip-type')).toHaveTextContent('Binary')
+    expect(screen.getByTestId('blob-chip-size')).toHaveTextContent('0 bytes')
   })
 
   it('pastes base64 and applies a bytes envelope', async () => {
@@ -211,9 +270,43 @@ describe('BlobViewerDialog', () => {
     expect(screen.queryByTestId('blob-set-null')).not.toBeInTheDocument()
     expect(screen.queryByTestId('blob-apply')).not.toBeInTheDocument()
     expect(screen.queryByTestId('blob-cancel')).not.toBeInTheDocument()
+    // View mode: header close + footer Close, no edit toolbar.
     expect(screen.getByTestId('blob-close')).toBeInTheDocument()
-    // Save-to-file remains for inlined query-result bytes.
+    expect(screen.getByTestId('blob-close')).toHaveAttribute('title', 'Close')
+    expect(screen.getByTestId('blob-close-footer')).toBeInTheDocument()
+    // Save-to-file remains for inlined query-result bytes (lives in the header).
     expect(screen.getByTestId('blob-save-file')).toBeEnabled()
+  })
+
+  it('renders separated acquire/export and destructive toolbar groups in edit mode', async () => {
+    render(<BlobViewerDialog {...baseProps} initialBase64={TEXT_B64} />)
+    await screen.findByTestId('blob-action-bar')
+
+    // Acquire/export group.
+    expect(screen.getByTestId('blob-load-file')).toHaveTextContent('Load file')
+    expect(screen.getByTestId('blob-paste-toggle')).toHaveTextContent('Paste')
+    expect(screen.getByTestId('blob-save-file')).toHaveTextContent('Save to file')
+    // Destructive group: text-labelled, with tooltips.
+    const setNull = screen.getByTestId('blob-set-null')
+    const clear = screen.getByTestId('blob-clear')
+    expect(setNull).toHaveTextContent('Set NULL')
+    expect(setNull).toHaveAttribute('title')
+    expect(clear).toHaveTextContent('Clear')
+    expect(clear).toHaveAttribute('title')
+  })
+
+  it('shows a loading skeleton while the loader is pending', async () => {
+    let resolve: ((r: BlobValueResponse) => void) | undefined
+    const loader = vi.fn(
+      () =>
+        new Promise<BlobValueResponse>((r) => {
+          resolve = r
+        })
+    )
+    render(<BlobViewerDialog {...baseProps} loader={loader} />)
+    expect(await screen.findByTestId('blob-loading')).toBeInTheDocument()
+    resolve?.(bytesResponse(TEXT_B64, TEXT_BYTES.length))
+    await waitFor(() => expect(screen.queryByTestId('blob-loading')).not.toBeInTheDocument())
   })
 
   it('exposes tab roles and tabpanel wiring', async () => {
@@ -319,11 +412,9 @@ describe('BlobViewerDialog', () => {
         tooLarge: true,
       })
     )
-    render(
-      <BlobViewerDialog {...baseProps} onClose={onClose} onApply={onApply} loader={loader} />
-    )
+    render(<BlobViewerDialog {...baseProps} onClose={onClose} onApply={onApply} loader={loader} />)
 
-    await screen.findByTestId('blob-cap-warning')
+    await screen.findByTestId('blob-too-large-content')
     await user.click(screen.getByTestId('blob-apply'))
 
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -431,9 +522,7 @@ describe('BlobViewerDialog', () => {
 
     // Second leave clears the overlay.
     fireEvent.dragLeave(root)
-    await waitFor(() =>
-      expect(screen.queryByTestId('blob-drop-overlay')).not.toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.queryByTestId('blob-drop-overlay')).not.toBeInTheDocument())
   })
 
   // -- ESC / close during drag ----------------------------------------------
@@ -448,14 +537,12 @@ describe('BlobViewerDialog', () => {
     expect(await screen.findByTestId('blob-drop-overlay')).toBeInTheDocument()
 
     // First close only cancels the drag.
-    await user.click(screen.getByTestId('blob-close-x'))
+    await user.click(screen.getByTestId('blob-close'))
     expect(onClose).not.toHaveBeenCalled()
-    await waitFor(() =>
-      expect(screen.queryByTestId('blob-drop-overlay')).not.toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.queryByTestId('blob-drop-overlay')).not.toBeInTheDocument())
 
     // Second close propagates.
-    await user.click(screen.getByTestId('blob-close-x'))
+    await user.click(screen.getByTestId('blob-close'))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 

@@ -1,0 +1,82 @@
+/* BlobPastePopover — anchored paste popover surface. Tokens only. */
+
+.popover {
+  --blob-paste-arrow-size: 8px;
+  --blob-paste-arrow-offset: calc(var(--space-lg) + 18px);
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 320px;
+  max-width: 90vw;
+  padding: var(--space-md);
+  background: var(--ui-popover-bg);
+  border: var(--ui-popover-border);
+  border-radius: var(--ui-popover-radius);
+  box-shadow: var(--ui-popover-shadow);
+  backdrop-filter: var(--ui-popover-backdrop-filter);
+}
+
+.popover::before,
+.popover::after {
+  content: '';
+  position: absolute;
+  left: var(--blob-paste-arrow-offset);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  border-left: var(--blob-paste-arrow-size) solid transparent;
+  border-right: var(--blob-paste-arrow-size) solid transparent;
+}
+
+.popover::before {
+  top: calc(var(--blob-paste-arrow-size) * -1 - 1px);
+  border-bottom: calc(var(--blob-paste-arrow-size) + 1px) solid rgba(var(--primary-rgb), 0.35);
+}
+
+.popover::after {
+  top: calc(var(--blob-paste-arrow-size) * -1);
+  border-bottom: var(--blob-paste-arrow-size) solid var(--ui-popover-bg);
+}
+
+.popoverAbove {
+  top: auto;
+  bottom: calc(100% + var(--space-xs));
+}
+
+.popoverAbove::before,
+.popoverAbove::after {
+  top: auto;
+  border-bottom: 0;
+}
+
+.popoverAbove::before {
+  bottom: calc(var(--blob-paste-arrow-size) * -1 - 1px);
+  border-top: calc(var(--blob-paste-arrow-size) + 1px) solid rgba(var(--primary-rgb), 0.35);
+}
+
+.popoverAbove::after {
+  bottom: calc(var(--blob-paste-arrow-size) * -1);
+  border-top: var(--blob-paste-arrow-size) solid var(--ui-popover-bg);
+}
+
+.title {
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.hint {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}

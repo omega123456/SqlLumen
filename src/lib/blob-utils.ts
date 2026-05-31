@@ -188,17 +188,24 @@ interface ByteSignature {
   ext: string
 }
 
+interface ClassifiedBlobType {
+  mime: string | null
+  ext: string | null
+  dimensions: ((bytes: Uint8Array) => ImageDimensions | null) | null
+}
+
 const IMAGE_SIGNATURES: ByteSignature[] = [
-  { parts: [{ sig: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }], mime: 'image/png', ext: '.png' },
+  {
+    parts: [{ sig: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }],
+    mime: 'image/png',
+    ext: '.png',
+  },
   { parts: [{ sig: [0xff, 0xd8, 0xff] }], mime: 'image/jpeg', ext: '.jpg' },
   { parts: [{ sig: [0x47, 0x49, 0x46, 0x38] }], mime: 'image/gif', ext: '.gif' },
   { parts: [{ sig: [0x42, 0x4d] }], mime: 'image/bmp', ext: '.bmp' },
   {
     // WebP: "RIFF"...."WEBP"
-    parts: [
-      { sig: [0x52, 0x49, 0x46, 0x46] },
-      { sig: [0x57, 0x45, 0x42, 0x50], offset: 8 },
-    ],
+    parts: [{ sig: [0x52, 0x49, 0x46, 0x46] }, { sig: [0x57, 0x45, 0x42, 0x50], offset: 8 }],
     mime: 'image/webp',
     ext: '.webp',
   },
@@ -208,21 +215,38 @@ function matchesSignature(bytes: Uint8Array, signature: ByteSignature): boolean 
   return signature.parts.every((part) => startsWith(bytes, part.sig, part.offset ?? 0))
 }
 
+function classifyImage(bytes: Uint8Array): ClassifiedBlobType | null {
+  for (const signature of IMAGE_SIGNATURES) {
+    if (!matchesSignature(bytes, signature)) continue
+    if (signature.mime === 'image/png') {
+      return { mime: signature.mime, ext: signature.ext, dimensions: readPngDimensions }
+    }
+    if (signature.mime === 'image/jpeg') {
+      return { mime: signature.mime, ext: signature.ext, dimensions: readJpegDimensions }
+    }
+    if (signature.mime === 'image/gif') {
+      return { mime: signature.mime, ext: signature.ext, dimensions: readGifDimensions }
+    }
+    if (signature.mime === 'image/bmp') {
+      return { mime: signature.mime, ext: signature.ext, dimensions: readBmpDimensions }
+    }
+    if (signature.mime === 'image/webp') {
+      return { mime: signature.mime, ext: signature.ext, dimensions: readWebpDimensions }
+    }
+  }
+  if (looksLikeSvg(bytes)) {
+    return { mime: 'image/svg+xml', ext: '.svg', dimensions: null }
+  }
+  return null
+}
+
 /**
  * Sniff a renderable image MIME type from the leading bytes
  * (PNG/JPEG/GIF/WebP/BMP/SVG), or `null` when the bytes are not a recognised
  * image.
  */
 export function sniffImageMime(bytes: Uint8Array): string | null {
-  for (const signature of IMAGE_SIGNATURES) {
-    if (matchesSignature(bytes, signature)) return signature.mime
-  }
-  // SVG: leading "<svg" or "<?xml" followed somewhere by "<svg" — keep it simple
-  // by checking the first non-whitespace bytes against "<svg" or "<?xml".
-  if (looksLikeSvg(bytes)) {
-    return 'image/svg+xml'
-  }
-  return null
+  return classifyImage(bytes)?.mime ?? null
 }
 
 function looksLikeSvg(bytes: Uint8Array): boolean {
@@ -240,17 +264,210 @@ function looksLikeSvg(bytes: Uint8Array): boolean {
  * for unrecognised content. Used only to seed save-dialog filenames.
  */
 export function detectBlobExtension(bytes: Uint8Array): string {
-  for (const signature of IMAGE_SIGNATURES) {
-    if (matchesSignature(bytes, signature)) return signature.ext
-  }
+  const image = classifyImage(bytes)
+  if (image?.ext) return image.ext
   // PDF: "%PDF"
   if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46])) return '.pdf'
   // ZIP: "PK\x03\x04" (also covers ZIP-based formats)
   if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) return '.zip'
   // GZIP
   if (startsWith(bytes, [0x1f, 0x8b])) return '.gz'
-  if (looksLikeSvg(bytes)) return '.svg'
   return '.bin'
+}
+
+// ---------------------------------------------------------------------------
+// Image pixel dimensions (header-only, synchronous, never throws)
+// ---------------------------------------------------------------------------
+
+/** Pixel dimensions parsed from a raster-image header. */
+export interface ImageDimensions {
+  width: number
+  height: number
+}
+
+/** Read a big-endian unsigned 16-bit integer at `offset`, or `null` if short. */
+function readU16BE(bytes: Uint8Array, offset: number): number | null {
+  if (offset + 2 > bytes.length) return null
+  return (bytes[offset] << 8) | bytes[offset + 1]
+}
+
+/** Read a big-endian unsigned 32-bit integer at `offset`, or `null` if short. */
+function readU32BE(bytes: Uint8Array, offset: number): number | null {
+  if (offset + 4 > bytes.length) return null
+  return (
+    (bytes[offset] * 0x1000000 +
+      (bytes[offset + 1] << 16) +
+      (bytes[offset + 2] << 8) +
+      bytes[offset + 3]) >>>
+    0
+  )
+}
+
+/** Read a little-endian signed 32-bit integer at `offset`, or `null` if short. */
+function readI32LE(bytes: Uint8Array, offset: number): number | null {
+  if (offset + 4 > bytes.length) return null
+  return (
+    bytes[offset] |
+    (bytes[offset + 1] << 8) |
+    (bytes[offset + 2] << 16) |
+    (bytes[offset + 3] << 24) |
+    0
+  )
+}
+
+/** Read a little-endian unsigned 16-bit integer at `offset`, or `null` if short. */
+function readU16LE(bytes: Uint8Array, offset: number): number | null {
+  if (offset + 2 > bytes.length) return null
+  return bytes[offset] | (bytes[offset + 1] << 8)
+}
+
+/** Read a little-endian unsigned 24-bit integer at `offset`, or `null` if short. */
+function readU24LE(bytes: Uint8Array, offset: number): number | null {
+  if (offset + 3 > bytes.length) return null
+  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16)
+}
+
+function readPngDimensions(bytes: Uint8Array): ImageDimensions | null {
+  // PNG: 8-byte signature, then IHDR chunk: 4-byte length, "IHDR", width, height (both U32BE).
+  const width = readU32BE(bytes, 16)
+  const height = readU32BE(bytes, 20)
+  if (width === null || height === null || width === 0 || height === 0) return null
+  return { width, height }
+}
+
+const JPEG_MARKER_SCAN_LIMIT = 4096
+
+function readJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
+  // Walk JPEG segments starting after the SOI (0xFFD8) marker, looking for a
+  // Start-Of-Frame marker (SOF0–SOF15, excluding DHT/JPG/DAC at C4/C8/CC).
+  let offset = 2
+  let scans = 0
+  while (offset + 1 < bytes.length && scans < JPEG_MARKER_SCAN_LIMIT) {
+    scans++
+    if (bytes[offset] !== 0xff) {
+      // Skip fill bytes / desync gracefully.
+      offset++
+      continue
+    }
+    const marker = bytes[offset + 1]
+    // Skip standalone markers (padding 0xFF, RSTn, SOI/EOI/TEM) that carry no length.
+    if (marker === 0xff) {
+      offset++
+      continue
+    }
+    if (
+      marker === 0xd8 ||
+      marker === 0xd9 ||
+      (marker >= 0xd0 && marker <= 0xd7) ||
+      marker === 0x01
+    ) {
+      offset += 2
+      continue
+    }
+    const segmentLength = readU16BE(bytes, offset + 2)
+    if (segmentLength === null || segmentLength < 2) return null
+    const isSof =
+      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+    if (isSof) {
+      // SOF payload: precision (1 byte), height (U16BE), width (U16BE).
+      const height = readU16BE(bytes, offset + 5)
+      const width = readU16BE(bytes, offset + 7)
+      if (width === null || height === null || width === 0 || height === 0) return null
+      return { width, height }
+    }
+    offset += 2 + segmentLength
+  }
+  return null
+}
+
+function readGifDimensions(bytes: Uint8Array): ImageDimensions | null {
+  // GIF logical screen descriptor: width (U16LE), height (U16LE) at offset 6.
+  const width = readU16LE(bytes, 6)
+  const height = readU16LE(bytes, 8)
+  if (width === null || height === null || width === 0 || height === 0) return null
+  return { width, height }
+}
+
+function readBmpDimensions(bytes: Uint8Array): ImageDimensions | null {
+  // BMP DIB header begins at offset 14; width/height are signed I32LE at 18/22.
+  const width = readI32LE(bytes, 18)
+  const height = readI32LE(bytes, 22)
+  if (width === null || height === null || width === 0 || height === 0) return null
+  // Height may be negative (top-down bitmap); report the absolute magnitude.
+  return { width: Math.abs(width), height: Math.abs(height) }
+}
+
+function readWebpDimensions(bytes: Uint8Array): ImageDimensions | null {
+  // RIFF header occupies bytes 0..11; the WebP chunk FourCC starts at offset 12.
+  if (bytes.length < 16) return null
+  const fourCc = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15])
+  if (fourCc === 'VP8 ') {
+    // Lossy: frame tag (3 bytes) + start code, then width/height as U14LE at 26/28.
+    const w = readU16LE(bytes, 26)
+    const h = readU16LE(bytes, 28)
+    if (w === null || h === null) return null
+    const width = w & 0x3fff
+    const height = h & 0x3fff
+    if (width === 0 || height === 0) return null
+    return { width, height }
+  }
+  if (fourCc === 'VP8L') {
+    // Lossless: signature 0x2f at offset 20, then 14-bit (width-1)/height-1 packed.
+    if (bytes.length < 25 || bytes[20] !== 0x2f) return null
+    // The 4 bytes are little-endian; reconstruct as LE and unpack.
+    const le = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24)
+    const width = (le & 0x3fff) + 1
+    const height = ((le >>> 14) & 0x3fff) + 1
+    return { width, height }
+  }
+  if (fourCc === 'VP8X') {
+    // Extended: 1 byte flags + 3 reserved at 20, then (width-1)/(height-1) as U24LE at 24/27.
+    const w = readU24LE(bytes, 24)
+    const h = readU24LE(bytes, 27)
+    if (w === null || h === null) return null
+    return { width: w + 1, height: h + 1 }
+  }
+  return null
+}
+
+/**
+ * Read pixel dimensions from the header of a common raster image
+ * (PNG, JPEG, GIF, BMP, WebP), returning `{ width, height }` or `null` when the
+ * bytes are not a supported/parseable image or the header is truncated.
+ *
+ * Pure and synchronous: it inspects only the minimal header prefix, bounds any
+ * marker scan (JPEG), and never throws on malformed/short input.
+ */
+export function readImageDimensions(bytes: Uint8Array): ImageDimensions | null {
+  const image = classifyImage(bytes)
+  if (!image?.dimensions) return null
+  return image.dimensions(bytes)
+}
+
+// ---------------------------------------------------------------------------
+// Friendly type label
+// ---------------------------------------------------------------------------
+
+const EXTENSION_LABELS: Record<string, string> = {
+  '.png': 'PNG image',
+  '.jpg': 'JPEG image',
+  '.gif': 'GIF image',
+  '.bmp': 'BMP image',
+  '.webp': 'WebP image',
+  '.svg': 'SVG image',
+  '.pdf': 'PDF document',
+  '.zip': 'ZIP archive',
+  '.gz': 'Gzip archive',
+}
+
+/**
+ * Produce a short, friendly human-readable type label from the leading magic
+ * bytes (e.g. "PNG image", "PDF document", "ZIP archive"), defaulting to
+ * "Binary" for unrecognised content. Reuses `detectBlobExtension`'s sniffing.
+ */
+export function blobTypeLabel(bytes: Uint8Array): string {
+  const ext = detectBlobExtension(bytes)
+  return EXTENSION_LABELS[ext] ?? 'Binary'
 }
 
 // ---------------------------------------------------------------------------

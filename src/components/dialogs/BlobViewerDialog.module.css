@@ -22,7 +22,7 @@
 
 .title {
   margin: 0;
-  font-size: var(--type-size-sm);
+  font-size: var(--type-dialog-title);
   font-weight: 600;
   color: var(--on-surface);
   min-width: 0;
@@ -36,60 +36,72 @@
   color: var(--primary);
 }
 
-.size {
-  color: var(--on-surface-variant);
-  font-weight: 400;
-}
-
-/* Cap warning banner */
-.warningBanner {
+.headerActions {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+/* Metadata chip row */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
   padding: var(--space-sm) var(--space-lg);
+  flex-shrink: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--ui-chip-bg);
+  border: var(--ui-chip-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.chipWarning {
   background: var(--warning-container);
+  border-color: var(--warning);
   color: var(--warning);
-  font-size: var(--type-size-sm);
-  flex-shrink: 0;
 }
 
-/* Action bar */
-.actionBar {
+/* Action toolbar */
+.toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-lg);
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
   flex-shrink: 0;
 }
 
-.actionGroup {
+.toolbarGroup {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
 }
 
-/* Paste area */
-.pasteArea {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-lg);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
-  flex-shrink: 0;
+.toolbarDivider {
+  width: 1px;
+  align-self: stretch;
+  margin: 0 var(--space-xs);
+  background: var(--outline-variant);
+  opacity: 0.5;
+  margin-left: auto;
 }
 
-.pasteFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-}
-
-.pasteHint {
-  font-size: var(--type-size-sm);
-  color: var(--on-surface-variant);
+/* Paste button anchor (positioning context for the paste popover) */
+.pasteAnchor {
+  position: relative;
+  display: inline-flex;
 }
 
 /* Tablist (styled as underline tabs but with full ARIA control) */
@@ -97,6 +109,7 @@
   display: flex;
   align-items: stretch;
   gap: var(--space-xs);
+  width: 100%;
 }
 
 .tab {
@@ -125,11 +138,22 @@
 
 /* Panel area */
 .panel {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
   background: var(--ui-form-main-bg);
   display: flex;
+}
+
+/* Passive drop affordance (edit mode only) */
+.panelDroppable::after {
+  content: '';
+  position: absolute;
+  inset: var(--space-sm);
+  border: 2px dashed rgba(var(--primary-rgb), 0.18);
+  border-radius: var(--radius-sm);
+  pointer-events: none;
 }
 
 /* Image tab */
@@ -194,17 +218,19 @@
   color: var(--on-surface-variant);
 }
 
-/* NULL / empty / generic state messages */
+/* NULL / empty / not-image / too-large state compositions */
 .nullState,
 .emptyState,
-.stateMessage {
+.notImageState,
+.warningState {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--space-sm);
-  font-size: var(--type-size-sm);
+  padding: var(--space-lg);
+  text-align: center;
 }
 
 .nullState {
@@ -212,16 +238,62 @@
 }
 
 .emptyState,
-.stateMessage {
+.notImageState {
   color: var(--on-surface-variant);
 }
 
-/* Drag hint */
-.dragHint {
-  padding: var(--space-xs) var(--space-lg);
+.warningState {
+  color: var(--warning);
+}
+
+.stateTitle {
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+}
+
+.stateSub {
   font-size: var(--type-size-sm);
   color: var(--on-surface-variant);
-  flex-shrink: 0;
+  max-width: 32ch;
+}
+
+/* Loading skeleton */
+.skeleton {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.skeletonBar {
+  height: var(--space-lg);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base) 0%,
+    var(--skeleton-highlight) 50%,
+    var(--skeleton-base) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonBar:nth-child(2) {
+  width: 80%;
+}
+
+.skeletonBar:nth-child(3) {
+  width: 60%;
+}
+
+@keyframes skeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Footer */
@@ -236,7 +308,7 @@
   flex-shrink: 0;
 }
 
-/* Drop overlay */
+/* Active drop overlay (unchanged) */
 .dropOverlay {
   position: absolute;
   inset: 0;

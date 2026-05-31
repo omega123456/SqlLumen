@@ -20,6 +20,7 @@ import {
   dblClickGlideCell,
   getGlideGridGeometry,
 } from './glide-grid-helpers'
+import { BLOB_VIEWER_SCREENSHOT_STATES } from '../src/tests/playwright-fixtures/blob-value'
 
 const themes = ['light', 'dark'] as const
 const SCREENSHOT_TEST_TIMEOUT_MS = 25_000
@@ -258,31 +259,55 @@ async function seedCopyToHostTargets(page: Page) {
 }
 
 async function configureCopyToHostFixtures(page: Page, mode: 'default' | 'progress') {
-  await page.evaluate((fixtureMode) => {
+  await applyFixtureOverrides(page, {
+    reset: true,
+    overrides:
+      mode === 'progress'
+        ? [
+            { domain: 'copyToHostStart', key: 'default', data: 'copy-job-progress' },
+            {
+              domain: 'copyProgress',
+              key: 'copy-job-progress',
+              data: {
+                jobId: 'copy-job-progress',
+                status: 'running',
+                objectsTotal: 4,
+                objectsDone: 2,
+                currentObject: 'orders',
+                currentObjectType: 'table',
+                rowsTotal: 5820,
+                rowsDone: 2140,
+                errorMessage: null,
+                cancelRequested: false,
+              },
+            },
+          ]
+        : [],
+  })
+}
+
+async function applyFixtureOverrides(
+  page: Page,
+  options: {
+    reset?: boolean
+    overrides: Array<{ domain: string; key: string; data: unknown }>
+  }
+) {
+  await page.evaluate((fixtureOptions) => {
     const registry = (window as unknown as Record<string, unknown>)
       .__PLAYWRIGHT_FIXTURE_REGISTRY__ as {
       resetFixtureOverrides: () => void
       overrideFixture: (domain: string, key: string, data: unknown) => void
     }
 
-    registry.resetFixtureOverrides()
-
-    if (fixtureMode === 'progress') {
-      registry.overrideFixture('copyToHostStart', 'default', 'copy-job-progress')
-      registry.overrideFixture('copyProgress', 'copy-job-progress', {
-        jobId: 'copy-job-progress',
-        status: 'running',
-        objectsTotal: 4,
-        objectsDone: 2,
-        currentObject: 'orders',
-        currentObjectType: 'table',
-        rowsTotal: 5820,
-        rowsDone: 2140,
-        errorMessage: null,
-        cancelRequested: false,
-      })
+    if (fixtureOptions.reset) {
+      registry.resetFixtureOverrides()
     }
-  }, mode)
+
+    for (const override of fixtureOptions.overrides) {
+      registry.overrideFixture(override.domain, override.key, override.data)
+    }
+  }, options)
 }
 
 async function openCopyToHostDialog(
@@ -918,11 +943,29 @@ async function openBlobSampleTableDataTab(page: Page) {
 }
 
 /**
+ * Override the lazy `fetch_blob_value` fixture served for the `photo` column so a
+ * blob-viewer screenshot can exercise a specific working-value state (NULL, empty,
+ * too-large, …). Wired through the fixture registry — never inline in the mock router.
+ */
+async function overridePhotoBlobValue(
+  page: Page,
+  state: 'null' | 'empty' | 'tooLarge'
+): Promise<void> {
+  await applyFixtureOverrides(page, {
+    reset: true,
+    overrides: [{ domain: 'blobValue', key: 'photo', data: BLOB_VIEWER_SCREENSHOT_STATES[state] }],
+  })
+}
+
+/**
  * Open the BlobViewerDialog in edit mode by double-clicking the binary `photo`
  * cell of the `blob_sample` table, then wait for the lazy fetch to settle.
  */
-async function openBlobViewerFromTableData(page: Page) {
+async function openBlobViewerFromTableData(page: Page, state?: 'null' | 'empty' | 'tooLarge') {
   await openBlobSampleTableDataTab(page)
+  if (state) {
+    await overridePhotoBlobValue(page, state)
+  }
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
   await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
@@ -2135,23 +2178,42 @@ for (const theme of themes) {
       )
     })
 
-    test('BlobViewerDialog — cap-warning banner (too large)', async ({ page }) => {
-      await openBlobSampleTableDataTab(page)
-      // The `photo_large` column's fixture reports a >10 MB cell, so the dialog
-      // surfaces the cap warning without transporting any bytes. Open via the
-      // form-view button to avoid the grid double-click landing on a dialog
-      // action once the modal mounts over the cell.
-      await page.getByTestId('view-mode-form').click()
-      await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('btn-blob-view-photo_large')).toBeVisible({
+    test('BlobViewerDialog — NULL state (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page, 'null')
+      await expect(page.getByTestId('blob-null-state')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-null-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — empty state (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page, 'empty')
+      await expect(page.getByTestId('blob-empty-state')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-empty-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — too-large state (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page, 'tooLarge')
+      await expect(page.getByTestId('blob-too-large-content')).toBeVisible({
         timeout: APP_READY_MS,
       })
-      await page.getByTestId('btn-blob-view-photo_large').click()
-
-      await expect(page.getByTestId('blob-viewer-dialog')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('blob-cap-warning')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
-        `blob-viewer-cap-warning-${theme}.png`,
+        `blob-viewer-too-large-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — paste popover open (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page)
+      await page.getByTestId('blob-paste-toggle').click()
+      await expect(page.getByTestId('blob-paste-popover')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-paste-input')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-paste-popover-${theme}.png`,
         { animations: 'disabled' }
       )
     })

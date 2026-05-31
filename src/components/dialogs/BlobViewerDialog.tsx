@@ -15,9 +15,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowsOutIcon,
   ClipboardTextIcon,
   DownloadSimpleIcon,
   EraserIcon,
+  FileIcon,
+  ImageIcon,
   ProhibitIcon,
   UploadSimpleIcon,
   WarningCircleIcon,
@@ -27,9 +30,10 @@ import { DialogShell } from './DialogShell'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
-import { Textarea } from '../common/Textarea'
+import { BlobPastePopover } from './BlobPastePopover'
 import {
   base64ToBytes,
+  blobTypeLabel,
   bytesToBase64,
   bytesEnvelope,
   decodeUtf8BestEffort,
@@ -37,7 +41,7 @@ import {
   emptyEnvelope,
   formatHexDump,
   nullEnvelope,
-  parsePastedBytes,
+  readImageDimensions,
   sniffImageMime,
 } from '../../lib/blob-utils'
 import { readFileBytes, writeFileBytes } from '../../lib/table-data-commands'
@@ -116,10 +120,10 @@ export function BlobViewerDialog({
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<BlobTab>('image')
   const [pasteOpen, setPasteOpen] = useState(false)
-  const [pasteText, setPasteText] = useState('')
   const [dragOver, setDragOver] = useState(false)
 
   const firstTabRef = useRef<HTMLButtonElement>(null)
+  const pasteAnchorRef = useRef<HTMLButtonElement>(null)
   const dragDepth = useRef(0)
 
   // -- Initialise working value on open ------------------------------------
@@ -128,7 +132,6 @@ export function BlobViewerDialog({
     let cancelled = false
     setActiveTab('image')
     setPasteOpen(false)
-    setPasteText('')
     setDragOver(false)
     dragDepth.current = 0
 
@@ -200,6 +203,16 @@ export function BlobViewerDialog({
   )
   const hexRows = useMemo(() => (workingBytes ? formatHexDump(workingBytes) : []), [workingBytes])
 
+  // -- Derived metadata chips ----------------------------------------------
+  const typeLabel = useMemo(
+    () => (workingBytes ? blobTypeLabel(workingBytes) : null),
+    [workingBytes]
+  )
+  const dimensions = useMemo(
+    () => (workingBytes && workingBytes.length > 0 ? readImageDimensions(workingBytes) : null),
+    [workingBytes]
+  )
+
   const isEdit = mode === 'edit'
   const tooLarge = working?.kind === 'tooLarge'
   const canSave = working?.kind === 'bytes'
@@ -208,7 +221,6 @@ export function BlobViewerDialog({
   const applyBytes = useCallback((bytes: Uint8Array) => {
     setWorking({ kind: 'bytes', bytes })
     setPasteOpen(false)
-    setPasteText('')
   }, [])
 
   const handleLoadFromFile = useCallback(async () => {
@@ -230,19 +242,9 @@ export function BlobViewerDialog({
     }
   }, [applyBytes])
 
-  const handleApplyPaste = useCallback(() => {
-    const result = parsePastedBytes(pasteText)
-    if (!result.ok) {
-      showErrorToast('Could not parse pasted data', result.error)
-      return
-    }
-    applyBytes(result.bytes)
-  }, [pasteText, applyBytes])
-
   const handleSetNull = useCallback(() => {
     setWorking({ kind: 'null' })
     setPasteOpen(false)
-    setPasteText('')
   }, [])
 
   const handleClear = useCallback(() => {
@@ -363,43 +365,51 @@ export function BlobViewerDialog({
 
   if (!isOpen) return null
 
-  const sizeLabel =
+  // Raw byte count surfaced in the size chip (NULL/loading omit the chip row).
+  const byteCount =
     working?.kind === 'bytes'
-      ? `${working.bytes.length} bytes`
+      ? working.bytes.length
       : working?.kind === 'tooLarge'
-        ? `${working.byteLength} bytes`
-        : working?.kind === 'null'
-          ? 'NULL'
-          : ''
+        ? working.byteLength
+        : null
+
+  const showChips = !loading && (working?.kind === 'bytes' || working?.kind === 'tooLarge')
 
   function renderPanelBody() {
     if (loading || !working) {
       return (
-        <div className={styles.stateMessage} data-testid="blob-loading">
-          Loading…
+        <div className={styles.skeleton} data-testid="blob-loading" aria-label="Loading">
+          <div className={styles.skeletonBar} />
+          <div className={styles.skeletonBar} />
+          <div className={styles.skeletonBar} />
         </div>
       )
     }
     if (working.kind === 'tooLarge') {
       return (
-        <div className={styles.stateMessage} data-testid="blob-too-large-content">
-          Content not loaded (exceeds the 10 MB preview limit).
+        <div className={styles.warningState} data-testid="blob-too-large-content">
+          <WarningCircleIcon size={40} weight="thin" />
+          <span className={styles.stateTitle}>Preview limit reached</span>
+          <span className={styles.stateSub}>
+            Exceeds the 10 MB preview limit. Save to file to access the full content.
+          </span>
         </div>
       )
     }
     if (working.kind === 'null') {
       return (
         <div className={styles.nullState} data-testid="blob-null-state">
-          <ProhibitIcon size={40} />
-          <span>Value is NULL</span>
+          <ProhibitIcon size={40} weight="thin" />
+          <span className={styles.stateTitle}>NULL value</span>
+          <span className={styles.stateSub}>This cell contains no data.</span>
         </div>
       )
     }
     if (working.bytes.length === 0) {
       return (
         <div className={styles.emptyState} data-testid="blob-empty-state">
-          <EraserIcon size={40} />
-          <span>Empty — 0 bytes</span>
+          <EraserIcon size={40} weight="thin" />
+          <span className={styles.stateTitle}>Empty — 0 bytes</span>
         </div>
       )
     }
@@ -409,8 +419,9 @@ export function BlobViewerDialog({
           <img className={styles.image} src={objectUrl} alt={`${columnLabel} contents`} />
         </div>
       ) : (
-        <div className={styles.stateMessage} data-testid="blob-not-image">
-          Not a valid image
+        <div className={styles.notImageState} data-testid="blob-not-image">
+          <ImageIcon size={40} weight="thin" />
+          <span className={styles.stateTitle}>Not a valid image</span>
         </div>
       )
     }
@@ -438,12 +449,15 @@ export function BlobViewerDialog({
     )
   }
 
+  const saveTitle =
+    !canSave && tooLarge ? 'Too large to load — exceeds 10 MB' : 'Save bytes to a file'
+
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={handleClose}
-      panelWidth="720px"
-      panelHeight="560px"
+      panelWidth="min(90vw, 800px)"
+      panelHeight="min(90vh, 600px)"
       panelPadding={false}
       testId="blob-viewer-dialog"
       ariaLabel={`BLOB — ${columnLabel}`}
@@ -460,47 +474,126 @@ export function BlobViewerDialog({
         {/* Header */}
         <div className={styles.header}>
           <h2 className={styles.title}>
-            BLOB — <code className={styles.columnName}>{columnLabel}</code>
-            {sizeLabel ? <span className={styles.size}> ({sizeLabel})</span> : null}
+            BLOB · <code className={styles.columnName}>{columnLabel}</code>
           </h2>
-          <IconButton aria-label="Close" onClick={handleClose} data-testid="blob-close-x">
-            <XIcon size={16} weight="bold" />
-          </IconButton>
+          <div className={styles.headerActions}>
+            {!isEdit && (
+              <Button
+                variant="toolbar"
+                onClick={handleSaveToFile}
+                disabled={!canSave}
+                title={saveTitle}
+                aria-label="Save to file"
+                data-testid="blob-save-file"
+              >
+                <DownloadSimpleIcon size={16} />
+                Save to file
+              </Button>
+            )}
+            <IconButton
+              aria-label="Close"
+              title="Close"
+              onClick={handleClose}
+              data-testid="blob-close"
+            >
+              <XIcon size={16} weight="bold" />
+            </IconButton>
+          </div>
         </div>
 
-        {/* Cap warning banner */}
-        {tooLarge && (
-          <div className={styles.warningBanner} role="alert" data-testid="blob-cap-warning">
-            <WarningCircleIcon size={20} weight="fill" />
-            <span>
-              This BLOB exceeds the 10 MB preview limit. Save to file to access the full content.
-            </span>
+        {/* Metadata chip row */}
+        {showChips && (
+          <div className={styles.chipRow} data-testid="blob-chip-row">
+            {typeLabel && (
+              <span className={styles.chip} data-testid="blob-chip-type">
+                <FileIcon size={12} />
+                {typeLabel}
+              </span>
+            )}
+            {byteCount != null && (
+              <span
+                className={tooLarge ? `${styles.chip} ${styles.chipWarning}` : styles.chip}
+                role={tooLarge ? 'alert' : undefined}
+                data-testid="blob-chip-size"
+              >
+                {tooLarge && <WarningCircleIcon size={12} weight="fill" />}
+                {byteCount} bytes
+              </span>
+            )}
+            {dimensions && (
+              <span className={styles.chip} data-testid="blob-chip-dimensions">
+                <ArrowsOutIcon size={12} />
+                {dimensions.width} × {dimensions.height}
+              </span>
+            )}
           </div>
         )}
 
-        {/* Action bar (edit mode only) */}
+        {/* Action toolbar (edit mode only) */}
         {isEdit && (
-          <div className={styles.actionBar} data-testid="blob-action-bar">
-            <div className={styles.actionGroup}>
-              <Button variant="secondary" onClick={handleLoadFromFile} data-testid="blob-load-file">
-                <UploadSimpleIcon size={16} />
-                Load from file
-              </Button>
+          <div className={styles.toolbar} data-testid="blob-action-bar">
+            <div className={styles.toolbarGroup}>
               <Button
-                variant="secondary"
-                onClick={() => setPasteOpen((v) => !v)}
-                data-testid="blob-paste-toggle"
+                variant="toolbar"
+                onClick={handleLoadFromFile}
+                title="Load bytes from a file"
+                aria-label="Load file"
+                data-testid="blob-load-file"
               >
-                <ClipboardTextIcon size={16} />
-                Paste
+                <UploadSimpleIcon size={16} />
+                Load file
+              </Button>
+              <div className={styles.pasteAnchor}>
+                <Button
+                  ref={pasteAnchorRef}
+                  variant="toolbar"
+                  onClick={() => setPasteOpen((v) => !v)}
+                  title="Paste base64 or hex"
+                  aria-label="Paste"
+                  data-testid="blob-paste-toggle"
+                >
+                  <ClipboardTextIcon size={16} />
+                  Paste
+                </Button>
+                <BlobPastePopover
+                  isOpen={pasteOpen}
+                  onClose={() => setPasteOpen(false)}
+                  onApply={applyBytes}
+                  onError={(msg) => showErrorToast('Could not parse pasted data', msg)}
+                  anchorRef={pasteAnchorRef}
+                />
+              </div>
+              <Button
+                variant="toolbar"
+                onClick={handleSaveToFile}
+                disabled={!canSave}
+                title={saveTitle}
+                aria-label="Save to file"
+                data-testid="blob-save-file"
+              >
+                <DownloadSimpleIcon size={16} />
+                Save to file
               </Button>
             </div>
-            <div className={styles.actionGroup}>
-              <Button variant="danger" onClick={handleSetNull} data-testid="blob-set-null">
+            <div className={styles.toolbarDivider} aria-hidden="true" />
+            <div className={styles.toolbarGroup}>
+              <Button
+                variant="toolbarDanger"
+                onClick={handleSetNull}
+                title="Stage a SQL NULL value"
+                aria-label="Set NULL"
+                data-testid="blob-set-null"
+              >
                 <ProhibitIcon size={16} />
                 Set NULL
               </Button>
-              <Button variant="danger" onClick={handleClear} data-testid="blob-clear">
+              <Button
+                variant="toolbarDanger"
+                onClick={handleClear}
+                title="Clear to zero bytes"
+                aria-label="Clear"
+                data-testid="blob-clear"
+              >
                 <EraserIcon size={16} />
                 Clear
               </Button>
@@ -508,45 +601,8 @@ export function BlobViewerDialog({
           </div>
         )}
 
-        {/* Paste input (revealed) */}
-        {isEdit && pasteOpen && (
-          <div className={styles.pasteArea} data-testid="blob-paste-area">
-            <Textarea
-              variant="mono"
-              rows={3}
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              placeholder="Paste base64 or hex"
-              aria-label="Paste base64 or hex"
-              data-testid="blob-paste-input"
-            />
-            <div className={styles.pasteFooter}>
-              <span className={styles.pasteHint}>Accepts base64 or whitespace-tolerant hex.</span>
-              <Button onClick={handleApplyPaste} data-testid="blob-paste-apply">
-                Load
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* Tabs */}
-        <UnderlineTabBar
-          data-testid="blob-tabs"
-          suffix={
-            <Button
-              variant="secondary"
-              onClick={handleSaveToFile}
-              disabled={!canSave}
-              title={
-                !canSave && tooLarge ? 'Too large to load — exceeds 10 MB' : 'Save bytes to a file'
-              }
-              data-testid="blob-save-file"
-            >
-              <DownloadSimpleIcon size={16} />
-              Save to file
-            </Button>
-          }
-        >
+        <UnderlineTabBar data-testid="blob-tabs">
           <div role="tablist" aria-label="BLOB views" className={styles.tablist}>
             {TABS.map((tab, index) => {
               const selected = activeTab === tab.id
@@ -575,7 +631,7 @@ export function BlobViewerDialog({
 
         {/* Panel */}
         <div
-          className={styles.panel}
+          className={isEdit ? `${styles.panel} ${styles.panelDroppable}` : styles.panel}
           role="tabpanel"
           id={`blob-panel-${activeTab}`}
           aria-labelledby={`blob-tab-${activeTab}`}
@@ -584,9 +640,7 @@ export function BlobViewerDialog({
           {renderPanelBody()}
         </div>
 
-        {/* Drag hint / footer */}
-        {isEdit && <div className={styles.dragHint}>Or drop a file anywhere in this window</div>}
-
+        {/* Footer */}
         <div className={styles.footer}>
           {isEdit ? (
             <>
@@ -598,7 +652,7 @@ export function BlobViewerDialog({
               </Button>
             </>
           ) : (
-            <Button onClick={onClose} data-testid="blob-close">
+            <Button onClick={onClose} data-testid="blob-close-footer">
               Close
             </Button>
           )}
