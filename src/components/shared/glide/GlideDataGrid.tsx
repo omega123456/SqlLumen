@@ -33,6 +33,9 @@ export type GlideRowMarkerKind = 'none' | 'checkbox' | 'number' | 'both'
 
 const DEFAULT_ROW_MARKER_WIDTH = 32
 const DEFAULT_COLUMN_WIDTH = 120
+// Glide's default maxColumnWidth is 500px, which caps how wide a user can drag a
+// column. Lift it to an effectively-unreachable value so resizing is unbounded.
+const MAX_COLUMN_WIDTH = 100000
 
 function getColumnWidth(column: GlideGridColumn): number {
   return 'width' in column && typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
@@ -284,6 +287,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           customRenderers={customRenderers}
           width={size.width}
           height={size.height}
+          maxColumnWidth={MAX_COLUMN_WIDTH}
           theme={theme}
           rowHeight={rowHeight}
           headerHeight={headerHeight}
