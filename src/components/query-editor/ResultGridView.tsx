@@ -13,6 +13,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
+import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
+import { isBinaryDataType } from '../../lib/blob-utils'
 import {
   EditorCallbacksContext,
   type EditorCallbacksContextType,
@@ -170,6 +172,22 @@ export function ResultGridView({
     }))
   }
   const resetSelectionKey = selectionResetState.resetKey
+
+  // ---------------------------------------------------------------------------
+  // BLOB viewer (view-only) — query results inline the blob bytes as base64, so
+  // double-clicking a binary cell opens the shared dialog seeded with those
+  // bytes. No PK exists for query results, so no staging or lazy fetch happens.
+  // ---------------------------------------------------------------------------
+  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
+  const [blobContext, setBlobContext] = useState<{
+    columnLabel: string
+    base64: string | null
+  } | null>(null)
+
+  const closeBlobDialog = useCallback(() => {
+    setBlobDialogOpen(false)
+    setBlobContext(null)
+  }, [])
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -386,7 +404,7 @@ export function ResultGridView({
       displayName: column.displayName,
       dataType: column.dataType,
       editable: column.editable,
-      isBinary: false,
+      isBinary: isBinaryDataType(column.dataType),
       isNullable: column.tableColumnMeta?.isNullable ?? true,
       isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
       isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
@@ -405,6 +423,23 @@ export function ResultGridView({
               : 'none',
     }))
   }, [resolvedColumns])
+
+  const handleCellDoubleClick = useCallback(
+    (row: Record<string, unknown>, columnKey: string) => {
+      const columnIndex = colIndexFromKey(columnKey)
+      const column = columns[columnIndex]
+      const descriptor = gridColumns[columnIndex]
+      if (!column || !descriptor?.isBinary) return
+
+      const cellValue = row[columnKey]
+      setBlobContext({
+        columnLabel: column.name,
+        base64: typeof cellValue === 'string' ? cellValue : null,
+      })
+      setBlobDialogOpen(true)
+    },
+    [columns, gridColumns]
+  )
 
   const editableColumnKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -747,6 +782,7 @@ export function ResultGridView({
         runCellClickGuardOnKeyboardSelection={!!editMode}
         onRowsChange={handleRowsChange}
         onCellClipboardEdit={handleCellClipboardEdit}
+        onCellDoubleClick={handleCellDoubleClick}
         selectedCellPosition={selectedCellPosition}
         onSelectedCellChange={handleSelectedCellChange}
         isEditMode={!!editMode}
@@ -774,6 +810,15 @@ export function ResultGridView({
         resetSelectionKey={resetSelectionKey}
         testId="result-grid"
       />
+      {blobDialogOpen && blobContext && (
+        <BlobViewerDialog
+          isOpen={blobDialogOpen}
+          onClose={closeBlobDialog}
+          mode="view"
+          columnLabel={blobContext.columnLabel}
+          initialBase64={blobContext.base64}
+        />
+      )}
     </EditorCallbacksContext.Provider>
   )
 }

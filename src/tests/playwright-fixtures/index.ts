@@ -1,4 +1,6 @@
 import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
+import { BLOB_SAMPLE_LIST_COLUMNS, BLOB_SAMPLE_TABLE_DATA } from './blob-sample'
+import { DEFAULT_BLOB_VALUE, DEFAULT_BLOB_VALUE_BY_KEY } from './blob-value'
 import {
   COPY_TO_HOST_OBJECTS,
   COPY_TO_HOST_PROGRESS_COMPLETED,
@@ -15,6 +17,8 @@ import {
 } from './object-editor'
 import { ORDERS_FOREIGN_KEYS, ORDERS_LIST_COLUMNS, ORDERS_TABLE_DATA } from './orders'
 import {
+  BLOB_CACHED_ROWS_RESULT,
+  BLOB_QUERY_RESULT,
   createCurrentDatabaseQueryResult,
   DEFAULT_CACHED_ROWS_RESULT,
   DEFAULT_SECOND_RESULT_CACHED_ROWS_RESULT,
@@ -25,6 +29,7 @@ import {
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
+import type { BlobValueResponse } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type {
   PlaywrightAnalyzeQueryResult,
@@ -59,6 +64,7 @@ type FixtureOverrideDomain =
   | 'copyToHostStart'
   | 'copyProgress'
   | 'copyCancel'
+  | 'blobValue'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -77,6 +83,7 @@ type FixtureOverrides = {
   copyToHostStart: Record<string, string>
   copyProgress: Record<string, CopyProgress>
   copyCancel: Record<string, null>
+  blobValue: Record<string, BlobValueResponse>
 }
 
 type FixtureOverrideValueMap = {
@@ -94,6 +101,7 @@ type FixtureOverrideValueMap = {
   copyToHostStart: string
   copyProgress: CopyProgress
   copyCancel: null
+  blobValue: BlobValueResponse
 }
 
 type FixtureRegistryApi = {
@@ -119,6 +127,7 @@ type FixtureRegistryApi = {
   getCopyToHostStartFixture: () => string
   getCopyProgressFixture: (jobId: string | null | undefined) => CopyProgress
   getCancelCopyFixture: (jobId: string | null | undefined) => null
+  getBlobValueFixture: (column: string | null | undefined) => BlobValueResponse
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -134,6 +143,7 @@ const DEFAULT_TABLE_DATA_BY_TABLE: Record<string, PlaywrightTableDataResult> = {
   json_sample: JSON_TABLE_DATA,
   orders: ORDERS_TABLE_DATA,
   user_stats_view: USER_STATS_VIEW_TABLE_DATA,
+  blob_sample: BLOB_SAMPLE_TABLE_DATA,
 }
 
 const DEFAULT_COLUMNS_BY_TABLE: Record<string, PlaywrightListColumn[]> = {
@@ -141,6 +151,7 @@ const DEFAULT_COLUMNS_BY_TABLE: Record<string, PlaywrightListColumn[]> = {
   orders: ORDERS_LIST_COLUMNS,
   bit_test: BIT_TEST_LIST_COLUMNS,
   json_sample: JSON_TABLE_LIST_COLUMNS,
+  blob_sample: BLOB_SAMPLE_LIST_COLUMNS,
 }
 
 const DEFAULT_FOREIGN_KEYS_BY_TABLE: Record<string, PlaywrightForeignKey[]> = {
@@ -152,6 +163,7 @@ const DEFAULT_QUERY_RESULT_BY_KEY: Record<string, QueryResultFixtureFactory> = {
   current_database: (activeMockDb) => createCurrentDatabaseQueryResult(activeMockDb),
   scroll_test: () => SCROLL_TEST_QUERY_RESULT,
   json_sample: () => JSON_QUERY_RESULT,
+  blob_sample: () => BLOB_QUERY_RESULT,
   default: () => DEFAULT_EXECUTE_QUERY_RESULT,
 }
 
@@ -159,6 +171,7 @@ const DEFAULT_CACHED_ROWS_BY_KEY: Record<string, PlaywrightCachedRowsResult> = {
   'mock-query-id-1__0': DEFAULT_CACHED_ROWS_RESULT,
   'mock-query-id-1__1': DEFAULT_SECOND_RESULT_CACHED_ROWS_RESULT,
   'mock-query-json__0': JSON_CACHED_ROWS_RESULT,
+  'mock-query-blob__0': BLOB_CACHED_ROWS_RESULT,
   default: DEFAULT_CACHED_ROWS_RESULT,
 }
 
@@ -189,6 +202,8 @@ const DEFAULT_COPY_CANCEL_BY_KEY: Record<string, null> = {
   default: null,
 }
 
+const DEFAULT_BLOB_VALUE_LOOKUP: Record<string, BlobValueResponse> = DEFAULT_BLOB_VALUE_BY_KEY
+
 const overrides: FixtureOverrides = {
   tableData: {},
   columns: {},
@@ -204,6 +219,7 @@ const overrides: FixtureOverrides = {
   copyToHostStart: {},
   copyProgress: {},
   copyCancel: {},
+  blobValue: {},
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -225,6 +241,10 @@ function getQueryResultLookupKey(sql: string | null | undefined): string {
 
   if (/json_sample/i.test(normalizedSql)) {
     return 'json_sample'
+  }
+
+  if (/blob_sample/i.test(normalizedSql)) {
+    return 'blob_sample'
   }
 
   return 'default'
@@ -391,6 +411,18 @@ export function getCancelCopyFixture(jobId: string | null | undefined): null {
   )
 }
 
+export function getBlobValueFixture(column: string | null | undefined): BlobValueResponse {
+  const columnKey = normalizeLookupKey(column)
+
+  return (
+    overrides.blobValue[columnKey] ??
+    DEFAULT_BLOB_VALUE_LOOKUP[columnKey] ??
+    overrides.blobValue.default ??
+    DEFAULT_BLOB_VALUE_LOOKUP.default ??
+    DEFAULT_BLOB_VALUE
+  )
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -425,6 +457,7 @@ export function resetFixtureOverrides(): void {
   overrides.copyToHostStart = {}
   overrides.copyProgress = {}
   overrides.copyCancel = {}
+  overrides.blobValue = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -442,6 +475,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCopyToHostStartFixture,
   getCopyProgressFixture,
   getCancelCopyFixture,
+  getBlobValueFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

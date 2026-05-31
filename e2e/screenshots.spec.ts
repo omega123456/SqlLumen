@@ -889,6 +889,55 @@ async function openOrdersTableDataTab(page: Page) {
   })
 }
 
+/** Open a table data tab for the `blob_sample` table (has a binary `photo` column). */
+async function openBlobSampleTableDataTab(page: Page) {
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'blob_sample',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'blob_sample',
+      objectType: 'table',
+    })
+  })
+
+  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+/**
+ * Open the BlobViewerDialog in edit mode by double-clicking the binary `photo`
+ * cell of the `blob_sample` table, then wait for the lazy fetch to settle.
+ */
+async function openBlobViewerFromTableData(page: Page) {
+  await openBlobSampleTableDataTab(page)
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const photoColIdx = await getColumnIndexByName(grid, 'photo')
+  expect(photoColIdx).toBeGreaterThanOrEqual(0)
+  const geometry = await getGlideGridGeometry(page, 'table-data-grid')
+  await clickGlideCell(page, 'table-data-grid', photoColIdx, 0, geometry)
+  await dblClickGlideCell(page, 'table-data-grid', photoColIdx, 0, geometry)
+
+  await expect(page.getByTestId('blob-viewer-dialog')).toBeVisible({ timeout: APP_READY_MS })
+  // The loading state clears once the lazy fetch resolves to renderable bytes.
+  await expect(page.getByTestId('blob-loading')).toHaveCount(0, { timeout: APP_READY_MS })
+}
+
 async function openJsonTableDataTab(page: Page) {
   await connectToSample(page)
 
@@ -2054,6 +2103,111 @@ for (const theme of themes) {
       await expect(page).toHaveScreenshot(`fk-lookup-dialog-open-${theme}.png`, {
         animations: 'disabled',
       })
+    })
+
+    test('BlobViewerDialog — edit mode, Image tab (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page)
+      await page.getByTestId('blob-tab-image').click()
+      await expect(page.getByTestId('blob-image')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-image-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — Text tab (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page)
+      await page.getByTestId('blob-tab-text').click()
+      await expect(page.getByTestId('blob-text')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-text-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — Hex tab (table-data)', async ({ page }) => {
+      await openBlobViewerFromTableData(page)
+      await page.getByTestId('blob-tab-hex').click()
+      await expect(page.getByTestId('blob-hex')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-hex-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — cap-warning banner (too large)', async ({ page }) => {
+      await openBlobSampleTableDataTab(page)
+      // The `photo_large` column's fixture reports a >10 MB cell, so the dialog
+      // surfaces the cap warning without transporting any bytes. Open via the
+      // form-view button to avoid the grid double-click landing on a dialog
+      // action once the modal mounts over the cell.
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('btn-blob-view-photo_large')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await page.getByTestId('btn-blob-view-photo_large').click()
+
+      await expect(page.getByTestId('blob-viewer-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-cap-warning')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-cap-warning-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BlobViewerDialog — view mode (query result)', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+        if (queryTab) {
+          const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+            getState: () => { setContent: (id: string, c: string) => void }
+          }
+          qStore.getState().setContent(queryTab.id, 'SELECT id, label, photo FROM blob_sample;')
+        }
+      })
+      await page.waitForTimeout(300)
+      await page.keyboard.press('F9')
+      await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      const grid = page.getByTestId('result-grid')
+      const photoColIdx = await getColumnIndexByName(grid, 'photo')
+      expect(photoColIdx).toBeGreaterThanOrEqual(0)
+      const geometry = await getGlideGridGeometry(page, 'result-grid')
+      await clickGlideCell(page, 'result-grid', photoColIdx, 0, geometry)
+      await dblClickGlideCell(page, 'result-grid', photoColIdx, 0, geometry)
+
+      await expect(page.getByTestId('blob-viewer-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      // View mode hides the edit action bar and shows a Close-only footer.
+      await expect(page.getByTestId('blob-action-bar')).toHaveCount(0)
+      await expect(page.getByTestId('blob-close')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('blob-viewer-dialog')).toHaveScreenshot(
+        `blob-viewer-view-mode-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('BaseFormView — View/Edit button beside a binary field (table-data form view)', async ({
+      page,
+    }) => {
+      await openBlobSampleTableDataTab(page)
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('btn-blob-view-photo')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-form-view')).toHaveScreenshot(
+        `blob-form-view-edit-button-${theme}.png`,
+        { animations: 'disabled' }
+      )
     })
 
     async function expectTableDataEditorOverlayScreenshot(

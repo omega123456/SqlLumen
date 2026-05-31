@@ -14,14 +14,16 @@ import { logFrontend } from '../../lib/app-log-commands'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
 import {
-  CaretLeft,
-  CaretRight,
-  CopySimple,
-  Lock,
-  Info,
-  CalendarBlank,
-  Clock,
+  CaretLeftIcon,
+  CaretRightIcon,
+  CopySimpleIcon,
+  LockIcon,
+  InfoIcon,
+  CalendarBlankIcon,
+  ClockIcon,
+  EyeIcon,
 } from '@phosphor-icons/react'
+import { Button } from '../common/Button'
 import { formatCellValue } from '../../lib/result-cell-utils'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
@@ -93,6 +95,9 @@ export function BaseFormView({
   readOnly,
   testId = 'base-form-view',
   workspaceTabId,
+  onBlobView,
+  blobViewDisabled = false,
+  blobViewDisabledReason,
   ...rest
 }: BaseFormViewProps) {
   /** Whether the form has edit capability (onSave is the primary signal). */
@@ -229,7 +234,7 @@ export function BaseFormView({
               aria-label="Previous record"
               data-testid="btn-form-previous"
             >
-              <CaretLeft size={14} weight="bold" />
+              <CaretLeftIcon size={14} weight="bold" />
               <span>Previous</span>
             </button>
             <button
@@ -241,7 +246,7 @@ export function BaseFormView({
               data-testid="btn-form-next"
             >
               <span>Next</span>
-              <CaretRight size={14} weight="bold" />
+              <CaretRightIcon size={14} weight="bold" />
             </button>
           </div>
 
@@ -292,6 +297,9 @@ export function BaseFormView({
               onNullToggle={handleNullToggle}
               onCopy={handleCopy}
               workspaceTabId={workspaceTabId}
+              onBlobView={onBlobView}
+              blobViewDisabled={blobViewDisabled}
+              blobViewDisabledReason={blobViewDisabledReason}
             />
           ))}
         </div>
@@ -321,6 +329,9 @@ interface FormFieldProps {
   onNullToggle: (col: GridColumnDescriptor, colIdx: number) => void
   onCopy: (value: unknown) => void
   workspaceTabId?: string
+  onBlobView?: (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => void
+  blobViewDisabled?: boolean
+  blobViewDisabledReason?: string
 }
 
 function FormField({
@@ -340,6 +351,9 @@ function FormField({
   onNullToggle,
   onCopy,
   workspaceTabId,
+  onBlobView,
+  blobViewDisabled = false,
+  blobViewDisabledReason,
 }: FormFieldProps) {
   // Determine the value to display (edit state overlays raw row data)
   const rawValue =
@@ -382,7 +396,7 @@ function FormField({
       <div className={styles.fieldLabelRow}>
         <span className={styles.fieldLabel}>
           {showLock && (
-            <Lock
+            <LockIcon
               size={10}
               weight="bold"
               className={styles.lockIcon}
@@ -414,8 +428,23 @@ function FormField({
           .join(' ')}
       >
         {isBlobField ? (
-          <div className={styles.fieldBlobReadonly} data-testid={`form-input-${col.displayName}`}>
-            {rawValue != null ? String(rawValue) : '(BLOB data)'}
+          <div className={styles.fieldBlobRow}>
+            <div className={styles.fieldBlobReadonly} data-testid={`form-input-${col.displayName}`}>
+              {rawValue != null ? String(rawValue) : '(BLOB data)'}
+            </div>
+            {onBlobView && (
+              <Button
+                variant="secondary"
+                onClick={() => onBlobView(col, currentRowData)}
+                className={styles.fieldBlobViewBtn}
+                disabled={blobViewDisabled}
+                title={blobViewDisabled ? blobViewDisabledReason : undefined}
+                data-testid={`btn-blob-view-${col.displayName}`}
+              >
+                <EyeIcon size={14} />
+                View/Edit
+              </Button>
+            )}
           </div>
         ) : isJsonColumn ? (
           <JsonFormField
@@ -515,7 +544,7 @@ function FormField({
             data-testid={`calendar-btn-${col.displayName}`}
             aria-label={temporalType === 'TIME' ? 'Open time picker' : 'Open date picker'}
           >
-            {temporalType === 'TIME' ? <Clock size={14} /> : <CalendarBlank size={14} />}
+            {temporalType === 'TIME' ? <ClockIcon size={14} /> : <CalendarBlankIcon size={14} />}
           </button>
         )}
 
@@ -537,7 +566,7 @@ function FormField({
           aria-label={`Copy ${col.displayName}`}
           data-testid={`btn-copy-${col.displayName}`}
         >
-          <CopySimple size={14} />
+          <CopySimpleIcon size={14} />
         </button>
       </div>
 
@@ -560,7 +589,7 @@ function FormField({
       {/* Modified indicator note */}
       {isModified && (
         <div className={styles.fieldModifiedNote} data-testid={`modified-note-${col.displayName}`}>
-          <Info size={14} weight="fill" className={styles.fieldModifiedNoteIcon} />
+          <InfoIcon size={14} weight="fill" className={styles.fieldModifiedNoteIcon} />
           <span>Unsaved change detected</span>
         </div>
       )}

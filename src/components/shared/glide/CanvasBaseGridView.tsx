@@ -1645,7 +1645,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
                   closeContextMenu()
                 }}
               >
-                <Scissors className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                <Scissors
+                  className="ui-context-menu__icon"
+                  size={18}
+                  weight="regular"
+                  aria-hidden
+                />
                 <span>Cut</span>
               </button>
               <button

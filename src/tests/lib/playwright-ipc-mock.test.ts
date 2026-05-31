@@ -113,6 +113,36 @@ describe('playwrightIpcMockHandler', () => {
     expect(result).not.toHaveProperty('totalPages')
   })
 
+  it('serves fetch_blob_value from the blob fixture', () => {
+    const result = playwrightIpcMockHandler('fetch_blob_value', {
+      connectionId: 'conn-1',
+      database: 'db',
+      table: 'photos',
+      column: 'photo',
+      pkPairs: [['id', 1]],
+    }) as Record<string, unknown>
+
+    expect(result.tooLarge).toBe(false)
+    expect(typeof result.base64).toBe('string')
+    expect(result.byteLength).toBe(70)
+  })
+
+  it('serves an overridden fetch_blob_value fixture keyed by column', () => {
+    overrideFixture('blobValue', 'photo', { base64: null, byteLength: 0, tooLarge: false })
+    const result = playwrightIpcMockHandler('fetch_blob_value', {
+      column: 'photo',
+    }) as Record<string, unknown>
+
+    expect(result.base64).toBeNull()
+  })
+
+  it('serves read_file_bytes as base64 and write_file_bytes as null', () => {
+    expect(typeof playwrightIpcMockHandler('read_file_bytes', { path: '/tmp/x' })).toBe('string')
+    expect(
+      playwrightIpcMockHandler('write_file_bytes', { path: '/tmp/x', base64: 'aGk=' })
+    ).toBeNull()
+  })
+
   it('returns copy-to-host object fixtures for list_copyable_objects', () => {
     const result = playwrightIpcMockHandler('list_copyable_objects', {
       connectionId: 'conn-1',

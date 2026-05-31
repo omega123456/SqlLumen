@@ -52,6 +52,12 @@ export interface GridColumnDescriptor {
   foreignKey?: ForeignKeyColumnInfo
   /** Vendor-neutral editor type used by grid adapters. */
   editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
+  /**
+   * Marks a binary column as opening the shared BLOB viewer on double-click.
+   * The inline editor stays `'none'`/`editable: false`; the host recognises the
+   * marker to launch `BlobViewerDialog` instead of an inline editor.
+   */
+  blobViewer?: boolean
   /** Preferred column width in pixels. */
   width?: number
 }
@@ -215,6 +221,25 @@ interface BaseFormViewCommonProps {
 
   /** Passed to portal controls (DateTimePicker, Dropdown) so they auto-dismiss on tab deactivation. */
   workspaceTabId?: string
+
+  /**
+   * Invoked when the "View/Edit" affordance beside a binary (BLOB) field is
+   * clicked. The host opens the shared BlobViewerDialog for that column/row
+   * (edit mode for table-data, view-only for query results). When omitted, the
+   * button is not rendered.
+   */
+  onBlobView?: (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => void
+
+  /**
+   * When true, the BLOB "View/Edit" button is rendered but disabled. Used by the
+   * table-data surface when the current row has no resolvable primary key (a
+   * read-only connection or a PK-less table), since the grid only holds the
+   * placeholder text and cannot lazily fetch the real bytes.
+   */
+  blobViewDisabled?: boolean
+
+  /** Tooltip explaining why the BLOB "View/Edit" button is disabled. */
+  blobViewDisabledReason?: string
 }
 
 export interface KnownTotalBaseFormViewProps extends BaseFormViewCommonProps {

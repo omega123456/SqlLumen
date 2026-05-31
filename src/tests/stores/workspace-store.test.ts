@@ -362,9 +362,9 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
   it('marks query result surfaces inactive and active when switching top-level tabs', () => {
     const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
     useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders' }))
-    const schemaTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'].find(
-      (tab) => tab.type === 'schema-info'
-    )?.id
+    const schemaTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'schema-info')?.id
 
     if (!schemaTabId) {
       throw new Error('Expected schema tab')
@@ -831,7 +831,10 @@ describe('useWorkspaceStore — closeTab', () => {
       },
     })
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => ({ rows: [[77]], columns: [{ name: 'id', dataType: 'INT' }] }))
+    ipc.override('fetch_cached_rows', () => ({
+      rows: [[77]],
+      columns: [{ name: 'id', dataType: 'INT' }],
+    }))
 
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
     const tableTabId = useWorkspaceStore
@@ -1336,7 +1339,10 @@ describe('useWorkspaceStore — forceCloseTab', () => {
       },
     })
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => ({ rows: [[88]], columns: [{ name: 'id', dataType: 'INT' }] }))
+    ipc.override('fetch_cached_rows', () => ({
+      rows: [[88]],
+      columns: [{ name: 'id', dataType: 'INT' }],
+    }))
 
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
     const tableTabId = useWorkspaceStore

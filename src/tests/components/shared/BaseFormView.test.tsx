@@ -449,6 +449,55 @@ describe('BaseFormView — BLOB field', () => {
     renderForm({ onSave: vi.fn() })
     expect(screen.queryByTestId('btn-null-avatar')).not.toBeInTheDocument()
   })
+
+  it('does not render the View/Edit button when onBlobView is omitted', () => {
+    renderForm()
+    expect(screen.queryByTestId('btn-blob-view-avatar')).not.toBeInTheDocument()
+  })
+
+  it('renders a View/Edit button for binary fields when onBlobView is provided', () => {
+    renderForm({ onBlobView: vi.fn() })
+    const btn = screen.getByTestId('btn-blob-view-avatar')
+    expect(btn).toBeInTheDocument()
+    expect(btn).toHaveTextContent('View/Edit')
+  })
+
+  it('does not render the View/Edit button for non-binary fields', () => {
+    renderForm({ onBlobView: vi.fn() })
+    expect(screen.queryByTestId('btn-blob-view-name')).not.toBeInTheDocument()
+  })
+
+  it('invokes onBlobView with the column and row data when clicked', async () => {
+    const onBlobView = vi.fn()
+    const user = userEvent.setup()
+    renderForm({
+      onBlobView,
+      currentRowData: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
+    })
+    await user.click(screen.getByTestId('btn-blob-view-avatar'))
+    expect(onBlobView).toHaveBeenCalledTimes(1)
+    expect(onBlobView.mock.calls[0][0]).toMatchObject({ key: 'avatar', isBinary: true })
+    expect(onBlobView.mock.calls[0][1]).toMatchObject({ avatar: '[BLOB - 128 bytes]' })
+  })
+
+  it('disables the View/Edit button with a reason when blobViewDisabled is set', () => {
+    renderForm({
+      onBlobView: vi.fn(),
+      blobViewDisabled: true,
+      blobViewDisabledReason: 'Cannot view BLOB — table has no primary key',
+    })
+    const btn = screen.getByTestId('btn-blob-view-avatar')
+    expect(btn).toBeDisabled()
+    expect(btn).toHaveAttribute('title', 'Cannot view BLOB — table has no primary key')
+  })
+
+  it('does not invoke onBlobView when the disabled View/Edit button is clicked', async () => {
+    const onBlobView = vi.fn()
+    const user = userEvent.setup()
+    renderForm({ onBlobView, blobViewDisabled: true })
+    await user.click(screen.getByTestId('btn-blob-view-avatar'))
+    expect(onBlobView).not.toHaveBeenCalled()
+  })
 })
 
 describe('BaseFormView — NULL toggle', () => {

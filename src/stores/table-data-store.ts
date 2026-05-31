@@ -28,6 +28,8 @@ import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
+import { blobPlaceholder, isBlobEnvelope } from '../lib/blob-utils'
+import type { BlobEnvelope } from '../types/schema'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -268,8 +270,7 @@ function getTableDataSurfaceKey(tabId: string): string {
 
 function isDirtyTableDataTab(tab: TableDataTabState): boolean {
   return Boolean(
-    tab.editState &&
-      (tab.editState.modifiedColumns.size > 0 || tab.editState.isNewRow === true)
+    tab.editState && (tab.editState.modifiedColumns.size > 0 || tab.editState.isNewRow === true)
   )
 }
 
@@ -284,6 +285,11 @@ function isDirtyTableDataTab(tab: TableDataTabState): boolean {
  * columns — a string bind triggers an incorrect binary-string conversion.
  */
 function coerceValueForColumn(value: unknown, dataType: string): unknown {
+  // A staged blob envelope must reach the backend value-binder untouched so the
+  // `__sqllumen_blob__` marker is preserved (any coercion would stringify it).
+  if (isBlobEnvelope(value)) {
+    return value
+  }
   if (typeof value === 'string' && dataType.toUpperCase() === 'BIT') {
     const parsed = parseInt(value, 10)
     if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= Number.MAX_SAFE_INTEGER) {
@@ -377,6 +383,25 @@ function buildUpdatePayload(
   return { originalPkValues, updatedValues }
 }
 
+/**
+ * Convert a saved blob-envelope cell value into its clean in-memory display
+ * form: `bytes` → `[BLOB - N bytes]`, `empty` → `[BLOB - 0 bytes]`, `null` →
+ * null. Non-envelope values pass through unchanged.
+ */
+function reconcileSavedBlobValue(value: unknown): unknown {
+  if (!isBlobEnvelope(value)) return value
+  const envelope = value as BlobEnvelope
+  if (envelope.kind === 'null') return null
+  if (envelope.kind === 'empty') return blobPlaceholder(0)
+  let byteLength = 0
+  if (typeof envelope.base64 === 'string') {
+    const base64 = envelope.base64
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+    byteLength = Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
+  }
+  return blobPlaceholder(byteLength)
+}
+
 /** Replace the temp row (last row) with the inserted row data. */
 function applyInsertedRow(
   rows: unknown[][],
@@ -385,7 +410,7 @@ function applyInsertedRow(
 ): unknown[][] {
   const returnedMap = Object.fromEntries(insertedData)
   const newRow = normalizeTableDataRows(columns, [
-    columns.map((col) => returnedMap[col.name] ?? null),
+    columns.map((col) => reconcileSavedBlobValue(returnedMap[col.name] ?? null)),
   ])[0]
   const newRows = [...rows]
   newRows[newRows.length - 1] = newRow
@@ -424,7 +449,7 @@ function applyUpdatedRow(
   for (const [colName, value] of Object.entries(editState.currentValues)) {
     const colIdx = columns.findIndex((c) => c.name === colName)
     if (colIdx !== -1) {
-      updatedRow[colIdx] = value
+      updatedRow[colIdx] = reconcileSavedBlobValue(value)
     }
   }
   newRows[rowIdx] = updatedRow
@@ -503,6 +528,18 @@ export interface TableDataStore {
     currentValues: Record<string, unknown>
   ) => void
   updateCellValue: (tabId: string, column: string, value: unknown) => void
+  /**
+   * Stage a blob-envelope as a pending edit on the given row/column. Starts row
+   * editing if needed (building the baseline from `rowData`), records the
+   * envelope as the cell's modified value, and reflects it in the in-memory row
+   * so the grid renders the `[BLOB - N bytes*]` placeholder.
+   */
+  stageBlobEnvelope: (
+    tabId: string,
+    rowData: Record<string, unknown>,
+    column: string,
+    envelope: BlobEnvelope
+  ) => void
   syncCellValue: (
     tabId: string,
     rowData: Record<string, unknown> | undefined,
@@ -775,9 +812,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           rowResidency: {
             status: 'resident',
             isActive: isStillVisible,
-            inactiveSince: isStillVisible
-              ? null
-              : (latestResidency.inactiveSince ?? Date.now()),
+            inactiveSince: isStillVisible ? null : (latestResidency.inactiveSince ?? Date.now()),
           },
         })
 
@@ -987,6 +1022,57 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         },
         saveError: null,
       })
+    },
+
+    // ------ stageBlobEnvelope ------
+
+    stageBlobEnvelope: (tabId, rowData, column, envelope) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      const colIdx = tab.columns.findIndex((c) => c.name === column)
+      if (colIdx < 0) return
+
+      const pkColumns = tab.primaryKey?.keyColumns ?? []
+      const rowKey = getRowKeyFromData(rowData, pkColumns)
+
+      // Ensure row editing has started for this row, seeding the baseline values
+      // from the current row data so unrelated columns are not marked dirty.
+      const currentEditState = get().tabs[tabId]?.editState ?? null
+      if (!currentEditState || !isSameRowKey(currentEditState.rowKey, rowKey)) {
+        const baseline: Record<string, unknown> = {}
+        for (const col of tab.columns) {
+          baseline[col.name] = rowData[col.name]
+        }
+        get().startEditing(tabId, rowKey, baseline)
+      }
+
+      // Record the envelope as the cell's pending value (marks the row dirty).
+      get().updateCellValue(tabId, column, envelope)
+
+      // Reflect the envelope in the in-memory row so the grid renders the
+      // `[BLOB - N bytes*]` placeholder for the staged cell.
+      const latestTab = get().tabs[tabId]
+      if (!latestTab) return
+      let rowIdx = findRowIndexByKey(latestTab.rows, latestTab.columns, rowKey)
+      // Draft rows are keyed by `__tempId` (no PK match) — locate them via the
+      // positional `__rowIndex` the grid carries, falling back to the last row.
+      if (rowIdx < 0 && '__tempId' in rowKey) {
+        const rowIndexHint = rowData.__rowIndex
+        rowIdx =
+          typeof rowIndexHint === 'number' &&
+          rowIndexHint >= 0 &&
+          rowIndexHint < latestTab.rows.length
+            ? rowIndexHint
+            : latestTab.rows.length - 1
+      }
+      if (rowIdx < 0) return
+
+      const nextRows = [...latestTab.rows]
+      const nextRow = [...nextRows[rowIdx]]
+      nextRow[colIdx] = envelope
+      nextRows[rowIdx] = nextRow
+      patchTab(tabId, { rows: nextRows })
     },
 
     // ------ syncCellValue ------

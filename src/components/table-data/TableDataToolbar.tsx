@@ -64,10 +64,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const currentPage = tabState?.currentPage ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const selectedRowKey = tabState?.selectedRowKey ?? null
-  const checkedRowKeys = useMemo(
-    () => tabState?.checkedRowKeys ?? [],
-    [tabState?.checkedRowKeys]
-  )
+  const checkedRowKeys = useMemo(() => tabState?.checkedRowKeys ?? [], [tabState?.checkedRowKeys])
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const filterModel = useMemo<FilterCondition[]>(() => tabState?.filterModel ?? [], [tabState])
   const selectedCell = tabState?.selectedCell ?? null
@@ -117,7 +114,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
 
   // Bulk delete targets checked rows when any are checked; otherwise the single
   // visually selected row.
-  const deleteTargetCount = checkedRowKeys.length > 0 ? checkedRowKeys.length : selectedRowKey ? 1 : 0
+  const deleteTargetCount =
+    checkedRowKeys.length > 0 ? checkedRowKeys.length : selectedRowKey ? 1 : 0
 
   const handleDeleteRow = useCallback(() => {
     if (deleteTargetCount === 0) return
@@ -282,9 +280,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   }, [withNavigationGuard, applyFilters, tabId, showSuccess])
 
   const canDelete =
-    !isMutationDisabled &&
-    deleteTargetCount > 0 &&
-    (checkedRowKeys.length > 0 || !selectedIsNewRow)
+    !isMutationDisabled && deleteTargetCount > 0 && (checkedRowKeys.length > 0 || !selectedIsNewRow)
 
   return (
     <div className={styles.toolbar} data-testid="table-data-toolbar">

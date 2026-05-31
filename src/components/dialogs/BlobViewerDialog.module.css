@@ -1,0 +1,256 @@
+/* BlobViewerDialog — shared BLOB viewer/editor modal styles. Tokens only. */
+
+.root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--ui-dialog-header-bg);
+  border-bottom: var(--ui-dialog-header-border-bottom);
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.columnName {
+  font-family: var(--font-mono);
+  color: var(--primary);
+}
+
+.size {
+  color: var(--on-surface-variant);
+  font-weight: 400;
+}
+
+/* Cap warning banner */
+.warningBanner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--warning-container);
+  color: var(--warning);
+  font-size: var(--type-size-sm);
+  flex-shrink: 0;
+}
+
+/* Action bar */
+.actionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  flex-shrink: 0;
+}
+
+.actionGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Paste area */
+.pasteArea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  flex-shrink: 0;
+}
+
+.pasteFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.pasteHint {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+/* Tablist (styled as underline tabs but with full ARIA control) */
+.tablist {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-xs);
+}
+
+.tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--on-surface);
+}
+
+.tabActive {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+/* Panel area */
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--ui-form-main-bg);
+  display: flex;
+}
+
+/* Image tab */
+.imagePanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+}
+
+.image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Text tab */
+.textPanel {
+  flex: 1;
+  margin: 0;
+  padding: var(--space-md) var(--space-lg);
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+  line-height: var(--type-code-lh);
+  color: var(--on-surface);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+
+/* Hex tab */
+.hexPanel {
+  flex: 1;
+  padding: var(--space-md) var(--space-lg);
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+  line-height: var(--type-code-lh);
+}
+
+.hexRow {
+  display: flex;
+  gap: var(--space-lg);
+  white-space: pre;
+}
+
+.hexOffset {
+  color: var(--on-surface-variant);
+}
+
+.hexBytes {
+  display: flex;
+  gap: var(--space-md);
+  color: var(--on-surface);
+}
+
+.hexGroup {
+  white-space: pre;
+}
+
+.hexAscii {
+  color: var(--on-surface-variant);
+}
+
+/* NULL / empty / generic state messages */
+.nullState,
+.emptyState,
+.stateMessage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  font-size: var(--type-size-sm);
+}
+
+.nullState {
+  color: var(--td-null-text-color);
+}
+
+.emptyState,
+.stateMessage {
+  color: var(--on-surface-variant);
+}
+
+/* Drag hint */
+.dragHint {
+  padding: var(--space-xs) var(--space-lg);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+  flex-shrink: 0;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--ui-form-footer-bg);
+  border-top: var(--ui-form-footer-border-top);
+  flex-shrink: 0;
+}
+
+/* Drop overlay */
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  background: rgba(var(--primary-rgb), 0.08);
+  border: 2px dashed var(--primary);
+  border-radius: var(--radius-lg);
+  color: var(--primary);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  pointer-events: none;
+}

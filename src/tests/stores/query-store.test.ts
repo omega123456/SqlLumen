@@ -387,7 +387,7 @@ describe('useQueryStore — executeQuery', () => {
         executionTimeMs: 10,
         affectedRows: 0,
         rows: [[true, false, 'flagged']],
-  
+
         autoLimitApplied: false,
       }),
       evict_results: () => null,
@@ -407,7 +407,7 @@ describe('useQueryStore — executeQuery', () => {
         executionTimeMs: 10,
         affectedRows: 0,
         rows: [['\u0001', '\u0000', 'flagged']],
-  
+
         autoLimitApplied: false,
       }),
       evict_results: () => null,
@@ -428,7 +428,7 @@ describe('useQueryStore — executeQuery', () => {
         executionTimeMs: 1,
         affectedRows: 0,
         rows: [[1]],
-  
+
         autoLimitApplied: false,
       }),
       analyze_query_for_edit: () => null,
@@ -461,7 +461,7 @@ describe('useQueryStore — executeQuery', () => {
           executionTimeMs: 10,
           affectedRows: 0,
           rows: [[1]],
-    
+
           autoLimitApplied: false,
         }
       },
@@ -502,7 +502,7 @@ describe('useQueryStore — multi-result execution', () => {
             executionTimeMs: 5,
             affectedRows: 0,
             queryId: 'multi-1',
-      
+
             autoLimitApplied: false,
             error: null,
             sourceSql: 'SELECT 1',
@@ -515,7 +515,7 @@ describe('useQueryStore — multi-result execution', () => {
             executionTimeMs: 5,
             affectedRows: 0,
             queryId: 'multi-2',
-      
+
             autoLimitApplied: false,
             error: null,
             sourceSql: 'SELECT 2',
@@ -816,7 +816,7 @@ describe('useQueryStore — sortResults', () => {
             executionTimeMs: 10,
             affectedRows: 0,
             rows: [[3], [1], [2]],
-      
+
             autoLimitApplied: false,
           }
         case 'sort_results':
@@ -837,7 +837,6 @@ describe('useQueryStore — sortResults', () => {
     expect(f.sortColumn).toBe('id')
     expect(f.sortDirection).toBe('asc')
     expect(f.rows).toEqual([[1], [2], [3]])
-
   })
 
   it('resets checkedRowIndices after a sort (stale indices would target wrong rows)', async () => {
@@ -881,7 +880,7 @@ describe('useQueryStore — sortResults', () => {
             executionTimeMs: 8,
             affectedRows: 0,
             rows: [[3], [1], [2]],
-      
+
             autoLimitApplied: false,
           }
         case 'evict_results':
@@ -930,7 +929,7 @@ describe('useQueryStore — sortResults', () => {
             executionTimeMs: 8,
             affectedRows: 0,
             rows: [[true, false, 'reexec']],
-      
+
             autoLimitApplied: false,
           }
         case 'evict_results':
@@ -1006,7 +1005,7 @@ describe('useQueryStore — sortResults', () => {
             executionTimeMs: 1,
             affectedRows: 0,
             rows: [[2], [1]],
-      
+
             autoLimitApplied: false,
           }
         case 'sort_results':
@@ -1137,7 +1136,7 @@ describe('useQueryStore — changeRowLimit', () => {
           executionTimeMs: 5,
           affectedRows: 0,
           rows: [[false, true, 'resized']],
-    
+
           autoLimitApplied: false,
         }
       }
@@ -1542,7 +1541,7 @@ describe('useQueryStore — cancelQuery', () => {
           executionTimeMs: 10,
           affectedRows: 0,
           rows: [[1]],
-    
+
           autoLimitApplied: false,
         }
       }
@@ -1985,9 +1984,7 @@ describe('useQueryStore — deleteResultRows', () => {
       lastExecutedSql: 'SELECT id, name FROM users',
     })
 
-    const count = await useQueryStore
-      .getState()
-      .deleteResultRows('tab-del-partial-refresh', [0, 2])
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-partial-refresh', [0, 2])
 
     expect(count).toBe(1)
     // The cache refresh ran despite the failure: rows now reflect the id-only

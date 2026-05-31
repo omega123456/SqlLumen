@@ -232,6 +232,31 @@ describe('TableDataFormView', () => {
     expect(avatarInput.tagName).toBe('DIV')
   })
 
+  it('renders a View/Edit button beside the BLOB field', () => {
+    setupStore()
+    renderFormView()
+    expect(screen.getByTestId('btn-blob-view-avatar')).toBeInTheDocument()
+  })
+
+  it('opens the BLOB viewer dialog when View/Edit is clicked', async () => {
+    setupStore()
+    const user = userEvent.setup()
+    renderFormView()
+    await user.click(screen.getByTestId('btn-blob-view-avatar'))
+    expect(await screen.findByTestId('blob-viewer-dialog')).toBeInTheDocument()
+  })
+
+  it('disables the View/Edit button when the table has no primary key', async () => {
+    setupStore({ primaryKey: null })
+    const user = userEvent.setup()
+    renderFormView()
+    const btn = screen.getByTestId('btn-blob-view-avatar')
+    expect(btn).toBeDisabled()
+    expect(btn).toHaveAttribute('title', 'Cannot view BLOB — table has no primary key')
+    await user.click(btn)
+    expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
+  })
+
   it('PK field label shows "(Primary Key)"', () => {
     setupStore()
     renderFormView()

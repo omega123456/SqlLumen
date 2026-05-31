@@ -296,17 +296,13 @@ describe('SqlDumpDialog', () => {
     // Now mutate the metadata array in-place to remove 'users' from the tables.
     // The component's `databases` state holds this same array reference, so
     // when handleExport iterates it at export time, the table will be missing.
-    mutableDatabases[0].tables = [
-      { name: 'orders', objectType: 'table', estimatedRows: 5000 },
-    ]
+    mutableDatabases[0].tables = [{ name: 'orders', objectType: 'table', estimatedRows: 5000 }]
 
     // Click Export — should detect missing metadata for 'users'
     await user.click(screen.getByTestId('dump-submit-button'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('dump-error')).toHaveTextContent(
-        /metadata not found for "users"/
-      )
+      expect(screen.getByTestId('dump-error')).toHaveTextContent(/metadata not found for "users"/)
     })
 
     // Verify no start_sql_dump IPC call was made

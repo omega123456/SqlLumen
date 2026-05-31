@@ -8,7 +8,11 @@
  */
 
 import { isCallSql } from '../stores/query-store'
-import { splitStatements, findStatementAtCursor, cursorToOffset } from '../components/query-editor/sql-parser-utils'
+import {
+  splitStatements,
+  findStatementAtCursor,
+  cursorToOffset,
+} from '../components/query-editor/sql-parser-utils'
 
 export type ExecuteQueryPlan =
   | { kind: 'single'; payload: string }

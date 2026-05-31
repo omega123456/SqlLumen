@@ -268,8 +268,7 @@ export function StatusBar() {
           {showQueryInfo && activeResultState && (
             <div className={styles.queryInfo} data-testid="query-info">
               <span className={styles.queryInfoItem} data-testid="query-rows">
-                <span className={styles.queryInfoLabel}>Rows:</span>{' '}
-                {activeResultState.totalRows}
+                <span className={styles.queryInfoLabel}>Rows:</span> {activeResultState.totalRows}
               </span>
               <span className={styles.queryInfoItem} data-testid="query-time">
                 <span className={styles.queryInfoLabel}>Exec:</span>{' '}

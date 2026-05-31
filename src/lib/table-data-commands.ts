@@ -6,6 +6,7 @@ import type {
   TableDataColumnMeta,
   TableDataCacheRestoreResult,
   TableDataCacheSyncResult,
+  BlobValueResponse,
 } from '../types/schema'
 
 export type TableDataTouchStatus = 'available' | 'expired' | 'missing'
@@ -189,6 +190,40 @@ export async function deleteTableRow(params: {
     pkColumns: params.pkColumns,
     pkValues: params.pkValues,
   })
+}
+
+/**
+ * Fetch the raw bytes of a single binary cell, identified by table + target
+ * column + the row's primary-key column/value pairs.
+ *
+ * `pkPairs` is an ORDERED array of `[name, value]` tuples (matching the Rust
+ * `Vec<(String, serde_json::Value)>` signature), NOT a map — the backend
+ * preserves pair order when building the WHERE clause.
+ */
+export async function fetchBlobValue(
+  connectionId: string,
+  database: string,
+  table: string,
+  column: string,
+  pkPairs: [string, unknown][]
+): Promise<BlobValueResponse> {
+  return invoke<BlobValueResponse>('fetch_blob_value', {
+    connectionId,
+    database,
+    table,
+    column,
+    pkPairs,
+  })
+}
+
+/** Read an arbitrary file's bytes from disk, returned as a base64 string. */
+export async function readFileBytes(path: string): Promise<string> {
+  return invoke<string>('read_file_bytes', { path })
+}
+
+/** Write base64-decoded bytes to a file on disk. */
+export async function writeFileBytes(path: string, base64: string): Promise<void> {
+  return invoke<void>('write_file_bytes', { path, base64 })
 }
 
 export async function exportTableData(params: {

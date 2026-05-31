@@ -308,11 +308,14 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
     [cancelEdit, commitValue]
   )
 
-  const handleInternalControlMouseDown = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    ignoreNextBlurRef.current = true
-    event.preventDefault()
-    event.stopPropagation()
-  }, [])
+  const handleInternalControlMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      ignoreNextBlurRef.current = true
+      event.preventDefault()
+      event.stopPropagation()
+    },
+    []
+  )
 
   return (
     <div

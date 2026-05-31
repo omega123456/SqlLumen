@@ -38,6 +38,9 @@ export function buildColumnDescriptors(
       setValues: col.setValues,
       tableColumnMeta: col,
       editorType,
+      // Binary columns keep `editorType: 'none'`/`editable: false`; the marker
+      // lets the grid host open the shared BLOB viewer on double-click.
+      ...(col.isBinary && { blobViewer: true }),
       ...(fk && { foreignKey: fk }),
     }
   })

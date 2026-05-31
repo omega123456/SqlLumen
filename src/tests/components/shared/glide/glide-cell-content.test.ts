@@ -36,4 +36,42 @@ describe('glide-cell-content', () => {
     expect(cell.isHighlightedColumn).toBe(true)
     expect(buildTextCell(cell.displayValue, cell).style).toBe('faded')
   })
+
+  it('renders a staged bytes envelope as [BLOB - N bytes*]', () => {
+    // "hi" → base64 "aGk=" (2 bytes)
+    const cell = classifyCellValue(
+      { __sqllumen_blob__: true, kind: 'bytes', base64: 'aGk=' },
+      'photo',
+      { isModified: true }
+    )
+    expect(cell.isBlob).toBe(true)
+    expect(cell.displayValue).toBe('[BLOB - 2 bytes*]')
+    expect(cell.isModified).toBe(true)
+  })
+
+  it('renders a staged empty envelope as [BLOB - 0 bytes*]', () => {
+    const cell = classifyCellValue({ __sqllumen_blob__: true, kind: 'empty' }, 'photo')
+    expect(cell.isBlob).toBe(true)
+    expect(cell.displayValue).toBe('[BLOB - 0 bytes*]')
+  })
+
+  it('renders a staged null envelope as NULL with pending highlight', () => {
+    const cell = classifyCellValue({ __sqllumen_blob__: true, kind: 'null' }, 'photo', {
+      isModified: true,
+    })
+    expect(cell.isNull).toBe(true)
+    expect(cell.isBlob).toBe(false)
+    expect(cell.displayValue).toBe('NULL')
+    expect(cell.isModified).toBe(true)
+  })
+
+  it('falls back to [BLOB - 0 bytes*] for a bytes envelope with malformed base64', () => {
+    const cell = classifyCellValue(
+      { __sqllumen_blob__: true, kind: 'bytes', base64: '@@not base64@@' },
+      'photo'
+    )
+    // isBlobEnvelope requires a string base64; malformed-but-string still routes
+    // through the envelope arm and decodes to 0 bytes.
+    expect(cell.displayValue).toBe('[BLOB - 0 bytes*]')
+  })
 })

@@ -11,7 +11,7 @@ export function createCurrentDatabaseQueryResult(
     totalTimeMs: 9,
     affectedRows: 0,
     rows: [[activeMockDatabase]],
-  
+
     autoLimitApplied: false,
   }
 }
@@ -85,6 +85,40 @@ export const JSON_QUERY_RESULT: PlaywrightQueryResult = {
   ],
 
   autoLimitApplied: false,
+}
+
+/**
+ * A query result containing a binary (`LONGBLOB`) column whose bytes are inlined
+ * as base64 (the same 1x1 PNG the blob-value fixture serves). Used to exercise
+ * the view-only BlobViewerDialog opened from a query-result grid.
+ */
+const BLOB_QUERY_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+export const BLOB_QUERY_RESULT: PlaywrightQueryResult = {
+  queryId: 'mock-query-blob',
+  columns: [
+    { name: 'id', dataType: 'BIGINT' },
+    { name: 'label', dataType: 'VARCHAR' },
+    { name: 'photo', dataType: 'LONGBLOB' },
+  ],
+  totalRows: 2,
+  executionTimeMs: 12,
+  totalTimeMs: 16,
+  affectedRows: 0,
+  rows: [
+    [1, 'Avatar', BLOB_QUERY_BASE64],
+    [2, 'Banner', BLOB_QUERY_BASE64],
+  ],
+
+  autoLimitApplied: false,
+}
+
+export const BLOB_CACHED_ROWS_RESULT: PlaywrightCachedRowsResult = {
+  queryId: BLOB_QUERY_RESULT.queryId,
+  resultIndex: 0,
+  columns: BLOB_QUERY_RESULT.columns,
+  rows: BLOB_QUERY_RESULT.rows,
 }
 
 export const DEFAULT_CACHED_ROWS_RESULT: PlaywrightCachedRowsResult = {

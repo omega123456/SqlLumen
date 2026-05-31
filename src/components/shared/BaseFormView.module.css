@@ -277,6 +277,22 @@
   font-style: italic;
 }
 
+/* BLOB field row — read-only display + View/Edit affordance */
+.fieldBlobRow {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+}
+
+.fieldBlobViewBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 /* Per-field copy button */
 .fieldCopyBtn {
   flex-shrink: 0;

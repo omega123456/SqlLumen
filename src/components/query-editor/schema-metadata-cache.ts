@@ -327,10 +327,7 @@ export async function setupSchemaInvalidationListener(): Promise<(() => void) | 
         void refreshCacheInBackground(event.payload.connectionId).catch((err) => {
           logFrontend(
             'warn',
-            [
-              '[schema-metadata-cache] Background refresh after schema invalidation failed:',
-              err,
-            ]
+            ['[schema-metadata-cache] Background refresh after schema invalidation failed:', err]
               .map(String)
               .join(' ')
           )

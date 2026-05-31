@@ -106,7 +106,10 @@ function isTerminalProgress(progress: CopyProgress | null): boolean {
   )
 }
 
-function progressPercent(done: number | null | undefined, total: number | null | undefined): number {
+function progressPercent(
+  done: number | null | undefined,
+  total: number | null | undefined
+): number {
   if (!total) return 0
   return Math.round(((done ?? 0) / total) * 100)
 }
@@ -171,9 +174,7 @@ export default function CopyToHostDialog({
     setTargetDatabases([])
     setTargetDatabaseNotice(null)
     setSelected(createEmptyCopySelection())
-    setExpandedCategories(
-      new Set(preSelectedCategory ? [preSelectedCategory] : [])
-    )
+    setExpandedCategories(new Set(preSelectedCategory ? [preSelectedCategory] : []))
     setCopyType('both')
     setDropIfExists(true)
     setCreateIfNotExists(true)

@@ -112,7 +112,11 @@ beforeEach(() => {
         'session-source': makeActiveConnection(),
         'session-target': makeActiveConnection({
           id: 'session-target',
-          profile: makeSavedConnection({ id: 'target-profile', name: 'Target DB', host: 'target-host' }),
+          profile: makeSavedConnection({
+            id: 'target-profile',
+            name: 'Target DB',
+            host: 'target-host',
+          }),
         }),
       },
       activeTabId: 'session-source',
@@ -283,7 +287,9 @@ describe('CopyToHostDialog', () => {
     await waitForLoaded()
 
     fireEvent.click(screen.getByTestId('copy-target-connection'))
-    expect(screen.queryByTestId('copy-target-connection-option-same-profile')).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('copy-target-connection-option-same-profile')
+    ).not.toBeInTheDocument()
     expect(screen.getByTestId('copy-target-connection-option-target-profile')).toBeInTheDocument()
   })
 
@@ -301,7 +307,9 @@ describe('CopyToHostDialog', () => {
     await expectToast('error', 'Failed to load target databases')
     fireEvent.click(screen.getByTestId('copy-target-database'))
     expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
-    expect(screen.queryByTestId('copy-target-database-option-target_existing')).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('copy-target-database-option-target_existing')
+    ).not.toBeInTheDocument()
   })
 
   it('reveals a new-database name input when the sentinel is chosen and hides it otherwise', async () => {
@@ -310,9 +318,7 @@ describe('CopyToHostDialog', () => {
     await waitForLoaded()
 
     await selectFromDropdown(user, 'copy-target-connection', 'target-profile')
-    await waitFor(() =>
-      expect(screen.getByTestId('copy-target-database')).not.toBeDisabled()
-    )
+    await waitFor(() => expect(screen.getByTestId('copy-target-database')).not.toBeDisabled())
 
     await selectFromDropdown(user, 'copy-target-database', '__new__')
     expect(await screen.findByTestId('copy-new-database-name')).toBeInTheDocument()

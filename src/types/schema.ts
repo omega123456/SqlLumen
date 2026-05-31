@@ -241,6 +241,33 @@ export interface ColumnMeta {
   dataType: string
 }
 
+// ---------------------------------------------------------------------------
+// BLOB handling types
+// ---------------------------------------------------------------------------
+
+/** Response from the `fetch_blob_value` command. */
+export interface BlobValueResponse {
+  /** Base64-encoded cell bytes, or `null` for SQL NULL. */
+  base64: string | null
+  /** Stored byte length (always returned, even when `tooLarge`). */
+  byteLength: number
+  /** True when the stored size exceeds the 10 MB preview cap (then bytes are omitted). */
+  tooLarge: boolean
+}
+
+/**
+ * Self-describing staged-value object for a binary column edit.
+ *
+ * The Rust value-binder recognises the `__sqllumen_blob__` marker and binds by
+ * `kind`: `bytes` → decoded bytes, `null` → SQL NULL, `empty` → `b''`.
+ * `base64` is present only when `kind === 'bytes'`.
+ */
+export interface BlobEnvelope {
+  __sqllumen_blob__: true
+  kind: 'bytes' | 'null' | 'empty'
+  base64?: string
+}
+
 export interface QueryResultMeta {
   queryId: string
   columns: ColumnMeta[]

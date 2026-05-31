@@ -5,6 +5,9 @@ import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
+import * as blobViewerDialogModule from '../../../components/dialogs/BlobViewerDialog'
+
+let capturedBlobDialogProps: Record<string, unknown> | null = null
 
 // CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
 // Use Object.defineProperty to replace it per-test (same pattern as TableDataFormView.test.tsx).
@@ -56,6 +59,7 @@ function getGridProps() {
       columnKey: string
       rowData: Record<string, unknown>
     }) => void
+    onCellDoubleClick?: (rowData: Record<string, unknown>, columnKey: string) => void
     onSelectedCellChange: (pos: { rowIdx: number; idx: number }) => void
     rowKeyGetter: (row: Record<string, unknown>) => string
     getRowClass: (row: Record<string, unknown>) => string | undefined
@@ -84,6 +88,18 @@ beforeEach(() => {
     value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) =>
       mockFn({ ...props, ref })
     ),
+    writable: true,
+    configurable: true,
+  })
+
+  capturedBlobDialogProps = null
+  Object.defineProperty(blobViewerDialogModule, 'BlobViewerDialog', {
+    value: (props: Record<string, unknown>) => {
+      capturedBlobDialogProps = props
+      return props.isOpen
+        ? ((<div data-testid="blob-viewer-dialog" />) as unknown as React.ReactElement)
+        : null
+    },
     writable: true,
     configurable: true,
   })
@@ -293,5 +309,66 @@ describe('ResultGridView', () => {
     expect(props.selectedRowClassName).toBe('grid-row-precision-selected')
     expect(props.rowKeyGetter(props.rows[1])).toBe('1')
     expect(props.getRowClass(props.rows[1])).toBe('grid-row-precision-selected')
+  })
+
+  describe('BLOB cells (view-only)', () => {
+    const blobColumns: ColumnMeta[] = [
+      { name: 'id', dataType: 'INT' },
+      { name: 'photo', dataType: 'BLOB' },
+    ]
+    // 'SGVsbG8=' decodes to the bytes for "Hello".
+    const blobRows = [
+      [1, 'SGVsbG8='],
+      [2, null],
+    ]
+    const blobProps = { ...baseProps, columns: blobColumns, rows: blobRows }
+
+    it('marks binary columns as isBinary derived from dataType', () => {
+      render(<ResultGridView {...blobProps} />)
+      const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+        columns: Array<{ key: string; isBinary: boolean }>
+      }
+      expect(props.columns[0].isBinary).toBe(false)
+      expect(props.columns[1].isBinary).toBe(true)
+    })
+
+    it('opens the dialog in view mode seeded with the inlined base64 on double-click', () => {
+      render(<ResultGridView {...blobProps} />)
+      const props = getGridProps()
+      act(() => {
+        props.onCellDoubleClick?.({ col_0: 1, col_1: 'SGVsbG8=', __rowIdx: 0 }, 'col_1')
+      })
+      expect(screen.getByTestId('blob-viewer-dialog')).toBeInTheDocument()
+      expect(capturedBlobDialogProps).toMatchObject({
+        mode: 'view',
+        columnLabel: 'photo',
+        initialBase64: 'SGVsbG8=',
+      })
+      // View-only: no edit/staging affordances are wired in.
+      expect(capturedBlobDialogProps?.onApply).toBeUndefined()
+      expect(capturedBlobDialogProps?.loader).toBeUndefined()
+    })
+
+    it('seeds a NULL value when the binary cell is null', () => {
+      render(<ResultGridView {...blobProps} />)
+      const props = getGridProps()
+      act(() => {
+        props.onCellDoubleClick?.({ col_0: 2, col_1: null, __rowIdx: 1 }, 'col_1')
+      })
+      expect(capturedBlobDialogProps).toMatchObject({
+        mode: 'view',
+        initialBase64: null,
+      })
+    })
+
+    it('does not open the dialog for non-binary columns', () => {
+      render(<ResultGridView {...blobProps} />)
+      const props = getGridProps()
+      act(() => {
+        props.onCellDoubleClick?.({ col_0: 1, col_1: 'SGVsbG8=', __rowIdx: 0 }, 'col_0')
+      })
+      expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
+      expect(capturedBlobDialogProps).toBeNull()
+    })
   })
 })

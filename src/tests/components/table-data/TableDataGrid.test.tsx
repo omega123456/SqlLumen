@@ -3,6 +3,7 @@ import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as canvasGridModule from '../../../components/shared/glide/CanvasBaseGridView'
 import * as fkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
+import * as blobViewerDialogModule from '../../../components/dialogs/BlobViewerDialog'
 import { TableDataGrid } from '../../../components/table-data/TableDataGrid'
 import { getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -17,6 +18,7 @@ const gridHandle = vi.hoisted(() => ({
 const canvasCalls: unknown[] = []
 
 let capturedFkLookupDialogProps: Record<string, unknown> | null = null
+let capturedBlobDialogProps: Record<string, unknown> | null = null
 
 const columns = [
   {
@@ -43,12 +45,24 @@ const columns = [
     isBinary: false,
     isAutoIncrement: false,
   },
+  {
+    name: 'data',
+    dataType: 'BLOB',
+    isBooleanAlias: false,
+    isNullable: true,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: true,
+    isAutoIncrement: false,
+  },
 ]
 
 function tab(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
   return {
     columns,
-    rows: [[1, 'Ada']],
+    rows: [[1, 'Ada', '[BLOB - 24 bytes]']],
     currentPage: 1,
     pageSize: 100,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: false, isUniqueKeyFallback: false },
@@ -96,9 +110,19 @@ describe('TableDataGrid', () => {
           : null
       },
     })
+    Object.defineProperty(blobViewerDialogModule, 'BlobViewerDialog', {
+      configurable: true,
+      value: (props: Record<string, unknown>) => {
+        capturedBlobDialogProps = props
+        return props.isOpen
+          ? React.createElement('div', { 'data-testid': 'blob-viewer-dialog' })
+          : null
+      },
+    })
     gridHandle.selectCell.mockClear()
     gridHandle.scrollToCell.mockClear()
     capturedFkLookupDialogProps = null
+    capturedBlobDialogProps = null
     act(() => useTableDataStore.setState({ tabs: { t1: tab() } }))
   })
 
@@ -109,7 +133,7 @@ describe('TableDataGrid', () => {
       rows: Array<Record<string, unknown>>
       columns: Array<{ key: string }>
     }
-    expect(props.columns.map((column) => column.key)).toEqual(['id', 'name'])
+    expect(props.columns.map((column) => column.key)).toEqual(['id', 'name', 'data'])
     expect(props.rows[0]).toMatchObject({ id: 1, name: 'Ada' })
   })
 
@@ -568,5 +592,91 @@ describe('TableDataGrid', () => {
       { rowIdx: 0, idx: 1 },
       { shouldFocusCell: true, enableEditor: false }
     )
+  })
+
+  it('tags binary columns with the blob-viewer marker but keeps them non-editable', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      columns: Array<{ key: string; blobViewer?: boolean; editable: boolean; editorType?: string }>
+    }
+    const blobCol = props.columns.find((column) => column.key === 'data')!
+    expect(blobCol.blobViewer).toBe(true)
+    expect(blobCol.editable).toBe(false)
+    expect(blobCol.editorType).toBe('none')
+    const textCol = props.columns.find((column) => column.key === 'name')!
+    expect(textCol.blobViewer).toBeUndefined()
+  })
+
+  it('opens the BLOB viewer in edit mode when double-clicking a binary cell with a PK', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
+    }
+    act(() => {
+      props.onCellDoubleClick(
+        { __rowIndex: 0, id: 1, name: 'Ada', data: '[BLOB - 24 bytes]' },
+        'data'
+      )
+    })
+    expect(screen.getByTestId('blob-viewer-dialog')).toBeInTheDocument()
+    expect(capturedBlobDialogProps).toMatchObject({ mode: 'edit', columnLabel: 'data' })
+    expect(typeof capturedBlobDialogProps?.loader).toBe('function')
+  })
+
+  it('does not open the BLOB viewer when double-clicking a non-binary cell', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
+    }
+    act(() => {
+      props.onCellDoubleClick({ __rowIndex: 0, id: 1, name: 'Ada' }, 'name')
+    })
+    expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
+  })
+
+  it('does not open the BLOB viewer for tables without a resolvable primary key', () => {
+    act(() => useTableDataStore.setState({ tabs: { t1: tab({ primaryKey: null }) } }))
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
+    }
+    act(() => {
+      props.onCellDoubleClick(
+        { __rowIndex: 0, id: 1, name: 'Ada', data: '[BLOB - 24 bytes]' },
+        'data'
+      )
+    })
+    expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
+  })
+
+  it('does not open the BLOB viewer on a read-only connection', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={true} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
+    }
+    act(() => {
+      props.onCellDoubleClick(
+        { __rowIndex: 0, id: 1, name: 'Ada', data: '[BLOB - 24 bytes]' },
+        'data'
+      )
+    })
+    expect(screen.queryByTestId('blob-viewer-dialog')).not.toBeInTheDocument()
+  })
+
+  it('stages a blob envelope on apply', () => {
+    const stageBlobEnvelope = vi.spyOn(useTableDataStore.getState(), 'stageBlobEnvelope')
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onCellDoubleClick: (row: Record<string, unknown>, columnKey: string) => void
+    }
+    const row = { __rowIndex: 0, id: 1, name: 'Ada', data: '[BLOB - 24 bytes]' }
+    act(() => {
+      props.onCellDoubleClick(row, 'data')
+    })
+    const envelope = { __sqllumen_blob__: true as const, kind: 'empty' as const }
+    act(() => {
+      ;(capturedBlobDialogProps?.onApply as (e: unknown) => void)(envelope)
+    })
+    expect(stageBlobEnvelope).toHaveBeenCalledWith('t1', row, 'data', envelope)
   })
 })

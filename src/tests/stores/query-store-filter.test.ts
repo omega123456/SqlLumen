@@ -72,7 +72,6 @@ describe('applyQueryFilters — apply and clear', () => {
     expect(result.rows).toEqual([[1, 'Alice', 30]])
     expect(result.unfilteredRows).toEqual(ROWS)
     expect(result.filterModel).toEqual(conditions)
-
   })
 
   it('clears filter and restores rows from unfilteredRows', () => {
@@ -91,7 +90,6 @@ describe('applyQueryFilters — apply and clear', () => {
     expect(result.rows).toEqual(ROWS)
     expect(result.unfilteredRows).toBeNull()
     expect(result.filterModel).toEqual([])
-
   })
 
   it('re-applies a different filter from unfilteredRows (not currently filtered rows)', () => {

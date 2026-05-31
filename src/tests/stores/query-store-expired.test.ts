@@ -316,7 +316,10 @@ describe('query-store expired result handling', () => {
     })
 
     const deferred: {
-      resolve?: (value: { rows: unknown[][]; columns: Array<{ name: string; dataType: string }> }) => void
+      resolve?: (value: {
+        rows: unknown[][]
+        columns: Array<{ name: string; dataType: string }>
+      }) => void
     } = {}
     ipc.override('touch_results', () => ({ status: 'available' }))
     ipc.override(
@@ -376,7 +379,10 @@ describe('query-store expired result handling', () => {
     })
 
     const deferred: {
-      resolve?: (value: { rows: unknown[][]; columns: Array<{ name: string; dataType: string }> }) => void
+      resolve?: (value: {
+        rows: unknown[][]
+        columns: Array<{ name: string; dataType: string }>
+      }) => void
     } = {}
     ipc.override('touch_results', () => ({ status: 'available' }))
     ipc.override(
@@ -630,7 +636,9 @@ describe('query-store expired result handling', () => {
 
     const tab = useQueryStore.getState().tabs[TAB_ID]
     expect(executeQuerySpy).toHaveBeenCalledTimes(1)
-    expect(ipc.calls('execute_query')[0]).toMatchObject({ sql: 'SELECT * FROM orders WHERE id = 9' })
+    expect(ipc.calls('execute_query')[0]).toMatchObject({
+      sql: 'SELECT * FROM orders WHERE id = 9',
+    })
     expect(tab?.results[0]?.isExpired).toBe(false)
   })
 
@@ -688,18 +696,20 @@ describe('query-store expired result handling', () => {
 
   it('retryExpiredResult uses the statement at cursor for multi-result tabs', async () => {
     setupMultiResultTab()
-    let resolveReexecute: ((value: {
-      sourceSql: string
-      reExecutable: boolean
-      columns: { name: string; dataType: string }[]
-      rows: unknown[][]
-      totalRows: number
-      executionTimeMs: number
-      affectedRows: number
-      autoLimitApplied: boolean
-      queryId: string
-      error: null
-    }) => void) | null = null
+    let resolveReexecute:
+      | ((value: {
+          sourceSql: string
+          reExecutable: boolean
+          columns: { name: string; dataType: string }[]
+          rows: unknown[][]
+          totalRows: number
+          executionTimeMs: number
+          affectedRows: number
+          autoLimitApplied: boolean
+          queryId: string
+          error: null
+        }) => void)
+      | null = null
 
     act(() => {
       useQueryStore.setState((state) => {
@@ -730,7 +740,7 @@ describe('query-store expired result handling', () => {
         totalRows: 1,
         executionTimeMs: 3,
         affectedRows: 0,
-  
+
         autoLimitApplied: false,
         queryId: 'q-reexec-1',
         error: null,
@@ -886,9 +896,9 @@ describe('query-store expired result handling', () => {
     })
 
     await waitFor(() => {
-      expect(useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)).toBe(
-        true
-      )
+      expect(
+        useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
+      ).toBe(true)
     })
   })
 })

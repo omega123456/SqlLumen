@@ -308,7 +308,10 @@ describe('useTableDataStore — fetchPage', () => {
   it('clears checkedRowKeys after a successful page fetch (avoids deleting stale rows)', async () => {
     await setupTabWithData()
     useTableDataStore.getState().setCheckedRowKeys('tab-1', [{ id: 1 }, { id: 2 }])
-    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([{ id: 1 }, { id: 2 }])
+    expect(useTableDataStore.getState().tabs['tab-1'].checkedRowKeys).toEqual([
+      { id: 1 },
+      { id: 2 },
+    ])
 
     await useTableDataStore.getState().fetchPage('tab-1', 2)
 
@@ -737,7 +740,9 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
     await useTableDataStore.getState().markTableDataSurfaceActive('tab-1')
 
     const tab = useTableDataStore.getState().tabs['tab-1']
-    expect(tab.error).toBe('Cached table data is no longer available. Reload the table data to continue.')
+    expect(tab.error).toBe(
+      'Cached table data is no longer available. Reload the table data to continue.'
+    )
     expect(tab.rowResidency).toEqual({
       status: 'evicted',
       isActive: true,

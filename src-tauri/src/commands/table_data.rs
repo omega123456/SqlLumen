@@ -496,6 +496,33 @@ pub async fn delete_table_row(
 }
 
 #[tauri::command]
+pub async fn fetch_blob_value(
+    state: tauri::State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    table: String,
+    column: String,
+    pk_pairs: Vec<(String, serde_json::Value)>,
+) -> Result<table_data::BlobValueResponse, String> {
+    let pool = state
+        .registry
+        .get_pool(&connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    table_data::fetch_blob_value_impl(&pool, &database, &table, &column, &pk_pairs).await
+}
+
+#[tauri::command]
+pub fn read_file_bytes(path: String) -> Result<String, String> {
+    table_data::read_file_bytes_impl(&path)
+}
+
+#[tauri::command]
+pub fn write_file_bytes(path: String, base64: String) -> Result<(), String> {
+    table_data::write_file_bytes_impl(&path, &base64)
+}
+
+#[tauri::command]
 pub async fn export_table_data(
     state: tauri::State<'_, AppState>,
     connection_id: String,

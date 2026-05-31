@@ -12,6 +12,9 @@ import {
   insertTableRow,
   deleteTableRow,
   exportTableData,
+  fetchBlobValue,
+  readFileBytes,
+  writeFileBytes,
 } from '../../lib/table-data-commands'
 import type {
   FilterCondition,
@@ -526,5 +529,52 @@ describe('error propagation', () => {
         pageSize: 1000,
       })
     ).rejects.toThrow('Connection lost')
+  })
+})
+
+describe('fetchBlobValue', () => {
+  it('invokes fetch_blob_value with ordered pkPairs and returns the typed response', async () => {
+    ipc.override('fetch_blob_value', () => ({
+      base64: 'aGk=',
+      byteLength: 2,
+      tooLarge: false,
+    }))
+
+    const result = await fetchBlobValue('conn-1', 'db', 'photos', 'photo', [
+      ['id', 1],
+      ['version', 'v2'],
+    ])
+
+    expect(result).toEqual({ base64: 'aGk=', byteLength: 2, tooLarge: false })
+
+    const calls = ipc.calls('fetch_blob_value')
+    expect(calls).toHaveLength(1)
+    const args = calls[0] as Record<string, unknown>
+    expect(args.connectionId).toBe('conn-1')
+    expect(args.database).toBe('db')
+    expect(args.table).toBe('photos')
+    expect(args.column).toBe('photo')
+    expect(args.pkPairs).toEqual([
+      ['id', 1],
+      ['version', 'v2'],
+    ])
+  })
+})
+
+describe('readFileBytes / writeFileBytes', () => {
+  it('readFileBytes invokes read_file_bytes and returns base64', async () => {
+    ipc.override('read_file_bytes', () => 'aGk=')
+    const result = await readFileBytes('/tmp/photo.png')
+    expect(result).toBe('aGk=')
+    const args = ipc.calls('read_file_bytes')[0] as Record<string, unknown>
+    expect(args.path).toBe('/tmp/photo.png')
+  })
+
+  it('writeFileBytes invokes write_file_bytes with path and base64', async () => {
+    ipc.override('write_file_bytes', () => undefined)
+    await writeFileBytes('/tmp/out.bin', 'aGk=')
+    const args = ipc.calls('write_file_bytes')[0] as Record<string, unknown>
+    expect(args.path).toBe('/tmp/out.bin')
+    expect(args.base64).toBe('aGk=')
   })
 })

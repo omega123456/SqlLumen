@@ -1,9 +1,5 @@
 import { useEffect } from 'react'
-import {
-  useShortcutStore,
-  EDITOR_CONTEXT_ACTIONS,
-  GLOBAL_ACTIONS,
-} from '../stores/shortcut-store'
+import { useShortcutStore, EDITOR_CONTEXT_ACTIONS, GLOBAL_ACTIONS } from '../stores/shortcut-store'
 import type { ShortcutBinding } from '../types/schema'
 
 /** Normalize a keyboard event into a ShortcutBinding for matching. */

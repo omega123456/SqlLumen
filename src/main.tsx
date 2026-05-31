@@ -71,9 +71,8 @@ async function init() {
     const { useProcessListStore } = await import('./stores/processlist-store')
     const { useAiMemoryStore } = await import('./stores/ai-memory-store')
     const { useUpdateStore } = await import('./stores/update-store')
-    const { buildExecuteQueryPlanFromSql, runExecuteQueryPlan } = await import(
-      './lib/query-execution-plan'
-    )
+    const { buildExecuteQueryPlanFromSql, runExecuteQueryPlan } =
+      await import('./lib/query-execution-plan')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore

@@ -78,7 +78,9 @@ describe('useHistoryStore', () => {
       await useHistoryStore.getState().loadHistory('conn-1', { since: '2025-05-01T00:00:00.000Z' })
 
       expect(receivedSince).toBe('2025-05-01T00:00:00.000Z')
-      expect(useHistoryStore.getState().sinceByConnection['conn-1']).toBe('2025-05-01T00:00:00.000Z')
+      expect(useHistoryStore.getState().sinceByConnection['conn-1']).toBe(
+        '2025-05-01T00:00:00.000Z'
+      )
     })
 
     it('replacing reset the accumulated list back to a single page', async () => {

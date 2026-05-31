@@ -958,7 +958,6 @@ describe('useQueryStore — sortResults', () => {
         return {
           rows: [[1], [2], [3]],
           page: 1,
-    
         }
       return null
     })
@@ -1068,7 +1067,7 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
           executionTimeMs: 5,
           affectedRows: 0,
           rows: [[42]],
-    
+
           autoLimitApplied: false,
           error: null,
           reExecutable: true,
@@ -1168,7 +1167,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
           executionTimeMs: 5,
           affectedRows: 0,
           rows: [[42]],
-    
+
           autoLimitApplied: false,
           error: null,
           reExecutable: true,
@@ -1200,7 +1199,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
           executionTimeMs: 5,
           affectedRows: 0,
           rows: [[42]],
-    
+
           autoLimitApplied: false,
           error: null,
           reExecutable: true,

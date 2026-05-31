@@ -191,11 +191,7 @@ export function TableDataTab({
 
       {/* Content area */}
       {!error && columns.length > 0 && (
-        <div
-          className={styles.content}
-          aria-busy={isRestoring}
-          data-testid="table-data-content"
-        >
+        <div className={styles.content} aria-busy={isRestoring} data-testid="table-data-content">
           {viewMode === 'grid' && (
             <TableDataGrid
               tabId={tabId}

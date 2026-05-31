@@ -17,11 +17,13 @@ import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { BaseFormView } from '../shared/BaseFormView'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
 import { FkLookupDialog } from './FkLookupDialog'
+import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
+import { fetchBlobValue } from '../../lib/table-data-commands'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../types/shared-data-view'
-import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
+import type { BlobEnvelope, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,6 +100,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
   const fetchPage = useTableDataStore((state) => state.fetchPage)
   const setSelectedRow = useTableDataStore((state) => state.setSelectedRow)
+  const stageBlobEnvelope = useTableDataStore((state) => state.stageBlobEnvelope)
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
   // Connection read-only check
@@ -122,6 +125,13 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     currentValue: unknown
     foreignKey: ForeignKeyColumnInfo
     rowData: Record<string, unknown>
+  } | null>(null)
+
+  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
+  const [blobContext, setBlobContext] = useState<{
+    columnKey: string
+    rowData: Record<string, unknown>
+    pkPairs: [string, unknown][] | null
   } | null>(null)
 
   const hasPk = primaryKey !== null
@@ -410,6 +420,50 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     ]
   )
 
+  // --- BLOB view/edit ---
+  // The viewer can only fetch real bytes when the current row has a resolvable
+  // primary key. Without one (read-only connection or PK-less table) the grid
+  // holds only the placeholder, so the affordance is disabled rather than
+  // opening a dialog that would falsely report the value as NULL.
+  const canResolveBlobPk = isEditable && pkColumns.length > 0
+  const onBlobView = useCallback(
+    (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
+      if (!rowData || !canResolveBlobPk) return
+      const pkPairs: [string, unknown][] = pkColumns.map(
+        (pkCol) => [pkCol, rowData[pkCol]] as [string, unknown]
+      )
+      setBlobContext({ columnKey: column.key, rowData, pkPairs })
+      setBlobDialogOpen(true)
+    },
+    [canResolveBlobPk, pkColumns]
+  )
+
+  const closeBlobDialog = useCallback(() => {
+    setBlobDialogOpen(false)
+    setBlobContext(null)
+  }, [])
+
+  const blobLoader = useCallback(() => {
+    if (!blobContext?.pkPairs || !tabState) {
+      throw new Error('Cannot load BLOB without a resolvable primary key')
+    }
+    return fetchBlobValue(
+      tabState.connectionId,
+      tabState.database,
+      tabState.table,
+      blobContext.columnKey,
+      blobContext.pkPairs
+    )
+  }, [blobContext, tabState])
+
+  const onBlobApply = useCallback(
+    (envelope: BlobEnvelope) => {
+      if (!blobContext) return
+      stageBlobEnvelope(tabId, blobContext.rowData, blobContext.columnKey, envelope)
+    },
+    [blobContext, stageBlobEnvelope, tabId]
+  )
+
   // --- Render ---
   return (
     <FkLookupProvider onFkLookup={onFkLookup}>
@@ -431,6 +485,9 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
         readOnly={!isEditable}
         testId="table-data-form-view"
         workspaceTabId={tabId}
+        onBlobView={onBlobView}
+        blobViewDisabled={!canResolveBlobPk}
+        blobViewDisabledReason="Cannot view BLOB — table has no primary key"
       />
       {fkLookupOpen && fkLookupContext && tabState && (
         <FkLookupDialog
@@ -445,6 +502,16 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
           referencedTable={fkLookupContext.foreignKey.referencedTable}
           referencedColumn={fkLookupContext.foreignKey.referencedColumn}
           isReadOnly={!isEditable}
+        />
+      )}
+      {blobDialogOpen && blobContext && (
+        <BlobViewerDialog
+          isOpen={blobDialogOpen}
+          onClose={closeBlobDialog}
+          mode="edit"
+          columnLabel={blobContext.columnKey}
+          loader={blobLoader}
+          onApply={onBlobApply}
         />
       )}
     </FkLookupProvider>

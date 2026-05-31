@@ -498,9 +498,7 @@ describe('TableDataToolbar', () => {
 
     await user.click(screen.getByTestId('btn-delete-row'))
     expect(screen.getByText('Delete Rows')).toBeInTheDocument()
-    expect(
-      screen.getByText('Are you sure you want to delete these 2 rows?')
-    ).toBeInTheDocument()
+    expect(screen.getByText('Are you sure you want to delete these 2 rows?')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('confirm-confirm-button'))
 

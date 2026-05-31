@@ -1026,9 +1026,7 @@ describe('ObjectBrowser', () => {
     await openContextMenu(user, 'ecommerce_db')
     await user.click(screen.getByText('Copy to Another Host...'))
 
-    expect(
-      await screen.findByRole('heading', { name: 'Copy to Another Host' })
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Copy to Another Host' })).toBeInTheDocument()
     expect((screen.getByTestId('copy-source-connection') as HTMLInputElement).value).toBe('Test DB')
     expect((screen.getByTestId('copy-source-database') as HTMLInputElement).value).toBe(
       'ecommerce_db'

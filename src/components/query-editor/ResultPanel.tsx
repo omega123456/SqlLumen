@@ -522,7 +522,11 @@ export function ResultPanel({
   }, [retryExpiredResult, tabId])
 
   return (
-    <div className={styles.container} data-testid="result-panel" aria-busy={displayStatus === 'restoring'}>
+    <div
+      className={styles.container}
+      data-testid="result-panel"
+      aria-busy={displayStatus === 'restoring'}
+    >
       <div role="status" aria-live="polite" aria-atomic="true" data-testid="expired-status">
         {isExpired && displayStatus !== 'running' && (
           <div className={styles.emptyState} style={{ height: '100%' }}>

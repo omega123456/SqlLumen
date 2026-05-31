@@ -61,6 +61,19 @@ pub struct PrimaryKeyInfo {
     pub is_unique_key_fallback: bool,
 }
 
+/// Response from `fetch_blob_value`: the raw bytes of a single binary cell,
+/// base64-encoded for transport, with a size guard.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BlobValueResponse {
+    /// Base64-encoded bytes, or `None` for SQL NULL or when `too_large` is set.
+    pub base64: Option<String>,
+    /// Stored byte count (always returned, even when `too_large`).
+    pub byte_length: u64,
+    /// `true` when the stored size exceeds the 10 MB cap; bytes are then omitted.
+    pub too_large: bool,
+}
+
 /// Paginated response from `fetch_table_data`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -563,6 +576,76 @@ fn is_binary_data_type(data_type: &str) -> bool {
     )
 }
 
+// ── Blob envelope handling ─────────────────────────────────────────────────────
+
+/// Maximum number of bytes returned for a single binary cell fetch / file read.
+pub const BLOB_FETCH_CAP: usize = 10 * 1024 * 1024;
+
+/// Marker key identifying a self-describing blob-envelope JSON object staged by
+/// the frontend. A staged binary edit travels as
+/// `{ "__sqllumen_blob__": true, "kind": "bytes" | "null" | "empty", "base64"?: string }`.
+pub const BLOB_ENVELOPE_MARKER: &str = "__sqllumen_blob__";
+
+/// Decoded form of a blob-envelope, ready to bind to a sqlx query.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlobBind {
+    /// Bind real bytes (`Vec<u8>`).
+    Bytes(Vec<u8>),
+    /// Bind an empty byte string (`b''`).
+    Empty,
+    /// Bind a typed SQL NULL.
+    Null,
+}
+
+/// Inspect a JSON value and, if it is a recognised blob-envelope, decode it into
+/// a [`BlobBind`]. Returns:
+/// - `None` when the value is **not** a blob-envelope (caller falls back to its
+///   normal binding logic),
+/// - `Some(Ok(_))` for a well-formed envelope,
+/// - `Some(Err(_))` for a malformed envelope (e.g. invalid base64) — the caller
+///   should propagate the error rather than silently stringify the value.
+///
+/// This helper is pure (no DB/Tauri dependency) so it can be unit-tested without
+/// a live MySQL connection.
+pub fn decode_blob_envelope(value: &serde_json::Value) -> Option<Result<BlobBind, String>> {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+
+    let obj = value.as_object()?;
+    // Only treat objects explicitly marked as blob-envelopes.
+    if obj.get(BLOB_ENVELOPE_MARKER) != Some(&serde_json::Value::Bool(true)) {
+        return None;
+    }
+
+    let kind = match obj.get("kind").and_then(|k| k.as_str()) {
+        Some(k) => k,
+        None => {
+            return Some(Err(
+                "Blob envelope is missing a string `kind` field".to_string()
+            ))
+        }
+    };
+
+    match kind {
+        "null" => Some(Ok(BlobBind::Null)),
+        "empty" => Some(Ok(BlobBind::Empty)),
+        "bytes" => {
+            let b64 = match obj.get("base64").and_then(|b| b.as_str()) {
+                Some(b) => b,
+                None => {
+                    return Some(Err(
+                        "Blob envelope of kind `bytes` is missing the `base64` field".to_string(),
+                    ))
+                }
+            };
+            match B64.decode(b64) {
+                Ok(bytes) => Some(Ok(BlobBind::Bytes(bytes))),
+                Err(e) => Some(Err(format!("Invalid base64 in blob envelope: {e}"))),
+            }
+        }
+        other => Some(Err(format!("Unknown blob envelope kind: {other}"))),
+    }
+}
+
 pub fn parse_enum_values(column_type: &str) -> Option<Vec<String>> {
     parse_quoted_type_values(column_type, "enum")
 }
@@ -1017,8 +1100,38 @@ fn bind_json_value<'q>(
             }
         }
         serde_json::Value::Bool(b) => query.bind(*b as i64),
+        // Recognise a staged blob-envelope before the object catch-all and bind
+        // it as real bytes / empty / SQL NULL. Malformed envelopes are rejected
+        // up-front by `validate_blob_envelopes` in the write impls, so any error
+        // reaching here is a defensive fallback: log and bind SQL NULL rather
+        // than silently stringify the envelope into the column.
+        serde_json::Value::Object(_) => match decode_blob_envelope(value) {
+            Some(Ok(BlobBind::Bytes(bytes))) => query.bind(bytes),
+            Some(Ok(BlobBind::Empty)) => query.bind(Vec::<u8>::new()),
+            Some(Ok(BlobBind::Null)) => query.bind(Option::<Vec<u8>>::None),
+            Some(Err(e)) => {
+                tracing::error!(error = %e, "Malformed blob envelope reached bind stage; binding NULL");
+                query.bind(Option::<Vec<u8>>::None)
+            }
+            None => query.bind(value.to_string()),
+        },
         _ => query.bind(value.to_string()),
     }
+}
+
+/// Validate any blob-envelopes in a set of column values before binding, so a
+/// malformed envelope (e.g. invalid base64) surfaces as a clean error instead of
+/// being silently coerced. Non-envelope values are ignored.
+#[cfg_attr(coverage, allow(dead_code))]
+pub fn validate_blob_envelopes(
+    values: &HashMap<String, serde_json::Value>,
+) -> Result<(), String> {
+    for (col, value) in values {
+        if let Some(Err(e)) = decode_blob_envelope(value) {
+            return Err(format!("Column `{col}`: {e}"));
+        }
+    }
+    Ok(())
 }
 
 // ── fetch_table_pk_impl (internal helper, real impl only) ──────────────────────
@@ -1386,6 +1499,7 @@ pub async fn update_table_row_impl(
     if updated_values.is_empty() {
         return Err("No values to update".to_string());
     }
+    validate_blob_envelopes(updated_values)?;
 
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
@@ -1475,6 +1589,7 @@ pub async fn insert_table_row_impl(
     values: &HashMap<String, serde_json::Value>,
     pk_info: &PrimaryKeyInfo,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
+    validate_blob_envelopes(values)?;
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
     let (_, columns) =
@@ -2017,4 +2132,187 @@ pub async fn export_table_data_impl(
     _options: &ExportTableOptions,
 ) -> Result<(), String> {
     Ok(())
+}
+
+// ── fetch_blob_value_impl ──────────────────────────────────────────────────────
+
+/// Fetch the raw bytes of a single binary cell, identified by table + primary-key
+/// column/value pairs + target column.
+///
+/// Enforces the [`BLOB_FETCH_CAP`] (10 MB): if the stored byte length exceeds the
+/// cap, the bytes are **not** transported — only the size and a `too_large` flag.
+/// SQL NULL is reported as `base64: None, too_large: false`.
+#[cfg(not(coverage))]
+pub async fn fetch_blob_value_impl(
+    pool: &sqlx::MySqlPool,
+    database: &str,
+    table: &str,
+    column: &str,
+    pk_pairs: &[(String, serde_json::Value)],
+) -> Result<BlobValueResponse, String> {
+    if pk_pairs.is_empty() {
+        return Err("Cannot fetch blob: no primary key values specified".to_string());
+    }
+
+    let safe_db = safe_identifier(database)?;
+    let safe_table = safe_identifier(table)?;
+    let safe_col = safe_identifier(column)?;
+
+    let mut where_parts = Vec::with_capacity(pk_pairs.len());
+    for (pk_col, _) in pk_pairs {
+        let safe_pk = safe_identifier(pk_col)?;
+        where_parts.push(format!("{safe_pk} = ?"));
+    }
+    let where_sql = where_parts.join(" AND ");
+
+    // ── 1. Read the stored byte length so over-cap blobs are never transported.
+    let len_sql = format!(
+        "SELECT OCTET_LENGTH({safe_col}) AS `len` FROM {safe_db}.{safe_table} WHERE {where_sql} LIMIT 1"
+    );
+    let binds: Vec<String> = pk_pairs.iter().map(|(_, v)| v.to_string()).collect();
+    crate::mysql::query_log::log_outgoing_sql_bound(&len_sql, &binds);
+
+    let mut len_query = sqlx::query(&len_sql);
+    for (_, value) in pk_pairs {
+        len_query = bind_json_value(len_query, value);
+    }
+    let len_rows = len_query
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Blob length query failed: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&len_rows);
+
+    let len_row = match len_rows.first() {
+        Some(r) => r,
+        None => return Err("No row matched the supplied primary key".to_string()),
+    };
+
+    let stored_len: Option<i64> = len_row
+        .try_get::<Option<i64>, _>("len")
+        .map_err(|e| format!("Failed to read blob length: {e}"))?;
+
+    let byte_length = match stored_len {
+        // SQL NULL value in the cell.
+        None => {
+            return Ok(BlobValueResponse {
+                base64: None,
+                byte_length: 0,
+                too_large: false,
+            });
+        }
+        Some(len) if len < 0 => 0u64,
+        Some(len) => len as u64,
+    };
+
+    if byte_length as usize > BLOB_FETCH_CAP {
+        return Ok(BlobValueResponse {
+            base64: None,
+            byte_length,
+            too_large: true,
+        });
+    }
+
+    // ── 2. Within cap: fetch the actual bytes.
+    let data_sql =
+        format!("SELECT {safe_col} AS `val` FROM {safe_db}.{safe_table} WHERE {where_sql} LIMIT 1");
+    crate::mysql::query_log::log_outgoing_sql_bound(&data_sql, &binds);
+
+    let mut data_query = sqlx::query(&data_sql);
+    for (_, value) in pk_pairs {
+        data_query = bind_json_value(data_query, value);
+    }
+    let data_rows = data_query
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Blob fetch query failed: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&data_rows);
+
+    let data_row = match data_rows.first() {
+        Some(r) => r,
+        None => return Err("No row matched the supplied primary key".to_string()),
+    };
+
+    let bytes: Option<Vec<u8>> = data_row
+        .try_get::<Option<Vec<u8>>, _>("val")
+        .map_err(|e| format!("Failed to read blob bytes: {e}"))?;
+
+    match bytes {
+        None => Ok(BlobValueResponse {
+            base64: None,
+            byte_length: 0,
+            too_large: false,
+        }),
+        Some(b) => Ok(BlobValueResponse {
+            base64: Some(BASE64_STANDARD.encode(&b)),
+            byte_length: b.len() as u64,
+            too_large: false,
+        }),
+    }
+}
+
+/// Coverage stub for blob fetch.
+#[cfg(coverage)]
+pub async fn fetch_blob_value_impl(
+    _pool: &sqlx::MySqlPool,
+    _database: &str,
+    _table: &str,
+    _column: &str,
+    _pk_pairs: &[(String, serde_json::Value)],
+) -> Result<BlobValueResponse, String> {
+    Ok(BlobValueResponse {
+        base64: None,
+        byte_length: 0,
+        too_large: false,
+    })
+}
+
+// ── File byte I/O (binary-safe; distinct from UTF-8 read_file/write_file) ───────
+
+/// Read a file's raw bytes and return them base64-encoded.
+///
+/// Enforces the [`BLOB_FETCH_CAP`] (10 MB). Unlike `read_file_impl`, this is
+/// binary-safe (no UTF-8 validation) so it can carry images and other blobs.
+pub fn read_file_bytes_impl(path: &str) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+
+    let p = std::path::Path::new(path);
+    let metadata = std::fs::metadata(p).map_err(|e| {
+        tracing::error!(path = %path, error = %e, "Failed to read file metadata for blob read");
+        format!("Failed to read file metadata: {e}")
+    })?;
+    if metadata.len() as usize > BLOB_FETCH_CAP {
+        return Err("File exceeds the 10 MB limit".to_string());
+    }
+    let bytes = std::fs::read(p).map_err(|e| {
+        tracing::error!(path = %path, error = %e, "Failed to read file bytes for blob read");
+        format!("Failed to read file: {e}")
+    })?;
+    if bytes.len() > BLOB_FETCH_CAP {
+        return Err("File exceeds the 10 MB limit".to_string());
+    }
+    Ok(B64.encode(&bytes))
+}
+
+/// Decode base64 content and write the raw bytes to `path` (binary-safe).
+pub fn write_file_bytes_impl(path: &str, base64: &str) -> Result<(), String> {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+
+    let bytes = B64.decode(base64).map_err(|e| {
+        tracing::error!(path = %path, error = %e, "Invalid base64 supplied to blob write");
+        format!("Invalid base64 content: {e}")
+    })?;
+
+    let p = std::path::Path::new(path);
+    if let Some(parent) = p.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                tracing::error!(path = %path, error = %e, "Failed to create parent dirs for blob write");
+                format!("Failed to create directories: {e}")
+            })?;
+        }
+    }
+    std::fs::write(p, &bytes).map_err(|e| {
+        tracing::error!(path = %path, error = %e, "Failed to write blob bytes");
+        format!("Failed to write file: {e}")
+    })
 }

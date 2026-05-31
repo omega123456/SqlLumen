@@ -1,4 +1,6 @@
 import { GridCellKind, type GridCell, type TextCell } from '@glideapps/glide-data-grid'
+import { base64ToBytes, blobPlaceholder, isBlobEnvelope } from '../../../lib/blob-utils'
+import type { BlobEnvelope } from '../../../types/schema'
 
 export interface CellStateFlags {
   isNull: boolean
@@ -37,11 +39,62 @@ export function formatBlobDisplayValue(rawValue: unknown): string {
   return '[BLOB]'
 }
 
+/**
+ * Decode the byte length of a `bytes`/`empty` blob envelope without keeping the
+ * decoded bytes around. Malformed base64 falls back to 0.
+ */
+function envelopeByteLength(envelope: BlobEnvelope): number {
+  if (envelope.kind === 'empty') return 0
+  if (envelope.kind === 'bytes' && typeof envelope.base64 === 'string') {
+    try {
+      return base64ToBytes(envelope.base64).byteLength
+    } catch {
+      return 0
+    }
+  }
+  return 0
+}
+
 export function classifyCellValue(
   rawValue: unknown,
   columnKey: string,
   options: ClassifyCellValueOptions = {}
 ): ClassifiedCellValue {
+  // A staged blob edit arrives as a self-describing envelope. Render it as a
+  // modified blob placeholder (`[BLOB - N bytes*]`) or, for a staged NULL, fall
+  // through to the standard NULL rendering with the pending highlight.
+  if (isBlobEnvelope(rawValue)) {
+    if (rawValue.kind === 'null') {
+      return {
+        displayValue: 'NULL',
+        copyValue: 'NULL',
+        isNull: true,
+        isBlob: false,
+        isReadOnly: options.isReadOnly ?? false,
+        isModified: options.isModified ?? false,
+        isFkCell: options.isFkCell ?? false,
+        isSelectedRow: options.isSelectedRow ?? false,
+        isEditingRow: options.isEditingRow ?? false,
+        isNewRow: options.isNewRow ?? false,
+        isHighlightedColumn: options.highlightedColumnKey === columnKey,
+      }
+    }
+    const placeholder = blobPlaceholder(envelopeByteLength(rawValue), true)
+    return {
+      displayValue: placeholder,
+      copyValue: placeholder,
+      isNull: false,
+      isBlob: true,
+      isReadOnly: options.isReadOnly ?? false,
+      isModified: options.isModified ?? false,
+      isFkCell: options.isFkCell ?? false,
+      isSelectedRow: options.isSelectedRow ?? false,
+      isEditingRow: options.isEditingRow ?? false,
+      isNewRow: options.isNewRow ?? false,
+      isHighlightedColumn: options.highlightedColumnKey === columnKey,
+    }
+  }
+
   const isNull = rawValue == null
   const isBlob =
     !isNull &&

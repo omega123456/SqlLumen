@@ -131,15 +131,17 @@ describe('ResultPanel — expired state', () => {
   it('clicking Re-run query triggers retryExpiredResult', async () => {
     const user = userEvent.setup()
     setTabWithExpiredResult()
-    let resolveExecute: ((value: {
-      queryId: string
-      columns: { name: string; dataType: string }[]
-      totalRows: number
-      executionTimeMs: number
-      affectedRows: number
-      rows: unknown[][]
-      autoLimitApplied: boolean
-    }) => void) | null = null
+    let resolveExecute:
+      | ((value: {
+          queryId: string
+          columns: { name: string; dataType: string }[]
+          totalRows: number
+          executionTimeMs: number
+          affectedRows: number
+          rows: unknown[][]
+          autoLimitApplied: boolean
+        }) => void)
+      | null = null
 
     // Override execute_query to succeed
     ipc.override(
@@ -167,7 +169,6 @@ describe('ResultPanel — expired state', () => {
     })
     expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
     expect(screen.queryByTestId('retry-expired-button')).not.toBeInTheDocument()
-
     ;(
       resolveExecute as
         | ((value: {

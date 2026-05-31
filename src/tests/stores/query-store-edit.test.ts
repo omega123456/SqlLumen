@@ -307,7 +307,7 @@ describe('useQueryStore — setEditMode', () => {
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
             ],
-  
+
             autoLimitApplied: false,
           }
         case 'analyze_query_for_edit':
@@ -1510,7 +1510,7 @@ describe('useQueryStore — saveCurrentRow', () => {
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
             ],
-  
+
             autoLimitApplied: false,
           }
         }
@@ -1591,7 +1591,7 @@ describe('useQueryStore — saveCurrentRow', () => {
             executionTimeMs: 10,
             affectedRows: 0,
             rows: [['p-001', 'Alpha']],
-  
+
             autoLimitApplied: false,
           }
         }
@@ -1803,7 +1803,7 @@ describe('useQueryStore — saveCurrentRow', () => {
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
             ],
-  
+
             autoLimitApplied: false,
           }
         }
@@ -2483,7 +2483,6 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
             [2, 'Bob', 'bob@test.com'],
           ],
           page: 1,
-
         }
       }
       if (cmd === 'evict_results') return null

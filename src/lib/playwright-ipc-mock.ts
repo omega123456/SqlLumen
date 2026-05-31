@@ -2,6 +2,7 @@ import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 import {
   getAnalyzeQueryForEditFixture,
+  getBlobValueFixture,
   getCancelCopyFixture,
   getCopyableObjectsFixture,
   getCopyProgressFixture,
@@ -903,6 +904,18 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return null
 
     case 'export_table_data':
+      return null
+
+    case 'fetch_blob_value': {
+      const column = (args as Record<string, unknown>)?.column
+      return getBlobValueFixture(String(column))
+    }
+
+    case 'read_file_bytes':
+      // Default: same 1x1 PNG bytes the blob fixture serves, base64-encoded.
+      return getBlobValueFixture('default').base64 ?? ''
+
+    case 'write_file_bytes':
       return null
 
     // --- Object editor commands (Phase 8) ---

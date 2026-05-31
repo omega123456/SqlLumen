@@ -94,7 +94,17 @@ describe('GeneralSettings', () => {
 
     await user.click(zoomDropdown)
 
-    const expectedLabels = ['70%', '80%', '90%', '100% (Default)', '110%', '125%', '150%', '175%', '200%']
+    const expectedLabels = [
+      '70%',
+      '80%',
+      '90%',
+      '100% (Default)',
+      '110%',
+      '125%',
+      '150%',
+      '175%',
+      '200%',
+    ]
     for (const label of expectedLabels) {
       expect(screen.getByRole('option', { name: label })).toBeInTheDocument()
     }

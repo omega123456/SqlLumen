@@ -18,6 +18,9 @@ import {
 } from '../shared/editor-callbacks-context'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
 import { FkLookupDialog } from './FkLookupDialog'
+import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
+import { fetchBlobValue } from '../../lib/table-data-commands'
+import type { BlobEnvelope } from '../../types/schema'
 import {
   useTableDataStore,
   isSameRowKey,
@@ -86,6 +89,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const sortByColumn = useTableDataStore((state) => state.sortByColumn)
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
+  const stageBlobEnvelope = useTableDataStore((state) => state.stageBlobEnvelope)
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
   const setScrollCell = useTableDataStore((state) => state.setScrollCell)
   const setColumnWidth = useTableDataStore((state) => state.setColumnWidth)
@@ -170,7 +174,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const [selectionResetState, setSelectionResetState] = useState({ resetKey: 0, prevCount: 0 })
   if (selectionResetState.prevCount !== checkedRowCount) {
     setSelectionResetState((current) => ({
-      resetKey: current.prevCount > 0 && checkedRowCount === 0 ? current.resetKey + 1 : current.resetKey,
+      resetKey:
+        current.prevCount > 0 && checkedRowCount === 0 ? current.resetKey + 1 : current.resetKey,
       prevCount: checkedRowCount,
     }))
   }
@@ -207,6 +212,17 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   } | null>(null)
   const ignoreFkShortcutUntilRef = useRef(0)
   const restoreGridFocusAfterFkCloseRef = useRef(false)
+
+  // ---------------------------------------------------------------------------
+  // BLOB viewer state — opened by double-clicking a binary cell. Mirrors the
+  // conditional FkLookupDialog render below.
+  // ---------------------------------------------------------------------------
+  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
+  const [blobContext, setBlobContext] = useState<{
+    columnKey: string
+    rowData: Record<string, unknown>
+    pkPairs: [string, unknown][] | null
+  } | null>(null)
 
   // ---------------------------------------------------------------------------
   // Column descriptors: TableDataColumnMeta[] → GridColumnDescriptor[]
@@ -752,6 +768,56 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     [descriptorColumns, handleFkLookup]
   )
 
+  // ---------------------------------------------------------------------------
+  // BLOB cell double-click — open the viewer only when a PK is resolvable so the
+  // dialog can lazily fetch the real bytes. When no PK is resolvable (read-only
+  // connection or PK-less table), the grid only holds the placeholder, so the
+  // affordance is disabled rather than showing a misleading view-only dialog.
+  // ---------------------------------------------------------------------------
+  const handleCellDoubleClick = useCallback(
+    (row: Record<string, unknown>, columnKey: string) => {
+      const descriptor = descriptorColumns.find((column) => column.key === columnKey)
+      if (!descriptor?.blobViewer) return
+
+      // Resolve PK column→value pairs for the lazy fetch + edit gating.
+      const canEdit = !isReadOnly && hasPk && pkColumns.length > 0
+      if (!canEdit) return
+      const pkPairs: [string, unknown][] = pkColumns.map(
+        (pkCol) => [pkCol, row[pkCol]] as [string, unknown]
+      )
+
+      setBlobContext({ columnKey, rowData: row, pkPairs })
+      setBlobDialogOpen(true)
+    },
+    [descriptorColumns, isReadOnly, hasPk, pkColumns]
+  )
+
+  const closeBlobDialog = useCallback(() => {
+    setBlobDialogOpen(false)
+    setBlobContext(null)
+  }, [])
+
+  const blobLoader = useCallback(() => {
+    if (!blobContext?.pkPairs || !tabState) {
+      throw new Error('Cannot load BLOB without a resolvable primary key')
+    }
+    return fetchBlobValue(
+      tabState.connectionId,
+      tabState.database,
+      tabState.table,
+      blobContext.columnKey,
+      blobContext.pkPairs
+    )
+  }, [blobContext, tabState])
+
+  const handleBlobApply = useCallback(
+    (envelope: BlobEnvelope) => {
+      if (!blobContext) return
+      stageBlobEnvelope(tabId, blobContext.rowData, blobContext.columnKey, envelope)
+    },
+    [blobContext, stageBlobEnvelope, tabId]
+  )
+
   const editableColumnKeys = useMemo(() => {
     return new Set(
       descriptorColumns.filter((column) => column.editable).map((column) => column.key)
@@ -869,6 +935,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           }}
           scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
           onFkCellAction={handleFkCellAction}
+          onCellDoubleClick={handleCellDoubleClick}
           rowMarkers={!isReadOnly && hasPk ? 'checkbox' : 'none'}
           onRowMarkersChange={handleRowMarkersChange}
           resetSelectionKey={resetSelectionKey}
@@ -892,6 +959,16 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
             referencedTable={fkLookupContext.foreignKey.referencedTable}
             referencedColumn={fkLookupContext.foreignKey.referencedColumn}
             isReadOnly={isReadOnly || !hasPk}
+          />
+        )}
+        {blobDialogOpen && blobContext && (
+          <BlobViewerDialog
+            isOpen={blobDialogOpen}
+            onClose={closeBlobDialog}
+            mode="edit"
+            columnLabel={blobContext.columnKey}
+            loader={blobLoader}
+            onApply={handleBlobApply}
           />
         )}
       </FkLookupProvider>

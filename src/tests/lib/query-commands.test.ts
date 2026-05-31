@@ -27,7 +27,10 @@ const mockExecuteQueryFn = vi.fn(() => ({
 
   autoLimitApplied: false,
 }))
-const mockFetchCachedRowsFn = vi.fn(() => ({ rows: [[1]], columns: [{ name: 'id', dataType: 'INT' }] }))
+const mockFetchCachedRowsFn = vi.fn(() => ({
+  rows: [[1]],
+  columns: [{ name: 'id', dataType: 'INT' }],
+}))
 const mockEvictResultsFn = vi.fn(() => null)
 const mockFetchSchemaMetadataFn = vi.fn(() => ({
   databases: ['mydb'],
@@ -75,7 +78,7 @@ const mockExecuteMultiQueryFn = vi.fn(() => ({
       executionTimeMs: 5,
       affectedRows: 0,
       rows: [[1]],
-    
+
       autoLimitApplied: false,
       error: null,
       reExecutable: true,
@@ -92,7 +95,7 @@ const mockExecuteCallQueryFn = vi.fn(() => ({
       executionTimeMs: 10,
       affectedRows: 0,
       rows: [[1]],
-    
+
       autoLimitApplied: false,
       error: null,
       reExecutable: false,

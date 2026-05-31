@@ -63,3 +63,21 @@ identifier = "allow-export-table-data"
 description = "Enables the export_table_data command without any pre-configured scope."
 commands.allow = ["export_table_data"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-fetch-blob-value"
+description = "Enables the fetch_blob_value command without any pre-configured scope."
+commands.allow = ["fetch_blob_value"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-read-file-bytes"
+description = "Enables the read_file_bytes command without any pre-configured scope."
+commands.allow = ["read_file_bytes"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-write-file-bytes"
+description = "Enables the write_file_bytes command without any pre-configured scope."
+commands.allow = ["write_file_bytes"]
+commands.deny = []

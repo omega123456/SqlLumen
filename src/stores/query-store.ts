@@ -48,10 +48,7 @@ import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
-import {
-  buildExecuteQueryPlan,
-  executeQueryPlan,
-} from '../lib/query-execution-plan'
+import { buildExecuteQueryPlan, executeQueryPlan } from '../lib/query-execution-plan'
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
@@ -1021,12 +1018,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     )
       return
 
-      // Clear edit state
-      get().clearEditState(tabId)
+    // Clear edit state
+    get().clearEditState(tabId)
 
-      patchTab(tabId, { wasCancelled: false, connectionId })
-      clearExpiredFlags(tabId)
-      beginExecution(tabId)
+    patchTab(tabId, { wasCancelled: false, connectionId })
+    clearExpiredFlags(tabId)
+    beginExecution(tabId)
 
     try {
       const multiResult = await ipcCall()
@@ -1163,7 +1160,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       rowResidency: {
         ...(postResult?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
         status: 'resident',
-        inactiveSince: postResult?.rowResidency.isActive ? null : postResult?.rowResidency.inactiveSince ?? null,
+        inactiveSince: postResult?.rowResidency.isActive
+          ? null
+          : (postResult?.rowResidency.inactiveSince ?? null),
       },
       ...extraPatch,
     })
@@ -1963,8 +1962,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (get().tabs[tabId]) {
             patchResultByIndex(tabId, resultIndex, { isStale: true })
           }
-          const errorMessage =
-            refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+          const errorMessage = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
           showErrorToast(
             'Refresh failed',
             `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted, but the query result could not be refreshed: ${errorMessage}`
@@ -2026,7 +2024,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const columns = result.columns
 
       const prepared = prepareConditions(columns, conditions)
-      const filteredRows = sourceRows.filter((row) => prepared.every((p) => p.test(row[p.colIndex])))
+      const filteredRows = sourceRows.filter((row) =>
+        prepared.every((p) => p.test(row[p.colIndex]))
+      )
 
       patchResultByIndex(tabId, resultIndex, {
         rows: filteredRows,
@@ -2130,7 +2130,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                   ...(currentResultForFilter?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
                   status: 'resident',
                   inactiveSince:
-                    currentResultForFilter?.rowResidency.isActive ?? false
+                    (currentResultForFilter?.rowResidency.isActive ?? false)
                       ? null
                       : (currentResultForFilter?.rowResidency.inactiveSince ?? null),
                 },
@@ -2167,9 +2167,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         if (!parsed) {
           logFrontend(
             'error',
-            [
-              '[query-store] sortResults failed: invalid sort_results payload (expected rows)',
-            ]
+            ['[query-store] sortResults failed: invalid sort_results payload (expected rows)']
               .map(String)
               .join(' ')
           )
@@ -2199,7 +2197,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             ...(sortResult?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
             status: 'resident',
             inactiveSince:
-              sortResult?.rowResidency.isActive ?? false
+              (sortResult?.rowResidency.isActive ?? false)
                 ? null
                 : (sortResult?.rowResidency.inactiveSince ?? null),
           },
@@ -2863,8 +2861,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             'warn',
             ['[query-store] Result cache sync failed:', cacheErr].map(String).join(' ')
           )
-          const cacheErrorMessage =
-            cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
+          const cacheErrorMessage = cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
           if (cacheErrorMessage.includes('results_expired')) {
             markTabResultsExpired(tabId)
           }

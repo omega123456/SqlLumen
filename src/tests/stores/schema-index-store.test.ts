@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { ipc } from '../ipc-mock'
-import {
-  useSchemaIndexStore,
-  _resetSchemaIndexStoreForTest,
-} from '../../stores/schema-index-store'
+import { useSchemaIndexStore, _resetSchemaIndexStoreForTest } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 
 // ---------------------------------------------------------------------------

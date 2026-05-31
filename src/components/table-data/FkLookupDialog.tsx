@@ -164,10 +164,7 @@ export function FkLookupDialog({
         tabId: cacheTabId,
       }).catch((error: unknown) => {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        logFrontend(
-          'warn',
-          `FK lookup cache cleanup failed for ${cacheTabId}: ${errorMessage}`
-        )
+        logFrontend('warn', `FK lookup cache cleanup failed for ${cacheTabId}: ${errorMessage}`)
       })
     }
   }, [cacheTabId, connectionId, isOpen])

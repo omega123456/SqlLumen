@@ -18,6 +18,8 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
   - [Scripts](#scripts)
 - **Reference**
   - [Features](#features)
+  - [Copy To Another Host](#copy-to-another-host)
+  - [BLOB viewing and editing](#blob-viewing-and-editing)
   - [Stack](#stack)
   - [Project layout](#project-layout)
   - [Contributing](#contributing)
@@ -32,6 +34,7 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 - **Workspace tabs** — inline query-tab rename plus context-menu and drag/drop reordering for workspace and connection tabs
 - **Result sets** — grid, form, and text views; execution feedback and toolbars. For a successful query-editor result, the bottom status bar shows three values, rendered identically in light and dark themes: `Rows: <n>` (row count), `Exec: <n>ms` (server execution time only, up to when the first row / result header is available), and `Total: <n>ms` (execution plus row transfer and serialization). For DML/DDL or empty result sets, `Exec` and `Total` are equal. The result-editor toolbar badge and Query History `duration_ms` continue to report the combined total time.
 - **Table data** — browse and edit rows with validation and related UI (foreign keys, unsaved changes)
+- **BLOB viewer / editor** — double-click a binary cell to inspect its bytes as an image, text, or hex dump; in the table-data browser you can also replace, NULL, clear, and save the bytes (see [BLOB viewing and editing](#blob-viewing-and-editing))
 - **Table designer** — column, index, and foreign-key editing with DDL preview and apply flow
 - **Schema information** — columns, indexes, foreign keys, DDL, and stats-style panels where supported
 - **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
@@ -51,6 +54,27 @@ Use **Copy to Another Host...** from the object browser context menu on a databa
 - Start the copy to monitor object-level progress, table row progress when available, and to cancel the job before it completes.
 
 The target copy workflow temporarily disables foreign-key checks on the destination and restores them when the operation finishes.
+
+## BLOB viewing and editing
+
+Binary columns (`BLOB`/`TINYBLOB`/`MEDIUMBLOB`/`LONGBLOB`/`BINARY`/`VARBINARY`) render as a `[BLOB - N bytes]` placeholder in the grid. **Double-click** the cell to open the BLOB viewer. It is also reachable from the **form view** of a record via the **View/Edit** button next to a binary field.
+
+The viewer always offers three tabs:
+
+- **Image** — renders the bytes as an image when they decode to a supported format (PNG, JPEG, GIF, WebP, BMP, SVG); otherwise it shows a "Not a valid image" state.
+- **Text** — best-effort UTF-8 decode of the bytes (invalid sequences become the replacement character). Read-only.
+- **Hex** — a classic hex dump with an offset column, 16 bytes per row (grouped 8 + 8), and an ASCII sidebar. Read-only.
+
+The viewer behaves differently depending on where it is opened:
+
+- **Table-data browser — full edit.** The cell's bytes are fetched lazily by primary key when the dialog opens. You can replace the value by **Load from file**, **Paste** (base64 or whitespace-tolerant hex), or **drag-and-drop** a file onto the dialog; **Set NULL** stages a SQL `NULL`; **Clear** stages an empty (`0 bytes`) value. **Apply** stages the change as a pending cell edit — the cell then shows `[BLOB - N bytes*]` (note the asterisk) and the new bytes are written to the database when you save the row through the normal update/insert flow. After saving, the cell reverts to a clean `[BLOB - N bytes]` placeholder.
+- **Query results — view only.** Read-only result sets have no primary key to persist an edit against, so the dialog shows only the three tabs plus **Save to file** and **Close** — there are no edit, NULL, clear, or apply controls. The bytes are taken from the value already returned in the result row.
+
+**Save to file** (available in both surfaces, whenever bytes are held) opens a native save dialog. The default file extension is auto-detected from the leading magic bytes (for example `.png`, `.jpg`, `.gif`, `.pdf`, `.zip`), falling back to `.bin`.
+
+**Size limits.** In the table-data browser a **10 MB cap** applies to both the lazy fetch and to files you load (from the file picker or drag-and-drop). When a stored cell exceeds the cap, the dialog shows a warning banner and the content/Save-to-file are suppressed (no bytes are transported) — save large values directly from the database instead. Note that **query-result blobs are not size-capped** (a known limitation): the bytes are whatever the query already inlined into the result set, so a very large binary value in a result set is transported in full.
+
+Exported binary columns continue to be emitted as base64 in all export formats (CSV, JSON, XLSX, SQL); the BLOB viewer does not change export behavior.
 
 ## Stack
 

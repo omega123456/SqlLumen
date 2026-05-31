@@ -61,10 +61,7 @@ export interface ObjectBrowserContextMenuProps {
   // SQL dump export callbacks (Phase 9.5a)
   onExportDump?: (databaseName: string, tableName?: string) => void
   onExportDdl?: (databaseName: string, tableName?: string) => void
-  onCopyToHost?: (
-    databaseName: string,
-    objectSelection?: CopyObjectSelection
-  ) => void
+  onCopyToHost?: (databaseName: string, objectSelection?: CopyObjectSelection) => void
 }
 
 // ---------------------------------------------------------------------------

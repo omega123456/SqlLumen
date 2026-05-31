@@ -226,6 +226,9 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   insert_table_row: () => [],
   delete_table_row: () => undefined,
   export_table_data: () => undefined,
+  fetch_blob_value: () => ({ base64: null, byteLength: 0, tooLarge: false }),
+  read_file_bytes: () => '',
+  write_file_bytes: () => undefined,
 
   // --- Table designer ---
   load_table_for_designer: () => ({

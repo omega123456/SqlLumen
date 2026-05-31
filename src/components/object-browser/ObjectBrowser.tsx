@@ -112,8 +112,9 @@ export function ObjectBrowser({
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(CLOSED_MENU)
   const [dumpDialog, setDumpDialog] = useState<SqlDumpDialogState>(CLOSED_DUMP_DIALOG)
-  const [copyToHostDialog, setCopyToHostDialog] =
-    useState<CopyToHostDialogState>(CLOSED_COPY_TO_HOST_DIALOG)
+  const [copyToHostDialog, setCopyToHostDialog] = useState<CopyToHostDialogState>(
+    CLOSED_COPY_TO_HOST_DIALOG
+  )
 
   const isReadOnly = activeConnection?.profile?.readOnly ?? false
 
@@ -339,10 +340,7 @@ export function ObjectBrowser({
   }, [])
 
   const handleCopyToHost = useCallback(
-    (
-      databaseName: string,
-      objectSelection?: CopyObjectSelection
-    ) => {
+    (databaseName: string, objectSelection?: CopyObjectSelection) => {
       setCopyToHostDialog({
         open: true,
         database: databaseName,
