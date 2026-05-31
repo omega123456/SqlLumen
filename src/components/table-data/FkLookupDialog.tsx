@@ -20,6 +20,8 @@ import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
 import { evictTableData, fetchTableData } from '../../lib/table-data-commands'
 import { buildColumnDescriptors } from './table-data-grid-columns'
+import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import type { GridColumnDescriptor, AutoSizeConfig } from '../../types/shared-data-view'
 import type { TableDataColumnMeta, PrimaryKeyInfo, FilterCondition } from '../../types/schema'
 import { logFrontend } from '../../lib/app-log-commands'
 import styles from './FkLookupDialog.module.css'
@@ -250,6 +252,27 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
 
   const descriptorColumns = useMemo(() => buildColumnDescriptors(columns, true, false), [columns])
+
+  // Auto-size columns to fit header/data, mirroring TableDataGrid. Rows here are
+  // keyed by column name, so the single-column proxy extracts row[col.key].
+  const autoSizeConfig: AutoSizeConfig = useMemo(() => {
+    const colMetaByName = new Map<string, TableDataColumnMeta>()
+    for (const col of columns) colMetaByName.set(col.name, col)
+
+    return {
+      enabled: true,
+      computeWidth: (col: GridColumnDescriptor) => {
+        const meta = colMetaByName.get(col.key)
+        if (!meta) return 150
+        const columnRows: unknown[][] = new Array(rows.length)
+        for (let i = 0; i < rows.length; i++) {
+          columnRows[i] = [rows[i][col.key]]
+        }
+        const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0
+        return getAutoSizedColumnWidth(meta, 0, columnRows, col.key, headerIconWidthPx)
+      },
+    }
+  }, [columns, rows])
 
   // ---------------------------------------------------------------------------
   // Sort handler
@@ -517,6 +540,7 @@ export function FkLookupDialog({
                 onRowDoubleClicked={handleCellDoubleClick}
                 getRowClass={handleGetRowClass}
                 highlightColumnKey={referencedColumn}
+                autoSizeConfig={autoSizeConfig}
                 testId="fk-lookup-grid"
               />
             </div>
