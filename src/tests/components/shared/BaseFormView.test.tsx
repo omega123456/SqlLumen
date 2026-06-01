@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { GridColumnDescriptor, RowEditState } from '../../../types/shared-data-view'
 import { BaseFormView } from '../../../components/shared/BaseFormView'
 import type { BaseFormViewProps } from '../../../types/shared-data-view'
+import { bytesEnvelope } from '../../../lib/blob-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -424,6 +425,22 @@ describe('BaseFormView — lock icons', () => {
     renderForm({ onSave: vi.fn(), editState: null })
     expect(screen.queryByTestId('lock-icon-id')).not.toBeInTheDocument()
   })
+
+  it('does NOT show lock icon for binary columns editable through the blob viewer', () => {
+    const editState: RowEditState = {
+      rowKey: '1',
+      currentValues: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
+      originalValues: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
+    }
+    renderForm({
+      onSave: vi.fn(),
+      editState,
+      columns: mockColumns.map((column) =>
+        column.key === 'avatar' ? { ...column, editable: false, blobViewerEditable: true } : column
+      ),
+    })
+    expect(screen.queryByTestId('lock-icon-avatar')).not.toBeInTheDocument()
+  })
 })
 
 describe('BaseFormView — BLOB field', () => {
@@ -443,6 +460,18 @@ describe('BaseFormView — BLOB field', () => {
     renderForm({ currentRow: [1, 'Alice', null] })
     const avatarField = screen.getByTestId('form-input-avatar')
     expect(avatarField).toHaveTextContent('(BLOB data)')
+  })
+
+  it('BLOB field shows a staged placeholder for blob envelopes', () => {
+    renderForm({
+      editState: {
+        rowKey: '1',
+        currentValues: { avatar: bytesEnvelope('SGVsbG8=') },
+        originalValues: { avatar: '[BLOB - 128 bytes]' },
+      },
+      currentRowData: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
+    })
+    expect(screen.getByTestId('form-input-avatar')).toHaveTextContent('[BLOB - 5 bytes*]')
   })
 
   it('NULL toggle not shown for BLOB fields even if nullable', () => {

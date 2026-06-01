@@ -40,7 +40,7 @@ export function buildColumnDescriptors(
       editorType,
       // Binary columns keep `editorType: 'none'`/`editable: false`; the marker
       // lets the grid host open the shared BLOB viewer on double-click.
-      ...(col.isBinary && { blobViewer: true }),
+      ...(col.isBinary && { blobViewer: true, blobViewerEditable: !isReadOnly && hasPk }),
       ...(fk && { foreignKey: fk }),
     }
   })

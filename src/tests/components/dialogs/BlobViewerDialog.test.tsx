@@ -6,13 +6,9 @@ import { bytesToBase64 } from '../../../lib/blob-utils'
 import { ipc, expectToast } from '../../ipc-mock'
 import type { BlobValueResponse, BlobEnvelope } from '../../../types/schema'
 
-// Native file dialog seam (mirrors ExportDialog's dynamic import usage).
-const openMock = vi.fn()
-const saveMock = vi.fn()
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  open: (...args: unknown[]) => openMock(...args),
-  save: (...args: unknown[]) => saveMock(...args),
-}))
+// Native file dialog seam: the plugin-dialog open()/save() helpers invoke
+// 'plugin:dialog|open' / 'plugin:dialog|save' under the hood, so route them
+// through the shared IPC harness (mirrors ExportDialog/SqlDumpDialog tests).
 
 const PNG_BYTES = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
@@ -56,8 +52,6 @@ function bytesResponse(base64: string | null, byteLength: number): BlobValueResp
 }
 
 beforeEach(() => {
-  openMock.mockReset()
-  saveMock.mockReset()
   let counter = 0
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:mock-${counter++}`)
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
@@ -231,7 +225,7 @@ describe('BlobViewerDialog', () => {
   it('Load from file reads bytes and applies a bytes envelope', async () => {
     const user = userEvent.setup()
     const onApply = vi.fn()
-    openMock.mockResolvedValue('/tmp/pic.png')
+    ipc.override('plugin:dialog|open', () => '/tmp/pic.png')
     ipc.override('read_file_bytes', () => PNG_B64)
 
     render(<BlobViewerDialog {...baseProps} onApply={onApply} initialBase64="" />)
@@ -246,7 +240,11 @@ describe('BlobViewerDialog', () => {
 
   it('Save to file seeds the detected extension and writes bytes', async () => {
     const user = userEvent.setup()
-    saveMock.mockResolvedValue('/tmp/out.png')
+    const saveOptions: Array<{ defaultPath?: string }> = []
+    ipc.override('plugin:dialog|save', (args) => {
+      saveOptions.push((args as { options: { defaultPath?: string } }).options)
+      return '/tmp/out.png'
+    })
     const writeCalls: unknown[] = []
     ipc.override('write_file_bytes', (args) => {
       writeCalls.push(args)
@@ -256,8 +254,8 @@ describe('BlobViewerDialog', () => {
     render(<BlobViewerDialog {...baseProps} mode="view" initialBase64={PNG_B64} />)
     await user.click(await screen.findByTestId('blob-save-file'))
 
-    await waitFor(() => expect(saveMock).toHaveBeenCalled())
-    expect(saveMock.mock.calls[0][0]).toMatchObject({ defaultPath: 'photo.png' })
+    await waitFor(() => expect(saveOptions).toHaveLength(1))
+    expect(saveOptions[0]).toMatchObject({ defaultPath: 'photo.png' })
     await waitFor(() => expect(writeCalls).toHaveLength(1))
     expect(writeCalls[0]).toMatchObject({ path: '/tmp/out.png', base64: PNG_B64 })
   })
@@ -358,7 +356,11 @@ describe('BlobViewerDialog', () => {
 
   it('does nothing when the load-from-file picker is cancelled', async () => {
     const user = userEvent.setup()
-    openMock.mockResolvedValue(null)
+    let openCalled = false
+    ipc.override('plugin:dialog|open', () => {
+      openCalled = true
+      return null
+    })
     let readCalled = false
     ipc.override('read_file_bytes', () => {
       readCalled = true
@@ -368,14 +370,14 @@ describe('BlobViewerDialog', () => {
     render(<BlobViewerDialog {...baseProps} initialBase64="" />)
     await user.click(screen.getByTestId('blob-load-file'))
 
-    await waitFor(() => expect(openMock).toHaveBeenCalled())
+    await waitFor(() => expect(openCalled).toBe(true))
     expect(readCalled).toBe(false)
     expect(screen.getByTestId('blob-empty-state')).toBeInTheDocument()
   })
 
   it('rejects a loaded file that exceeds the 10 MB cap', async () => {
     const user = userEvent.setup()
-    openMock.mockResolvedValue('/tmp/big.bin')
+    ipc.override('plugin:dialog|open', () => '/tmp/big.bin')
     const overCap = bytesToBase64(new Uint8Array(10 * 1024 * 1024 + 1))
     ipc.override('read_file_bytes', () => overCap)
 
@@ -388,7 +390,7 @@ describe('BlobViewerDialog', () => {
 
   it('toasts when reading the loaded file fails', async () => {
     const user = userEvent.setup()
-    openMock.mockResolvedValue('/tmp/x')
+    ipc.override('plugin:dialog|open', () => '/tmp/x')
     ipc.override('read_file_bytes', () => {
       throw new Error('io fail')
     })
@@ -425,7 +427,11 @@ describe('BlobViewerDialog', () => {
 
   it('does nothing when the save-to-file picker is cancelled', async () => {
     const user = userEvent.setup()
-    saveMock.mockResolvedValue(null)
+    let saveCalled = false
+    ipc.override('plugin:dialog|save', () => {
+      saveCalled = true
+      return null
+    })
     let writeCalled = false
     ipc.override('write_file_bytes', () => {
       writeCalled = true
@@ -435,13 +441,13 @@ describe('BlobViewerDialog', () => {
     render(<BlobViewerDialog {...baseProps} mode="view" initialBase64={PNG_B64} />)
     await user.click(await screen.findByTestId('blob-save-file'))
 
-    await waitFor(() => expect(saveMock).toHaveBeenCalled())
+    await waitFor(() => expect(saveCalled).toBe(true))
     expect(writeCalled).toBe(false)
   })
 
   it('toasts when writing the saved file fails', async () => {
     const user = userEvent.setup()
-    saveMock.mockResolvedValue('/tmp/out')
+    ipc.override('plugin:dialog|save', () => '/tmp/out')
     ipc.override('write_file_bytes', () => {
       throw new Error('disk full')
     })

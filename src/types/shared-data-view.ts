@@ -58,6 +58,11 @@ export interface GridColumnDescriptor {
    * marker to launch `BlobViewerDialog` instead of an inline editor.
    */
   blobViewer?: boolean
+  /**
+   * True when a binary column is editable through the shared BLOB viewer even
+   * though inline text editing remains disabled.
+   */
+  blobViewerEditable?: boolean
   /** Preferred column width in pixels. */
   width?: number
 }

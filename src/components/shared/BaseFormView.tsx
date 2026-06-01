@@ -35,6 +35,7 @@ import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { JsonFormField } from './JsonFormField'
 import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
+import { blobPlaceholder, isBlobEnvelope } from '../../lib/blob-utils'
 import type {
   BaseFormViewProps,
   GridColumnDescriptor,
@@ -72,6 +73,21 @@ function getJsonFormDefaultValue(currentValue: unknown): string {
   }
 
   return '{}'
+}
+
+function getBlobFieldDisplayValue(value: unknown): string {
+  if (value == null) return '(BLOB data)'
+  if (typeof value === 'string') return value
+  if (isBlobEnvelope(value)) {
+    if (value.kind === 'null') return '(BLOB data)'
+    if (value.kind === 'empty') return blobPlaceholder(0, true)
+    if (typeof value.base64 === 'string') {
+      const padding = value.base64.endsWith('==') ? 2 : value.base64.endsWith('=') ? 1 : 0
+      const byteLength = Math.max(0, Math.floor((value.base64.length * 3) / 4) - padding)
+      return blobPlaceholder(byteLength, true)
+    }
+  }
+  return '(BLOB data)'
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +403,11 @@ function FormField({
   else if (col.isUniqueKey) labelSuffix = '(Unique Key)'
 
   // Lock icon: non-editable column in edit mode with active editState
-  const showLock = !col.editable && hasEditCapability && editState !== null
+  const showLock =
+    !col.editable &&
+    !col.blobViewerEditable &&
+    hasEditCapability &&
+    editState !== null
   const showFkTrigger = !!(col.foreignKey && currentRowData)
 
   return (
@@ -430,7 +450,7 @@ function FormField({
         {isBlobField ? (
           <div className={styles.fieldBlobRow}>
             <div className={styles.fieldBlobReadonly} data-testid={`form-input-${col.displayName}`}>
-              {rawValue != null ? String(rawValue) : '(BLOB data)'}
+              {getBlobFieldDisplayValue(rawValue)}
             </div>
             {onBlobView && (
               <Button

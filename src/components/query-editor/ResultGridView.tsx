@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
 import { isBinaryDataType } from '../../lib/blob-utils'
+import type { BlobEnvelope } from '../../types/schema'
 import {
   EditorCallbacksContext,
   type EditorCallbacksContextType,
@@ -180,8 +181,11 @@ export function ResultGridView({
   // ---------------------------------------------------------------------------
   const [blobDialogOpen, setBlobDialogOpen] = useState(false)
   const [blobContext, setBlobContext] = useState<{
+    rowIndex: number
+    columnIndex: number
     columnLabel: string
     base64: string | null
+    editable: boolean
   } | null>(null)
 
   const closeBlobDialog = useCallback(() => {
@@ -399,12 +403,15 @@ export function ResultGridView({
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
   // ---------------------------------------------------------------------------
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return resolvedColumns.map((column) => ({
+    return resolvedColumns.map((column, columnIndex) => ({
       key: column.key,
       displayName: column.displayName,
       dataType: column.dataType,
       editable: column.editable,
       isBinary: isBinaryDataType(column.dataType),
+      blobViewer: column.effectiveTableMeta.isBinary,
+      blobViewerEditable:
+        column.effectiveTableMeta.isBinary && editMode !== null && editColumnBindings.has(columnIndex),
       isNullable: column.tableColumnMeta?.isNullable ?? true,
       isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
       isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
@@ -422,7 +429,7 @@ export function ResultGridView({
               ? 'text'
               : 'none',
     }))
-  }, [resolvedColumns])
+  }, [editColumnBindings, editMode, resolvedColumns])
 
   const handleCellDoubleClick = useCallback(
     (row: Record<string, unknown>, columnKey: string) => {
@@ -433,12 +440,26 @@ export function ResultGridView({
 
       const cellValue = row[columnKey]
       setBlobContext({
+        rowIndex: typeof row.__rowIdx === 'number' ? row.__rowIdx : -1,
+        columnIndex,
         columnLabel: column.name,
         base64: typeof cellValue === 'string' ? cellValue : null,
+        editable: descriptor.blobViewerEditable === true,
       })
       setBlobDialogOpen(true)
     },
     [columns, gridColumns]
+  )
+
+  const handleBlobApply = useCallback(
+    (envelope: BlobEnvelope) => {
+      if (!blobContext?.editable) return
+      if (blobContext.rowIndex >= 0 && editingRowIndex !== blobContext.rowIndex) {
+        onStartEditing(blobContext.rowIndex)
+      }
+      onSyncCellValue(blobContext.columnIndex, envelope)
+    },
+    [blobContext, editingRowIndex, onStartEditing, onSyncCellValue]
   )
 
   const editableColumnKeys = useMemo(() => {
@@ -691,9 +712,14 @@ export function ResultGridView({
         for (let i = 0; i < gridRows.length; i++) {
           columnRows[i] = [gridRows[i][colKey(index)]]
         }
-        // Lock icon shown for non-editable columns in edit mode: 10px icon + 4px gap
+        // Read-only headers show a lock icon except for BLOB columns that
+        // remain editable through the shared viewer.
         const isEditable = editableColumnMap.get(index) ?? false
-        const headerIconWidthPx = !isEditable ? 14 : 0
+        const blobViewerEditable =
+          resolvedColumns[index]?.effectiveTableMeta.isBinary === true &&
+          editMode !== null &&
+          editColumnBindings.has(index)
+        const headerIconWidthPx = !isEditable && !blobViewerEditable ? 14 : 0
         return getAutoSizedColumnWidth(
           tableMeta,
           0, // column is at index 0 in our single-column proxy array
@@ -703,7 +729,7 @@ export function ResultGridView({
         )
       },
     }
-  }, [editableColumnMap, resolvedColumns])
+  }, [editColumnBindings, editMode, editableColumnMap, resolvedColumns])
 
   const handleCellClipboardEdit = useCallback(
     async (args: CellClipboardEditArgs) => {
@@ -814,9 +840,10 @@ export function ResultGridView({
         <BlobViewerDialog
           isOpen={blobDialogOpen}
           onClose={closeBlobDialog}
-          mode="view"
+          mode={blobContext.editable ? 'edit' : 'view'}
           columnLabel={blobContext.columnLabel}
           initialBase64={blobContext.base64}
+          onApply={blobContext.editable ? handleBlobApply : undefined}
         />
       )}
     </EditorCallbacksContext.Provider>

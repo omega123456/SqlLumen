@@ -49,6 +49,7 @@ import { useWorkspaceStore } from './workspace-store'
 import { logFrontend } from '../lib/app-log-commands'
 import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
 import { buildExecuteQueryPlan, executeQueryPlan } from '../lib/query-execution-plan'
+import { isBlobEnvelope } from '../lib/blob-utils'
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
@@ -566,6 +567,57 @@ function normalizeTinyIntDisplayValue(value: unknown): unknown {
   return value
 }
 
+function toDisplayedQueryCellValue(value: unknown): unknown {
+  if (!isBlobEnvelope(value)) {
+    return value
+  }
+
+  switch (value.kind) {
+    case 'null':
+      return null
+    case 'empty':
+      return ''
+    case 'bytes':
+      return value.base64 ?? ''
+  }
+}
+
+function seedBlobViewerEditValues(
+  row: unknown[],
+  tableInfo: QueryTableEditInfo,
+  editState: RowEditState,
+  columnBindings: Map<number, string>
+): RowEditState {
+  const binaryColumns = new Map(
+    tableInfo.columns.filter((column) => column.isBinary).map((column) => [column.name.toLowerCase(), column.name])
+  )
+
+  if (binaryColumns.size === 0) {
+    return editState
+  }
+
+  const originalValues = { ...editState.originalValues }
+  const currentValues = { ...editState.currentValues }
+  let changed = false
+
+  for (const [resultColumnIndex, columnName] of columnBindings) {
+    const binaryColumnName = binaryColumns.get(columnName.toLowerCase())
+    if (!binaryColumnName) continue
+
+    if (!(binaryColumnName in originalValues)) {
+      originalValues[binaryColumnName] = row[resultColumnIndex] ?? null
+      changed = true
+    }
+    if (!(binaryColumnName in currentValues)) {
+      currentValues[binaryColumnName] = row[resultColumnIndex] ?? null
+      changed = true
+    }
+  }
+
+  return changed ? { ...editState, originalValues, currentValues } : editState
+}
+
+
 function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
   if (columns.length === 0 || rows.length === 0) {
     return rows
@@ -863,6 +915,48 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     const tab = get().tabs[tabId]
     if (!tab || tab.results.length === 0) return 0
     return Math.min(tab.activeResultIndex, tab.results.length - 1)
+  }
+
+  const ensureResultEditState = (
+    tabId: string,
+    resultIndex: number,
+    result: SingleResultState,
+    rowIndex: number
+  ): SingleResultState | null => {
+    if (!result.editMode) return null
+
+    const tableInfo = result.editTableMetadata[result.editMode]
+    const row = result.rows[rowIndex]
+    if (!tableInfo || !row) return null
+
+    if (result.editState && result.editingRowIndex === rowIndex) {
+      return result
+    }
+
+    const pkColumns = tableInfo.primaryKey?.keyColumns ?? []
+    const baseEditState = buildRowEditState(
+      row,
+      result.columns,
+      result.editableColumnMap,
+      pkColumns,
+      result.editColumnBindings,
+      result.editBoundColumnIndexMap
+    )
+    const editState = seedBlobViewerEditValues(
+      row,
+      tableInfo,
+      baseEditState,
+      result.editColumnBindings
+    )
+
+    patchResultByIndex(tabId, resultIndex, {
+      editState,
+      editingRowIndex: rowIndex,
+      saveError: null,
+    })
+
+    const patchedTab = get().tabs[tabId]
+    return patchedTab?.results[resultIndex] ?? null
   }
 
   /** Mark a tab as executing: set running status, record start time, clear stale flags. */
@@ -2545,9 +2639,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         result.editColumnBindings,
         result.editBoundColumnIndexMap
       )
+      const seededEditState = seedBlobViewerEditValues(
+        row,
+        tableInfo,
+        editState,
+        result.editColumnBindings
+      )
 
       patchResultByIndex(tabId, resultIndex, {
-        editState,
+        editState: seededEditState,
         editingRowIndex: rowIndex,
         saveError: null,
       })
@@ -2628,16 +2728,22 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const resultIndex = getActiveIndex(tabId)
       const tab = get().tabs[tabId]
       const result = tab?.results[resultIndex]
-      if (!result?.editState) return
+      if (!result) return
+
+      const editingRowIndex = result.editingRowIndex ?? result.selectedRowIndex
+      if (editingRowIndex === null) return
+
+      const activeResult = ensureResultEditState(tabId, resultIndex, result, editingRowIndex)
+      if (!activeResult?.editState) return
 
       const resolvedColumnName =
-        result.editColumnBindings.get(resultColumnIndex) ?? result.columns[resultColumnIndex]?.name
+        activeResult.editColumnBindings.get(resultColumnIndex) ??
+        activeResult.columns[resultColumnIndex]?.name
       if (!resolvedColumnName) return
 
-      const newModified = new Set(result.editState.modifiedColumns)
+      const newModified = new Set(activeResult.editState.modifiedColumns)
       if (
-        JSON.stringify(result.editState.originalValues[resolvedColumnName]) ===
-        JSON.stringify(value)
+        JSON.stringify(activeResult.editState.originalValues[resolvedColumnName]) === JSON.stringify(value)
       ) {
         newModified.delete(resolvedColumnName)
       } else {
@@ -2646,8 +2752,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       patchResultByIndex(tabId, resultIndex, {
         editState: {
-          ...result.editState,
-          currentValues: { ...result.editState.currentValues, [resolvedColumnName]: value },
+          ...activeResult.editState,
+          currentValues: { ...activeResult.editState.currentValues, [resolvedColumnName]: value },
           modifiedColumns: newModified,
         },
         saveError: null,
@@ -2658,16 +2764,23 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const resultIndex = getActiveIndex(tabId)
       const tab = get().tabs[tabId]
       const result = tab?.results[resultIndex]
-      if (!result?.editState || result.editingRowIndex === null) return
+      if (!result) return
+
+      const editingRowIndex = result.editingRowIndex ?? result.selectedRowIndex
+      if (editingRowIndex === null) return
+
+      const activeResult = ensureResultEditState(tabId, resultIndex, result, editingRowIndex)
+      if (!activeResult?.editState || activeResult.editingRowIndex === null) return
 
       const resolvedColumnName =
-        result.editColumnBindings.get(resultColumnIndex) ?? result.columns[resultColumnIndex]?.name
+        activeResult.editColumnBindings.get(resultColumnIndex) ??
+        activeResult.columns[resultColumnIndex]?.name
       if (!resolvedColumnName) return
 
       // Update editState
-      const newModified = new Set(result.editState.modifiedColumns)
+      const newModified = new Set(activeResult.editState.modifiedColumns)
       if (
-        JSON.stringify(result.editState.originalValues[resolvedColumnName]) ===
+        JSON.stringify(activeResult.editState.originalValues[resolvedColumnName]) ===
         JSON.stringify(value)
       ) {
         newModified.delete(resolvedColumnName)
@@ -2677,19 +2790,19 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Also update the local row in the rows array for grid re-render
       const colIdx = resultColumnIndex
-      let nextRows = result.rows
-      if (colIdx !== -1 && result.editingRowIndex < result.rows.length) {
-        nextRows = [...result.rows]
-        const nextRow = [...nextRows[result.editingRowIndex]]
+      let nextRows = activeResult.rows
+      if (colIdx !== -1 && activeResult.editingRowIndex < activeResult.rows.length) {
+        nextRows = [...activeResult.rows]
+        const nextRow = [...nextRows[activeResult.editingRowIndex]]
         nextRow[colIdx] = value
-        nextRows[result.editingRowIndex] = nextRow
+        nextRows[activeResult.editingRowIndex] = nextRow
       }
 
       patchResultByIndex(tabId, resultIndex, {
         rows: nextRows,
         editState: {
-          ...result.editState,
-          currentValues: { ...result.editState.currentValues, [resolvedColumnName]: value },
+          ...activeResult.editState,
+          currentValues: { ...activeResult.editState.currentValues, [resolvedColumnName]: value },
           modifiedColumns: newModified,
         },
         saveError: null,
@@ -2833,7 +2946,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         for (const colName of result.editState.modifiedColumns) {
           const colIdx = result.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
           if (colIdx !== -1) {
-            updatedRow[colIdx] = result.editState.currentValues[colName]
+            updatedRow[colIdx] = toDisplayedQueryCellValue(result.editState.currentValues[colName])
           }
         }
         newRows[result.editingRowIndex] = updatedRow

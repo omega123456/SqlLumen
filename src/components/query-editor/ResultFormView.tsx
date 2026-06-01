@@ -9,16 +9,19 @@
  * same props as before; all adaptation lives inside this wrapper.
  */
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { BaseFormView } from '../shared/BaseFormView'
+import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
+import { isBinaryDataType } from '../../lib/blob-utils'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../types/shared-data-view'
 import type {
   ColumnMeta,
+  BlobEnvelope,
   ForeignKeyColumnInfo,
   TableDataColumnMeta,
   RowEditState,
@@ -120,6 +123,13 @@ export function ResultFormView({
 
   const isInEditMode = editMode !== null
   const isEditingCurrentRow = editState !== null && editingRowIndex === clampedIndex
+  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
+  const [blobContext, setBlobContext] = useState<{
+    columnIndex: number
+    columnLabel: string
+    base64: string | null
+    editable: boolean
+  } | null>(null)
 
   void tabId
 
@@ -139,13 +149,16 @@ export function ResultFormView({
   // --- Transform columns → GridColumnDescriptor[] ---
 
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return resolvedColumns.map((col) => {
+    return resolvedColumns.map((col, colIdx) => {
+      const isBinary = col.tableColumnMeta?.isBinary ?? isBinaryDataType(col.dataType)
       return {
         key: col.key,
         displayName: col.displayName,
         dataType: col.tableColumnMeta?.dataType ?? col.dataType,
         editable: col.editable,
-        isBinary: col.tableColumnMeta?.isBinary ?? false,
+        isBinary,
+        blobViewer: isBinary,
+        blobViewerEditable: isBinary && editMode !== null && editColumnBindings.has(colIdx),
         isNullable: col.tableColumnMeta?.isNullable ?? false,
         isPrimaryKey: col.tableColumnMeta?.isPrimaryKey ?? false,
         isUniqueKey: col.tableColumnMeta?.isUniqueKey ?? false,
@@ -154,7 +167,7 @@ export function ResultFormView({
         foreignKey: col.foreignKey,
       }
     })
-  }, [resolvedColumns])
+  }, [editColumnBindings, editMode, resolvedColumns])
 
   // --- Transform edit state: remap real column name keys → col_N keys ---
 
@@ -212,6 +225,37 @@ export function ResultFormView({
     onDiscardRow?.()
   }, [onDiscardRow])
 
+  const handleBlobView = useCallback(
+    (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
+      const columnIndex = colIndexFromKey(column.key)
+      const cellValue = rowData?.[column.key]
+      setBlobContext({
+        columnIndex,
+        columnLabel: column.displayName,
+        base64: typeof cellValue === 'string' ? cellValue : null,
+        editable: column.blobViewerEditable === true,
+      })
+      setBlobDialogOpen(true)
+    },
+    []
+  )
+
+  const closeBlobDialog = useCallback(() => {
+    setBlobDialogOpen(false)
+    setBlobContext(null)
+  }, [])
+
+  const handleBlobApply = useCallback(
+    (envelope: BlobEnvelope) => {
+      if (!blobContext?.editable) return
+      if (editingRowIndex !== clampedIndex) {
+        onStartEdit?.(clampedIndex)
+      }
+      onUpdateCell?.(blobContext.columnIndex, envelope)
+    },
+    [blobContext, clampedIndex, editingRowIndex, onStartEdit, onUpdateCell]
+  )
+
   // --- Navigation with auto-save-before-navigate ---
 
   const navigateWithAutoSave = useCallback(
@@ -236,23 +280,36 @@ export function ResultFormView({
   // --- Render ---
 
   return (
-    <BaseFormView
-      columns={gridColumns}
-      currentRow={currentRow}
-      currentRowData={currentRowData}
-      totalRows={totalRows}
-      currentAbsoluteIndex={currentIndex}
-      isFirstRecord={currentIndex <= 0}
-      isLastRecord={currentIndex >= totalRows - 1}
-      onNavigatePrev={handleNavigatePrev}
-      onNavigateNext={handleNavigateNext}
-      editState={sharedEditState}
-      onEnsureEditing={isInEditMode ? handleEnsureEditing : undefined}
-      onUpdateCell={isInEditMode ? handleUpdateCell : undefined}
-      onSave={isInEditMode ? handleSave : undefined}
-      onDiscard={isInEditMode ? handleDiscard : undefined}
-      readOnly={!isInEditMode}
-      testId="result-form-view"
-    />
+    <>
+      <BaseFormView
+        columns={gridColumns}
+        currentRow={currentRow}
+        currentRowData={currentRowData}
+        totalRows={totalRows}
+        currentAbsoluteIndex={currentIndex}
+        isFirstRecord={currentIndex <= 0}
+        isLastRecord={currentIndex >= totalRows - 1}
+        onNavigatePrev={handleNavigatePrev}
+        onNavigateNext={handleNavigateNext}
+        editState={sharedEditState}
+        onEnsureEditing={isInEditMode ? handleEnsureEditing : undefined}
+        onUpdateCell={isInEditMode ? handleUpdateCell : undefined}
+        onSave={isInEditMode ? handleSave : undefined}
+        onDiscard={isInEditMode ? handleDiscard : undefined}
+        readOnly={!isInEditMode}
+        testId="result-form-view"
+        onBlobView={handleBlobView}
+      />
+      {blobDialogOpen && blobContext && (
+        <BlobViewerDialog
+          isOpen={blobDialogOpen}
+          onClose={closeBlobDialog}
+          mode={blobContext.editable ? 'edit' : 'view'}
+          columnLabel={blobContext.columnLabel}
+          initialBase64={blobContext.base64}
+          onApply={blobContext.editable ? handleBlobApply : undefined}
+        />
+      )}
+    </>
   )
 }

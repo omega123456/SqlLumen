@@ -302,6 +302,94 @@ describe('ResultFormView — Edit Mode', () => {
     expect(screen.queryByTestId('lock-icon-email')).not.toBeInTheDocument()
   })
 
+  it('uses the blob viewer as the edit affordance for bound binary columns', async () => {
+    const user = userEvent.setup()
+    const blobColumns: ColumnMeta[] = [
+      { name: 'id', dataType: 'INT' },
+      { name: 'photo', dataType: 'BLOB' },
+    ]
+    const blobRows: unknown[][] = [[1, 'SGVsbG8=']]
+    const blobEditColumns: TableDataColumnMeta[] = [
+      {
+        name: 'id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        enumValues: undefined,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'photo',
+        dataType: 'BLOB',
+        isBooleanAlias: false,
+        enumValues: undefined,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: true,
+        isAutoIncrement: false,
+      },
+    ]
+
+    render(
+      <ResultFormView
+        {...defaultProps}
+        columns={blobColumns}
+        rows={blobRows}
+        totalRows={1}
+        {...buildEditProps({
+          editableColumnMap: new Map([
+            [0, false],
+            [1, false],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'photo'],
+          ]),
+          editTableColumns: blobEditColumns,
+        })}
+      />
+    )
+
+    expect(screen.queryByTestId('lock-icon-photo')).not.toBeInTheDocument()
+    expect(screen.getByTestId('btn-blob-view-photo')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('btn-blob-view-photo'))
+    expect(await screen.findByTestId('blob-viewer-dialog')).toBeInTheDocument()
+  })
+
+  it('keeps the blob viewer reachable for read-only query-result blobs based on result column data type', async () => {
+    const user = userEvent.setup()
+    const blobColumns: ColumnMeta[] = [
+      { name: 'id', dataType: 'INT' },
+      { name: 'photo', dataType: 'BLOB' },
+    ]
+    const blobRows: unknown[][] = [[1, 'SGVsbG8=']]
+
+    render(
+      <ResultFormView
+        {...defaultProps}
+        columns={blobColumns}
+        rows={blobRows}
+        totalRows={1}
+        selectedRowIndex={0}
+        editMode={null}
+      />
+    )
+
+    expect(screen.getByTestId('btn-blob-view-photo')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('btn-blob-view-photo'))
+    expect(await screen.findByTestId('blob-viewer-dialog')).toBeInTheDocument()
+  })
+
   it('renders non-editable columns as read-only divs and editable as inputs', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
     // id (non-editable) should be a read-only div

@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { overrideNamedIpcCommands } from '../ipc-mock'
 import { useQueryStore, isEditableSelectSql, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
-import type { QueryTableEditInfo, TableDataColumnMeta, PrimaryKeyInfo } from '../../types/schema'
+import type {
+  BlobEnvelope,
+  PrimaryKeyInfo,
+  QueryTableEditInfo,
+  TableDataColumnMeta,
+} from '../../types/schema'
 import { flat } from '../helpers/query-test-utils'
 
 const overrideNamedCommands = overrideNamedIpcCommands
@@ -80,6 +85,12 @@ const mockTableColumns: TableDataColumnMeta[] = [
     isAutoIncrement: false,
   },
 ]
+
+const mockBlobEnvelope: BlobEnvelope = {
+  __sqllumen_blob__: true,
+  kind: 'bytes',
+  base64: 'U1FMLUx1bWVu',
+}
 
 const mockPrimaryKey: PrimaryKeyInfo = {
   keyColumns: ['id'],
@@ -1488,6 +1499,96 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(tab.rows[0][3]).toBe(101)
   })
 
+  it('starts edit state lazily for bound blob columns and normalizes displayed row values after save', async () => {
+    const updateTableRowSpy = vi.fn()
+    const updateResultCellSpy = vi.fn()
+
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd, args) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-blob-save',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'photo', dataType: 'BLOB' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          rows: [[1, 'SGVsbG8=']],
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') {
+        return [
+          {
+            database: 'testdb',
+            table: 'users',
+            columns: [
+              mockTableColumns[0],
+              {
+                name: 'photo',
+                dataType: 'BLOB',
+                isBooleanAlias: false,
+                isNullable: true,
+                isPrimaryKey: false,
+                isUniqueKey: false,
+                hasDefault: false,
+                columnDefault: null,
+                isBinary: true,
+                isAutoIncrement: false,
+              },
+            ],
+            primaryKey: mockPrimaryKey,
+            foreignKeys: [],
+          },
+        ]
+      }
+      if (cmd === 'update_table_row') {
+        updateTableRowSpy(args)
+        return null
+      }
+      if (cmd === 'update_result_cell') {
+        updateResultCellSpy(args)
+        return null
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+
+    useQueryStore.getState().syncCellValue('tab-1', 1, mockBlobEnvelope)
+
+    const staged = flat('tab-1')
+    expect(staged.editingRowIndex).toBe(0)
+    expect(staged.editState?.originalValues.photo).toBe('SGVsbG8=')
+    expect(staged.editState?.currentValues.photo).toEqual(mockBlobEnvelope)
+    expect(staged.rows[0][1]).toEqual(mockBlobEnvelope)
+
+    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(updateTableRowSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalPkValues: { id: 1 },
+        updatedValues: { photo: mockBlobEnvelope },
+      })
+    )
+    expect(updateResultCellSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowIndex: 0,
+        updates: { 1: mockBlobEnvelope },
+      })
+    )
+
+    const saved = flat('tab-1')
+    expect(saved.editState).toBeNull()
+    expect(saved.editingRowIndex).toBeNull()
+    expect(saved.rows[0][1]).toBe('U1FMLUx1bWVu')
+  })
+
   it('inserts a cloned draft through the typed IPC boundary and re-executes the active result', async () => {
     const insertTableRowSpy = vi.fn()
     let executeQueryCount = 0
@@ -1940,6 +2041,66 @@ describe('useQueryStore — discardCurrentRow', () => {
     const tab = flat('tab-1')
     expect(tab.rows[0][0]).toBe(1)
     expect(tab.rows[0][3]).toBe(101)
+  })
+
+  it('restores original blob display values on discard after a lazy blob edit', async () => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-blob-discard',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'photo', dataType: 'BLOB' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          rows: [[1, 'SGVsbG8=']],
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') {
+        return [
+          {
+            database: 'testdb',
+            table: 'users',
+            columns: [
+              mockTableColumns[0],
+              {
+                name: 'photo',
+                dataType: 'BLOB',
+                isBooleanAlias: false,
+                isNullable: true,
+                isPrimaryKey: false,
+                isUniqueKey: false,
+                hasDefault: false,
+                columnDefault: null,
+                isBinary: true,
+                isAutoIncrement: false,
+              },
+            ],
+            primaryKey: mockPrimaryKey,
+            foreignKeys: [],
+          },
+        ]
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+
+    useQueryStore.getState().syncCellValue('tab-1', 1, mockBlobEnvelope)
+    expect(flat('tab-1').rows[0][1]).toEqual(mockBlobEnvelope)
+
+    useQueryStore.getState().discardCurrentRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.editState).toBeNull()
+    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.rows[0][1]).toBe('SGVsbG8=')
   })
 
   it('does nothing when no editState', async () => {

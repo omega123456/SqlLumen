@@ -311,7 +311,7 @@ describe('ResultGridView', () => {
     expect(props.getRowClass(props.rows[1])).toBe('grid-row-precision-selected')
   })
 
-  describe('BLOB cells (view-only)', () => {
+  describe('BLOB cells', () => {
     const blobColumns: ColumnMeta[] = [
       { name: 'id', dataType: 'INT' },
       { name: 'photo', dataType: 'BLOB' },
@@ -332,7 +332,7 @@ describe('ResultGridView', () => {
       expect(props.columns[1].isBinary).toBe(true)
     })
 
-    it('opens the dialog in view mode seeded with the inlined base64 on double-click', () => {
+    it('opens the dialog in view mode for read-only query results', () => {
       render(<ResultGridView {...blobProps} />)
       const props = getGridProps()
       act(() => {
@@ -347,6 +347,78 @@ describe('ResultGridView', () => {
       // View-only: no edit/staging affordances are wired in.
       expect(capturedBlobDialogProps?.onApply).toBeUndefined()
       expect(capturedBlobDialogProps?.loader).toBeUndefined()
+    })
+
+    it('opens the dialog in edit mode for editable bound blob columns', () => {
+      const onStartEditing = vi.fn()
+      const onSyncCellValue = vi.fn()
+      render(
+        <ResultGridView
+          {...blobProps}
+          onStartEditing={onStartEditing}
+          onSyncCellValue={onSyncCellValue}
+          editMode="users"
+          editableColumnMap={new Map([
+            [0, false],
+            [1, false],
+          ])}
+          editTableColumns={[
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'photo',
+              dataType: 'BLOB',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: true,
+              isAutoIncrement: false,
+            },
+          ]}
+          editColumnBindings={new Map([
+            [0, 'id'],
+            [1, 'photo'],
+          ])}
+        />
+      )
+      const props = getGridProps()
+      act(() => {
+        props.onCellDoubleClick?.({ col_0: 1, col_1: 'SGVsbG8=', __rowIdx: 0 }, 'col_1')
+      })
+      expect(capturedBlobDialogProps).toMatchObject({
+        mode: 'edit',
+        columnLabel: 'photo',
+        initialBase64: 'SGVsbG8=',
+      })
+      expect(typeof capturedBlobDialogProps?.onApply).toBe('function')
+
+      act(() => {
+        ;(capturedBlobDialogProps?.onApply as ((value: unknown) => void) | undefined)?.({
+          __sqllumen_blob__: true,
+          kind: 'bytes',
+          base64: 'VXBkYXRlZA==',
+        })
+      })
+
+      expect(onStartEditing).toHaveBeenCalledWith(0)
+      expect(onSyncCellValue).toHaveBeenCalledWith(1, {
+        __sqllumen_blob__: true,
+        kind: 'bytes',
+        base64: 'VXBkYXRlZA==',
+      })
     })
 
     it('seeds a NULL value when the binary cell is null', () => {
