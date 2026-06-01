@@ -129,6 +129,10 @@ pub struct MockQueryStep {
     pub columns: Vec<MockColumnDef>,
     pub rows: Vec<Vec<MockCell>>,
     pub error: Option<(ErrorKind, &'static [u8])>,
+    /// When `Some(n)`, this step completes with an OK packet reporting `n`
+    /// affected rows instead of emitting a result set. Used to drive write
+    /// impls (UPDATE/DELETE) that require `rows_affected() == 1`.
+    pub affected_rows: Option<u64>,
 }
 
 impl From<MockQueryResponse> for MockQueryStep {
@@ -138,6 +142,22 @@ impl From<MockQueryResponse> for MockQueryStep {
             columns: response.columns,
             rows: vec![response.row],
             error: None,
+            affected_rows: None,
+        }
+    }
+}
+
+impl MockQueryStep {
+    /// Build a step that completes with an OK packet reporting `affected_rows`.
+    /// Reached by both `on_query` and the prepared-statement `on_execute` path
+    /// via the shared `write_step`.
+    pub fn ok_affected(query: &'static str, affected_rows: u64) -> Self {
+        Self {
+            query,
+            columns: Vec::new(),
+            rows: Vec::new(),
+            error: None,
+            affected_rows: Some(affected_rows),
         }
     }
 }
@@ -222,6 +242,15 @@ impl MockMySqlBackend {
     ) -> io::Result<()> {
         if let Some((kind, message)) = step.error {
             return results.error(kind, message).await;
+        }
+
+        if let Some(affected_rows) = step.affected_rows {
+            return results
+                .completed(OkResponse {
+                    affected_rows,
+                    ..Default::default()
+                })
+                .await;
         }
 
         let columns = Self::step_columns(step);

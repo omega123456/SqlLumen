@@ -327,12 +327,14 @@ mod type_aware_filter_integration {
                     ],
                 ],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT `id`, `email_verified_at` FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL LIMIT 50 OFFSET 0",
@@ -350,6 +352,7 @@ mod type_aware_filter_integration {
                     ),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -448,12 +451,14 @@ mod type_aware_filter_integration {
                     ],
                 ],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT `id`, `created_at`, `updated_at` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
@@ -478,6 +483,7 @@ mod type_aware_filter_integration {
                     ),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -569,12 +575,14 @@ mod type_aware_filter_integration {
                     ],
                 ],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT `id`, `status` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
@@ -584,6 +592,7 @@ mod type_aware_filter_integration {
                 ],
                 rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"active")]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -670,12 +679,14 @@ mod type_aware_filter_integration {
                     ],
                 ],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT `id`, `flags` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
@@ -685,6 +696,7 @@ mod type_aware_filter_integration {
                 ],
                 rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"alpha,gamma")]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -771,12 +783,14 @@ mod type_aware_filter_integration {
                     ],
                 ],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: "SELECT `id`, `is_admin` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
@@ -786,6 +800,7 @@ mod type_aware_filter_integration {
                 ],
                 rows: vec![vec![MockCell::U32(1), MockCell::I8(1)]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;

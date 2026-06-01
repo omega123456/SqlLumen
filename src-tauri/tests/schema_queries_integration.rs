@@ -61,18 +61,21 @@ async fn schema_queries_cover_success_and_error_paths() {
             columns: vec![text_col("SCHEMA_NAME")],
             rows: vec![vec![MockCell::Bytes(b"analytics")], vec![MockCell::Bytes(b"app")]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
             columns: vec![text_col("TABLE_NAME")],
             rows: vec![vec![MockCell::Bytes(b"orders")], vec![MockCell::Bytes(b"users")]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME",
             columns: vec![text_col("EVENT_NAME")],
             rows: vec![vec![MockCell::Bytes(b"nightly_cleanup")]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
@@ -82,6 +85,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 vec![MockCell::Bytes(b"email"), MockCell::Bytes(b"varchar")],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
@@ -96,6 +100,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::Bytes(b"utf8mb4_general_ci"),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SHOW CHARACTER SET",
@@ -120,6 +125,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 ],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SHOW COLLATION",
@@ -144,6 +150,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 ],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA, CAST(ORDINAL_POSITION AS SIGNED) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
@@ -177,6 +184,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 ],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SHOW INDEX FROM `app`.`users`",
@@ -231,6 +239,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 ],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, rc.DELETE_RULE, rc.UPDATE_RULE FROM information_schema.KEY_COLUMN_USAGE kcu JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND kcu.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION",
@@ -253,6 +262,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::Bytes(b"RESTRICT"),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT ENGINE, TABLE_COLLATION, CAST(AUTO_INCREMENT AS SIGNED), CAST(CREATE_TIME AS CHAR), CAST(TABLE_ROWS AS SIGNED), CAST(DATA_LENGTH AS SIGNED), CAST(INDEX_LENGTH AS SIGNED) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
@@ -275,6 +285,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::I64(2048),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SHOW CREATE TABLE `app`.`users`",
@@ -284,6 +295,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::Bytes(b"CREATE TABLE `users` (`id` bigint unsigned NOT NULL)"),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SHOW CREATE PROCEDURE `app`.`sync_users`",
@@ -294,6 +306,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::Bytes(b"CREATE PROCEDURE `sync_users`() BEGIN SELECT 1; END"),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT object_type FROM ((SELECT 'view' AS object_type FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ? LIMIT 1) UNION ALL (SELECT 'procedure' FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE' LIMIT 1) UNION ALL (SELECT 'function' FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION' LIMIT 1) UNION ALL (SELECT 'trigger' FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? LIMIT 1) UNION ALL (SELECT 'event' FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? LIMIT 1) ) blockers",
@@ -303,6 +316,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 vec![MockCell::Bytes(b"procedure")],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT PARAMETER_NAME, DTD_IDENTIFIER, PARAMETER_MODE, CAST(ORDINAL_POSITION AS SIGNED) FROM INFORMATION_SCHEMA.PARAMETERS WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ? AND ROUTINE_TYPE = ? AND ORDINAL_POSITION > 0 ORDER BY ORDINAL_POSITION",
@@ -319,6 +333,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::I64(1),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT PARAMETER_NAME, DTD_IDENTIFIER, PARAMETER_MODE, CAST(ORDINAL_POSITION AS SIGNED) FROM INFORMATION_SCHEMA.PARAMETERS WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ? AND ROUTINE_TYPE = ? AND ORDINAL_POSITION >= 0 ORDER BY ORDINAL_POSITION",
@@ -338,12 +353,14 @@ async fn schema_queries_cover_success_and_error_paths() {
                 ],
             ],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?",
             columns: vec![int_col("COUNT(*)")],
             rows: vec![vec![MockCell::I64(1)]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, rc.DELETE_RULE, rc.UPDATE_RULE FROM information_schema.KEY_COLUMN_USAGE kcu JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA WHERE kcu.TABLE_SCHEMA = ? AND kcu.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION",
@@ -368,6 +385,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 MockCell::Bytes(b"RESTRICT"),
             ]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, INDEX_TYPE, COLUMN_NAME, CARDINALITY FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
@@ -398,6 +416,7 @@ async fn schema_queries_cover_success_and_error_paths() {
                 ],
             ],
             error: None,
+            affected_rows: None,
         },
     ];
 
@@ -514,6 +533,7 @@ async fn schema_queries_cover_error_paths() {
         columns: vec![text_col("SCHEMA_NAME")],
         rows: vec![],
         error: Some((ErrorKind::ER_WRONG_VALUE, b"boom")),
+        affected_rows: None,
     }])
     .await;
     let pool = pool_for(server.port);

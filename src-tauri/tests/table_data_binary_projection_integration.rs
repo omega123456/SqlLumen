@@ -5,6 +5,7 @@ mod common;
 #[cfg(not(coverage))]
 mod binary_projection_integration {
     use crate::common;
+    use common::blob_step_helpers::connect_mock_pool;
     use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use rusqlite::Connection;
@@ -21,7 +22,6 @@ mod binary_projection_integration {
     };
     use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
-    use sqlx::mysql::MySqlPoolOptions;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
@@ -257,6 +257,7 @@ mod binary_projection_integration {
             ],
             rows,
             error: None,
+            affected_rows: None,
         }
     }
 
@@ -270,6 +271,7 @@ mod binary_projection_integration {
             }],
             rows: vec![vec![MockCell::Bytes(pk_column)]],
             error: None,
+            affected_rows: None,
         }
     }
 
@@ -318,14 +320,6 @@ mod binary_projection_integration {
         response
     }
 
-    async fn connect_mock_pool(server: &MockMySqlServer) -> sqlx::MySqlPool {
-        MySqlPoolOptions::new()
-            .max_connections(1)
-            .connect(&format!("mysql://root@127.0.0.1:{}/app_db", server.port))
-            .await
-            .expect("should connect to mock mysql server")
-    }
-
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fetch_table_data_projects_non_pk_blob_columns_with_octet_length() {
         let response = fetch_table_data_response(vec![
@@ -366,6 +360,7 @@ mod binary_projection_integration {
                 ],
                 rows: vec![vec![MockCell::U32(7), MockCell::U64(4096)]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -422,6 +417,7 @@ mod binary_projection_integration {
                     MockCell::Bytes(b"binary key row"),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -475,6 +471,7 @@ mod binary_projection_integration {
                 ],
                 rows: vec![vec![MockCell::U32(8), MockCell::Null]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -522,6 +519,7 @@ mod binary_projection_integration {
                 ],
                 rows: vec![vec![MockCell::U32(9), MockCell::I64(14)]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -605,6 +603,7 @@ mod binary_projection_integration {
                     MockCell::Bytes(b"Engineer and writer"),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -738,6 +737,7 @@ mod binary_projection_integration {
                     MockCell::U64(64),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -802,6 +802,7 @@ mod binary_projection_integration {
                     MockCell::Bytes(b"inserted binary pk"),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;
@@ -905,6 +906,7 @@ mod binary_projection_integration {
                     MockCell::Bytes(b"payload row"),
                 ]],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;

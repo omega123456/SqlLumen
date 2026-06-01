@@ -1494,6 +1494,7 @@ mod command_wrapper_integration {
                 }],
                 rows: vec![vec![MockCell::Bytes(b"8.0.36-mock")]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: sqllumen_lib::mysql::table_designer::load_columns_query(),
@@ -1564,6 +1565,7 @@ mod command_wrapper_integration {
                     ],
                 ],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: sqllumen_lib::mysql::table_designer::load_table_metadata_query(),
@@ -1602,6 +1604,7 @@ mod command_wrapper_integration {
                     MockCell::Bytes(b"users table"),
                 ]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: sqllumen_lib::mysql::table_designer::load_indexes_query(),
@@ -1640,6 +1643,7 @@ mod command_wrapper_integration {
                     MockCell::I64(1),
                 ]],
                 error: None,
+                affected_rows: None,
             },
             MockQueryStep {
                 query: sqllumen_lib::mysql::table_designer::load_foreign_keys_query(),
@@ -1677,6 +1681,7 @@ mod command_wrapper_integration {
                 ],
                 rows: vec![],
                 error: None,
+                affected_rows: None,
             },
         ])
         .await;

@@ -28,7 +28,11 @@ import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
-import { blobPlaceholder, isBlobEnvelope } from '../lib/blob-utils'
+import {
+  blobPlaceholder,
+  convertBinaryPkValuesToEnvelopes,
+  isBlobEnvelope,
+} from '../lib/blob-utils'
 import type { BlobEnvelope } from '../types/schema'
 // ---------------------------------------------------------------------------
 // Helpers
@@ -357,15 +361,27 @@ function getInitialValueForNewRow(column: TableDataColumnMeta): unknown {
   return normalizeColumnDefaultValue(column.columnDefault)
 }
 
-/** Build the payload for an UPDATE operation. */
+export type BuildUpdatePayloadResult =
+  | {
+      ok: true
+      originalPkValues: Record<string, unknown>
+      updatedValues: Record<string, unknown>
+    }
+  | { ok: false; error: string }
+
+/**
+ * Build the payload for an UPDATE operation.
+ *
+ * Binary primary-key values in `originalPkValues` are converted from their hex
+ * display string to a blob envelope so the backend binds real bytes in the
+ * WHERE clause. As a pure helper this cannot toast: malformed hex is surfaced
+ * as an error result for `saveCurrentRow` to handle.
+ */
 function buildUpdatePayload(
   editState: RowEditState,
   pkColumns: string[],
   columns: TableDataColumnMeta[]
-): {
-  originalPkValues: Record<string, unknown>
-  updatedValues: Record<string, unknown>
-} {
+): BuildUpdatePayloadResult {
   const columnsByName = new Map(columns.map((c) => [c.name, c]))
 
   const updatedValues: Record<string, unknown> = {}
@@ -380,7 +396,12 @@ function buildUpdatePayload(
     originalPkValues[pkCol] = editState.originalValues[pkCol]
   }
 
-  return { originalPkValues, updatedValues }
+  const converted = convertBinaryPkValuesToEnvelopes(pkColumns, columns, originalPkValues)
+  if (!converted.ok) {
+    return { ok: false, error: converted.error }
+  }
+
+  return { ok: true, originalPkValues: converted.values, updatedValues }
 }
 
 /**
@@ -1188,11 +1209,13 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         try {
           if (!primaryKey) throw new Error('No primary key info available')
 
-          const { originalPkValues, updatedValues } = buildUpdatePayload(
-            editState,
-            primaryKey.keyColumns,
-            columns
-          )
+          const payload = buildUpdatePayload(editState, primaryKey.keyColumns, columns)
+          if (!payload.ok) {
+            showErrorToast('Could not save row', payload.error)
+            patchTab(tabId, { saveError: payload.error })
+            return false
+          }
+          const { originalPkValues, updatedValues } = payload
 
           await updateTableRowCmd({
             connectionId: tab.connectionId,
@@ -1343,13 +1366,26 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       // Existing row — call IPC
       if (!tab.primaryKey) return
 
+      // Send a transformed copy so binary PK values bind as bytes; keep the
+      // original hex `rowKey` for the post-delete findRowIndexByKey lookup (C5).
+      const converted = convertBinaryPkValuesToEnvelopes(
+        tab.primaryKey.keyColumns,
+        tab.columns,
+        rowKey
+      )
+      if (!converted.ok) {
+        showErrorToast('Could not delete row', converted.error)
+        patchTab(tabId, { error: converted.error })
+        return
+      }
+
       try {
         await deleteTableRowCmd({
           connectionId: tab.connectionId,
           database: tab.database,
           table: tab.table,
           pkColumns: tab.primaryKey.keyColumns,
-          pkValues: rowKey,
+          pkValues: converted.values,
         })
 
         if (!get().tabs[tabId]) return
@@ -1410,13 +1446,26 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         const tab = get().tabs[tabId]
         if (!tab || !tab.primaryKey) break
 
+        // Send a transformed copy; keep the original hex `rowKey` for the
+        // post-delete findRowIndexByKey lookup (C5).
+        const converted = convertBinaryPkValuesToEnvelopes(
+          tab.primaryKey.keyColumns,
+          tab.columns,
+          rowKey
+        )
+        if (!converted.ok) {
+          showErrorToast('Could not delete row', converted.error)
+          patchTab(tabId, { error: converted.error })
+          break
+        }
+
         try {
           await deleteTableRowCmd({
             connectionId: tab.connectionId,
             database: tab.database,
             table: tab.table,
             pkColumns: tab.primaryKey.keyColumns,
-            pkValues: rowKey,
+            pkValues: converted.values,
           })
 
           const latest = get().tabs[tabId]

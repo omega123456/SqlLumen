@@ -7,7 +7,7 @@
  * with the Rust value-binder (`__sqllumen_blob__` marker).
  */
 
-import type { BlobEnvelope } from '../types/schema'
+import type { BlobEnvelope, TableDataColumnMeta } from '../types/schema'
 
 // ---------------------------------------------------------------------------
 // Binary data-type detection (mirrors backend `is_binary_data_type`)
@@ -105,6 +105,36 @@ export function parsePastedBytes(text: string): ParsePastedBytesResult {
   }
 
   return { ok: false, error: 'Input is neither valid base64 nor hex.' }
+}
+
+// ---------------------------------------------------------------------------
+// Hex-prefixed parsing (binary PK display values: `0x` + hex, any case)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a hex string with an optional `0x`/`0X` prefix (case-insensitive) into
+ * bytes. Binary primary-key cells arrive from the backend as `"0x" + HEX`, so
+ * this is the lossless inverse used to reconstruct the WHERE-clause bytes.
+ *
+ * Returns a clear error result (never throws) for odd-length or non-hex input,
+ * so callers can abort rather than bind a corrupted/NULL value.
+ */
+export function parseHexPrefixedBytes(hex: string): ParsePastedBytesResult {
+  const body = /^0x/i.test(hex) ? hex.slice(2) : hex
+  if (body.length === 0) {
+    return { ok: true, bytes: new Uint8Array(0) }
+  }
+  if (!/^[0-9a-fA-F]+$/.test(body)) {
+    return { ok: false, error: 'Hex input contains non-hex characters.' }
+  }
+  if (body.length % 2 !== 0) {
+    return { ok: false, error: 'Hex input has an odd number of digits.' }
+  }
+  const bytes = new Uint8Array(body.length / 2)
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(body.substring(i * 2, i * 2 + 2), 16)
+  }
+  return { ok: true, bytes }
 }
 
 // ---------------------------------------------------------------------------
@@ -551,4 +581,86 @@ export function base64ByteLength(base64: string): number {
  */
 export function blobPlaceholder(byteLength: number, modified = false): string {
   return `[BLOB - ${formatBytes(byteLength)}${modified ? '*' : ''}]`
+}
+
+// ---------------------------------------------------------------------------
+// Binary primary-key → blob-envelope transform (gated on column metadata)
+// ---------------------------------------------------------------------------
+
+export type ConvertBinaryPkValuesResult =
+  | { ok: true; values: Record<string, unknown> }
+  | { ok: false; error: string }
+
+/**
+ * Return a fresh copy of `pkValues` in which each value belonging to a binary
+ * primary-key column and expressed as a hex string is replaced by a blob
+ * envelope (zero bytes → `empty`, otherwise `bytes`).
+ *
+ * Conversion is gated strictly on `TableDataColumnMeta.isBinary` (KD3), never on
+ * value shape, so a textual PK that merely looks like `"0x12"` is left alone.
+ * Values that are already envelopes, are `null`, or are non-strings pass through
+ * unchanged. Malformed hex for a binary PK yields an error result so the caller
+ * can abort rather than bind a corrupted/NULL value (C6); the input is never
+ * mutated.
+ */
+export function convertBinaryPkValuesToEnvelopes(
+  pkColumns: string[],
+  columns: TableDataColumnMeta[],
+  pkValues: Record<string, unknown>
+): ConvertBinaryPkValuesResult {
+  const binaryColumns = new Set(
+    columns.filter((column) => column.isBinary).map((column) => column.name)
+  )
+  const result: Record<string, unknown> = { ...pkValues }
+
+  for (const pkColumn of pkColumns) {
+    if (!binaryColumns.has(pkColumn)) continue
+    const value = pkValues[pkColumn]
+    // Already-enveloped (object), null, and non-string values pass through;
+    // only hex display strings on binary columns are converted.
+    if (typeof value !== 'string') continue
+
+    const parsed = parseHexPrefixedBytes(value)
+    if (!parsed.ok) {
+      return { ok: false, error: `Invalid binary primary key "${pkColumn}": ${parsed.error}` }
+    }
+    result[pkColumn] =
+      parsed.bytes.length === 0 ? emptyEnvelope() : bytesEnvelope(bytesToBase64(parsed.bytes))
+  }
+
+  return { ok: true, values: result }
+}
+
+export type BuildEnvelopedPkPairsResult =
+  | { ok: true; pairs: [string, unknown][] }
+  | { ok: false; error: string }
+
+/**
+ * Resolve the ordered PK column→value pairs for a BLOB lazy-fetch from a row's
+ * data, converting binary primary keys to blob envelopes along the way.
+ *
+ * Picks each `pkColumn` from `rowData`, runs the shared binary-PK envelope
+ * conversion (gated on column metadata), and returns the pairs in `pkColumns`
+ * order. Malformed binary-PK hex surfaces as an error result so the caller can
+ * abort rather than fetch against a corrupted key; inputs are never mutated.
+ */
+export function buildEnvelopedPkPairs(
+  pkColumns: string[],
+  columns: TableDataColumnMeta[],
+  rowData: Record<string, unknown>
+): BuildEnvelopedPkPairsResult {
+  const rawPkValues: Record<string, unknown> = {}
+  for (const pkColumn of pkColumns) {
+    rawPkValues[pkColumn] = rowData[pkColumn]
+  }
+
+  const converted = convertBinaryPkValuesToEnvelopes(pkColumns, columns, rawPkValues)
+  if (!converted.ok) {
+    return { ok: false, error: converted.error }
+  }
+
+  return {
+    ok: true,
+    pairs: pkColumns.map((pkColumn) => [pkColumn, converted.values[pkColumn]] as [string, unknown]),
+  }
 }

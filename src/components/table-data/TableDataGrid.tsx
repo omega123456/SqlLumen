@@ -20,6 +20,7 @@ import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context
 import { FkLookupDialog } from './FkLookupDialog'
 import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
 import { fetchBlobValue } from '../../lib/table-data-commands'
+import { buildEnvelopedPkPairs } from '../../lib/blob-utils'
 import type { BlobEnvelope } from '../../types/schema'
 import {
   useTableDataStore,
@@ -784,14 +785,16 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       // Resolve PK column→value pairs for the lazy fetch + edit gating.
       const canEdit = !isReadOnly && hasPk && pkColumns.length > 0
       if (!canEdit) return
-      const pkPairs: [string, unknown][] = pkColumns.map(
-        (pkCol) => [pkCol, row[pkCol]] as [string, unknown]
-      )
+      const converted = buildEnvelopedPkPairs(pkColumns, columns, row)
+      if (!converted.ok) {
+        showError('Could not open BLOB viewer', converted.error)
+        return
+      }
 
-      setBlobContext({ columnKey, rowData: row, pkPairs })
+      setBlobContext({ columnKey, rowData: row, pkPairs: converted.pairs })
       setBlobDialogOpen(true)
     },
-    [descriptorColumns, isReadOnly, hasPk, pkColumns]
+    [descriptorColumns, isReadOnly, hasPk, pkColumns, columns, showError]
   )
 
   const closeBlobDialog = useCallback(() => {

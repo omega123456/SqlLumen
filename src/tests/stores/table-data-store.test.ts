@@ -1957,7 +1957,8 @@ describe('BIT column value coercion in buildUpdatePayload', () => {
       ['id'],
       bitColumns
     )
-    expect(result.updatedValues.col_bit).toBe(128)
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.updatedValues.col_bit).toBe(128)
   })
 
   it('coerces string "0" to number 0 for BIT columns', () => {
@@ -1972,7 +1973,8 @@ describe('BIT column value coercion in buildUpdatePayload', () => {
       ['id'],
       bitColumns
     )
-    expect(result.updatedValues.col_bit).toBe(0)
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.updatedValues.col_bit).toBe(0)
   })
 
   it('passes null through unchanged for BIT columns', () => {
@@ -1987,7 +1989,8 @@ describe('BIT column value coercion in buildUpdatePayload', () => {
       ['id'],
       bitColumns
     )
-    expect(result.updatedValues.col_bit).toBeNull()
+    expect(result.ok).toBe(true)
+    expect(result.ok ? result.updatedValues.col_bit : 'not-ok').toBeNull()
   })
 
   it('passes already-numeric values unchanged for BIT columns', () => {
@@ -2002,7 +2005,8 @@ describe('BIT column value coercion in buildUpdatePayload', () => {
       ['id'],
       bitColumns
     )
-    expect(result.updatedValues.col_bit).toBe(128)
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.updatedValues.col_bit).toBe(128)
   })
 
   it('does not coerce string values for non-BIT columns', () => {
@@ -2017,7 +2021,8 @@ describe('BIT column value coercion in buildUpdatePayload', () => {
       ['id'],
       [bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }]
     )
-    expect(result.updatedValues.col_bit).toBe('128')
+    expect(result.ok).toBe(true)
+    expect(result.ok && result.updatedValues.col_bit).toBe('128')
   })
 })
 

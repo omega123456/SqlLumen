@@ -920,6 +920,7 @@ mod mock_success_paths {
                     ),
                 ]],
                 error: None,
+                affected_rows: None,
             }],
         )
         .await;

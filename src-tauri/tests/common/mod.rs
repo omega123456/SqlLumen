@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 // Each integration test binary only uses a subset of helpers; unused items are expected.
 
+pub mod blob_step_helpers;
 pub mod fake_credentials;
 pub mod log_capture;
 pub mod mock_mysql_server;

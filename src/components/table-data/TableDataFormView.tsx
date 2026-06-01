@@ -19,6 +19,7 @@ import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context
 import { FkLookupDialog } from './FkLookupDialog'
 import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
 import { fetchBlobValue } from '../../lib/table-data-commands'
+import { buildEnvelopedPkPairs } from '../../lib/blob-utils'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
@@ -429,13 +430,15 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const onBlobView = useCallback(
     (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
       if (!rowData || !canResolveBlobPk) return
-      const pkPairs: [string, unknown][] = pkColumns.map(
-        (pkCol) => [pkCol, rowData[pkCol]] as [string, unknown]
-      )
-      setBlobContext({ columnKey: column.key, rowData, pkPairs })
+      const converted = buildEnvelopedPkPairs(pkColumns, columns, rowData)
+      if (!converted.ok) {
+        showError('Could not open BLOB viewer', converted.error)
+        return
+      }
+      setBlobContext({ columnKey: column.key, rowData, pkPairs: converted.pairs })
       setBlobDialogOpen(true)
     },
-    [canResolveBlobPk, pkColumns]
+    [canResolveBlobPk, pkColumns, columns, showError]
   )
 
   const closeBlobDialog = useCallback(() => {

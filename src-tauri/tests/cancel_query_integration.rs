@@ -261,6 +261,7 @@ mod mock_cancel {
             }],
             rows: vec![vec![MockCell::U64(thread_id)]],
             error: None,
+            affected_rows: None,
         }])
         .await;
 

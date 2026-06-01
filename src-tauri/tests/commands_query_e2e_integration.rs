@@ -306,6 +306,7 @@ async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResu
             }],
             rows: vec![vec![MockCell::U64(42)]],
             error: None,
+            affected_rows: None,
         },
         response.into(),
     ])
@@ -705,6 +706,7 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
             }],
             rows: vec![vec![MockCell::U64(42)]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT 1 AS id",
@@ -715,6 +717,7 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
             }],
             rows: vec![vec![MockCell::U32(1)]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: "SELECT 2 AS id",
@@ -725,6 +728,7 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
             }],
             rows: vec![vec![MockCell::U32(2)]],
             error: None,
+            affected_rows: None,
         },
     ];
 
@@ -751,6 +755,7 @@ async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total
             }],
             rows: vec![vec![MockCell::U64(42)]],
             error: None,
+            affected_rows: None,
         },
         MockQueryStep {
             query: sql,
@@ -768,6 +773,7 @@ async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total
             ],
             rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"Alice")]],
             error: None,
+            affected_rows: None,
         },
     ];
 
@@ -792,6 +798,7 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
         }],
         rows: vec![vec![MockCell::U64(42)]],
         error: None,
+        affected_rows: None,
     };
     let seeded_query_step = MockQueryStep {
         query: sql,
@@ -809,6 +816,7 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
         ],
         rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"Alice")]],
         error: None,
+        affected_rows: None,
     };
     let reexecute_step = MockQueryStep {
         query: sql,
@@ -826,6 +834,7 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
         ],
         rows: vec![vec![MockCell::U32(2), MockCell::Bytes(b"Bob")]],
         error: None,
+        affected_rows: None,
     };
 
     let (result, request_body) = reexecute_single_result_via_mock(

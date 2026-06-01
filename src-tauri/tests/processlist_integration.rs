@@ -106,6 +106,7 @@ fn processlist_steps() -> Vec<MockQueryStep> {
             MockCell::Bytes(b"SELECT 1"),
         ]],
         error: None,
+        affected_rows: None,
     }]
 }
 
@@ -130,6 +131,7 @@ fn processlist_steps_with_kill_error() -> Vec<MockQueryStep> {
         columns: vec![],
         rows: vec![],
         error: Some((ErrorKind::ER_WRONG_VALUE, b"Cannot kill query 99")),
+        affected_rows: None,
     });
     steps
 }
@@ -190,6 +192,7 @@ fn processlist_steps_with_signed_id_and_null_fields() -> Vec<MockQueryStep> {
             MockCell::Null,
         ]],
         error: None,
+        affected_rows: None,
     }]
 }
 

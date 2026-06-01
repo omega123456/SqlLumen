@@ -84,6 +84,7 @@ async fn fk_batch_multiple_databases() {
             ],
         ],
         error: None,
+        affected_rows: None,
     }];
 
     let server = MockMySqlServer::start_script(steps).await;
@@ -139,6 +140,7 @@ async fn fk_batch_single_database() {
             MockCell::Bytes(b"CASCADE"),
         ]],
         error: None,
+        affected_rows: None,
     }];
 
     let server = MockMySqlServer::start_script(steps).await;
@@ -192,6 +194,7 @@ async fn fk_batch_error() {
         columns: vec![text_col("TABLE_SCHEMA")],
         rows: vec![],
         error: Some((ErrorKind::ER_WRONG_VALUE, b"fk boom")),
+        affected_rows: None,
     }];
 
     let server = MockMySqlServer::start_script(steps).await;
@@ -259,6 +262,7 @@ async fn index_batch_multiple_databases() {
             ],
         ],
         error: None,
+        affected_rows: None,
     }];
 
     let server = MockMySqlServer::start_script(steps).await;
@@ -314,6 +318,7 @@ async fn index_batch_single_database() {
             MockCell::I64(5),
         ]],
         error: None,
+        affected_rows: None,
     }];
 
     let server = MockMySqlServer::start_script(steps).await;
@@ -410,6 +415,7 @@ async fn index_batch_error() {
         columns: vec![text_col("TABLE_SCHEMA")],
         rows: vec![],
         error: Some((ErrorKind::ER_WRONG_VALUE, b"idx boom")),
+        affected_rows: None,
     }];
 
     let server = MockMySqlServer::start_script(steps).await;

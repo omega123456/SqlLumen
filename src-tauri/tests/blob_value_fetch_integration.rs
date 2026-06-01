@@ -6,47 +6,10 @@ mod common;
 mod blob_value_fetch_integration {
     use crate::common;
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-    use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
-    use opensrv_mysql::{ColumnFlags, ColumnType};
+    use common::blob_step_helpers::{connect_mock_pool, len_step, val_step};
+    use common::mock_mysql_server::{MockCell, MockMySqlServer};
     use serde_json::json;
-    use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::table_data::{fetch_blob_value_impl, BLOB_FETCH_CAP};
-    use sqlx::mysql::MySqlPoolOptions;
-
-    async fn connect_mock_pool(server: &MockMySqlServer) -> sqlx::MySqlPool {
-        set_test_pool_factory(None);
-        MySqlPoolOptions::new()
-            .max_connections(1)
-            .connect(&format!("mysql://root@127.0.0.1:{}/app_db", server.port))
-            .await
-            .expect("should connect to mock mysql server")
-    }
-
-    fn len_step(query: &'static str, cell: MockCell) -> MockQueryStep {
-        MockQueryStep {
-            query,
-            columns: vec![MockColumnDef {
-                name: "len",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::empty(),
-            }],
-            rows: vec![vec![cell]],
-            error: None,
-        }
-    }
-
-    fn val_step(query: &'static str, cell: MockCell) -> MockQueryStep {
-        MockQueryStep {
-            query,
-            columns: vec![MockColumnDef {
-                name: "val",
-                coltype: ColumnType::MYSQL_TYPE_BLOB,
-                colflags: ColumnFlags::BINARY_FLAG,
-            }],
-            rows: vec![vec![cell]],
-            error: None,
-        }
-    }
 
     const LEN_SQL: &str =
         "SELECT OCTET_LENGTH(`photo`) AS `len` FROM `app_db`.`assets` WHERE `id` = ? LIMIT 1";
