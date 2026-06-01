@@ -86,6 +86,8 @@ export function WorkspaceTabs({
       scrollable
       suffix={
         <>
+          {/* Visual separator between the auto-scrolling rail and the fixed tab group */}
+          <span className={styles.suffixDivider} aria-hidden="true" />
           {/* Pinned tabs rendered in the WorkspaceTabRail for event handling */}
           {/* pinned tabs are never reordered */}
           <WorkspaceTabRail

@@ -102,6 +102,18 @@
   cursor: text;
 }
 
+/* Divider between the scrolling tab rail and the fixed (pinned + new-tab) group */
+.suffixDivider {
+  flex-shrink: 0;
+  align-self: center;
+  width: 1px;
+  height: 24px;
+  margin: 0 var(--space-sm);
+  background-color: var(--outline);
+  /* Soft shadow casts onto scrolled tabs so the boundary stays legible when tabs overflow */
+  box-shadow: -3px 0 4px -2px rgba(var(--on-surface-rgb), 0.25);
+}
+
 /* New query tab button */
 .newTabButton {
   display: flex;
