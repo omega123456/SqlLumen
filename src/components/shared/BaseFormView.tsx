@@ -35,7 +35,7 @@ import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { JsonFormField } from './JsonFormField'
 import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
-import { blobPlaceholder, isBlobEnvelope } from '../../lib/blob-utils'
+import { base64ByteLength, blobPlaceholder, isBlobEnvelope } from '../../lib/blob-utils'
 import type {
   BaseFormViewProps,
   GridColumnDescriptor,
@@ -77,14 +77,18 @@ function getJsonFormDefaultValue(currentValue: unknown): string {
 
 function getBlobFieldDisplayValue(value: unknown): string {
   if (value == null) return '(BLOB data)'
-  if (typeof value === 'string') return value
+  if (typeof value === 'string') {
+    // Table-data rows arrive with a backend-baked `[BLOB - <size>]` placeholder;
+    // query-result rows inline the bytes as base64, so derive the size here to
+    // keep both surfaces identical.
+    if (value.startsWith('[BLOB')) return value
+    return blobPlaceholder(base64ByteLength(value))
+  }
   if (isBlobEnvelope(value)) {
     if (value.kind === 'null') return '(BLOB data)'
     if (value.kind === 'empty') return blobPlaceholder(0, true)
     if (typeof value.base64 === 'string') {
-      const padding = value.base64.endsWith('==') ? 2 : value.base64.endsWith('=') ? 1 : 0
-      const byteLength = Math.max(0, Math.floor((value.base64.length * 3) / 4) - padding)
-      return blobPlaceholder(byteLength, true)
+      return blobPlaceholder(base64ByteLength(value.base64), true)
     }
   }
   return '(BLOB data)'

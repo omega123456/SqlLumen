@@ -372,7 +372,7 @@ mod binary_projection_integration {
 
         assert_eq!(
             response.rows,
-            vec![vec![json!(7), json!("[BLOB - 4096 bytes]")]]
+            vec![vec![json!(7), json!("[BLOB - 4 KB]")]]
         );
     }
 
@@ -528,7 +528,7 @@ mod binary_projection_integration {
 
         assert_eq!(
             response.rows,
-            vec![vec![json!(9), json!("[BLOB - 14 bytes]")]]
+            vec![vec![json!(9), json!("[BLOB - 14 B]")]]
         );
     }
 
@@ -614,7 +614,7 @@ mod binary_projection_integration {
             vec![vec![
                 json!(3),
                 json!("Ada"),
-                json!("[BLOB - 512 bytes]"),
+                json!("[BLOB - 512 B]"),
                 json!("Engineer and writer"),
             ]]
         );
@@ -746,12 +746,12 @@ mod binary_projection_integration {
             response.rows,
             vec![vec![
                 json!(5),
-                json!("[BLOB - 1 bytes]"),
-                json!("[BLOB - 2 bytes]"),
-                json!("[BLOB - 3 bytes]"),
-                json!("[BLOB - 4 bytes]"),
-                json!("[BLOB - 8 bytes]"),
-                json!("[BLOB - 64 bytes]"),
+                json!("[BLOB - 1 B]"),
+                json!("[BLOB - 2 B]"),
+                json!("[BLOB - 3 B]"),
+                json!("[BLOB - 4 B]"),
+                json!("[BLOB - 8 B]"),
+                json!("[BLOB - 64 B]"),
             ]]
         );
     }
@@ -938,7 +938,7 @@ mod binary_projection_integration {
             inserted,
             vec![
                 ("id".to_string(), json!(42)),
-                ("payload".to_string(), json!("[BLOB - 6 bytes]")),
+                ("payload".to_string(), json!("[BLOB - 6 B]")),
                 ("name".to_string(), json!("payload row")),
             ]
         );

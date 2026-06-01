@@ -502,13 +502,53 @@ export function isBlobEnvelope(value: unknown): value is BlobEnvelope {
 }
 
 // ---------------------------------------------------------------------------
+// Human-friendly byte sizes
+// ---------------------------------------------------------------------------
+
+const BYTE_UNITS = ['KB', 'MB', 'GB', 'TB'] as const
+
+/**
+ * Format a byte count with a human-friendly unit (B, KB, MB, GB, TB).
+ *
+ * Sub-kilobyte values keep their exact byte count (`512 B`); larger values are
+ * shown with up to one decimal place, trimming a trailing `.0`
+ * (e.g. `4096 → "4 KB"`, `1536 → "1.5 KB"`). Negative/non-finite inputs render
+ * as `0 B`. The Rust `format_bytes` helper mirrors this exactly so the table
+ * grid (backend-rendered) and query grid (frontend-rendered) stay identical.
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  let value = bytes / 1024
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
+    value /= 1024
+    unitIndex++
+  }
+  const rounded = Math.round(value * 10) / 10
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `${text} ${BYTE_UNITS[unitIndex]}`
+}
+
+/**
+ * Compute the decoded byte length of a standard base64 string by arithmetic,
+ * without allocating the decoded bytes. Returns 0 for the empty string.
+ */
+export function base64ByteLength(base64: string): number {
+  if (base64.length === 0) return 0
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
+}
+
+// ---------------------------------------------------------------------------
 // Display placeholder
 // ---------------------------------------------------------------------------
 
 /**
  * Produce the grid display placeholder for a binary cell:
- * `[BLOB - N bytes]`, or `[BLOB - N bytes*]` when the cell has a staged edit.
+ * `[BLOB - <size>]`, or `[BLOB - <size>*]` when the cell has a staged edit,
+ * where `<size>` is a human-friendly byte size (e.g. `1.5 KB`).
  */
 export function blobPlaceholder(byteLength: number, modified = false): string {
-  return `[BLOB - ${byteLength} bytes${modified ? '*' : ''}]`
+  return `[BLOB - ${formatBytes(byteLength)}${modified ? '*' : ''}]`
 }

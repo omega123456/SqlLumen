@@ -2,7 +2,7 @@ import type { PlaywrightListColumn, PlaywrightTableDataResult } from './types'
 
 /**
  * A small table with a binary (`LONGBLOB`) column so E2E flows can double-click a
- * `[BLOB - N bytes]` cell and open the BlobViewerDialog. The dialog fetches the
+ * `[BLOB - <size>]` cell and open the BlobViewerDialog. The dialog fetches the
  * actual bytes lazily via `fetch_blob_value` (served by the blob-value fixture,
  * keyed on column name), so the placeholder text here is irrelevant.
  */
@@ -97,8 +97,8 @@ export const BLOB_SAMPLE_TABLE_DATA: PlaywrightTableDataResult = {
     },
   ],
   rows: [
-    [1, 'Avatar', '[BLOB - 70 bytes]', '[BLOB - 12582912 bytes]'],
-    [2, 'Banner', '[BLOB - 70 bytes]', '[BLOB - 12582912 bytes]'],
+    [1, 'Avatar', '[BLOB - 70 B]', '[BLOB - 12 MB]'],
+    [2, 'Banner', '[BLOB - 70 B]', '[BLOB - 12 MB]'],
   ],
   currentPage: 1,
   pageSize: 1000,

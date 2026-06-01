@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BlobViewerDialog } from '../../../components/dialogs/BlobViewerDialog'
-import { bytesToBase64 } from '../../../lib/blob-utils'
+import { bytesToBase64, formatBytes } from '../../../lib/blob-utils'
 import { ipc, expectToast } from '../../ipc-mock'
 import type { BlobValueResponse, BlobEnvelope } from '../../../types/schema'
 
@@ -136,7 +136,7 @@ describe('BlobViewerDialog', () => {
     await screen.findByTestId('blob-image')
 
     expect(screen.getByTestId('blob-chip-type')).toHaveTextContent('PNG image')
-    expect(screen.getByTestId('blob-chip-size')).toHaveTextContent(`${PNG_BYTES.length} bytes`)
+    expect(screen.getByTestId('blob-chip-size')).toHaveTextContent(formatBytes(PNG_BYTES.length))
   })
 
   it('shows the dimensions chip for a parseable image', async () => {
@@ -166,7 +166,7 @@ describe('BlobViewerDialog', () => {
 
     expect(await screen.findByTestId('blob-empty-state')).toBeInTheDocument()
     expect(screen.getByTestId('blob-chip-type')).toHaveTextContent('Binary')
-    expect(screen.getByTestId('blob-chip-size')).toHaveTextContent('0 bytes')
+    expect(screen.getByTestId('blob-chip-size')).toHaveTextContent('0 B')
   })
 
   it('pastes base64 and applies a bytes envelope', async () => {

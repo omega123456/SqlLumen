@@ -1,5 +1,10 @@
 import { GridCellKind, type GridCell, type TextCell } from '@glideapps/glide-data-grid'
-import { base64ToBytes, blobPlaceholder, isBlobEnvelope } from '../../../lib/blob-utils'
+import {
+  base64ByteLength,
+  base64ToBytes,
+  blobPlaceholder,
+  isBlobEnvelope,
+} from '../../../lib/blob-utils'
 import type { BlobEnvelope } from '../../../types/schema'
 
 export interface CellStateFlags {
@@ -32,10 +37,23 @@ export const NULL_CELL_THEME_OVERRIDE = {
   textDark: 'rgba(128, 128, 128, 0.75)',
 } as const
 
-export function formatBlobDisplayValue(rawValue: unknown): string {
-  if (typeof rawValue === 'string' && rawValue.startsWith('[BLOB')) return rawValue
-  if (rawValue instanceof Uint8Array) return `[BLOB ${rawValue.byteLength} B]`
-  if (rawValue instanceof ArrayBuffer) return `[BLOB ${rawValue.byteLength} B]`
+/**
+ * Render the placeholder shown for a binary cell.
+ *
+ * `isBlobColumn` is set when the cell belongs to a binary column whose value
+ * arrives as inlined base64 (query results) — those have no pre-baked
+ * `[BLOB - …]` placeholder, so the byte size is derived here. This keeps query
+ * results identical to the table grid, which receives the placeholder ready-made
+ * from the backend.
+ */
+export function formatBlobDisplayValue(rawValue: unknown, isBlobColumn = false): string {
+  if (typeof rawValue === 'string') {
+    if (rawValue.startsWith('[BLOB')) return rawValue
+    if (isBlobColumn) return blobPlaceholder(base64ByteLength(rawValue))
+    return '[BLOB]'
+  }
+  if (rawValue instanceof Uint8Array) return blobPlaceholder(rawValue.byteLength)
+  if (rawValue instanceof ArrayBuffer) return blobPlaceholder(rawValue.byteLength)
   return '[BLOB]'
 }
 
@@ -105,7 +123,7 @@ export function classifyCellValue(
   const displayValue = isNull
     ? 'NULL'
     : isBlob
-      ? formatBlobDisplayValue(rawValue)
+      ? formatBlobDisplayValue(rawValue, options.isBlobColumn === true)
       : String(rawValue)
 
   return {

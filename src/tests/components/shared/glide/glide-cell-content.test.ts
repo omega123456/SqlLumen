@@ -37,7 +37,7 @@ describe('glide-cell-content', () => {
     expect(buildTextCell(cell.displayValue, cell).style).toBe('faded')
   })
 
-  it('renders a staged bytes envelope as [BLOB - N bytes*]', () => {
+  it('renders a staged bytes envelope as [BLOB - <size>*]', () => {
     // "hi" → base64 "aGk=" (2 bytes)
     const cell = classifyCellValue(
       { __sqllumen_blob__: true, kind: 'bytes', base64: 'aGk=' },
@@ -45,14 +45,14 @@ describe('glide-cell-content', () => {
       { isModified: true }
     )
     expect(cell.isBlob).toBe(true)
-    expect(cell.displayValue).toBe('[BLOB - 2 bytes*]')
+    expect(cell.displayValue).toBe('[BLOB - 2 B*]')
     expect(cell.isModified).toBe(true)
   })
 
-  it('renders a staged empty envelope as [BLOB - 0 bytes*]', () => {
+  it('renders a staged empty envelope as [BLOB - 0 B*]', () => {
     const cell = classifyCellValue({ __sqllumen_blob__: true, kind: 'empty' }, 'photo')
     expect(cell.isBlob).toBe(true)
-    expect(cell.displayValue).toBe('[BLOB - 0 bytes*]')
+    expect(cell.displayValue).toBe('[BLOB - 0 B*]')
   })
 
   it('renders a staged null envelope as NULL with pending highlight', () => {
@@ -65,13 +65,22 @@ describe('glide-cell-content', () => {
     expect(cell.isModified).toBe(true)
   })
 
-  it('falls back to [BLOB - 0 bytes*] for a bytes envelope with malformed base64', () => {
+  it('falls back to [BLOB - 0 B*] for a bytes envelope with malformed base64', () => {
     const cell = classifyCellValue(
       { __sqllumen_blob__: true, kind: 'bytes', base64: '@@not base64@@' },
       'photo'
     )
     // isBlobEnvelope requires a string base64; malformed-but-string still routes
     // through the envelope arm and decodes to 0 bytes.
-    expect(cell.displayValue).toBe('[BLOB - 0 bytes*]')
+    expect(cell.displayValue).toBe('[BLOB - 0 B*]')
+  })
+
+  it('derives the size for a query-result base64 blob cell', () => {
+    // "hi" → base64 "aGk=" (2 bytes); query results inline the bytes as base64
+    // with no pre-baked placeholder, so the size is derived at render time.
+    const cell = classifyCellValue('aGk=', 'photo', { isBlobColumn: true })
+    expect(cell.isBlob).toBe(true)
+    expect(cell.displayValue).toBe('[BLOB - 2 B]')
+    expect(cell.copyValue).toBe('[BLOB - 2 B]')
   })
 })

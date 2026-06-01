@@ -576,6 +576,31 @@ fn is_binary_data_type(data_type: &str) -> bool {
     )
 }
 
+/// Format a byte count with a human-friendly unit (B, KB, MB, GB, TB).
+///
+/// Mirrors the frontend `formatBytes` helper exactly so a binary cell rendered
+/// by the backend (table grid) and one rendered by the frontend (query grid,
+/// from inlined base64) produce the identical `[BLOB - <size>]` placeholder.
+pub fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit_index = 0;
+    while value >= 1024.0 && unit_index < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit_index += 1;
+    }
+    let rounded = (value * 10.0).round() / 10.0;
+    let text = if (rounded.fract()).abs() < f64::EPSILON {
+        format!("{}", rounded as i64)
+    } else {
+        format!("{rounded:.1}")
+    };
+    format!("{text} {}", UNITS[unit_index])
+}
+
 // ── Blob envelope handling ─────────────────────────────────────────────────────
 
 /// Maximum number of bytes returned for a single binary cell fetch / file read.
@@ -824,7 +849,7 @@ fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Valu
 ///
 /// Binary columns are handled specially:
 /// - PK columns → hex string `0xABCDEF`
-/// - Non-PK columns → placeholder `[BLOB - N bytes]`
+/// - Non-PK columns → placeholder `[BLOB - <size>]` (e.g. `[BLOB - 1.5 KB]`)
 #[cfg(not(coverage))]
 fn serialize_table_value(
     row: &sqlx::mysql::MySqlRow,
@@ -857,16 +882,17 @@ fn serialize_table_value(
             if let Ok(v) = row.try_get::<Option<u64>, _>(i) {
                 return match v {
                     Some(byte_len) => {
-                        serde_json::Value::String(format!("[BLOB - {byte_len} bytes]"))
+                        serde_json::Value::String(format!("[BLOB - {}]", format_bytes(byte_len)))
                     }
                     None => serde_json::Value::Null,
                 };
             }
             if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
                 return match v {
-                    Some(byte_len) if byte_len >= 0 => {
-                        serde_json::Value::String(format!("[BLOB - {byte_len} bytes]"))
-                    }
+                    Some(byte_len) if byte_len >= 0 => serde_json::Value::String(format!(
+                        "[BLOB - {}]",
+                        format_bytes(byte_len as u64)
+                    )),
                     Some(_) | None => serde_json::Value::Null,
                 };
             }

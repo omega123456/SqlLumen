@@ -20,9 +20,11 @@ import type { CellEditorBaseProps } from '../../../../components/shared/grid-cel
 
 describe('Glide phase 7 coverage helpers', () => {
   it('covers value classification and FK cell helpers', () => {
-    expect(formatBlobDisplayValue(new Uint8Array([1, 2]))).toBe('[BLOB 2 B]')
-    expect(formatBlobDisplayValue(new ArrayBuffer(3))).toBe('[BLOB 3 B]')
+    expect(formatBlobDisplayValue(new Uint8Array([1, 2]))).toBe('[BLOB - 2 B]')
+    expect(formatBlobDisplayValue(new ArrayBuffer(3))).toBe('[BLOB - 3 B]')
     expect(formatBlobDisplayValue('plain')).toBe('[BLOB]')
+    // A blob column whose value arrives as inlined base64 derives its size.
+    expect(formatBlobDisplayValue('aGk=', true)).toBe('[BLOB - 2 B]')
 
     const flags = classifyCellValue(new Uint8Array([1]), 'avatar', {
       isBlobColumn: true,

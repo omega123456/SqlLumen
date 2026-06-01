@@ -471,7 +471,7 @@ describe('BaseFormView — BLOB field', () => {
       },
       currentRowData: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
     })
-    expect(screen.getByTestId('form-input-avatar')).toHaveTextContent('[BLOB - 5 bytes*]')
+    expect(screen.getByTestId('form-input-avatar')).toHaveTextContent('[BLOB - 5 B*]')
   })
 
   it('NULL toggle not shown for BLOB fields even if nullable', () => {

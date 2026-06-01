@@ -3,7 +3,7 @@
 use sqllumen_lib::commands::table_data::interpolate_sql_params;
 #[cfg(not(coverage))]
 use sqllumen_lib::mysql::table_data::fetch_table_pk_cached;
-use sqllumen_lib::mysql::table_data::{parse_enum_values, parse_set_values};
+use sqllumen_lib::mysql::table_data::{format_bytes, parse_enum_values, parse_set_values};
 use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
@@ -12,6 +12,22 @@ use sqllumen_lib::mysql::table_data::{
 mod common;
 
 use sqllumen_lib::mysql::metadata_cache::MetadataCache;
+
+#[test]
+fn format_bytes_matches_frontend_units() {
+    // Sub-kilobyte values stay exact.
+    assert_eq!(format_bytes(0), "0 B");
+    assert_eq!(format_bytes(1), "1 B");
+    assert_eq!(format_bytes(1023), "1023 B");
+    // Scale into KB / MB / GB / TB, trimming a trailing `.0`.
+    assert_eq!(format_bytes(1024), "1 KB");
+    assert_eq!(format_bytes(1536), "1.5 KB");
+    assert_eq!(format_bytes(4096), "4 KB");
+    assert_eq!(format_bytes(12 * 1024 * 1024), "12 MB");
+    assert_eq!(format_bytes(1024u64.pow(3)), "1 GB");
+    assert_eq!(format_bytes(1024u64.pow(4)), "1 TB");
+    assert_eq!(format_bytes(5 * 1024u64.pow(4)), "5 TB");
+}
 
 #[cfg(not(coverage))]
 #[tokio::test]

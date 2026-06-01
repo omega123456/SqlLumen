@@ -39,6 +39,7 @@ import {
   decodeUtf8BestEffort,
   detectBlobExtension,
   emptyEnvelope,
+  formatBytes,
   formatHexDump,
   nullEnvelope,
   readImageDimensions,
@@ -409,7 +410,7 @@ export function BlobViewerDialog({
       return (
         <div className={styles.emptyState} data-testid="blob-empty-state">
           <EraserIcon size={40} weight="thin" />
-          <span className={styles.stateTitle}>Empty — 0 bytes</span>
+          <span className={styles.stateTitle}>Empty — {formatBytes(0)}</span>
         </div>
       )
     }
@@ -517,7 +518,7 @@ export function BlobViewerDialog({
                 data-testid="blob-chip-size"
               >
                 {tooLarge && <WarningCircleIcon size={12} weight="fill" />}
-                {byteCount} bytes
+                {formatBytes(byteCount)}
               </span>
             )}
             {dimensions && (

@@ -168,10 +168,10 @@ describe('table-data-store blob staging', () => {
 
     const tab = getTab()
     expect(tab.editState).toBeNull()
-    expect(tab.rows[0][1]).toBe('[BLOB - 2 bytes]')
+    expect(tab.rows[0][1]).toBe('[BLOB - 2 B]')
   })
 
-  it('reconciles a saved empty envelope to [BLOB - 0 bytes]', async () => {
+  it('reconciles a saved empty envelope to [BLOB - 0 B]', async () => {
     await setupTab()
     const rowData = { id: 1, photo: '[BLOB - 5 bytes]' }
     ipc.override('update_table_row', () => undefined)
@@ -183,7 +183,7 @@ describe('table-data-store blob staging', () => {
       await useTableDataStore.getState().saveCurrentRow(TAB_ID)
     })
 
-    expect(getTab().rows[0][1]).toBe('[BLOB - 0 bytes]')
+    expect(getTab().rows[0][1]).toBe('[BLOB - 0 B]')
   })
 
   it('reconciles a saved null envelope to null', async () => {
