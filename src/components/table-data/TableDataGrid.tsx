@@ -400,8 +400,10 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         for (let i = 0; i < rows.length; i++) {
           columnRows[i] = [rows[i][columnIndex]]
         }
-        // FK icon (Link, 10px) or read-only lock icon (Lock, 10px) + 4px gap
-        const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0
+        // FK icon (Link, 10px) or read-only lock icon (Lock, 10px) + 4px gap.
+        // BLOB columns stay editable through the shared viewer, so they show no lock.
+        const showLock = !col.editable && col.blobViewerEditable !== true
+        const headerIconWidthPx = col.foreignKey || showLock ? 14 : 0
         return getAutoSizedColumnWidth(
           meta,
           0, // column is at index 0 in our single-column proxy array

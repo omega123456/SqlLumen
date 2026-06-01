@@ -175,6 +175,7 @@ function toGridColumn(
     foreignKey: column.foreignKey,
     isNullable: column.isNullable,
     isBinary: column.isBinary,
+    blobViewerEditable: column.blobViewerEditable,
     tableColumnMeta: column.tableColumnMeta,
     editorType: column.editorType,
     enumValues: column.enumValues,
@@ -1567,7 +1568,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         args,
         {
           sortDirection: sortColumns.find((sort) => sort.columnKey === column.key)?.direction,
-          isReadOnly: column.editable !== true,
+          isReadOnly: column.editable !== true && column.blobViewerEditable !== true,
           hasFkLink: column.foreignKey != null && !isListSelectionColumn(column),
           isHighlighted: highlightColumnKey === column.key,
         },

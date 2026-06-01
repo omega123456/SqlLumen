@@ -23,7 +23,7 @@ export function buildHeaderMeta(
   const sort = sortColumns.find((s) => s.columnKey === column.key)
   return {
     sortDirection: sort?.direction,
-    isReadOnly: column.editable !== true,
+    isReadOnly: column.editable !== true && column.blobViewerEditable !== true,
     hasFkLink: column.foreignKey != null,
     isHighlighted: highlightedColumnKey === column.key,
   }

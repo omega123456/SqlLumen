@@ -63,6 +63,13 @@ describe('Glide phase 7 coverage helpers', () => {
       hasFkLink: true,
       isHighlighted: true,
     })
+
+    const blobMeta = buildHeaderMeta(
+      { key: 'data', name: 'Data', editable: false, isBinary: true, blobViewerEditable: true },
+      [],
+      undefined
+    )
+    expect(blobMeta.isReadOnly).toBe(false)
   })
 
   it('draws custom header icons and text', () => {
