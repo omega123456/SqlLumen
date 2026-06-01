@@ -4868,9 +4868,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-native-certs"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "612460d5f7bea540c490b2b6395d8e34a953e52b491accd6c86c8164c5932a63"
+checksum = "dab5152771c58876a2146916e53e35057e1a4dfa2b9df0f0305b07f611fdea4d"
 dependencies = [
  "openssl-probe",
  "rustls-pki-types",
@@ -5503,7 +5503,7 @@ dependencies = [
 
 [[package]]
 name = "sqllumen"
-version = "2.8.1"
+version = "2.8.2"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
