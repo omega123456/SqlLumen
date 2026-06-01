@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObjectEditorTab } from '../../../components/object-editor/ObjectEditorTab'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
 import type { ObjectEditorTab as ObjectEditorTabType } from '../../../types/schema'
 
@@ -23,7 +24,7 @@ function makeTab(overrides: Partial<ObjectEditorTabType> = {}): ObjectEditorTabT
 
 beforeEach(() => {
   useObjectEditorStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   ipc.override('get_object_body', () => 'CREATE PROCEDURE `app_db`.`my_proc`() BEGIN END')
   ipc.override('save_object', () => ({
     success: true,

@@ -5,7 +5,8 @@ import { ObjectBrowser } from '../../../components/object-browser/ObjectBrowser'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 import type { TreeNode as TreeNodeType, WorkspaceTab } from '../../../types/schema'
@@ -354,9 +355,9 @@ async function openContextMenu(user: ReturnType<typeof userEvent.setup>, nodeTex
 }
 
 beforeEach(() => {
-  _resetTabIdCounter()
   vi.clearAllMocks()
   act(() => {
+    resetWorkspaceStore({ visibleConnectionSessionId: CONN_ID })
     useConnectionStore.setState({
       activeConnections: {},
       activeTabId: null,
@@ -369,10 +370,6 @@ beforeEach(() => {
       loadDatabases: vi.fn().mockResolvedValue(undefined),
       refreshDatabase: vi.fn().mockResolvedValue(undefined),
       refreshAll: vi.fn().mockResolvedValue(undefined),
-    })
-    useWorkspaceStore.setState({
-      tabsByConnection: {},
-      activeTabByConnection: {},
     })
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS },

@@ -3,6 +3,7 @@ import { render, screen, act } from '@testing-library/react'
 import { StatusBar } from '../../components/layout/StatusBar'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
@@ -63,10 +64,7 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
   useSchemaIndexStore.setState({
     connections: {},
@@ -224,6 +222,7 @@ describe('StatusBar', () => {
         },
         activeTabByConnection: { 'conn-1': 'tab-1' },
       })
+      seedVisibleConnection('conn-1')
     }
 
     it('shows row count, exec time, and total time in dark theme when query-editor has success status', () => {

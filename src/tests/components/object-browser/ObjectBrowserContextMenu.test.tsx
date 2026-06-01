@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { ObjectBrowserContextMenu } from '../../../components/object-browser/ObjectBrowserContextMenu'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import type { TreeNode as TreeNodeType } from '../../../types/schema'
 
 const CONN_ID = 'conn-test'
@@ -159,19 +160,15 @@ function setBottomPanelSetting(enabled: boolean) {
 }
 
 beforeEach(() => {
-  _resetTabIdCounter()
   writeClipboardTextSpy = vi
     .spyOn(navigator.clipboard, 'writeText')
     .mockImplementation(() => Promise.resolve())
   act(() => {
+    resetWorkspaceStore({ visibleConnectionSessionId: CONN_ID })
     useSchemaStore.setState({
       connectionStates: {},
       refreshDatabase: vi.fn().mockResolvedValue(undefined),
       refreshAll: vi.fn().mockResolvedValue(undefined),
-    })
-    useWorkspaceStore.setState({
-      tabsByConnection: {},
-      activeTabByConnection: {},
     })
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS },

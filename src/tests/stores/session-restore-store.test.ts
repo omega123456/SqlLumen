@@ -11,11 +11,8 @@ import {
   useSessionRestoreStore,
 } from '../../stores/session-restore-store'
 import { useConnectionStore, _resetListenersSetup } from '../../stores/connection-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
@@ -108,10 +105,7 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
   useSettingsStore.setState({
@@ -121,8 +115,6 @@ beforeEach(() => {
     isDirty: false,
     activeSection: 'general',
   })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   _resetListenersSetup()
   _resetSessionPersistenceForTests()
 
@@ -737,6 +729,90 @@ describe('useSessionRestoreStore — restoreSession', () => {
     await useSessionRestoreStore.getState().restoreSession()
 
     expect(useConnectionStore.getState().activeTabId).toBe('session-profile-2')
+  })
+
+  it('leaves the saved active session as the globally visible workspace after restoring multiple sessions', async () => {
+    const savedState = {
+      version: 1,
+      activeConnectionIndex: 0,
+      connections: [
+        { profileId: 'profile-2', activeTabIndex: 0, tabs: [] },
+        { profileId: 'profile-1', activeTabIndex: 0, tabs: [] },
+      ],
+    }
+
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      switch (cmd) {
+        case 'log_frontend':
+          return undefined
+        case 'get_setting':
+          if (a?.key === 'session.state') return JSON.stringify(savedState)
+          return null
+        case 'list_connections':
+          return [
+            {
+              id: 'profile-1',
+              name: 'Test MySQL 1',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 0,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+            {
+              id: 'profile-2',
+              name: 'Test MySQL 2',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 1,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+          ]
+        case 'list_connection_groups':
+          return []
+        case 'open_connection':
+          return {
+            sessionId: `session-${(a?.payload as { profileId?: string } | undefined)?.profileId}`,
+            serverVersion: '8.0.0',
+          }
+        default:
+          return null
+      }
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    // Saved activeConnectionIndex 0 maps to profile-2; after restoring both
+    // sessions, the coordinator must leave that session globally visible even
+    // though profile-1 was opened (and briefly made visible) afterward.
+    expect(useConnectionStore.getState().activeTabId).toBe('session-profile-2')
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('session-profile-2')
   })
 
   it('preserves saved active connection position when earlier restore entries fail', async () => {

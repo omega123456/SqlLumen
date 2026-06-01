@@ -5,7 +5,8 @@
  *   - Filtering tabs into pinned (history / processlist) vs. scrollable groups
  *   - Pinned tab rendering in the non-scrollable suffix area
  *   - The "new query tab" (+) button
- *   - Scroll-into-view when the active tab changes
+ *   - Scroll-into-view when the active tab changes (only while its connection
+ *     workspace is the globally visible one)
  *
  * Delegates per-tab rendering, drag-reorder, context menu, rename, and
  * keyboard behavior to WorkspaceTabRail.
@@ -27,6 +28,13 @@ export interface WorkspaceTabsProps {
    * Standalone table-data tabs remain visible.
    */
   hideTableDataTabs?: boolean
+  /**
+   * Whether this tab rail's connection workspace is the globally visible one.
+   * When false, visible-only side effects (scroll-into-view on the active tab,
+   * focus stealing) are suppressed because the rail is rendered inside a hidden,
+   * inert connection root.
+   */
+  connectionActive?: boolean
   onRequestRenameTab?: (tabId: string) => void
   onRequestMoveTab?: (tabId: string, direction: 'left' | 'right') => void
   onRequestReorderTab?: (tabId: string, insertIndex: number) => void
@@ -35,6 +43,7 @@ export interface WorkspaceTabsProps {
 export function WorkspaceTabs({
   connectionId,
   hideTableDataTabs = false,
+  connectionActive = true,
   onRequestRenameTab,
   onRequestMoveTab,
   onRequestReorderTab,
@@ -69,15 +78,22 @@ export function WorkspaceTabs({
     if (activeTabId === activeTabIdRef.current) {
       return
     }
-    activeTabIdRef.current = activeTabId
     if (!activeTabId) {
+      activeTabIdRef.current = activeTabId
       return
     }
+    // Suppress visible-only scroll-into-view while this connection workspace is
+    // hidden and inert. Defer advancing the ref so the scroll fires when the
+    // connection becomes visible again.
+    if (!connectionActive) {
+      return
+    }
+    activeTabIdRef.current = activeTabId
     const tabEl = document.querySelector<HTMLElement>(
       `[data-testid="workspace-tab-${activeTabId}"]`
     )
     tabEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [activeTabId])
+  }, [activeTabId, connectionActive])
 
   return (
     <UnderlineTabBar

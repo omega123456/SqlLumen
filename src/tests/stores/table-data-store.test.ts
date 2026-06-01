@@ -3,6 +3,7 @@ import { ipc, expectToast } from '../ipc-mock'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import type {
   TableDataResponse,
   PrimaryKeyInfo,
@@ -99,13 +100,7 @@ beforeEach(() => {
   vi.useRealTimers()
   frontendCacheLifecycle.cleanup()
   useTableDataStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-    lastFocusedSurfaceByTab: {},
-    blockingNavigationByTab: {},
-    pendingCascadeClose: null,
-  })
+  resetWorkspaceStore()
   useToastStore.setState({ toasts: [] })
   _resetToastTimeoutsForTests()
   // Default IPC overrides
@@ -799,6 +794,70 @@ describe('useTableDataStore — frontend row residency lifecycle', () => {
 
     expect(useTableDataStore.getState().tabs['tab-hidden'].rowResidency?.status).toBe('evicted')
     vi.useRealTimers()
+  })
+
+  it('marks a fetch completion active when its connection is the globally visible connection', async () => {
+    useTableDataStore.getState().initTab('tab-conn-visible', 'conn-1', 'mydb', 'users')
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-conn-visible',
+            type: 'table-data',
+            label: 'users',
+            connectionId: 'conn-1',
+            databaseName: 'mydb',
+            objectName: 'users',
+            objectType: 'table',
+          },
+        ],
+      },
+      activeTabByConnection: { 'conn-1': 'tab-conn-visible' },
+    })
+
+    await useTableDataStore.getState().fetchPage('tab-conn-visible', 1)
+
+    const tab = useTableDataStore.getState().tabs['tab-conn-visible']
+    expect(tab.rowResidency).toEqual({
+      status: 'resident',
+      isActive: true,
+      inactiveSince: null,
+    })
+    expect(frontendCacheLifecycle.hasInactiveTimer('table-data:tab-conn-visible')).toBe(false)
+  })
+
+  it('keeps a fetch completion inactive when the tab is selected but its connection is hidden', async () => {
+    useTableDataStore.getState().initTab('tab-conn-hidden', 'conn-1', 'mydb', 'users')
+    // The tab is the selected workspace tab for conn-1, but conn-2 is the
+    // globally visible connection, so this completion must stay inactive.
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-2' })
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-conn-hidden',
+            type: 'table-data',
+            label: 'users',
+            connectionId: 'conn-1',
+            databaseName: 'mydb',
+            objectName: 'users',
+            objectType: 'table',
+          },
+        ],
+      },
+      activeTabByConnection: { 'conn-1': 'tab-conn-hidden' },
+    })
+
+    await useTableDataStore.getState().fetchPage('tab-conn-hidden', 1)
+
+    const tab = useTableDataStore.getState().tabs['tab-conn-hidden']
+    expect(tab.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+    expect(frontendCacheLifecycle.hasInactiveTimer('table-data:tab-conn-hidden')).toBe(true)
   })
 })
 

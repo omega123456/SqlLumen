@@ -4,11 +4,7 @@ import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
 import { makeAiTabState } from '../../helpers/ai-test-utils'
 
@@ -25,10 +21,8 @@ const mockTab: QueryEditorTabType = {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   useAiStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   // Default AI to disabled
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },

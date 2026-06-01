@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { playwrightIpcMockHandler } from '../../lib/playwright-ipc-mock'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  playwrightIpcMockHandler,
+  resetPlaywrightSessionAllocator,
+} from '../../lib/playwright-ipc-mock'
 import { overrideFixture, resetFixtureOverrides } from '../playwright-fixtures'
 import type {
   MultiQueryResult,
@@ -558,5 +561,51 @@ describe('playwrightIpcMockHandler', () => {
       eventId: 42,
     })
     expect(result).toBeNull()
+  })
+
+  // --- Deterministic multi-session allocation ---
+
+  describe('open_connection session allocation', () => {
+    beforeEach(() => {
+      resetPlaywrightSessionAllocator()
+    })
+
+    afterEach(() => {
+      resetPlaywrightSessionAllocator()
+    })
+
+    it('returns session-playwright-1 for the first open_connection call', () => {
+      const result = playwrightIpcMockHandler('open_connection', {
+        connectionId: 'conn-playwright-1',
+      }) as { sessionId: string; serverVersion: string }
+
+      expect(result.sessionId).toBe('session-playwright-1')
+      expect(result.serverVersion).toBe('8.0.33-mock')
+    })
+
+    it('allocates distinct sequential session IDs for repeated open_connection calls', () => {
+      const first = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
+      const second = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
+      const third = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
+
+      expect(first.sessionId).toBe('session-playwright-1')
+      expect(second.sessionId).toBe('session-playwright-2')
+      expect(third.sessionId).toBe('session-playwright-3')
+    })
+
+    it('preserves the unchanged response shape across allocations', () => {
+      const result = playwrightIpcMockHandler('open_connection', {}) as Record<string, unknown>
+      expect(Object.keys(result).sort()).toEqual(['serverVersion', 'sessionId'])
+    })
+
+    it('resets the allocator so a fresh page load starts at session-playwright-1', () => {
+      playwrightIpcMockHandler('open_connection', {})
+      playwrightIpcMockHandler('open_connection', {})
+
+      resetPlaywrightSessionAllocator()
+
+      const afterReset = playwrightIpcMockHandler('open_connection', {}) as { sessionId: string }
+      expect(afterReset.sessionId).toBe('session-playwright-1')
+    })
   })
 })

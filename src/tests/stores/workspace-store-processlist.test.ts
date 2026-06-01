@@ -1,21 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useAiStore } from '../../stores/ai-store'
 
 const CONN = 'conn-1'
 
 beforeEach(() => {
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useAiStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
 })
 
 describe('openProcessListTab', () => {

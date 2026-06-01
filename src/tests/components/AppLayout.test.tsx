@@ -4,6 +4,7 @@ import { AppLayout } from '../../components/layout/AppLayout'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 
@@ -17,10 +18,7 @@ beforeEach(() => {
   // Reset shortcut store actions
   useShortcutStore.getState()._actions = {}
   // Reset workspace store
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
 })
 
 describe('AppLayout', () => {
@@ -32,6 +30,7 @@ describe('AppLayout', () => {
       },
       activeTabByConnection: { 'conn-1': 'tab-1' },
     })
+    seedVisibleConnection('conn-1')
 
     useQueryStore.setState({
       tabs: {

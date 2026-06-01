@@ -10,11 +10,7 @@ import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useToastStore } from '../../../stores/toast-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
 import { makeAiTabState } from '../../helpers/ai-test-utils'
@@ -53,11 +49,9 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   useAiStore.setState({ tabs: {} })
   useToastStore.setState({ toasts: [] })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   // Enable AI
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },

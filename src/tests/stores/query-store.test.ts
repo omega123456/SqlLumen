@@ -4,6 +4,7 @@ import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { flat } from '../helpers/query-test-utils'
 import { makeTableDataTabState } from '../helpers/table-data-test-utils'
 
@@ -43,13 +44,7 @@ const QUERY_STORE_COMMANDS = [
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-    lastFocusedSurfaceByTab: {},
-    blockingNavigationByTab: {},
-    pendingCascadeClose: null,
-  })
+  resetWorkspaceStore()
   useTableDataStore.setState({ tabs: {} })
   overrideCommands({
     execute_query: () => ({
@@ -105,6 +100,7 @@ describe('useQueryStore — activeBottomPanelItem', () => {
         },
       },
     }))
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
     useWorkspaceStore.setState({
       tabsByConnection: {
         'conn-1': [
@@ -119,9 +115,6 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       activeTabByConnection: {
         'conn-1': 'tab-bottom-panel',
       },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
     })
     useTableDataStore.setState({
       tabs: {
@@ -162,6 +155,7 @@ describe('useQueryStore — activeBottomPanelItem', () => {
         },
       },
     }))
+    resetWorkspaceStore()
     useWorkspaceStore.setState({
       tabsByConnection: {
         'conn-1': [
@@ -177,9 +171,6 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       activeTabByConnection: {
         'conn-1': 'tab-visible',
       },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
     })
 
     useQueryStore
@@ -204,6 +195,7 @@ describe('useQueryStore — activeBottomPanelItem', () => {
         },
       },
     }))
+    resetWorkspaceStore()
     useWorkspaceStore.setState({
       tabsByConnection: {
         'conn-1': [
@@ -219,9 +211,6 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       activeTabByConnection: {
         'conn-1': 'tab-visible',
       },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
     })
     useTableDataStore.setState({
       tabs: {
@@ -259,6 +248,7 @@ describe('useQueryStore — activeBottomPanelItem', () => {
         },
       },
     }))
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
     useWorkspaceStore.setState({
       tabsByConnection: {
         'conn-1': [
@@ -273,9 +263,6 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       activeTabByConnection: {
         'conn-1': 'tab-bottom-panel',
       },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
     })
     useTableDataStore.setState({
       tabs: {
@@ -2105,5 +2092,107 @@ describe('useQueryStore — totalTimeMs propagation', () => {
     await useQueryStore.getState().changeRowLimit('conn-1', 'tab-limit-total', 500)
 
     expect(flat('tab-limit-total').totalTimeMs).toBe(27)
+  })
+})
+
+describe('useQueryStore — connection-aware async completion', () => {
+  /** Register a query tab as the selected tab for the given connection. */
+  function registerQueryTab(connectionId: string, tabId: string): void {
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        [connectionId]: [{ id: tabId, type: 'query-editor', label: 'Query', connectionId }],
+      },
+      activeTabByConnection: { [connectionId]: tabId },
+    })
+  }
+
+  it('marks a completed result active when its connection is globally visible', async () => {
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
+    registerQueryTab('conn-1', 'tab-visible')
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-visible', 'SELECT id FROM t')
+
+    const residency = flat('tab-visible').rowResidency
+    expect(residency.isActive).toBe(true)
+    expect(residency.inactiveSince).toBeNull()
+    expect(flat('tab-visible').rows).toEqual([[1], [2], [3]])
+  })
+
+  it('keeps a completed result resident-but-inactive when the connection is no longer visible', async () => {
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-other' })
+    // The query tab belongs to conn-1, but conn-other is now globally visible.
+    registerQueryTab('conn-1', 'tab-bg')
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-bg', 'SELECT id FROM t')
+
+    const residency = flat('tab-bg').rowResidency
+    expect(residency.status).toBe('resident')
+    expect(residency.isActive).toBe(false)
+    expect(typeof residency.inactiveSince).toBe('number')
+    // Rows remain resident for immediate reuse / TTL eligibility.
+    expect(flat('tab-bg').rows).toEqual([[1], [2], [3]])
+  })
+
+  it('keeps the first multi-result active only when the connection is visible', async () => {
+    overrideCommands({
+      execute_multi_query: () => ({
+        results: [
+          {
+            queryId: 'q-1',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            rows: [[1]],
+            totalRows: 1,
+            executionTimeMs: 1,
+            totalTimeMs: 1,
+            affectedRows: 0,
+            autoLimitApplied: false,
+            error: null,
+            sourceSql: 'SELECT id FROM t',
+            reExecutable: true,
+          },
+        ],
+      }),
+    })
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
+    registerQueryTab('conn-1', 'tab-multi-visible')
+
+    await useQueryStore
+      .getState()
+      .executeMultiQuery('conn-1', 'tab-multi-visible', ['SELECT id FROM t'])
+
+    expect(
+      useQueryStore.getState().tabs['tab-multi-visible']?.results[0]?.rowResidency.isActive
+    ).toBe(true)
+  })
+
+  it('keeps the first multi-result inactive when the connection is no longer visible', async () => {
+    overrideCommands({
+      execute_multi_query: () => ({
+        results: [
+          {
+            queryId: 'q-1',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            rows: [[1]],
+            totalRows: 1,
+            executionTimeMs: 1,
+            totalTimeMs: 1,
+            affectedRows: 0,
+            autoLimitApplied: false,
+            error: null,
+            sourceSql: 'SELECT id FROM t',
+            reExecutable: true,
+          },
+        ],
+      }),
+    })
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-other' })
+    registerQueryTab('conn-1', 'tab-multi-bg')
+
+    await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-multi-bg', ['SELECT id FROM t'])
+
+    const residency = useQueryStore.getState().tabs['tab-multi-bg']?.results[0]?.rowResidency
+    expect(residency?.status).toBe('resident')
+    expect(residency?.isActive).toBe(false)
+    expect(typeof residency?.inactiveSince).toBe('number')
   })
 })

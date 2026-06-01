@@ -56,9 +56,23 @@ export async function waitForApp(page: Page) {
   }
 }
 
-export async function getColumnIndexByName(grid: Locator, columnName: string) {
-  const normalized = columnName.trim().toLowerCase()
+/**
+ * Locator for the currently visible (active) connection-workspace root.
+ *
+ * Retained inactive connection workspaces intentionally duplicate descendant
+ * `workspace-tabs` and `workspace-panel` test IDs. Shell-level interactions must
+ * scope through this root so duplicated rails do not create ambiguous selectors.
+ */
+export function activeConnectionWorkspace(page: Page): Locator {
+  return page.getByTestId('active-connection-workspace')
+}
 
+/** Locator for the active connection's workspace-tabs rail, scoped to the visible root. */
+export function activeWorkspaceTabs(page: Page): Locator {
+  return activeConnectionWorkspace(page).getByTestId('workspace-tabs')
+}
+
+export async function getColumnIndexByName(grid: Locator, columnName: string) {
   const headerIndex = await grid.evaluate((element, targetName) => {
     const testId = element.getAttribute('data-testid')
     const normalizedTarget = targetName.trim().toLowerCase()

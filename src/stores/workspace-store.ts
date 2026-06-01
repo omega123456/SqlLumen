@@ -51,6 +51,16 @@ interface WorkspaceState {
   /** Active tab ID per connection. */
   activeTabByConnection: Record<string, string | null>
 
+  /**
+   * Runtime connection-session ID whose workspace is globally visible.
+   *
+   * Strict semantics: an empty string means no connection workspace is
+   * globally visible (welcome state). This field is a neutral foundation for
+   * connection-level keep-alive; it does not yet drive any navigation or
+   * row-surface lifecycle behavior.
+   */
+  visibleConnectionSessionId: string
+
   lastFocusedSurfaceByTab: Record<string, WorkspaceFocusSurface>
   blockingNavigationByTab: Record<string, boolean>
   pendingCascadeClose: {
@@ -100,6 +110,7 @@ interface WorkspaceState {
   setSubTab: (connectionId: string, tabId: string, subTab: WorkspaceTab['subTabId']) => void
   clearConnectionTabs: (connectionId: string) => void
   normalizeTableDataTabScopes: () => void
+  setVisibleConnectionSession: (newSessionId: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +423,13 @@ function finalizeWorkspaceActivation(
   previousSurface: VisibleWorkspaceSurface,
   nextTabId: string | null
 ): void {
+  // Background connection workspace-tab changes must not activate or
+  // deactivate row payloads; only the globally visible connection drives
+  // visible-surface lifecycle.
+  if (useWorkspaceStore.getState().visibleConnectionSessionId !== connectionId) {
+    return
+  }
+
   markVisibleWorkspaceSurfaceInactive(previousSurface)
 
   if (nextTabId) {
@@ -442,6 +460,7 @@ function activateWorkspaceTab(connectionId: string, tabId: string): void {
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   tabsByConnection: {},
   activeTabByConnection: {},
+  visibleConnectionSessionId: '',
   lastFocusedSurfaceByTab: {},
   blockingNavigationByTab: {},
   pendingCascadeClose: null,
@@ -1405,6 +1424,38 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         tabs.map((t) => (t.id === tabId ? { ...t, subTabId: subTab } : t))
       )
     )
+  },
+
+  // ------ setVisibleConnectionSession ------
+
+  setVisibleConnectionSession: (newSessionId: string) => {
+    const state = get()
+    const previousSessionId = state.visibleConnectionSessionId
+
+    if (previousSessionId === newSessionId) {
+      return
+    }
+
+    // Resolve and deactivate the row surface of the currently visible
+    // connection before the visibility coordinator moves to the new session.
+    if (previousSessionId) {
+      const previousSurface = getVisibleWorkspaceSurface(
+        previousSessionId,
+        state.activeTabByConnection[previousSessionId] ?? null
+      )
+      markVisibleWorkspaceSurfaceInactive(previousSurface)
+    }
+
+    set({ visibleConnectionSessionId: newSessionId })
+
+    // Activate the selected visible surface of the new connection. An empty
+    // session ID clears visibility (welcome state) without activating anything.
+    if (newSessionId) {
+      const nextTabId = get().activeTabByConnection[newSessionId] ?? null
+      if (nextTabId) {
+        runPostActivationEffects(newSessionId, nextTabId)
+      }
+    }
   },
 
   // ------ clearConnectionTabs ------

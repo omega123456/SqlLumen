@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BottomPanelTabs } from '../../../components/query-editor/BottomPanelTabs'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
 })
 
 describe('BottomPanelTabs', () => {

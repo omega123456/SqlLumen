@@ -119,6 +119,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       }))
       useWorkspaceStore.getState().openHistoryTab(result.sessionId, false)
       useWorkspaceStore.getState().openProcessListTab(result.sessionId)
+      // The newly opened session becomes the active connection tab; make its
+      // workspace the globally visible connection so row-surface lifecycle
+      // tracks the active session.
+      useWorkspaceStore.getState().setVisibleConnectionSession(result.sessionId)
       showSuccessToast('Connected', profile.name)
 
       bootstrapSchemaCache(result.sessionId).catch((err) => {
@@ -221,6 +225,39 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
       await closeConnectionIPC(id)
 
+      // Compute the fallback connection selection BEFORE clearing the closed
+      // session's workspace state. This lets the workspace visibility
+      // coordinator capture the previous visible session/surface and reveal the
+      // fallback session before the closed session's tabs are removed.
+      const preCloseState = get()
+      const orderedIdsBeforeClose = normalizeActiveConnectionOrder(
+        preCloseState.activeConnectionOrder,
+        preCloseState.activeConnections
+      )
+      const closedIndex = orderedIdsBeforeClose.indexOf(id)
+      const remaining = { ...preCloseState.activeConnections }
+      delete remaining[id]
+      const remainingIds = normalizeActiveConnectionOrder(
+        preCloseState.activeConnectionOrder.filter((sessionId) => sessionId !== id),
+        remaining
+      )
+      const fallbackIndex =
+        closedIndex >= 0 ? Math.min(closedIndex, Math.max(remainingIds.length - 1, 0)) : 0
+      const closingActiveTab = preCloseState.activeTabId === id
+      const newActiveTabId = closingActiveTab
+        ? remainingIds.length > 0
+          ? remainingIds[fallbackIndex]
+          : null
+        : preCloseState.activeTabId
+
+      // Coordinate the visible workspace transition while the closed session's
+      // workspace state is still intact, so deactivation context is preserved.
+      // When the closed session was the visible connection, reveal the fallback
+      // session (or clear visibility when no session remains).
+      if (useWorkspaceStore.getState().visibleConnectionSessionId === id) {
+        useWorkspaceStore.getState().setVisibleConnectionSession(newActiveTabId ?? '')
+      }
+
       // Clear dependent store state for this connection
       useSchemaStore.getState().clearConnectionState(id)
       useWorkspaceStore.getState().clearConnectionTabs(id)
@@ -229,33 +266,11 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       invalidateCache(id)
       invalidateRoutineCache(id)
 
-      set((state) => {
-        const orderedIdsBeforeClose = normalizeActiveConnectionOrder(
-          state.activeConnectionOrder,
-          state.activeConnections
-        )
-        const closedIndex = orderedIdsBeforeClose.indexOf(id)
-        const remaining = { ...state.activeConnections }
-        delete remaining[id]
-        const remainingIds = normalizeActiveConnectionOrder(
-          state.activeConnectionOrder.filter((sessionId) => sessionId !== id),
-          remaining
-        )
-        const fallbackIndex =
-          closedIndex >= 0 ? Math.min(closedIndex, Math.max(remainingIds.length - 1, 0)) : 0
-        const newActiveTabId =
-          state.activeTabId === id
-            ? remainingIds.length > 0
-              ? remainingIds[fallbackIndex]
-              : null
-            : state.activeTabId
-
-        return {
-          activeConnections: remaining,
-          activeConnectionOrder: remainingIds,
-          activeTabId: newActiveTabId,
-          error: null,
-        }
+      set({
+        activeConnections: remaining,
+        activeConnectionOrder: remainingIds,
+        activeTabId: newActiveTabId,
+        error: null,
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -266,6 +281,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
   switchTab: (id: string) => {
     set({ activeTabId: id })
+    // The connection store is authoritative for the selected connection tab;
+    // mirror the selection into the workspace store so it coordinates the
+    // visible row-surface transition (old surface inactive, new surface active).
+    useWorkspaceStore.getState().setVisibleConnectionSession(id)
   },
 
   reorderActiveConnection: (id: string, insertIndex: number) => {

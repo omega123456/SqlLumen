@@ -3,11 +3,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FavouritesView } from '../../../components/favourites/FavouritesView'
 import { useFavoritesStore } from '../../../stores/favorites-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useQueryStore } from '../../../stores/query-store'
 import type { FavoriteEntry } from '../../../types/schema'
 
@@ -37,13 +34,8 @@ beforeEach(() => {
     dialogOpen: false,
     editingFavorite: null,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
   useQueryStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   vi.clearAllMocks()
 })
 

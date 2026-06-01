@@ -238,6 +238,13 @@ function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
       continue
     }
 
+    // A table-data tab (standalone or scoped) is only globally visible when its
+    // connection session is the visible connection. A selected tab inside a
+    // hidden (background) connection is inactive for row residency.
+    if (workspaceState.visibleConnectionSessionId !== connectionId) {
+      return false
+    }
+
     if (workspaceState.activeTabByConnection[connectionId] === tabId) {
       return true
     }
@@ -264,7 +271,7 @@ function createResidentRowState(isActive = false): FrontendRowResidencyState {
   return {
     status: 'resident',
     isActive,
-    inactiveSince: isActive ? null : null,
+    inactiveSince: null,
   }
 }
 

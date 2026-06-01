@@ -3,11 +3,8 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useConnectionStore, _resetListenersSetup } from '../../stores/connection-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { ipc } from '../ipc-mock'
@@ -23,14 +20,9 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   _resetListenersSetup()
 
   ipc.override('close_connection', () => null)

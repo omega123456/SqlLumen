@@ -4,11 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { HistoryTab } from '../../../components/history/HistoryTab'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useHistoryStore } from '../../../stores/history-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useQueryStore } from '../../../stores/query-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 import type { HistoryTab as HistoryTabType, HistoryEntry } from '../../../types/schema'
@@ -89,13 +86,8 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
   useQueryStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   vi.clearAllMocks()
 })
 

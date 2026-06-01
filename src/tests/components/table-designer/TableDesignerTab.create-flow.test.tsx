@@ -4,7 +4,7 @@ import { TableDesignerTab } from '../../../components/table-designer/TableDesign
 import { useSchemaStore } from '../../../stores/schema-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useThemeStore } from '../../../stores/theme-store'
-import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import type { TableDesignerTab as TableDesignerTabType } from '../../../types/schema'
 
 function makeCreateTab(): TableDesignerTabType {
@@ -23,7 +23,7 @@ describe('TableDesignerTab create flow', () => {
   beforeEach(() => {
     useTableDesignerStore.getState().cleanupTab('tab-create')
     useTableDesignerStore.setState({ tabs: {} })
-    useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+    resetWorkspaceStore()
     useSchemaStore.setState({ connectionStates: {} })
     useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark' })
   })

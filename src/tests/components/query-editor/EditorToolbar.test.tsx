@@ -3,11 +3,8 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { ipc } from '../../ipc-mock'
 import { EditorToolbar } from '../../../components/query-editor/EditorToolbar'
 import { useQueryStore } from '../../../stores/query-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
@@ -17,15 +14,13 @@ import { useAiStore } from '../../../stores/ai-store'
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   useConnectionStore.setState({ activeConnections: {} })
   useAiStore.setState({ tabs: {} })
   // Default AI to disabled
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
   })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
 
   // Override execute commands to return realistic results
   ipc.override('execute_query', () => ({

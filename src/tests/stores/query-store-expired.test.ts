@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, waitFor } from '@testing-library/react'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { ipc } from '../ipc-mock'
 import { useSettingsStore } from '../../stores/settings-store'
 import type { FilterCondition, QueryTableEditInfo, TableDataColumnMeta } from '../../types/schema'
@@ -118,6 +119,7 @@ describe('query-store expired result handling', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     useQueryStore.setState({ tabs: {} })
+    resetWorkspaceStore({ visibleConnectionSessionId: CONN_ID })
     useWorkspaceStore.setState({
       tabsByConnection: {
         [CONN_ID]: [
@@ -132,9 +134,6 @@ describe('query-store expired result handling', () => {
       activeTabByConnection: {
         [CONN_ID]: TAB_ID,
       },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
     })
     useSettingsStore.setState({
       settings: {
@@ -900,5 +899,42 @@ describe('query-store expired result handling', () => {
         useQueryStore.getState().tabs[TAB_ID]?.results.every((result) => result.isExpired)
       ).toBe(true)
     })
+  })
+
+  it('keeps a background query completion resident-but-inactive and TTL-eligible', async () => {
+    // The query tab belongs to CONN_ID, but a different connection is now the
+    // globally visible connection, so the completion must not become active.
+    act(() => {
+      useWorkspaceStore.setState({ visibleConnectionSessionId: 'conn-other-visible' })
+    })
+
+    ipc.override('execute_query', () => ({
+      queryId: 'q-bg',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 1,
+      executionTimeMs: 5,
+      affectedRows: 0,
+      rows: [[1]],
+      autoLimitApplied: false,
+    }))
+
+    await act(async () => {
+      await useQueryStore.getState().executeQuery(CONN_ID, TAB_ID, 'SELECT id FROM users')
+    })
+
+    const completed = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(completed?.rowResidency.status).toBe('resident')
+    expect(completed?.rowResidency.isActive).toBe(false)
+    expect(completed?.rowResidency.inactiveSince).toBeTypeOf('number')
+    expect(completed?.rows).toEqual([[1]])
+
+    // The background completion is on the normal inactive TTL lifecycle.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+
+    const evicted = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(evicted?.rows).toEqual([])
+    expect(evicted?.rowResidency.status).toBe('evicted')
   })
 })

@@ -5,7 +5,8 @@ import {
   useObjectBrowserActions,
   type UseObjectBrowserActionsReturn,
 } from '../../hooks/useObjectBrowserActions'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useSchemaStore } from '../../stores/schema-store'
 import { useToastStore } from '../../stores/toast-store'
 import { ipc, expectToast } from '../ipc-mock'
@@ -66,17 +67,13 @@ function renderActions() {
 }
 
 beforeEach(() => {
-  _resetTabIdCounter()
+  resetWorkspaceStore()
   useToastStore.setState({ toasts: [] })
   useSchemaStore.setState({
     connectionStates: {},
     refreshDatabase: vi.fn().mockResolvedValue(undefined),
     refreshAll: vi.fn().mockResolvedValue(undefined),
     refreshCategory: vi.fn().mockResolvedValue(undefined),
-  })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
   })
   useQueryStore.setState({ tabs: {} })
 })

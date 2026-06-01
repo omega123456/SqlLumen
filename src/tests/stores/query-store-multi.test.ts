@@ -7,6 +7,7 @@ import { ipc, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { flat } from '../helpers/query-test-utils'
 
 const overrideCommands = overrideIpcCommands
@@ -70,13 +71,7 @@ const multiQueryResult = {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-    lastFocusedSurfaceByTab: {},
-    blockingNavigationByTab: {},
-    pendingCascadeClose: null,
-  })
+  resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
   _resetToastTimeoutsForTests()
   overrideCommands({
     execute_multi_query: () => multiQueryResult,
@@ -311,6 +306,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
 
   it('does not touch result residency when switching results on a hidden query tab', () => {
     setupMultiResult()
+    resetWorkspaceStore()
     useWorkspaceStore.setState({
       tabsByConnection: {
         'conn-1': [
@@ -321,9 +317,6 @@ describe('useQueryStore — setActiveResultIndex', () => {
       activeTabByConnection: {
         'conn-1': 'tab-2',
       },
-      lastFocusedSurfaceByTab: {},
-      blockingNavigationByTab: {},
-      pendingCascadeClose: null,
     })
 
     useQueryStore.getState().setActiveResultIndex('tab-1', 1)
@@ -1216,5 +1209,45 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
     expect(tab.results[0].rows).toEqual([[42]])
     expect(tab.results[0].queryId).toBe('new-q1')
     expect(tab.results[0].rowLimit).toBe(50)
+  })
+})
+
+describe('useQueryStore — multi-result connection-aware completion', () => {
+  /** Register a query tab as the selected tab for the given connection. */
+  function registerQueryTab(connectionId: string, tabId: string): void {
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        [connectionId]: [{ id: tabId, type: 'query-editor', label: 'Query', connectionId }],
+      },
+      activeTabByConnection: { [connectionId]: tabId },
+    })
+  }
+
+  it('activates only the first result when the connection is globally visible', async () => {
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
+    registerQueryTab('conn-1', 'tab-multi')
+
+    await useQueryStore
+      .getState()
+      .executeMultiQuery('conn-1', 'tab-multi', ['SELECT 1', 'INSERT INTO t', 'SELECT name'])
+
+    const results = useQueryStore.getState().tabs['tab-multi']!.results
+    expect(results[0].rowResidency.isActive).toBe(true)
+    expect(results[1].rowResidency.isActive).toBe(false)
+    expect(results[2].rowResidency.isActive).toBe(false)
+  })
+
+  it('keeps every result inactive when the connection is no longer visible', async () => {
+    resetWorkspaceStore({ visibleConnectionSessionId: 'conn-other' })
+    registerQueryTab('conn-1', 'tab-multi-bg')
+
+    await useQueryStore
+      .getState()
+      .executeMultiQuery('conn-1', 'tab-multi-bg', ['SELECT 1', 'INSERT INTO t', 'SELECT name'])
+
+    const results = useQueryStore.getState().tabs['tab-multi-bg']!.results
+    expect(results.every((result) => result.rowResidency.isActive === false)).toBe(true)
+    expect(results[0].rowResidency.status).toBe('resident')
+    expect(results[0].rowResidency.inactiveSince).toBeTypeOf('number')
   })
 })

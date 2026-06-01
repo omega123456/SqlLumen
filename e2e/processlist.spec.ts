@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
-import { APP_READY_MS, connectToSample, waitForApp, waitForGlideGrid } from './helpers'
+import {
+  activeWorkspaceTabs,
+  APP_READY_MS,
+  connectToSample,
+  waitForApp,
+  waitForGlideGrid,
+} from './helpers'
 import { clickGlideRowMarker, getGlideGridGeometry } from './glide-grid-helpers'
 
 const activePanel = (page: Page) =>
@@ -13,13 +19,13 @@ test.describe('Process List tab', () => {
 
   test('appears in workspace tab strip after connecting', async ({ page }) => {
     // The workspace tabs strip should contain a "Process List" tab
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await expect(tabStrip.getByText('Process List')).toBeVisible({ timeout: APP_READY_MS })
   })
 
   test('has no close button (non-closable)', async ({ page }) => {
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     // Find the Process List tab entry and verify no close button with label matching /^Close / exists
     const processListTab = tabStrip.getByText('Process List').locator('..')
@@ -28,7 +34,7 @@ test.describe('Process List tab', () => {
   })
 
   test('grid renders with data rows', async ({ page }) => {
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
     await expect(activePanel(page).getByTestId('processlist-grid')).toBeVisible({ timeout: APP_READY_MS })
@@ -36,7 +42,7 @@ test.describe('Process List tab', () => {
   })
 
   test('refresh button is visible and clickable', async ({ page }) => {
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
     await waitForGlideGrid(page, 'processlist-grid')
@@ -48,7 +54,7 @@ test.describe('Process List tab', () => {
   })
 
   test('interval dropdown is visible', async ({ page }) => {
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
     await waitForGlideGrid(page, 'processlist-grid')
@@ -56,7 +62,7 @@ test.describe('Process List tab', () => {
   })
 
   test('filter dropdown defaults to exclude idle and can switch to show all', async ({ page }) => {
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
 
@@ -73,7 +79,7 @@ test.describe('Process List tab', () => {
   })
 
   test('clicking a row marker selects the process row', async ({ page }) => {
-    const tabStrip = page.getByTestId('workspace-tabs')
+    const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
     await waitForGlideGrid(page, 'processlist-grid')

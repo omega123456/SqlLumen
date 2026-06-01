@@ -10,6 +10,7 @@ import { useTableDataStore } from '../../../stores/table-data-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useUpdateStore } from '../../../stores/update-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import type { ObjectEditorTab, TableDataTab, TableDesignerTab } from '../../../types/schema'
 import { ipc } from '../../ipc-mock'
 
@@ -107,7 +108,7 @@ function resetStores(): void {
     dialogOpen: false,
     error: null,
   })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })

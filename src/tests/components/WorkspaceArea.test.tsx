@@ -1,13 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceArea } from '../../components/layout/WorkspaceArea'
 import { useConnectionStore } from '../../stores/connection-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
@@ -49,6 +46,15 @@ function makeActiveConnection(overrides: Partial<ActiveConnection> = {}): Active
   }
 }
 
+function makeActiveConnectionFor(sessionId: string): ActiveConnection {
+  return {
+    id: sessionId,
+    profile: makeSavedConnection({ id: sessionId, name: `DB ${sessionId}` }),
+    status: 'connected',
+    serverVersion: '8.0.35',
+  }
+}
+
 beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
@@ -56,15 +62,10 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
 })
 
 async function waitForWorkspaceTableDataSettled(options: { waitForLoad?: boolean } = {}) {
@@ -405,6 +406,125 @@ describe('WorkspaceArea', () => {
   // ---------------------------------------------------------------------------
   // Scoped table-data placement and cascade-close dialog tests
   // ---------------------------------------------------------------------------
+
+  describe('retained connection workspaces', () => {
+    it('keeps every open connection workspace mounted when switching connections', async () => {
+      useConnectionStore.setState({
+        activeConnections: {
+          'session-a': makeActiveConnectionFor('session-a'),
+          'session-b': makeActiveConnectionFor('session-b'),
+        },
+        activeTabId: 'session-a',
+      })
+      act(() => {
+        useWorkspaceStore.getState().setVisibleConnectionSession('session-a')
+      })
+
+      useWorkspaceStore.getState().openQueryTab('session-a', 'Query A')
+      useWorkspaceStore.getState().openQueryTab('session-b', 'Query B')
+
+      render(<WorkspaceArea />)
+
+      // Both retained workspaces are mounted; one active, one inactive.
+      expect(screen.getByTestId('active-connection-workspace')).toHaveAttribute(
+        'data-session-id',
+        'session-a'
+      )
+      expect(screen.getByTestId('inactive-connection-workspace')).toHaveAttribute(
+        'data-session-id',
+        'session-b'
+      )
+
+      // Switch to session-b: session-a stays mounted but becomes inert.
+      act(() => {
+        useConnectionStore.setState({ activeTabId: 'session-b' })
+        useWorkspaceStore.getState().setVisibleConnectionSession('session-b')
+      })
+
+      await waitFor(() => {
+        expect(screen.getByTestId('active-connection-workspace')).toHaveAttribute(
+          'data-session-id',
+          'session-b'
+        )
+      })
+      const inactiveRoot = screen.getByTestId('inactive-connection-workspace')
+      expect(inactiveRoot).toHaveAttribute('data-session-id', 'session-a')
+      expect(inactiveRoot).toHaveAttribute('aria-hidden', 'true')
+      expect(inactiveRoot).toHaveAttribute('inert')
+    })
+
+    it('marks only the visible connection subtree active via scoped selectors', () => {
+      useConnectionStore.setState({
+        activeConnections: {
+          'session-a': makeActiveConnectionFor('session-a'),
+          'session-b': makeActiveConnectionFor('session-b'),
+        },
+        activeTabId: 'session-b',
+      })
+      act(() => {
+        useWorkspaceStore.getState().setVisibleConnectionSession('session-b')
+      })
+
+      useWorkspaceStore.getState().openQueryTab('session-a', 'Query A')
+      useWorkspaceStore.getState().openQueryTab('session-b', 'Query B')
+
+      render(<WorkspaceArea />)
+
+      const activeRoot = screen.getByTestId('active-connection-workspace')
+      // Scope rail selection through the active root since rails are duplicated.
+      expect(within(activeRoot).getByText('Query B')).toBeInTheDocument()
+      expect(within(activeRoot).queryByText('Query A')).not.toBeInTheDocument()
+    })
+
+    it('emits deactivation before activation with correct connection context on switch', async () => {
+      const events: string[] = []
+      const onDeactivated = (event: Event) => {
+        const detail = (event as CustomEvent<{ tabId: string; connectionId: string }>).detail
+        events.push(`deactivated:${detail.connectionId}:${detail.tabId}`)
+      }
+      const onActivated = (event: Event) => {
+        const detail = (event as CustomEvent<{ tabId: string; connectionId: string }>).detail
+        events.push(`activated:${detail.connectionId}:${detail.tabId}`)
+      }
+      document.addEventListener('workspace-tab-deactivated', onDeactivated)
+      document.addEventListener('workspace-tab-activated', onActivated)
+
+      try {
+        useConnectionStore.setState({
+          activeConnections: {
+            'session-a': makeActiveConnectionFor('session-a'),
+            'session-b': makeActiveConnectionFor('session-b'),
+          },
+          activeTabId: 'session-a',
+        })
+        act(() => {
+          useWorkspaceStore.getState().setVisibleConnectionSession('session-a')
+        })
+
+        const tabA = useWorkspaceStore.getState().openQueryTab('session-a', 'Query A')
+        const tabB = useWorkspaceStore.getState().openQueryTab('session-b', 'Query B')
+
+        render(<WorkspaceArea />)
+        await waitFor(() => expect(events).toEqual([`activated:session-a:${tabA}`]))
+
+        act(() => {
+          useConnectionStore.setState({ activeTabId: 'session-b' })
+          useWorkspaceStore.getState().setVisibleConnectionSession('session-b')
+        })
+
+        await waitFor(() =>
+          expect(events).toEqual([
+            `activated:session-a:${tabA}`,
+            `deactivated:session-a:${tabA}`,
+            `activated:session-b:${tabB}`,
+          ])
+        )
+      } finally {
+        document.removeEventListener('workspace-tab-deactivated', onDeactivated)
+        document.removeEventListener('workspace-tab-activated', onActivated)
+      }
+    })
+  })
 
   describe('table-data tab placement', () => {
     function enableBottomTableTabs() {

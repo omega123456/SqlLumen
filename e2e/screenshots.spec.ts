@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
   activateResultGridCell,
+  activeWorkspaceTabs,
   connectToSample,
   clickResultGridCell,
   dismissAllToasts,
@@ -147,7 +148,11 @@ async function openTwoConnectionSessionsFirstActive(page: Page) {
       activeTabId: 'session-playwright-1',
     }))
   })
-  await expect(page.getByText('Staging MySQL')).toBeVisible()
+  // Scope to the connection tab bar so the assertion is not ambiguous with an
+  // overlapping "Connected to Staging MySQL" toast that may briefly appear.
+  await expect(
+    page.getByTestId('connection-session-tab-session-playwright-2').getByText('Staging MySQL')
+  ).toBeVisible()
   await expect(page.getByTestId('connection-session-tab-session-playwright-1')).toHaveAttribute(
     'data-active',
     'true'
@@ -179,7 +184,7 @@ async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
       objectType: 'table',
     })
   })
-  await expect(page.getByTestId('workspace-tabs')).toBeVisible()
+  await expect(activeWorkspaceTabs(page)).toBeVisible()
   await expect(page.getByTestId('schema-info-tab')).toBeVisible()
   await expect(page.getByTestId('stats-row')).toBeVisible()
 }
@@ -1012,7 +1017,7 @@ async function openJsonTableDataTab(page: Page) {
 async function openProcessListTab(page: Page) {
   await connectToSample(page, { dismissToasts: true })
   // Click the Process List workspace tab to activate it
-  const tabStrip = page.getByTestId('workspace-tabs')
+  const tabStrip = activeWorkspaceTabs(page)
   await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
   await tabStrip.getByText('Process List').click()
   await waitForGlideGrid(page, 'processlist-grid-view')
@@ -1463,7 +1468,7 @@ for (const theme of themes) {
 
     test('WorkspaceTabs — strip above schema-info (multi-tab)', async ({ page }) => {
       await openSchemaInfoWithWorkspaceTabStrip(page)
-      await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
+      await expect(activeWorkspaceTabs(page)).toHaveScreenshot(
         `workspace-tabs-above-schema-info-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -1477,7 +1482,7 @@ for (const theme of themes) {
       await expect(page.getByTestId('workspace-tab-rename-input')).toBeVisible({
         timeout: APP_READY_MS,
       })
-      await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
+      await expect(activeWorkspaceTabs(page)).toHaveScreenshot(
         `workspace-tabs-rename-inline-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -1538,7 +1543,7 @@ for (const theme of themes) {
         )
       })
 
-      await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
+      await expect(activeWorkspaceTabs(page)).toHaveScreenshot(
         `workspace-tabs-drag-drop-indicator-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -3547,7 +3552,7 @@ for (const theme of themes) {
       await connectToSample(page)
       // The history tab is now auto-created when a connection opens.
       // Click the History tab in the workspace tab bar to make it active.
-      const workspaceTabs = page.getByTestId('workspace-tabs')
+      const workspaceTabs = activeWorkspaceTabs(page)
       const historyTab = workspaceTabs.getByText('History')
       await expect(historyTab).toBeVisible({ timeout: APP_READY_MS })
       await historyTab.click()

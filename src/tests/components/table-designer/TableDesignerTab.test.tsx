@@ -6,6 +6,7 @@ import { useSchemaStore } from '../../../stores/schema-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
 import type { TableDesignerTab as TableDesignerTabType } from '../../../types/schema'
 
@@ -25,7 +26,7 @@ function makeTab(overrides: Partial<TableDesignerTabType> = {}): TableDesignerTa
 beforeEach(() => {
   useTableDesignerStore.getState().cleanupTab('tab-1')
   useTableDesignerStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   useSchemaStore.setState({ connectionStates: {} })
   useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark' })
   ipc.override('load_table_for_designer', () => ({

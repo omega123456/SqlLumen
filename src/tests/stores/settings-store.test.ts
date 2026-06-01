@@ -2,11 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ipc } from '../ipc-mock'
 import { renderHook, act } from '@testing-library/react'
 import { useSettingsStore, SETTINGS_DEFAULTS, useSettingValue } from '../../stores/settings-store'
-import {
-  useWorkspaceStore,
-  _resetQueryTabCounter,
-  _resetTabIdCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 
 // Mock IPC for settings
@@ -24,15 +21,7 @@ beforeEach(() => {
     isDialogOpen: false,
     dialogSection: undefined,
   })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-    lastFocusedSurfaceByTab: {},
-    blockingNavigationByTab: {},
-    pendingCascadeClose: null,
-  })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
+  resetWorkspaceStore()
 
   mockGetAllSettings.mockClear()
   mockSetSetting.mockClear()

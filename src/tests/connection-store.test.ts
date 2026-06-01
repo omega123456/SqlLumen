@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import { useConnectionStore, _resetListenersSetup } from '../stores/connection-store'
 import { useWorkspaceStore } from '../stores/workspace-store'
+import { resetWorkspaceStore, seedVisibleConnection } from './helpers/workspace-test-utils'
 import { useQueryStore } from '../stores/query-store'
 import { useTableDataStore } from '../stores/table-data-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../stores/toast-store'
@@ -59,6 +60,7 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
+  resetWorkspaceStore()
   useToastStore.setState({ toasts: [] })
   _resetToastTimeoutsForTests()
   _resetListenersSetup()
@@ -326,6 +328,114 @@ describe('useConnectionStore — switchTab', () => {
   it('sets activeTabId', () => {
     useConnectionStore.getState().switchTab('sess-2')
     expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
+  })
+
+  it('marks the switched-to session as the globally visible workspace', () => {
+    useConnectionStore.getState().switchTab('sess-2')
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('sess-2')
+  })
+})
+
+describe('useConnectionStore — visible workspace coordination', () => {
+  it('marks a newly opened session as the globally visible workspace', async () => {
+    useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
+    ipc.override('open_connection', () => ({ sessionId: 'sess-1', serverVersion: '8.0.35' }))
+
+    await useConnectionStore.getState().openConnection('conn-1')
+
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('sess-1')
+  })
+
+  it('moves visibility to the most recently opened session', async () => {
+    useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
+    let n = 0
+    ipc.override('open_connection', () => {
+      n += 1
+      return { sessionId: `sess-${n}`, serverVersion: '8.0.35' }
+    })
+
+    await useConnectionStore.getState().openConnection('conn-1')
+    await useConnectionStore.getState().openConnection('conn-1')
+
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('sess-2')
+  })
+
+  it('reveals the fallback session as visible when closing the active session', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection2,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+    seedVisibleConnection('sess-1')
+    ipc.override('close_connection', () => null)
+
+    await useConnectionStore.getState().closeConnection('sess-1')
+
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('sess-2')
+  })
+
+  it('clears the visible workspace when closing the last session', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+      activeConnectionOrder: ['sess-1'],
+      activeTabId: 'sess-1',
+    })
+    seedVisibleConnection('sess-1')
+    ipc.override('close_connection', () => null)
+
+    await useConnectionStore.getState().closeConnection('sess-1')
+
+    expect(useConnectionStore.getState().activeTabId).toBeNull()
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('')
+  })
+
+  it('does not change the visible workspace when closing a background session', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection2,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+    seedVisibleConnection('sess-1')
+    ipc.override('close_connection', () => null)
+
+    await useConnectionStore.getState().closeConnection('sess-2')
+
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-1')
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('sess-1')
   })
 })
 
@@ -673,6 +783,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     })
 
     // Set up workspace tab
+    seedVisibleConnection('sess-1')
     useWorkspaceStore.setState({
       tabsByConnection: {
         'sess-1': [{ id: 'qt-1', type: 'query-editor', label: 'Query 1', connectionId: 'sess-1' }],
@@ -735,6 +846,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     })
 
     // Set up workspace tab (table-data type)
+    seedVisibleConnection('sess-1')
     useWorkspaceStore.setState({
       tabsByConnection: {
         'sess-1': [
@@ -816,6 +928,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     })
 
     // Set up workspace tab
+    seedVisibleConnection('sess-1')
     useWorkspaceStore.setState({
       tabsByConnection: {
         'sess-1': [{ id: 'qt-1', type: 'query-editor', label: 'Query 1', connectionId: 'sess-1' }],

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SchemaInfoTab } from '../../../components/schema-info/SchemaInfoTab'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
 import type { SchemaInfoTab as SchemaInfoTabType, SchemaInfoResponse } from '../../../types/schema'
 
@@ -67,11 +68,7 @@ function makeSchemaInfoResponse(overrides: Partial<SchemaInfoResponse> = {}): Sc
 }
 
 beforeEach(() => {
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
-  _resetTabIdCounter()
+  resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
 })
 
 describe('SchemaInfoTab', () => {

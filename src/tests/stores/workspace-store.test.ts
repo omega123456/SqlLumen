@@ -1,9 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
@@ -21,12 +18,7 @@ import type {
 } from '../../types/schema'
 
 beforeEach(() => {
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-    lastFocusedSurfaceByTab: {},
-    blockingNavigationByTab: {},
-  })
+  resetWorkspaceStore({ visibleConnectionSessionId: 'conn-1' })
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })
   useObjectEditorStore.setState({ tabs: {} })
@@ -40,8 +32,6 @@ beforeEach(() => {
     isDialogOpen: false,
     dialogSection: undefined,
   })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
 })
 
 function setBottomPanelEnabled(enabled: boolean) {
@@ -587,6 +577,200 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
     const results = useQueryStore.getState().tabs[queryTabId].results
     expect(results[0].rowResidency.isActive).toBe(false)
     expect(results[1].rowResidency.isActive).toBe(false)
+  })
+})
+
+describe('useWorkspaceStore — setVisibleConnectionSession', () => {
+  function seedActiveQueryResult(
+    connectionId: string,
+    title: string,
+    queryId: string
+  ): { queryTabId: string } {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab(connectionId, title)
+    useQueryStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        [queryTabId]: makeQueryTabState({
+          connectionId,
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId,
+              rows: [[1, 'alice']],
+              rowResidency: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+          ],
+        }),
+      },
+    }))
+    return { queryTabId }
+  }
+
+  it('is a no-op when the visible session does not change', () => {
+    const { queryTabId } = seedActiveQueryResult('conn-1', 'Query 1', 'query-1')
+
+    useWorkspaceStore.getState().setVisibleConnectionSession('conn-1')
+
+    const result = useQueryStore.getState().tabs[queryTabId].results[0]
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('conn-1')
+    expect(result.rowResidency.isActive).toBe(true)
+    expect(result.rowResidency.inactiveSince).toBeNull()
+  })
+
+  it('marks the previously visible surface inactive and the newly visible surface active', () => {
+    const { queryTabId: firstTabId } = seedActiveQueryResult('conn-1', 'Query 1', 'query-1')
+
+    // conn-2 has its own query tab with an inactive resident result.
+    const secondTabId = useWorkspaceStore.getState().openQueryTab('conn-2', 'Query 2')
+    useQueryStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        [secondTabId]: makeQueryTabState({
+          connectionId: 'conn-2',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-2',
+              rows: [[2, 'bob']],
+              rowResidency: {
+                status: 'resident',
+                isActive: false,
+                inactiveSince: 123,
+              },
+            },
+          ],
+        }),
+      },
+    }))
+
+    useWorkspaceStore.getState().setVisibleConnectionSession('conn-2')
+
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('conn-2')
+    const previous = useQueryStore.getState().tabs[firstTabId].results[0]
+    expect(previous.rowResidency.isActive).toBe(false)
+    expect(previous.rowResidency.inactiveSince).toBeTypeOf('number')
+    const next = useQueryStore.getState().tabs[secondTabId].results[0]
+    expect(next.rowResidency.isActive).toBe(true)
+    expect(next.rowResidency.inactiveSince).toBeNull()
+  })
+
+  it('only deactivates the previous surface when the new session has no active tab', () => {
+    const { queryTabId } = seedActiveQueryResult('conn-1', 'Query 1', 'query-1')
+
+    useWorkspaceStore.getState().setVisibleConnectionSession('conn-empty')
+
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('conn-empty')
+    const result = useQueryStore.getState().tabs[queryTabId].results[0]
+    expect(result.rowResidency.isActive).toBe(false)
+    expect(result.rowResidency.inactiveSince).toBeTypeOf('number')
+  })
+
+  it('deactivates the previous surface and reveals nothing when cleared with an empty session', () => {
+    const { queryTabId } = seedActiveQueryResult('conn-1', 'Query 1', 'query-1')
+
+    useWorkspaceStore.getState().setVisibleConnectionSession('')
+
+    expect(useWorkspaceStore.getState().visibleConnectionSessionId).toBe('')
+    const result = useQueryStore.getState().tabs[queryTabId].results[0]
+    expect(result.rowResidency.isActive).toBe(false)
+    expect(result.rowResidency.inactiveSince).toBeTypeOf('number')
+  })
+
+  it('does not activate row payloads when a background connection changes its active tab', async () => {
+    // conn-1 is visible (top-level beforeEach). conn-2 is a background connection.
+    const backgroundTabId = useWorkspaceStore.getState().openQueryTab('conn-2', 'Background')
+    useQueryStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        [backgroundTabId]: makeQueryTabState({
+          connectionId: 'conn-2',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'bg-query',
+              rows: [[9, 'ghost']],
+              rowResidency: {
+                status: 'resident',
+                isActive: false,
+                inactiveSince: 123,
+              },
+            },
+          ],
+        }),
+      },
+    }))
+
+    const secondBackgroundTabId = useWorkspaceStore.getState().openQueryTab('conn-2', 'Background 2')
+
+    // Selecting a tab in a background connection must not run activation effects.
+    useWorkspaceStore.getState().setActiveTab('conn-2', secondBackgroundTabId)
+
+    await vi.waitFor(() => {
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-2']).toBe(
+        secondBackgroundTabId
+      )
+    })
+    // The previously-active background surface remains untouched (still inactive).
+    const result = useQueryStore.getState().tabs[backgroundTabId].results[0]
+    expect(result.rowResidency.isActive).toBe(false)
+    expect(result.rowResidency.inactiveSince).toBe(123)
+  })
+
+  it('restores scoped standalone table-data rows when its connection becomes visible', async () => {
+    // Start conn-bg as a background connection (no globally visible workspace).
+    seedVisibleConnection('')
+
+    useWorkspaceStore.getState().openTab(makeTab({ connectionId: 'conn-bg' }))
+    const tableTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-bg'].find((tab): tab is TableDataTab => tab.type === 'table-data')
+
+    if (!tableTab) {
+      throw new Error('Expected table-data tab')
+    }
+
+    useTableDataStore.setState({
+      tabs: {
+        [tableTab.id]: makeTableDataTabState({
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: Date.now(),
+          },
+        }),
+      },
+    })
+
+    ipc.override('restore_table_data_cache', () => ({
+      status: 'available',
+      data: {
+        columns: [],
+        rows: [[42, 'visible']],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: null,
+        executionTimeMs: 5,
+      },
+    }))
+
+    useWorkspaceStore.getState().setVisibleConnectionSession('conn-bg')
+
+    await vi.waitFor(() => {
+      expect(useTableDataStore.getState().tabs[tableTab.id].rows).toEqual([[42, 'visible']])
+      expect(useTableDataStore.getState().tabs[tableTab.id].rowResidency).toMatchObject({
+        status: 'resident',
+        isActive: true,
+        inactiveSince: null,
+      })
+    })
   })
 })
 

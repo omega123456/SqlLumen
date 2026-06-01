@@ -46,6 +46,44 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
 let activeMockDatabase: string | null = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
 
 // ---------------------------------------------------------------------------
+// Deterministic multi-session allocation
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-page runtime session counter for `open_connection`. The first call in a
+ * browser page returns `session-playwright-1`, the second `session-playwright-2`,
+ * and so on. The counter lives on `window` so it resets automatically on every
+ * page navigation/reload (a fresh `window` is created each load), preserving the
+ * existing first-session E2E assumption that the initial open is
+ * `session-playwright-1`.
+ */
+const SESSION_COUNTER_KEY = '__playwrightSessionCounter__'
+
+/** Module-level fallback counter store for environments without `window`. */
+const moduleSessionCounterStore: { [SESSION_COUNTER_KEY]?: number } = {}
+
+function getCounterStore(): Record<string, number> {
+  return typeof window !== 'undefined'
+    ? (window as unknown as Record<string, number>)
+    : (moduleSessionCounterStore as Record<string, number>)
+}
+
+function allocatePlaywrightSessionId(): string {
+  const store = getCounterStore()
+  const next = (store[SESSION_COUNTER_KEY] ?? 0) + 1
+  store[SESSION_COUNTER_KEY] = next
+  return `session-playwright-${next}`
+}
+
+/**
+ * Reset the deterministic session allocator. Browser page loads reset it
+ * implicitly via a fresh `window`; tests call this to isolate cases.
+ */
+export function resetPlaywrightSessionAllocator(): void {
+  delete getCounterStore()[SESSION_COUNTER_KEY]
+}
+
+// ---------------------------------------------------------------------------
 // AI stream mock infrastructure
 // ---------------------------------------------------------------------------
 
@@ -248,7 +286,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return []
     case 'open_connection':
       activeMockDatabase = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
-      return { sessionId: 'session-playwright-1', serverVersion: '8.0.33-mock' }
+      return { sessionId: allocatePlaywrightSessionId(), serverVersion: '8.0.33-mock' }
     case 'select_database':
       activeMockDatabase =
         ((args as Record<string, unknown>)?.databaseName as string | null) ?? null

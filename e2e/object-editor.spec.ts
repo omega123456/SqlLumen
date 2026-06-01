@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
-import { APP_READY_MS, connectToSample, dismissAllToasts, waitForApp } from './helpers'
+import {
+  activeWorkspaceTabs,
+  APP_READY_MS,
+  connectToSample,
+  dismissAllToasts,
+  waitForApp,
+} from './helpers'
 
 function activePanel(page: Page) {
   return page.locator('[data-testid="workspace-panel"][data-active="true"]')
@@ -145,7 +151,7 @@ test.describe('Object Editor', () => {
     await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     // Verify the workspace tab label contains "Execute:"
-    const workspaceTabs = page.getByTestId('workspace-tabs')
+    const workspaceTabs = activeWorkspaceTabs(page)
     await expect(workspaceTabs).toContainText('Execute:', { timeout: APP_READY_MS })
 
     // Verify the query content contains CALL

@@ -1,20 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { insertSqlIntoEditor } from '../../lib/query-tab-utils'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../stores/workspace-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 
 beforeEach(() => {
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   vi.clearAllMocks()
 })
 

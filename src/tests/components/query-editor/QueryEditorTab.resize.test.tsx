@@ -3,11 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
 import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
 import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
@@ -88,13 +84,11 @@ const emptyAiTabState = makeAiTabState
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
   useAiStore.setState({ tabs: {} })
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
   })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
   mockLayout.mockClear()
   mockEditorInstance.onDidChangeCursorPosition.mockClear()
   mockEditorInstance.onDidChangeCursorSelection.mockClear()

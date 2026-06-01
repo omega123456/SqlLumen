@@ -113,6 +113,13 @@ function isQueryTabVisibleInWorkspace(tabId: string): boolean {
       continue
     }
 
+    // A query tab is only globally visible when its connection session is the
+    // visible connection AND it is the selected workspace tab. A selected tab
+    // inside a hidden (background) connection is inactive for row residency.
+    if (workspaceState.visibleConnectionSessionId !== connectionId) {
+      return false
+    }
+
     return workspaceState.activeTabByConnection[connectionId] === tabId
   }
 
@@ -1126,8 +1133,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       cancelAllResultLifecycleTimers(tabId, currentState?.results.length ?? 0)
 
+      // Only the globally visible result surface may be active. If the owning
+      // connection is no longer visible (e.g. the user switched connections
+      // while this batch was running), even the first result is
+      // resident-but-inactive and follows the normal inactive TTL lifecycle.
+      const isVisibleOnCompletion = isQueryTabVisibleInWorkspace(tabId)
+
       const results = multiResult.results.map((item, index) =>
-        buildSingleResultFromItem(item, getDefaultRowLimit(), index === 0)
+        buildSingleResultFromItem(item, getDefaultRowLimit(), index === 0 && isVisibleOnCompletion)
       )
 
       // Tab-level status: 'success' if at least one result exists
@@ -1141,6 +1154,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         wasCancelled: false,
       })
       finalizeExecution(tabId)
+
+      // Background completion: begin the normal inactive TTL lifecycle for the
+      // first result so the resident rows remain eligible for eviction.
+      if (!isVisibleOnCompletion && results.length > 0) {
+        get().markResultSurfaceInactive(tabId, 0)
+      }
 
       // Notify history store so the panel auto-refreshes
       useHistoryStore.getState().notifyNewQuery(connectionId)
@@ -1449,6 +1468,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
         const normalizedRows = normalizeQueryRows(result.columns, result.rows)
 
+        // If the owning connection is no longer the globally visible connection
+        // (e.g. the user switched connections while this query was running),
+        // the completed result is resident-but-inactive and follows the normal
+        // inactive TTL lifecycle instead of becoming active.
+        const isVisibleOnCompletion = isQueryTabVisibleInWorkspace(tabId)
+
         const singleResult: SingleResultState = {
           ...DEFAULT_RESULT_STATE,
           resultStatus: 'success',
@@ -1466,8 +1491,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           isAnalyzed: false,
           rowResidency: {
             status: 'resident',
-            isActive: true,
-            inactiveSince: null,
+            isActive: isVisibleOnCompletion,
+            inactiveSince: isVisibleOnCompletion ? null : Date.now(),
           },
           rowsEvictedAt: null,
         }
@@ -1481,6 +1506,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           wasCancelled: false,
         })
         finalizeExecution(tabId)
+
+        // Background completion: begin the normal inactive TTL lifecycle so the
+        // resident rows remain eligible for the existing eviction policy.
+        if (!isVisibleOnCompletion) {
+          get().markResultSurfaceInactive(tabId, 0)
+        }
 
         // Notify history store so the panel auto-refreshes
         useHistoryStore.getState().notifyNewQuery(connectionId)

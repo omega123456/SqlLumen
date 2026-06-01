@@ -5,8 +5,11 @@
  * The AI assistant chat lives in `WorkspaceBody` (resizable split
  * on the right of the workspace), not in this component.
  *
- * Does NOT call evict_results on unmount because tab switching
- * unmounts this component. Eviction is handled by workspace-store.closeTab.
+ * Does NOT call evict_results on unmount. The workspace subtree is retained
+ * while switching between workspace tabs and between connection sessions, so
+ * this component is not unmounted on those transitions. Row-payload eviction is
+ * owned by the stores (workspace-store.closeTab and the result/table-data TTL
+ * lifecycle), not by this component's unmount.
  */
 
 import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'

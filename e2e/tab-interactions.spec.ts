@@ -37,7 +37,8 @@ async function workspaceQueryTabOrder(page: Page) {
 
 async function renderedWorkspaceQueryTabOrder(page: Page) {
   return page.evaluate(() => {
-    const root = document.querySelector('[data-testid="workspace-tabs"]')
+    const activeWorkspace = document.querySelector('[data-testid="active-connection-workspace"]')
+    const root = (activeWorkspace ?? document).querySelector('[data-testid="workspace-tabs"]')
     if (!root) {
       return []
     }

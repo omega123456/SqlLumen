@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryBottomPanel } from '../../../components/query-editor/QueryBottomPanel'
 import { useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { makeTabState } from '../../helpers/query-test-utils'
 import * as ResultPanelModule from '../../../components/query-editor/ResultPanel'
 import * as TableDataTabModule from '../../../components/table-data/TableDataTab'
@@ -13,7 +14,7 @@ import * as TableDataTabModule from '../../../components/table-data/TableDataTab
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  resetWorkspaceStore()
 
   vi.spyOn(ResultPanelModule, 'ResultPanel').mockImplementation((props) => {
     const p = props as unknown as Record<string, unknown>

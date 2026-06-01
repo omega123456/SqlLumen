@@ -3,20 +3,14 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceTabs } from '../../../components/workspace/WorkspaceTabs'
-import {
-  useWorkspaceStore,
-  _resetTabIdCounter,
-  _resetQueryTabCounter,
-} from '../../../stores/workspace-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
 
 beforeEach(() => {
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
-  })
+  resetWorkspaceStore()
   useSettingsStore.setState((state) => ({
     settings: {
       ...state.settings,
@@ -25,8 +19,6 @@ beforeEach(() => {
   }))
   useTableDesignerStore.setState({ tabs: {} })
   useObjectEditorStore.setState({ tabs: {} })
-  _resetTabIdCounter()
-  _resetQueryTabCounter()
 })
 
 describe('WorkspaceTabs', () => {
@@ -474,6 +466,79 @@ describe('WorkspaceTabs', () => {
 
     // The active tab element should have been scrolled into view
     expect(scrollIntoViewMock).toHaveBeenCalled()
+  })
+
+  it('suppresses the active-tab scroll-into-view lookup while the connection is inactive', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" connectionActive={false} />)
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    // The WorkspaceTabs scroll effect resolves its target via
+    // document.querySelector('[data-testid="workspace-tab-<id>"]'). While the
+    // connection is hidden and inert, that lookup must be skipped entirely.
+    const querySpy = vi.spyOn(document, 'querySelector')
+
+    act(() => {
+      useWorkspaceStore.getState().setActiveTab('conn-1', tabs[0].id)
+    })
+
+    const lookedUpActiveTab = querySpy.mock.calls.some(
+      ([selector]) => selector === `[data-testid="workspace-tab-${tabs[0].id}"]`
+    )
+    expect(lookedUpActiveTab).toBe(false)
+
+    querySpy.mockRestore()
+  })
+
+  it('runs the active-tab scroll-into-view lookup while the connection is active', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" connectionActive={true} />)
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const querySpy = vi.spyOn(document, 'querySelector')
+
+    act(() => {
+      useWorkspaceStore.getState().setActiveTab('conn-1', tabs[0].id)
+    })
+
+    const lookedUpActiveTab = querySpy.mock.calls.some(
+      ([selector]) => selector === `[data-testid="workspace-tab-${tabs[0].id}"]`
+    )
+    expect(lookedUpActiveTab).toBe(true)
+
+    querySpy.mockRestore()
   })
 
   it('prevents browser autoscroll by calling preventDefault on middle-button mousedown', () => {

@@ -5,14 +5,20 @@
  * table-data tab state builders in each test file.
  */
 import { useConnectionStore } from '../../stores/connection-store'
+import { seedVisibleConnection } from './workspace-test-utils'
 import type { TableDataTabState } from '../../types/schema'
 
 /**
  * Seed the connection store with a canonical test connection for 'conn-1'.
  *
+ * Also marks 'conn-1' as the globally visible workspace connection so
+ * table-data tests that rely on a visible, active surface align with strict
+ * visible-connection semantics.
+ *
  * @param readOnly - Whether to mark the connection as read-only (default: false).
  */
 export function setupTestConnection(readOnly = false): void {
+  seedVisibleConnection('conn-1')
   useConnectionStore.setState({
     activeConnections: {
       'conn-1': {

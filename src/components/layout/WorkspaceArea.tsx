@@ -1,87 +1,52 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button } from '../common/Button'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import {
   dispatchWorkspaceTabActivated,
   dispatchWorkspaceTabDeactivated,
 } from '../../lib/workspace-tab-activity-events'
-import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
-import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
-import type { WorkspaceTab } from '../../types/schema'
-import { WorkspaceBody } from './WorkspaceBody'
-import { WorkspaceTabPanel } from './WorkspaceTabPanel'
+import { ConnectionWorkspace } from './ConnectionWorkspace'
 import styles from './WorkspaceArea.module.css'
-
-const EMPTY_TABS: WorkspaceTab[] = []
 
 export function WorkspaceArea() {
   const activeConnections = useConnectionStore((state) => state.activeConnections)
   const activeTabId = useConnectionStore((state) => state.activeTabId)
   const openDialog = useConnectionStore((state) => state.openDialog)
 
-  // Read the committed "tableTabsInBottomPanel" setting reactively.
-  // Using state.settings directly (not getSetting function reference) so that
-  // the component re-renders when settings are saved.
-  const bottomTableTabsEnabled = useSettingsStore(
-    (state) =>
-      (state.settings['results.tableTabsInBottomPanel'] ??
-        SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']) === 'true'
-  )
-
   const activeConnection = activeTabId ? activeConnections[activeTabId] : null
 
-  const tabs = useWorkspaceStore((state) =>
-    activeTabId ? (state.tabsByConnection[activeTabId] ?? EMPTY_TABS) : EMPTY_TABS
-  )
   const activeWorkspaceTabId = useWorkspaceStore((state) =>
     activeTabId ? (state.activeTabByConnection[activeTabId] ?? null) : null
   )
   const pendingCascadeClose = useWorkspaceStore((state) => state.pendingCascadeClose)
 
-  const activeTab = tabs.find((t) => t.id === activeWorkspaceTabId) ?? null
+  // Shell-level coordinator for the globally visible workspace-tab activity
+  // transition. Retained `ConnectionWorkspace` instances render their session UI
+  // but do not independently emit global activity events. Every visible-tab
+  // transition (whether from a workspace-tab change or a connection switch)
+  // emits the previous deactivation before the next activation, exactly once,
+  // with each event's correct connection context.
   const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
-
-  const [panelOrder, setPanelOrder] = useState<string[]>(() => tabs.map((t) => t.id))
-  const [prevTabs, setPrevTabs] = useState(tabs)
-
-  let nextPanelOrder = panelOrder
-  if (prevTabs !== tabs) {
-    nextPanelOrder = panelOrder.filter((tabId) => tabs.some((tab) => tab.id === tabId))
-    const seenIds = new Set(nextPanelOrder)
-    for (const tab of tabs) {
-      if (!seenIds.has(tab.id)) {
-        nextPanelOrder = [...nextPanelOrder, tab.id]
-        seenIds.add(tab.id)
-      }
-    }
-    setPanelOrder(nextPanelOrder)
-    setPrevTabs(tabs)
-  }
-
-  const panelTabs = nextPanelOrder
-    .map((tabId) => tabs.find((tab) => tab.id === tabId) ?? null)
-    .filter((tab): tab is WorkspaceTab => tab != null)
-    .filter(
-      (tab) =>
-        !(bottomTableTabsEnabled && tab.type === 'table-data' && tab.parentQueryTabId !== undefined)
-    )
+  const previousActiveConnectionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     const previousTabId = previousActiveWorkspaceTabIdRef.current
-    if (previousTabId === activeWorkspaceTabId) {
+    const previousConnectionId = previousActiveConnectionIdRef.current
+
+    if (previousTabId === activeWorkspaceTabId && previousConnectionId === activeTabId) {
       return
     }
 
-    if (previousTabId && activeTabId) {
-      dispatchWorkspaceTabDeactivated(previousTabId, activeTabId)
+    if (previousTabId && previousConnectionId) {
+      dispatchWorkspaceTabDeactivated(previousTabId, previousConnectionId)
     }
     if (activeWorkspaceTabId && activeTabId) {
       dispatchWorkspaceTabActivated(activeWorkspaceTabId, activeTabId)
     }
     previousActiveWorkspaceTabIdRef.current = activeWorkspaceTabId
+    previousActiveConnectionIdRef.current = activeTabId
   }, [activeTabId, activeWorkspaceTabId])
 
   // No active connection → welcome screen
@@ -99,49 +64,19 @@ export function WorkspaceArea() {
     )
   }
 
-  // Active connection — always show tab bar (even with 0 tabs)
+  // Retain one workspace subtree per open connection session. Exactly one is
+  // visible and interactive; the rest stay mounted but hidden and inert.
   return (
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
-      <WorkspaceTabs connectionId={activeTabId!} hideTableDataTabs={bottomTableTabsEnabled} />
-      <AiDiffBridgeProvider>
-        <WorkspaceBody
-          tabs={tabs}
-          activeTabId={activeWorkspaceTabId}
-          connectionId={activeTabId!}
-          sessionId={activeTabId!}
-          renderTabStack={({
-            tabs: stackTabs,
-            activeTabId: stackActiveTabId,
-            connectionId,
-            sessionId,
-          }) => (
-            <div className={styles.panelStack}>
-              {stackTabs.length === 0 && (
-                <div className={styles.connectedPlaceholder}>
-                  <p className={styles.connectedText}>
-                    Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
-                    {activeConnection.profile.port})
-                  </p>
-                </div>
-              )}
-              {panelTabs.map((tab) => (
-                <WorkspaceTabPanel
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === stackActiveTabId}
-                  connectionId={connectionId}
-                  sessionId={sessionId}
-                />
-              ))}
-              {stackTabs.length > 0 && !activeTab && (
-                <div className={styles.connectedPlaceholder}>
-                  <p className={styles.connectedText}>Select a tab to view content</p>
-                </div>
-              )}
-            </div>
-          )}
-        />
-      </AiDiffBridgeProvider>
+      <div className={styles.connectionWorkspaceStack}>
+        {Object.keys(activeConnections).map((sessionId) => (
+          <ConnectionWorkspace
+            key={sessionId}
+            sessionId={sessionId}
+            isActive={sessionId === activeTabId}
+          />
+        ))}
+      </div>
       <ConfirmDialog
         isOpen={pendingCascadeClose != null}
         title="Discard unsaved changes?"
