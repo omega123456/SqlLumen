@@ -10,6 +10,7 @@
 //! Cancel support is provided via thread ID registration before any statements execute.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+#[cfg(not(coverage))]
 use std::sync::Arc;
 
 /// Maximum safe integer in JavaScript (Number.MAX_SAFE_INTEGER = 2^53 - 1).
