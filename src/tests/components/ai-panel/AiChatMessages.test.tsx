@@ -100,7 +100,7 @@ describe('AiChatMessages', () => {
     expect(screen.getByText('Schema context loaded')).toBeInTheDocument()
   })
 
-  it('hides prompt-only context system messages from the visible transcript', () => {
+  it('hides prompt-only context messages from the visible transcript regardless of role', () => {
     useAiStore.setState({
       tabs: {
         'tab-1': emptyTabState({
@@ -113,10 +113,17 @@ describe('AiChatMessages', () => {
             },
             {
               id: 'm2',
-              role: 'system',
+              role: 'user',
               kind: 'schema-context',
               content: 'Database schema:\nCREATE TABLE ...',
               timestamp: 2,
+            },
+            {
+              id: 'm2b',
+              role: 'user',
+              kind: 'attached-context',
+              content: 'Attached SQL snippet',
+              timestamp: 2.5,
             },
             {
               id: 'm3',
@@ -132,6 +139,8 @@ describe('AiChatMessages', () => {
     render(<AiChatMessages tabId="tab-1" />)
     expect(screen.getAllByTestId('ai-message-system')).toHaveLength(1)
     expect(screen.getByTestId('ai-message-user')).toBeInTheDocument()
+    expect(screen.queryByText('Database schema:\nCREATE TABLE ...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Attached SQL snippet')).not.toBeInTheDocument()
   })
 
   it('does not show welcome state when messages exist', () => {
@@ -286,7 +295,7 @@ describe('AiChatMessages', () => {
             },
             {
               id: 'm2',
-              role: 'system',
+              role: 'user',
               kind: 'memory-context',
               content: '## User Notes (from memory)\n- Secret memory content',
               timestamp: 2,

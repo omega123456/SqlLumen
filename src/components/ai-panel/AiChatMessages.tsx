@@ -17,6 +17,11 @@ export interface AiChatMessagesProps {
 
 /** Stable empty array to avoid re-render loops when tab state doesn't exist. */
 const EMPTY_MESSAGES: AiMessage[] = []
+const HIDDEN_PROMPT_ONLY_KINDS = new Set<NonNullable<AiMessage['kind']>>([
+  'schema-context',
+  'memory-context',
+  'attached-context',
+])
 
 export function AiChatMessages({
   tabId,
@@ -32,7 +37,9 @@ export function AiChatMessages({
   const [internalSuggestion, setInternalSuggestion] = useState('')
 
   const hasAttachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext != null)
-  const visibleMessages = messages.filter((message) => !(message.role === 'system' && message.kind))
+  const visibleMessages = messages.filter(
+    (message) => !(message.kind && HIDDEN_PROMPT_ONLY_KINDS.has(message.kind))
+  )
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

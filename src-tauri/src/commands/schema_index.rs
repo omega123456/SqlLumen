@@ -592,11 +592,11 @@ pub async fn semantic_search_impl(
     let top_k: usize = read_setting(&state.db, "ai.retrieval.topKPerQuery")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(20);
+        .unwrap_or(30);
     let top_n: usize = read_setting(&state.db, "ai.retrieval.topN")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(12);
+        .unwrap_or(20);
     let fk_fanout_cap: usize = read_setting(&state.db, "ai.retrieval.fkFanoutCap")
         .ok()
         .and_then(|s| s.parse().ok())

@@ -153,8 +153,8 @@ pub struct SearchConfig {
 impl Default for SearchConfig {
     fn default() -> Self {
         Self {
-            top_k_per_query: 20,
-            top_n_results: 12,
+            top_k_per_query: 30,
+            top_n_results: 20,
             max_fk_chunks: 30,
             lexical_weight: 0.2,
         }
@@ -269,8 +269,8 @@ fn load_table_chunk(
 /// * `conn` — SQLite connection (with sqlite-vec loaded and tables created)
 /// * `connection_id` — the profile ID to scope results to
 /// * `query_vectors` — pre-embedded query vectors
-/// * `top_k_per_query` — number of KNN results per query vector (typically 5)
-/// * `top_n_results` — number of final results after dedup (typically 10)
+/// * `top_k_per_query` — number of KNN results per query vector
+/// * `top_n_results` — number of final results after dedup
 /// * `max_fk_chunks` — cap on additional FK chunks from fan-out (typically 20)
 pub fn multi_query_search(
     conn: &Connection,

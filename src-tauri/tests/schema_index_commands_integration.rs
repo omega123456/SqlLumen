@@ -17,6 +17,7 @@ use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{IndexMeta, IndexStatus};
 use sqllumen_lib::state::AppState;
 use std::collections::HashMap;
+use std::thread;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -1606,6 +1607,61 @@ fn read_setting_returns_value_when_set() {
     let result = get_index_status_impl(&state, "sess-rs2".to_string());
     assert!(result.is_ok());
     assert_eq!(result.unwrap().status, "stale");
+}
+
+#[cfg(coverage)]
+#[tokio::test]
+async fn build_schema_index_surfaces_setting_read_errors() {
+    let state = test_state();
+    register_dummy_session(
+        &state,
+        "sess-build-settings-error",
+        "profile-build-settings-error",
+    );
+
+    {
+        let conn = state.db.lock().unwrap();
+        conn.execute("DROP TABLE settings", []).unwrap();
+    }
+
+    let error = build_schema_index_impl(&state, "sess-build-settings-error".to_string())
+        .await
+        .expect_err("missing settings table should surface read error");
+    assert!(error.contains("Failed to read setting 'ai.embeddingModel'"));
+}
+
+#[cfg(coverage)]
+#[tokio::test]
+async fn force_rebuild_schema_index_surfaces_setting_read_errors() {
+    let state = test_state_with_vec();
+    let profile_id = "profile-force-settings-error";
+    register_dummy_session(&state, "sess-force-settings-error", profile_id);
+
+    {
+        let conn = state.db.lock().unwrap();
+        storage::create_vec_table(&conn, profile_id, 4).unwrap();
+        conn.execute("DROP TABLE settings", []).unwrap();
+    }
+
+    let error = force_rebuild_schema_index_impl(&state, "sess-force-settings-error".to_string())
+        .await
+        .expect_err("missing settings table should surface read error");
+    assert!(error.contains("Failed to read setting 'ai.embeddingModel'"));
+}
+
+#[test]
+fn get_index_status_returns_lock_error_when_session_map_is_poisoned() {
+    let state = test_state();
+    let poisoned_map = Arc::clone(&state.session_profile_map);
+    let join = thread::spawn(move || {
+        let _guard = poisoned_map.lock().expect("poison lock should succeed");
+        panic!("poison session profile map");
+    });
+    assert!(join.join().is_err(), "thread should panic to poison mutex");
+
+    let error = get_index_status_impl(&state, "sess-poisoned-map".to_string())
+        .expect_err("poisoned session map should fail");
+    assert!(error.contains("Lock error"));
 }
 
 // ── list_indexed_tables with multiple chunk types ───────────────────────

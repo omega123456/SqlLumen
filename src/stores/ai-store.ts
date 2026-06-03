@@ -172,7 +172,7 @@ const AI_SYSTEM_PROMPT = `You are an expert SQL assistant integrated into a data
 - Debug SQL issues and suggest fixes
 - Answer general SQL and database questions
 
-The application may inject additional hidden system messages containing relevant schema or SQL context.
+The application may inject additional context messages containing relevant schema, SQL, or user-note context.
 
 Schema context is cumulative across the conversation: all schema-context messages in this conversation are authoritative and should be used together. When the same table appears in multiple schema-context messages, the most recent version takes precedence.
 
@@ -1200,7 +1200,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     if (schemaDdl && novelChunkKeys.length > 0) {
       appendContextMessage(tabId, userMessageId, {
         id: crypto.randomUUID(),
-        role: 'system',
+        role: 'user',
         content: schemaDdl,
         timestamp: Date.now(),
         kind: 'schema-context',
@@ -1212,7 +1212,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     if (novelMemoryText && novelMemories.length > 0) {
       appendContextMessage(tabId, userMessageId, {
         id: crypto.randomUUID(),
-        role: 'system',
+        role: 'user',
         content: novelMemoryText,
         timestamp: Date.now(),
         kind: 'memory-context',
@@ -1228,7 +1228,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     if (attachedContext) {
       upsertPromptOnlyContextMessages(tabId, userMessageId, [
         {
-          role: 'system' as const,
+          role: 'user' as const,
           content: buildAttachedContextMessage(attachedContext.sql),
           kind: 'attached-context' as const,
         },

@@ -456,8 +456,8 @@ describe('useSettingsStore', () => {
 
   describe('ai.retrieval defaults', () => {
     it('has default values for all ai.retrieval.* keys', () => {
-      expect(SETTINGS_DEFAULTS['ai.retrieval.topKPerQuery']).toBe('20')
-      expect(SETTINGS_DEFAULTS['ai.retrieval.topN']).toBe('12')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.topKPerQuery']).toBe('30')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.topN']).toBe('20')
       expect(SETTINGS_DEFAULTS['ai.retrieval.fkFanoutCap']).toBe('30')
       expect(SETTINGS_DEFAULTS['ai.retrieval.lexicalWeight']).toBe('0.2')
       expect(SETTINGS_DEFAULTS['ai.retrieval.rerankEnabled']).toBe('false')
@@ -469,7 +469,7 @@ describe('useSettingsStore', () => {
 
     it('getSetting returns defaults for ai.retrieval.* keys when not set', () => {
       const { getSetting } = useSettingsStore.getState()
-      expect(getSetting('ai.retrieval.topKPerQuery')).toBe('20')
+      expect(getSetting('ai.retrieval.topKPerQuery')).toBe('30')
       expect(getSetting('ai.retrieval.tokenBudget')).toBe('30000')
       expect(getSetting('ai.retrieval.rerankEnabled')).toBe('false')
     })
@@ -480,7 +480,7 @@ describe('useSettingsStore', () => {
 
       useSettingsStore.getState().resetSection('ai')
       // resetSection overwrites pending with defaults for all ai.* keys
-      expect(useSettingsStore.getState().pendingChanges['ai.retrieval.topN']).toBe('12')
+      expect(useSettingsStore.getState().pendingChanges['ai.retrieval.topN']).toBe('20')
     })
   })
 })

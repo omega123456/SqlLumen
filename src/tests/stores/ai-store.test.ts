@@ -434,15 +434,17 @@ describe('useAiStore', () => {
         'You are an expert SQL assistant integrated into a database client'
       )
       expect(baseSystemMessage!.content).toContain(
-        'additional hidden system messages containing relevant schema or SQL context'
+        'additional context messages containing relevant schema, SQL, or user-note context'
       )
       expect(baseSystemMessage!.content).toContain('database-qualified name')
       expect(schemaContextMessage).toBeDefined()
+      expect(schemaContextMessage!.role).toBe('user')
       expect(schemaContextMessage!.content).toContain('CREATE TABLE `testdb`.`users`')
       expect(schemaContextMessage!.content).toContain('CREATE TABLE `testdb`.`users`')
       const userMessages = tab.messages.filter((message) => message.role === 'user')
-      expect(userMessages).toHaveLength(1)
-      expect(userMessages[0].content).toBe('First message')
+      expect(userMessages).toHaveLength(2)
+      expect(userMessages[0].content).toContain('CREATE TABLE `testdb`.`users`')
+      expect(userMessages[1].content).toBe('First message')
     })
 
     it('includes dbName in semantic search debug logging payload', async () => {
@@ -1000,10 +1002,15 @@ describe('useAiStore', () => {
       })
 
       const params = mockSendAiChat.mock.calls[0][0]
+      const systemMessages = params.messages.filter(
+        (m: { role: string; content: string }) => m.role === 'system'
+      )
+      expect(systemMessages).toHaveLength(1)
+
       // Should have: base system, schema context, attached context, user messages
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'system' && m.content.includes('SELECT * FROM users WHERE id = 1')
+          m.role === 'user' && m.content.includes('SELECT * FROM users WHERE id = 1')
       )
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('The following SQL statement is the context')
@@ -1089,7 +1096,7 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'system' && m.content.includes('The following SQL statement is the context')
+          m.role === 'user' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeUndefined()
     })
@@ -1735,7 +1742,7 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'system' && m.content.includes('The following SQL statement is the context')
+          m.role === 'user' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('SELECT id, name FROM users WHERE active = 1')
@@ -1758,7 +1765,7 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'system' && m.content.includes('The following SQL statement is the context')
+          m.role === 'user' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('SELECT * FROM users')
@@ -1803,7 +1810,7 @@ describe('useAiStore', () => {
 
       const attachedContextMessages = secondMessages.filter(
         (message) =>
-          message.role === 'system' &&
+          message.role === 'user' &&
           message.content.includes('The following SQL statement is the context')
       )
       expect(attachedContextMessages).toHaveLength(1)
@@ -2444,6 +2451,7 @@ describe('useAiStore', () => {
       const tab = getTab('tab-mem-prompt')!
       const memMsg = tab.messages.find((m) => m.kind === 'memory-context')
       expect(memMsg).toBeDefined()
+      expect(memMsg!.role).toBe('user')
       expect(memMsg!.content).toContain('## User Notes (from memory)')
       expect(memMsg!.content).toContain('- The users table stores customer data')
       expect(memMsg!.content).toContain('- Orders use soft deletes')
@@ -2902,6 +2910,7 @@ describe('useAiStore', () => {
         role: string
         content: string
       }>
+      expect(firstMessages.filter((message) => message.role === 'system')).toHaveLength(1)
 
       completeCurrentStream('tab-1', 'First answer')
 
@@ -2917,6 +2926,7 @@ describe('useAiStore', () => {
         role: string
         content: string
       }>
+      expect(secondMessages.filter((message) => message.role === 'system')).toHaveLength(1)
 
       // The first request's messages must be an exact prefix of the second request
       expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
@@ -2985,6 +2995,8 @@ describe('useAiStore', () => {
         role: string
         content: string
       }>
+      expect(firstMessages.filter((message) => message.role === 'system')).toHaveLength(1)
+      expect(secondMessages.filter((message) => message.role === 'system')).toHaveLength(1)
 
       // First request messages must be an exact prefix of the second request
       expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
@@ -2998,7 +3010,7 @@ describe('useAiStore', () => {
       // New orders schema-context message appears after the assistant and before the second user message
       const afterPrefix = secondMessages.slice(firstMessages.length)
       const ordersContextIdx = afterPrefix.findIndex(
-        (m) => m.role === 'system' && m.content.includes('CREATE TABLE `testdb`.`orders`')
+        (m) => m.role === 'user' && m.content.includes('CREATE TABLE `testdb`.`orders`')
       )
       expect(ordersContextIdx).toBeGreaterThan(0) // after assistant
 
@@ -3058,6 +3070,8 @@ describe('useAiStore', () => {
         role: string
         content: string
       }>
+      expect(firstMessages.filter((message) => message.role === 'system')).toHaveLength(1)
+      expect(secondMessages.filter((message) => message.role === 'system')).toHaveLength(1)
 
       // First request messages must be an exact prefix of the second request
       expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
@@ -3068,13 +3082,114 @@ describe('useAiStore', () => {
         (m) => m.role === 'assistant' && m.content === 'First answer'
       )
       const memoryIdx = afterPrefix.findIndex(
-        (m) => m.role === 'system' && m.content.includes('User Notes')
+        (m) => m.role === 'user' && m.content.includes('User Notes')
       )
       const userIdx = afterPrefix.findIndex((m) => m.role === 'user' && m.content === 'Follow up')
 
       expect(assistantIdx).toBeGreaterThanOrEqual(0)
       expect(memoryIdx).toBeGreaterThan(assistantIdx)
       expect(userIdx).toBeGreaterThan(memoryIdx)
+    })
+
+    it('keeps only the base prompt as system-role when schema, memory, and attached context coexist across turns', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 7,
+          connectionId: 'conn-1',
+          content: 'Prefer active users only',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+      useAiStore.getState().setAttachedContext('tab-vllm', {
+        sql: 'SELECT id, name FROM users WHERE active = 1',
+        range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 38 },
+      })
+
+      useAiStore.getState().sendMessage('tab-vllm', 'conn-1', 'Explain this query', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      expect(firstMessages.filter((message) => message.role === 'system')).toHaveLength(1)
+      expect(firstMessages[0].role).toBe('system')
+      expect(firstMessages[0].content).toContain(
+        'additional context messages containing relevant schema, SQL, or user-note context'
+      )
+
+      const schemaContext = firstMessages.find((message) =>
+        message.content.includes('CREATE TABLE `testdb`.`users`')
+      )
+      const memoryContext = firstMessages.find((message) =>
+        message.content.includes('## User Notes (from memory)')
+      )
+      const attachedContext = firstMessages.find((message) =>
+        message.content.includes('The following SQL statement is the context')
+      )
+
+      expect(schemaContext).toBeDefined()
+      expect(schemaContext!.role).toBe('user')
+      expect(memoryContext).toBeDefined()
+      expect(memoryContext!.role).toBe('user')
+      expect(attachedContext).toBeDefined()
+      expect(attachedContext!.role).toBe('user')
+      expect(firstMessages[firstMessages.length - 1]).toEqual({
+        role: 'user',
+        content: 'Explain this query',
+      })
+
+      completeCurrentStream('tab-vllm', 'Here is what the query does')
+
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 7,
+          connectionId: 'conn-1',
+          content: 'Prefer active users only',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-vllm', 'conn-1', 'How should I optimize it?', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      expect(secondMessages.filter((message) => message.role === 'system')).toHaveLength(1)
+      expect(secondMessages[0]).toEqual(firstMessages[0])
+
+      const secondSchemaContext = secondMessages.find((message) =>
+        message.content.includes('CREATE TABLE `testdb`.`users`')
+      )
+      const secondMemoryContext = secondMessages.find((message) =>
+        message.content.includes('## User Notes (from memory)')
+      )
+      const secondAttachedContext = secondMessages.find((message) =>
+        message.content.includes('The following SQL statement is the context')
+      )
+
+      expect(secondSchemaContext).toBeDefined()
+      expect(secondSchemaContext!.role).toBe('user')
+      expect(secondMemoryContext).toBeDefined()
+      expect(secondMemoryContext!.role).toBe('user')
+      expect(secondAttachedContext).toBeDefined()
+      expect(secondAttachedContext!.role).toBe('user')
+      expect(secondMessages[secondMessages.length - 1]).toEqual({
+        role: 'user',
+        content: 'How should I optimize it?',
+      })
     })
   })
 

@@ -83,6 +83,19 @@ fn resolver_returns_empty_when_both_endpoints_blank() {
     assert_eq!(resolved, "");
 }
 
+#[test]
+fn resolver_surfaces_chat_endpoint_deserialization_errors() {
+    let conn = setup_db();
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        ("ai.endpoint", "not-json"),
+    )
+    .expect("insert malformed endpoint value");
+
+    let err = resolve_embedding_endpoint(&conn).expect_err("invalid json should fail");
+    assert!(err.contains("expected ident") || err.contains("expected value"));
+}
+
 /// Verifies the dual-endpoint split relied on by `semantic_search`: with distinct
 /// chat + embedding URLs, the resolver yields the embedding URL (for `embed_texts`)
 /// while a direct `ai.endpoint` read yields the chat URL (for `rerank_with_llm`).
@@ -148,4 +161,18 @@ fn read_embedding_config_errors_when_model_empty() {
     // No embedding model configured.
     let err = read_embedding_config(&conn).expect_err("should error on empty model");
     assert!(err.contains("model"), "unexpected error: {err}");
+}
+
+#[test]
+fn read_embedding_config_surfaces_model_deserialization_errors() {
+    let conn = setup_db();
+    set(&conn, "ai.endpoint", "http://chat.local:11434/v1");
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+        ("ai.embeddingModel", "not-json"),
+    )
+    .expect("insert malformed model value");
+
+    let err = read_embedding_config(&conn).expect_err("invalid json should fail");
+    assert!(err.contains("expected ident") || err.contains("expected value"));
 }

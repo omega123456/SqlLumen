@@ -22,6 +22,13 @@ fn setup_db() -> Connection {
     conn
 }
 
+#[test]
+fn test_search_config_default_uses_updated_retrieval_limits() {
+    let config = SearchConfig::default();
+    assert_eq!(config.top_k_per_query, 30);
+    assert_eq!(config.top_n_results, 20);
+}
+
 fn unit_vec(axis: usize) -> Vec<f32> {
     let mut v = vec![0.0f32; DIM];
     if axis < DIM {
