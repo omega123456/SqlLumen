@@ -1,3 +1,4 @@
+import { AI_MODELS_BY_ENDPOINT, DEFAULT_AI_MODELS } from './ai-models'
 import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
 import { BLOB_SAMPLE_LIST_COLUMNS, BLOB_SAMPLE_TABLE_DATA } from './blob-sample'
 import { DEFAULT_BLOB_VALUE, DEFAULT_BLOB_VALUE_BY_KEY } from './blob-value'
@@ -29,6 +30,7 @@ import {
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
+import type { AiModelInfo } from '../../lib/ai-commands'
 import type { BlobValueResponse } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type {
@@ -65,6 +67,7 @@ type FixtureOverrideDomain =
   | 'copyProgress'
   | 'copyCancel'
   | 'blobValue'
+  | 'aiModels'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -84,6 +87,7 @@ type FixtureOverrides = {
   copyProgress: Record<string, CopyProgress>
   copyCancel: Record<string, null>
   blobValue: Record<string, BlobValueResponse>
+  aiModels: Record<string, AiModelInfo[]>
 }
 
 type FixtureOverrideValueMap = {
@@ -102,6 +106,7 @@ type FixtureOverrideValueMap = {
   copyProgress: CopyProgress
   copyCancel: null
   blobValue: BlobValueResponse
+  aiModels: AiModelInfo[]
 }
 
 type FixtureRegistryApi = {
@@ -128,6 +133,7 @@ type FixtureRegistryApi = {
   getCopyProgressFixture: (jobId: string | null | undefined) => CopyProgress
   getCancelCopyFixture: (jobId: string | null | undefined) => null
   getBlobValueFixture: (column: string | null | undefined) => BlobValueResponse
+  getAiModelsFixture: (endpoint: string | null | undefined) => AiModelInfo[]
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -220,6 +226,7 @@ const overrides: FixtureOverrides = {
   copyProgress: {},
   copyCancel: {},
   blobValue: {},
+  aiModels: {},
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -423,6 +430,13 @@ export function getBlobValueFixture(column: string | null | undefined): BlobValu
   )
 }
 
+export function getAiModelsFixture(endpoint: string | null | undefined): AiModelInfo[] {
+  const endpointKey = String(endpoint ?? '').trim()
+  return (
+    overrides.aiModels[endpointKey] ?? AI_MODELS_BY_ENDPOINT[endpointKey] ?? DEFAULT_AI_MODELS
+  )
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -458,6 +472,7 @@ export function resetFixtureOverrides(): void {
   overrides.copyProgress = {}
   overrides.copyCancel = {}
   overrides.blobValue = {}
+  overrides.aiModels = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -476,6 +491,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCopyProgressFixture,
   getCancelCopyFixture,
   getBlobValueFixture,
+  getAiModelsFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

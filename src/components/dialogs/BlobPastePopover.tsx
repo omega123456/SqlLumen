@@ -12,7 +12,14 @@
  * toast).
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import { parsePastedBytes } from '../../lib/blob-utils'
@@ -170,7 +177,9 @@ export function BlobPastePopover({
   return (
     <div
       ref={popoverRef}
-      className={placement === 'above' ? `${styles.popover} ${styles.popoverAbove}` : styles.popover}
+      className={
+        placement === 'above' ? `${styles.popover} ${styles.popoverAbove}` : styles.popover
+      }
       role="dialog"
       aria-label="Paste base64 or hex"
       onKeyDown={handleKeyDown}

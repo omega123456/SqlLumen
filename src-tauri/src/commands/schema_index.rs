@@ -70,6 +70,16 @@ fn read_setting(
         .or(Ok(String::new()))
 }
 
+/// Resolve the *effective* embedding endpoint (the dedicated `ai.embeddingEndpoint`
+/// when set, otherwise the chat URL `ai.endpoint`). Locks the shared settings DB
+/// mutex and delegates to the single source of truth in `ai_memory`.
+fn read_embedding_endpoint(
+    db: &std::sync::Arc<Mutex<rusqlite::Connection>>,
+) -> Result<String, String> {
+    let conn = db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    crate::ai_memory::resolve_embedding_endpoint(&conn)
+}
+
 // ── Testable _impl functions ────────────────────────────────────────────────
 
 /// Force-wipe all existing schema index chunks for a connection profile,
@@ -140,9 +150,9 @@ pub async fn force_rebuild_schema_index_impl(
         "schema_index force_rebuild: wiped all stored chunks and vectors for profile"
     );
 
-    // Read AI settings
+    // Read AI settings (embedding endpoint resolves with chat-URL fallback)
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    let endpoint = read_embedding_endpoint(&state.db)?;
 
     if embedding_model.is_empty() {
         tracing::info!(profile_id = %profile_id, "Force rebuild skipped: no embedding model configured");
@@ -150,7 +160,7 @@ pub async fn force_rebuild_schema_index_impl(
     }
 
     if endpoint.is_empty() {
-        tracing::warn!(profile_id = %profile_id, "Force rebuild skipped: no endpoint configured");
+        tracing::warn!(profile_id = %profile_id, "Force rebuild skipped: no embedding endpoint configured");
         return Ok(());
     }
 
@@ -289,9 +299,9 @@ pub async fn force_rebuild_schema_index_impl(
         return Ok(());
     }
 
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    let endpoint = read_embedding_endpoint(&state.db)?;
     if endpoint.is_empty() {
-        tracing::warn!(profile_id = %profile_id, "Force rebuild skipped: no endpoint configured");
+        tracing::warn!(profile_id = %profile_id, "Force rebuild skipped: no embedding endpoint configured");
         return Ok(());
     }
 
@@ -355,9 +365,9 @@ pub async fn build_schema_index_impl(
         }
     }
 
-    // Read AI settings
+    // Read AI settings (embedding endpoint resolves with chat-URL fallback)
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    let endpoint = read_embedding_endpoint(&state.db)?;
 
     if embedding_model.is_empty() {
         // Not configured — update status and return
@@ -366,7 +376,7 @@ pub async fn build_schema_index_impl(
     }
 
     if endpoint.is_empty() {
-        tracing::warn!(profile_id = %profile_id, "Schema index build skipped: no endpoint configured");
+        tracing::warn!(profile_id = %profile_id, "Schema index build skipped: no embedding endpoint configured");
         return Ok(());
     }
 
@@ -526,9 +536,9 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
         return Ok(());
     }
 
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    let endpoint = read_embedding_endpoint(&state.db)?;
     if endpoint.is_empty() {
-        tracing::warn!(profile_id = %profile_id, "Schema index build skipped: no endpoint configured");
+        tracing::warn!(profile_id = %profile_id, "Schema index build skipped: no embedding endpoint configured");
         return Ok(());
     }
 
@@ -555,12 +565,16 @@ pub async fn semantic_search_impl(
     );
 
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    // Embedding endpoint (dedicated URL with chat-URL fallback) — used for query embedding.
+    let embedding_endpoint = read_embedding_endpoint(&state.db)?;
+    // Chat endpoint (always the chat URL) — used for the LLM re-ranker (a chat model).
+    let chat_endpoint = read_setting(&state.db, "ai.endpoint")?;
 
     tracing::debug!(
         profile_id = %profile_id,
         embedding_model = %embedding_model,
-        endpoint_set = !endpoint.is_empty(),
+        embedding_endpoint_set = !embedding_endpoint.is_empty(),
+        chat_endpoint_set = !chat_endpoint.is_empty(),
         "semantic_search: resolved embedding configuration"
     );
 
@@ -633,7 +647,7 @@ pub async fn semantic_search_impl(
     if !uncached_texts.is_empty() {
         let new_embeddings = embeddings::embed_texts(
             &state.http_client,
-            &endpoint,
+            &embedding_endpoint,
             &embedding_model,
             uncached_texts.clone(),
             None,
@@ -695,7 +709,7 @@ pub async fn semantic_search_impl(
     // Re-rank BEFORE graph expansion (if enabled)
     if rerank_enabled && !results.is_empty() {
         let chat_model = read_setting(&state.db, "ai.model").unwrap_or_default();
-        if !chat_model.is_empty() && !endpoint.is_empty() {
+        if !chat_model.is_empty() && !chat_endpoint.is_empty() {
             let original_query = queries.first().cloned().unwrap_or_default();
             tracing::debug!(
                 profile_id = %profile_id,
@@ -706,7 +720,7 @@ pub async fn semantic_search_impl(
                 results,
                 &original_query,
                 &state.http_client,
-                &endpoint,
+                &chat_endpoint,
                 &chat_model,
             )
             .await;
@@ -806,7 +820,7 @@ pub fn get_index_status_impl(
         });
     }
 
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    let endpoint = read_embedding_endpoint(&state.db)?;
     if endpoint.is_empty() {
         return Ok(IndexStatusResponse {
             status: "not_configured".to_string(),
@@ -879,7 +893,7 @@ pub async fn invalidate_schema_index_impl(
     let profile_id = resolve_session_profile(state, &session_id)?;
 
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
-    let endpoint = read_setting(&state.db, "ai.endpoint")?;
+    let endpoint = read_embedding_endpoint(&state.db)?;
 
     if embedding_model.is_empty() {
         return Ok(());

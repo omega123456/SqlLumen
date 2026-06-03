@@ -358,10 +358,12 @@ describe('ResultGridView', () => {
           onStartEditing={onStartEditing}
           onSyncCellValue={onSyncCellValue}
           editMode="users"
-          editableColumnMap={new Map([
-            [0, false],
-            [1, false],
-          ])}
+          editableColumnMap={
+            new Map([
+              [0, false],
+              [1, false],
+            ])
+          }
           editTableColumns={[
             {
               name: 'id',
@@ -388,10 +390,12 @@ describe('ResultGridView', () => {
               isAutoIncrement: false,
             },
           ]}
-          editColumnBindings={new Map([
-            [0, 'id'],
-            [1, 'photo'],
-          ])}
+          editColumnBindings={
+            new Map([
+              [0, 'id'],
+              [1, 'photo'],
+            ])
+          }
         />
       )
       const props = getGridProps()

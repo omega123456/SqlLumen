@@ -707,7 +707,9 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
       },
     }))
 
-    const secondBackgroundTabId = useWorkspaceStore.getState().openQueryTab('conn-2', 'Background 2')
+    const secondBackgroundTabId = useWorkspaceStore
+      .getState()
+      .openQueryTab('conn-2', 'Background 2')
 
     // Selecting a tab in a background connection must not run activation effects.
     useWorkspaceStore.getState().setActiveTab('conn-2', secondBackgroundTabId)

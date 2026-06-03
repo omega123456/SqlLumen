@@ -409,6 +409,51 @@ describe('useSettingsStore', () => {
     })
   })
 
+  describe('ai.embeddingEndpoint default', () => {
+    it('has a default value of empty string', () => {
+      expect(SETTINGS_DEFAULTS['ai.embeddingEndpoint']).toBe('')
+    })
+
+    it('getSetting returns empty string when not set', () => {
+      expect(useSettingsStore.getState().getSetting('ai.embeddingEndpoint')).toBe('')
+    })
+
+    it('round-trips through setPendingChange/save/getEffectiveSetting', async () => {
+      const store = useSettingsStore.getState()
+
+      store.setPendingChange('ai.embeddingEndpoint', 'http://embeddings.local:8080/v1')
+      // Effective value reflects the pending change before save.
+      expect(useSettingsStore.getState().getEffectiveSetting('ai.embeddingEndpoint')).toBe(
+        'http://embeddings.local:8080/v1'
+      )
+
+      await useSettingsStore.getState().save()
+
+      expect(mockSetSetting).toHaveBeenCalledWith(
+        'ai.embeddingEndpoint',
+        'http://embeddings.local:8080/v1'
+      )
+      const state = useSettingsStore.getState()
+      expect(state.settings['ai.embeddingEndpoint']).toBe('http://embeddings.local:8080/v1')
+      expect(state.getEffectiveSetting('ai.embeddingEndpoint')).toBe(
+        'http://embeddings.local:8080/v1'
+      )
+      expect(state.pendingChanges).toEqual({})
+    })
+
+    it('is reset to default by resetSection("ai")', () => {
+      useSettingsStore.setState({
+        settings: { 'ai.embeddingEndpoint': 'http://embeddings.local:8080/v1' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      useSettingsStore.getState().resetSection('ai')
+
+      expect(useSettingsStore.getState().pendingChanges['ai.embeddingEndpoint']).toBe('')
+    })
+  })
+
   describe('ai.retrieval defaults', () => {
     it('has default values for all ai.retrieval.* keys', () => {
       expect(SETTINGS_DEFAULTS['ai.retrieval.topKPerQuery']).toBe('20')

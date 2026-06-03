@@ -88,7 +88,9 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
     return null
   }
 
-  const modifierClass = isActive ? styles.connectionWorkspaceActive : styles.connectionWorkspaceInactive
+  const modifierClass = isActive
+    ? styles.connectionWorkspaceActive
+    : styles.connectionWorkspaceInactive
   const rootClassName = [styles.connectionWorkspace, modifierClass].join(' ')
 
   return (

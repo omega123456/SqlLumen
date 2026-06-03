@@ -596,7 +596,9 @@ function seedBlobViewerEditValues(
   columnBindings: Map<number, string>
 ): RowEditState {
   const binaryColumns = new Map(
-    tableInfo.columns.filter((column) => column.isBinary).map((column) => [column.name.toLowerCase(), column.name])
+    tableInfo.columns
+      .filter((column) => column.isBinary)
+      .map((column) => [column.name.toLowerCase(), column.name])
   )
 
   if (binaryColumns.size === 0) {
@@ -623,7 +625,6 @@ function seedBlobViewerEditValues(
 
   return changed ? { ...editState, originalValues, currentValues } : editState
 }
-
 
 function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
   if (columns.length === 0 || rows.length === 0) {
@@ -2774,7 +2775,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       const newModified = new Set(activeResult.editState.modifiedColumns)
       if (
-        JSON.stringify(activeResult.editState.originalValues[resolvedColumnName]) === JSON.stringify(value)
+        JSON.stringify(activeResult.editState.originalValues[resolvedColumnName]) ===
+        JSON.stringify(value)
       ) {
         newModified.delete(resolvedColumnName)
       } else {

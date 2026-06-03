@@ -3672,6 +3672,52 @@ for (const theme of themes) {
       )
     })
 
+    test('SettingsDialog — AI Connection with separate embedding URL', async ({ page }) => {
+      // Open settings, enable AI, set distinct chat + embedding URLs so the
+      // Embedding Models grid is driven by the dedicated embedding fetch.
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
+          setState: (
+            updater: (state: {
+              settings: Record<string, string>
+              pendingChanges: Record<string, string>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => ({
+          settings: {
+            ...state.settings,
+            'ai.enabled': 'true',
+            'ai.endpoint': 'http://localhost:11434/v1',
+            'ai.embeddingEndpoint': 'http://embeddings.local:8080/v1',
+            'ai.model': 'codellama',
+            'ai.embeddingModel': 'bge-large-en',
+          },
+          pendingChanges: {},
+        }))
+      })
+
+      // Embedding URL drives a distinct embedding-model set (bge-large-en).
+      await expect(page.getByTestId('ai-model-categories')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-model-card-bge-large-en')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-ai-embedding-url-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('SettingsDialog — AI section force reindex confirm dialog', async ({ page }) => {
       await page.getByTestId('settings-button').click()
       await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })

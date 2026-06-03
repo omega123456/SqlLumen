@@ -158,7 +158,10 @@ describe('blob fetch with binary primary key — TableDataGrid', () => {
     setStore(tab(compositePkColumns, ['tenant', 'ref'], [[7, '0x1234', '[BLOB - 2 bytes]']]))
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
     act(() => {
-      lastGridProps().onCellDoubleClick({ tenant: 7, ref: '0x1234', data: '[BLOB - 2 bytes]' }, 'data')
+      lastGridProps().onCellDoubleClick(
+        { tenant: 7, ref: '0x1234', data: '[BLOB - 2 bytes]' },
+        'data'
+      )
     })
     await runLoader()
 

@@ -408,10 +408,7 @@ function FormField({
 
   // Lock icon: non-editable column in edit mode with active editState
   const showLock =
-    !col.editable &&
-    !col.blobViewerEditable &&
-    hasEditCapability &&
-    editState !== null
+    !col.editable && !col.blobViewerEditable && hasEditCapability && editState !== null
   const showFkTrigger = !!(col.foreignKey && currentRowData)
 
   return (

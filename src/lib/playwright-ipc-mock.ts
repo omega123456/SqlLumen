@@ -1,6 +1,7 @@
 import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 import {
+  getAiModelsFixture,
   getAnalyzeQueryForEditFixture,
   getBlobValueFixture,
   getCancelCopyFixture,
@@ -1272,13 +1273,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'list_ai_models':
       return {
-        models: [
-          { id: 'codellama', name: null, category: 'chat' },
-          { id: 'deepseek-coder', name: null, category: 'chat' },
-          { id: 'llama3.2', name: null, category: 'chat' },
-          { id: 'nomic-embed-text', name: null, category: 'embedding' },
-          { id: 'mxbai-embed-large', name: null, category: 'embedding' },
-        ],
+        models: getAiModelsFixture(args?.endpoint as string | null | undefined),
       }
 
     case 'ai_query_expand':

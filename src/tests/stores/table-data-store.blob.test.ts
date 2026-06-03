@@ -308,7 +308,11 @@ describe('table-data-store binary primary-key conversion', () => {
     act(() => {
       useTableDataStore
         .getState()
-        .startEditing(BINARY_PK_TAB, { uid: '0xDEADBEEF' }, { uid: '0xDEADBEEF', label: 'old-label' })
+        .startEditing(
+          BINARY_PK_TAB,
+          { uid: '0xDEADBEEF' },
+          { uid: '0xDEADBEEF', label: 'old-label' }
+        )
       useTableDataStore.getState().updateCellValue(BINARY_PK_TAB, 'label', 'new-label')
     })
     await act(async () => {
@@ -356,11 +360,7 @@ describe('table-data-store binary primary-key conversion', () => {
       makeColumn('external_ref', 'VARBINARY(32)', { isPrimaryKey: true, isBinary: true }),
       makeColumn('label', 'VARCHAR(64)'),
     ]
-    await setupBinaryPkTab(
-      cols,
-      ['tenant_id', 'external_ref'],
-      [[7, '0x0102', 'row-a']]
-    )
+    await setupBinaryPkTab(cols, ['tenant_id', 'external_ref'], [[7, '0x0102', 'row-a']])
 
     let captured: Record<string, unknown> | null = null
     ipc.override('delete_table_row', (args) => {

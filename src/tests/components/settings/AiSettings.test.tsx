@@ -242,7 +242,8 @@ describe('AiSettings', () => {
   it('shows correct label text for fields', () => {
     render(<AiSettings />)
     expect(screen.getByText('Enable AI assistant')).toBeInTheDocument()
-    expect(screen.getByText('Base URL')).toBeInTheDocument()
+    expect(screen.getByText('Chat Base URL')).toBeInTheDocument()
+    expect(screen.getByText('Embedding Base URL (optional)')).toBeInTheDocument()
     expect(screen.getByText('Temperature')).toBeInTheDocument()
     expect(screen.getByText('Max tokens')).toBeInTheDocument()
   })
@@ -1238,5 +1239,259 @@ describe('AiSettings - Force Reindex', () => {
     render(<AiSettings />)
     expect(screen.queryByTestId('ai-reindex-status')).not.toBeInTheDocument()
     expect(screen.getByTestId('ai-force-reindex-btn')).not.toBeDisabled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Embedding Base URL field + independent embedding-model fetch
+// ---------------------------------------------------------------------------
+
+const CHAT_URL = 'http://localhost:11434/v1'
+const EMBED_URL = 'http://embeddings.local:8080/v1'
+
+const CHAT_FETCH_MODELS = [
+  { id: 'llama3', name: 'llama3:latest', category: 'chat' },
+  { id: 'nomic-embed-text', name: 'nomic-embed-text', category: 'embedding' },
+]
+
+const EMBED_FETCH_MODELS = [
+  { id: 'bge-large-en', name: 'bge-large-en', category: 'embedding' },
+  { id: 'uncategorised-embed', name: 'Uncategorised Embed' },
+]
+
+describe('AiSettings - Embedding Base URL', () => {
+  it('renders both URL fields with correct labels', () => {
+    render(<AiSettings />)
+    expect(screen.getByTestId('settings-ai-endpoint')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-ai-embedding-endpoint')).toBeInTheDocument()
+    expect(screen.getByText('Chat Base URL')).toBeInTheDocument()
+    expect(screen.getByText('Embedding Base URL (optional)')).toBeInTheDocument()
+  })
+
+  it('shows persistent fallback helper text under the embedding field', () => {
+    render(<AiSettings />)
+    expect(screen.getByTestId('ai-embedding-helper-text')).toHaveTextContent(
+      'When blank, the chat URL is used for embeddings.'
+    )
+  })
+
+  it('disables the embedding field when AI is off and enables it when on', () => {
+    const { rerender } = render(<AiSettings />)
+    expect(screen.getByTestId('settings-ai-embedding-endpoint')).toBeDisabled()
+
+    act(() => {
+      useSettingsStore.setState({
+        settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+    })
+    rerender(<AiSettings />)
+    expect(screen.getByTestId('settings-ai-embedding-endpoint')).not.toBeDisabled()
+  })
+
+  it('mirrors the typed chat URL as the embedding placeholder', () => {
+    useSettingsStore.setState({
+      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': CHAT_URL },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    const embedInput = screen.getByTestId('settings-ai-embedding-endpoint') as HTMLInputElement
+    expect(embedInput).toHaveAttribute('placeholder', CHAT_URL)
+  })
+
+  it('falls back to the default example placeholder when the chat URL is empty', () => {
+    useSettingsStore.setState({
+      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': '' },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    const embedInput = screen.getByTestId('settings-ai-embedding-endpoint') as HTMLInputElement
+    expect(embedInput).toHaveAttribute('placeholder', 'http://localhost:11434/v1')
+  })
+
+  it('editing the embedding field calls setPendingChange for ai.embeddingEndpoint', async () => {
+    const user = userEvent.setup()
+    useSettingsStore.setState({
+      settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    const embedInput = screen.getByTestId('settings-ai-embedding-endpoint') as HTMLInputElement
+    await user.clear(embedInput)
+    await user.type(embedInput, EMBED_URL)
+    expect(useSettingsStore.getState().pendingChanges['ai.embeddingEndpoint']).toBe(EMBED_URL)
+  })
+
+  it('renders the model picker for an embedding-only configuration (chat URL blank)', async () => {
+    ipc.override('list_ai_models', () => ({ models: EMBED_FETCH_MODELS }))
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': '',
+        'ai.embeddingEndpoint': EMBED_URL,
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    expect(screen.getByTestId('ai-model-list-section')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-model-categories')).toBeInTheDocument()
+    })
+    // Chat grid shows its empty state since the chat URL is blank.
+    expect(screen.getByTestId('ai-chat-empty-state')).toBeInTheDocument()
+  })
+
+  it('populates the embedding grid from the embedding fetch (incl. uncategorised models)', async () => {
+    ipc.override('list_ai_models', (args) => {
+      const endpoint = (args as { endpoint?: string }).endpoint
+      if (endpoint === EMBED_URL) return { models: EMBED_FETCH_MODELS }
+      return { models: CHAT_FETCH_MODELS }
+    })
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': CHAT_URL,
+        'ai.embeddingEndpoint': EMBED_URL,
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-embedding-model-grid')).toBeInTheDocument()
+    })
+    const embeddingGrid = screen.getByTestId('ai-embedding-model-grid')
+    expect(embeddingGrid).toContainElement(screen.getByTestId('ai-model-card-bge-large-en'))
+    // Uncategorised model from the embedding endpoint is included.
+    expect(embeddingGrid).toContainElement(screen.getByTestId('ai-model-card-uncategorised-embed'))
+    // The chat-fetch embedding model (nomic) must NOT appear when an embedding URL is set.
+    expect(screen.queryByTestId('ai-model-card-nomic-embed-text')).not.toBeInTheDocument()
+  })
+
+  it('shows an independent loading state for the embedding fetch only', () => {
+    ipc.override('list_ai_models', (args) => {
+      const endpoint = (args as { endpoint?: string }).endpoint
+      if (endpoint === EMBED_URL) return new Promise(() => {})
+      return { models: CHAT_FETCH_MODELS }
+    })
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': CHAT_URL,
+        'ai.embeddingEndpoint': EMBED_URL,
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    expect(screen.getByTestId('ai-embedding-models-loading')).toBeInTheDocument()
+    // The embedding loading state lives inside the dedicated embedding region.
+    expect(screen.getByTestId('ai-embedding-models-region')).toContainElement(
+      screen.getByTestId('ai-embedding-models-loading')
+    )
+  })
+
+  it('scopes an embedding fetch error to the embedding region, not the chat grid', async () => {
+    ipc.override('list_ai_models', (args) => {
+      const endpoint = (args as { endpoint?: string }).endpoint
+      if (endpoint === EMBED_URL) throw new Error('Embedding endpoint unreachable')
+      return { models: CHAT_FETCH_MODELS }
+    })
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': CHAT_URL,
+        'ai.embeddingEndpoint': EMBED_URL,
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-embedding-models-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('ai-embedding-models-error')).toHaveTextContent(
+      'Embedding endpoint unreachable'
+    )
+    // Chat grid is unaffected.
+    expect(screen.queryByTestId('ai-models-error')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ai-chat-model-grid')).toBeInTheDocument()
+  })
+
+  it('reverts to chat-fetch embedding models instantly when the embedding URL is cleared', async () => {
+    ipc.override('list_ai_models', (args) => {
+      const endpoint = (args as { endpoint?: string }).endpoint
+      if (endpoint === EMBED_URL) return { models: EMBED_FETCH_MODELS }
+      return { models: CHAT_FETCH_MODELS }
+    })
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': CHAT_URL,
+        'ai.embeddingEndpoint': EMBED_URL,
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-model-card-bge-large-en')).toBeInTheDocument()
+    })
+
+    const callsAfterSet = ipc.calls('list_ai_models').length
+
+    // Clear the embedding URL.
+    act(() => {
+      useSettingsStore.setState({
+        settings: {
+          ...SETTINGS_DEFAULTS,
+          'ai.enabled': 'true',
+          'ai.endpoint': CHAT_URL,
+          'ai.embeddingEndpoint': '',
+        },
+        pendingChanges: {},
+        isDirty: false,
+      })
+    })
+
+    // Embedding grid reverts to the chat-fetch embedding model with no new fetch.
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-model-card-nomic-embed-text')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('ai-model-card-bge-large-en')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ai-embedding-models-loading')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ai-embedding-models-error')).not.toBeInTheDocument()
+    // No additional fetch triggered by clearing the URL.
+    expect(ipc.calls('list_ai_models').length).toBe(callsAfterSet)
+  })
+
+  it('does not fetch embedding models when the embedding URL is blank', () => {
+    ipc.override('list_ai_models', () => ({ models: CHAT_FETCH_MODELS }))
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': CHAT_URL,
+        'ai.embeddingEndpoint': '',
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    // Only the chat fetch ran.
+    expect(ipc.calls('list_ai_models')).toHaveLength(1)
   })
 })

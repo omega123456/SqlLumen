@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { ElevatedSurface } from '../common/ElevatedSurface'
@@ -7,11 +7,11 @@ import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useSchemaIndexStore, type ConnectionIndexState } from '../../stores/schema-index-store'
-import { listAiModels } from '../../lib/ai-commands'
 import type { AiModelInfo } from '../../lib/ai-commands'
-import { ChatCircleText, Database, Check } from '@phosphor-icons/react'
+import { ChatCircleTextIcon, DatabaseIcon, CheckIcon } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
 import { AiMemoriesSettings } from './AiMemoriesSettings'
+import { useFetchModels } from '../../hooks/useFetchModels'
 import styles from './AiSettings.module.css'
 
 // ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ function ModelCategorySection({
                 {m.name ?? m.id}
               </ElevatedSurface>
               {selectedModelId === m.id && (
-                <Check
+                <CheckIcon
                   size={14}
                   weight="bold"
                   className={styles.cardCheckmark}
@@ -109,6 +109,7 @@ export function AiSettings() {
 
   const aiEnabled = useSettingValue('ai.enabled') === 'true'
   const endpoint = useSettingValue('ai.endpoint')
+  const embeddingEndpoint = useSettingValue('ai.embeddingEndpoint')
   const model = useSettingValue('ai.model')
   const embeddingModel = useSettingValue('ai.embeddingModel')
   const temperature = useSettingValue('ai.temperature')
@@ -129,47 +130,21 @@ export function AiSettings() {
   const feedbackBoost = useSettingValue('ai.retrieval.feedbackBoost')
   const recentQueryWindow = useSettingValue('ai.retrieval.recentQueryWindow')
 
-  const [availableModels, setAvailableModels] = useState<AiModelInfo[]>([])
-  const [loadingModels, setLoadingModels] = useState(false)
-  const [modelError, setModelError] = useState<string | null>(null)
+  const chatFetch = useFetchModels(endpoint)
+
+  // Independent fetch for the embedding-endpoint models. A slow or failing
+  // embedding fetch must never affect the chat-models grid above.
+  const embeddingFetch = useFetchModels(embeddingEndpoint)
+
   const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false)
 
   // Subscribe to the schema index store so the Force Reindex button reflects
   // builds triggered from anywhere (other tabs, settings changes, etc.).
   const connections = useSchemaIndexStore((s) => s.connections)
-  const buildingConnections = useMemo<ConnectionIndexState[]>(() => {
-    return Object.values(connections).filter((c) => c.status === 'building')
-  }, [connections])
+  const buildingConnections: ConnectionIndexState[] = Object.values(connections).filter(
+    (c) => c.status === 'building'
+  )
   const isBuilding = buildingConnections.length > 0
-
-  const fetchCounterRef = useRef(0)
-
-  const handleFetchModels = useCallback(async () => {
-    if (!endpoint.trim()) return
-    const thisRequest = ++fetchCounterRef.current
-    setLoadingModels(true)
-    setModelError(null)
-    setAvailableModels([])
-    try {
-      const result = await listAiModels(endpoint)
-      if (thisRequest !== fetchCounterRef.current) return // stale
-      if (result.error) {
-        setModelError(result.error)
-      }
-      if (result.models.length === 0 && !result.error) {
-        setModelError('No models found at this endpoint.')
-      } else {
-        setAvailableModels(result.models)
-      }
-    } catch (err) {
-      if (thisRequest !== fetchCounterRef.current) return // stale
-      setModelError(err instanceof Error ? err.message : 'Failed to fetch models')
-    } finally {
-      if (thisRequest === fetchCounterRef.current) {
-        setLoadingModels(false)
-      }
-    }
-  }, [endpoint])
 
   const handleForceReindex = useCallback(async () => {
     const store = useSchemaIndexStore.getState()
@@ -200,14 +175,43 @@ export function AiSettings() {
     return `Reading schema (${countLabel})...`
   }
 
+  const chatFetchModels = chatFetch.fetch
+  const embeddingFetchFetch = embeddingFetch.fetch
+  const embeddingFetchReset = embeddingFetch.reset
+
   useEffect(() => {
     if (aiEnabled && endpoint.trim()) {
-      handleFetchModels()
+      chatFetchModels()
     }
-  }, [aiEnabled, endpoint, handleFetchModels])
+  }, [aiEnabled, endpoint, chatFetchModels])
 
-  const chatModels = availableModels.filter((m) => m.category === 'chat' || !m.category)
-  const embeddingModels = availableModels.filter((m) => m.category === 'embedding')
+  useEffect(() => {
+    if (aiEnabled && embeddingEndpoint.trim()) {
+      embeddingFetchFetch()
+    } else {
+      // Blank embedding URL: invalidate any in-flight fetch and revert to the
+      // chat-fetch embedding models with no leftover loading/error state.
+      embeddingFetchReset()
+    }
+  }, [aiEnabled, embeddingEndpoint, embeddingFetchFetch, embeddingFetchReset])
+
+  const chatUrl = endpoint.trim()
+  const embeddingUrl = embeddingEndpoint.trim()
+  const hasEmbeddingUrl = embeddingUrl.length > 0
+
+  const chatModels = chatFetch.models.filter((m) => m.category === 'chat' || !m.category)
+
+  // When an embedding URL is set, drive the embedding grid from its dedicated
+  // fetch (including uncategorised models, since that server may not categorise).
+  // When blank, fall back to the chat-fetch embedding-category models.
+  const embeddingModels = hasEmbeddingUrl
+    ? embeddingFetch.models.filter((m) => m.category === 'embedding' || !m.category)
+    : chatFetch.models.filter((m) => m.category === 'embedding')
+
+  // Render the category grids once either fetch has produced models, or when an
+  // embedding URL is set (so its scoped loading/empty state has a place to live).
+  const showCategories =
+    chatFetch.models.length > 0 || embeddingFetch.models.length > 0 || hasEmbeddingUrl
 
   function handleSelectChatModel(modelId: string) {
     setPendingChange('ai.model', modelId)
@@ -232,11 +236,11 @@ export function AiSettings() {
       <div className={!aiEnabled ? styles.disabledGroup : undefined}>
         <SettingsSection
           title="Connection"
-          description="Configure the base URL and model for an OpenAI-compatible service (e.g. Ollama, Jan, vLLM). Enter the base URL only (e.g. http://localhost:11434/v1) — paths like /chat/completions are appended automatically."
+          description="Configure the base URLs for an OpenAI-compatible service (e.g. Ollama, Jan, vLLM). Enter base URLs only — paths like /chat/completions are appended automatically. A separate embedding URL is optional."
         >
           <div>
             <label htmlFor="settings-ai-endpoint" className={styles.fieldLabel}>
-              Base URL
+              Chat Base URL
             </label>
             <TextInput
               id="settings-ai-endpoint"
@@ -249,30 +253,49 @@ export function AiSettings() {
             />
           </div>
 
-          {aiEnabled && endpoint.trim() && (
+          <div>
+            <label htmlFor="settings-ai-embedding-endpoint" className={styles.fieldLabel}>
+              Embedding Base URL (optional)
+            </label>
+            <TextInput
+              id="settings-ai-embedding-endpoint"
+              value={embeddingEndpoint}
+              onChange={(e) => setPendingChange('ai.embeddingEndpoint', e.target.value)}
+              placeholder={chatUrl || 'http://localhost:11434/v1'}
+              disabled={!aiEnabled}
+              data-testid="settings-ai-embedding-endpoint"
+              style={{ width: 360 }}
+            />
+            <p className={styles.helperText} data-testid="ai-embedding-helper-text">
+              When blank, the chat URL is used for embeddings. Fill this in only if your embedding
+              provider is hosted at a different address.
+            </p>
+          </div>
+
+          {aiEnabled && (chatUrl || embeddingUrl) && (
             <div className={styles.modelListSection} data-testid="ai-model-list-section">
               <p className={styles.helperText} data-testid="ai-helper-text">
                 Models will be grouped by type: chat for conversation, embedding for schema search
               </p>
 
-              {loadingModels && (
+              {chatFetch.loading && (
                 <div className={styles.modelLoading} data-testid="ai-models-loading">
                   Loading models...
                 </div>
               )}
 
-              {modelError && (
+              {chatFetch.error && (
                 <div className={styles.modelError} data-testid="ai-models-error">
-                  {modelError}
+                  {chatFetch.error}
                 </div>
               )}
 
-              {availableModels.length > 0 && (
+              {showCategories && (
                 <div className={styles.categorySections} data-testid="ai-model-categories">
                   <ModelCategorySection
                     categoryKey="chat"
                     label="Chat Models"
-                    icon={ChatCircleText}
+                    icon={ChatCircleTextIcon}
                     models={chatModels}
                     selectedModelId={model}
                     onSelectModel={handleSelectChatModel}
@@ -281,15 +304,32 @@ export function AiSettings() {
 
                   <div className={styles.sectionDivider} />
 
-                  <ModelCategorySection
-                    categoryKey="embedding"
-                    label="Embedding Models"
-                    icon={Database}
-                    models={embeddingModels}
-                    selectedModelId={embeddingModel}
-                    onSelectModel={handleSelectEmbeddingModel}
-                    emptyText="No embedding models found"
-                  />
+                  <div className={styles.categorySection} data-testid="ai-embedding-models-region">
+                    {embeddingFetch.loading && (
+                      <div
+                        className={styles.modelLoading}
+                        data-testid="ai-embedding-models-loading"
+                      >
+                        Loading embedding models...
+                      </div>
+                    )}
+
+                    {embeddingFetch.error && (
+                      <div className={styles.modelError} data-testid="ai-embedding-models-error">
+                        {embeddingFetch.error}
+                      </div>
+                    )}
+
+                    <ModelCategorySection
+                      categoryKey="embedding"
+                      label="Embedding Models"
+                      icon={DatabaseIcon}
+                      models={embeddingModels}
+                      selectedModelId={embeddingModel}
+                      onSelectModel={handleSelectEmbeddingModel}
+                      emptyText="No embedding models found"
+                    />
+                  </div>
                 </div>
               )}
 

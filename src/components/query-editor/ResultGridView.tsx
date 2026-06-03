@@ -411,7 +411,9 @@ export function ResultGridView({
       isBinary: isBinaryDataType(column.dataType),
       blobViewer: column.effectiveTableMeta.isBinary,
       blobViewerEditable:
-        column.effectiveTableMeta.isBinary && editMode !== null && editColumnBindings.has(columnIndex),
+        column.effectiveTableMeta.isBinary &&
+        editMode !== null &&
+        editColumnBindings.has(columnIndex),
       isNullable: column.tableColumnMeta?.isNullable ?? true,
       isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
       isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
