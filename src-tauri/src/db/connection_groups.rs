@@ -91,6 +91,10 @@ pub fn delete_group(conn: &Connection, id: &str) -> Result<()> {
         [id],
     )?;
 
+    // Cascade-delete this group's group-level memories and drop its vec table,
+    // atomically with the group removal.
+    crate::ai_memory::storage::delete_memories_for_group(&tx, id)?;
+
     // Delete the group
     let rows_affected = tx.execute("DELETE FROM connection_groups WHERE id = ?1", [id])?;
 

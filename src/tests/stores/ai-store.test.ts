@@ -2750,7 +2750,7 @@ describe('useAiStore', () => {
 
       const tabBefore = getTab('tab-retry2')!
       expect(tabBefore.providedChunkKeys['db.t2:table']).toBe(true)
-      expect(tabBefore.providedMemoryIds['2']).toBe(true)
+      expect(tabBefore.providedMemoryIds['connection-2']).toBe(true)
       const tokenAfterTurn2 = tabBefore.cumulativeSchemaTokens
       expect(tokenAfterTurn2).toBeGreaterThan(tokenAfterTurn1)
 
@@ -2767,13 +2767,13 @@ describe('useAiStore', () => {
 
       // === Turn-1 keys/IDs still present ===
       expect(tabAfter.providedChunkKeys['db.t1:table']).toBe(true)
-      expect(tabAfter.providedMemoryIds['1']).toBe(true)
+      expect(tabAfter.providedMemoryIds['connection-1']).toBe(true)
 
       // === Turn-2 chunk keys ABSENT from providedChunkKeys ===
       expect(tabAfter.providedChunkKeys['db.t2:table']).toBeUndefined()
 
       // === Turn-2 memory IDs ABSENT from providedMemoryIds ===
-      expect(tabAfter.providedMemoryIds['2']).toBeUndefined()
+      expect(tabAfter.providedMemoryIds['connection-2']).toBeUndefined()
 
       // Verify via the messages sent to sendAiChat on call 3 (the retry)
       const retryParams = mockSendAiChat.mock.calls[2][0]
@@ -2822,9 +2822,33 @@ describe('useAiStore', () => {
   describe('memory-context append-only with ID-based dedup', () => {
     it('deduplicates memories by ID across turns and only appends novel ones', async () => {
       const memories = [
-        { id: 1, connectionId: 'conn-1', content: 'Note 1', createdAt: 1000, source: 'manual' },
-        { id: 2, connectionId: 'conn-1', content: 'Note 2', createdAt: 2000, source: 'manual' },
-        { id: 3, connectionId: 'conn-1', content: 'Note 3', createdAt: 3000, source: 'manual' },
+        {
+          id: 1,
+          scope: 'connection',
+          connectionId: 'conn-1',
+          groupId: null,
+          content: 'Note 1',
+          createdAt: 1000,
+          source: 'manual',
+        },
+        {
+          id: 2,
+          scope: 'connection',
+          connectionId: 'conn-1',
+          groupId: null,
+          content: 'Note 2',
+          createdAt: 2000,
+          source: 'manual',
+        },
+        {
+          id: 3,
+          scope: 'connection',
+          connectionId: 'conn-1',
+          groupId: null,
+          content: 'Note 3',
+          createdAt: 3000,
+          source: 'manual',
+        },
       ]
 
       mockSearchMemories.mockResolvedValueOnce(memories)
@@ -2842,7 +2866,7 @@ describe('useAiStore', () => {
 
       const mc1 = getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')
       expect(mc1).toHaveLength(1)
-      expect(mc1[0].memoryIds).toEqual([1, 2, 3])
+      expect(mc1[0].memoryIds).toEqual(['connection-1', 'connection-2', 'connection-3'])
 
       // Turn 2: same IDs — no new memory-context
       mockSearchMemories.mockResolvedValueOnce(memories)
@@ -2863,7 +2887,15 @@ describe('useAiStore', () => {
       // Turn 3: novel ID 4
       mockSearchMemories.mockResolvedValueOnce([
         ...memories,
-        { id: 4, connectionId: 'conn-1', content: 'Note 4', createdAt: 4000, source: 'manual' },
+        {
+          id: 4,
+          scope: 'connection',
+          connectionId: 'conn-1',
+          groupId: null,
+          content: 'Note 4',
+          createdAt: 4000,
+          source: 'manual',
+        },
       ])
       useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 3', {})
       await vi.waitFor(() => {
@@ -2872,7 +2904,92 @@ describe('useAiStore', () => {
 
       const mc3 = getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')
       expect(mc3).toHaveLength(2)
-      expect(mc3[1].memoryIds).toEqual([4])
+      expect(mc3[1].memoryIds).toEqual(['connection-4'])
+    })
+  })
+
+  describe('multi-level memory scope ordering and dedup', () => {
+    it('orders injected memories Global → Group → Connection', async () => {
+      // Backend returns in distance order (connection first) — store must reorder.
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          scope: 'connection',
+          connectionId: 'conn-1',
+          groupId: null,
+          content: 'Connection note',
+          createdAt: 1000,
+          source: 'manual',
+        },
+        {
+          id: 2,
+          scope: 'global',
+          connectionId: null,
+          groupId: null,
+          content: 'Global note',
+          createdAt: 2000,
+          source: 'manual',
+        },
+        {
+          id: 3,
+          scope: 'group',
+          connectionId: null,
+          groupId: 'grp-1',
+          content: 'Group note',
+          createdAt: 3000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-order', 'conn-1', 'Show users', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const memMsg = getTab('tab-order')!.messages.find((m) => m.kind === 'memory-context')!
+      const globalIdx = memMsg.content.indexOf('Global note')
+      const groupIdx = memMsg.content.indexOf('Group note')
+      const connIdx = memMsg.content.indexOf('Connection note')
+      expect(globalIdx).toBeGreaterThanOrEqual(0)
+      expect(globalIdx).toBeLessThan(groupIdx)
+      expect(groupIdx).toBeLessThan(connIdx)
+      expect(memMsg.memoryIds).toEqual(['global-2', 'group-3', 'connection-1'])
+    })
+
+    it('dedups by composite scope+id so same id at different scopes are both included', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          scope: 'global',
+          connectionId: null,
+          groupId: null,
+          content: 'Global one',
+          createdAt: 1000,
+          source: 'manual',
+        },
+        {
+          id: 1,
+          scope: 'connection',
+          connectionId: 'conn-1',
+          groupId: null,
+          content: 'Connection one',
+          createdAt: 2000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-dedup', 'conn-1', 'Show users', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const memMsg = getTab('tab-dedup')!.messages.find((m) => m.kind === 'memory-context')!
+      expect(memMsg.content).toContain('Global one')
+      expect(memMsg.content).toContain('Connection one')
+      expect(memMsg.memoryIds).toEqual(['global-1', 'connection-1'])
+      const tab = getTab('tab-dedup')!
+      expect(tab.providedMemoryIds['global-1']).toBe(true)
+      expect(tab.providedMemoryIds['connection-1']).toBe(true)
     })
   })
 

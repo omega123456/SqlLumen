@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AiSettings } from '../../../components/settings/AiSettings'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
@@ -235,7 +235,9 @@ describe('AiSettings', () => {
   it('renders section headings', () => {
     render(<AiSettings />)
     expect(screen.getByText('Enable AI')).toBeInTheDocument()
-    expect(screen.getByText('Connection')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('settings-section-connection')).getByText('Connection')
+    ).toBeInTheDocument()
     expect(screen.getByText('Generation')).toBeInTheDocument()
   })
 
@@ -1493,5 +1495,46 @@ describe('AiSettings - Embedding Base URL', () => {
     render(<AiSettings />)
     // Only the chat fetch ran.
     expect(ipc.calls('list_ai_models')).toHaveLength(1)
+  })
+
+  describe('Memory subsection (default /remember scope)', () => {
+    it('renders the Memory section with the default-scope dropdown', () => {
+      render(<AiSettings />)
+      expect(screen.getByTestId('settings-section-memory')).toBeInTheDocument()
+      expect(screen.getByTestId('settings-ai-remember-scope')).toBeInTheDocument()
+    })
+
+    it('defaults the dropdown to the Connection scope', () => {
+      render(<AiSettings />)
+      const trigger = screen.getByTestId('settings-ai-remember-scope')
+      expect(trigger).toHaveTextContent('Connection')
+    })
+
+    it('changing the dropdown sets the ai.rememberScope pending value', async () => {
+      const user = userEvent.setup()
+      useSettingsStore.setState({
+        settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      render(<AiSettings />)
+      await user.click(screen.getByTestId('settings-ai-remember-scope'))
+      await user.click(screen.getByTestId('settings-ai-remember-scope-option-global'))
+
+      await waitFor(() => {
+        expect(useSettingsStore.getState().pendingChanges['ai.rememberScope']).toBe('global')
+      })
+    })
+
+    it('reflects the saved scope value as "Always ask"', () => {
+      useSettingsStore.setState({
+        settings: { ...SETTINGS_DEFAULTS, 'ai.rememberScope': 'ask' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+      render(<AiSettings />)
+      expect(screen.getByTestId('settings-ai-remember-scope')).toHaveTextContent('Always ask')
+    })
   })
 })

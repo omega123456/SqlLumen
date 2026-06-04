@@ -1,0 +1,148 @@
+/* MemoryRow — a single AI memory entry with drag handle, content, move and delete actions */
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 4px);
+  position: relative;
+  /* The whole row is `draggable`; without this the browser starts a text
+   * selection when grabbing the content and `dragstart` never fires. */
+  user-select: none;
+  cursor: grab;
+}
+
+.row:active {
+  cursor: grabbing;
+}
+
+.row:hover {
+  background: var(--surface-hover, var(--surface-container-high));
+}
+
+.dragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 22px;
+  color: var(--on-surface-variant);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.row:hover .dragHandle,
+.dragHandle:focus-visible {
+  opacity: 1;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragging {
+  opacity: 0.5;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.text {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.date {
+  font-size: var(--type-size-xs, 11px);
+  color: var(--on-surface-variant);
+  margin-top: 2px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.row:hover .actions,
+.actions:focus-within {
+  opacity: 1;
+}
+
+/* Move-to popover menu */
+
+.moveAnchor {
+  position: relative;
+}
+
+.moveMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  min-width: 180px;
+  max-height: 260px;
+  overflow-y: auto;
+  margin-top: 4px;
+  padding: 4px;
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.18));
+}
+
+.moveMenuLabel {
+  font-size: var(--type-size-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+  padding: 4px 8px 2px;
+}
+
+.moveOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.moveOption:hover,
+.moveOption.active {
+  background: var(--primary-container, var(--surface-hover));
+  color: var(--on-primary-container, var(--on-surface));
+}
+
+.moveOptionIcon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+.moveOptionLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

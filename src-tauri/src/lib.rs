@@ -392,10 +392,13 @@ pub fn run() {
             commands::processlist::get_processlist,
             commands::processlist::kill_queries,
             commands::ai_memory::save_memory,
-            commands::ai_memory::list_memories,
+            commands::ai_memory::list_global_memories,
+            commands::ai_memory::list_group_memories,
+            commands::ai_memory::list_connection_memories,
             commands::ai_memory::delete_memory,
+            commands::ai_memory::move_memory,
             commands::ai_memory::search_memories,
-            commands::ai_memory::reembed_memories,
+            commands::ai_memory::reembed_all_memories,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

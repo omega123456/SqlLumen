@@ -1,0 +1,142 @@
+/* MemorySection — a scope/owner block (Global, group, connection, ungrouped) */
+
+.section {
+  position: relative;
+  padding: 4px 0;
+}
+
+.section + .section {
+  margin-top: 4px;
+}
+
+/* Tier 1 (connection sub-sections nested inside a group/ungrouped block) */
+.nested {
+  margin-left: var(--tree-indent);
+  border-left: 1px solid var(--outline-variant);
+  padding-left: 8px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface);
+  text-align: left;
+}
+
+.headerButton {
+  cursor: pointer;
+}
+
+.headerButton:hover {
+  background: var(--surface-hover, var(--surface-container-high));
+  border-radius: var(--radius-sm, 4px);
+}
+
+.headerNested {
+  font-weight: 400;
+  color: var(--on-surface-variant);
+}
+
+.chevron {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+.headerIcon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+.headerLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.headerNested .headerLabel {
+  font-weight: 400;
+}
+
+.countBadge {
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-size: 10px;
+  background: var(--surface-container-high);
+  padding: 2px 6px;
+  color: var(--on-surface-variant);
+}
+
+.body {
+  padding: 2px 0 2px 4px;
+}
+
+.emptyState {
+  font-size: var(--type-size-xs, 11px);
+  color: var(--on-surface-variant);
+  padding: 4px 8px;
+}
+
+/* Drop feedback: a subtle surface tint plus a 2px insertion line drawn just
+ * inside the section's bottom edge so an ancestor `overflow` clip can never
+ * hide the indicator. */
+.dropTarget {
+  background: rgba(var(--primary-rgb), 0.08);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.dropTarget::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Inline add affordance */
+.addTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 2px 4px;
+  padding: 4px 6px;
+  font-size: var(--type-size-xs, 11px);
+}
+
+.addForm {
+  margin: 4px 4px 4px 4px;
+  padding: 8px;
+  border-top: 1px solid var(--outline-variant);
+  background: var(--primary-container-subtle, var(--surface-container-high));
+  border-radius: var(--radius-sm, 4px);
+}
+
+.addTextarea {
+  width: 100%;
+  min-height: 48px;
+  resize: vertical;
+}
+
+.addActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}

@@ -5,9 +5,21 @@ commands.allow = ["save_memory"]
 commands.deny = []
 
 [[permission]]
-identifier = "allow-list-memories"
-description = "Enables the list_memories command."
-commands.allow = ["list_memories"]
+identifier = "allow-list-global-memories"
+description = "Enables the list_global_memories command."
+commands.allow = ["list_global_memories"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-group-memories"
+description = "Enables the list_group_memories command."
+commands.allow = ["list_group_memories"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-connection-memories"
+description = "Enables the list_connection_memories command."
+commands.allow = ["list_connection_memories"]
 commands.deny = []
 
 [[permission]]
@@ -17,13 +29,19 @@ commands.allow = ["delete_memory"]
 commands.deny = []
 
 [[permission]]
+identifier = "allow-move-memory"
+description = "Enables the move_memory command."
+commands.allow = ["move_memory"]
+commands.deny = []
+
+[[permission]]
 identifier = "allow-search-memories"
 description = "Enables the search_memories command."
 commands.allow = ["search_memories"]
 commands.deny = []
 
 [[permission]]
-identifier = "allow-reembed-memories"
-description = "Enables the reembed_memories command."
-commands.allow = ["reembed_memories"]
+identifier = "allow-reembed-all-memories"
+description = "Enables the reembed_all_memories command."
+commands.allow = ["reembed_all_memories"]
 commands.deny = []

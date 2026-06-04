@@ -38,6 +38,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'ai.maxTokens': '32000',
   'ai.enableReasoning': 'true',
   'ai.preferResponsesApi': 'false',
+  'ai.rememberScope': 'connection',
   'ai.retrieval.topKPerQuery': '30',
   'ai.retrieval.topN': '20',
   'ai.retrieval.fkFanoutCap': '30',

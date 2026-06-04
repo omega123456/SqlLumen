@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
 import { searchMemories } from '../lib/ai-memory-commands'
+import type { AiMemory, MemoryScope } from '../lib/ai-memory-commands'
 import type { AiMessage as IpcAiMessage, AiChunkKind } from '../lib/ai-commands'
 import { semanticSearch } from '../lib/schema-index-commands'
 import type { RetrievalHints } from '../lib/schema-index-commands'
@@ -23,12 +24,41 @@ export interface AiMessage {
   kind?: 'schema-context' | 'attached-context' | 'memory-context'
   thinkingContent?: string
   chunkKeys?: string[]
-  memoryIds?: number[]
+  /**
+   * Composite dedup keys (`${scope}-${id}`) for memories injected by this
+   * memory-context message. Composite because ids are only unique within a
+   * level (three separate autoincrement tables).
+   */
+  memoryIds?: string[]
 }
 
-interface AiMemory {
-  id: number
-  content: string
+/**
+ * Order memories Global → Group → Connection. Within a scope the input order is
+ * preserved (callers pass relevance-ordered results).
+ */
+const MEMORY_SCOPE_ORDER: Record<MemoryScope, number> = {
+  global: 0,
+  group: 1,
+  connection: 2,
+}
+
+/** Composite dedup key for a memory — unique across levels. */
+function memoryKey(memory: Pick<AiMemory, 'scope' | 'id'>): string {
+  return `${memory.scope ?? 'connection'}-${memory.id}`
+}
+
+/** Stable sort merged memories by scope specificity (Global → Group → Connection). */
+function sortMemoriesByScope(memories: AiMemory[]): AiMemory[] {
+  return memories
+    .map((memory, index) => ({ memory, index }))
+    .sort((a, b) => {
+      const scopeDiff =
+        (MEMORY_SCOPE_ORDER[a.memory.scope] ?? MEMORY_SCOPE_ORDER.connection) -
+        (MEMORY_SCOPE_ORDER[b.memory.scope] ?? MEMORY_SCOPE_ORDER.connection)
+      if (scopeDiff !== 0) return scopeDiff
+      return a.index - b.index
+    })
+    .map((entry) => entry.memory)
 }
 
 export interface AttachedContext {
@@ -775,7 +805,8 @@ export const useAiStore = create<AiState>()((set, get) => {
           query: userMessage,
           k: 5,
         })
-        allMemories = memoryResults
+        // Order Global → Group → Connection (relevance order preserved within a level).
+        allMemories = sortMemoriesByScope(memoryResults)
         logFrontend(
           'debug',
           `[ai-store] memory search returned ${allMemories.length} result(s) — sessionId=${sessionId}`
@@ -789,7 +820,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Dedup memories by ID (only novel ones produce memory-context messages)
       const currentTab = get().tabs[tabId]
       const existingMemoryIds = currentTab?.providedMemoryIds ?? {}
-      const novelMemories = allMemories.filter((mem) => !existingMemoryIds[String(mem.id)])
+      const novelMemories = allMemories.filter((mem) => !existingMemoryIds[memoryKey(mem)])
 
       // Build novel memory text
       let novelMemoryText: string | null = null
@@ -1216,7 +1247,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         content: novelMemoryText,
         timestamp: Date.now(),
         kind: 'memory-context',
-        memoryIds: novelMemories.map((m) => m.id),
+        memoryIds: novelMemories.map((m) => memoryKey(m)),
       })
     }
 
@@ -1245,7 +1276,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         }
         const newMemoryIds = { ...currentTabState.providedMemoryIds }
         for (const mem of novelMemories) {
-          newMemoryIds[String(mem.id)] = true
+          newMemoryIds[memoryKey(mem)] = true
         }
         patchTab(tabId, {
           providedChunkKeys: newChunkKeys,
@@ -1479,7 +1510,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Collect chunk keys and memory IDs from removed context messages
       const removedChunkKeys: string[] = []
-      const removedMemoryIds: number[] = []
+      const removedMemoryIds: string[] = []
       for (const idx of indicesToRemove) {
         const msg = tab.messages[idx]
         if (msg.kind === 'schema-context' && msg.chunkKeys) {
@@ -1503,7 +1534,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       }
       const newMemoryIds = { ...tab.providedMemoryIds }
       for (const memId of removedMemoryIds) {
-        delete newMemoryIds[String(memId)]
+        delete newMemoryIds[memId]
       }
 
       // Recompute cumulativeSchemaTokens from remaining schema-context messages

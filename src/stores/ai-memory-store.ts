@@ -1,10 +1,9 @@
 import { create } from 'zustand'
 import { listen } from '@tauri-apps/api/event'
 import type { MemoryReembedProgress } from '../lib/ai-memory-commands'
-import { reembedMemories } from '../lib/ai-memory-commands'
+import { reembedAllMemories } from '../lib/ai-memory-commands'
 import { hasTauriApis } from '../lib/tauri-env'
 import { useSettingsStore } from './settings-store'
-import { useConnectionStore } from './connection-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 // ---------------------------------------------------------------------------
@@ -18,8 +17,12 @@ export interface ReembedStatus {
 }
 
 interface AiMemoryState {
+  /**
+   * Re-embed status keyed by a generic owner key emitted in progress events
+   * (`global`, `group_{id}`, or a connection id).
+   */
   reembedStatus: Record<string, ReembedStatus>
-  setReembedStatus: (connectionId: string, status: ReembedStatus) => void
+  setReembedStatus: (ownerKey: string, status: ReembedStatus) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -29,11 +32,11 @@ interface AiMemoryState {
 export const useAiMemoryStore = create<AiMemoryState>()((set) => ({
   reembedStatus: {},
 
-  setReembedStatus: (connectionId, status) => {
+  setReembedStatus: (ownerKey, status) => {
     set((s) => ({
       reembedStatus: {
         ...s.reembedStatus,
-        [connectionId]: status,
+        [ownerKey]: status,
       },
     }))
   },
@@ -44,10 +47,15 @@ export const useAiMemoryStore = create<AiMemoryState>()((set) => ({
 // ---------------------------------------------------------------------------
 
 let initialized = false
+let unsubscribeModelChange: (() => void) | null = null
 
 /** Reset module state — test-only. */
 export function _resetAiMemoryStoreForTest(): void {
   initialized = false
+  if (unsubscribeModelChange) {
+    unsubscribeModelChange()
+    unsubscribeModelChange = null
+  }
   for (const key of Object.keys(resetTimers)) {
     clearTimeout(resetTimers[key])
     delete resetTimers[key]
@@ -70,10 +78,10 @@ export function initAiMemoryStore(): void {
 
 const resetTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 
-function cancelResetTimer(connectionId: string): void {
-  if (resetTimers[connectionId]) {
-    clearTimeout(resetTimers[connectionId])
-    delete resetTimers[connectionId]
+function cancelResetTimer(ownerKey: string): void {
+  if (resetTimers[ownerKey]) {
+    clearTimeout(resetTimers[ownerKey])
+    delete resetTimers[ownerKey]
   }
 }
 
@@ -81,36 +89,36 @@ function initEventListeners(): void {
   if (!hasTauriApis()) return
 
   listen<MemoryReembedProgress>('ai-memory-reembed-progress', (event) => {
-    const { connectionId, phase, done, total } = event.payload
+    const { ownerKey, phase, done, total } = event.payload
 
     if (phase === 'embedding') {
-      cancelResetTimer(connectionId)
+      cancelResetTimer(ownerKey)
       useAiMemoryStore.setState((s) => ({
         reembedStatus: {
           ...s.reembedStatus,
-          [connectionId]: { status: 'running', done, total },
+          [ownerKey]: { status: 'running', done, total },
         },
       }))
     } else if (phase === 'error') {
-      cancelResetTimer(connectionId)
+      cancelResetTimer(ownerKey)
       logFrontend(
         'warn',
-        `[ai-memory-store] Re-embed error for connection ${connectionId}: ${event.payload.error ?? 'unknown'}`
+        `[ai-memory-store] Re-embed error for owner ${ownerKey}: ${event.payload.error ?? 'unknown'}`
       )
       useAiMemoryStore.setState((s) => ({
         reembedStatus: {
           ...s.reembedStatus,
-          [connectionId]: { status: 'idle', done: 0, total: 0 },
+          [ownerKey]: { status: 'idle', done: 0, total: 0 },
         },
       }))
     } else if (phase === 'done') {
-      cancelResetTimer(connectionId)
-      resetTimers[connectionId] = setTimeout(() => {
-        delete resetTimers[connectionId]
+      cancelResetTimer(ownerKey)
+      resetTimers[ownerKey] = setTimeout(() => {
+        delete resetTimers[ownerKey]
         useAiMemoryStore.setState((s) => ({
           reembedStatus: {
             ...s.reembedStatus,
-            [connectionId]: { status: 'idle', done: 0, total: 0 },
+            [ownerKey]: { status: 'idle', done: 0, total: 0 },
           },
         }))
       }, 2000)
@@ -125,7 +133,7 @@ function initModelChangeSubscription(): void {
   // is correctly detected as "no change" rather than hitting a null guard.
   let prevModel: string | null = useSettingsStore.getState().settings?.['ai.embeddingModel'] ?? null
 
-  useSettingsStore.subscribe((state) => {
+  unsubscribeModelChange = useSettingsStore.subscribe((state) => {
     const currentModel = state.settings?.['ai.embeddingModel'] ?? null
 
     if (currentModel === prevModel) return
@@ -136,20 +144,14 @@ function initModelChangeSubscription(): void {
     // Only trigger re-embed when both old and new models are known non-null values
     if (!currentModel || oldModel === null) return
 
-    // Fire-and-forget re-embedding for all saved connections.
-    // The backend handles the empty-memories case (returns done 0/0 immediately).
+    // Fire-and-forget re-embedding across all levels (global, every group, every
+    // connection). The backend orchestrates the fan-out and emits per-owner
+    // progress events; the empty-memories case resolves immediately.
     void (async () => {
-      let profiles = useConnectionStore.getState().savedConnections
-      if (profiles.length === 0) {
-        await useConnectionStore.getState().fetchSavedConnections()
-        profiles = useConnectionStore.getState().savedConnections
-      }
-      for (const profile of profiles) {
-        try {
-          await reembedMemories({ connectionId: profile.id })
-        } catch (err) {
-          logFrontend('error', `[ai-memory-store] Re-embed failed for ${profile.id}: ${err}`)
-        }
+      try {
+        await reembedAllMemories()
+      } catch (err) {
+        logFrontend('error', `[ai-memory-store] Re-embed failed: ${err}`)
       }
     })()
   })

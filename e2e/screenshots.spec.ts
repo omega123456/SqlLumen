@@ -3625,6 +3625,26 @@ for (const theme of themes) {
       )
     })
 
+    test('SettingsDialog — AI Memory subsection (default /remember scope)', async ({ page }) => {
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+
+      const memorySection = page.getByTestId('settings-section-memory')
+      await memorySection.scrollIntoViewIfNeeded()
+      await expect(page.getByTestId('settings-ai-remember-scope')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(memorySection).toHaveScreenshot(`settings-dialog-ai-memory-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
     test('SettingsDialog — AI section with grouped models', async ({ page }) => {
       // Open settings, enable AI, set endpoint — models auto-load on mount
       await page.getByTestId('settings-button').click()
@@ -3959,6 +3979,85 @@ for (const theme of themes) {
       )
     })
 
+    test('AI panel — /remember scope picker (group available)', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      // Default scope = "ask" so the picker appears on /remember send; assign a
+      // group to the active connection so the Group option is enabled.
+      await page.evaluate(() => {
+        const settingsStore = (window as unknown as Record<string, unknown>)
+          .__settingsStore__ as {
+          setState: (
+            updater: (state: { settings: Record<string, string> }) => Record<string, unknown>
+          ) => void
+        }
+        settingsStore.setState((state) => ({
+          settings: { ...state.settings, 'ai.rememberScope': 'ask' },
+        }))
+        const connStore = (window as unknown as Record<string, unknown>).__connectionStore__ as {
+          getState: () => {
+            activeConnections: Record<string, { profile: { groupId: string | null } }>
+          }
+          setState: (partial: Record<string, unknown>) => void
+        }
+        const active = connStore.getState().activeConnections
+        const next: Record<string, unknown> = {}
+        for (const [sid, conn] of Object.entries(active)) {
+          next[sid] = { ...conn, profile: { ...conn.profile, groupId: 'group-1' } }
+        }
+        connStore.setState({ activeConnections: next })
+      })
+
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      const textarea = page.getByTestId('ai-chat-textarea')
+      await textarea.fill('/remember always use UTC')
+      await textarea.press('Enter')
+
+      await expect(page.getByTestId('memory-scope-picker')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(
+        `ai-panel-remember-scope-picker-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('AI panel — /remember scope picker (no group)', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      // Default scope = "ask"; the active connection has no group, so the Group
+      // option is greyed with a "no group" caption.
+      await page.evaluate(() => {
+        const settingsStore = (window as unknown as Record<string, unknown>)
+          .__settingsStore__ as {
+          setState: (
+            updater: (state: { settings: Record<string, string> }) => Record<string, unknown>
+          ) => void
+        }
+        settingsStore.setState((state) => ({
+          settings: { ...state.settings, 'ai.rememberScope': 'ask' },
+        }))
+      })
+
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      const textarea = page.getByTestId('ai-chat-textarea')
+      await textarea.fill('/remember always use UTC')
+      await textarea.press('Enter')
+
+      await expect(page.getByTestId('memory-scope-picker')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('memory-scope-no-group-caption')).toBeVisible()
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(
+        `ai-panel-remember-scope-picker-no-group-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('AI panel — re-embedding progress banner', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)
@@ -3998,62 +4097,88 @@ for (const theme of themes) {
       )
     })
 
-    test('SettingsDialog — AI Memories section (with memories)', async ({ page }) => {
-      // Set up mock memories data before opening settings
+    // Seed the multi-level memory manager: connection store (connections +
+    // groups + an active session for inline-add) and the override fixture store
+    // (global / group / connection memories keyed by owner).
+    async function seedMultiLevelMemories(page: Page) {
       await page.evaluate(() => {
-        ;(window as unknown as Record<string, unknown>).__mockMemoriesData__ = [
-          {
-            id: 1,
-            connectionId: 'conn-playwright-1',
-            content: 'The users table uses soft deletes via the deleted_at column',
-            createdAt: 1704067200,
-            source: 'manual',
+        ;(window as unknown as Record<string, unknown>).__mockMemoriesData__ = {
+          global: [
+            {
+              id: 1,
+              scope: 'global',
+              connectionId: null,
+              groupId: null,
+              content: 'Always prefer CTEs over subqueries',
+              createdAt: 1704067200,
+              source: 'manual',
+            },
+          ],
+          group: {
+            'grp-1': [
+              {
+                id: 1,
+                scope: 'group',
+                connectionId: null,
+                groupId: 'grp-1',
+                content: 'All timestamps are UTC',
+                createdAt: 1704153600,
+                source: 'manual',
+              },
+            ],
           },
-          {
-            id: 2,
-            connectionId: 'conn-playwright-1',
-            content: 'Always use UTC timestamps for created_at and updated_at',
-            createdAt: 1704153600,
-            source: 'manual',
+          connection: {
+            'conn-playwright-1': [
+              {
+                id: 1,
+                scope: 'connection',
+                connectionId: 'conn-playwright-1',
+                groupId: null,
+                content: 'Sample data only — safe to truncate',
+                createdAt: 1704067200,
+                source: 'manual',
+              },
+            ],
           },
-        ]
-        // Ensure savedConnections is populated so AiMemoriesSettings can find profiles
+        }
         const connStore = (window as unknown as Record<string, unknown>).__connectionStore__ as {
           setState: (partial: Record<string, unknown>) => void
         }
+        const grouped = {
+          id: 'conn-playwright-2',
+          name: 'prod-analytics',
+          host: '127.0.0.1',
+          port: 3306,
+          username: 'appuser',
+          hasPassword: true,
+          defaultDatabase: 'analytics',
+          sslEnabled: false,
+          sslCaPath: null,
+          sslCertPath: null,
+          sslKeyPath: null,
+          color: null,
+          groupId: 'grp-1',
+          readOnly: false,
+          sortOrder: 1,
+          connectTimeoutSecs: 10,
+          keepaliveIntervalSecs: 60,
+          createdAt: '2025-01-01T00:00:00.000Z',
+          updatedAt: '2025-01-01T00:00:00.000Z',
+        }
+        const ungrouped = { ...grouped, id: 'conn-playwright-1', name: 'local-dev', groupId: null }
         connStore.setState({
-          savedConnections: [
-            {
-              id: 'conn-playwright-1',
-              name: 'Sample MySQL',
-              host: '127.0.0.1',
-              port: 3306,
-              username: 'appuser',
-              hasPassword: true,
-              defaultDatabase: 'ecommerce_db',
-              sslEnabled: false,
-              sslCaPath: null,
-              sslCertPath: null,
-              sslKeyPath: null,
-              color: '#2563eb',
-              groupId: null,
-              readOnly: false,
-              sortOrder: 0,
-              connectTimeoutSecs: 10,
-              keepaliveIntervalSecs: 60,
-              createdAt: '2025-01-01T00:00:00.000Z',
-              updatedAt: '2025-01-01T00:00:00.000Z',
-            },
+          savedConnections: [ungrouped, grouped],
+          connectionGroups: [
+            { id: 'grp-1', name: 'Analytics', parentId: null, sortOrder: 0, createdAt: '' },
           ],
+          activeConnections: {
+            'sess-1': { id: 'sess-1', profile: ungrouped, status: 'connected', serverVersion: '8.0' },
+          },
         })
       })
+    }
 
-      await page.getByTestId('settings-button').click()
-      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('settings-nav-ai').click()
-      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
-
-      // Enable AI so the memories section renders
+    async function enableAiInSettings(page: Page) {
       await page.evaluate(() => {
         const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
           setState: (
@@ -4074,20 +4199,27 @@ for (const theme of themes) {
           pendingChanges: {},
         }))
       })
+    }
 
-      // Wait for the memories settings section to load
+    test('SettingsDialog — AI Memories section (multi-level)', async ({ page }) => {
+      await seedMultiLevelMemories(page)
+
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+      await enableAiInSettings(page)
+
       await expect(page.getByTestId('ai-memories-settings')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-memory-section-global')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
 
-      // Expand the connection accordion to show memories
-      const accordionBtn = page
-        .getByTestId('ai-memories-settings')
-        .locator('button')
-        .filter({ hasText: 'Sample MySQL' })
-      await expect(accordionBtn).toBeVisible({ timeout: APP_READY_MS })
-      await accordionBtn.click()
-
-      // Wait for memory items to be visible
-      await expect(page.getByTestId('ai-memory-item-1')).toBeVisible({ timeout: APP_READY_MS })
+      // The group has few memories, so it renders expanded with its nested
+      // connection sub-section visible.
+      await expect(page.getByTestId('ai-memory-section-connection-conn-playwright-2')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
 
       await page.evaluate(() => {
         const el = document.activeElement
@@ -4098,43 +4230,85 @@ for (const theme of themes) {
         { animations: 'disabled' }
       )
 
-      // Clean up
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockMemoriesData__
+      })
+    })
+
+    test('SettingsDialog — AI Memories inline add expanded', async ({ page }) => {
+      await seedMultiLevelMemories(page)
+
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+      await enableAiInSettings(page)
+
+      await expect(page.getByTestId('ai-memory-section-global')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await page.getByTestId('ai-memory-add-trigger-global').click()
+      await expect(page.getByTestId('ai-memory-add-textarea-global')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await page.getByTestId('ai-memory-add-textarea-global').fill('Use snake_case for new columns')
+
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-ai-memories-inline-add-${theme}.png`,
+        { animations: 'disabled' }
+      )
+
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockMemoriesData__
+      })
+    })
+
+    test('SettingsDialog — AI Memories move menu open', async ({ page }) => {
+      await seedMultiLevelMemories(page)
+
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+      await enableAiInSettings(page)
+
+      await expect(page.getByTestId('ai-memory-section-global')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      // Hover the global memory row so the move action becomes visible, then open it.
+      await page.getByTestId('ai-memory-item-1').first().hover()
+      await page.getByTestId('ai-memory-move-1').first().click()
+      await expect(page.getByTestId('ai-memory-move-menu-1').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-ai-memories-move-menu-${theme}.png`,
+        { animations: 'disabled' }
+      )
+
       await page.evaluate(() => {
         delete (window as unknown as Record<string, unknown>).__mockMemoriesData__
       })
     })
 
     test('SettingsDialog — AI Memories section (empty state)', async ({ page }) => {
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockMemoriesData__ = {
+          global: [],
+          group: {},
+          connection: {},
+        }
+      })
       await page.getByTestId('settings-button').click()
       await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
       await page.getByTestId('settings-nav-ai').click()
       await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+      await enableAiInSettings(page)
 
-      // Enable AI so the memories section renders
-      await page.evaluate(() => {
-        const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
-          setState: (
-            updater: (state: {
-              settings: Record<string, string>
-              pendingChanges: Record<string, string>
-            }) => Record<string, unknown>
-          ) => void
-        }
-        store.setState((state) => ({
-          settings: {
-            ...state.settings,
-            'ai.enabled': 'true',
-            'ai.endpoint': 'http://localhost:11434/v1',
-            'ai.model': 'codellama',
-            'ai.embeddingModel': 'nomic-embed-text',
-          },
-          pendingChanges: {},
-        }))
-      })
-
-      // Wait for the memories settings section with empty state
+      // The Global section always renders; with no memories it shows the empty line.
       await expect(page.getByTestId('ai-memories-settings')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('ai-memories-empty-state')).toBeVisible({
+      await expect(page.getByTestId('ai-memory-empty-global')).toBeVisible({
         timeout: APP_READY_MS,
       })
 
@@ -4146,6 +4320,10 @@ for (const theme of themes) {
         `settings-dialog-ai-memories-empty-${theme}.png`,
         { animations: 'disabled' }
       )
+
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockMemoriesData__
+      })
     })
 
     test('AI workspace rail — visible when AI enabled', async ({ page }) => {

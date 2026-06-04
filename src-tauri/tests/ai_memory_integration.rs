@@ -2,7 +2,7 @@
 
 use rusqlite::{params, Connection};
 use sqllumen_lib::ai_memory::storage;
-use sqllumen_lib::ai_memory::types::AiMemory;
+use sqllumen_lib::ai_memory::types::{AiMemory, MemoryScope};
 use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 
@@ -21,11 +21,11 @@ fn test_embedding(dim: usize, seed: f32) -> Vec<f32> {
 // ── Migration ────────────────────────────────────────────────────────────
 
 #[test]
-fn migration_creates_ai_memories_table() {
+fn migration_creates_connection_memories_table() {
     let conn = setup_db();
     let count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ai_memories'",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='connection_memories'",
             [],
             |row| row.get(0),
         )
@@ -38,7 +38,7 @@ fn migration_creates_index_on_connection_id() {
     let conn = setup_db();
     let count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_ai_memories_connection_id'",
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_connection_memories_connection_id'",
             [],
             |row| row.get(0),
         )
@@ -60,7 +60,8 @@ fn insert_memory_stores_correct_data() {
     let conn = setup_db();
     let id = storage::insert_memory(&conn, "conn-1", "Test content").unwrap();
     let mem = storage::get_memory_by_id(&conn, id).unwrap().unwrap();
-    assert_eq!(mem.connection_id, "conn-1");
+    assert_eq!(mem.connection_id.as_deref(), Some("conn-1"));
+    assert_eq!(mem.scope, MemoryScope::Connection);
     assert_eq!(mem.content, "Test content");
     assert_eq!(mem.source, "manual");
     assert!(mem.created_at > 0);
@@ -241,7 +242,7 @@ fn knn_search_returns_nearest_vectors() {
 
     let sql = format!(
         "SELECT m.id, m.connection_id, m.content, m.created_at, m.source \
-         FROM {table} v JOIN ai_memories m ON m.id = v.id \
+         FROM {table} v JOIN connection_memories m ON m.id = v.id \
          WHERE v.embedding MATCH ?1 AND k = ?2 \
          ORDER BY v.distance"
     );
@@ -250,7 +251,9 @@ fn knn_search_returns_nearest_vectors() {
         .query_map(params![query_bytes, 2i64], |row| {
             Ok(AiMemory {
                 id: row.get(0)?,
-                connection_id: row.get(1)?,
+                scope: MemoryScope::Connection,
+                connection_id: row.get::<_, Option<String>>(1)?,
+                group_id: None,
                 content: row.get(2)?,
                 created_at: row.get(3)?,
                 source: row.get(4)?,
@@ -303,14 +306,14 @@ fn delete_memory_impl_errors_for_missing_memory() {
     use sqllumen_lib::commands::ai_memory::delete_memory_impl;
 
     let state = common::test_app_state();
-    let result = delete_memory_impl(&state, 99999);
+    let result = delete_memory_impl(&state, MemoryScope::Connection, 99999);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
 
 #[test]
 fn list_memories_impl_returns_memories() {
-    use sqllumen_lib::commands::ai_memory::list_memories_impl;
+    use sqllumen_lib::commands::ai_memory::list_connection_memories_impl;
 
     let state = common::test_app_state();
     {
@@ -318,16 +321,16 @@ fn list_memories_impl_returns_memories() {
         storage::insert_memory(&conn, "conn-1", "Hello").unwrap();
         storage::insert_memory(&conn, "conn-1", "World").unwrap();
     }
-    let memories = list_memories_impl(&state, "conn-1").unwrap();
+    let memories = list_connection_memories_impl(&state, "conn-1").unwrap();
     assert_eq!(memories.len(), 2);
 }
 
 #[test]
 fn list_memories_impl_empty_for_unknown_connection() {
-    use sqllumen_lib::commands::ai_memory::list_memories_impl;
+    use sqllumen_lib::commands::ai_memory::list_connection_memories_impl;
 
     let state = common::test_app_state();
-    let memories = list_memories_impl(&state, "nonexistent").unwrap();
+    let memories = list_connection_memories_impl(&state, "nonexistent").unwrap();
     assert!(memories.is_empty());
 }
 
@@ -344,7 +347,7 @@ fn delete_memory_impl_removes_memory_and_vector() {
         storage::insert_memory_vector(&conn, &table, id, &test_embedding(4, 1.0)).unwrap();
         id
     };
-    delete_memory_impl(&state, id).unwrap();
+    delete_memory_impl(&state, MemoryScope::Connection, id).unwrap();
     let conn = state.db.lock().unwrap();
     let mem = storage::get_memory_by_id(&conn, id).unwrap();
     assert!(mem.is_none());
@@ -463,7 +466,7 @@ fn save_memory_impl_errors_without_embedding_config() {
         .unwrap()
         .insert("sess-1".to_string(), "profile-1".to_string());
 
-    let result = save_memory_impl(&state, "sess-1", "Remember this");
+    let result = save_memory_impl(&state, "sess-1", "Remember this", MemoryScope::Connection);
     assert!(result.is_err());
     // Should fail because embedding config is not set
     let err = result.unwrap_err();
@@ -488,10 +491,10 @@ fn save_memory_impl_succeeds_with_config() {
         settings::set_setting(&conn, "ai.embeddingModel", "test-model").unwrap();
     }
 
-    let (memory, profile_id, endpoint, model) =
-        save_memory_impl(&state, "sess-1", "Remember this").unwrap();
+    let (memory, owner_id, endpoint, model) =
+        save_memory_impl(&state, "sess-1", "Remember this", MemoryScope::Connection).unwrap();
     assert_eq!(memory.content, "Remember this");
-    assert_eq!(profile_id, "profile-1");
+    assert_eq!(owner_id.as_deref(), Some("profile-1"));
     assert_eq!(endpoint, "http://localhost:1234");
     assert_eq!(model, "test-model");
 }

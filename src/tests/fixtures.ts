@@ -348,13 +348,26 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   // --- AI memory commands ---
   save_memory: () => ({
     id: 1,
+    scope: 'connection',
     connectionId: 'conn-mock-1',
+    groupId: null,
     content: '',
     createdAt: Math.floor(Date.now() / 1000),
     source: 'manual',
   }),
-  list_memories: () => [],
+  list_global_memories: () => [],
+  list_group_memories: () => [],
+  list_connection_memories: () => [],
+  move_memory: () => ({
+    id: 1,
+    scope: 'global',
+    connectionId: null,
+    groupId: null,
+    content: '',
+    createdAt: Math.floor(Date.now() / 1000),
+    source: 'manual',
+  }),
   delete_memory: () => null,
   search_memories: () => [],
-  reembed_memories: () => null,
+  reembed_all_memories: () => null,
 }

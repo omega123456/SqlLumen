@@ -51,6 +51,14 @@ import {
 } from './users'
 import { USER_STATS_VIEW_TABLE_DATA } from './user-stats-view'
 
+export {
+  getGlobalMemoriesFixture,
+  getGroupMemoriesFixture,
+  getConnectionMemoriesFixture,
+  getSavedMemoryFixture,
+  getMovedMemoryFixture,
+} from './memory'
+
 type FixtureOverrideDomain =
   | 'tableData'
   | 'columns'

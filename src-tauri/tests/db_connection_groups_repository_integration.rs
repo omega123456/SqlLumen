@@ -128,6 +128,52 @@ fn test_delete_group_nullifies_connections() {
 }
 
 #[test]
+fn test_delete_group_cascades_group_memories_and_vec_table() {
+    use sqllumen_lib::ai_memory::storage;
+    use sqllumen_lib::ai_memory::types::MemoryScope;
+
+    sqllumen_lib::init_sqlite_vec();
+    let conn = common::test_db();
+    let group_id = insert_group(&conn, "Cascade Group").expect("should insert");
+    let other_id = insert_group(&conn, "Other Group").expect("should insert");
+
+    // Group-level memories + vec table for the group being deleted.
+    let m1 = storage::insert_memory_scoped(&conn, MemoryScope::Group, Some(&group_id), "A")
+        .expect("insert group memory");
+    let table = storage::ensure_vec_table_for_scope(&conn, MemoryScope::Group, Some(&group_id), 4)
+        .expect("ensure vec table");
+    storage::insert_memory_vector(&conn, &table, m1, &[1.0, 0.0, 0.0, 0.0]).expect("insert vector");
+
+    // A memory in another group must survive.
+    storage::insert_memory_scoped(&conn, MemoryScope::Group, Some(&other_id), "Keep")
+        .expect("insert other group memory");
+
+    delete_group(&conn, &group_id).expect("should delete");
+
+    assert!(
+        storage::list_memories_scoped(&conn, MemoryScope::Group, Some(&group_id))
+            .unwrap()
+            .is_empty(),
+        "group memories should be cascade-deleted"
+    );
+    let vec_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            [&table],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(vec_exists, 0, "group vec table should be dropped");
+    assert_eq!(
+        storage::list_memories_scoped(&conn, MemoryScope::Group, Some(&other_id))
+            .unwrap()
+            .len(),
+        1,
+        "other group memories must be preserved"
+    );
+}
+
+#[test]
 fn test_insert_group_timestamp_is_iso8601() {
     let conn = common::test_db();
     let id = insert_group(&conn, "Test").expect("should insert");

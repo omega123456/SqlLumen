@@ -299,7 +299,7 @@ describe('AiChatMessages', () => {
               kind: 'memory-context',
               content: '## User Notes (from memory)\n- Secret memory content',
               timestamp: 2,
-              memoryIds: [1],
+              memoryIds: ['connection-1'],
             },
             {
               id: 'm3',

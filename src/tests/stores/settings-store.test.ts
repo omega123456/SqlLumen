@@ -156,6 +156,11 @@ describe('useSettingsStore', () => {
     it('returns empty string for unknown keys', () => {
       expect(useSettingsStore.getState().getSetting('unknown.key')).toBe('')
     })
+
+    it('defaults ai.rememberScope to connection', () => {
+      expect(SETTINGS_DEFAULTS['ai.rememberScope']).toBe('connection')
+      expect(useSettingsStore.getState().getSetting('ai.rememberScope')).toBe('connection')
+    })
   })
 
   describe('save', () => {

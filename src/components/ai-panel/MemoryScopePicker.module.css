@@ -1,0 +1,74 @@
+.picker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  min-width: 220px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-bottom: var(--space-xs);
+  padding: var(--space-sm) 0;
+  background: var(--ui-dropdown-panel-bg);
+  border-radius: var(--ui-dropdown-panel-radius);
+  box-shadow: var(--ui-dropdown-panel-shadow);
+  backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
+  opacity: 1;
+  animation: fadeIn 100ms ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.header {
+  padding: var(--space-xs) var(--space-md) var(--space-sm);
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-xs);
+  font-weight: 600;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+}
+
+.option:hover:not(.optionDisabled),
+.optionHighlighted {
+  background: var(--ui-dropdown-option-hover-bg);
+}
+
+.optionIcon {
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+.optionLabel {
+  flex: 1;
+  color: var(--on-surface);
+  font-size: var(--type-size-md);
+}
+
+.optionDisabled {
+  cursor: default;
+}
+
+.optionDisabled .optionLabel,
+.optionDisabled .optionIcon {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.optionCaption {
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-xs);
+}

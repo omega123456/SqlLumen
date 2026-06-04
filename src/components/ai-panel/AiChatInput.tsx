@@ -1,16 +1,20 @@
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react'
-import { PaperPlaneRight, Stop, X } from '@phosphor-icons/react'
+import { PaperPlaneRightIcon, StopIcon, XIcon } from '@phosphor-icons/react'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { filterCommands, findCommand } from '../../lib/slash-commands'
+import { useConnectionStore } from '../../stores/connection-store'
+import { executeRemember, filterCommands, findCommand } from '../../lib/slash-commands'
+import { resolveRememberScope } from '../../lib/slash-commands'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 import { showErrorToast } from '../../stores/toast-store'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
+import { MemoryScopePicker } from './MemoryScopePicker'
 import type { SlashCommand } from '../../lib/slash-commands'
+import type { MemoryScope } from '../../lib/ai-memory-commands'
 import styles from './AiChatInput.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
@@ -45,8 +49,19 @@ export function AiChatInput({
   const [showDropdown, setShowDropdown] = useState(false)
   const [filteredCmds, setFilteredCmds] = useState<SlashCommand[]>([])
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  // When set, the "Always Ask" memory scope picker is shown above the input.
+  // The string is the (trimmed) memory content awaiting a scope choice.
+  const [pendingRememberContent, setPendingRememberContent] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const setLastFocusedSurface = useWorkspaceStore((s) => s.setLastFocusedSurface)
+
+  // The active connection's group presence (the session id `connectionId` maps
+  // to a saved profile via the connection store). Used to enable/disable the
+  // Group option in the scope picker.
+  const hasGroup = useConnectionStore(
+    (s) =>
+      (connectionId ? (s.activeConnections[connectionId]?.profile?.groupId ?? null) : null) !== null
+  )
   const isGenerating = useAiStore((s) => s.tabs[tabId]?.isGenerating ?? false)
   const attachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext ?? null)
 
@@ -59,6 +74,15 @@ export function AiChatInput({
   const hasModel = useSettingsStore(
     (s) => !!(s.pendingChanges['ai.model'] ?? s.settings['ai.model'] ?? '')
   )
+  // Saved default `/remember` scope, used to seed the scope-picker highlight.
+  // Only a concrete level is passed through; `'ask'` (or anything else) lets
+  // the picker fall back to Connection.
+  const defaultRememberScope = useSettingsStore((s) => {
+    const value = s.pendingChanges['ai.rememberScope'] ?? s.settings['ai.rememberScope']
+    return value === 'connection' || value === 'group' || value === 'global'
+      ? (value as MemoryScope)
+      : undefined
+  })
 
   const canSend =
     !externalDisabled &&
@@ -111,6 +135,7 @@ export function AiChatInput({
       setShowDropdown(false)
       setFilteredCmds([])
       setHighlightedIndex(-1)
+      setPendingRememberContent(null)
     })
   }, [workspaceTabId])
 
@@ -184,6 +209,24 @@ export function AiChatInput({
           return
         }
         const savedValue = value
+
+        // `/remember` is scope-aware. When the default scope is "Always ask"
+        // we show an inline level picker instead of saving immediately.
+        if (cmdName === 'remember') {
+          const args = cmdArgs.trim()
+          if (!args) {
+            // Surface the standard empty-args error via executeRemember.
+            executeRemember(cmdArgs, connectionId).catch(() => {
+              /* error already toasted */
+            })
+            return
+          }
+          if (resolveRememberScope() === 'ask') {
+            setPendingRememberContent(args)
+            return
+          }
+        }
+
         cmd
           .execute(cmdArgs, connectionId)
           .then(() => {
@@ -211,12 +254,56 @@ export function AiChatInput({
     resetHeight()
   }, [value, connectionId, canSend, tabId, resetHeight])
 
+  const handleScopePick = useCallback(
+    (scope: MemoryScope) => {
+      const content = pendingRememberContent
+      setPendingRememberContent(null)
+      if (!content || !connectionId) {
+        return
+      }
+      // executeRemember toasts success/failure itself.
+      executeRemember(content, connectionId, scope)
+        .then(() => {
+          setValue('')
+          resetHeight()
+        })
+        .catch((err: unknown) => {
+          logFrontend(
+            'warn',
+            `[AiChatInput] /remember (ask) rejected: ${err instanceof Error ? err.message : String(err)}`
+          )
+        })
+    },
+    [pendingRememberContent, connectionId, resetHeight]
+  )
+
+  const handleScopeCancel = useCallback(() => {
+    setPendingRememberContent(null)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+    })
+  }, [])
+
   const handleCancel = useCallback(() => {
     useAiStore.getState().cancelStream(tabId)
   }, [tabId])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      // While the "Always Ask" scope picker is open it owns Enter/Arrow/Escape
+      // (handled at the document level inside MemoryScopePicker); swallow those
+      // keys here so they neither send a message nor insert a newline.
+      if (pendingRememberContent !== null) {
+        if (
+          e.key === 'Enter' ||
+          e.key === 'Escape' ||
+          e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown'
+        ) {
+          e.preventDefault()
+        }
+        return
+      }
       if (showDropdown) {
         if (e.key === 'ArrowDown') {
           e.preventDefault()
@@ -249,7 +336,7 @@ export function AiChatInput({
         handleSend()
       }
     },
-    [showDropdown, filteredCmds, highlightedIndex, selectCommand, handleSend]
+    [pendingRememberContent, showDropdown, filteredCmds, highlightedIndex, selectCommand, handleSend]
   )
 
   const handleRemoveContext = useCallback(() => {
@@ -267,6 +354,14 @@ export function AiChatInput({
             onHighlightChange={setHighlightedIndex}
           />
         )}
+        {pendingRememberContent !== null && (
+          <MemoryScopePicker
+            hasGroup={hasGroup}
+            defaultScope={defaultRememberScope}
+            onSelect={handleScopePick}
+            onCancel={handleScopeCancel}
+          />
+        )}
         {attachedContext && (
           <div className={styles.contextChip} data-testid="ai-context-chip">
             <span className={styles.contextChipText} title={attachedContext.sql}>
@@ -282,7 +377,7 @@ export function AiChatInput({
               aria-label="Remove attached SQL context"
               data-testid="ai-context-chip-remove"
             >
-              <X size={12} />
+              <XIcon size={12} />
             </IconButton>
           </div>
         )}
@@ -326,7 +421,7 @@ export function AiChatInput({
           aria-label="Stop generation"
           data-testid="ai-stop-button"
         >
-          <Stop size={18} weight="fill" />
+          <StopIcon size={18} weight="fill" />
         </Button>
       ) : (
         <Button
@@ -338,7 +433,7 @@ export function AiChatInput({
           aria-label="Send message"
           data-testid="ai-send-button"
         >
-          <PaperPlaneRight size={18} weight="fill" />
+          <PaperPlaneRightIcon size={18} weight="fill" />
         </Button>
       )}
     </div>

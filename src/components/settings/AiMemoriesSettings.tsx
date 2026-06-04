@@ -1,157 +1,324 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Button } from '../common/Button'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
+import { MemorySection } from './memory/MemorySection'
+import type { MemoryDragPayload, MoveDestination } from './memory/MemoryRow'
 import { useConnectionStore } from '../../stores/connection-store'
-import { listMemories, deleteMemory } from '../../lib/ai-memory-commands'
-import type { AiMemory } from '../../lib/ai-memory-commands'
+import {
+  deleteMemory,
+  listConnectionMemories,
+  listGlobalMemories,
+  listGroupMemories,
+  moveMemory,
+  saveMemory,
+} from '../../lib/ai-memory-commands'
+import type { AiMemory, MemoryScope } from '../../lib/ai-memory-commands'
 import { showErrorToast } from '../../stores/toast-store'
-import { formatFromEpochSeconds } from '../../lib/format-utils'
+import { logFrontend } from '../../lib/app-log-commands'
 import styles from './AiMemoriesSettings.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
-interface ConnectionMemories {
-  connectionId: string
-  connectionName: string
-  memories: AiMemory[]
+interface MemoryStore {
+  global: AiMemory[]
+  group: Record<string, AiMemory[]>
+  connection: Record<string, AiMemory[]>
 }
+
+const EMPTY_STORE: MemoryStore = { global: [], group: {}, connection: {} }
 
 export function AiMemoriesSettings() {
   const savedConnections = useConnectionStore((s) => s.savedConnections)
+  const connectionGroups = useConnectionStore((s) => s.connectionGroups)
+  const activeConnections = useConnectionStore((s) => s.activeConnections)
   const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
-  const [data, setData] = useState<ConnectionMemories[]>([])
-  const [loading, setLoading] = useState(true)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
-  const [deleteTarget, setDeleteTarget] = useState<{
-    memoryId: number
-    connectionId: string
-  } | null>(null)
 
-  // Ensure connections are hydrated
+  const [memories, setMemories] = useState<MemoryStore>(EMPTY_STORE)
+  const [loading, setLoading] = useState(true)
+  const [deleteTarget, setDeleteTarget] = useState<AiMemory | null>(null)
+  const [activeDrag, setActiveDrag] = useState<MemoryDragPayload | null>(null)
+
+  // Ensure connections + groups are hydrated.
   useEffect(() => {
-    if (savedConnections.length === 0) {
+    if (savedConnections.length === 0 && connectionGroups.length === 0) {
       void fetchSavedConnections()
     }
-  }, [savedConnections.length, fetchSavedConnections])
+  }, [savedConnections.length, connectionGroups.length, fetchSavedConnections])
 
   const loadMemories = useCallback(async () => {
-    const profiles = savedConnections
-    if (profiles.length === 0) {
-      setData([])
-      setLoading(false)
-      return
-    }
     try {
-      const results = await Promise.all(
-        profiles.map(async (p) => {
-          try {
-            const memories = await listMemories({ connectionId: p.id })
-            return { connectionId: p.id, connectionName: p.name, memories }
-          } catch (err) {
-            logFrontend(
-              'warn',
-              `[AiMemoriesSettings] listMemories failed for connection ${p.id}: ${err instanceof Error ? err.message : String(err)}`
-            )
-            return { connectionId: p.id, connectionName: p.name, memories: [] }
-          }
-        })
-      )
-      setData(results.filter((r) => r.memories.length > 0))
+      const [global, groupEntries, connectionEntries] = await Promise.all([
+        listGlobalMemories().catch((err) => {
+          logFrontend('warn', `[AiMemoriesSettings] listGlobalMemories failed: ${String(err)}`)
+          return [] as AiMemory[]
+        }),
+        Promise.all(
+          connectionGroups.map(async (g) => {
+            try {
+              return [g.id, await listGroupMemories({ groupId: g.id })] as const
+            } catch (err) {
+              logFrontend(
+                'warn',
+                `[AiMemoriesSettings] listGroupMemories failed for ${g.id}: ${String(err)}`
+              )
+              return [g.id, [] as AiMemory[]] as const
+            }
+          })
+        ),
+        Promise.all(
+          savedConnections.map(async (c) => {
+            try {
+              return [c.id, await listConnectionMemories({ connectionId: c.id })] as const
+            } catch (err) {
+              logFrontend(
+                'warn',
+                `[AiMemoriesSettings] listConnectionMemories failed for ${c.id}: ${String(err)}`
+              )
+              return [c.id, [] as AiMemory[]] as const
+            }
+          })
+        ),
+      ])
+      setMemories({
+        global,
+        group: Object.fromEntries(groupEntries),
+        connection: Object.fromEntries(connectionEntries),
+      })
     } catch (err) {
-      logFrontend('error', `Failed to load memories: ${err}`)
+      logFrontend('error', `[AiMemoriesSettings] Failed to load memories: ${String(err)}`)
     } finally {
       setLoading(false)
     }
-  }, [savedConnections])
+  }, [savedConnections, connectionGroups])
 
   useEffect(() => {
     void loadMemories()
   }, [loadMemories])
 
-  const handleToggle = (connectionId: string) => {
-    setExpanded((prev) => ({ ...prev, [connectionId]: !prev[connectionId] }))
-  }
+  const ungroupedConnections = useMemo(
+    () => savedConnections.filter((c) => !c.groupId),
+    [savedConnections]
+  )
 
-  const handleDeleteConfirm = async () => {
+  // All move/drop destinations (excluding the source owner is handled per-row).
+  const allDestinations = useMemo<MoveDestination[]>(() => {
+    const dest: MoveDestination[] = [{ key: 'global', scope: 'global', label: 'Global' }]
+    for (const g of connectionGroups) {
+      dest.push({ key: `group:${g.id}`, scope: 'group', label: g.name, groupId: g.id })
+    }
+    for (const c of savedConnections) {
+      dest.push({
+        key: `connection:${c.id}`,
+        scope: 'connection',
+        label: c.name,
+        connectionId: c.id,
+      })
+    }
+    return dest
+  }, [connectionGroups, savedConnections])
+
+  const destinationsFor = useCallback(
+    (scope: MemoryScope, ownerId?: string): MoveDestination[] =>
+      allDestinations.filter((d) => {
+        if (d.scope !== scope) return true
+        if (scope === 'global') return false
+        if (scope === 'group') return d.groupId !== ownerId
+        return d.connectionId !== ownerId
+      }),
+    [allDestinations]
+  )
+
+  // Resolve an active session id whose connection matches the target owner so
+  // the session-based save/embed flow targets the right scope. Backend
+  // `save_memory` resolves the owner from the session, so adding to an owner
+  // with no open session is not possible.
+  const resolveSessionId = useCallback(
+    (scope: MemoryScope, ownerId?: string): string | null => {
+      const sessions = Object.entries(activeConnections)
+      if (scope === 'global') {
+        return sessions[0]?.[0] ?? null
+      }
+      if (scope === 'connection') {
+        const match = sessions.find(([, c]) => c.profile.id === ownerId)
+        return match?.[0] ?? null
+      }
+      // group
+      const match = sessions.find(([, c]) => c.profile.groupId === ownerId)
+      return match?.[0] ?? null
+    },
+    [activeConnections]
+  )
+
+  const handleAdd = useCallback(
+    async (scope: MemoryScope, content: string, ownerId?: string) => {
+      const sessionId = resolveSessionId(scope, ownerId)
+      if (!sessionId) {
+        showErrorToast(
+          'Open a connection in this scope to add a memory here (saving requires an active connection).'
+        )
+        return
+      }
+      try {
+        await saveMemory({ sessionId, content, scope })
+        await loadMemories()
+      } catch (err) {
+        showErrorToast(`Failed to save memory: ${String(err)}`)
+      }
+    },
+    [resolveSessionId, loadMemories]
+  )
+
+  const handleDeleteConfirm = useCallback(async () => {
     if (!deleteTarget) return
     try {
-      await deleteMemory({ memoryId: deleteTarget.memoryId })
-      setData((prev) =>
-        prev
-          .map((c) =>
-            c.connectionId === deleteTarget.connectionId
-              ? { ...c, memories: c.memories.filter((m) => m.id !== deleteTarget.memoryId) }
-              : c
-          )
-          .filter((c) => c.memories.length > 0)
-      )
+      await deleteMemory({ scope: deleteTarget.scope, memoryId: deleteTarget.id })
+      await loadMemories()
     } catch (err) {
-      showErrorToast(`Failed to delete memory: ${err}`)
+      showErrorToast(`Failed to delete memory: ${String(err)}`)
     } finally {
       setDeleteTarget(null)
     }
+  }, [deleteTarget, loadMemories])
+
+  const performMove = useCallback(
+    async (
+      memory: AiMemory,
+      fromScope: MemoryScope,
+      target: { scope: MemoryScope; connectionId?: string; groupId?: string }
+    ) => {
+      try {
+        await moveMemory({
+          memoryId: memory.id,
+          fromScope,
+          toScope: target.scope,
+          toGroupId: target.groupId,
+          toConnectionId: target.connectionId,
+          fromGroupId: memory.groupId ?? undefined,
+          fromConnectionId: memory.connectionId ?? undefined,
+        })
+        await loadMemories()
+      } catch (err) {
+        showErrorToast(`Failed to move memory: ${String(err)}`)
+      }
+    },
+    [loadMemories]
+  )
+
+  const handleMoveMenu = useCallback(
+    (memory: AiMemory, destination: MoveDestination) => {
+      void performMove(memory, memory.scope, destination)
+    },
+    [performMove]
+  )
+
+  const handleDrop = useCallback(
+    (
+      target: { scope: MemoryScope; connectionId?: string; groupId?: string },
+      payload: MemoryDragPayload
+    ) => {
+      // Find the dragged memory across stores by id + source scope.
+      let memory: AiMemory | undefined
+      if (payload.fromScope === 'global') {
+        memory = memories.global.find((m) => m.id === payload.memoryId)
+      } else if (payload.fromScope === 'group' && payload.fromGroupId) {
+        memory = memories.group[payload.fromGroupId]?.find((m) => m.id === payload.memoryId)
+      } else if (payload.fromScope === 'connection' && payload.fromConnectionId) {
+        memory = memories.connection[payload.fromConnectionId]?.find(
+          (m) => m.id === payload.memoryId
+        )
+      }
+      setActiveDrag(null)
+      if (!memory) return
+      void performMove(memory, payload.fromScope, target)
+    },
+    [memories, performMove]
+  )
+
+  const sharedDnd = {
+    activeDrag,
+    onDragStart: (payload: MemoryDragPayload) => setActiveDrag(payload),
+    onDragEnd: () => setActiveDrag(null),
+    onDrop: handleDrop,
   }
 
   if (loading) return null
 
   return (
     <div data-testid="ai-memories-settings">
-      <SettingsSection title="Memories" description="Notes saved via /remember, per connection.">
-        {data.length === 0 ? (
-          <div className={styles.emptyState} data-testid="ai-memories-empty-state">
-            No memories saved yet. Use /remember in the AI chat to save notes.
-          </div>
-        ) : (
-          data.map((conn) => (
-            <div
-              key={conn.connectionId}
-              className={styles.accordion}
-              data-testid={`ai-memories-connection-${conn.connectionId}`}
-            >
-              <button
-                type="button"
-                className={styles.accordionHeader}
-                onClick={() => handleToggle(conn.connectionId)}
-                aria-expanded={!!expanded[conn.connectionId]}
+      <SettingsSection title="Memories" description="Notes the AI uses, organised by scope.">
+        <div className={styles.tree}>
+          {/* Global */}
+          <MemorySection
+            sectionKey="global"
+            scope="global"
+            label="Global"
+            memories={memories.global}
+            destinations={destinationsFor('global')}
+            onRequestDelete={setDeleteTarget}
+            onMove={handleMoveMenu}
+            onAdd={(content) => handleAdd('global', content)}
+            {...sharedDnd}
+          />
+
+          {/* Per-group sections */}
+          {connectionGroups.map((group) => {
+            const groupConnections = savedConnections.filter((c) => c.groupId === group.id)
+            return (
+              <MemorySection
+                key={group.id}
+                sectionKey={`group-${group.id}`}
+                scope="group"
+                label={group.name}
+                groupId={group.id}
+                memories={memories.group[group.id] ?? []}
+                collapsible
+                destinations={destinationsFor('group', group.id)}
+                onRequestDelete={setDeleteTarget}
+                onMove={handleMoveMenu}
+                onAdd={(content) => handleAdd('group', content, group.id)}
+                {...sharedDnd}
               >
-                {conn.connectionName} ({conn.memories.length}{' '}
-                {conn.memories.length === 1 ? 'memory' : 'memories'})
-              </button>
-              {expanded[conn.connectionId] && (
-                <div className={styles.accordionBody}>
-                  {conn.memories.map((mem) => (
-                    <div
-                      key={mem.id}
-                      className={styles.memoryItem}
-                      data-testid={`ai-memory-item-${mem.id}`}
-                    >
-                      <div className={styles.memoryContent}>
-                        <div className={styles.memoryText}>{mem.content}</div>
-                        <div
-                          className={styles.memoryDate}
-                        >{`Saved ${formatFromEpochSeconds(mem.createdAt)}`}</div>
-                      </div>
-                      <div className={styles.memoryActions}>
-                        <Button
-                          variant="danger"
-                          onClick={() =>
-                            setDeleteTarget({
-                              memoryId: mem.id,
-                              connectionId: conn.connectionId,
-                            })
-                          }
-                          data-testid={`ai-memory-delete-${mem.id}`}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                {groupConnections.map((conn) => (
+                  <MemorySection
+                    key={conn.id}
+                    sectionKey={`connection-${conn.id}`}
+                    scope="connection"
+                    label={conn.name}
+                    connectionId={conn.id}
+                    nested
+                    memories={memories.connection[conn.id] ?? []}
+                    destinations={destinationsFor('connection', conn.id)}
+                    onRequestDelete={setDeleteTarget}
+                    onMove={handleMoveMenu}
+                    onAdd={(content) => handleAdd('connection', content, conn.id)}
+                    {...sharedDnd}
+                  />
+                ))}
+              </MemorySection>
+            )
+          })}
+
+          {/* Ungrouped connections */}
+          {ungroupedConnections.length > 0 && (
+            <div className={styles.ungroupedLabel} data-testid="ai-memory-ungrouped-label">
+              No Group
             </div>
-          ))
-        )}
+          )}
+          {ungroupedConnections.map((conn) => (
+            <MemorySection
+              key={conn.id}
+              sectionKey={`connection-${conn.id}`}
+              scope="connection"
+              label={conn.name}
+              connectionId={conn.id}
+              nested
+              memories={memories.connection[conn.id] ?? []}
+              destinations={destinationsFor('connection', conn.id)}
+              onRequestDelete={setDeleteTarget}
+              onMove={handleMoveMenu}
+              onAdd={(content) => handleAdd('connection', content, conn.id)}
+              {...sharedDnd}
+            />
+          ))}
+        </div>
       </SettingsSection>
 
       <ConfirmDialog

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
+import { Dropdown } from '../common/Dropdown'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
@@ -100,6 +101,13 @@ function ModelCategorySection({
   )
 }
 
+const REMEMBER_SCOPE_OPTIONS = [
+  { value: 'connection', label: 'Connection' },
+  { value: 'group', label: 'Group' },
+  { value: 'global', label: 'Global' },
+  { value: 'ask', label: 'Always ask' },
+]
+
 // ---------------------------------------------------------------------------
 // AiSettings
 // ---------------------------------------------------------------------------
@@ -116,6 +124,10 @@ export function AiSettings() {
   const maxTokens = useSettingValue('ai.maxTokens')
   const enableReasoning = useSettingValue('ai.enableReasoning') !== 'false'
   const preferResponsesApi = useSettingValue('ai.preferResponsesApi') === 'true'
+  const rememberScopeRaw = useSettingValue('ai.rememberScope')
+  const rememberScope = REMEMBER_SCOPE_OPTIONS.some((o) => o.value === rememberScopeRaw)
+    ? rememberScopeRaw
+    : 'connection'
 
   // Retrieval settings
   const topKPerQuery = useSettingValue('ai.retrieval.topKPerQuery')
@@ -557,6 +569,26 @@ export function AiSettings() {
                 />
               </div>
             ))}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Memory"
+          description="Choose which scope /remember saves to by default."
+        >
+          <div>
+            <span id="settings-ai-remember-scope-label" className={styles.fieldLabel}>
+              Default /remember scope
+            </span>
+            <Dropdown
+              id="settings-ai-remember-scope"
+              labelledBy="settings-ai-remember-scope-label"
+              options={REMEMBER_SCOPE_OPTIONS}
+              value={rememberScope}
+              onChange={(value) => setPendingChange('ai.rememberScope', value)}
+              disabled={!aiEnabled}
+              data-testid="settings-ai-remember-scope"
+            />
           </div>
         </SettingsSection>
       </div>

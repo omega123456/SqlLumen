@@ -10,7 +10,12 @@ import {
   getCopyToHostStartFixture,
   getCachedRowsFixture,
   getColumnsFixture,
+  getConnectionMemoriesFixture,
   getForeignKeysFixture,
+  getGlobalMemoriesFixture,
+  getGroupMemoriesFixture,
+  getMovedMemoryFixture,
+  getSavedMemoryFixture,
   getObjectBodyFixture,
   getQueryResultFixture,
   getRoutineParamsFixture,
@@ -1310,28 +1315,22 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- AI Memory commands ---
     case 'save_memory':
-      return {
-        id: 1,
-        connectionId: 'conn-playwright-1',
-        content: String((args as Record<string, unknown>)?.content ?? ''),
-        createdAt: Math.floor(Date.now() / 1000),
-        source: 'manual',
-      }
-    case 'list_memories': {
-      // Support mock memories override for screenshots
-      if (
-        typeof window !== 'undefined' &&
-        (window as unknown as Record<string, unknown>).__mockMemoriesData__
-      ) {
-        return (window as unknown as Record<string, unknown>).__mockMemoriesData__
-      }
-      return []
-    }
+      return getSavedMemoryFixture(args)
+    case 'list_global_memories':
+      return getGlobalMemoriesFixture()
+    case 'list_group_memories':
+      return getGroupMemoriesFixture((args as Record<string, unknown>)?.groupId as string | null)
+    case 'list_connection_memories':
+      return getConnectionMemoriesFixture(
+        (args as Record<string, unknown>)?.connectionId as string | null
+      )
+    case 'move_memory':
+      return getMovedMemoryFixture(args)
     case 'delete_memory':
       return null
     case 'search_memories':
       return []
-    case 'reembed_memories':
+    case 'reembed_all_memories':
       return null
 
     default:

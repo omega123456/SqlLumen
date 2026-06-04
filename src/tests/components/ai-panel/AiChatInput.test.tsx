@@ -7,6 +7,8 @@ import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-st
 import * as slashCommandsModule from '../../../lib/slash-commands'
 import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
 import { makeAiTabState } from '../../helpers/ai-test-utils'
+import { useConnectionStore } from '../../../stores/connection-store'
+import { ipc } from '../../ipc-mock'
 
 /** Convenience: panel-open tab state for AiChatInput tests. */
 function emptyTabState(overrides?: Parameters<typeof makeAiTabState>[0]) {
@@ -33,6 +35,7 @@ beforeEach(() => {
   })
 
   useAiStore.setState({ tabs: { 'tab-1': emptyTabState() } })
+  useConnectionStore.setState({ activeConnections: {} })
 })
 
 afterEach(() => {
@@ -537,5 +540,186 @@ describe('AiChatInput', () => {
     })
 
     useAiStore.setState({ sendMessage: originalSendMessage })
+  })
+
+  // -----------------------------------------------------------------------
+  // /remember "Always Ask" scope picker
+  // -----------------------------------------------------------------------
+
+  describe('/remember Always Ask flow', () => {
+    function setActiveConnectionGroup(groupId: string | null) {
+      act(() => {
+        useConnectionStore.setState({
+          activeConnections: {
+            'conn-1': {
+              // Only `profile.groupId` is consulted by AiChatInput.
+              profile: { id: 'profile-1', groupId },
+            },
+          },
+        } as unknown as Partial<ReturnType<typeof useConnectionStore.getState>>)
+      })
+    }
+
+    function setRememberScope(scope: string) {
+      act(() => {
+        useSettingsStore.setState((s) => ({
+          settings: { ...s.settings, 'ai.rememberScope': scope },
+        }))
+      })
+    }
+
+    it('shows the scope picker (does not save) when default scope is "ask"', async () => {
+      const user = userEvent.setup()
+      setRememberScope('ask')
+      setActiveConnectionGroup(null)
+      const saveSpy = vi.fn().mockResolvedValue({
+        id: 1,
+        scope: 'connection',
+        connectionId: 'conn-1',
+        groupId: null,
+        content: 'x',
+        createdAt: 0,
+        source: 'manual',
+      })
+      ipc.override('save_memory', saveSpy)
+
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      const textarea = screen.getByTestId('ai-chat-textarea')
+      await user.type(textarea, '/remember use UTC')
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('memory-scope-picker')).toBeInTheDocument()
+      })
+      expect(saveSpy).not.toHaveBeenCalled()
+    })
+
+    it('disables the Group option in the picker when the connection has no group', async () => {
+      const user = userEvent.setup()
+      setRememberScope('ask')
+      setActiveConnectionGroup(null)
+
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      const textarea = screen.getByTestId('ai-chat-textarea')
+      await user.type(textarea, '/remember use UTC')
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('memory-scope-option-group')).toHaveAttribute(
+          'aria-disabled',
+          'true'
+        )
+      })
+    })
+
+    it('enables the Group option when the connection belongs to a group', async () => {
+      const user = userEvent.setup()
+      setRememberScope('ask')
+      setActiveConnectionGroup('group-9')
+
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      const textarea = screen.getByTestId('ai-chat-textarea')
+      await user.type(textarea, '/remember use UTC')
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('memory-scope-option-group')).not.toHaveAttribute('aria-disabled')
+      })
+    })
+
+    it('picking a scope calls save_memory with that scope and clears the input', async () => {
+      const user = userEvent.setup()
+      setRememberScope('ask')
+      setActiveConnectionGroup(null)
+      const saveSpy = vi.fn().mockResolvedValue({
+        id: 1,
+        scope: 'global',
+        connectionId: null,
+        groupId: null,
+        content: 'use UTC',
+        createdAt: 0,
+        source: 'manual',
+      })
+      ipc.override('save_memory', saveSpy)
+
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+      await user.type(textarea, '/remember use UTC')
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('memory-scope-picker')).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByTestId('memory-scope-option-global'))
+
+      await waitFor(() => {
+        expect(saveSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ sessionId: 'conn-1', content: 'use UTC', scope: 'global' }),
+          'save_memory'
+        )
+      })
+      await waitFor(() => {
+        expect(textarea.value).toBe('')
+        expect(screen.queryByTestId('memory-scope-picker')).not.toBeInTheDocument()
+      })
+    })
+
+    it('Escape cancels the picker and keeps the typed input', async () => {
+      const user = userEvent.setup()
+      setRememberScope('ask')
+      setActiveConnectionGroup(null)
+
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+      await user.type(textarea, '/remember use UTC')
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(screen.getByTestId('memory-scope-picker')).toBeInTheDocument()
+      })
+
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('memory-scope-picker')).not.toBeInTheDocument()
+      })
+      expect(textarea.value).toBe('/remember use UTC')
+    })
+
+    it('saves immediately at the resolved scope (no picker) for a concrete default', async () => {
+      const user = userEvent.setup()
+      setRememberScope('connection')
+      setActiveConnectionGroup(null)
+      const saveSpy = vi.fn().mockResolvedValue({
+        id: 1,
+        scope: 'connection',
+        connectionId: 'conn-1',
+        groupId: null,
+        content: 'use UTC',
+        createdAt: 0,
+        source: 'manual',
+      })
+      ipc.override('save_memory', saveSpy)
+
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+      await user.type(textarea, '/remember use UTC')
+      await user.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(saveSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ scope: 'connection', content: 'use UTC' }),
+          'save_memory'
+        )
+      })
+      expect(screen.queryByTestId('memory-scope-picker')).not.toBeInTheDocument()
+    })
   })
 })

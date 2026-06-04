@@ -1,11 +1,24 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ipc, expectToast } from '../ipc-mock'
-import { SLASH_COMMANDS, listCommands, filterCommands, findCommand } from '../../lib/slash-commands'
+import {
+  SLASH_COMMANDS,
+  listCommands,
+  filterCommands,
+  findCommand,
+  executeRemember,
+  resolveRememberScope,
+} from '../../lib/slash-commands'
+import { useSettingsStore } from '../../stores/settings-store'
+
+function setRememberScope(value: string): void {
+  useSettingsStore.setState({ settings: { 'ai.rememberScope': value } } as never)
+}
 
 describe('slash-commands', () => {
   beforeEach(() => {
     // Default: save_memory succeeds (already in fixtures)
-    // Individual tests override for error paths
+    // Reset to a known concrete default scope for each test.
+    setRememberScope('connection')
   })
 
   it('registry contains /remember', () => {
@@ -93,5 +106,53 @@ describe('slash-commands', () => {
     expect(matched).toBe(true)
 
     await expectToast('error', 'Failed to save memory')
+  })
+
+  describe('scope resolution', () => {
+    it('resolveRememberScope reads the setting value', () => {
+      setRememberScope('global')
+      expect(resolveRememberScope()).toBe('global')
+    })
+
+    it('resolveRememberScope falls back to connection for unknown values', () => {
+      setRememberScope('bogus')
+      expect(resolveRememberScope()).toBe('connection')
+    })
+
+    it('executeRemember saves at the default scope and returns a saved result', async () => {
+      setRememberScope('global')
+      const result = await executeRemember('a global note', 'session-1')
+      expect(result.type).toBe('saved')
+      const calls = ipc.calls('save_memory')
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({
+        sessionId: 'session-1',
+        content: 'a global note',
+        scope: 'global',
+      })
+      await expectToast('success', 'Memory saved')
+    })
+
+    it('executeRemember honors an explicit caller-provided scope over the setting', async () => {
+      setRememberScope('connection')
+      await executeRemember('group note', 'session-1', 'group')
+      const calls = ipc.calls('save_memory')
+      expect(calls[0]).toMatchObject({ scope: 'group' })
+    })
+
+    it('executeRemember returns ask without saving when scope is "ask"', async () => {
+      setRememberScope('ask')
+      const result = await executeRemember('  unsure note  ', 'session-1')
+      expect(result).toEqual({ type: 'ask', content: 'unsure note' })
+      expect(ipc.calls('save_memory')).toHaveLength(0)
+    })
+
+    it('executeRemember rejects empty input regardless of scope', async () => {
+      setRememberScope('ask')
+      await expect(executeRemember('   ', 'session-1')).rejects.toThrow(
+        'Cannot save empty memory. Usage: /remember <text>'
+      )
+      expect(ipc.calls('save_memory')).toHaveLength(0)
+    })
   })
 })
