@@ -5,7 +5,6 @@
 //! envelope detection/decode logic is factored into the pure, DB-free helpers
 //! `decode_blob_envelope` and `validate_blob_envelopes`, which are tested here.
 
-#[cfg(not(coverage))]
 mod blob_value_bind_integration {
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
     use serde_json::json;

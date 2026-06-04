@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ipc } from '../../ipc-mock'
 import { AiMemoriesSettings } from '../../../components/settings/AiMemoriesSettings'
@@ -261,113 +261,6 @@ describe('AiMemoriesSettings', () => {
     expect(saveCount).toBe(0)
   })
 
-  it('moves a memory via the keyboard "Move to…" menu', async () => {
-    const user = userEvent.setup()
-    const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
-      moved.push(args as Record<string, unknown>)
-      return {
-        id: 99,
-        scope: 'connection',
-        connectionId: 'conn-1',
-        groupId: null,
-        content: 'moved',
-        createdAt: 1,
-        source: 'manual',
-      }
-    })
-    setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
-    render(<AiMemoriesSettings />)
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByTestId('ai-memory-move-1'))
-    const menu = await screen.findByTestId('ai-memory-move-menu-1')
-    const option = within(menu).getByTestId('ai-memory-move-option-1-connection:conn-1')
-    await user.click(option)
-
-    await waitFor(() => {
-      expect(moved).toHaveLength(1)
-    })
-    expect(moved[0]).toMatchObject({
-      memoryId: 1,
-      fromScope: 'global',
-      toScope: 'connection',
-      toConnectionId: 'conn-1',
-    })
-    await settle()
-  })
-
-  it('the move menu excludes the memory current owner (global from a global memory)', async () => {
-    const user = userEvent.setup()
-    setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
-    render(<AiMemoriesSettings />)
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
-    })
-    await user.click(screen.getByTestId('ai-memory-move-1'))
-    const menu = await screen.findByTestId('ai-memory-move-menu-1')
-    expect(within(menu).queryByTestId('ai-memory-move-option-1-global')).not.toBeInTheDocument()
-    expect(
-      within(menu).getByTestId('ai-memory-move-option-1-connection:conn-1')
-    ).toBeInTheDocument()
-  })
-
-  it('navigates the move menu with the keyboard and selects via Enter', async () => {
-    const user = userEvent.setup()
-    const moved: Array<Record<string, unknown>> = []
-    ipc.override('move_memory', (args) => {
-      moved.push(args as Record<string, unknown>)
-      return {
-        id: 99,
-        scope: 'group',
-        connectionId: null,
-        groupId: 'grp-1',
-        content: 'moved',
-        createdAt: 1,
-        source: 'manual',
-      }
-    })
-    setupStore({
-      groups: [{ id: 'grp-1', name: 'Work', parentId: null, sortOrder: 0, createdAt: '' }],
-      connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })],
-    })
-    render(<AiMemoriesSettings />)
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByTestId('ai-memory-move-1'))
-    await screen.findByTestId('ai-memory-move-menu-1')
-    // First option focused; ArrowDown to the next, Enter to select.
-    await user.keyboard('{ArrowDown}{Enter}')
-
-    await waitFor(() => {
-      expect(moved).toHaveLength(1)
-    })
-    // Second destination is the group (after Global which is excluded? Global is
-    // excluded only for global memories; here memory is global so Global excluded;
-    // order is group then connection -> ArrowDown picks the connection).
-    expect(moved[0]).toMatchObject({ memoryId: 1, fromScope: 'global' })
-    await settle()
-  })
-
-  it('closes the move menu with Escape', async () => {
-    const user = userEvent.setup()
-    setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
-    render(<AiMemoriesSettings />)
-    await waitFor(() => {
-      expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
-    })
-    await user.click(screen.getByTestId('ai-memory-move-1'))
-    await screen.findByTestId('ai-memory-move-menu-1')
-    await user.keyboard('{Escape}')
-    await waitFor(() => {
-      expect(screen.queryByTestId('ai-memory-move-menu-1')).not.toBeInTheDocument()
-    })
-  })
-
   it('cancels the inline add form and clears the draft', async () => {
     const user = userEvent.setup()
     setupStore({
@@ -468,10 +361,205 @@ describe('AiMemoriesSettings', () => {
     })
 
     // The handler must call preventDefault (otherwise the browser fires no drop)
-    // and surface the insertion-line indicator.
+    // and surface the skeleton placeholder row in the destination section.
     expect(dragOver.defaultPrevented).toBe(true)
     expect(dataTransfer.dropEffect).toBe('move')
     expect(target.className).toContain('dropTarget')
+    expect(
+      screen.getByTestId('ai-memory-drop-skeleton-connection-conn-1')
+    ).toBeInTheDocument()
+    await settle()
+  })
+
+  it('highlights only the innermost section when dragging through nested sections', async () => {
+    setupStore({
+      groups: [{ id: 'grp-1', name: 'Work DBs', parentId: null, sortOrder: 0, createdAt: '' }],
+      connections: [buildConnection({ id: 'conn-1', name: 'prod-db', groupId: 'grp-1' })],
+    })
+    render(<AiMemoriesSettings />)
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('ai-memory-item-1') // global memory
+    const group = screen.getByTestId('ai-memory-section-group-grp-1')
+    const conn = screen.getByTestId('ai-memory-section-connection-conn-1')
+    const dataTransfer = { effectAllowed: '', dropEffect: '', setData: vi.fn(), getData: vi.fn() }
+
+    act(() => {
+      row.dispatchEvent(Object.assign(new Event('dragstart', { bubbles: true }), { dataTransfer }))
+    })
+
+    // Hovering the group highlights it.
+    act(() => {
+      group.dispatchEvent(
+        Object.assign(new Event('dragover', { bubbles: true, cancelable: true }), { dataTransfer })
+      )
+    })
+    expect(group.className).toContain('dropTarget')
+
+    // Dragging into the nested connection moves the highlight there and clears
+    // the group — the skeleton must not stay stuck in every section passed through.
+    act(() => {
+      conn.dispatchEvent(
+        Object.assign(new Event('dragover', { bubbles: true, cancelable: true }), { dataTransfer })
+      )
+    })
+    expect(conn.className).toContain('dropTarget')
+    expect(group.className).not.toContain('dropTarget')
+    expect(
+      screen.queryByTestId('ai-memory-drop-skeleton-group-grp-1')
+    ).not.toBeInTheDocument()
+    await settle()
+  })
+
+  it('writes the full source scope payload when a memory drag starts', async () => {
+    ipc.override('list_global_memories', () => [])
+    ipc.override('list_connection_memories', () => [connMemory])
+    setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
+    render(<AiMemoriesSettings />)
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('ai-memory-item-1')
+    const dataTransfer = {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: vi.fn(),
+      getData: vi.fn(),
+    }
+
+    act(() => {
+      row.dispatchEvent(Object.assign(new Event('dragstart', { bubbles: true }), { dataTransfer }))
+    })
+
+    expect(dataTransfer.setData).toHaveBeenCalledWith(
+      'application/x-sqllumen-ai-memory',
+      JSON.stringify({
+        memoryId: 1,
+        fromScope: 'connection',
+        fromConnectionId: 'conn-1',
+        fromGroupId: null,
+      })
+    )
+  })
+
+  it('moves a memory from the serialized drag payload on drop', async () => {
+    const moved: Array<Record<string, unknown>> = []
+    ipc.override('move_memory', (args) => {
+      moved.push(args as Record<string, unknown>)
+      return {
+        id: 99,
+        scope: 'global',
+        connectionId: null,
+        groupId: null,
+        content: 'moved',
+        createdAt: 1,
+        source: 'manual',
+      }
+    })
+    ipc.override('list_global_memories', () => [])
+    ipc.override('list_connection_memories', () => [connMemory])
+    setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
+    render(<AiMemoriesSettings />)
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-memory-section-global')).toBeInTheDocument()
+    })
+
+    const target = screen.getByTestId('ai-memory-section-global')
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type?: string) =>
+        type === 'application/x-sqllumen-ai-memory'
+          ? JSON.stringify({
+              memoryId: 1,
+              fromScope: 'connection',
+              fromConnectionId: 'conn-1',
+              fromGroupId: null,
+            })
+          : ''
+      ),
+    }
+
+    act(() => {
+      target.dispatchEvent(
+        Object.assign(new Event('drop', { bubbles: true, cancelable: true }), { dataTransfer })
+      )
+    })
+
+    await waitFor(() => expect(moved).toHaveLength(1))
+    expect(moved[0]).toMatchObject({
+      memoryId: 1,
+      fromScope: 'connection',
+      toScope: 'global',
+      fromConnectionId: 'conn-1',
+    })
+    await settle()
+  })
+
+  it('accepts a serialized memory drag during dragover when active drag state is unavailable', async () => {
+    const moved: Array<Record<string, unknown>> = []
+    ipc.override('move_memory', (args) => {
+      moved.push(args as Record<string, unknown>)
+      return {
+        id: 99,
+        scope: 'global',
+        connectionId: null,
+        groupId: null,
+        content: 'moved',
+        createdAt: 1,
+        source: 'manual',
+      }
+    })
+    ipc.override('list_global_memories', () => [])
+    ipc.override('list_connection_memories', () => [connMemory])
+    setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
+    render(<AiMemoriesSettings />)
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-memory-section-global')).toBeInTheDocument()
+    })
+
+    const target = screen.getByTestId('ai-memory-section-global')
+    const dataTransfer = {
+      dropEffect: '',
+      types: ['application/x-sqllumen-ai-memory'],
+      getData: vi.fn((type?: string) =>
+        type === 'application/x-sqllumen-ai-memory'
+          ? JSON.stringify({
+              memoryId: 1,
+              fromScope: 'connection',
+              fromConnectionId: 'conn-1',
+              fromGroupId: null,
+            })
+          : ''
+      ),
+    }
+
+    const dragOver = Object.assign(new Event('dragover', { bubbles: true, cancelable: true }), {
+      dataTransfer,
+    })
+    act(() => {
+      target.dispatchEvent(dragOver)
+    })
+
+    expect(dragOver.defaultPrevented).toBe(true)
+    expect(dataTransfer.dropEffect).toBe('move')
+    expect(target.className).toContain('dropTarget')
+
+    act(() => {
+      target.dispatchEvent(
+        Object.assign(new Event('drop', { bubbles: true, cancelable: true }), { dataTransfer })
+      )
+    })
+
+    await waitFor(() => expect(moved).toHaveLength(1))
+    expect(moved[0]).toMatchObject({
+      memoryId: 1,
+      fromScope: 'connection',
+      toScope: 'global',
+      fromConnectionId: 'conn-1',
+    })
     await settle()
   })
 
@@ -544,8 +632,7 @@ describe('AiMemoriesSettings', () => {
     await settle()
   })
 
-  it('moves a group memory and surfaces an error when move fails', async () => {
-    const user = userEvent.setup()
+  it('surfaces an error when a dropped move fails', async () => {
     ipc.override('move_memory', () => {
       throw new Error('boom')
     })
@@ -560,9 +647,26 @@ describe('AiMemoriesSettings', () => {
       expect(screen.getByTestId('ai-memory-item-1')).toBeInTheDocument()
     })
 
-    await user.click(screen.getByTestId('ai-memory-move-1'))
-    const menu = await screen.findByTestId('ai-memory-move-menu-1')
-    await user.click(within(menu).getByTestId('ai-memory-move-option-1-global'))
+    const target = screen.getByTestId('ai-memory-section-global')
+    const dataTransfer = {
+      dropEffect: '',
+      getData: vi.fn((type?: string) =>
+        type === 'application/x-sqllumen-ai-memory'
+          ? JSON.stringify({
+              memoryId: 1,
+              fromScope: 'group',
+              fromGroupId: 'grp-1',
+              fromConnectionId: null,
+            })
+          : ''
+      ),
+    }
+
+    act(() => {
+      target.dispatchEvent(
+        Object.assign(new Event('drop', { bubbles: true, cancelable: true }), { dataTransfer })
+      )
+    })
 
     await waitFor(() => {
       expect(useToastStore.getState().toasts.some((t) => /Failed to move/i.test(t.title))).toBe(true)

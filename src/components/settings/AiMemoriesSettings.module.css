@@ -3,14 +3,30 @@
 .tree {
   display: flex;
   flex-direction: column;
+  padding: 12px;
+  background: var(--ui-elevated-surface-bg);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--elevation-overlay);
+}
+
+/* "No Group" block — indented one tier so its connections nest a tier deeper,
+ * mirroring how real group sections contain their connection sub-sections. */
+.ungroupedBlock {
+  margin-top: 4px;
+  margin-left: var(--tree-indent);
+  border-left: 1px solid var(--outline-variant);
+  padding-left: 8px;
 }
 
 .ungroupedLabel {
-  margin-top: 8px;
-  padding: 6px 8px 2px;
+  margin-bottom: 2px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface-container-high);
   font-size: var(--type-size-xs, 11px);
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--on-surface-variant);
-  border-top: 1px solid var(--outline-variant);
 }

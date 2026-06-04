@@ -133,7 +133,6 @@ mod blob_value_fetch_integration {
     }
 }
 
-#[cfg(not(coverage))]
 mod blob_file_bytes_integration {
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
     use sqllumen_lib::mysql::table_data::{
@@ -199,5 +198,19 @@ mod blob_file_bytes_integration {
         let err = read_file_bytes_impl(&path.to_string_lossy())
             .expect_err("missing file should error");
         assert!(err.to_lowercase().contains("metadata") || err.to_lowercase().contains("read"));
+    }
+
+    #[test]
+    fn command_wrappers_round_trip_through_impls() {
+        use sqllumen_lib::commands::table_data::{read_file_bytes, write_file_bytes};
+        let raw = b"\x00\x01\x02wrapper\xff";
+        let path = temp_path("wrapper.bin");
+        let path_str = path.to_string_lossy().to_string();
+
+        write_file_bytes(path_str.clone(), B64.encode(raw)).expect("wrapper write should succeed");
+        let read_b64 = read_file_bytes(path_str).expect("wrapper read should succeed");
+        assert_eq!(B64.decode(read_b64).unwrap(), raw);
+
+        let _ = std::fs::remove_file(&path);
     }
 }

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
 import { MemorySection } from './memory/MemorySection'
-import type { MemoryDragPayload, MoveDestination } from './memory/MemoryRow'
+import type { MemoryDragPayload } from './memory/MemoryRow'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
   deleteMemory,
@@ -35,6 +35,8 @@ export function AiMemoriesSettings() {
   const [loading, setLoading] = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<AiMemory | null>(null)
   const [activeDrag, setActiveDrag] = useState<MemoryDragPayload | null>(null)
+  const activeDragRef = useRef<MemoryDragPayload | null>(null)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
 
   // Ensure connections + groups are hydrated.
   useEffect(() => {
@@ -96,34 +98,6 @@ export function AiMemoriesSettings() {
   const ungroupedConnections = useMemo(
     () => savedConnections.filter((c) => !c.groupId),
     [savedConnections]
-  )
-
-  // All move/drop destinations (excluding the source owner is handled per-row).
-  const allDestinations = useMemo<MoveDestination[]>(() => {
-    const dest: MoveDestination[] = [{ key: 'global', scope: 'global', label: 'Global' }]
-    for (const g of connectionGroups) {
-      dest.push({ key: `group:${g.id}`, scope: 'group', label: g.name, groupId: g.id })
-    }
-    for (const c of savedConnections) {
-      dest.push({
-        key: `connection:${c.id}`,
-        scope: 'connection',
-        label: c.name,
-        connectionId: c.id,
-      })
-    }
-    return dest
-  }, [connectionGroups, savedConnections])
-
-  const destinationsFor = useCallback(
-    (scope: MemoryScope, ownerId?: string): MoveDestination[] =>
-      allDestinations.filter((d) => {
-        if (d.scope !== scope) return true
-        if (scope === 'global') return false
-        if (scope === 'group') return d.groupId !== ownerId
-        return d.connectionId !== ownerId
-      }),
-    [allDestinations]
   )
 
   // Resolve an active session id whose connection matches the target owner so
@@ -202,13 +176,6 @@ export function AiMemoriesSettings() {
     [loadMemories]
   )
 
-  const handleMoveMenu = useCallback(
-    (memory: AiMemory, destination: MoveDestination) => {
-      void performMove(memory, memory.scope, destination)
-    },
-    [performMove]
-  )
-
   const handleDrop = useCallback(
     (
       target: { scope: MemoryScope; connectionId?: string; groupId?: string },
@@ -225,7 +192,9 @@ export function AiMemoriesSettings() {
           (m) => m.id === payload.memoryId
         )
       }
+      activeDragRef.current = null
       setActiveDrag(null)
+      setHoverKey(null)
       if (!memory) return
       void performMove(memory, payload.fromScope, target)
     },
@@ -234,8 +203,18 @@ export function AiMemoriesSettings() {
 
   const sharedDnd = {
     activeDrag,
-    onDragStart: (payload: MemoryDragPayload) => setActiveDrag(payload),
-    onDragEnd: () => setActiveDrag(null),
+    getActiveDrag: () => activeDragRef.current,
+    hoverKey,
+    onHover: setHoverKey,
+    onDragStart: (payload: MemoryDragPayload) => {
+      activeDragRef.current = payload
+      setActiveDrag(payload)
+    },
+    onDragEnd: () => {
+      activeDragRef.current = null
+      setActiveDrag(null)
+      setHoverKey(null)
+    },
     onDrop: handleDrop,
   }
 
@@ -251,9 +230,7 @@ export function AiMemoriesSettings() {
             scope="global"
             label="Global"
             memories={memories.global}
-            destinations={destinationsFor('global')}
             onRequestDelete={setDeleteTarget}
-            onMove={handleMoveMenu}
             onAdd={(content) => handleAdd('global', content)}
             {...sharedDnd}
           />
@@ -270,9 +247,8 @@ export function AiMemoriesSettings() {
                 groupId={group.id}
                 memories={memories.group[group.id] ?? []}
                 collapsible
-                destinations={destinationsFor('group', group.id)}
+                nested
                 onRequestDelete={setDeleteTarget}
-                onMove={handleMoveMenu}
                 onAdd={(content) => handleAdd('group', content, group.id)}
                 {...sharedDnd}
               >
@@ -284,10 +260,9 @@ export function AiMemoriesSettings() {
                     label={conn.name}
                     connectionId={conn.id}
                     nested
+                    subdued
                     memories={memories.connection[conn.id] ?? []}
-                    destinations={destinationsFor('connection', conn.id)}
                     onRequestDelete={setDeleteTarget}
-                    onMove={handleMoveMenu}
                     onAdd={(content) => handleAdd('connection', content, conn.id)}
                     {...sharedDnd}
                   />
@@ -296,28 +271,29 @@ export function AiMemoriesSettings() {
             )
           })}
 
-          {/* Ungrouped connections */}
+          {/* Ungrouped connections — a tier-1 "No Group" block parallel to real groups */}
           {ungroupedConnections.length > 0 && (
-            <div className={styles.ungroupedLabel} data-testid="ai-memory-ungrouped-label">
-              No Group
+            <div className={styles.ungroupedBlock}>
+              <div className={styles.ungroupedLabel} data-testid="ai-memory-ungrouped-label">
+                No Group
+              </div>
+              {ungroupedConnections.map((conn) => (
+                <MemorySection
+                  key={conn.id}
+                  sectionKey={`connection-${conn.id}`}
+                  scope="connection"
+                  label={conn.name}
+                  connectionId={conn.id}
+                  nested
+                  subdued
+                  memories={memories.connection[conn.id] ?? []}
+                  onRequestDelete={setDeleteTarget}
+                  onAdd={(content) => handleAdd('connection', content, conn.id)}
+                  {...sharedDnd}
+                />
+              ))}
             </div>
           )}
-          {ungroupedConnections.map((conn) => (
-            <MemorySection
-              key={conn.id}
-              sectionKey={`connection-${conn.id}`}
-              scope="connection"
-              label={conn.name}
-              connectionId={conn.id}
-              nested
-              memories={memories.connection[conn.id] ?? []}
-              destinations={destinationsFor('connection', conn.id)}
-              onRequestDelete={setDeleteTarget}
-              onMove={handleMoveMenu}
-              onAdd={(content) => handleAdd('connection', content, conn.id)}
-              {...sharedDnd}
-            />
-          ))}
         </div>
       </SettingsSection>
 

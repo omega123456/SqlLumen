@@ -4263,35 +4263,6 @@ for (const theme of themes) {
       })
     })
 
-    test('SettingsDialog — AI Memories move menu open', async ({ page }) => {
-      await seedMultiLevelMemories(page)
-
-      await page.getByTestId('settings-button').click()
-      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('settings-nav-ai').click()
-      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
-      await enableAiInSettings(page)
-
-      await expect(page.getByTestId('ai-memory-section-global')).toBeVisible({
-        timeout: APP_READY_MS,
-      })
-      // Hover the global memory row so the move action becomes visible, then open it.
-      await page.getByTestId('ai-memory-item-1').first().hover()
-      await page.getByTestId('ai-memory-move-1').first().click()
-      await expect(page.getByTestId('ai-memory-move-menu-1').first()).toBeVisible({
-        timeout: APP_READY_MS,
-      })
-
-      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
-        `settings-dialog-ai-memories-move-menu-${theme}.png`,
-        { animations: 'disabled' }
-      )
-
-      await page.evaluate(() => {
-        delete (window as unknown as Record<string, unknown>).__mockMemoriesData__
-      })
-    })
-
     test('SettingsDialog — AI Memories section (empty state)', async ({ page }) => {
       await page.evaluate(() => {
         ;(window as unknown as Record<string, unknown>).__mockMemoriesData__ = {

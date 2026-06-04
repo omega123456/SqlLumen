@@ -195,6 +195,25 @@ fn test_fk_chunk_key() {
     );
 }
 
+#[test]
+fn test_split_identifier_segments() {
+    assert_eq!(
+        builder::split_identifier_segments("user_order_items"),
+        vec!["user", "order", "items"]
+    );
+    assert_eq!(
+        builder::split_identifier_segments("userOrderItems"),
+        vec!["user", "order", "items"]
+    );
+    // Mixed snake + camel, leading/double underscores skipped, lowercased.
+    assert_eq!(
+        builder::split_identifier_segments("__Mixed_caseValue"),
+        vec!["mixed", "case", "value"]
+    );
+    assert!(builder::split_identifier_segments("").is_empty());
+    assert!(builder::split_identifier_segments("___").is_empty());
+}
+
 // ── parse_fks_from_ddl ───────────────────────────────────────────────────
 
 #[test]

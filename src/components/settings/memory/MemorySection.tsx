@@ -9,7 +9,7 @@ import {
 } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import { Textarea } from '../../common/Textarea'
-import { MemoryRow, type MemoryDragPayload, type MoveDestination } from './MemoryRow'
+import { MemoryRow, MEMORY_DRAG_MIME_TYPE, type MemoryDragPayload } from './MemoryRow'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import styles from './MemorySection.module.css'
 
@@ -22,17 +22,21 @@ export interface MemorySectionProps {
   /** Owner ids for this section's scope (used for add + drop payload). */
   connectionId?: string
   groupId?: string
-  /** Render as a nested connection sub-section (tier 1). */
+  /** Indent this section one tier (margin + tree line) relative to its container. */
   nested?: boolean
+  /** De-emphasise the header (lighter weight + variant color) — used for connection sub-sections. */
+  subdued?: boolean
   /** Render a collapsible header (group sections). */
   collapsible?: boolean
-  /** Valid move destinations excluding this section's own owner. */
-  destinations: MoveDestination[]
   onRequestDelete: (memory: AiMemory) => void
-  onMove: (memory: AiMemory, destination: MoveDestination) => void
   onAdd: (content: string) => Promise<void>
   /** Drag/drop wiring (shared across all sections). */
   activeDrag: MemoryDragPayload | null
+  getActiveDrag: () => MemoryDragPayload | null
+  /** Section key currently hovered during a drag (only one section highlights at a time). */
+  hoverKey: string | null
+  /** Report this section as the drop-hover target (or null to clear). */
+  onHover: (key: string | null) => void
   onDragStart: (payload: MemoryDragPayload) => void
   onDragEnd: () => void
   onDrop: (
@@ -72,6 +76,43 @@ function isDropAccepted(
   return true
 }
 
+function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null {
+  try {
+    const raw = dataTransfer.getData(MEMORY_DRAG_MIME_TYPE)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<MemoryDragPayload>
+    if (
+      typeof parsed.memoryId !== 'number' ||
+      (parsed.fromScope !== 'global' &&
+        parsed.fromScope !== 'group' &&
+        parsed.fromScope !== 'connection')
+    ) {
+      return null
+    }
+    return {
+      memoryId: parsed.memoryId,
+      fromScope: parsed.fromScope,
+      fromConnectionId:
+        typeof parsed.fromConnectionId === 'string' || parsed.fromConnectionId === null
+          ? parsed.fromConnectionId
+          : undefined,
+      fromGroupId:
+        typeof parsed.fromGroupId === 'string' || parsed.fromGroupId === null
+          ? parsed.fromGroupId
+          : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function hasMemoryDragType(dataTransfer: DataTransfer): boolean {
+  for (let i = 0; i < dataTransfer.types.length; i += 1) {
+    if (dataTransfer.types[i] === MEMORY_DRAG_MIME_TYPE) return true
+  }
+  return false
+}
+
 export function MemorySection({
   sectionKey,
   scope,
@@ -80,12 +121,14 @@ export function MemorySection({
   connectionId,
   groupId,
   nested = false,
+  subdued = false,
   collapsible = false,
-  destinations,
   onRequestDelete,
-  onMove,
   onAdd,
   activeDrag,
+  getActiveDrag,
+  hoverKey,
+  onHover,
   onDragStart,
   onDragEnd,
   onDrop,
@@ -95,20 +138,29 @@ export function MemorySection({
   const [addOpen, setAddOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
-  const [isDragOver, setIsDragOver] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const addTriggerRef = useRef<HTMLButtonElement>(null)
   const formId = useId()
+
+  // Only the innermost hovered section highlights. Because a nested
+  // connection's `dragover` stops propagation and updates the shared hover key,
+  // any ancestor section it lives in automatically un-highlights — fixing the
+  // "skeleton stuck in every section I dragged through" bug.
+  const isDragOver = hoverKey === sectionKey
+
+  const toneClass =
+    scope === 'global'
+      ? styles.toneGlobal
+      : scope === 'group'
+        ? styles.toneGroup
+        : styles.toneConnection
 
   useEffect(() => {
     if (addOpen) textareaRef.current?.focus()
   }, [addOpen])
 
-  // Clear any lingering drop highlight once the drag ends (dragleave does not
-  // fire when the cursor moves into a nested child that stops propagation).
-  useEffect(() => {
-    if (!activeDrag && isDragOver) setIsDragOver(false)
-  }, [activeDrag, isDragOver])
+  const resolveDragPayload = (dataTransfer: DataTransfer): MemoryDragPayload | null =>
+    activeDrag ?? getActiveDrag() ?? parseDragPayload(dataTransfer)
 
   const closeAdd = (returnFocus: boolean) => {
     setAddOpen(false)
@@ -128,47 +180,55 @@ export function MemorySection({
     }
   }
 
-  const dropAccepted = isDropAccepted(scope, connectionId, groupId, activeDrag)
-
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    setIsDragOver(false)
-    if (!activeDrag || !dropAccepted) return
-    onDrop({ scope, connectionId, groupId }, activeDrag)
+    onHover(null)
+    const payload = resolveDragPayload(event.dataTransfer)
+    if (!payload || !isDropAccepted(scope, connectionId, groupId, payload)) return
+    onDrop({ scope, connectionId, groupId }, payload)
   }
 
   return (
     <div
       className={`${styles.section} ${nested ? styles.nested : ''} ${
-        isDragOver && dropAccepted ? styles.dropTarget : ''
+        isDragOver ? styles.dropTarget : ''
       }`}
       data-testid={`ai-memory-section-${sectionKey}`}
       onDragOver={(event) => {
-        // Only act while a memory drag is in progress. Calling preventDefault on
-        // dragover is what tells the browser this element is a valid drop target;
-        // without it no `drop` event fires at all.
-        if (!activeDrag) return
+        const payload = resolveDragPayload(event.dataTransfer)
+        const isMemoryDrag = payload !== null || hasMemoryDragType(event.dataTransfer)
+        // Calling preventDefault on dragover is what tells the browser this
+        // element is a valid drop target; without it no `drop` event fires.
+        if (!isMemoryDrag) return
         // Stop propagation so a nested connection sub-section claims the hover
         // instead of also lighting up its parent group section.
         event.stopPropagation()
         event.preventDefault()
+        const dropAccepted = payload
+          ? isDropAccepted(scope, connectionId, groupId, payload)
+          : true
         event.dataTransfer.dropEffect = dropAccepted ? 'move' : 'none'
         if (dropAccepted) {
-          if (!isDragOver) setIsDragOver(true)
+          if (!isDragOver) onHover(sectionKey)
         } else if (isDragOver) {
-          setIsDragOver(false)
+          onHover(null)
         }
       }}
       onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node)) setIsDragOver(false)
+        // Only clear when the cursor truly leaves this section (not when moving
+        // into one of its own children). A move into a sibling/parent section is
+        // handled by that section's `dragover` updating the shared hover key.
+        if (isDragOver && !event.currentTarget.contains(event.relatedTarget as Node)) onHover(null)
       }}
       onDrop={handleDrop}
     >
       {collapsible ? (
         <button
           type="button"
-          className={`${styles.header} ${styles.headerButton} ${nested ? styles.headerNested : ''}`}
+          className={`${styles.header} ${styles.headerButton} ${toneClass} ${
+            subdued ? styles.headerSubdued : ''
+          }`}
           aria-expanded={!collapsed}
           data-testid={`ai-memory-section-toggle-${sectionKey}`}
           onClick={() => setCollapsed((c) => !c)}
@@ -183,7 +243,7 @@ export function MemorySection({
           </span>
         </button>
       ) : (
-        <div className={`${styles.header} ${nested ? styles.headerNested : ''}`}>
+        <div className={`${styles.header} ${toneClass} ${subdued ? styles.headerSubdued : ''}`}>
           <span className={styles.headerIcon}>{scopeIcon(scope)}</span>
           <span className={styles.headerLabel}>{label}</span>
           <span className={styles.countBadge}>
@@ -194,6 +254,15 @@ export function MemorySection({
 
       {!collapsed && (
         <div className={styles.body}>
+          {isDragOver && (
+            <div className={styles.skeletonRow} data-testid={`ai-memory-drop-skeleton-${sectionKey}`}>
+              <div className={`shimmerBlock ${styles.skeletonHandle}`} />
+              <div className={styles.skeletonContent}>
+                <div className={`shimmerBlock ${styles.skeletonLineText}`} />
+                <div className={`shimmerBlock ${styles.skeletonLineDate}`} />
+              </div>
+            </div>
+          )}
           {memories.length === 0 ? (
             <div className={styles.emptyState} data-testid={`ai-memory-empty-${sectionKey}`}>
               No memories
@@ -209,9 +278,7 @@ export function MemorySection({
                   fromConnectionId: connectionId ?? null,
                   fromGroupId: groupId ?? null,
                 }}
-                destinations={destinations}
                 onRequestDelete={onRequestDelete}
-                onMove={onMove}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 isDragging={activeDrag?.memoryId === memory.id && activeDrag.fromScope === scope}

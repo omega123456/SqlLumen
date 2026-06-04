@@ -177,6 +177,50 @@ fn list_scoped_filters_by_owner() {
 }
 
 #[test]
+fn memory_scope_as_str_is_stable() {
+    assert_eq!(MemoryScope::Connection.as_str(), "connection");
+    assert_eq!(MemoryScope::Group.as_str(), "group");
+    assert_eq!(MemoryScope::Global.as_str(), "global");
+}
+
+#[test]
+fn get_group_memory_texts_returns_id_content_pairs() {
+    let conn = setup_db();
+    let a = storage::insert_group_memory(&conn, "g-1", "Alpha").unwrap();
+    let b = storage::insert_group_memory(&conn, "g-1", "Beta").unwrap();
+    // A different group is excluded.
+    storage::insert_group_memory(&conn, "g-2", "Other").unwrap();
+
+    let texts = storage::get_group_memory_texts(&conn, "g-1").unwrap();
+    assert_eq!(
+        texts,
+        vec![(a, "Alpha".to_string()), (b, "Beta".to_string())]
+    );
+}
+
+#[test]
+fn scoped_helpers_error_when_owner_missing() {
+    let conn = setup_db();
+    // Connection and Group scopes require an owner id; passing None must error
+    // before touching the database (covers the owner-validation branches).
+    assert!(storage::insert_memory_scoped(&conn, MemoryScope::Connection, None, "x").is_err());
+    assert!(storage::insert_memory_scoped(&conn, MemoryScope::Group, None, "x").is_err());
+    assert!(storage::list_memories_scoped(&conn, MemoryScope::Connection, None).is_err());
+    assert!(storage::list_memories_scoped(&conn, MemoryScope::Group, None).is_err());
+    assert!(storage::get_memory_texts_scoped(&conn, MemoryScope::Connection, None).is_err());
+    assert!(storage::get_memory_texts_scoped(&conn, MemoryScope::Group, None).is_err());
+}
+
+#[test]
+fn ensure_vec_table_named_reports_error_for_invalid_table() {
+    let conn = setup_db();
+    // A syntactically invalid table name makes CREATE VIRTUAL TABLE fail, which
+    // must surface as an error rather than panicking.
+    let result = storage::ensure_vec_table_named(&conn, "bad name!", 4);
+    assert!(result.is_err());
+}
+
+#[test]
 fn get_by_id_and_texts_per_scope() {
     let conn = setup_db();
     let gid = storage::insert_memory_scoped(&conn, MemoryScope::Group, Some("g-1"), "GG").unwrap();

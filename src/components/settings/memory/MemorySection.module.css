@@ -23,6 +23,7 @@
   width: 100%;
   padding: 6px 8px;
   border: none;
+  border-radius: var(--radius-sm, 4px);
   background: transparent;
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
@@ -34,12 +35,49 @@
   cursor: pointer;
 }
 
-.headerButton:hover {
-  background: var(--surface-hover, var(--surface-container-high));
-  border-radius: var(--radius-sm, 4px);
+/* Header tones by tier — each category gets a distinct bar so the headers read
+ * apart from the plain memory rows beneath them. Strength descends with depth:
+ * Global (primary-tinted) → Group (filled) → Connection (small uppercase label). */
+.toneGlobal {
+  background: rgba(var(--primary-rgb), 0.1);
 }
 
-.headerNested {
+.toneGlobal .headerLabel {
+  font-weight: 600;
+}
+
+.toneGlobal .headerIcon {
+  color: var(--primary);
+}
+
+.toneGroup {
+  background: var(--surface-container-high);
+}
+
+.toneGroup .headerLabel {
+  font-weight: 600;
+}
+
+.toneConnection {
+  background: var(--surface-container);
+}
+
+.toneConnection .headerLabel {
+  font-size: var(--type-size-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.headerButton.toneGlobal:hover {
+  background: rgba(var(--primary-rgb), 0.16);
+}
+
+.headerButton.toneGroup:hover,
+.headerButton.toneConnection:hover {
+  background: var(--surface-hover, var(--surface-container-high));
+}
+
+.headerSubdued {
   font-weight: 400;
   color: var(--on-surface-variant);
 }
@@ -67,7 +105,7 @@
   font-weight: 500;
 }
 
-.headerNested .headerLabel {
+.headerSubdued .headerLabel {
   font-weight: 400;
 }
 
@@ -75,8 +113,9 @@
   flex-shrink: 0;
   border-radius: 4px;
   font-size: 10px;
-  background: var(--surface-container-high);
-  padding: 2px 6px;
+  background: var(--surface);
+  border: 1px solid var(--outline-variant);
+  padding: 1px 6px;
   color: var(--on-surface-variant);
 }
 
@@ -90,24 +129,51 @@
   padding: 4px 8px;
 }
 
-/* Drop feedback: a subtle surface tint plus a 2px insertion line drawn just
- * inside the section's bottom edge so an ancestor `overflow` clip can never
- * hide the indicator. */
+/* Drop feedback: the active drop target renders a skeleton placeholder row
+ * (see `.skeletonRow` below) inside its body showing where the memory lands. */
 .dropTarget {
-  background: rgba(var(--primary-rgb), 0.08);
   border-radius: var(--radius-sm, 4px);
 }
 
-.dropTarget::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--primary);
-  border-radius: 1px;
+/* Skeleton placeholder row shown in the destination section while a memory is
+ * dragged over it — mirrors MemoryRow's [handle][content+date] layout so the
+ * landing spot is unmistakable. */
+.skeletonRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 2px 0;
+  border-radius: var(--radius-sm, 4px);
+  border: 1px dashed var(--primary);
+  background: rgba(var(--primary-rgb), 0.06);
   pointer-events: none;
+}
+
+.skeletonHandle {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+
+.skeletonContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.skeletonLineText {
+  height: 10px;
+  width: 70%;
+}
+
+.skeletonLineDate {
+  height: 8px;
+  width: 30%;
 }
 
 /* Inline add affordance */
@@ -117,15 +183,25 @@
   gap: 6px;
   margin: 2px 0 2px 4px;
   padding: 4px 6px;
-  font-size: var(--type-size-xs, 11px);
+  font-size: var(--type-size-2xs, 10px);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+}
+
+.addTrigger:hover {
+  opacity: 1;
+  color: var(--on-surface);
 }
 
 .addForm {
-  margin: 4px 4px 4px 4px;
-  padding: 8px;
-  border-top: 1px solid var(--outline-variant);
-  background: var(--primary-container-subtle, var(--surface-container-high));
-  border-radius: var(--radius-sm, 4px);
+  margin: 4px;
+  padding: 14px;
+  background: var(--ui-elevated-surface-bg);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--elevation-overlay);
 }
 
 .addTextarea {

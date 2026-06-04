@@ -12,6 +12,15 @@ const MOCK_MODELS_WITH_CATEGORIES = [
   { id: 'nomic-embed-text', name: 'nomic-embed-text', category: 'embedding' },
 ]
 
+// AiSettings embeds AiMemoriesSettings, which loads memories asynchronously on
+// mount. Wait for that load to settle so its state updates are flushed inside
+// act(...) and don't leak warnings into unrelated assertions.
+async function renderAiSettings() {
+  const result = render(<AiSettings />)
+  await screen.findByTestId('ai-memories-settings')
+  return result
+}
+
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
@@ -40,8 +49,8 @@ afterEach(() => {
 })
 
 describe('AiSettings', () => {
-  it('renders the AI settings section with all fields', () => {
-    render(<AiSettings />)
+  it('renders the AI settings section with all fields', async () => {
+    await renderAiSettings()
     expect(screen.getByTestId('settings-ai')).toBeInTheDocument()
     expect(screen.getByTestId('settings-ai-enabled')).toBeInTheDocument()
     expect(screen.getByTestId('settings-ai-endpoint')).toBeInTheDocument()
@@ -49,28 +58,28 @@ describe('AiSettings', () => {
     expect(screen.getByTestId('settings-ai-max-tokens')).toBeInTheDocument()
   })
 
-  it('does NOT render a free-text model name input', () => {
+  it('does NOT render a free-text model name input', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
       pendingChanges: {},
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.queryByTestId('settings-ai-model')).not.toBeInTheDocument()
     expect(screen.queryByText('Model name')).not.toBeInTheDocument()
   })
 
-  it('shows the enable toggle with correct default (off)', () => {
-    render(<AiSettings />)
+  it('shows the enable toggle with correct default (off)', async () => {
+    await renderAiSettings()
     const toggle = screen.getByTestId('settings-ai-enabled')
     const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
     expect(checkbox).not.toBeNull()
     expect(checkbox.checked).toBe(false)
   })
 
-  it('disables connection and generation fields when AI is disabled', () => {
-    render(<AiSettings />)
+  it('disables connection and generation fields when AI is disabled', async () => {
+    await renderAiSettings()
     const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
     const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
     const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
@@ -80,14 +89,14 @@ describe('AiSettings', () => {
     expect(maxTokensInput).toBeDisabled()
   })
 
-  it('enables connection and generation fields when AI is enabled', () => {
+  it('enables connection and generation fields when AI is enabled', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
       pendingChanges: {},
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
     const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
@@ -100,7 +109,7 @@ describe('AiSettings', () => {
 
   it('toggling AI on enables the other fields', async () => {
     const user = userEvent.setup()
-    render(<AiSettings />)
+    await renderAiSettings()
 
     // Initially disabled
     expect(screen.getByTestId('settings-ai-endpoint')).toBeDisabled()
@@ -129,7 +138,7 @@ describe('AiSettings', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('settings-ai-endpoint')).not.toBeDisabled()
 
     const toggle = screen.getByTestId('settings-ai-enabled')
@@ -150,7 +159,7 @@ describe('AiSettings', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
     await user.clear(endpointInput)
@@ -169,7 +178,7 @@ describe('AiSettings', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
     await user.clear(tempInput)
@@ -186,7 +195,7 @@ describe('AiSettings', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
     await user.clear(maxTokensInput)
@@ -195,8 +204,8 @@ describe('AiSettings', () => {
     expect(useSettingsStore.getState().pendingChanges['ai.maxTokens']).toBe('4096')
   })
 
-  it('displays default values correctly', () => {
-    render(<AiSettings />)
+  it('displays default values correctly', async () => {
+    await renderAiSettings()
 
     const tempInput = screen.getByTestId('settings-ai-temperature') as HTMLInputElement
     const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
@@ -205,7 +214,7 @@ describe('AiSettings', () => {
     expect(maxTokensInput.value).toBe('32000')
   })
 
-  it('reset section restores AI defaults', () => {
+  it('reset section restores AI defaults', async () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -232,8 +241,8 @@ describe('AiSettings', () => {
     expect(state.isDirty).toBe(true)
   })
 
-  it('renders section headings', () => {
-    render(<AiSettings />)
+  it('renders section headings', async () => {
+    await renderAiSettings()
     expect(screen.getByText('Enable AI')).toBeInTheDocument()
     expect(
       within(screen.getByTestId('settings-section-connection')).getByText('Connection')
@@ -241,8 +250,8 @@ describe('AiSettings', () => {
     expect(screen.getByText('Generation')).toBeInTheDocument()
   })
 
-  it('shows correct label text for fields', () => {
-    render(<AiSettings />)
+  it('shows correct label text for fields', async () => {
+    await renderAiSettings()
     expect(screen.getByText('Enable AI assistant')).toBeInTheDocument()
     expect(screen.getByText('Chat Base URL')).toBeInTheDocument()
     expect(screen.getByText('Embedding Base URL (optional)')).toBeInTheDocument()
@@ -250,8 +259,8 @@ describe('AiSettings', () => {
     expect(screen.getByText('Max tokens')).toBeInTheDocument()
   })
 
-  it('renders the reasoning toggle checked by default', () => {
-    render(<AiSettings />)
+  it('renders the reasoning toggle checked by default', async () => {
+    await renderAiSettings()
     const toggle = screen.getByTestId('settings-ai-enable-reasoning')
     expect(toggle).toBeInTheDocument()
     const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
@@ -259,8 +268,8 @@ describe('AiSettings', () => {
     expect(checkbox.checked).toBe(true)
   })
 
-  it('renders prefer responses api toggle unchecked by default', () => {
-    render(<AiSettings />)
+  it('renders prefer responses api toggle unchecked by default', async () => {
+    await renderAiSettings()
     const toggle = screen.getByTestId('settings-ai-prefer-responses-api')
     expect(toggle).toBeInTheDocument()
     const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
@@ -274,7 +283,7 @@ describe('AiSettings', () => {
     useSettingsStore.setState({
       settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const toggle = screen.getByTestId('settings-ai-enable-reasoning')
     const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
     await user.click(checkbox)
@@ -286,46 +295,46 @@ describe('AiSettings', () => {
     useSettingsStore.setState({
       settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const toggle = screen.getByTestId('settings-ai-prefer-responses-api')
     const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
     await user.click(checkbox)
     expect(useSettingsStore.getState().pendingChanges['ai.preferResponsesApi']).toBe('true')
   })
 
-  it('applies disabled visual class when AI is off', () => {
-    render(<AiSettings />)
+  it('applies disabled visual class when AI is off', async () => {
+    await renderAiSettings()
     const aiContainer = screen.getByTestId('settings-ai')
     const disabledWrapper = aiContainer.children[1] as HTMLElement
     expect(disabledWrapper.className).toContain('disabledGroup')
   })
 
-  it('removes disabled visual class when AI is on', () => {
+  it('removes disabled visual class when AI is on', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
       pendingChanges: {},
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     const aiContainer = screen.getByTestId('settings-ai')
     const wrapper = aiContainer.children[1] as HTMLElement
     expect(wrapper.className).not.toContain('disabledGroup')
   })
 
-  it('shows pending values over saved values', () => {
+  it('shows pending values over saved values', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': 'https://saved.com' },
       pendingChanges: { 'ai.endpoint': 'https://pending.com' },
       isDirty: true,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     const endpointInput = screen.getByTestId('settings-ai-endpoint') as HTMLInputElement
     expect(endpointInput.value).toBe('https://pending.com')
   })
 
-  it('shows helper text when AI is enabled and endpoint is set', () => {
+  it('shows helper text when AI is enabled and endpoint is set', async () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -336,7 +345,7 @@ describe('AiSettings', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-helper-text')).toBeInTheDocument()
     expect(screen.getByTestId('ai-helper-text')).toHaveTextContent(
       'Models will be grouped by type: chat for conversation, embedding for schema search'
@@ -349,23 +358,23 @@ describe('AiSettings', () => {
 // ---------------------------------------------------------------------------
 
 describe('AiSettings - Model Categories', () => {
-  it('does not show model list section when AI is disabled', () => {
-    render(<AiSettings />)
+  it('does not show model list section when AI is disabled', async () => {
+    await renderAiSettings()
     expect(screen.queryByTestId('ai-model-list-section')).not.toBeInTheDocument()
   })
 
-  it('does not show model list section when endpoint is empty', () => {
+  it('does not show model list section when endpoint is empty', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': '' },
       pendingChanges: {},
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.queryByTestId('ai-model-list-section')).not.toBeInTheDocument()
   })
 
-  it('shows model list section when AI is enabled and endpoint has value', () => {
+  it('shows model list section when AI is enabled and endpoint has value', async () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -376,11 +385,11 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-model-list-section')).toBeInTheDocument()
   })
 
-  it('auto-fetches models when AI is enabled and endpoint is set', () => {
+  it('auto-fetches models when AI is enabled and endpoint is set', async () => {
     ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
@@ -393,11 +402,11 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(ipc.calls('list_ai_models')).toHaveLength(1)
   })
 
-  it('shows loading state automatically during model fetch', () => {
+  it('shows loading state automatically during model fetch', async () => {
     ipc.override('list_ai_models', () => new Promise(() => {}))
 
     useSettingsStore.setState({
@@ -410,7 +419,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-models-loading')).toBeInTheDocument()
   })
 
@@ -427,7 +436,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-categories')).toBeInTheDocument()
@@ -437,7 +446,7 @@ describe('AiSettings - Model Categories', () => {
   it('auto-shows error when listAiModels returns an error', async () => {
     // listAiModels catches IPC errors and returns { models: [], error: errorMsg }
     // so we throw from the IPC handler to trigger the error path
-    ipc.override('list_ai_models', () => {
+    ipc.override('list_ai_models', async () => {
       throw new Error('Connection refused')
     })
 
@@ -451,7 +460,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-models-error')).toBeInTheDocument()
@@ -460,7 +469,7 @@ describe('AiSettings - Model Categories', () => {
     expect(screen.getByTestId('ai-models-error')).toHaveTextContent('Connection refused')
   })
 
-  it('does not auto-fetch when AI is disabled', () => {
+  it('does not auto-fetch when AI is disabled', async () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -471,11 +480,11 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(ipc.calls('list_ai_models')).toHaveLength(0)
   })
 
-  it('does not auto-fetch when endpoint is empty', () => {
+  it('does not auto-fetch when endpoint is empty', async () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -486,7 +495,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(ipc.calls('list_ai_models')).toHaveLength(0)
   })
 
@@ -503,7 +512,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(ipc.calls('list_ai_models')).toHaveLength(1)
@@ -540,7 +549,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-categories')).toBeInTheDocument()
@@ -563,7 +572,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-chat-model-grid')).toBeInTheDocument()
@@ -587,7 +596,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-embedding-model-grid')).toBeInTheDocument()
@@ -611,7 +620,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
@@ -638,7 +647,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-nomic-embed-text')).toBeInTheDocument()
@@ -669,7 +678,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-categories')).toBeInTheDocument()
@@ -696,7 +705,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-categories')).toBeInTheDocument()
@@ -719,7 +728,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-category-chat-count')).toBeInTheDocument()
@@ -742,7 +751,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-category-chat-label')).toBeInTheDocument()
@@ -765,7 +774,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-chat-model-grid')).toBeInTheDocument()
@@ -795,7 +804,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
@@ -832,7 +841,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
@@ -859,7 +868,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
@@ -889,7 +898,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-chat-model-grid')).toBeInTheDocument()
@@ -912,7 +921,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-models-error')).toBeInTheDocument()
@@ -937,7 +946,7 @@ describe('AiSettings - Model Categories', () => {
       isDirty: false,
     })
 
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-llama3')).toBeInTheDocument()
@@ -956,7 +965,7 @@ describe('AiSettings - Model Categories', () => {
 // ---------------------------------------------------------------------------
 
 describe('AiSettings - Force Reindex', () => {
-  it('shows Force Reindex button when AI is enabled and endpoint is set', () => {
+  it('shows Force Reindex button when AI is enabled and endpoint is set', async () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -966,23 +975,23 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-reindex-row')).toBeInTheDocument()
     expect(screen.getByTestId('ai-force-reindex-btn')).toBeInTheDocument()
   })
 
-  it('does not show Force Reindex button when AI is disabled', () => {
-    render(<AiSettings />) // ai.enabled defaults to 'false'
+  it('does not show Force Reindex button when AI is disabled', async () => {
+    await renderAiSettings() // ai.enabled defaults to 'false'
     expect(screen.queryByTestId('ai-force-reindex-btn')).not.toBeInTheDocument()
   })
 
-  it('does not show Force Reindex button when endpoint is empty', () => {
+  it('does not show Force Reindex button when endpoint is empty', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': '' },
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.queryByTestId('ai-force-reindex-btn')).not.toBeInTheDocument()
   })
 
@@ -997,7 +1006,7 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     await user.click(screen.getByTestId('ai-force-reindex-btn'))
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     expect(screen.getByText('Force Reindex Vector DB')).toBeInTheDocument()
@@ -1019,7 +1028,7 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     await user.click(screen.getByTestId('ai-force-reindex-btn'))
     await user.click(screen.getByTestId('confirm-cancel-button'))
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
@@ -1045,7 +1054,7 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     await user.click(screen.getByTestId('ai-force-reindex-btn'))
     await user.click(screen.getByTestId('confirm-confirm-button'))
     await waitFor(() => {
@@ -1070,7 +1079,7 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     await user.click(screen.getByTestId('ai-force-reindex-btn'))
     await user.click(screen.getByTestId('confirm-confirm-button'))
     await waitFor(() => {
@@ -1094,7 +1103,7 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     await user.click(screen.getByTestId('ai-force-reindex-btn'))
     await user.click(screen.getByTestId('confirm-confirm-button'))
     await waitFor(() => {
@@ -1103,7 +1112,7 @@ describe('AiSettings - Force Reindex', () => {
     expect(mockForceRebuild).not.toHaveBeenCalled()
   })
 
-  it('disables the Force Reindex button when any connection is building', () => {
+  it('disables the Force Reindex button when any connection is building', async () => {
     useSchemaIndexStore.setState({
       connections: {
         'session-1': {
@@ -1124,13 +1133,13 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const btn = screen.getByTestId('ai-force-reindex-btn')
     expect(btn).toBeDisabled()
     expect(btn).toHaveTextContent('Reindexing...')
   })
 
-  it('shows inline reindex status with embedding phase progress', () => {
+  it('shows inline reindex status with embedding phase progress', async () => {
     useSchemaIndexStore.setState({
       connections: {
         'session-1': {
@@ -1151,12 +1160,12 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const status = screen.getByTestId('ai-reindex-status')
     expect(status).toHaveTextContent('Indexing 7/20 tables (1 connection)...')
   })
 
-  it('shows inline reindex status with loading_schema phase', () => {
+  it('shows inline reindex status with loading_schema phase', async () => {
     useSchemaIndexStore.setState({
       connections: {
         'session-1': {
@@ -1184,13 +1193,13 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-reindex-status')).toHaveTextContent(
       'Reading schema (5 tables, 2 connections)...'
     )
   })
 
-  it('shows inline reindex status with finalizing phase', () => {
+  it('shows inline reindex status with finalizing phase', async () => {
     useSchemaIndexStore.setState({
       connections: {
         'session-1': {
@@ -1211,13 +1220,13 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-reindex-status')).toHaveTextContent(
       'Finalizing 20/20 steps (1 connection)...'
     )
   })
 
-  it('does not show inline reindex status when no builds are active', () => {
+  it('does not show inline reindex status when no builds are active', async () => {
     useSchemaIndexStore.setState({
       connections: {
         'session-1': {
@@ -1238,7 +1247,7 @@ describe('AiSettings - Force Reindex', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.queryByTestId('ai-reindex-status')).not.toBeInTheDocument()
     expect(screen.getByTestId('ai-force-reindex-btn')).not.toBeDisabled()
   })
@@ -1262,23 +1271,23 @@ const EMBED_FETCH_MODELS = [
 ]
 
 describe('AiSettings - Embedding Base URL', () => {
-  it('renders both URL fields with correct labels', () => {
-    render(<AiSettings />)
+  it('renders both URL fields with correct labels', async () => {
+    await renderAiSettings()
     expect(screen.getByTestId('settings-ai-endpoint')).toBeInTheDocument()
     expect(screen.getByTestId('settings-ai-embedding-endpoint')).toBeInTheDocument()
     expect(screen.getByText('Chat Base URL')).toBeInTheDocument()
     expect(screen.getByText('Embedding Base URL (optional)')).toBeInTheDocument()
   })
 
-  it('shows persistent fallback helper text under the embedding field', () => {
-    render(<AiSettings />)
+  it('shows persistent fallback helper text under the embedding field', async () => {
+    await renderAiSettings()
     expect(screen.getByTestId('ai-embedding-helper-text')).toHaveTextContent(
       'When blank, the chat URL is used for embeddings.'
     )
   })
 
-  it('disables the embedding field when AI is off and enables it when on', () => {
-    const { rerender } = render(<AiSettings />)
+  it('disables the embedding field when AI is off and enables it when on', async () => {
+    const { rerender } = await renderAiSettings()
     expect(screen.getByTestId('settings-ai-embedding-endpoint')).toBeDisabled()
 
     act(() => {
@@ -1292,24 +1301,24 @@ describe('AiSettings - Embedding Base URL', () => {
     expect(screen.getByTestId('settings-ai-embedding-endpoint')).not.toBeDisabled()
   })
 
-  it('mirrors the typed chat URL as the embedding placeholder', () => {
+  it('mirrors the typed chat URL as the embedding placeholder', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': CHAT_URL },
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const embedInput = screen.getByTestId('settings-ai-embedding-endpoint') as HTMLInputElement
     expect(embedInput).toHaveAttribute('placeholder', CHAT_URL)
   })
 
-  it('falls back to the default example placeholder when the chat URL is empty', () => {
+  it('falls back to the default example placeholder when the chat URL is empty', async () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true', 'ai.endpoint': '' },
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const embedInput = screen.getByTestId('settings-ai-embedding-endpoint') as HTMLInputElement
     expect(embedInput).toHaveAttribute('placeholder', 'http://localhost:11434/v1')
   })
@@ -1321,7 +1330,7 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     const embedInput = screen.getByTestId('settings-ai-embedding-endpoint') as HTMLInputElement
     await user.clear(embedInput)
     await user.type(embedInput, EMBED_URL)
@@ -1340,7 +1349,7 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-model-list-section')).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-categories')).toBeInTheDocument()
@@ -1365,7 +1374,7 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-embedding-model-grid')).toBeInTheDocument()
@@ -1378,7 +1387,7 @@ describe('AiSettings - Embedding Base URL', () => {
     expect(screen.queryByTestId('ai-model-card-nomic-embed-text')).not.toBeInTheDocument()
   })
 
-  it('shows an independent loading state for the embedding fetch only', () => {
+  it('shows an independent loading state for the embedding fetch only', async () => {
     ipc.override('list_ai_models', (args) => {
       const endpoint = (args as { endpoint?: string }).endpoint
       if (endpoint === EMBED_URL) return new Promise(() => {})
@@ -1394,7 +1403,7 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     expect(screen.getByTestId('ai-embedding-models-loading')).toBeInTheDocument()
     // The embedding loading state lives inside the dedicated embedding region.
     expect(screen.getByTestId('ai-embedding-models-region')).toContainElement(
@@ -1418,7 +1427,7 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-embedding-models-error')).toBeInTheDocument()
@@ -1447,7 +1456,7 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
 
     await waitFor(() => {
       expect(screen.getByTestId('ai-model-card-bge-large-en')).toBeInTheDocument()
@@ -1480,7 +1489,7 @@ describe('AiSettings - Embedding Base URL', () => {
     expect(ipc.calls('list_ai_models').length).toBe(callsAfterSet)
   })
 
-  it('does not fetch embedding models when the embedding URL is blank', () => {
+  it('does not fetch embedding models when the embedding URL is blank', async () => {
     ipc.override('list_ai_models', () => ({ models: CHAT_FETCH_MODELS }))
     useSettingsStore.setState({
       settings: {
@@ -1492,20 +1501,20 @@ describe('AiSettings - Embedding Base URL', () => {
       pendingChanges: {},
       isDirty: false,
     })
-    render(<AiSettings />)
+    await renderAiSettings()
     // Only the chat fetch ran.
     expect(ipc.calls('list_ai_models')).toHaveLength(1)
   })
 
   describe('Memory subsection (default /remember scope)', () => {
-    it('renders the Memory section with the default-scope dropdown', () => {
-      render(<AiSettings />)
+    it('renders the Memory section with the default-scope dropdown', async () => {
+      await renderAiSettings()
       expect(screen.getByTestId('settings-section-memory')).toBeInTheDocument()
       expect(screen.getByTestId('settings-ai-remember-scope')).toBeInTheDocument()
     })
 
-    it('defaults the dropdown to the Connection scope', () => {
-      render(<AiSettings />)
+    it('defaults the dropdown to the Connection scope', async () => {
+      await renderAiSettings()
       const trigger = screen.getByTestId('settings-ai-remember-scope')
       expect(trigger).toHaveTextContent('Connection')
     })
@@ -1518,7 +1527,7 @@ describe('AiSettings - Embedding Base URL', () => {
         isDirty: false,
       })
 
-      render(<AiSettings />)
+      await renderAiSettings()
       await user.click(screen.getByTestId('settings-ai-remember-scope'))
       await user.click(screen.getByTestId('settings-ai-remember-scope-option-global'))
 
@@ -1527,13 +1536,13 @@ describe('AiSettings - Embedding Base URL', () => {
       })
     })
 
-    it('reflects the saved scope value as "Always ask"', () => {
+    it('reflects the saved scope value as "Always ask"', async () => {
       useSettingsStore.setState({
         settings: { ...SETTINGS_DEFAULTS, 'ai.rememberScope': 'ask' },
         pendingChanges: {},
         isDirty: false,
       })
-      render(<AiSettings />)
+      await renderAiSettings()
       expect(screen.getByTestId('settings-ai-remember-scope')).toHaveTextContent('Always ask')
     })
   })

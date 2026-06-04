@@ -78,6 +78,19 @@ fn detects_rename_table_and_returns_both_old_and_new_names() {
 }
 
 #[test]
+fn detects_alter_table_rename_to_and_returns_both_names() {
+    let result = detect_ddl_tables("ALTER TABLE mydb.users RENAME TO mydb.app_users");
+
+    assert_eq!(
+        result,
+        DdlDetectionResult::DdlDetected(vec![
+            table(Some("mydb"), "users"),
+            table(Some("mydb"), "app_users"),
+        ])
+    );
+}
+
+#[test]
 fn detects_backtick_quoted_identifiers() {
     let result =
         detect_ddl_tables("ALTER TABLE `my-db`.`user-table` ADD COLUMN `display-name` TEXT");
