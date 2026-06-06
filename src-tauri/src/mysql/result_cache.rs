@@ -182,9 +182,8 @@ fn macos_reclaimable_bytes() -> Option<u64> {
             return None;
         }
 
-        let reclaimable_pages = stats.free_count as u64
-            + stats.inactive_count as u64
-            + stats.speculative_count as u64;
+        let reclaimable_pages =
+            stats.free_count as u64 + stats.inactive_count as u64 + stats.speculative_count as u64;
         Some(reclaimable_pages.saturating_mul(page_size))
     }
 }

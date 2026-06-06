@@ -3484,12 +3484,37 @@ for (const theme of themes) {
       await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
       await page.getByTestId('settings-nav-logging').click()
       await expect(page.getByTestId('settings-logging')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('log-viewer')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('log-viewer-count-summary')).toHaveText('1-50 of 120', {
+        timeout: APP_READY_MS,
+      })
+      await expect(page.getByTestId('log-viewer-message-1')).toBeVisible({ timeout: APP_READY_MS })
       await page.evaluate(() => {
         const el = document.activeElement
         if (el && el instanceof HTMLElement) el.blur()
       })
       await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
         `settings-dialog-logging-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('SettingsDialog — Logging export dialog', async ({ page }) => {
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-logging').click()
+      await expect(page.getByTestId('settings-logging')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('log-viewer-export')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('log-viewer-export').click()
+      await expect(page.getByTestId('log-export-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('log-export-from-input')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('log-export-to-input')).toBeVisible({ timeout: APP_READY_MS })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-logging-export-${theme}.png`,
         { animations: 'disabled' }
       )
     })

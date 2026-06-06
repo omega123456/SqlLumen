@@ -9,6 +9,7 @@ pub mod favorites;
 pub mod frontend_log;
 pub mod helpers;
 pub mod history;
+pub mod logs;
 pub mod mysql;
 pub mod object_editor;
 pub mod processlist;

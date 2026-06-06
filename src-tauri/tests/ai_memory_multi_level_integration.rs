@@ -27,7 +27,12 @@ fn table_exists(conn: &Connection, name: &str) -> bool {
 }
 
 /// KNN-query a vec table joined back to its row table; returns matched contents.
-fn knn_contents(conn: &Connection, scope: MemoryScope, vec_table: &str, query: &[f32]) -> Vec<String> {
+fn knn_contents(
+    conn: &Connection,
+    scope: MemoryScope,
+    vec_table: &str,
+    query: &[f32],
+) -> Vec<String> {
     let row_table = match scope {
         MemoryScope::Connection => "connection_memories",
         MemoryScope::Group => "group_memories",
@@ -108,17 +113,18 @@ fn insert_list_delete_connection_scope() {
     let id =
         storage::insert_memory_scoped(&conn, MemoryScope::Connection, Some("c-1"), "Conn note")
             .unwrap();
-    let list =
-        storage::list_memories_scoped(&conn, MemoryScope::Connection, Some("c-1")).unwrap();
+    let list = storage::list_memories_scoped(&conn, MemoryScope::Connection, Some("c-1")).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].scope, MemoryScope::Connection);
     assert_eq!(list[0].connection_id.as_deref(), Some("c-1"));
     assert!(list[0].group_id.is_none());
 
     storage::delete_memory_scoped(&conn, MemoryScope::Connection, id).unwrap();
-    assert!(storage::list_memories_scoped(&conn, MemoryScope::Connection, Some("c-1"))
-        .unwrap()
-        .is_empty());
+    assert!(
+        storage::list_memories_scoped(&conn, MemoryScope::Connection, Some("c-1"))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -133,9 +139,11 @@ fn insert_list_delete_group_scope() {
     assert!(list[0].connection_id.is_none());
 
     storage::delete_memory_scoped(&conn, MemoryScope::Group, id).unwrap();
-    assert!(storage::list_memories_scoped(&conn, MemoryScope::Group, Some("g-1"))
-        .unwrap()
-        .is_empty());
+    assert!(
+        storage::list_memories_scoped(&conn, MemoryScope::Group, Some("g-1"))
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -150,9 +158,11 @@ fn insert_list_delete_global_scope() {
     assert!(list[0].group_id.is_none());
 
     storage::delete_memory_scoped(&conn, MemoryScope::Global, id).unwrap();
-    assert!(storage::list_memories_scoped(&conn, MemoryScope::Global, None)
-        .unwrap()
-        .is_empty());
+    assert!(
+        storage::list_memories_scoped(&conn, MemoryScope::Global, None)
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -258,7 +268,9 @@ fn ensure_and_insert_vector_each_scope() {
     // delete vector scoped clears it (and is graceful for missing tables).
     storage::delete_memory_vector_scoped(&conn, MemoryScope::Global, None, g_id).unwrap();
     let remaining: i64 = conn
-        .query_row(&format!("SELECT COUNT(*) FROM {g_table}"), [], |row| row.get(0))
+        .query_row(&format!("SELECT COUNT(*) FROM {g_table}"), [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(remaining, 0);
     storage::delete_memory_vector_scoped(&conn, MemoryScope::Connection, Some("missing"), 1)
@@ -298,11 +310,15 @@ fn move_transfers_row_and_vector_and_is_knn_searchable() {
     assert_eq!(moved.content, "Moved note");
 
     // Source row + vector gone.
-    assert!(storage::get_memory_by_id_scoped(&conn, MemoryScope::Connection, src_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        storage::get_memory_by_id_scoped(&conn, MemoryScope::Connection, src_id)
+            .unwrap()
+            .is_none()
+    );
     let src_vec_count: i64 = conn
-        .query_row(&format!("SELECT COUNT(*) FROM {src_table}"), [], |row| row.get(0))
+        .query_row(&format!("SELECT COUNT(*) FROM {src_table}"), [], |row| {
+            row.get(0)
+        })
         .unwrap();
     assert_eq!(src_vec_count, 0);
 
@@ -345,9 +361,11 @@ fn group_cascade_deletes_rows_and_drops_vec_table() {
 
     storage::delete_memories_for_group(&conn, "g-1").unwrap();
 
-    assert!(storage::list_memories_scoped(&conn, MemoryScope::Group, Some("g-1"))
-        .unwrap()
-        .is_empty());
+    assert!(
+        storage::list_memories_scoped(&conn, MemoryScope::Group, Some("g-1"))
+            .unwrap()
+            .is_empty()
+    );
     assert!(!table_exists(&conn, &table));
     // Other group preserved.
     assert_eq!(
@@ -483,7 +501,12 @@ fn save_memory_impl_group_scope_writes_group_row() {
     assert_eq!(owner_id.as_deref(), Some(group_id.as_str()));
 
     let conn = state.db.lock().unwrap();
-    assert_eq!(storage::list_group_memories(&conn, &group_id).unwrap().len(), 1);
+    assert_eq!(
+        storage::list_group_memories(&conn, &group_id)
+            .unwrap()
+            .len(),
+        1
+    );
 }
 
 #[test]
@@ -522,10 +545,20 @@ fn granular_list_commands_return_correct_level() {
     }
 
     assert_eq!(list_global_memories_impl(&state).unwrap().len(), 2);
-    assert_eq!(list_group_memories_impl(&state, &group_id).unwrap().len(), 1);
-    assert_eq!(list_connection_memories_impl(&state, "conn-1").unwrap().len(), 1);
+    assert_eq!(
+        list_group_memories_impl(&state, &group_id).unwrap().len(),
+        1
+    );
+    assert_eq!(
+        list_connection_memories_impl(&state, "conn-1")
+            .unwrap()
+            .len(),
+        1
+    );
     // A connection with nothing returns empty.
-    assert!(list_connection_memories_impl(&state, "conn-2").unwrap().is_empty());
+    assert!(list_connection_memories_impl(&state, "conn-2")
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
@@ -550,7 +583,9 @@ fn delete_memory_impl_per_scope_removes_row_and_vector() {
     delete_memory_impl(&state, MemoryScope::Global, glob_id).unwrap();
 
     let conn = state.db.lock().unwrap();
-    assert!(storage::list_group_memories(&conn, "g-1").unwrap().is_empty());
+    assert!(storage::list_group_memories(&conn, "g-1")
+        .unwrap()
+        .is_empty());
     assert!(storage::list_global_memories(&conn).unwrap().is_empty());
 }
 
@@ -648,8 +683,8 @@ fn merged_knn_orders_levels_by_distance() {
     let gt = storage::ensure_vec_table_for_scope(&conn, MemoryScope::Global, None, dim).unwrap();
     let gpt =
         storage::ensure_vec_table_for_scope(&conn, MemoryScope::Group, Some("grp"), dim).unwrap();
-    let ct =
-        storage::ensure_vec_table_for_scope(&conn, MemoryScope::Connection, Some("cn"), dim).unwrap();
+    let ct = storage::ensure_vec_table_for_scope(&conn, MemoryScope::Connection, Some("cn"), dim)
+        .unwrap();
 
     // Query vector [1,0,0,0]; pick embeddings so connection is closest, then group, then global.
     storage::insert_memory_vector(&conn, &ct, c, &[1.0, 0.0, 0.0, 0.0]).unwrap();
@@ -723,10 +758,9 @@ fn reembed_targets_covers_global_groups_and_connections() {
     assert!(targets
         .iter()
         .any(|(s, o, k)| *s == MemoryScope::Global && o.is_none() && k == "global"));
-    assert!(targets.iter().any(
-        |(s, o, k)| *s == MemoryScope::Group && o.as_deref() == Some(group_id.as_str()) && k
-            == &format!("group_{group_id}")
-    ));
+    assert!(targets.iter().any(|(s, o, k)| *s == MemoryScope::Group
+        && o.as_deref() == Some(group_id.as_str())
+        && k == &format!("group_{group_id}")));
     assert!(targets
         .iter()
         .any(|(s, o, _)| *s == MemoryScope::Connection && o.as_deref() == Some(conn_id.as_str())));

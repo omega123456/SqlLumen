@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { CaretLeft, CaretRight, SkipBack, SkipForward } from '@phosphor-icons/react'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import type {
@@ -22,6 +22,8 @@ export function PaginationGroup({
   currentPage,
   pageSize,
   disabled,
+  showPageSize = true,
+  showFirstLastButtons = false,
   pageSizeDisabled,
   onPageSizeChange,
   onPrevPage,
@@ -53,12 +55,15 @@ export function PaginationGroup({
     disabled || (paginationMode === 'known' ? currentPage >= knownTotalProps.totalPages : false)
 
   const handlePageSubmit = useCallback(() => {
-    if (paginationMode !== 'unknown') return
     const trimmedValue = pageInputValue.trim()
     const parsedPage = /^\d+$/.test(trimmedValue) ? Number.parseInt(trimmedValue, 10) : NaN
-    const nextPage = Number.isFinite(parsedPage) && parsedPage >= 1 ? parsedPage : 1
-    unknownTotalProps.onPageSubmit(nextPage)
-  }, [paginationMode, pageInputValue, unknownTotalProps])
+    const rawPage = Number.isFinite(parsedPage) && parsedPage >= 1 ? parsedPage : 1
+    if (paginationMode === 'unknown') {
+      unknownTotalProps.onPageSubmit(rawPage)
+    } else if (knownTotalProps.onPageSubmit) {
+      knownTotalProps.onPageSubmit(Math.min(rawPage, knownTotalProps.totalPages))
+    }
+  }, [paginationMode, pageInputValue, unknownTotalProps, knownTotalProps])
 
   const handlePageInputBlur = useCallback(() => {
     setPageInputValue(String(currentPage))
@@ -66,18 +71,32 @@ export function PaginationGroup({
 
   return (
     <div className={styles.paginationGroup} data-testid="pagination-group">
-      <Dropdown
-        id="page-size-dropdown"
-        ariaLabel="Page size"
-        options={pageSizeOptions}
-        value={String(pageSize)}
-        onChange={handlePageSizeChange}
-        disabled={disabled || pageSizeDisabled}
-        data-testid="page-size-select"
-        triggerClassName={styles.pageSizeSelect}
-      />
+      {showPageSize ? (
+        <Dropdown
+          id="page-size-dropdown"
+          ariaLabel="Page size"
+          options={pageSizeOptions}
+          value={String(pageSize)}
+          onChange={handlePageSizeChange}
+          disabled={disabled || pageSizeDisabled}
+          data-testid="page-size-select"
+          triggerClassName={styles.pageSizeSelect}
+        />
+      ) : null}
 
       <div className={styles.pagination}>
+        {paginationMode === 'known' && showFirstLastButtons ? (
+          <button
+            type="button"
+            className={styles.pageButton}
+            disabled={isPrevDisabled}
+            onClick={() => knownTotalProps.onPageSubmit?.(1)}
+            aria-label="First page"
+            data-testid="pagination-first"
+          >
+            <SkipBack size={14} weight="bold" />
+          </button>
+        ) : null}
         <button
           type="button"
           className={styles.pageButton}
@@ -88,7 +107,29 @@ export function PaginationGroup({
         >
           <CaretLeft size={14} weight="bold" />
         </button>
-        {paginationMode === 'known' ? (
+        {paginationMode === 'known' && knownTotalProps.onPageSubmit != null ? (
+          <>
+            <TextInput
+              type="text"
+              inputMode="numeric"
+              aria-label="Current page"
+              variant="bare"
+              value={pageInputValue}
+              onChange={(event) => setPageInputValue(event.target.value)}
+              onBlur={handlePageInputBlur}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  handlePageSubmit()
+                }
+              }}
+              disabled={disabled}
+              className={styles.pageInput}
+              data-testid="pagination-page-input"
+            />
+            <span className={styles.pageOfText}>of {knownTotalProps.totalPages}</span>
+          </>
+        ) : paginationMode === 'known' ? (
           <span className={styles.pageText} data-testid="page-indicator">
             Page {currentPage} of {knownTotalProps.totalPages}
           </span>
@@ -122,6 +163,18 @@ export function PaginationGroup({
         >
           <CaretRight size={14} weight="bold" />
         </button>
+        {paginationMode === 'known' && showFirstLastButtons ? (
+          <button
+            type="button"
+            className={styles.pageButton}
+            disabled={isNextDisabled}
+            onClick={() => knownTotalProps.onPageSubmit?.(knownTotalProps.totalPages)}
+            aria-label="Last page"
+            data-testid="pagination-last"
+          >
+            <SkipForward size={14} weight="bold" />
+          </button>
+        ) : null}
       </div>
     </div>
   )

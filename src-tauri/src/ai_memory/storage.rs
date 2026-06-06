@@ -137,7 +137,10 @@ pub fn list_group_memories(conn: &Connection, group_id: &str) -> Result<Vec<AiMe
 }
 
 pub fn delete_group_memory(conn: &Connection, memory_id: i64) -> Result<()> {
-    conn.execute("DELETE FROM group_memories WHERE id = ?1", params![memory_id])?;
+    conn.execute(
+        "DELETE FROM group_memories WHERE id = ?1",
+        params![memory_id],
+    )?;
     Ok(())
 }
 
@@ -203,8 +206,8 @@ pub fn get_global_memory_texts(conn: &Connection) -> Result<Vec<(i64, String)>> 
 }
 
 pub fn get_global_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Option<AiMemory>> {
-    let mut stmt = conn
-        .prepare("SELECT id, content, created_at, source FROM global_memories WHERE id = ?1")?;
+    let mut stmt =
+        conn.prepare("SELECT id, content, created_at, source FROM global_memories WHERE id = ?1")?;
     let mut rows = stmt.query_map(params![memory_id], map_global_row)?;
     match rows.next() {
         Some(Ok(m)) => Ok(Some(m)),
@@ -224,7 +227,8 @@ pub fn insert_memory_scoped(
 ) -> Result<i64, String> {
     match scope {
         MemoryScope::Connection => {
-            let id = owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
+            let id =
+                owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
             insert_memory(conn, id, content).map_err(|e| e.to_string())
         }
         MemoryScope::Group => {
@@ -243,7 +247,8 @@ pub fn list_memories_scoped(
 ) -> Result<Vec<AiMemory>, String> {
     match scope {
         MemoryScope::Connection => {
-            let id = owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
+            let id =
+                owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
             list_memories(conn, id).map_err(|e| e.to_string())
         }
         MemoryScope::Group => {
@@ -276,7 +281,8 @@ pub fn get_memory_texts_scoped(
 ) -> Result<Vec<(i64, String)>, String> {
     match scope {
         MemoryScope::Connection => {
-            let id = owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
+            let id =
+                owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
             get_memory_texts(conn, id).map_err(|e| e.to_string())
         }
         MemoryScope::Group => {

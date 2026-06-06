@@ -17,6 +17,7 @@ fn test_state() -> AppState {
     let conn = common::test_db();
     AppState {
         db: Arc::new(Mutex::new(conn)),
+        logs_db: Arc::new(Mutex::new(common::test_db())),
         registry: sqllumen_lib::mysql::registry::ConnectionRegistry::new(),
         app_handle: None,
         result_cache: std::sync::Arc::new(

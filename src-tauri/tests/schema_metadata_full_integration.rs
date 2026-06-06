@@ -30,6 +30,9 @@ fn test_state() -> AppState {
     sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
+        logs_db: Arc::new(Mutex::new(
+            Connection::open_in_memory().expect("should open in-memory logs db"),
+        )),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         result_cache: std::sync::Arc::new(

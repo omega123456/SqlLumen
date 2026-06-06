@@ -1149,9 +1149,7 @@ fn bind_json_value<'q>(
 /// malformed envelope (e.g. invalid base64) surfaces as a clean error instead of
 /// being silently coerced. Non-envelope values are ignored.
 #[cfg_attr(coverage, allow(dead_code))]
-pub fn validate_blob_envelopes(
-    values: &HashMap<String, serde_json::Value>,
-) -> Result<(), String> {
+pub fn validate_blob_envelopes(values: &HashMap<String, serde_json::Value>) -> Result<(), String> {
     for (col, value) in values {
         if let Some(Err(e)) = decode_blob_envelope(value) {
             return Err(format!("Column `{col}`: {e}"));

@@ -17,23 +17,23 @@ describe('LoggingSettings', () => {
     // Default: version 1.2.3 with no rust log override
     ipc.override('get_app_info', () => ({
       rustLogOverride: false,
-      logDirectory: '/mock/logs',
       appVersion: '1.2.3',
     }))
   })
 
-  it('renders app info and the current log level', async () => {
+  it('renders app info, the current log level, and the embedded log viewer', async () => {
     render(<LoggingSettings />)
 
     expect(await screen.findByText('1.2.3')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-log-dir')).toHaveTextContent('/mock/logs')
     expect(screen.getByTestId('settings-log-level-dropdown')).toHaveTextContent('Info')
+    expect(screen.getByTestId('log-viewer')).toBeInTheDocument()
+    expect(screen.getByTestId('log-viewer-count-summary')).toHaveTextContent('1-2 of 2')
+    expect(screen.queryByTestId('settings-log-dir')).not.toBeInTheDocument()
   })
 
   it('disables the log level dropdown when RUST_LOG overrides settings', async () => {
     ipc.override('get_app_info', () => ({
       rustLogOverride: true,
-      logDirectory: '/override/logs',
       appVersion: '2.0.0',
     }))
 
@@ -41,7 +41,7 @@ describe('LoggingSettings', () => {
 
     expect(await screen.findByTestId('settings-rust-log-override')).toBeInTheDocument()
     expect(screen.getByTestId('settings-log-level-dropdown')).toBeDisabled()
-    expect(screen.getByTestId('settings-log-dir')).toHaveTextContent('/override/logs')
+    expect(screen.getByTestId('log-viewer')).toBeInTheDocument()
   })
 
   it('updates the pending log level when a new option is selected', async () => {
@@ -74,8 +74,8 @@ describe('LoggingSettings', () => {
       expect(matched).toBe(true)
     })
 
-    expect(screen.getAllByText('...')).toHaveLength(2)
-    expect(screen.getByTestId('settings-log-dir')).toHaveTextContent('...')
+    expect(screen.getByText('...')).toBeInTheDocument()
+    expect(screen.getByTestId('log-viewer')).toBeInTheDocument()
   })
 
   it('suppresses console.error for expected IPC failures', async () => {
@@ -88,9 +88,19 @@ describe('LoggingSettings', () => {
     render(<LoggingSettings />)
 
     await waitFor(() => {
-      expect(screen.getAllByText('...')).toHaveLength(2)
+      expect(screen.getByText('...')).toBeInTheDocument()
     })
 
     consoleSpy.mockRestore()
+  })
+
+  it('opens the export dialog from the embedded log viewer', async () => {
+    const user = userEvent.setup()
+    render(<LoggingSettings />)
+
+    await screen.findByText('1.2.3')
+    await user.click(screen.getByTestId('log-viewer-export'))
+
+    expect(screen.getByTestId('log-export-dialog')).toBeInTheDocument()
   })
 })

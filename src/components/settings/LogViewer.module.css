@@ -1,0 +1,276 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-md);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border-radius: var(--radius-lg);
+  background: var(--surface-container-low);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  background: var(--surface-container-lowest);
+}
+
+.toolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.filterDropdown {
+  min-width: 168px;
+}
+
+.refreshButton {
+  color: var(--on-surface-variant);
+}
+
+.refreshButton:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+.refreshing {
+  animation: logViewerSpin 0.8s linear infinite;
+}
+
+.autoRefreshToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.autoRefreshToggle:hover {
+  border-color: rgba(var(--primary-rgb), 0.35);
+}
+
+.autoRefreshActive {
+  color: var(--tertiary);
+  border-color: color-mix(in srgb, var(--tertiary) 35%, transparent);
+}
+
+.pulseDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--tertiary);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--tertiary) 28%, transparent);
+  animation: logViewerPulse 1.6s ease-out infinite;
+}
+
+.pulseDotOff {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--on-surface-variant);
+  opacity: 0.4;
+}
+
+.paginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  background: var(--surface-container-lowest);
+}
+
+.paginationBar:last-of-type {
+  border-bottom: none;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+}
+
+.summary {
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.tableWrapper {
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.tableHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-container-high);
+}
+
+.tableHeader {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  color: var(--on-surface-variant);
+  font-family: var(--type-table-header-font);
+  font-size: var(--type-table-header-size);
+  font-weight: var(--type-table-header-weight);
+  letter-spacing: var(--type-table-header-tracking);
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.levelColumn {
+  width: 96px;
+}
+
+.timestampColumn {
+  width: 148px;
+}
+
+.row:nth-child(odd) {
+  background: var(--surface-container-low);
+}
+
+.row:nth-child(even) {
+  background: var(--surface);
+}
+
+.row:hover {
+  background: var(--surface-container);
+}
+
+.rowError {
+  background: color-mix(in srgb, var(--error) 6%, transparent) !important;
+}
+
+.rowWarn {
+  background: color-mix(in srgb, var(--warning) 6%, transparent) !important;
+}
+
+.cell {
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  vertical-align: top;
+}
+
+.messageCell {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  line-height: 1.45;
+  color: var(--on-surface);
+}
+
+.messageText {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.timestampCell {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.skeletonBar {
+  display: block;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    rgba(var(--outline-variant-rgb), 0.12) 25%,
+    rgba(var(--outline-variant-rgb), 0.24) 37%,
+    rgba(var(--outline-variant-rgb), 0.12) 63%
+  );
+  background-size: 400% 100%;
+  animation: logViewerShimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonBadge {
+  width: 56px;
+}
+
+.skeletonMessage {
+  width: 70%;
+}
+
+.skeletonTimestamp {
+  width: 110px;
+}
+
+.state {
+  padding: var(--space-lg);
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-sm);
+  text-align: center;
+}
+
+.errorState {
+  color: var(--error);
+}
+
+@keyframes logViewerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logViewerPulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tertiary) 28%, transparent);
+  }
+
+  70% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--tertiary) 0%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--tertiary) 0%, transparent);
+  }
+}
+
+@keyframes logViewerShimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refreshing,
+  .pulseDot,
+  .skeletonBar {
+    animation: none;
+  }
+}

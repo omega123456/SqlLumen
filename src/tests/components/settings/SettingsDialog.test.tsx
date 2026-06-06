@@ -22,7 +22,6 @@ beforeEach(() => {
   ipc.override('get_all_settings', () => ({ ...SETTINGS_DEFAULTS }))
   ipc.override('get_app_info', () => ({
     rustLogOverride: false,
-    logDirectory: '/mock/logs',
     appVersion: '1.0.0',
   }))
   useSettingsStore.setState({

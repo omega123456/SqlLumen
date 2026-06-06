@@ -35,16 +35,19 @@ pub fn resolve_save_owner(
             let record = connections::get_connection(&conn, &profile_id)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| format!("Connection '{profile_id}' not found"))?;
-            record.group_id.ok_or_else(|| {
-                tracing::warn!(
-                    connection_id = %profile_id,
-                    "save_memory: group scope requested but connection has no group"
-                );
-                format!(
-                    "Connection '{}' is not in a group — cannot save a group-scoped memory",
-                    record.name
-                )
-            }).map(Some)
+            record
+                .group_id
+                .ok_or_else(|| {
+                    tracing::warn!(
+                        connection_id = %profile_id,
+                        "save_memory: group scope requested but connection has no group"
+                    );
+                    format!(
+                        "Connection '{}' is not in a group — cannot save a group-scoped memory",
+                        record.name
+                    )
+                })
+                .map(Some)
         }
     }
 }
@@ -89,8 +92,7 @@ pub async fn save_memory_full(
         "save_memory: start"
     );
 
-    let (memory, owner_id, endpoint, model) =
-        save_memory_impl(state, session_id, content, scope)?;
+    let (memory, owner_id, endpoint, model) = save_memory_impl(state, session_id, content, scope)?;
 
     tracing::debug!(
         memory_id = memory.id,
@@ -167,14 +169,15 @@ pub fn list_global_memories_impl(state: &AppState) -> Result<Vec<AiMemory>, Stri
     Ok(memories)
 }
 
-pub fn list_group_memories_impl(
-    state: &AppState,
-    group_id: &str,
-) -> Result<Vec<AiMemory>, String> {
+pub fn list_group_memories_impl(state: &AppState, group_id: &str) -> Result<Vec<AiMemory>, String> {
     tracing::debug!(group_id, "list_group_memories: start");
     let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
     let memories = storage::list_group_memories(&conn, group_id).map_err(|e| e.to_string())?;
-    tracing::debug!(group_id, count = memories.len(), "list_group_memories: done");
+    tracing::debug!(
+        group_id,
+        count = memories.len(),
+        "list_group_memories: done"
+    );
     Ok(memories)
 }
 
@@ -203,11 +206,14 @@ pub fn delete_memory_impl(
     tracing::debug!(scope = scope.as_str(), memory_id, "delete_memory: start");
     let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
 
-    let memory = storage::get_memory_by_id_scoped(&conn, scope, memory_id)?
-        .ok_or_else(|| {
-            tracing::error!(scope = scope.as_str(), memory_id, "delete_memory: not found");
-            format!("Memory with id {memory_id} not found")
-        })?;
+    let memory = storage::get_memory_by_id_scoped(&conn, scope, memory_id)?.ok_or_else(|| {
+        tracing::error!(
+            scope = scope.as_str(),
+            memory_id,
+            "delete_memory: not found"
+        );
+        format!("Memory with id {memory_id} not found")
+    })?;
 
     // Determine the owner id for the vec table from the row itself.
     let owner_id = match scope {
@@ -219,7 +225,11 @@ pub fn delete_memory_impl(
     storage::delete_memory_vector_scoped(&conn, scope, owner_id.as_deref(), memory_id)?;
     storage::delete_memory_scoped(&conn, scope, memory_id)?;
 
-    tracing::debug!(scope = scope.as_str(), memory_id, "delete_memory: row and vector removed");
+    tracing::debug!(
+        scope = scope.as_str(),
+        memory_id,
+        "delete_memory: row and vector removed"
+    );
     Ok(())
 }
 
@@ -246,8 +256,7 @@ pub fn move_memory_prepare(
     let to_owner_id: Option<String> = match to_scope {
         MemoryScope::Global => None,
         MemoryScope::Group => {
-            let gid = to_group_id
-                .ok_or_else(|| "group target requires toGroupId".to_string())?;
+            let gid = to_group_id.ok_or_else(|| "group target requires toGroupId".to_string())?;
             connection_groups::get_group(&conn, gid)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| format!("Group '{gid}' not found"))?;

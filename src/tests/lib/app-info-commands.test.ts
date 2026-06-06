@@ -4,7 +4,6 @@ import { getAppInfo } from '../../lib/app-info-commands'
 
 const mockGetAppInfoFn = vi.fn(() => ({
   rustLogOverride: false,
-  logDirectory: '/app/logs',
   appVersion: '1.2.3',
 }))
 
@@ -19,7 +18,6 @@ describe('getAppInfo', () => {
 
     expect(result).toEqual({
       rustLogOverride: false,
-      logDirectory: '/app/logs',
       appVersion: '1.2.3',
     })
     expect(ipc.calls('get_app_info')).toEqual([{}])
@@ -28,14 +26,12 @@ describe('getAppInfo', () => {
   it('returns AppInfo with rustLogOverride true', async () => {
     mockGetAppInfoFn.mockReturnValue({
       rustLogOverride: true,
-      logDirectory: '/other/logs',
       appVersion: '0.1.0',
     })
 
     const result = await getAppInfo()
 
     expect(result.rustLogOverride).toBe(true)
-    expect(result.logDirectory).toBe('/other/logs')
     expect(result.appVersion).toBe('0.1.0')
   })
 })

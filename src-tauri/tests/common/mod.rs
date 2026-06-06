@@ -38,6 +38,9 @@ pub fn test_app_state() -> AppState {
     let table_data_spill_dir = spill_dir.join("table-data");
     AppState {
         db: Arc::new(Mutex::new(conn)),
+        logs_db: Arc::new(Mutex::new(
+            Connection::open_in_memory().expect("should open in-memory logs db"),
+        )),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         result_cache: Arc::new(ResultCache::new_for_test(1800, result_spill_dir)),

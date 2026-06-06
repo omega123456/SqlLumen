@@ -53,7 +53,11 @@ fn resolver_treats_whitespace_only_embedding_key_as_blank() {
 fn resolver_returns_embedding_endpoint_when_set() {
     let conn = setup_db();
     set(&conn, "ai.endpoint", "http://chat.local:11434/v1");
-    set(&conn, "ai.embeddingEndpoint", "http://embeddings.local:8080/v1");
+    set(
+        &conn,
+        "ai.embeddingEndpoint",
+        "http://embeddings.local:8080/v1",
+    );
 
     let resolved = resolve_embedding_endpoint(&conn).expect("resolve");
     assert_eq!(resolved, "http://embeddings.local:8080/v1");
@@ -63,7 +67,11 @@ fn resolver_returns_embedding_endpoint_when_set() {
 fn resolver_trims_embedding_endpoint_value() {
     let conn = setup_db();
     set(&conn, "ai.endpoint", "http://chat.local:11434/v1");
-    set(&conn, "ai.embeddingEndpoint", "  http://embeddings.local:8080/v1  ");
+    set(
+        &conn,
+        "ai.embeddingEndpoint",
+        "  http://embeddings.local:8080/v1  ",
+    );
 
     let resolved = resolve_embedding_endpoint(&conn).expect("resolve");
     assert_eq!(resolved, "http://embeddings.local:8080/v1");
@@ -103,7 +111,11 @@ fn resolver_surfaces_chat_endpoint_deserialization_errors() {
 fn resolver_and_chat_endpoint_diverge_for_semantic_search_split() {
     let conn = setup_db();
     set(&conn, "ai.endpoint", "http://chat.local:11434/v1");
-    set(&conn, "ai.embeddingEndpoint", "http://embeddings.local:8080/v1");
+    set(
+        &conn,
+        "ai.embeddingEndpoint",
+        "http://embeddings.local:8080/v1",
+    );
 
     let embedding_endpoint = resolve_embedding_endpoint(&conn).expect("resolve");
     let chat_endpoint = settings::get_setting(&conn, "ai.endpoint")
@@ -137,7 +149,11 @@ fn read_embedding_config_falls_back_to_chat_endpoint() {
 fn read_embedding_config_uses_embedding_endpoint_when_set() {
     let conn = setup_db();
     set(&conn, "ai.endpoint", "http://chat.local:11434/v1");
-    set(&conn, "ai.embeddingEndpoint", "http://embeddings.local:8080/v1");
+    set(
+        &conn,
+        "ai.embeddingEndpoint",
+        "http://embeddings.local:8080/v1",
+    );
     set(&conn, "ai.embeddingModel", "nomic-embed-text");
 
     let (endpoint, model) = read_embedding_config(&conn).expect("read config");

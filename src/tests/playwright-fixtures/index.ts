@@ -11,6 +11,10 @@ import {
 import { DEFAULT_TABLE_DATA, DEFAULT_TABLE_LIST_COLUMNS } from './default-table'
 import { JSON_ANALYZE_QUERY_RESULT, JSON_TABLE_DATA, JSON_TABLE_LIST_COLUMNS } from './json-table'
 import {
+  getExportLogsFixture as getDefaultExportLogsFixture,
+  getLogsPageFixture as getDefaultLogsPageFixture,
+} from './logs'
+import {
   DEFAULT_OBJECT_BODY,
   DEFAULT_ROUTINE_PARAMETERS_WITH_RETURN_TYPE,
   FUNCTION_ROUTINE_PARAMETERS_WITH_RETURN_TYPE,
@@ -36,6 +40,7 @@ import {
   DEFAULT_SNAPSHOT_SUMMARIES,
 } from './snapshots'
 import type { AiModelInfo } from '../../lib/ai-commands'
+import type { LogLevelFilter, LogPage } from '../../lib/log-commands'
 import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
 import type { BlobValueResponse } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
@@ -82,6 +87,8 @@ type FixtureOverrideDomain =
   | 'copyCancel'
   | 'blobValue'
   | 'aiModels'
+  | 'logsPage'
+  | 'logsExport'
   | 'snapshotList'
   | 'snapshotState'
   | 'snapshotCreatedId'
@@ -105,6 +112,8 @@ type FixtureOverrides = {
   copyCancel: Record<string, null>
   blobValue: Record<string, BlobValueResponse>
   aiModels: Record<string, AiModelInfo[]>
+  logsPage: Record<string, LogPage>
+  logsExport: Record<string, number>
   snapshotList: Record<string, SnapshotSummary[]>
   snapshotState: Record<string, string | null>
   snapshotCreatedId: Record<string, number>
@@ -127,6 +136,8 @@ type FixtureOverrideValueMap = {
   copyCancel: null
   blobValue: BlobValueResponse
   aiModels: AiModelInfo[]
+  logsPage: LogPage
+  logsExport: number
   snapshotList: SnapshotSummary[]
   snapshotState: string | null
   snapshotCreatedId: number
@@ -157,6 +168,14 @@ type FixtureRegistryApi = {
   getCancelCopyFixture: (jobId: string | null | undefined) => null
   getBlobValueFixture: (column: string | null | undefined) => BlobValueResponse
   getAiModelsFixture: (endpoint: string | null | undefined) => AiModelInfo[]
+  getLogsPageFixture: (
+    page: number | null | undefined,
+    level: LogLevelFilter | null | undefined
+  ) => LogPage
+  getExportLogsFixture: (
+    startTimestamp: string | null | undefined,
+    endTimestamp: string | null | undefined
+  ) => number
   getSnapshotListFixture: () => SnapshotSummary[]
   getSnapshotStateFixture: (id: number | null | undefined) => string | null
   getSnapshotCreatedIdFixture: () => number
@@ -253,9 +272,27 @@ const overrides: FixtureOverrides = {
   copyCancel: {},
   blobValue: {},
   aiModels: {},
+  logsPage: {},
+  logsExport: {},
   snapshotList: {},
   snapshotState: {},
   snapshotCreatedId: {},
+}
+
+function getLogsPageLookupKey(
+  page: number | null | undefined,
+  level: LogLevelFilter | null | undefined
+): string {
+  const normalizedPage = Number.isFinite(page) && typeof page === 'number' && page > 0 ? page : 1
+  const normalizedLevel = normalizeLookupKey(level ?? 'all')
+  return `${normalizedLevel}__${normalizedPage}`
+}
+
+function getLogsExportLookupKey(
+  startTimestamp: string | null | undefined,
+  endTimestamp: string | null | undefined
+): string {
+  return `${normalizeLookupKey(startTimestamp)}__${normalizeLookupKey(endTimestamp)}`
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -461,8 +498,34 @@ export function getBlobValueFixture(column: string | null | undefined): BlobValu
 
 export function getAiModelsFixture(endpoint: string | null | undefined): AiModelInfo[] {
   const endpointKey = String(endpoint ?? '').trim()
+  return overrides.aiModels[endpointKey] ?? AI_MODELS_BY_ENDPOINT[endpointKey] ?? DEFAULT_AI_MODELS
+}
+
+export function getLogsPageFixture(
+  page: number | null | undefined,
+  level: LogLevelFilter | null | undefined
+): LogPage {
+  const lookupKey = getLogsPageLookupKey(page, level)
+
   return (
-    overrides.aiModels[endpointKey] ?? AI_MODELS_BY_ENDPOINT[endpointKey] ?? DEFAULT_AI_MODELS
+    overrides.logsPage[lookupKey] ??
+    getDefaultLogsPageFixture(
+      typeof page === 'number' ? page : 1,
+      (level ?? 'all') as LogLevelFilter
+    )
+  )
+}
+
+export function getExportLogsFixture(
+  startTimestamp: string | null | undefined,
+  endTimestamp: string | null | undefined
+): number {
+  const lookupKey = getLogsExportLookupKey(startTimestamp, endTimestamp)
+
+  return (
+    overrides.logsExport[lookupKey] ??
+    overrides.logsExport.default ??
+    getDefaultExportLogsFixture(String(startTimestamp ?? ''), String(endTimestamp ?? ''))
   )
 }
 
@@ -521,6 +584,8 @@ export function resetFixtureOverrides(): void {
   overrides.copyCancel = {}
   overrides.blobValue = {}
   overrides.aiModels = {}
+  overrides.logsPage = {}
+  overrides.logsExport = {}
   overrides.snapshotList = {}
   overrides.snapshotState = {}
   overrides.snapshotCreatedId = {}
@@ -543,6 +608,8 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCancelCopyFixture,
   getBlobValueFixture,
   getAiModelsFixture,
+  getLogsPageFixture,
+  getExportLogsFixture,
   getSnapshotListFixture,
   getSnapshotStateFixture,
   getSnapshotCreatedIdFixture,

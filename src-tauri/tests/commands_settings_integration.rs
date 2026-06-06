@@ -80,6 +80,7 @@ fn test_settings_impls_surface_poisoned_db_lock_errors() {
 
     let state = AppState {
         db: poisoned_db,
+        logs_db: Arc::new(Mutex::new(common::test_db())),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         result_cache: std::sync::Arc::new(
@@ -130,6 +131,7 @@ fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
     common::ensure_fake_backend_once();
     let state = AppState {
         db: Arc::new(Mutex::new(common::test_db())),
+        logs_db: Arc::new(Mutex::new(common::test_db())),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         result_cache: std::sync::Arc::new(

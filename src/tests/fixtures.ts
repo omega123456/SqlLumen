@@ -51,6 +51,28 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
 
   // --- Logging ---
   log_frontend: () => undefined,
+  list_logs: () => ({
+    entries: [
+      {
+        id: 101,
+        timestamp: '2026-06-06T12:00:00.000Z',
+        level: 'ERROR',
+        target: 'sqllumen::tests',
+        message: 'Primary log fixture entry',
+      },
+      {
+        id: 102,
+        timestamp: '2026-06-06T11:58:30.000Z',
+        level: 'INFO',
+        target: 'sqllumen::tests',
+        message: 'Background refresh fixture entry',
+      },
+    ],
+    total: 2,
+    page: 1,
+    pageSize: 20,
+  }),
+  export_logs: () => 2,
 
   // --- Settings ---
   get_setting: () => null,
@@ -60,7 +82,6 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   // --- App info ---
   get_app_info: () => ({
     rustLogOverride: false,
-    logDirectory: '/mock/app/logs',
     appVersion: '0.1.0',
   }),
 

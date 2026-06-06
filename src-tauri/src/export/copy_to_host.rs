@@ -438,7 +438,8 @@ pub fn rewrite_non_table_ddl_schema(
     target_database: &str,
     object_name: &str,
 ) -> String {
-    if object_type == CopyObjectType::Table || target_database.is_empty() || object_name.is_empty() {
+    if object_type == CopyObjectType::Table || target_database.is_empty() || object_name.is_empty()
+    {
         return ddl.to_string();
     }
 
@@ -459,7 +460,8 @@ pub fn rewrite_non_table_ddl_schema(
     let target_qualified = format!("`{escaped_target}`.`{escaped_object}`");
 
     let search_start = keyword_pos + keyword.len();
-    let Some((replace_start, replace_end)) = find_create_header_identifier(ddl, search_start) else {
+    let Some((replace_start, replace_end)) = find_create_header_identifier(ddl, search_start)
+    else {
         return ddl.to_string();
     };
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Dropdown } from '../common/Dropdown'
 import { SettingsSection } from './SettingsSection'
+import { LogViewer } from './LogViewer'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { getAppInfo } from '../../lib/app-info-commands'
 import type { AppInfo } from '../../types/schema'
@@ -41,10 +42,6 @@ export function LoggingSettings() {
         <div style={{ fontSize: 'var(--type-size-sm)', color: 'var(--on-surface-variant)' }}>
           <strong>Version:</strong> {appInfo?.appVersion ?? '...'}
         </div>
-        <div style={{ fontSize: 'var(--type-size-sm)', color: 'var(--on-surface-variant)' }}>
-          <strong>Log directory:</strong>{' '}
-          <code data-testid="settings-log-dir">{appInfo?.logDirectory ?? '...'}</code>
-        </div>
       </SettingsSection>
 
       <SettingsSection title="Log Level" description="Set the minimum log level for the backend.">
@@ -78,6 +75,8 @@ export function LoggingSettings() {
           />
         </div>
       </SettingsSection>
+
+      <LogViewer />
     </div>
   )
 }

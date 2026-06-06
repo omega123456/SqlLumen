@@ -1,13 +1,8 @@
-//! Application logging: daily log files under `app_data_dir/logs`, stderr output,
-//! reloadable `EnvFilter` for a future settings UI, and startup retention pruning.
+//! Application logging: stderr output, reloadable `EnvFilter`, and a dedicated
+//! SQLite sink for structured log storage.
 
-use chrono::{Local, NaiveDate};
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tracing::Subscriber;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::format::{Format, FormatEvent, FormatFields, Full, Writer};
 use tracing_subscriber::fmt::time::SystemTime;
 use tracing_subscriber::fmt::FmtContext;
@@ -17,13 +12,13 @@ use tracing_subscriber::reload;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
+pub mod log_store;
+pub mod sqlite_layer;
+
 /// SQLite settings key for persisted log level (`trace` | `debug` | `info` | `warn` | `error`).
 pub const LOG_LEVEL_SETTING_KEY: &str = "log.level";
 
-/// Base name for daily log files: `{stem}.{YYYY-MM-DD}.log` (via `tracing-appender` suffix API).
-pub const ROLLING_LOG_STEM: &str = "sqllumen";
-
-static LOG_WORKER_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+static SQLITE_LOG_WRITER_GUARD: OnceLock<sqlite_layer::SqliteLogWriterGuard> = OnceLock::new();
 
 /// Handle to reload the global `EnvFilter` (e.g. when `log.level` changes in settings).
 pub type LogFilterReloadHandle = reload::Handle<EnvFilter, Registry>;
@@ -129,7 +124,6 @@ fn bracket_level_event_format() -> Format<Full, SystemTime> {
 /// When `colored` is `true` the level token is wrapped in the appropriate ANSI
 /// colour escape sequence.  The flag is resolved once at subscriber construction
 /// time so there is no per-event syscall overhead.
-/// The file layer always passes `colored: false`, keeping log files plain text.
 struct BracketLevelFormat {
     inner: Format<Full, SystemTime>,
     colored: bool,
@@ -170,77 +164,6 @@ where
         }
         self.inner.format_event(ctx, writer, event)
     }
-}
-
-/// List log files matching `{stem}.{YYYY-MM-DD}.log` in `log_dir`.
-fn list_dated_log_files(log_dir: &Path, stem: &str) -> io::Result<Vec<(NaiveDate, PathBuf)>> {
-    let mut out = Vec::new();
-    let prefix = format!("{stem}.");
-    const SUFFIX: &str = ".log";
-    for entry in fs::read_dir(log_dir)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else {
-            continue;
-        };
-        if !name.starts_with(&prefix) || !name.ends_with(SUFFIX) {
-            continue;
-        }
-        let date_part = &name[prefix.len()..name.len() - SUFFIX.len()];
-        if let Ok(d) = NaiveDate::parse_from_str(date_part, "%Y-%m-%d") {
-            out.push((d, entry.path()));
-        }
-    }
-    Ok(out)
-}
-
-/// Delete rotated log files older than seven days, preserving at least one file dated before today
-/// when that would otherwise remove every pre-today file.
-pub fn prune_old_logs(log_dir: &Path, stem: &str, today: NaiveDate) -> io::Result<()> {
-    let files = list_dated_log_files(log_dir, stem)?;
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    let cutoff = today
-        .checked_sub_signed(chrono::Duration::days(7))
-        .unwrap_or(today);
-
-    let pre_today: Vec<(NaiveDate, PathBuf)> =
-        files.iter().filter(|(d, _)| *d < today).cloned().collect();
-
-    let mut stale_paths: Vec<PathBuf> = files
-        .iter()
-        .filter(|(d, _)| *d < cutoff)
-        .map(|(_, p)| p.clone())
-        .collect();
-
-    if !pre_today.is_empty() {
-        let would_remain: Vec<_> = pre_today
-            .iter()
-            .filter(|(_, p)| !stale_paths.contains(p))
-            .collect();
-
-        if would_remain.is_empty() {
-            let (_, newest_path) = pre_today
-                .iter()
-                .max_by_key(|(d, _)| d)
-                .expect("non-empty pre_today");
-            stale_paths.retain(|p| p != newest_path);
-        }
-    }
-
-    for path in stale_paths {
-        if let Err(e) = fs::remove_file(&path) {
-            tracing::warn!(
-                target: "sqllumen_lib::logging",
-                path = %path.display(),
-                "failed to remove old log file: {e}"
-            );
-        }
-    }
-
-    Ok(())
 }
 
 fn build_initial_filter() -> EnvFilter {
@@ -298,44 +221,28 @@ fn stderr_wants_color() -> bool {
     std::env::var_os("NO_COLOR").is_none()
 }
 
-/// Initialize global tracing subscriber (stderr + daily log file). Call once at app startup.
-pub fn init_logging(log_dir: &Path) -> Result<LoggingInit, String> {
+/// Initialize global tracing subscriber (stderr + SQLite sink). Call once at app startup.
+pub fn init_logging(log_db_path: &std::path::Path) -> Result<LoggingInit, String> {
     let rust_log_env_set = std::env::var("RUST_LOG").is_ok();
-    fs::create_dir_all(log_dir).map_err(|e| e.to_string())?;
-
-    let today = Local::now().date_naive();
-    prune_old_logs(log_dir, ROLLING_LOG_STEM, today).map_err(|e| e.to_string())?;
 
     // Enable ANSI processing on Windows consoles before the subscriber starts
     // emitting events.
     try_enable_windows_ansi_stderr();
 
-    let file_appender = RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
-        .filename_prefix(ROLLING_LOG_STEM)
-        .filename_suffix("log")
-        .build(log_dir)
-        .map_err(|e| format!("rolling log appender: {e}"))?;
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    let _ = LOG_WORKER_GUARD.set(guard);
+    let (sqlite_layer, sqlite_guard) = sqlite_layer::init_sqlite_layer(log_db_path)?;
+    let _ = SQLITE_LOG_WRITER_GUARD.set(sqlite_guard);
 
     let initial_filter = build_initial_filter();
     let (reload_layer, reload_handle) = reload::Layer::new(initial_filter);
 
-    // Colour stderr unless NO_COLOR is set.  File logs are always plain text.
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
         .event_format(BracketLevelFormat::new(stderr_wants_color()));
 
-    let file_layer = tracing_subscriber::fmt::layer()
-        .with_writer(non_blocking)
-        .with_ansi(false)
-        .event_format(BracketLevelFormat::new(false));
-
     tracing_subscriber::registry()
         .with(reload_layer)
         .with(stderr_layer)
-        .with(file_layer)
+        .with(sqlite_layer)
         .try_init()
         .map_err(|_| "tracing subscriber already initialized".to_string())?;
 

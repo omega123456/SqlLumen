@@ -19,12 +19,9 @@ fn test_conn() -> Connection {
 }
 
 fn sample(trigger: &str, conn_count: i64, tab_count: i64) -> NewSnapshot {
-    let summary = format!(
-        "[{{\"name\":\"ProdDB\",\"tabCount\":{tab_count}}}]"
-    );
-    let state = format!(
-        "{{\"version\":1,\"trigger\":\"{trigger}\",\"connectionCount\":{conn_count}}}"
-    );
+    let summary = format!("[{{\"name\":\"ProdDB\",\"tabCount\":{tab_count}}}]");
+    let state =
+        format!("{{\"version\":1,\"trigger\":\"{trigger}\",\"connectionCount\":{conn_count}}}");
     NewSnapshot {
         trigger_type: trigger.to_string(),
         connection_count: conn_count,
@@ -140,12 +137,19 @@ fn test_prune_keeps_exactly_keep_newest() {
     }
 
     let summaries = list_summaries(&conn).expect("list");
-    assert_eq!(summaries.len() as i64, keep, "exactly `keep` rows should remain");
+    assert_eq!(
+        summaries.len() as i64,
+        keep,
+        "exactly `keep` rows should remain"
+    );
 
     // The newest 3 inserted ids must be the survivors.
     let surviving: Vec<i64> = summaries.iter().map(|s| s.id).collect();
     let expected_newest = vec![ids[6], ids[5], ids[4]];
-    assert_eq!(surviving, expected_newest, "the newest `keep` rows should survive");
+    assert_eq!(
+        surviving, expected_newest,
+        "the newest `keep` rows should survive"
+    );
 }
 
 #[test]
@@ -190,16 +194,9 @@ fn test_command_impls_create_list_get_and_delete_snapshots() {
     let summary_json = "[{\"name\":\"ProdDB\",\"tabCount\":2}]";
     let state_json = "{\"version\":1,\"connections\":[{\"profileId\":\"p-prod\",\"tabs\":[]}]}";
 
-    let created_id = create_session_snapshot_impl(
-        &state,
-        "manual",
-        1,
-        2,
-        summary_json,
-        state_json,
-        10,
-    )
-    .expect("create impl should succeed");
+    let created_id =
+        create_session_snapshot_impl(&state, "manual", 1, 2, summary_json, state_json, 10)
+            .expect("create impl should succeed");
     assert!(created_id > 0, "create impl should return a positive id");
 
     let summaries = list_session_snapshots_impl(&state).expect("list impl should succeed");
@@ -265,7 +262,11 @@ fn test_command_impl_create_prunes_to_keep_limit() {
 
     let summaries = list_session_snapshots_impl(&state).expect("list impl should succeed");
     let ids: Vec<i64> = summaries.iter().map(|summary| summary.id).collect();
-    assert_eq!(ids, vec![third_id, second_id], "keep=2 should retain newest two");
+    assert_eq!(
+        ids,
+        vec![third_id, second_id],
+        "keep=2 should retain newest two"
+    );
     assert_eq!(
         get_session_snapshot_impl(&state, first_id).expect("get first should succeed"),
         None,

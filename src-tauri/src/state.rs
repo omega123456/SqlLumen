@@ -120,6 +120,8 @@ pub struct AppState {
     /// SQLite database connection for local persistence.
     /// Wrapped in Arc so the bridge module can clone a handle for background logging.
     pub db: Arc<Mutex<Connection>>,
+    /// Dedicated SQLite reader connection for structured application logs.
+    pub logs_db: Arc<Mutex<Connection>>,
     /// Registry of active MySQL connection pools.
     pub registry: ConnectionRegistry,
     /// Tauri app handle (None only in unit tests where AppHandle is unavailable).

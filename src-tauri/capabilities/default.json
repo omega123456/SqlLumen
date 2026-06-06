@@ -89,6 +89,8 @@
     "allow-list-history",
     "allow-delete-history-entry",
     "allow-clear-history",
+    "allow-list-logs",
+    "allow-export-logs",
     "allow-create-session-snapshot",
     "allow-list-session-snapshots",
     "allow-get-session-snapshot",

@@ -117,9 +117,6 @@ pub fn delete_session_snapshot_impl(state: &AppState, id: i64) -> Result<bool, S
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn delete_session_snapshot(
-    id: i64,
-    state: tauri::State<'_, AppState>,
-) -> Result<bool, String> {
+pub fn delete_session_snapshot(id: i64, state: tauri::State<'_, AppState>) -> Result<bool, String> {
     delete_session_snapshot_impl(&state, id)
 }

@@ -44,8 +44,7 @@ mod blob_value_fetch_integration {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn returns_null_base64_for_null_cell() {
-        let server =
-            MockMySqlServer::start_script(vec![len_step(LEN_SQL, MockCell::Null)]).await;
+        let server = MockMySqlServer::start_script(vec![len_step(LEN_SQL, MockCell::Null)]).await;
         let pool = connect_mock_pool(&server).await;
 
         let resp = fetch_blob_value_impl(
@@ -119,8 +118,7 @@ mod blob_value_fetch_integration {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn empty_pk_pairs_is_rejected() {
-        let server =
-            MockMySqlServer::start_script(vec![len_step(LEN_SQL, MockCell::Null)]).await;
+        let server = MockMySqlServer::start_script(vec![len_step(LEN_SQL, MockCell::Null)]).await;
         let pool = connect_mock_pool(&server).await;
 
         let err = fetch_blob_value_impl(&pool, "app_db", "assets", "photo", &[])
@@ -178,7 +176,10 @@ mod blob_file_bytes_integration {
         std::fs::write(&path, &big).expect("setup write should succeed");
 
         let err = read_file_bytes_impl(&path_str).expect_err("over-cap read should error");
-        assert!(err.contains("10 MB"), "error should mention the limit: {err}");
+        assert!(
+            err.contains("10 MB"),
+            "error should mention the limit: {err}"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
@@ -195,8 +196,8 @@ mod blob_file_bytes_integration {
     #[test]
     fn read_missing_file_errors() {
         let path = temp_path("does-not-exist.bin");
-        let err = read_file_bytes_impl(&path.to_string_lossy())
-            .expect_err("missing file should error");
+        let err =
+            read_file_bytes_impl(&path.to_string_lossy()).expect_err("missing file should error");
         assert!(err.to_lowercase().contains("metadata") || err.to_lowercase().contains("read"));
     }
 

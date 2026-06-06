@@ -124,7 +124,6 @@ describe('UpdatesSettings', () => {
     // Default: version 1.2.3 for most tests
     ipc.override('get_app_info', () => ({
       rustLogOverride: false,
-      logDirectory: '/mock/logs',
       appVersion: '1.2.3',
     }))
   })

@@ -37,6 +37,9 @@ mod binary_projection_integration {
         sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
         AppState {
             db: Arc::new(Mutex::new(conn)),
+            logs_db: Arc::new(Mutex::new(
+                Connection::open_in_memory().expect("should open in-memory logs db"),
+            )),
             registry: ConnectionRegistry::new(),
             app_handle: None,
             result_cache: std::sync::Arc::new(
@@ -365,10 +368,7 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(
-            response.rows,
-            vec![vec![json!(7), json!("[BLOB - 4 KB]")]]
-        );
+        assert_eq!(response.rows, vec![vec![json!(7), json!("[BLOB - 4 KB]")]]);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -524,10 +524,7 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(
-            response.rows,
-            vec![vec![json!(9), json!("[BLOB - 14 B]")]]
-        );
+        assert_eq!(response.rows, vec![vec![json!(9), json!("[BLOB - 14 B]")]]);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

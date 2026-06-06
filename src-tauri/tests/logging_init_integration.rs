@@ -31,19 +31,35 @@ impl Drop for RustLogGuard {
 fn init_logging_and_reload_helpers() {
     let _g = RustLogGuard::isolate();
     let dir = tempfile::tempdir().expect("tempdir");
-    let init = sqllumen_lib::logging::init_logging(dir.path()).expect("init logging");
+    let log_db_path = dir.path().join("sqllumen-logs.db");
+    let init = sqllumen_lib::logging::init_logging(&log_db_path).expect("init logging");
     assert!(!init.rust_log_env_set);
 
     // Emit a tracing event to exercise BracketLevelFormat::format_event
     tracing::info!(target: "sqllumen_lib::logging", "logging init integration test event");
 
-    let log_files: Vec<_> = std::fs::read_dir(dir.path())
-        .expect("read log dir")
-        .filter_map(|e| e.ok())
-        .collect();
     assert!(
-        !log_files.is_empty(),
-        "expected rolling log file under log dir"
+        log_db_path.exists(),
+        "expected sqlite log database to be created"
+    );
+
+    let log_conn =
+        sqllumen_lib::logging::log_store::open_log_database(&log_db_path).expect("open log db");
+    for _ in 0..20 {
+        let count: i64 = log_conn
+            .query_row("SELECT COUNT(*) FROM log_entries", [], |row| row.get(0))
+            .expect("count log entries");
+        if count > 0 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let count: i64 = log_conn
+        .query_row("SELECT COUNT(*) FROM log_entries", [], |row| row.get(0))
+        .expect("count log entries");
+    assert!(
+        count > 0,
+        "expected emitted log event to reach sqlite log store"
     );
 
     let conn = common::test_db();
@@ -59,7 +75,7 @@ fn init_logging_and_reload_helpers() {
     sqllumen_lib::logging::reload_log_level_from_setting_value(None, "trace");
     sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "bogus");
 
-    let second = sqllumen_lib::logging::init_logging(dir.path());
+    let second = sqllumen_lib::logging::init_logging(&log_db_path);
     let err = match second {
         Err(e) => e,
         Ok(_) => panic!("second init should fail"),

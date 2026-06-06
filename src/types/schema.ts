@@ -644,7 +644,6 @@ export interface ShortcutActionDescriptor {
 
 export interface AppInfo {
   rustLogOverride: boolean
-  logDirectory: string
   appVersion: string
 }
 

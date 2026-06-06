@@ -247,7 +247,8 @@ fn update_rows_in_place_matching_version_swaps_rows() {
     );
 
     let version = cache.current_invalidation_version("conn1", "tab1");
-    let new_rows = std::sync::Arc::new(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
+    let new_rows =
+        std::sync::Arc::new(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
 
     let applied = cache.update_rows_in_place_if_current(
         "conn1",
@@ -276,7 +277,10 @@ fn update_rows_in_place_mismatched_version_is_noop() {
     cache.insert(
         "conn1",
         "tab1",
-        vec![stub_result_with_rows("q1", vec![vec![serde_json::json!(2)]])],
+        vec![stub_result_with_rows(
+            "q1",
+            vec![vec![serde_json::json!(2)]],
+        )],
     );
     let stale_version = cache.current_invalidation_version("conn1", "tab1");
 
@@ -286,7 +290,10 @@ fn update_rows_in_place_mismatched_version_is_noop() {
     cache.insert(
         "conn1",
         "tab1",
-        vec![stub_result_with_rows("q2", vec![vec![serde_json::json!(99)]])],
+        vec![stub_result_with_rows(
+            "q2",
+            vec![vec![serde_json::json!(99)]],
+        )],
     );
 
     let new_rows = std::sync::Arc::new(vec![vec![serde_json::json!(1)]]);
@@ -297,7 +304,10 @@ fn update_rows_in_place_mismatched_version_is_noop() {
     // The fresh results must be untouched.
     let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
     assert_eq!(entry.value[0].query_id, "q2");
-    assert_eq!(entry.value[0].rows.as_ref(), &vec![vec![serde_json::json!(99)]]);
+    assert_eq!(
+        entry.value[0].rows.as_ref(),
+        &vec![vec![serde_json::json!(99)]]
+    );
 }
 
 #[test]

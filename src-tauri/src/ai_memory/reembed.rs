@@ -24,14 +24,15 @@ where
     F: Fn(MemoryReembedProgress) + Send + 'static,
 {
     let owner_key_owned = owner_key.to_string();
-    let make_progress =
-        move |phase: &str, done: usize, total: usize, error: Option<String>| MemoryReembedProgress {
+    let make_progress = move |phase: &str, done: usize, total: usize, error: Option<String>| {
+        MemoryReembedProgress {
             owner_key: owner_key_owned.clone(),
             phase: phase.to_string(),
             done,
             total,
             error,
-        };
+        }
+    };
 
     tracing::debug!(owner_key, scope = scope.as_str(), "reembed_memories: start");
     progress_callback(make_progress("embedding", 0, 0, None));

@@ -1,5 +1,6 @@
 import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
+import type { LogLevelFilter } from './log-commands'
 import {
   getAiModelsFixture,
   getAnalyzeQueryForEditFixture,
@@ -11,9 +12,11 @@ import {
   getCachedRowsFixture,
   getColumnsFixture,
   getConnectionMemoriesFixture,
+  getExportLogsFixture,
   getForeignKeysFixture,
   getGlobalMemoriesFixture,
   getGroupMemoriesFixture,
+  getLogsPageFixture,
   getMovedMemoryFixture,
   getSavedMemoryFixture,
   getObjectBodyFixture,
@@ -28,6 +31,14 @@ import {
 } from '../tests/playwright-fixtures'
 
 const MOCK_TS = '2025-01-01T00:00:00.000Z'
+const PLAYWRIGHT_LOG_LEVEL_FILTERS: LogLevelFilter[] = [
+  'all',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+]
 
 /** Deterministic saved profile for Playwright / VITE_PLAYWRIGHT browser runs. */
 export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
@@ -283,10 +294,27 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'log_frontend':
       return null
+    case 'list_logs': {
+      const page = Number((args as Record<string, unknown>)?.page ?? 1)
+      const level = (args as Record<string, unknown>)?.level
+      const normalizedLevel =
+        typeof level === 'string' && PLAYWRIGHT_LOG_LEVEL_FILTERS.includes(level as LogLevelFilter)
+          ? (level as LogLevelFilter)
+          : 'all'
+      return getLogsPageFixture(page, normalizedLevel)
+    }
+    case 'export_logs': {
+      const startTimestamp = (args as Record<string, unknown>)?.startTimestamp
+      const endTimestamp = (args as Record<string, unknown>)?.endTimestamp
+      return getExportLogsFixture(
+        typeof startTimestamp === 'string' ? startTimestamp : '',
+        typeof endTimestamp === 'string' ? endTimestamp : ''
+      )
+    }
 
     // --- App info ---
     case 'get_app_info':
-      return { rustLogOverride: false, logDirectory: '/mock/app/logs', appVersion: '0.1.0' }
+      return { rustLogOverride: false, appVersion: '0.1.0' }
 
     // --- Connection management ---
     case 'list_connections':

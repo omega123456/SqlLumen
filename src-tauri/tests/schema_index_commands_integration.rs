@@ -17,8 +17,8 @@ use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{IndexMeta, IndexStatus};
 use sqllumen_lib::state::AppState;
 use std::collections::HashMap;
-use std::thread;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use tokio_util::sync::CancellationToken;
 
 fn test_state() -> AppState {
@@ -26,6 +26,7 @@ fn test_state() -> AppState {
     let conn = common::test_db();
     AppState {
         db: Arc::new(Mutex::new(conn)),
+        logs_db: Arc::new(Mutex::new(common::test_db())),
         registry: sqllumen_lib::mysql::registry::ConnectionRegistry::new(),
         app_handle: None,
         result_cache: std::sync::Arc::new(
@@ -60,6 +61,7 @@ fn test_state_with_vec() -> AppState {
     let conn = common::test_db();
     AppState {
         db: Arc::new(Mutex::new(conn)),
+        logs_db: Arc::new(Mutex::new(common::test_db())),
         registry: sqllumen_lib::mysql::registry::ConnectionRegistry::new(),
         app_handle: None,
         result_cache: std::sync::Arc::new(

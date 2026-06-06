@@ -864,7 +864,14 @@ async fn execute_single_statement_inner(
                     // DML / DDL: no separate row-transfer phase, so execution and
                     // total time are the same elapsed value.
                     let elapsed = start.elapsed().as_millis() as u64;
-                    (vec![], vec![], result.rows_affected(), elapsed, elapsed, false)
+                    (
+                        vec![],
+                        vec![],
+                        result.rows_affected(),
+                        elapsed,
+                        elapsed,
+                        false,
+                    )
                 }
                 Err(e) => return Err(format!("Query failed: {e}")),
             }

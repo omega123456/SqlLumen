@@ -82,6 +82,7 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .pageButton {
@@ -108,6 +109,15 @@
 }
 
 .pageText {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  user-select: none;
+  min-width: 92px;
+  text-align: center;
+}
+
+.pageOfText {
   font-size: 12px;
   color: var(--on-surface-variant);
   white-space: nowrap;

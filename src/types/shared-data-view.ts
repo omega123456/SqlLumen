@@ -283,6 +283,10 @@ interface PaginationGroupCommonProps {
   currentPage: number
   pageSize: number
   disabled?: boolean
+  /** When false, hides the page-size dropdown while preserving existing defaults. */
+  showPageSize?: boolean
+  /** When true, renders first/last navigation buttons in known-total mode. */
+  showFirstLastButtons?: boolean
   /** When true, the page-size dropdown is disabled (e.g. cache-only results). */
   pageSizeDisabled?: boolean
   onPageSizeChange: (size: number) => void

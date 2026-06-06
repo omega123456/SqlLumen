@@ -148,9 +148,14 @@ pub fn run() {
         .setup(|app| {
             let base = app.path().app_data_dir()?;
             let dir = resolved_app_data_dir(&base);
-            let log_dir = dir.join("logs");
-            let logging_init = crate::logging::init_logging(&log_dir)
+            let log_db_path = dir.join(crate::logging::log_store::LOG_DB_FILE_NAME);
+            let logging_init = crate::logging::init_logging(&log_db_path)
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+            let logs_conn = crate::logging::log_store::open_log_database(&log_db_path).map_err(
+                |e| -> Box<dyn std::error::Error> {
+                    format!("failed to open log database: {e}").into()
+                },
+            )?;
 
             let conn = initialize_database(&dir)
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
@@ -218,12 +223,13 @@ pub fn run() {
             tracing::info!(
                 target: "sqllumen_lib",
                 rust_log_env_set = logging_init.rust_log_env_set,
-                log_dir = %log_dir.display(),
+                log_db_path = %log_db_path.display(),
                 "logging initialized"
             );
 
             let state = AppState {
                 db: Arc::new(Mutex::new(conn)),
+                logs_db: Arc::new(Mutex::new(logs_conn)),
                 registry: ConnectionRegistry::new(),
                 app_handle: Some(app.handle().clone()),
                 result_cache,
@@ -364,6 +370,8 @@ pub fn run() {
             commands::history::list_history,
             commands::history::delete_history_entry,
             commands::history::clear_history,
+            commands::logs::list_logs,
+            commands::logs::export_logs,
             commands::session_snapshots::create_session_snapshot,
             commands::session_snapshots::list_session_snapshots,
             commands::session_snapshots::get_session_snapshot,
