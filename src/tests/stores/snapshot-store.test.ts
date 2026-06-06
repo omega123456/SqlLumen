@@ -419,7 +419,7 @@ describe('restoreSnapshot', () => {
       JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
     )
     const closeConnectionSpy = vi.fn(async () => true)
-    const logFrontendSpy = vi.fn(() => undefined)
+    const logFrontendSpy = vi.fn((_args: unknown) => undefined)
 
     ipc.override('create_session_snapshot', createSnapshotSpy)
     ipc.override('get_session_snapshot', getSnapshotSpy)
