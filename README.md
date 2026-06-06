@@ -41,6 +41,7 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 - **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
 - **History & favorites** — query history and saved snippets/favorites
 - **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally; current workspace session restored on relaunch and auto-saved on close / every 5 minutes when enabled. The Results settings page includes a "Show table data tabs in bottom panel" toggle (opt-in, off by default) that scopes table-data tabs to the active query editor and shows them alongside query results in the query editor's lower result panel.
+- **Session Snapshots** — open **Session Snapshots** from the app toolbar to capture the current set of open connections and workspace tabs on demand, restore an earlier session, or delete old snapshots. Restoring first creates a safety snapshot of the current session when there is anything open, then force-closes the current session before replaying the saved one. Snapshot cadence (`Off`, `On Close`, `Daily`, `Weekly`) and retention count are configurable in Settings.
 - **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with per-tab panel state preserved across workspace tab switches, longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, and stable inline context prefixes that preserve follow-up prompt-cache reuse. Those prefixes also remain compatible with OpenAI-compatible local providers that enforce stricter system-message ordering, including vLLM. OpenAI-compatible Responses API chaining with automatic chat-completions fallback is supported where available. Use `/remember <text>` in the AI chat to save per-connection memories that persist across sessions and improve future AI responses. Manage saved memories in AI Settings. AI Settings exposes a **Chat Base URL** for chat completions and an optional **Embedding Base URL** for embedding models (used by schema search and saved memories); when the embedding URL is left blank, embeddings fall back to the chat URL, so existing single-server setups keep working unchanged. The default AI retrieval settings are now `Top-K per query = 30` and `Top-N results = 20`.
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
 
@@ -55,6 +56,15 @@ Use **Copy to Another Host...** from the object browser context menu on a databa
 - Start the copy to monitor object-level progress, table row progress when available, and to cancel the job before it completes.
 
 The target copy workflow temporarily disables foreign-key checks on the destination and restores them when the operation finishes.
+
+## Session Snapshots
+
+Open **Session Snapshots** from the app toolbar when you want to capture or roll back your current desktop workspace state.
+
+- **Create manually** — click **Create Snapshot** to save the currently open connections and restorable workspace tabs immediately.
+- **Restore safely** — pick a snapshot and click **Restore Snapshot**. If the current session has open connections, SqlLumen first saves a safety snapshot of that live session, then closes the current connections and restores the saved session. If the current session cannot be closed cleanly, the restore is aborted and the pre-restore session is recovered.
+- **Delete** — use the trash action on a snapshot row to remove a snapshot you no longer want to keep.
+- **Cadence and retention** — configure automatic snapshot cadence and how many snapshots to keep in **Settings**. Cadence options are `Off`, `On Close`, `Daily`, and `Weekly`; retention controls how many of the newest snapshots are preserved before older ones are pruned.
 
 ## BLOB viewing and editing
 

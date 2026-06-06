@@ -1,0 +1,23 @@
+[[permission]]
+identifier = "allow-create-session-snapshot"
+description = "Enables the create_session_snapshot command without any pre-configured scope."
+commands.allow = ["create_session_snapshot"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-session-snapshots"
+description = "Enables the list_session_snapshots command without any pre-configured scope."
+commands.allow = ["list_session_snapshots"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-session-snapshot"
+description = "Enables the get_session_snapshot command without any pre-configured scope."
+commands.allow = ["get_session_snapshot"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-session-snapshot"
+description = "Enables the delete_session_snapshot command without any pre-configured scope."
+commands.allow = ["delete_session_snapshot"]
+commands.deny = []

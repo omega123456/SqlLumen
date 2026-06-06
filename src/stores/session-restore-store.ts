@@ -53,6 +53,23 @@ const saveSessionWaiters = new Map<
 >()
 let loadTauriWindowApi: LoadTauriWindowApi = defaultLoadTauriWindowApi
 
+/**
+ * Hooks invoked during the window-close flow, after the session state has been
+ * saved and before the window is destroyed. Used by other stores (e.g. the
+ * snapshot store) to run close-time work without `session-restore-store`
+ * depending on them (avoids an import cycle).
+ */
+const preCloseHooks: Array<() => Promise<void>> = []
+
+/**
+ * Register a hook to run during the window-close flow. Hooks run after the
+ * session-state save and before the window is destroyed. A failing hook is
+ * logged but must never block window destruction.
+ */
+export function registerPreCloseHook(hook: () => Promise<void>): void {
+  preCloseHooks.push(hook)
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -66,6 +83,8 @@ interface SessionRestoreState {
   // Actions
   saveSession: (options?: SaveSessionOptions) => Promise<void>
   restoreSession: () => Promise<void>
+  /** Apply a session state directly (used by both launch-restore and snapshot-restore). */
+  restoreFromState: (state: SessionState) => Promise<void>
   isEnabled: () => boolean
 }
 
@@ -102,24 +121,32 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
   },
 
   restoreSession: async (): Promise<void> => {
+    if (!get().isEnabled()) {
+      return
+    }
+
+    const state = await loadSessionState()
+    if (!state) {
+      return
+    }
+
+    await get().restoreFromState(state)
+  },
+
+  restoreFromState: async (state: SessionState): Promise<void> => {
     // Guard against concurrent calls (React StrictMode double-invokes effects
     // in dev, which would otherwise open each connection twice).
     if (get().isRestoring) {
       return
     }
 
-    if (!get().isEnabled()) {
+    if (!state || state.connections.length === 0) {
       return
     }
 
     set({ isRestoring: true, restoreError: null })
 
     try {
-      const state = await loadSessionState()
-      if (!state || state.connections.length === 0) {
-        return
-      }
-
       // Ensure saved connections are loaded so we can look them up by profile ID
       await useConnectionStore.getState().fetchSavedConnections()
       const restoredSessionIdsBySavedIndex: Array<string | null> = Array.from(
@@ -207,7 +234,7 @@ async function runSaveSessionQueue(): Promise<void> {
   }
 }
 
-function buildSessionState(): SessionState {
+export function buildSessionState(): SessionState {
   const connectionStore = useConnectionStore.getState()
   const workspaceStore = useWorkspaceStore.getState()
   const queryStore = useQueryStore.getState()
@@ -590,6 +617,7 @@ export function _resetSessionPersistenceForTests(): void {
   saveSessionCompletedRequestId = 0
   saveSessionWaiters.clear()
   loadTauriWindowApi = defaultLoadTauriWindowApi
+  preCloseHooks.length = 0
 }
 
 export function _setLoadTauriWindowApiForTests(loader: LoadTauriWindowApi): void {
@@ -628,6 +656,18 @@ export async function registerCloseHandler(): Promise<void> {
         logFrontend('error', `[session-restore] Error saving session on close: ${msg}`)
         return
       }
+
+      // Run registered pre-close hooks (e.g. snapshot creation). A failing hook
+      // must never block window destruction.
+      for (const hook of preCloseHooks) {
+        try {
+          await hook()
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          logFrontend('error', `[session-restore] Pre-close hook failed: ${msg}`)
+        }
+      }
+
       await appWindow.destroy()
     })
     closeHandlerRegistered = true

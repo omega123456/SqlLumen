@@ -10,6 +10,7 @@ import { ConnectionDialog } from '../connection-dialog/ConnectionDialog'
 import { SettingsDialog } from '../settings/SettingsDialog'
 import { ToastViewport } from '../common/ToastViewport'
 import SqlImportDialog from '../dialogs/SqlImportDialog'
+import { SnapshotDialog } from '../dialogs/SnapshotDialog'
 import { useShortcut } from '../../hooks/useShortcut'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -18,6 +19,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { useSnapshotStore } from '../../stores/snapshot-store'
 import { useZoomStore } from '../../stores/zoom-store'
 import { readFile } from '../../lib/query-commands'
 import {
@@ -317,7 +319,10 @@ export function AppLayout() {
 
   return (
     <div className={styles.appLayout} data-testid="app-layout">
-      <ConnectionTabBar onOpenSettings={handleOpenSettings} />
+      <ConnectionTabBar
+        onOpenSettings={handleOpenSettings}
+        onOpenSnapshots={() => useSnapshotStore.getState().openDialog()}
+      />
       <div className={styles.mainContent}>
         <Group orientation="horizontal" className={styles.panelGroup}>
           <Panel
@@ -344,6 +349,7 @@ export function AppLayout() {
       <StatusBar />
       <ConnectionDialog />
       <SettingsDialog isOpen={isSettingsOpen} onClose={handleCloseSettings} />
+      <SnapshotDialog />
       {importDialogRequest && (
         <SqlImportDialog
           connectionId={importDialogRequest.connectionId}

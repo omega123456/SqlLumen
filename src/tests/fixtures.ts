@@ -370,4 +370,35 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   delete_memory: () => null,
   search_memories: () => [],
   reembed_all_memories: () => null,
+
+  // --- Session snapshots ---
+  create_session_snapshot: () => 1,
+  list_session_snapshots: () => [
+    {
+      id: 2,
+      createdAt: '2026-06-05T14:32:00.000Z',
+      triggerType: 'manual',
+      connectionCount: 2,
+      tabCount: 5,
+      connections: [
+        { name: 'ProdDB', tabCount: 3 },
+        { name: 'Staging', tabCount: 2 },
+      ],
+    },
+    {
+      id: 1,
+      createdAt: '2026-06-04T18:11:00.000Z',
+      triggerType: 'onClose',
+      connectionCount: 1,
+      tabCount: 2,
+      connections: [{ name: 'ProdDB', tabCount: 2 }],
+    },
+  ],
+  get_session_snapshot: () =>
+    JSON.stringify({
+      version: 1,
+      activeConnectionIndex: 0,
+      connections: [{ profileId: 'conn-mock-1', activeTabIndex: 0, tabs: [] }],
+    }),
+  delete_session_snapshot: () => undefined,
 }

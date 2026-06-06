@@ -20,6 +20,9 @@ import {
   getQueryResultFixture,
   getRoutineParamsFixture,
   getSchemaInfoFixture,
+  getSnapshotCreatedIdFixture,
+  getSnapshotListFixture,
+  getSnapshotStateFixture,
   getTableDataFixture,
   getTargetDatabasesFixture,
 } from '../tests/playwright-fixtures'
@@ -1331,6 +1334,16 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'search_memories':
       return []
     case 'reembed_all_memories':
+      return null
+
+    // --- Session snapshots ---
+    case 'create_session_snapshot':
+      return getSnapshotCreatedIdFixture()
+    case 'list_session_snapshots':
+      return getSnapshotListFixture()
+    case 'get_session_snapshot':
+      return getSnapshotStateFixture((args as Record<string, unknown>)?.id as number | null)
+    case 'delete_session_snapshot':
       return null
 
     default:

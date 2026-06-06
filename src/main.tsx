@@ -9,6 +9,7 @@ import { playwrightIpcMockHandler } from './lib/playwright-ipc-mock'
 import { useSettingsStore } from './stores/settings-store'
 import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
+import { hasTauriApis } from './lib/tauri-env'
 
 // ---------------------------------------------------------------------------
 // Dynamic Monaco import — non-blocking so app renders immediately
@@ -133,6 +134,14 @@ async function init() {
   import('./stores/session-restore-store').then(({ registerCloseHandler }) => {
     void registerCloseHandler()
   })
+
+  // Register the snapshot scheduler (periodic check + on-close hook). Tauri-only;
+  // the scheduler self-guards when no Tauri APIs / window are available.
+  if (hasTauriApis()) {
+    import('./stores/snapshot-store').then(({ registerSnapshotScheduler }) => {
+      registerSnapshotScheduler()
+    })
+  }
 
   // Hydrate saved connections early so AI memory and other stores can use them
   void useConnectionStore.getState().fetchSavedConnections()

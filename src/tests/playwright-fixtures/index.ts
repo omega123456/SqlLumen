@@ -30,7 +30,13 @@ import {
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
+import {
+  DEFAULT_CREATED_SNAPSHOT_ID,
+  DEFAULT_SNAPSHOT_STATE_JSON,
+  DEFAULT_SNAPSHOT_SUMMARIES,
+} from './snapshots'
 import type { AiModelInfo } from '../../lib/ai-commands'
+import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
 import type { BlobValueResponse } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type {
@@ -76,6 +82,9 @@ type FixtureOverrideDomain =
   | 'copyCancel'
   | 'blobValue'
   | 'aiModels'
+  | 'snapshotList'
+  | 'snapshotState'
+  | 'snapshotCreatedId'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -96,6 +105,9 @@ type FixtureOverrides = {
   copyCancel: Record<string, null>
   blobValue: Record<string, BlobValueResponse>
   aiModels: Record<string, AiModelInfo[]>
+  snapshotList: Record<string, SnapshotSummary[]>
+  snapshotState: Record<string, string | null>
+  snapshotCreatedId: Record<string, number>
 }
 
 type FixtureOverrideValueMap = {
@@ -115,6 +127,9 @@ type FixtureOverrideValueMap = {
   copyCancel: null
   blobValue: BlobValueResponse
   aiModels: AiModelInfo[]
+  snapshotList: SnapshotSummary[]
+  snapshotState: string | null
+  snapshotCreatedId: number
 }
 
 type FixtureRegistryApi = {
@@ -142,6 +157,9 @@ type FixtureRegistryApi = {
   getCancelCopyFixture: (jobId: string | null | undefined) => null
   getBlobValueFixture: (column: string | null | undefined) => BlobValueResponse
   getAiModelsFixture: (endpoint: string | null | undefined) => AiModelInfo[]
+  getSnapshotListFixture: () => SnapshotSummary[]
+  getSnapshotStateFixture: (id: number | null | undefined) => string | null
+  getSnapshotCreatedIdFixture: () => number
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -235,6 +253,9 @@ const overrides: FixtureOverrides = {
   copyCancel: {},
   blobValue: {},
   aiModels: {},
+  snapshotList: {},
+  snapshotState: {},
+  snapshotCreatedId: {},
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -445,6 +466,25 @@ export function getAiModelsFixture(endpoint: string | null | undefined): AiModel
   )
 }
 
+export function getSnapshotListFixture(): SnapshotSummary[] {
+  return overrides.snapshotList.default ?? DEFAULT_SNAPSHOT_SUMMARIES
+}
+
+export function getSnapshotStateFixture(id: number | null | undefined): string | null {
+  const idKey = normalizeLookupKey(id == null ? null : String(id))
+  if (idKey in overrides.snapshotState) {
+    return overrides.snapshotState[idKey]
+  }
+  if ('default' in overrides.snapshotState) {
+    return overrides.snapshotState.default
+  }
+  return DEFAULT_SNAPSHOT_STATE_JSON
+}
+
+export function getSnapshotCreatedIdFixture(): number {
+  return overrides.snapshotCreatedId.default ?? DEFAULT_CREATED_SNAPSHOT_ID
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -481,6 +521,9 @@ export function resetFixtureOverrides(): void {
   overrides.copyCancel = {}
   overrides.blobValue = {}
   overrides.aiModels = {}
+  overrides.snapshotList = {}
+  overrides.snapshotState = {}
+  overrides.snapshotCreatedId = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -500,6 +543,9 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCancelCopyFixture,
   getBlobValueFixture,
   getAiModelsFixture,
+  getSnapshotListFixture,
+  getSnapshotStateFixture,
+  getSnapshotCreatedIdFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

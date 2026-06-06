@@ -48,6 +48,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "011_ai_memory_multi_level",
         include_str!("../../migrations/011_ai_memory_multi_level.sql"),
     ),
+    (
+        "012_session_snapshots",
+        include_str!("../../migrations/012_session_snapshots.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.

@@ -7,7 +7,55 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
+import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { ipc } from '../ipc-mock'
+import type { ActiveConnection } from '../../types/connection'
+
+function makeActiveConnection(sessionId: string, profileId: string, name: string): ActiveConnection {
+  return {
+    id: sessionId,
+    profile: {
+      id: profileId,
+      name,
+      host: 'localhost',
+      port: 3306,
+      username: 'root',
+      hasPassword: true,
+      defaultDatabase: 'testdb',
+      sslEnabled: false,
+      sslCaPath: null,
+      sslCertPath: null,
+      sslKeyPath: null,
+      color: null,
+      groupId: null,
+      readOnly: false,
+      sortOrder: 0,
+      connectTimeoutSecs: 10,
+      keepaliveIntervalSecs: 60,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    },
+    sessionDatabase: 'testdb',
+    status: 'connected',
+    serverVersion: '8.0.0',
+  }
+}
+
+function dirtyQueryResult(queryId: string) {
+  return {
+    ...DEFAULT_RESULT_STATE,
+    resultStatus: 'success' as const,
+    queryId,
+    editState: {
+      rowKey: { id: 1 },
+      originalValues: { name: 'Alice' },
+      currentValues: { name: 'Bob' },
+      modifiedColumns: new Set(['name']),
+      isNewRow: false,
+    },
+    editingRowIndex: 0,
+  }
+}
 
 beforeEach(() => {
   // Reset all stores
@@ -23,6 +71,7 @@ beforeEach(() => {
   resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
+  useObjectEditorStore.setState({ tabs: {} })
   _resetListenersSetup()
 
   ipc.override('close_connection', () => null)
@@ -566,5 +615,230 @@ describe('useConnectionStore — explicit active connection order lifecycle', ()
 
     expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['session-2', 'session-1'])
     expect(useConnectionStore.getState().activeTabId).toBe('session-1')
+  })
+})
+
+describe('useConnectionStore — closeAllConnections', () => {
+  it('closes every active connection and leaves no residual workspace tabs', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+        'session-2': makeActiveConnection('session-2', 'profile-2', 'B'),
+      },
+      activeConnectionOrder: ['session-1', 'session-2'],
+      activeTabId: 'session-1',
+    })
+    useWorkspaceStore.getState().openQueryTab('session-1')
+    useWorkspaceStore.getState().openQueryTab('session-2')
+
+    await useConnectionStore.getState().closeAllConnections()
+
+    const state = useConnectionStore.getState()
+    expect(state.activeConnections).toEqual({})
+    expect(state.activeConnectionOrder).toEqual([])
+    expect(state.activeTabId).toBeNull()
+    expect(useWorkspaceStore.getState().tabsByConnection['session-1']).toBeUndefined()
+    expect(useWorkspaceStore.getState().tabsByConnection['session-2']).toBeUndefined()
+  })
+
+  it('reports failure when not every targeted connection closes', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+        'session-2': makeActiveConnection('session-2', 'profile-2', 'B'),
+      },
+      activeConnectionOrder: ['session-1', 'session-2'],
+      activeTabId: 'session-1',
+    })
+
+    const originalCloseConnection = useConnectionStore.getState().closeConnection
+    const closeConnectionSpy = vi
+      .fn(originalCloseConnection)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+
+    useConnectionStore.setState({
+      closeConnection: closeConnectionSpy,
+    })
+
+    const allClosed = await useConnectionStore.getState().closeAllConnections({ force: true })
+
+    expect(allClosed).toBe(false)
+    expect(closeConnectionSpy).toHaveBeenNthCalledWith(1, 'session-1', { force: true })
+    expect(closeConnectionSpy).toHaveBeenNthCalledWith(2, 'session-2', { force: true })
+  })
+})
+
+describe('useConnectionStore — force close', () => {
+  it('closes without prompting via globalThis.confirm even with dirty edits', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+      },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+
+    const tabId = useWorkspaceStore.getState().openQueryTab('session-1')
+    useQueryStore.setState({
+      tabs: {
+        [tabId]: {
+          content: 'SELECT 1; SELECT 2',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'session-1',
+          results: [dirtyQueryResult('q1'), dirtyQueryResult('q2')],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
+        },
+      },
+    })
+
+    const confirmSpy = vi.spyOn(globalThis, 'confirm')
+    const saveCurrentRowSpy = vi.spyOn(useQueryStore.getState(), 'saveCurrentRow')
+
+    await useConnectionStore.getState().closeConnection('session-1', { force: true })
+
+    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(saveCurrentRowSpy).not.toHaveBeenCalled()
+    expect(useConnectionStore.getState().activeConnections['session-1']).toBeUndefined()
+
+    confirmSpy.mockRestore()
+    saveCurrentRowSpy.mockRestore()
+  })
+})
+
+describe('useConnectionStore — connectionsWithUnsavedEdits', () => {
+  it('returns nothing when no edits are pending', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+      },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    useWorkspaceStore.getState().openQueryTab('session-1')
+
+    expect(useConnectionStore.getState().connectionsWithUnsavedEdits()).toEqual([])
+  })
+
+  it('identifies a connection with a dirty query-result tab', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+      },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    const tabId = useWorkspaceStore.getState().openQueryTab('session-1')
+    useQueryStore.setState({
+      tabs: {
+        [tabId]: {
+          content: 'SELECT 1',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'session-1',
+          results: [dirtyQueryResult('q1')],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
+        },
+      },
+    })
+
+    expect(useConnectionStore.getState().connectionsWithUnsavedEdits()).toEqual(['session-1'])
+  })
+
+  it('identifies a connection with a dirty table-data tab', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+      },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    const tabId = useWorkspaceStore.getState().restoreTableDataTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'session-1',
+      databaseName: 'testdb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useTableDataStore.setState({
+      tabs: {
+        [tabId]: {
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { name: 'Alice' },
+            currentValues: { name: 'Bob' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+        },
+      } as never,
+    })
+
+    expect(useConnectionStore.getState().connectionsWithUnsavedEdits()).toEqual(['session-1'])
+  })
+
+  it('identifies a connection with a dirty object-editor tab', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': makeActiveConnection('session-1', 'profile-1', 'A'),
+      },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    useWorkspaceStore.setState((state) => ({
+      tabsByConnection: {
+        ...state.tabsByConnection,
+        'session-1': [
+          {
+            id: 'oe-tab-1',
+            type: 'object-editor',
+            label: 'my_view',
+            connectionId: 'session-1',
+            databaseName: 'testdb',
+            objectName: 'my_view',
+            objectType: 'view',
+            mode: 'alter',
+          },
+        ],
+      },
+    }))
+    useObjectEditorStore.setState({
+      tabs: {
+        'oe-tab-1': {
+          connectionId: 'session-1',
+          database: 'testdb',
+          objectName: 'my_view',
+          objectType: 'view',
+          mode: 'alter',
+          content: 'SELECT 2',
+          originalContent: 'SELECT 1',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    expect(useConnectionStore.getState().connectionsWithUnsavedEdits()).toEqual(['session-1'])
   })
 })

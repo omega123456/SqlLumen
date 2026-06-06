@@ -70,7 +70,14 @@ export function ConfirmDialog({
           disabled={isLoading}
           data-testid="confirm-confirm-button"
         >
-          {isLoading ? 'Processing...' : confirmLabel}
+          {isLoading ? (
+            <span className={styles.confirmContent}>
+              <span className={styles.spinner} aria-hidden="true" />
+              Processing...
+            </span>
+          ) : (
+            confirmLabel
+          )}
         </Button>
       </div>
     </DialogShell>

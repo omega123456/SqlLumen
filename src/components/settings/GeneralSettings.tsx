@@ -18,6 +18,20 @@ const ZOOM_OPTIONS = ZOOM_LEVELS.map((level) => ({
   label: level === 100 ? '100% (Default)' : `${level}%`,
 }))
 
+const SNAPSHOT_FREQUENCY_OPTIONS = [
+  { value: 'off', label: 'Off' },
+  { value: 'onClose', label: 'On close only' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+]
+
+const SNAPSHOT_KEEP_OPTIONS = [
+  { value: '5', label: '5' },
+  { value: '10', label: '10' },
+  { value: '20', label: '20' },
+  { value: '50', label: '50' },
+]
+
 export function GeneralSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
   const previewTheme = useThemeStore((s) => s.previewTheme)
@@ -27,6 +41,8 @@ export function GeneralSettings() {
   const sessionRestore = useSettingValue('session.restore') === 'true'
   const connectionTimeout = useSettingValue('connection.defaultTimeout')
   const keepalive = useSettingValue('connection.defaultKeepalive')
+  const snapshotFrequency = useSettingValue('snapshots.frequency')
+  const snapshotKeep = useSettingValue('snapshots.keep')
 
   const handleThemeChange = (value: string) => {
     setPendingChange('theme', value)
@@ -83,6 +99,44 @@ export function GeneralSettings() {
           onChange={(checked) => setPendingChange('session.restore', String(checked))}
           data-testid="settings-session-restore"
         />
+      </SettingsSection>
+
+      <SettingsSection
+        title="Session Snapshots"
+        description="Periodically capture your open connections and tabs so you can restore them later."
+      >
+        <div>
+          <label
+            id="snapshot-frequency-label"
+            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
+          >
+            Snapshot frequency
+          </label>
+          <Dropdown
+            id="settings-snapshot-frequency"
+            labelledBy="snapshot-frequency-label"
+            options={SNAPSHOT_FREQUENCY_OPTIONS}
+            value={snapshotFrequency}
+            onChange={(value) => setPendingChange('snapshots.frequency', value)}
+            data-testid="settings-snapshot-frequency-dropdown"
+          />
+        </div>
+        <div>
+          <label
+            id="snapshot-keep-label"
+            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
+          >
+            Snapshots to keep
+          </label>
+          <Dropdown
+            id="settings-snapshot-keep"
+            labelledBy="snapshot-keep-label"
+            options={SNAPSHOT_KEEP_OPTIONS}
+            value={snapshotKeep}
+            onChange={(value) => setPendingChange('snapshots.keep', value)}
+            data-testid="settings-snapshot-keep-dropdown"
+          />
+        </div>
       </SettingsSection>
 
       <SettingsSection

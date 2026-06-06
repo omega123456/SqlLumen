@@ -29,6 +29,8 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'updates.checkInterval': DEFAULT_UPDATE_INTERVAL,
   shortcuts: '{}',
   'session.state': 'null',
+  'snapshots.frequency': 'daily',
+  'snapshots.keep': '10',
   'ai.enabled': 'false',
   'ai.endpoint': '',
   'ai.embeddingEndpoint': '',
@@ -59,6 +61,8 @@ function sectionForKey(key: string): SettingsSection | null {
     key === 'theme' ||
     key === 'session.restore' ||
     key === 'session.state' ||
+    key === 'snapshots.frequency' ||
+    key === 'snapshots.keep' ||
     key.startsWith('connection.') ||
     key.startsWith('appearance.')
   )

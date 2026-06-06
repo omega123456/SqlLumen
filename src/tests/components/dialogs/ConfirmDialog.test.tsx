@@ -74,11 +74,12 @@ describe('ConfirmDialog', () => {
     expect(btn.className).toContain('ui-button-primary')
   })
 
-  it('isLoading disables confirm button and shows loading state', () => {
+  it('isLoading disables confirm button and shows a spinner with loading state', () => {
     render(<ConfirmDialog {...defaultProps} isLoading />)
     const btn = screen.getByTestId('confirm-confirm-button')
     expect(btn).toBeDisabled()
     expect(btn).toHaveTextContent('Processing...')
+    expect(btn.querySelector('span[aria-hidden="true"]')).toBeInTheDocument()
   })
 
   it('renders "This action cannot be undone." warning', () => {

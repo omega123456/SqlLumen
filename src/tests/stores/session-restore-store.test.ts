@@ -7,9 +7,11 @@ import {
   _setLoadTauriWindowApiForTests,
   _resetSessionPersistenceForTests,
   registerCloseHandler,
+  registerPreCloseHook,
   SESSION_AUTOSAVE_INTERVAL_MS,
   useSessionRestoreStore,
 } from '../../stores/session-restore-store'
+import type { SessionState } from '../../lib/session-restore-commands'
 import { useConnectionStore, _resetListenersSetup } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
@@ -2284,5 +2286,245 @@ describe('useSessionRestoreStore — active connection order persistence', () =>
       'profile-a',
     ])
     expect(parsed.activeConnectionIndex).toBe(1)
+  })
+})
+
+describe('useSessionRestoreStore — restoreFromState', () => {
+  const SAVED_CONNECTIONS = [
+    {
+      id: 'profile-1',
+      name: 'Test MySQL',
+      host: '127.0.0.1',
+      port: 3306,
+      username: 'root',
+      hasPassword: true,
+      defaultDatabase: 'testdb',
+      sslEnabled: false,
+      sslCaPath: null,
+      sslCertPath: null,
+      sslKeyPath: null,
+      color: null,
+      groupId: null,
+      readOnly: false,
+      sortOrder: 0,
+      connectTimeoutSecs: 10,
+      keepaliveIntervalSecs: 60,
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+    },
+  ]
+
+  it('reconnects and rebuilds tabs from a given SessionState', async () => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
+      switch (cmd) {
+        case 'log_frontend':
+          return undefined
+        case 'list_connections':
+          return SAVED_CONNECTIONS
+        case 'list_connection_groups':
+          return []
+        case 'open_connection':
+          return { sessionId: 'session-profile-1', serverVersion: '8.0.0' }
+        default:
+          return null
+      }
+    })
+
+    const state: SessionState = {
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [
+            {
+              type: 'query-editor',
+              tabId: 'old-tab-1',
+              sql: 'SELECT 42',
+              label: 'Direct Restore',
+            },
+          ],
+        },
+      ],
+    }
+
+    await useSessionRestoreStore.getState().restoreFromState(state)
+
+    expect(useSessionRestoreStore.getState().isRestoring).toBe(false)
+    const connStore = useConnectionStore.getState()
+    expect(Object.keys(connStore.activeConnections)).toContain('session-profile-1')
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    expect(tabs.some((t) => t.type === 'query-editor')).toBe(true)
+  })
+
+  it('returns early for an empty state without reconnecting', async () => {
+    let openCount = 0
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
+      if (cmd === 'open_connection') {
+        openCount++
+        return { sessionId: 'session-x', serverVersion: '8.0.0' }
+      }
+      if (cmd === 'log_frontend') return undefined
+      if (cmd === 'list_connections') return SAVED_CONNECTIONS
+      if (cmd === 'list_connection_groups') return []
+      return null
+    })
+
+    await useSessionRestoreStore.getState().restoreFromState({ version: 1, connections: [] })
+
+    expect(openCount).toBe(0)
+    expect(useSessionRestoreStore.getState().isRestoring).toBe(false)
+  })
+
+  it('honors the isRestoring re-entrancy guard', async () => {
+    useSessionRestoreStore.setState({ isRestoring: true })
+    let openCount = 0
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
+      if (cmd === 'open_connection') {
+        openCount++
+        return { sessionId: 'session-x', serverVersion: '8.0.0' }
+      }
+      if (cmd === 'log_frontend') return undefined
+      if (cmd === 'list_connections') return SAVED_CONNECTIONS
+      if (cmd === 'list_connection_groups') return []
+      return null
+    })
+
+    await useSessionRestoreStore.getState().restoreFromState({
+      version: 1,
+      connections: [{ profileId: 'profile-1', activeTabIndex: 0, tabs: [] }],
+    })
+
+    // Guarded: should not reconnect while a restore is already in progress.
+    expect(openCount).toBe(0)
+  })
+
+  it('restoreSession loads session.state and delegates to restoreFromState', async () => {
+    const savedState: SessionState = {
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [
+            { type: 'query-editor', tabId: 'old-1', sql: 'SELECT 1', label: 'Launch Restore' },
+          ],
+        },
+      ],
+    }
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      switch (cmd) {
+        case 'log_frontend':
+          return undefined
+        case 'get_setting':
+          if (a?.key === 'session.state') return JSON.stringify(savedState)
+          return null
+        case 'list_connections':
+          return SAVED_CONNECTIONS
+        case 'list_connection_groups':
+          return []
+        case 'open_connection':
+          return { sessionId: 'session-profile-1', serverVersion: '8.0.0' }
+        default:
+          return null
+      }
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    expect(tabs.some((t) => t.type === 'query-editor')).toBe(true)
+  })
+})
+
+describe('useSessionRestoreStore — pre-close hooks', () => {
+  it('awaits registered pre-close hooks before destroying the window', async () => {
+    const calls: string[] = []
+    let closeHandler: ((event: { preventDefault: () => void }) => Promise<void> | void) | null =
+      null
+    const destroy = vi.fn(async () => {
+      calls.push('destroy')
+    })
+
+    _setLoadTauriWindowApiForTests(async () => ({
+      getCurrentWindow: () => ({
+        onCloseRequested: async (
+          handler: (event: { preventDefault: () => void }) => Promise<void> | void
+        ) => {
+          closeHandler = handler
+        },
+        destroy,
+      }),
+    }))
+
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        calls.push('save')
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    registerPreCloseHook(async () => {
+      calls.push('hook')
+    })
+
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
+      window as Window & { __TAURI_INTERNALS__?: unknown }
+    ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }
+
+    await registerCloseHandler()
+    if (!closeHandler) {
+      throw new Error('Expected close handler to be registered')
+    }
+    const invokeCloseHandler: (event: { preventDefault: () => void }) => Promise<void> | void =
+      closeHandler
+    await invokeCloseHandler({ preventDefault: vi.fn() })
+
+    expect(calls).toEqual(['save', 'hook', 'destroy'])
+    expect(destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('still destroys the window when a pre-close hook throws', async () => {
+    let closeHandler: ((event: { preventDefault: () => void }) => Promise<void> | void) | null =
+      null
+    const destroy = vi.fn(async () => undefined)
+
+    _setLoadTauriWindowApiForTests(async () => ({
+      getCurrentWindow: () => ({
+        onCloseRequested: async (
+          handler: (event: { preventDefault: () => void }) => Promise<void> | void
+        ) => {
+          closeHandler = handler
+        },
+        destroy,
+      }),
+    }))
+
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    registerPreCloseHook(async () => {
+      throw new Error('hook boom')
+    })
+
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
+      window as Window & { __TAURI_INTERNALS__?: unknown }
+    ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }
+
+    await registerCloseHandler()
+    if (!closeHandler) {
+      throw new Error('Expected close handler to be registered')
+    }
+    const invokeCloseHandler: (event: { preventDefault: () => void }) => Promise<void> | void =
+      closeHandler
+    await invokeCloseHandler({ preventDefault: vi.fn() })
+
+    expect(destroy).toHaveBeenCalledTimes(1)
   })
 })

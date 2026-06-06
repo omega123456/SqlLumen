@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import {
-  Sun,
-  Moon,
-  GearSix,
-  Plus,
-  X,
-  CaretLineLeft,
-  CaretLeft,
-  CaretRight,
-  CaretLineRight,
+  SunIcon,
+  MoonIcon,
+  GearSixIcon,
+  ClockCounterClockwiseIcon,
+  PlusIcon,
+  XIcon,
+  CaretLineLeftIcon,
+  CaretLeftIcon,
+  CaretRightIcon,
+  CaretLineRightIcon,
 } from '@phosphor-icons/react'
 import { useThemeStore } from '../../stores/theme-store'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
@@ -26,6 +27,7 @@ const POINTER_DRAG_THRESHOLD_PX = 4
 
 export interface ConnectionTabBarProps {
   onOpenSettings?: () => void
+  onOpenSnapshots?: () => void
 }
 
 function isDragHandleBlocked(target: EventTarget | null): boolean {
@@ -39,7 +41,7 @@ function isDragHandleBlocked(target: EventTarget | null): boolean {
   )
 }
 
-export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
+export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: ConnectionTabBarProps) {
   const [pendingConnectionClose, setPendingConnectionClose] = useState<{
     id: string
     displayName: string
@@ -298,7 +300,7 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
           title="New Connection"
           onClick={openDialog}
         >
-          <Plus size={20} weight="regular" />
+          <PlusIcon size={20} weight="regular" />
         </button>
       </div>
       {tabs.length > 0 && (
@@ -369,7 +371,7 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
                         void closeConnection(conn.id)
                       }}
                     >
-                      <X size={14} weight="regular" />
+                      <XIcon size={14} weight="regular" />
                     </button>
                   }
                 >
@@ -390,10 +392,20 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
           data-testid="theme-toggle"
         >
           {resolvedTheme === 'light' ? (
-            <Sun size={20} weight="regular" />
+            <SunIcon size={20} weight="regular" />
           ) : (
-            <Moon size={20} weight="regular" />
+            <MoonIcon size={20} weight="regular" />
           )}
+        </button>
+        <button
+          className={styles.iconButton}
+          type="button"
+          aria-label="Session Snapshots"
+          title="Session Snapshots"
+          onClick={onOpenSnapshots}
+          data-testid="snapshots-button"
+        >
+          <ClockCounterClockwiseIcon size={20} weight="regular" />
         </button>
         <button
           className={styles.iconButton}
@@ -403,7 +415,7 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
           onClick={onOpenSettings}
           data-testid="settings-button"
         >
-          <GearSix size={20} weight="regular" />
+          <GearSixIcon size={20} weight="regular" />
         </button>
       </div>
       {contextMenu && (
@@ -416,28 +428,28 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
             {
               key: 'move-start',
               label: 'Move to Start',
-              icon: <CaretLineLeft size={14} weight="regular" />,
+              icon: <CaretLineLeftIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex <= 0,
               onSelect: () => reorderActiveConnection(contextMenu.sessionId, 0),
             },
             {
               key: 'move-left',
               label: 'Move Left',
-              icon: <CaretLeft size={14} weight="regular" />,
+              icon: <CaretLeftIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex <= 0,
               onSelect: () => moveActiveConnection(contextMenu.sessionId, 'left'),
             },
             {
               key: 'move-right',
               label: 'Move Right',
-              icon: <CaretRight size={14} weight="regular" />,
+              icon: <CaretRightIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex < 0 || contextMenuTabIndex >= sessionIds.length - 1,
               onSelect: () => moveActiveConnection(contextMenu.sessionId, 'right'),
             },
             {
               key: 'move-end',
               label: 'Move to End',
-              icon: <CaretLineRight size={14} weight="regular" />,
+              icon: <CaretLineRightIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex < 0 || contextMenuTabIndex >= sessionIds.length - 1,
               onSelect: () => reorderActiveConnection(contextMenu.sessionId, sessionIds.length),
             },

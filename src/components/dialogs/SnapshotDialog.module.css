@@ -1,0 +1,166 @@
+/* SnapshotDialog — three-zone layout (header / scrollable list / sticky footer).
+   Shell sizing/padding handled by DialogShell (panelPadding={false}). */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-shrink: 0;
+  padding: var(--ui-dialog-header-padding-y) var(--ui-dialog-header-padding-x);
+  background: var(--ui-dialog-header-bg);
+  border-bottom: var(--ui-dialog-header-border-bottom);
+}
+
+.title {
+  font-size: var(--type-body-lg);
+  font-weight: 600;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  outline: none;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  border-left: 4px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.row:hover {
+  background: var(--ui-list-row-hover-bg);
+}
+
+.rowSelected,
+.rowSelected:hover {
+  border-left-color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.16);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--primary-rgb), 0.45),
+    0 2px 6px rgba(var(--on-surface-rgb), 0.12);
+}
+
+.rowHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.timestamp {
+  font-size: var(--type-body);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border: var(--ui-chip-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-chip-bg);
+  font-size: var(--type-size-xs);
+  font-weight: 700;
+  color: var(--on-surface-variant);
+}
+
+.deleteButton {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xs);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ui-close-button-fg);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.row:hover .deleteButton,
+.row:focus-within .deleteButton {
+  opacity: 1;
+}
+
+.deleteButton:hover {
+  color: var(--error);
+}
+
+.deleteButton:focus-visible {
+  opacity: 1;
+}
+
+.counts {
+  font-size: var(--type-size-sm);
+  color: var(--ui-list-meta-fg);
+}
+
+.breakdown {
+  font-size: var(--type-size-sm);
+  color: var(--ui-list-meta-fg);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  text-align: center;
+  padding: var(--space-xl);
+}
+
+.emptyIcon {
+  color: var(--on-surface-variant);
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: var(--type-body-lg);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.emptyBody {
+  margin: 0;
+  max-width: 360px;
+  font-size: var(--type-body);
+  color: var(--on-surface-variant);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--ui-form-footer-bg);
+  border-top: var(--ui-form-footer-border-top);
+}
+
+.unsavedWarning {
+  display: block;
+  margin-top: var(--space-sm);
+  color: var(--error);
+}

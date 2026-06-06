@@ -3195,6 +3195,80 @@ for (const theme of themes) {
       )
     })
 
+    test('SnapshotDialog — populated', async ({ page }) => {
+      await page.getByTestId('snapshots-button').click()
+      await expect(page.getByTestId('snapshot-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('snapshot-row-3')).toBeVisible({ timeout: APP_READY_MS })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('snapshot-dialog')).toHaveScreenshot(
+        `snapshot-dialog-populated-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('SnapshotDialog — selected row', async ({ page }) => {
+      await page.getByTestId('snapshots-button').click()
+      await expect(page.getByTestId('snapshot-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('snapshot-row-2')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('snapshot-row-2').click()
+      await expect(page.getByTestId('snapshot-row-2')).toHaveAttribute('aria-selected', 'true')
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('snapshot-dialog')).toHaveScreenshot(
+        `snapshot-dialog-selected-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('SnapshotDialog — empty state', async ({ page }) => {
+      await page.evaluate(() => {
+        const registry = (window as unknown as Record<string, unknown>)
+          .__PLAYWRIGHT_FIXTURE_REGISTRY__ as {
+          resetFixtureOverrides: () => void
+          overrideFixture: (domain: string, key: string, data: unknown) => void
+        }
+        registry.resetFixtureOverrides()
+        registry.overrideFixture('snapshotList', 'default', [])
+      })
+      await page.getByTestId('snapshots-button').click()
+      await expect(page.getByTestId('snapshot-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByText('No snapshots yet.')).toBeVisible({ timeout: APP_READY_MS })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('snapshot-dialog')).toHaveScreenshot(
+        `snapshot-dialog-empty-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('SettingsDialog — General Session Snapshots section', async ({ page }) => {
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('settings-general')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('settings-snapshot-frequency-dropdown')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await expect(page.getByTestId('settings-snapshot-keep-dropdown')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await page.getByTestId('settings-snapshot-frequency-dropdown').scrollIntoViewIfNeeded()
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-snapshots-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('QueryEditorTab — results expired empty state', async ({ page }) => {
       await openQueryEditorWithResults(page)
 

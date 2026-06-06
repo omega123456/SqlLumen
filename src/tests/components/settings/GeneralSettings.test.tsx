@@ -123,6 +123,33 @@ describe('GeneralSettings', () => {
     expect(useZoomStore.getState().previewSnapshot).toBe(100)
   })
 
+  it('renders snapshot frequency and keep dropdowns with current values', () => {
+    render(<GeneralSettings />)
+
+    expect(screen.getByTestId('settings-snapshot-frequency-dropdown')).toHaveTextContent('Daily')
+    expect(screen.getByTestId('settings-snapshot-keep-dropdown')).toHaveTextContent('10')
+  })
+
+  it('changing snapshot frequency dispatches setPendingChange', async () => {
+    const user = userEvent.setup()
+    render(<GeneralSettings />)
+
+    await user.click(screen.getByTestId('settings-snapshot-frequency-dropdown'))
+    await user.click(screen.getByTestId('settings-snapshot-frequency-dropdown-option-weekly'))
+
+    expect(useSettingsStore.getState().pendingChanges['snapshots.frequency']).toBe('weekly')
+  })
+
+  it('changing snapshots to keep dispatches setPendingChange', async () => {
+    const user = userEvent.setup()
+    render(<GeneralSettings />)
+
+    await user.click(screen.getByTestId('settings-snapshot-keep-dropdown'))
+    await user.click(screen.getByTestId('settings-snapshot-keep-dropdown-option-50'))
+
+    expect(useSettingsStore.getState().pendingChanges['snapshots.keep']).toBe('50')
+  })
+
   it('shows the current effective zoom value from settings', () => {
     useSettingsStore.setState({
       pendingChanges: { 'appearance.zoom': '150' },

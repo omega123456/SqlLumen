@@ -18,6 +18,7 @@ pub mod schema;
 pub mod schema_cache;
 pub mod schema_index;
 pub mod session;
+pub mod session_snapshots;
 pub mod settings;
 pub mod sql_dump;
 pub mod table_data;
