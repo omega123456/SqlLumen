@@ -193,7 +193,9 @@ describe('ConnectionTabBar', () => {
   it('middle-click confirm dialog Cancel does not call closeConnection', async () => {
     const user = userEvent.setup()
     const conn1 = makeActiveConnection({ id: 'sess-1' })
-    const closeSpy = vi.spyOn(useConnectionStore.getState(), 'closeConnection').mockResolvedValue(true)
+    const closeSpy = vi
+      .spyOn(useConnectionStore.getState(), 'closeConnection')
+      .mockResolvedValue(true)
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1 },
@@ -216,7 +218,9 @@ describe('ConnectionTabBar', () => {
   it('middle-click confirm dialog Close connection calls closeConnection(id)', async () => {
     const user = userEvent.setup()
     const conn1 = makeActiveConnection({ id: 'sess-1' })
-    const closeSpy = vi.spyOn(useConnectionStore.getState(), 'closeConnection').mockResolvedValue(true)
+    const closeSpy = vi
+      .spyOn(useConnectionStore.getState(), 'closeConnection')
+      .mockResolvedValue(true)
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1 },

@@ -6,7 +6,10 @@ const TABLE_DATA_OBJECT_TYPES = new Set<ObjectType>(['table', 'view'])
 const SCHEMA_INFO_OBJECT_TYPES = new Set<ObjectType>(['procedure', 'function', 'trigger', 'event'])
 
 function isObjectType(nodeType: NodeType): nodeType is ObjectType {
-  return TABLE_DATA_OBJECT_TYPES.has(nodeType as ObjectType) || SCHEMA_INFO_OBJECT_TYPES.has(nodeType as ObjectType)
+  return (
+    TABLE_DATA_OBJECT_TYPES.has(nodeType as ObjectType) ||
+    SCHEMA_INFO_OBJECT_TYPES.has(nodeType as ObjectType)
+  )
 }
 
 function getDefaultTabTypeForObject(objectType: ObjectType): 'table-data' | 'schema-info' {

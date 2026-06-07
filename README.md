@@ -95,6 +95,14 @@ Settings is split into **General**, **Editor**, **Results**, **Logging**, **Shor
 - AI settings cover OpenAI-compatible endpoints, model selection, retrieval tuning, and `/remember` memory scope defaults, plus a dedicated memory manager for global, group, and connection memories.
 - Updates settings manages release checks, downloads, and restart flow, including prompts when work is still open.
 
+### Cached data storage and cleanup
+
+SqlLumen keeps schema-cache and other derived data per saved connection in its local store.
+
+- Schema-cache snapshots are stored as **one row per saved connection** (previously they could accumulate per connect session).
+- Deleting a saved connection now removes **all of its cached and derived data** along with the connection itself.
+- The first launch after upgrading runs a **one-time cleanup** that purges orphaned data left by older versions and reclaims the disk space it used.
+
 ## Copy To Another Host
 
 Use **Copy to Another Host...** from the object browser context menu on a database, table, view-adjacent routine node, trigger, or event to open the transfer dialog.

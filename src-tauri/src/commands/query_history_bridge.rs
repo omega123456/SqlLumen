@@ -44,6 +44,30 @@ pub(crate) fn log_single_entry(db: &Arc<Mutex<Connection>>, entry: NewHistoryEnt
     });
 }
 
+/// Fire-and-forget: log a single history entry only when a saved connection id
+/// was resolved. When `conn_id` is `None`, the session has no saved profile, so
+/// we skip logging (writing the ephemeral session id would violate the
+/// `connections` foreign key on `query_history`) and emit a warn instead.
+///
+/// `build_entry` receives the resolved saved-connection id and the optional
+/// database name and returns the entry to insert. `session_id` is used only for
+/// the skip warning context.
+pub(crate) fn log_single_entry_if_resolved(
+    db: &Arc<Mutex<Connection>>,
+    conn_id: Option<String>,
+    database_name: Option<String>,
+    session_id: &str,
+    build_entry: impl FnOnce(String, Option<String>) -> NewHistoryEntry,
+) {
+    match conn_id {
+        Some(conn_id) => log_single_entry(db, build_entry(conn_id, database_name)),
+        None => tracing::warn!(
+            session_id = %session_id,
+            "skipping query history logging: no saved connection id resolved for session"
+        ),
+    }
+}
+
 /// Fire-and-forget: insert a batch of history entries.
 pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHistoryEntry>) {
     if entries.is_empty() {
@@ -71,15 +95,17 @@ pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHis
     });
 }
 
-/// Resolve the connection_id (profile_id) and active database name from the registry.
+/// Resolve the saved-connection id (profile_id) and active database name from the registry.
+///
+/// Returns `None` for the connection id when the registry does not resolve a saved
+/// profile for the session. Callers must skip history logging in that case rather than
+/// fall back to the (ephemeral) session id — writing a non-existent id would violate the
+/// `connections` foreign key on `query_history`.
 pub(crate) fn resolve_connection_context(
     state: &AppState,
     session_id: &str,
-) -> (String, Option<String>) {
-    let connection_id = state
-        .registry
-        .get_profile_id(session_id)
-        .unwrap_or_else(|| session_id.to_string());
+) -> (Option<String>, Option<String>) {
+    let connection_id = state.registry.get_profile_id(session_id);
     let database_name = state
         .registry
         .get_connection_params(session_id)
@@ -130,9 +156,21 @@ pub async fn execute_query_bridge(
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 
+    // Still invalidate the metadata cache on success regardless of history logging.
+    if result.is_ok() {
+        invalidate_metadata_cache_for_executed_sql(state, session_id, sql);
+    }
+
+    let Some(connection_id) = connection_id else {
+        tracing::warn!(
+            session_id,
+            "skipping query history logging: no saved connection id resolved for session"
+        );
+        return result;
+    };
+
     match &result {
         Ok(r) => {
-            invalidate_metadata_cache_for_executed_sql(state, session_id, sql);
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
@@ -181,14 +219,25 @@ pub async fn execute_multi_query_bridge(
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 
+    // Still invalidate the metadata cache for successful statements regardless of history logging.
+    if let Ok(multi) = &result {
+        for item in &multi.results {
+            if item.error.is_none() {
+                invalidate_metadata_cache_for_executed_sql(state, session_id, &item.source_sql);
+            }
+        }
+    }
+
+    let Some(connection_id) = connection_id else {
+        tracing::warn!(
+            session_id,
+            "skipping query history logging: no saved connection id resolved for session"
+        );
+        return result;
+    };
+
     match &result {
         Ok(multi) => {
-            for item in &multi.results {
-                if item.error.is_none() {
-                    invalidate_metadata_cache_for_executed_sql(state, session_id, &item.source_sql);
-                }
-            }
-
             let entries: Vec<NewHistoryEntry> = multi
                 .results
                 .iter()
@@ -240,6 +289,14 @@ pub async fn execute_call_query_bridge(
     let result = execute_call_query_impl(state, session_id, tab_id, sql, row_limit).await;
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
+
+    let Some(connection_id) = connection_id else {
+        tracing::warn!(
+            session_id,
+            "skipping query history logging: no saved connection id resolved for session"
+        );
+        return result;
+    };
 
     match &result {
         Ok(multi) => {

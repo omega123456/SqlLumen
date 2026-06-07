@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { DialogShell } from '../dialogs/DialogShell'
-import { getCache, getPendingLoad, getSearchableObjects } from '../query-editor/schema-metadata-cache'
+import {
+  getCache,
+  getPendingLoad,
+  getSearchableObjects,
+} from '../query-editor/schema-metadata-cache'
 import { activateObjectFromPalette } from '../../lib/object-activation'
 import {
   buildCommandPaletteSearchIndex,
@@ -109,8 +113,7 @@ function parseCommandPaletteValue(
     }
 
     const token = tokenMatch[1].toLowerCase()
-    const databaseMatch =
-      databases.find((database) => database.toLowerCase() === token) ?? null
+    const databaseMatch = databases.find((database) => database.toLowerCase() === token) ?? null
     const typeMatch = TYPE_ALIASES.get(token) ?? null
 
     if (!databaseMatch && !typeMatch) {
@@ -201,7 +204,7 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
   const recordSelection = useCommandPaletteRecentsStore((state) => state.recordSelection)
   const getRecents = useCommandPaletteRecentsStore((state) => state.getRecents)
   const activeConnection = useConnectionStore((state) =>
-    activeConnectionId ? state.activeConnections[activeConnectionId] ?? null : null
+    activeConnectionId ? (state.activeConnections[activeConnectionId] ?? null) : null
   )
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -221,7 +224,8 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
   // The session is remounted per connection, so the initial read covers the common
   // case. If the palette opens while the schema cache is still loading, refresh once
   // the in-flight load resolves so we leave the loading state.
-  const [searchableObjects, setSearchableObjects] = useState<SearchableObject[]>(readSearchableObjects)
+  const [searchableObjects, setSearchableObjects] =
+    useState<SearchableObject[]>(readSearchableObjects)
   const [databases, setDatabases] = useState<string[]>(readDatabases)
 
   useEffect(() => {
@@ -239,9 +243,7 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
       }
       setSearchableObjects(getSearchableObjects(activeConnectionId))
       setDatabases(
-        [...getCache(activeConnectionId).databases].sort((left, right) =>
-          left.localeCompare(right)
-        )
+        [...getCache(activeConnectionId).databases].sort((left, right) => left.localeCompare(right))
       )
     }
     pendingLoad.then(refresh, refresh)

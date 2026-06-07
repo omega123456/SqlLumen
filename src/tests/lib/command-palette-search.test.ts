@@ -54,7 +54,10 @@ describe('command-palette-search', () => {
     expect(results.map((result) => result.name)).toContain('users')
 
     const usersResult = results.find((result) => result.name === 'users')
-    expect(usersResult?.matchIndices).toEqual([[0, 1], [3, 3]])
+    expect(usersResult?.matchIndices).toEqual([
+      [0, 1],
+      [3, 3],
+    ])
   })
 
   it('supports wildcard gap matching with ordered substrings', () => {

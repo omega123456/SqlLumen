@@ -5,6 +5,8 @@ use sqllumen_lib::schema_index::builder;
 use sqllumen_lib::schema_index::builder::SignatureDecision;
 use sqllumen_lib::schema_index::types::{FkInput, TableDdlInput};
 
+mod common;
+
 // ── compact_ddl ──────────────────────────────────────────────────────────
 
 #[test]
@@ -845,15 +847,12 @@ fn test_decide_signature_action_refetch_when_current_signature_absent() {
 
 #[test]
 fn test_signature_short_circuit_reuses_stored_ddl_without_refetch() {
-    use rusqlite::Connection;
-    use sqllumen_lib::db::migrations::run_migrations;
     use sqllumen_lib::init_sqlite_vec;
     use sqllumen_lib::schema_index::storage;
     use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
 
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open db");
-    run_migrations(&conn).expect("migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, "conn-1", 4).expect("vec table");
 
     // Pre-seed a chunk and a matching signature for one table.
@@ -902,14 +901,11 @@ fn test_signature_short_circuit_reuses_stored_ddl_without_refetch() {
 
 #[test]
 fn test_signature_change_forces_refetch_after_column_mutation() {
-    use rusqlite::Connection;
-    use sqllumen_lib::db::migrations::run_migrations;
     use sqllumen_lib::init_sqlite_vec;
     use sqllumen_lib::schema_index::storage;
 
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open db");
-    run_migrations(&conn).expect("migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, "conn-1", 4).expect("vec table");
 
     // Stored signature represents yesterday's schema.
@@ -937,14 +933,11 @@ fn test_signature_change_forces_refetch_after_column_mutation() {
 
 #[test]
 fn test_new_table_without_prior_signature_is_refetched() {
-    use rusqlite::Connection;
-    use sqllumen_lib::db::migrations::run_migrations;
     use sqllumen_lib::init_sqlite_vec;
     use sqllumen_lib::schema_index::storage;
 
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open db");
-    run_migrations(&conn).expect("migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, "conn-1", 4).expect("vec table");
 
     // No signature ever stored for this table (first time we see it).

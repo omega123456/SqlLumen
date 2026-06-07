@@ -204,6 +204,14 @@ pub async fn reexecute_single_result(
 
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
 
+    let Some(conn_id) = conn_id else {
+        tracing::warn!(
+            session_id = %connection_id,
+            "skipping query history logging: no saved connection id resolved for session"
+        );
+        return result;
+    };
+
     match &result {
         Ok(item) => {
             log_single_entry(

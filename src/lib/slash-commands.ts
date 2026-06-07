@@ -28,9 +28,7 @@ export type RememberScopeSetting = MemoryScope | 'ask'
  *              level picker and call `executeRemember` again with an explicit
  *              scope. Nothing was saved.
  */
-export type RememberResult =
-  | { type: 'saved'; memory: AiMemory }
-  | { type: 'ask'; content: string }
+export type RememberResult = { type: 'saved'; memory: AiMemory } | { type: 'ask'; content: string }
 
 // ---------------------------------------------------------------------------
 // Scope resolution

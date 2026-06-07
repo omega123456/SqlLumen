@@ -62,6 +62,13 @@ fn get_returns_none_on_cache_miss() {
 }
 
 #[test]
+fn default_is_empty_like_new() {
+    let cache = MetadataCache::default();
+
+    assert_eq!(cache.get("conn-1", "app_db", "users"), None);
+}
+
+#[test]
 fn evict_table_removes_only_requested_entry() {
     let cache = MetadataCache::new();
     cache.insert(

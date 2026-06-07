@@ -76,7 +76,12 @@ function seedSession(): void {
           queryTab('sess-prod', 't1'),
           queryTab('sess-prod', 't2'),
           // processlist is NOT serializable and must not be counted
-          { id: 't3', type: 'processlist', label: 'Processes', connectionId: 'sess-prod' } as WorkspaceTab,
+          {
+            id: 't3',
+            type: 'processlist',
+            label: 'Processes',
+            connectionId: 'sess-prod',
+          } as WorkspaceTab,
         ],
         'sess-staging': [queryTab('sess-staging', 't4')],
       },
@@ -170,7 +175,10 @@ describe('restoreSnapshot', () => {
 
     ipc.override('get_session_snapshot', () => {
       order.push('get')
-      return JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      return JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     })
     ipc.override('create_session_snapshot', () => {
       order.push('beforeRestore')
@@ -210,9 +218,7 @@ describe('restoreSnapshot', () => {
     ])
     expect(closeConnectionSpy).toHaveBeenNthCalledWith(1, 'sess-prod', { force: true })
     expect(closeConnectionSpy).toHaveBeenNthCalledWith(2, 'sess-staging', { force: true })
-    expect(restoreFromStateMock).toHaveBeenCalledWith(
-      expect.objectContaining({ version: 1 })
-    )
+    expect(restoreFromStateMock).toHaveBeenCalledWith(expect.objectContaining({ version: 1 }))
     expect(useSnapshotStore.getState().isBusy).toBe(false)
     expect(useSnapshotStore.getState().isRestoring).toBe(false)
   })
@@ -220,7 +226,10 @@ describe('restoreSnapshot', () => {
   it('keeps isRestoring true through the whole restore, even after the nested beforeRestore create resets isBusy', async () => {
     seedSession()
     ipc.override('get_session_snapshot', () =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     ipc.override('create_session_snapshot', () => 99)
     ipc.override('list_session_snapshots', () => [])
@@ -262,7 +271,10 @@ describe('restoreSnapshot', () => {
   it('ignores a second restore call while one is already in progress', async () => {
     seedSession()
     ipc.override('get_session_snapshot', () =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     ipc.override('create_session_snapshot', () => 99)
     ipc.override('list_session_snapshots', () => [])
@@ -321,7 +333,10 @@ describe('restoreSnapshot', () => {
   it('skips the beforeRestore snapshot when the current session is empty', async () => {
     // No seedSession — no active connections.
     ipc.override('get_session_snapshot', () =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     act(() => {
       useConnectionStore.setState({
@@ -360,7 +375,10 @@ describe('restoreSnapshot', () => {
     vi.stubGlobal('confirm', confirmSpy)
 
     ipc.override('get_session_snapshot', () =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     ipc.override('create_session_snapshot', () => 1)
     const closeConnectionSpy = vi.fn(async (sessionId: string) => {
@@ -391,7 +409,10 @@ describe('restoreSnapshot', () => {
   it('aborts restore when the beforeRestore snapshot cannot be created', async () => {
     seedSession()
     ipc.override('get_session_snapshot', () =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     ipc.override('create_session_snapshot', () => {
       throw new Error('disk full')
@@ -416,7 +437,10 @@ describe('restoreSnapshot', () => {
     seedSession()
     const createSnapshotSpy = vi.fn(() => 1)
     const getSnapshotSpy = vi.fn(() =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     const closeConnectionSpy = vi.fn(async () => true)
     const logFrontendSpy = vi.fn((_args: unknown) => undefined)
@@ -462,7 +486,10 @@ describe('restoreSnapshot', () => {
   it('recovers already-closed connections when force-closing fails mid-restore', async () => {
     seedSession()
     ipc.override('get_session_snapshot', () =>
-      JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     )
     ipc.override('create_session_snapshot', () => 1)
 
@@ -493,9 +520,7 @@ describe('restoreSnapshot', () => {
         activeConnectionOrder: ['sess-prod-recovered', 'sess-staging'],
         activeTabId: 'sess-prod-recovered',
       })
-      expect(recoveryState.connections).toEqual([
-        expect.objectContaining({ profileId: 'p-prod' }),
-      ])
+      expect(recoveryState.connections).toEqual([expect.objectContaining({ profileId: 'p-prod' })])
     })
 
     act(() => {
@@ -522,7 +547,10 @@ describe('restoreSnapshot', () => {
     const seq: string[] = []
     ipc.override('get_session_snapshot', () => {
       seq.push('get')
-      return JSON.stringify({ version: 1, connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }] })
+      return JSON.stringify({
+        version: 1,
+        connections: [{ profileId: 'p-prod', activeTabIndex: 0, tabs: [] }],
+      })
     })
     ipc.override('create_session_snapshot', () => {
       seq.push('create')
@@ -681,7 +709,9 @@ describe('runPeriodicCheck — weekly', () => {
       })
     })
 
-    const lastWeekEpochSeconds = String(Math.floor((now.getTime() - 8 * 24 * 60 * 60 * 1000) / 1000))
+    const lastWeekEpochSeconds = String(
+      Math.floor((now.getTime() - 8 * 24 * 60 * 60 * 1000) / 1000)
+    )
     let setMarker: string | undefined
     ipc.override('get_setting', () => lastWeekEpochSeconds)
     ipc.override('set_setting', (args) => {

@@ -336,7 +336,14 @@ export function AiChatInput({
         handleSend()
       }
     },
-    [pendingRememberContent, showDropdown, filteredCmds, highlightedIndex, selectCommand, handleSend]
+    [
+      pendingRememberContent,
+      showDropdown,
+      filteredCmds,
+      highlightedIndex,
+      selectCommand,
+      handleSend,
+    ]
   )
 
   const handleRemoveContext = useCallback(() => {

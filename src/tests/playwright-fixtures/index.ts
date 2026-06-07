@@ -2,10 +2,7 @@ import { AI_MODELS_BY_ENDPOINT, DEFAULT_AI_MODELS } from './ai-models'
 import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
 import { BLOB_SAMPLE_LIST_COLUMNS, BLOB_SAMPLE_TABLE_DATA } from './blob-sample'
 import { DEFAULT_BLOB_VALUE, DEFAULT_BLOB_VALUE_BY_KEY } from './blob-value'
-import {
-  COMMAND_PALETTE_RECENTS_FIXTURE,
-  COMMAND_PALETTE_SCHEMA_FIXTURE,
-} from './command-palette'
+import { COMMAND_PALETTE_RECENTS_FIXTURE, COMMAND_PALETTE_SCHEMA_FIXTURE } from './command-palette'
 import {
   COPY_TO_HOST_OBJECTS,
   COPY_TO_HOST_PROGRESS_COMPLETED,
@@ -573,9 +570,7 @@ export function getSchemaMetadataFullFixture(): SchemaMetadataFull {
 }
 
 export function getCommandPaletteRecentsFixture(): string {
-  return (
-    overrides.commandPaletteRecents.default ?? DEFAULT_COMMAND_PALETTE_RECENTS_BY_KEY.default
-  )
+  return overrides.commandPaletteRecents.default ?? DEFAULT_COMMAND_PALETTE_RECENTS_BY_KEY.default
 }
 
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(

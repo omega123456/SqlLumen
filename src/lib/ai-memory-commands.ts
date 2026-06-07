@@ -44,16 +44,11 @@ export async function listGroupMemories(args: { groupId: string }): Promise<AiMe
   return invoke('list_group_memories', args)
 }
 
-export async function listConnectionMemories(args: {
-  connectionId: string
-}): Promise<AiMemory[]> {
+export async function listConnectionMemories(args: { connectionId: string }): Promise<AiMemory[]> {
   return invoke('list_connection_memories', args)
 }
 
-export async function deleteMemory(args: {
-  scope: MemoryScope
-  memoryId: number
-}): Promise<void> {
+export async function deleteMemory(args: { scope: MemoryScope; memoryId: number }): Promise<void> {
   return invoke('delete_memory', args)
 }
 

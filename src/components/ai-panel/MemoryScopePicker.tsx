@@ -63,15 +63,11 @@ export function MemoryScopePicker({
   )
 
   const initialIndex = useMemo(() => {
-    const fromDefault = options.findIndex(
-      (opt) => opt.scope === defaultScope && !opt.disabled
-    )
+    const fromDefault = options.findIndex((opt) => opt.scope === defaultScope && !opt.disabled)
     if (fromDefault >= 0) {
       return fromDefault
     }
-    const connectionIndex = options.findIndex(
-      (opt) => opt.scope === 'connection' && !opt.disabled
-    )
+    const connectionIndex = options.findIndex((opt) => opt.scope === 'connection' && !opt.disabled)
     if (connectionIndex >= 0) {
       return connectionIndex
     }

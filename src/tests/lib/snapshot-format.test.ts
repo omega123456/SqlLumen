@@ -65,9 +65,7 @@ describe('formatConnectionBreakdown', () => {
       { name: 'Reporting', tabCount: 3 },
       { name: 'Archive', tabCount: 1 },
     ]
-    expect(formatConnectionBreakdown(many)).toBe(
-      'ProdDB: 4 · Staging: 2 · Analytics: 1 · +2 more'
-    )
+    expect(formatConnectionBreakdown(many)).toBe('ProdDB: 4 · Staging: 2 · Analytics: 1 · +2 more')
   })
 
   it('respects a custom maxVisible', () => {

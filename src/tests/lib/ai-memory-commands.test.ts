@@ -36,7 +36,13 @@ beforeEach(() => {
     makeMemory({ id: 10, scope: 'global', connectionId: null, content: 'global note' }),
   ])
   ipc.override('list_group_memories', () => [
-    makeMemory({ id: 20, scope: 'group', connectionId: null, groupId: 'grp-1', content: 'group note' }),
+    makeMemory({
+      id: 20,
+      scope: 'group',
+      connectionId: null,
+      groupId: 'grp-1',
+      content: 'group note',
+    }),
   ])
   ipc.override('list_connection_memories', () => [
     makeMemory({ id: 30, content: 'connection note' }),
@@ -50,9 +56,7 @@ beforeEach(() => {
       content: 'moved',
     })
   )
-  ipc.override('search_memories', () => [
-    makeMemory({ id: 2, content: 'search result' }),
-  ])
+  ipc.override('search_memories', () => [makeMemory({ id: 2, content: 'search result' })])
   ipc.override('reembed_all_memories', () => undefined)
 })
 

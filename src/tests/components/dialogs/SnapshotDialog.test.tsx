@@ -157,9 +157,7 @@ describe('SnapshotDialog', () => {
     render(<SnapshotDialog />)
 
     expect(screen.getByText('No snapshots yet.')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /create your first snapshot/i })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create your first snapshot/i })).toBeInTheDocument()
   })
 
   it('moves selection with arrow keys', async () => {

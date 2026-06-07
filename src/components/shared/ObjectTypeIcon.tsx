@@ -1,11 +1,4 @@
-import {
-  Eye,
-  Gear,
-  Lightning,
-  MathOperations,
-  Table,
-  type IconProps,
-} from '@phosphor-icons/react'
+import { Eye, Gear, Lightning, MathOperations, Table, type IconProps } from '@phosphor-icons/react'
 import type { PaletteTypeFilter } from '../../types/schema'
 import styles from './ObjectTypeIcon.module.css'
 

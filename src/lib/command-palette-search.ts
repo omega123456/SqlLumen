@@ -107,7 +107,9 @@ function getRecentRankMap(
   return recentRankMap
 }
 
-function getMatchIndices(result: FuseResult<SearchableObject>): ReadonlyArray<readonly [number, number]> {
+function getMatchIndices(
+  result: FuseResult<SearchableObject>
+): ReadonlyArray<readonly [number, number]> {
   const nameMatch = result.matches?.find((match) => match.key === 'name')
   return (nameMatch?.indices ?? []) as ReadonlyArray<RangeTuple>
 }
@@ -236,8 +238,10 @@ export function searchPaletteObjects(
       }
 
       if (left.recentRank !== right.recentRank) {
-        return (left.recentRank ?? Number.POSITIVE_INFINITY) -
+        return (
+          (left.recentRank ?? Number.POSITIVE_INFINITY) -
           (right.recentRank ?? Number.POSITIVE_INFINITY)
+        )
       }
 
       const databaseCompare = left.database.localeCompare(right.database)

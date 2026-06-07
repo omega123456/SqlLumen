@@ -126,11 +126,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
 
     setBusy(true)
     try {
-      await exportLogs(
-        formatDate(from),
-        formatDate(to),
-        filePath
-      )
+      await exportLogs(formatDate(from), formatDate(to), filePath)
       showSuccessToast('Export completed', `Logs saved to ${filePath}`)
       onClose()
     } catch (error) {

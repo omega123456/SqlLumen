@@ -205,9 +205,7 @@ export function MemorySection({
         // instead of also lighting up its parent group section.
         event.stopPropagation()
         event.preventDefault()
-        const dropAccepted = payload
-          ? isDropAccepted(scope, connectionId, groupId, payload)
-          : true
+        const dropAccepted = payload ? isDropAccepted(scope, connectionId, groupId, payload) : true
         event.dataTransfer.dropEffect = dropAccepted ? 'move' : 'none'
         if (dropAccepted) {
           if (!isDragOver) onHover(sectionKey)
@@ -255,7 +253,10 @@ export function MemorySection({
       {!collapsed && (
         <div className={styles.body}>
           {isDragOver && (
-            <div className={styles.skeletonRow} data-testid={`ai-memory-drop-skeleton-${sectionKey}`}>
+            <div
+              className={styles.skeletonRow}
+              data-testid={`ai-memory-drop-skeleton-${sectionKey}`}
+            >
               <div className={`shimmerBlock ${styles.skeletonHandle}`} />
               <div className={styles.skeletonContent}>
                 <div className={`shimmerBlock ${styles.skeletonLineText}`} />

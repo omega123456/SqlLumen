@@ -127,7 +127,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       useWorkspaceStore.getState().setVisibleConnectionSession(result.sessionId)
       showSuccessToast('Connected', profile.name)
 
-      bootstrapSchemaCache(result.sessionId).catch((err) => {
+      bootstrapSchemaCache(result.sessionId, id).catch((err) => {
         const msg = err instanceof Error ? err.message : String(err)
         logFrontend(
           'warn',

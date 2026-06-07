@@ -9,18 +9,14 @@ describe('MemoryScopePicker', () => {
   })
 
   it('renders Connection, Group, and Global options', () => {
-    render(
-      <MemoryScopePicker hasGroup onSelect={vi.fn()} onCancel={vi.fn()} />
-    )
+    render(<MemoryScopePicker hasGroup onSelect={vi.fn()} onCancel={vi.fn()} />)
     expect(screen.getByTestId('memory-scope-option-connection')).toBeInTheDocument()
     expect(screen.getByTestId('memory-scope-option-group')).toBeInTheDocument()
     expect(screen.getByTestId('memory-scope-option-global')).toBeInTheDocument()
   })
 
   it('disables and greys the Group option with a "no group" caption when no group', () => {
-    render(
-      <MemoryScopePicker hasGroup={false} onSelect={vi.fn()} onCancel={vi.fn()} />
-    )
+    render(<MemoryScopePicker hasGroup={false} onSelect={vi.fn()} onCancel={vi.fn()} />)
     const group = screen.getByTestId('memory-scope-option-group')
     expect(group).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByTestId('memory-scope-no-group-caption')).toHaveTextContent('no group')
@@ -52,12 +48,7 @@ describe('MemoryScopePicker', () => {
 
   it('default-highlights the saved default scope when concrete', () => {
     render(
-      <MemoryScopePicker
-        hasGroup
-        defaultScope="global"
-        onSelect={vi.fn()}
-        onCancel={vi.fn()}
-      />
+      <MemoryScopePicker hasGroup defaultScope="global" onSelect={vi.fn()} onCancel={vi.fn()} />
     )
     expect(screen.getByTestId('memory-scope-option-global')).toHaveAttribute(
       'aria-selected',

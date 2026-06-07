@@ -48,9 +48,7 @@ export function getGroupMemoriesFixture(groupId: string | null | undefined): AiM
   return getOverrideStore()?.group?.[key] ?? DEFAULT_GROUP_MEMORIES
 }
 
-export function getConnectionMemoriesFixture(
-  connectionId: string | null | undefined
-): AiMemory[] {
+export function getConnectionMemoriesFixture(connectionId: string | null | undefined): AiMemory[] {
   const key = String(connectionId ?? '')
   return getOverrideStore()?.connection?.[key] ?? DEFAULT_CONNECTION_MEMORIES
 }

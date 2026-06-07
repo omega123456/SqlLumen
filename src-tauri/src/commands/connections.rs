@@ -187,23 +187,65 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
         .map_err(|e| e.to_string())?
         .is_some();
 
+    // Credential/password removal targets an external secure store, so it stays
+    // outside the database transaction below.
     if has_password_marker {
         crate::credentials::delete_password(id)?;
     }
 
-    // Clean up AI memories for this connection profile
-    if let Err(e) = crate::ai_memory::storage::delete_memories_for_connection(&conn, id) {
-        tracing::warn!(
+    // Atomically remove all per-connection database data:
+    //   * the dynamically-named AI-memory vector table + connection_memories rows
+    //   * the dynamically-named schema-index vector table
+    //   * the connections row, whose FK ON DELETE CASCADE removes the static
+    //     child rows (schema_cache_snapshots, schema_index_*, query_history,
+    //     favorites).
+    // The dynamic `..._vectors_<id>` virtual tables are not FK children of
+    // `connections`, so they must be dropped explicitly here. If any step fails
+    // the transaction rolls back, leaving the connection and its data intact.
+    let tx = conn.unchecked_transaction().map_err(|e| {
+        tracing::error!(
             connection_id = id,
             error = %e,
-            "failed to delete AI memories for connection during deletion"
+            "failed to begin transaction for connection deletion"
         );
+        e.to_string()
+    })?;
+
+    if let Err(e) = crate::ai_memory::storage::delete_memories_for_connection(&tx, id) {
+        tracing::error!(
+            connection_id = id,
+            error = %e,
+            "failed to delete AI memories for connection during deletion; rolling back"
+        );
+        return Err(e.to_string());
     }
 
-    match connections::delete_connection(&conn, id) {
-        Ok(()) => Ok(()),
-        Err(error) => Err(error.to_string()),
+    if let Err(e) = crate::schema_index::storage::drop_vec_table(&tx, id) {
+        tracing::error!(
+            connection_id = id,
+            error = %e,
+            "failed to drop schema-index vector table during deletion; rolling back"
+        );
+        return Err(e.to_string());
     }
+
+    if let Err(e) = connections::delete_connection(&tx, id) {
+        tracing::error!(
+            connection_id = id,
+            error = %e,
+            "failed to delete connection row during deletion; rolling back"
+        );
+        return Err(e.to_string());
+    }
+
+    tx.commit().map_err(|e| {
+        tracing::error!(
+            connection_id = id,
+            error = %e,
+            "failed to commit connection deletion transaction"
+        );
+        e.to_string()
+    })
 }
 
 // --- Thin Tauri command wrappers ---

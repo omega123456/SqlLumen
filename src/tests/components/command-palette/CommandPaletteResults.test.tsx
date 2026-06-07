@@ -38,7 +38,14 @@ describe('CommandPaletteResults', () => {
   it('renders fuzzy highlight markup in the object name', () => {
     render(
       <CommandPaletteResults
-        results={[makeResult({ matchIndices: [[0, 1], [4, 4]] })]}
+        results={[
+          makeResult({
+            matchIndices: [
+              [0, 1],
+              [4, 4],
+            ],
+          }),
+        ]}
         activeIndex={0}
         state="results"
         onSelect={() => {}}
@@ -107,12 +114,7 @@ describe('CommandPaletteResults', () => {
 
   it('renders loading, empty, no-results, and no-connection states', () => {
     const { rerender } = render(
-      <CommandPaletteResults
-        results={[]}
-        activeIndex={0}
-        state="loading"
-        onSelect={() => {}}
-      />
+      <CommandPaletteResults results={[]} activeIndex={0} state="loading" onSelect={() => {}} />
     )
 
     expect(screen.getByTestId('command-palette-loading-state')).toHaveTextContent(
@@ -127,12 +129,7 @@ describe('CommandPaletteResults', () => {
     )
 
     rerender(
-      <CommandPaletteResults
-        results={[]}
-        activeIndex={0}
-        state="no-results"
-        onSelect={() => {}}
-      />
+      <CommandPaletteResults results={[]} activeIndex={0} state="no-results" onSelect={() => {}} />
     )
     expect(screen.getByTestId('command-palette-no-results')).toHaveTextContent(
       'No matching objects'

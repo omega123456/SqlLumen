@@ -49,7 +49,7 @@ describe('bootstrapSchemaCache', () => {
         })
     )
 
-    const bootstrapPromise = bootstrapSchemaCache('session-1')
+    const bootstrapPromise = bootstrapSchemaCache('session-1', 'saved-1')
     expect(getPendingBootstrap('session-1')).not.toBeNull()
 
     resolveLoad()
@@ -71,7 +71,7 @@ describe('bootstrapSchemaCache', () => {
         })
     )
 
-    const bootstrapPromise = bootstrapSchemaCache('session-1')
+    const bootstrapPromise = bootstrapSchemaCache('session-1', 'saved-1')
 
     await waitFor(() => {
       expect(getCache('session-1').databases).toEqual(['cached'])
@@ -83,11 +83,11 @@ describe('bootstrapSchemaCache', () => {
     resolveRefresh()
     await bootstrapPromise
 
-    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'session-1' })
+    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'saved-1' })
     expect(ipc.calls('fetch_schema_metadata_full')).toContainEqual({ connectionId: 'session-1' })
     expect(getCache('session-1').databases).toEqual(['fresh'])
     expect(ipc.calls('save_schema_cache_snapshot')).toContainEqual({
-      connectionId: 'session-1',
+      connectionId: 'saved-1',
       snapshotJson: buildSnapshotJson(['fresh']),
     })
   })
@@ -104,7 +104,7 @@ describe('bootstrapSchemaCache', () => {
         })
     )
 
-    const bootstrapPromise = bootstrapSchemaCache('session-1')
+    const bootstrapPromise = bootstrapSchemaCache('session-1', 'saved-1')
 
     await waitFor(() => {
       expect(getPendingBootstrap('session-1')).not.toBeNull()
@@ -116,12 +116,12 @@ describe('bootstrapSchemaCache', () => {
     resolveRebuild()
     await bootstrapPromise
 
-    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'session-1' })
+    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'saved-1' })
     expect(ipc.calls('fetch_schema_metadata_full')).toContainEqual({ connectionId: 'session-1' })
     expect(getCache('session-1').databases).toEqual(['fresh'])
     expect(getPendingBootstrap('session-1')).toBeNull()
     expect(ipc.calls('save_schema_cache_snapshot')).toContainEqual({
-      connectionId: 'session-1',
+      connectionId: 'saved-1',
       snapshotJson: buildSnapshotJson(['fresh']),
     })
   })
@@ -132,7 +132,7 @@ describe('bootstrapSchemaCache', () => {
       throw new Error('load failed')
     })
 
-    await bootstrapSchemaCache('session-1')
+    await bootstrapSchemaCache('session-1', 'saved-1')
 
     expect(ipc.calls('log_frontend')).toContainEqual(
       expect.objectContaining({
@@ -150,7 +150,7 @@ describe('bootstrapSchemaCache', () => {
       throw new Error('refresh failed')
     })
 
-    await expect(bootstrapSchemaCache('session-1')).resolves.toBeUndefined()
+    await expect(bootstrapSchemaCache('session-1', 'saved-1')).resolves.toBeUndefined()
 
     expect(getCache('session-1').databases).toEqual(['cached'])
     expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
@@ -171,9 +171,9 @@ describe('bootstrapSchemaCache', () => {
       throw new Error('rebuild failed')
     })
 
-    await expect(bootstrapSchemaCache('session-1')).resolves.toBeUndefined()
+    await expect(bootstrapSchemaCache('session-1', 'saved-1')).resolves.toBeUndefined()
 
-    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'session-1' })
+    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'saved-1' })
     expect(ipc.calls('fetch_schema_metadata_full')).toContainEqual({ connectionId: 'session-1' })
     expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
     expect(getPendingBootstrap('session-1')).toBeNull()

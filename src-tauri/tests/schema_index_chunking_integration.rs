@@ -2,15 +2,15 @@
 //! (text_for_embedding, row_count_approx) and the FkEdge CRUD.
 
 use rusqlite::Connection;
-use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
 
+mod common;
+
 fn setup_db() -> Connection {
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, "conn-1", 4).expect("create vec table");
     conn
 }

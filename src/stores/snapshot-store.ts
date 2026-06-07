@@ -23,10 +23,7 @@ import {
   type SnapshotSummary,
   type SnapshotTrigger,
 } from '../lib/session-snapshot-commands'
-import type {
-  SessionConnectionState,
-  SessionState,
-} from '../lib/session-restore-commands'
+import type { SessionConnectionState, SessionState } from '../lib/session-restore-commands'
 import { getSetting, setSetting } from '../lib/tauri-commands'
 import {
   buildSessionState,
@@ -183,7 +180,9 @@ function buildRecoveryState(
   }
 
   if (typeof beforeRestoreState.activeConnectionIndex === 'number') {
-    const recoveryActiveIndex = savedIndexToRecoveryIndex.get(beforeRestoreState.activeConnectionIndex)
+    const recoveryActiveIndex = savedIndexToRecoveryIndex.get(
+      beforeRestoreState.activeConnectionIndex
+    )
     if (typeof recoveryActiveIndex === 'number') {
       recoveryState.activeConnectionIndex = recoveryActiveIndex
     }
@@ -346,7 +345,10 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       const sessionRestoreStore = useSessionRestoreStore.getState()
       if (sessionRestoreStore.isRestoring) {
         const message = 'Session restore is already in progress. Please wait and try again.'
-        logFrontend('warn', `[snapshot] Restore blocked while session restore is already in progress.`)
+        logFrontend(
+          'warn',
+          `[snapshot] Restore blocked while session restore is already in progress.`
+        )
         showErrorToast('Restore failed', message)
         return
       }
@@ -398,7 +400,9 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       let closeFailureId: string | null = null
 
       for (const sessionId of beforeRestoreConnectionIds) {
-        const closed = await useConnectionStore.getState().closeConnection(sessionId, { force: true })
+        const closed = await useConnectionStore
+          .getState()
+          .closeConnection(sessionId, { force: true })
         if (!closed) {
           closeFailureId = sessionId
           break

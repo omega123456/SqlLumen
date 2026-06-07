@@ -2471,7 +2471,6 @@ describe('useSessionRestoreStore — pre-close hooks', () => {
     registerPreCloseHook(async () => {
       calls.push('hook')
     })
-
     ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
       window as Window & { __TAURI_INTERNALS__?: unknown }
     ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }
@@ -2512,7 +2511,6 @@ describe('useSessionRestoreStore — pre-close hooks', () => {
     registerPreCloseHook(async () => {
       throw new Error('hook boom')
     })
-
     ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
       window as Window & { __TAURI_INTERNALS__?: unknown }
     ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }

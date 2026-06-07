@@ -13,7 +13,9 @@ use crate::mysql::table_designer::{
 use crate::state::AppState;
 
 #[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{log_single_entry, resolve_connection_context};
+use crate::commands::query_history_bridge::{
+    log_single_entry_if_resolved, resolve_connection_context,
+};
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
@@ -543,9 +545,12 @@ pub async fn load_table_for_designer(
         "/* table designer */ SELECT ... FROM INFORMATION_SCHEMA FOR TABLE `{database}`.`{table_name}`"
     );
 
-    log_single_entry(
+    log_single_entry_if_resolved(
         &state.db,
-        NewHistoryEntry {
+        conn_id,
+        database_name,
+        &connection_id,
+        |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
             sql_text,
@@ -586,9 +591,12 @@ pub async fn apply_table_ddl(
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
 
-    log_single_entry(
+    log_single_entry_if_resolved(
         &state.db,
-        NewHistoryEntry {
+        conn_id,
+        database_name,
+        &connection_id,
+        |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
             sql_text: ddl,

@@ -6,18 +6,18 @@
 //! - Single-query degenerates to rank-based ordering consistent with cosine
 
 use rusqlite::Connection;
-use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{multi_query_search_configured, SearchConfig};
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
 
+mod common;
+
 const DIM: usize = 4;
 
 fn setup_db() -> Connection {
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, "conn-1", DIM).expect("create vec table");
     conn
 }

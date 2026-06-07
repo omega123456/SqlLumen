@@ -89,7 +89,9 @@ export function CommandPaletteResults({
   return (
     <div className={styles.resultsSurface}>
       <div className={styles.resultsHeader}>
-        {state === 'recents' ? 'Recent' : `${results.length} result${results.length === 1 ? '' : 's'}`}
+        {state === 'recents'
+          ? 'Recent'
+          : `${results.length} result${results.length === 1 ? '' : 's'}`}
       </div>
       <ul
         ref={listRef}

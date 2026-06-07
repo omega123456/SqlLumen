@@ -42,7 +42,23 @@ fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
     }
 }
 
+/// Insert a parent `connections` row so history entries referencing `connection_id`
+/// satisfy the `query_history -> connections` foreign key (enforced by the bundled
+/// SQLite after migration 013). Idempotent for a given id.
+fn seed_connection(state: &AppState, connection_id: &str) {
+    let conn = state.db.lock().expect("db lock");
+    conn.execute(
+        "INSERT OR IGNORE INTO connections (id, name, created_at, updated_at) \
+         VALUES (?1, ?1, '0', '0')",
+        [connection_id],
+    )
+    .expect("seed connection row");
+}
+
 fn register_lazy_pool(state: &AppState, session_id: &str, profile_id: &str) {
+    // The bridge resolves session -> profile_id and writes history under profile_id,
+    // which must exist in `connections` to satisfy the foreign key.
+    seed_connection(state, profile_id);
     let entry = RegistryEntry {
         pool: dummy_lazy_pool(),
         session_id: session_id.to_string(),
@@ -60,6 +76,7 @@ fn register_lazy_pool(state: &AppState, session_id: &str, profile_id: &str) {
 #[test]
 fn test_history_new_schema_fields() {
     let state = common::test_app_state();
+    seed_connection(&state, "conn-1");
     let conn = state.db.lock().expect("db lock");
 
     let entry = NewHistoryEntry {
@@ -89,6 +106,7 @@ fn test_history_new_schema_fields() {
 #[test]
 fn test_history_error_entry() {
     let state = common::test_app_state();
+    seed_connection(&state, "conn-err");
     let conn = state.db.lock().expect("db lock");
 
     let entry = NewHistoryEntry {
@@ -118,6 +136,7 @@ fn test_history_error_entry() {
 #[test]
 fn test_history_batch_insert() {
     let state = common::test_app_state();
+    seed_connection(&state, "conn-batch");
     let conn = state.db.lock().expect("db lock");
 
     let entries: Vec<NewHistoryEntry> = (0..5)
@@ -145,6 +164,7 @@ fn test_history_batch_insert() {
 #[test]
 fn test_history_pruning() {
     let state = common::test_app_state();
+    seed_connection(&state, "conn-prune");
     let conn = state.db.lock().expect("db lock");
 
     // Insert a few entries
@@ -286,15 +306,14 @@ mod coverage_bridge_tests {
 
         assert!(err.contains("not found"));
 
-        // Wait for fire-and-forget history logging
+        // Wait for any fire-and-forget history logging (there should be none).
         wait_for_history_logging().await;
 
-        // Verify error history entry was logged
-        // The session_id "missing-sess" becomes the connection_id since registry lookup fails
+        // The registry does not resolve a saved connection id for "missing-sess", so the
+        // bridge skips history logging entirely (with a warning) rather than writing the
+        // ephemeral session id as the connection id.
         let page = list_history_impl(&state, "missing-sess", 1, 50, None, None).expect("list");
-        assert_eq!(page.total, 1);
-        assert!(!page.entries[0].success);
-        assert!(page.entries[0].error_message.is_some());
+        assert_eq!(page.total, 0);
     }
 
     // ── execute_multi_query_bridge: success path ──────────────────────────
@@ -410,11 +429,9 @@ mod coverage_bridge_tests {
 
         wait_for_history_logging().await;
 
-        // Verify error entry was logged
+        // No saved connection id resolves for "missing", so history logging is skipped.
         let page = list_history_impl(&state, "missing", 1, 50, None, None).expect("list");
-        assert_eq!(page.total, 1);
-        assert!(!page.entries[0].success);
-        assert_eq!(page.entries[0].sql_text, "(multi-query batch)");
+        assert_eq!(page.total, 0);
     }
 
     // ── execute_call_query_bridge: success path ───────────────────────────
@@ -454,17 +471,18 @@ mod coverage_bridge_tests {
 
         wait_for_history_logging().await;
 
-        // Verify error entry was logged
+        // No saved connection id resolves for "missing", so history logging is skipped.
         let page = list_history_impl(&state, "missing", 1, 50, None, None).expect("list");
-        assert_eq!(page.total, 1);
-        assert!(!page.entries[0].success);
-        assert_eq!(page.entries[0].sql_text, "CALL bad()");
+        assert_eq!(page.total, 0);
     }
 
-    // ── execute_query_bridge: resolve_connection_context fallback ──────────
+    // ── execute_query_bridge: connection-id resolution behavior ────────────
 
+    /// When the registry resolves a saved profile id for the session, history is
+    /// logged under that profile id (and is queryable by both profile id and session id,
+    /// since `list_history_impl` resolves the session id to the profile id).
     #[tokio::test]
-    async fn test_bridge_uses_session_id_as_fallback_connection_id() {
+    async fn test_bridge_logs_under_resolved_profile_id() {
         let state = common::test_app_state();
         // Register with a different profile_id than session_id
         register_lazy_pool(&state, "session-abc", "profile-xyz");
@@ -484,5 +502,24 @@ mod coverage_bridge_tests {
         let page_sess = list_history_impl(&state, "session-abc", 1, 50, None, None).expect("list");
         assert_eq!(page_sess.total, 1);
         assert_eq!(page_sess.entries[0].sql_text, "SELECT 42");
+    }
+
+    /// When the registry does NOT resolve a saved profile id for the session, the bridge
+    /// skips history logging entirely (emitting a warning) rather than writing the
+    /// ephemeral session id as a non-existent connection id.
+    #[tokio::test]
+    async fn test_bridge_skips_history_when_no_profile_resolves() {
+        let state = common::test_app_state();
+        // No registration — get_profile_id returns None for this session.
+
+        let _err = execute_query_bridge(&state, "session-unknown", "tab-1", "SELECT 42", 100)
+            .await
+            .expect_err("should fail for missing connection");
+
+        wait_for_history_logging().await;
+
+        // No history row written under the session id (or anything else).
+        let page = list_history_impl(&state, "session-unknown", 1, 50, None, None).expect("list");
+        assert_eq!(page.total, 0);
     }
 }

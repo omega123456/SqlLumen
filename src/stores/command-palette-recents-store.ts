@@ -54,9 +54,7 @@ function isRecentEntry(value: unknown): value is CommandPaletteRecentEntry {
   )
 }
 
-function sanitizeRecents(
-  parsed: unknown
-): Record<string, CommandPaletteRecentEntry[]> {
+function sanitizeRecents(parsed: unknown): Record<string, CommandPaletteRecentEntry[]> {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return {}
   }
@@ -78,9 +76,7 @@ function persistRecents(recentsByProfile: Record<string, CommandPaletteRecentEnt
   setSetting(COMMAND_PALETTE_RECENTS_KEY, serialized).catch((error: unknown) => {
     logFrontend(
       'error',
-      ['[command-palette-recents-store] Failed to persist recents:', error]
-        .map(String)
-        .join(' ')
+      ['[command-palette-recents-store] Failed to persist recents:', error].map(String).join(' ')
     )
   })
 }
@@ -116,9 +112,7 @@ export const useCommandPaletteRecentsStore = create<CommandPaletteRecentsState>(
     } catch (error) {
       logFrontend(
         'error',
-        ['[command-palette-recents-store] Failed to parse recents:', error]
-          .map(String)
-          .join(' ')
+        ['[command-palette-recents-store] Failed to parse recents:', error].map(String).join(' ')
       )
       set({ recentsByProfile: {}, isInitialized: true })
     }

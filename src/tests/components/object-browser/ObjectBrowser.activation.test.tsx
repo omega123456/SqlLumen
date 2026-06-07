@@ -75,7 +75,9 @@ describe('ObjectBrowser activation delegation', () => {
     const databaseId = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
     const categoryId = makeNodeId('category', 'ecommerce_db', 'view')
     const objectId = makeNodeId('view', 'ecommerce_db', 'user_stats')
-    const openObjectDefaultTab = vi.spyOn(objectActivation, 'openObjectDefaultTab').mockImplementation(() => {})
+    const openObjectDefaultTab = vi
+      .spyOn(objectActivation, 'openObjectDefaultTab')
+      .mockImplementation(() => {})
     const loadDatabases = vi.fn().mockResolvedValue(undefined)
 
     const nodes: Record<string, TreeNodeType> = {

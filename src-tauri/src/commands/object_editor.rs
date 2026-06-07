@@ -7,7 +7,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{log_single_entry, resolve_connection_context};
+use crate::commands::query_history_bridge::{
+    log_single_entry, log_single_entry_if_resolved, resolve_connection_context,
+};
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
@@ -651,9 +653,12 @@ pub async fn get_object_body(
     let type_upper = object_type.to_uppercase();
     let sql_text = format!("SHOW CREATE {type_upper} `{database}`.`{object_name}`");
 
-    log_single_entry(
+    log_single_entry_if_resolved(
         &state.db,
-        NewHistoryEntry {
+        conn_id,
+        database_name,
+        &connection_id,
+        |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
             sql_text,
@@ -685,6 +690,14 @@ pub async fn save_object(
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id_for_log);
 
+    let Some(conn_id) = conn_id else {
+        tracing::warn!(
+            session_id = %connection_id_for_log,
+            "skipping query history logging: no saved connection id resolved for session"
+        );
+        return result;
+    };
+
     match &result {
         Ok(response) => {
             // Log the DROP IF EXISTS as a separate history entry when it was executed
@@ -694,13 +707,11 @@ pub async fn save_object(
                     "DROP {} IF EXISTS `{}`.`{}`",
                     type_keyword, database_for_log, object_name_for_log
                 );
-                let (drop_conn_id, drop_database_name) =
-                    resolve_connection_context(&state, &connection_id_for_log);
                 log_single_entry(
                     &state.db,
                     NewHistoryEntry {
-                        connection_id: drop_conn_id,
-                        database_name: drop_database_name,
+                        connection_id: conn_id.clone(),
+                        database_name: database_name.clone(),
                         sql_text: drop_sql,
                         duration_ms: Some(duration_ms),
                         row_count: Some(0),
@@ -769,9 +780,12 @@ pub async fn drop_object(
     let type_keyword = object_type_keyword(&object_type).unwrap_or("UNKNOWN");
     let sql_text = format!("DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`");
 
-    log_single_entry(
+    log_single_entry_if_resolved(
         &state.db,
-        NewHistoryEntry {
+        conn_id,
+        database_name,
+        &connection_id,
+        |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
             sql_text,

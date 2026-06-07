@@ -1,7 +1,6 @@
 //! Integration tests for `schema_index::storage` — vec0 virtual table + chunk CRUD.
 
 use rusqlite::Connection;
-use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, IndexMeta, IndexStatus};
@@ -10,8 +9,7 @@ use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, IndexMeta, Index
 /// create the vec0 virtual table with a test dimension for the given profile.
 fn setup_db_for_profile(profile_id: &str, dimension: usize) -> Connection {
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, profile_id, dimension).expect("create vec table");
     conn
 }
@@ -69,8 +67,7 @@ fn test_vec_version_returns_non_empty_string() {
 #[test]
 fn test_create_vec_table() {
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let conn = common::test_db();
 
     storage::create_vec_table(&conn, "test_profile", 384).expect("create vec table");
 
@@ -621,6 +618,8 @@ fn test_index_status_from_str_unknown() {
 }
 
 use sqllumen_lib::schema_index::types::ChunkMetadata;
+
+mod common;
 
 // ── delete_chunk_by_key ──────────────────────────────────────────────────
 

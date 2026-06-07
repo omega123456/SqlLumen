@@ -149,9 +149,7 @@ describe('useCommandPaletteRecentsStore', () => {
 
     const profileOneRecents = useCommandPaletteRecentsStore.getState().getRecents('profile-1')
     expect(profileOneRecents).toHaveLength(COMMAND_PALETTE_RECENTS_MAX_PER_PROFILE)
-    expect(profileOneRecents[0]?.name).toBe(
-      `table_${COMMAND_PALETTE_RECENTS_MAX_PER_PROFILE + 1}`
-    )
+    expect(profileOneRecents[0]?.name).toBe(`table_${COMMAND_PALETTE_RECENTS_MAX_PER_PROFILE + 1}`)
     expect(profileOneRecents[profileOneRecents.length - 1]?.name).toBe('table_2')
     expect(useCommandPaletteRecentsStore.getState().getRecents('profile-2')).toEqual([
       {

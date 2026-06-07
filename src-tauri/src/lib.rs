@@ -57,7 +57,30 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     let db_path = app_data_dir.join("sqllumen.db");
     let conn =
         open_database(db_path).map_err(|e| format!("failed to open SQLite database: {e}"))?;
-    run_migrations(&conn).map_err(|e| format!("failed to run database migrations: {e}"))?;
+    let applied =
+        run_migrations(&conn).map_err(|e| format!("failed to run database migrations: {e}"))?;
+
+    // When the cascade-cleanup migration is first applied it rebuilds several
+    // large tables, leaving freed pages behind. Reclaim that disk space with a
+    // single VACUUM. VACUUM is illegal inside a transaction and the migration
+    // runner wraps each migration in one, so it must run here, after the loop.
+    if applied
+        .iter()
+        .any(|name| name == "013_connection_cascade_cleanup")
+    {
+        tracing::info!("migration 013 newly applied; running one-time VACUUM to reclaim space");
+        if let Err(e) = conn.execute_batch("VACUUM;") {
+            tracing::error!(error = ?e, "one-time VACUUM after migration 013 failed");
+        }
+    }
+
+    // Enable foreign-key enforcement for production. This is the sole owner of
+    // FK enablement (run_migrations leaves it off so default test helpers stay
+    // FK-off). PRAGMA foreign_keys is a no-op inside a transaction, so it is set
+    // here, outside any transaction.
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|e| format!("failed to enable foreign key enforcement: {e}"))?;
+
     Ok(conn)
 }
 

@@ -77,9 +77,7 @@ function setupStore(opts?: {
   groups?: ConnectionGroup[]
   activeSessions?: Record<string, { profileId: string; groupId: string | null }>
 }) {
-  const connections = opts?.connections ?? [
-    buildConnection({ id: 'conn-1', name: 'Sample MySQL' }),
-  ]
+  const connections = opts?.connections ?? [buildConnection({ id: 'conn-1', name: 'Sample MySQL' })]
   const groups = opts?.groups ?? []
   const activeConnections = Object.fromEntries(
     Object.entries(opts?.activeSessions ?? {}).map(([sessionId, info]) => [
@@ -308,9 +306,7 @@ describe('AiMemoriesSettings', () => {
       getData: vi.fn(() => '1'),
     }
     act(() => {
-      row.dispatchEvent(
-        Object.assign(new Event('dragstart', { bubbles: true }), { dataTransfer })
-      )
+      row.dispatchEvent(Object.assign(new Event('dragstart', { bubbles: true }), { dataTransfer }))
     })
     act(() => {
       target.dispatchEvent(
@@ -365,9 +361,7 @@ describe('AiMemoriesSettings', () => {
     expect(dragOver.defaultPrevented).toBe(true)
     expect(dataTransfer.dropEffect).toBe('move')
     expect(target.className).toContain('dropTarget')
-    expect(
-      screen.getByTestId('ai-memory-drop-skeleton-connection-conn-1')
-    ).toBeInTheDocument()
+    expect(screen.getByTestId('ai-memory-drop-skeleton-connection-conn-1')).toBeInTheDocument()
     await settle()
   })
 
@@ -407,9 +401,7 @@ describe('AiMemoriesSettings', () => {
     })
     expect(conn.className).toContain('dropTarget')
     expect(group.className).not.toContain('dropTarget')
-    expect(
-      screen.queryByTestId('ai-memory-drop-skeleton-group-grp-1')
-    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ai-memory-drop-skeleton-group-grp-1')).not.toBeInTheDocument()
     await settle()
   })
 
@@ -669,7 +661,9 @@ describe('AiMemoriesSettings', () => {
     })
 
     await waitFor(() => {
-      expect(useToastStore.getState().toasts.some((t) => /Failed to move/i.test(t.title))).toBe(true)
+      expect(useToastStore.getState().toasts.some((t) => /Failed to move/i.test(t.title))).toBe(
+        true
+      )
     })
   })
 
@@ -690,9 +684,9 @@ describe('AiMemoriesSettings', () => {
       dialogBtns[dialogBtns.length - 1]
     await user.click(confirmBtn)
     await waitFor(() => {
-      expect(
-        useToastStore.getState().toasts.some((t) => /Failed to delete/i.test(t.title))
-      ).toBe(true)
+      expect(useToastStore.getState().toasts.some((t) => /Failed to delete/i.test(t.title))).toBe(
+        true
+      )
     })
   })
 
@@ -762,7 +756,9 @@ describe('AiMemoriesSettings', () => {
     await user.type(ta, 'x')
     await user.click(screen.getByTestId('ai-memory-add-save-global'))
     await waitFor(() => {
-      expect(useToastStore.getState().toasts.some((t) => /Failed to save/i.test(t.title))).toBe(true)
+      expect(useToastStore.getState().toasts.some((t) => /Failed to save/i.test(t.title))).toBe(
+        true
+      )
     })
   })
 

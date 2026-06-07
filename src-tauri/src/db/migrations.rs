@@ -52,12 +52,22 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "012_session_snapshots",
         include_str!("../../migrations/012_session_snapshots.sql"),
     ),
+    (
+        "013_connection_cascade_cleanup",
+        include_str!("../../migrations/013_connection_cascade_cleanup.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.
 /// Creates the `_migrations` tracking table if it doesn't exist.
 /// Applies migrations in order, skipping already-applied ones.
-pub fn run_migrations(conn: &Connection) -> Result<()> {
+///
+/// Returns the names of migrations that were newly applied during this
+/// invocation (already-applied migrations are not included). Does NOT touch
+/// `PRAGMA foreign_keys` — foreign-key enforcement is enabled only in
+/// `initialize_database` (production), so the default test helpers stay
+/// FK-off.
+pub fn run_migrations(conn: &Connection) -> Result<Vec<String>> {
     // Create the migrations tracking table
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS _migrations (
@@ -65,6 +75,8 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
             applied_at TEXT NOT NULL
         );",
     )?;
+
+    let mut applied: Vec<String> = Vec::new();
 
     for (name, sql) in MIGRATIONS {
         // Check if already applied — propagate errors, don't swallow them
@@ -86,14 +98,17 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
                 rusqlite::params![name, now],
             )?;
             tx.commit()?;
+            applied.push((*name).to_string());
         }
     }
 
-    Ok(())
+    Ok(applied)
 }
 
 /// Simple Unix timestamp string for migration tracking.
-/// Avoids pulling in chrono as a dependency for this one use case.
+/// Although `chrono` is already a direct dependency, a plain Unix-seconds
+/// integer string is used here intentionally — migration tracking only needs a
+/// monotonic, sortable marker, not a formatted calendar date.
 fn timestamp_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()

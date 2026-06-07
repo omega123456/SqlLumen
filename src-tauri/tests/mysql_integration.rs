@@ -165,6 +165,19 @@ async fn test_registry_update_status_noop_for_missing() {
     registry.update_status("nonexistent", ConnectionStatus::Connected);
 }
 
+#[tokio::test]
+async fn test_registry_get_pool_by_profile_returns_none_when_empty() {
+    let registry = ConnectionRegistry::new();
+    assert!(registry.get_pool_by_profile("missing-profile").is_none());
+}
+
+#[tokio::test]
+async fn test_registry_default_matches_new() {
+    let registry = ConnectionRegistry::default();
+    assert!(!registry.contains("anything"));
+    assert!(registry.get_pool_by_profile("missing-profile").is_none());
+}
+
 // --- Registry Health Monitor Support Tests ---
 
 #[tokio::test]

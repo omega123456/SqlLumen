@@ -2,7 +2,6 @@
 //! pipeline with dedup, ranking, and FK fan-out.
 
 use rusqlite::Connection;
-use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{
     apply_graph_expansion, multi_query_search, multi_query_search_configured,
@@ -13,14 +12,15 @@ use sqllumen_lib::schema_index::search::{
 use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
 
+mod common;
+
 const DIM: usize = 4;
 
 /// Helper: register sqlite-vec, open an in-memory DB, run all migrations,
 /// and create the vec0 virtual table with a test dimension.
 fn setup_db() -> Connection {
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let conn = common::test_db();
     storage::create_vec_table(&conn, "conn-1", DIM).expect("create vec table");
     conn
 }

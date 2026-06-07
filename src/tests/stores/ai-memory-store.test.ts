@@ -167,7 +167,6 @@ describe('initAiMemoryStore', () => {
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
 
     initAiMemoryStore()
-
     ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = saved
 
     await ipc.emit('ai-memory-reembed-progress', {

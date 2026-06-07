@@ -11,7 +11,11 @@ import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { ipc } from '../ipc-mock'
 import type { ActiveConnection } from '../../types/connection'
 
-function makeActiveConnection(sessionId: string, profileId: string, name: string): ActiveConnection {
+function makeActiveConnection(
+  sessionId: string,
+  profileId: string,
+  name: string
+): ActiveConnection {
   return {
     id: sessionId,
     profile: {

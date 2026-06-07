@@ -24,7 +24,19 @@ export function _clearPendingBootstraps(): void {
   _pendingBootstraps.clear()
 }
 
-export async function bootstrapSchemaCache(connectionId: string): Promise<void> {
+/**
+ * Hydrates the live in-memory schema cache for a session and persists a snapshot
+ * for the saved connection.
+ *
+ * @param sessionId The ephemeral per-connect session id. Keys the in-memory cache
+ *   and the pending-bootstrap map (metadata fetches run against a live session).
+ * @param savedConnectionId The stable saved-connection id. Keys snapshot
+ *   persistence (load/save), so reconnects hit one bounded row per connection.
+ */
+export async function bootstrapSchemaCache(
+  sessionId: string,
+  savedConnectionId: string
+): Promise<void> {
   // The "initial load" promise covers only the fast path: loading and hydrating
   // the persisted snapshot (or a full rebuild if no snapshot exists). The
   // background refresh runs independently and does NOT block the pending
@@ -35,66 +47,62 @@ export async function bootstrapSchemaCache(connectionId: string): Promise<void> 
     resolveInitial = resolve
   })
 
-  _pendingBootstraps.set(connectionId, initialLoadPromise)
+  _pendingBootstraps.set(sessionId, initialLoadPromise)
 
   let hasHydratedSnapshot = false
 
   try {
-    const snapshot = await loadSchemaCacheSnapshot(connectionId)
+    const snapshot = await loadSchemaCacheSnapshot(savedConnectionId)
     if (snapshot) {
-      hydrateFromSnapshot(snapshot, connectionId)
+      hydrateFromSnapshot(snapshot, sessionId)
       hasHydratedSnapshot = true
     }
   } catch (err) {
-    logFrontend(
-      'warn',
-      ['[schema-cache-bootstrap] Failed to load persisted schema cache:', err].map(String).join(' ')
-    )
+    const msg = err instanceof Error ? err.message : String(err)
+    logFrontend('warn', `[schema-cache-bootstrap] Failed to load persisted schema cache: ${msg}`)
   }
 
   if (hasHydratedSnapshot) {
     // Cache is already usable with stale data — unblock waiters immediately.
     resolveInitial()
-    if (_pendingBootstraps.get(connectionId) === initialLoadPromise) {
-      _pendingBootstraps.delete(connectionId)
+    if (_pendingBootstraps.get(sessionId) === initialLoadPromise) {
+      _pendingBootstraps.delete(sessionId)
     }
 
     // Refresh in the background (non-blocking for callers).
     try {
-      await refreshCacheInBackground(connectionId)
-      const freshSnapshot = serializeCacheSnapshot(connectionId)
+      await refreshCacheInBackground(sessionId)
+      const freshSnapshot = serializeCacheSnapshot(sessionId)
       if (freshSnapshot) {
-        await saveSchemaCacheSnapshot(connectionId, freshSnapshot)
+        await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       logFrontend(
         'warn',
-        ['[schema-cache-bootstrap] Failed to rebuild persisted schema cache:', err]
-          .map(String)
-          .join(' ')
+        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${msg}`
       )
     }
   } else {
     // No snapshot — must do a full rebuild before unblocking.
     try {
-      await rebuildCache(connectionId)
+      await rebuildCache(sessionId)
       resolveInitial()
-      const freshSnapshot = serializeCacheSnapshot(connectionId)
+      const freshSnapshot = serializeCacheSnapshot(sessionId)
       if (freshSnapshot) {
-        await saveSchemaCacheSnapshot(connectionId, freshSnapshot)
+        await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
       logFrontend(
         'warn',
-        ['[schema-cache-bootstrap] Failed to rebuild persisted schema cache:', err]
-          .map(String)
-          .join(' ')
+        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${msg}`
       )
       // Still resolve (don't leave waiters hanging — cache will be in error state)
       resolveInitial()
     } finally {
-      if (_pendingBootstraps.get(connectionId) === initialLoadPromise) {
-        _pendingBootstraps.delete(connectionId)
+      if (_pendingBootstraps.get(sessionId) === initialLoadPromise) {
+        _pendingBootstraps.delete(sessionId)
       }
     }
   }

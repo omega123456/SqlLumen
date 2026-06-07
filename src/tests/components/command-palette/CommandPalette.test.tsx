@@ -125,7 +125,9 @@ describe('CommandPalette', () => {
 
     expect(await screen.findByTestId('command-palette-results')).toBeInTheDocument()
     expect(
-      screen.getAllByRole('option').some((option) => option.textContent?.includes('users · analytics'))
+      screen
+        .getAllByRole('option')
+        .some((option) => option.textContent?.includes('users · analytics'))
     ).toBe(true)
 
     for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -204,8 +206,12 @@ describe('CommandPalette', () => {
       JSON.stringify({
         databases: ['analytics', 'app_main'],
         tables: {
-          analytics: [{ name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 }],
-          app_main: [{ name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 }],
+          analytics: [
+            { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+          ],
+          app_main: [
+            { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+          ],
         },
         views: {},
         columns: {},

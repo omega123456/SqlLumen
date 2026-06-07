@@ -92,7 +92,9 @@
   color: var(--ui-close-button-fg);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    color 0.12s ease;
 }
 
 .row:hover .deleteButton,

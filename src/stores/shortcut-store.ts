@@ -35,12 +35,7 @@ export const EDITOR_CONTEXT_ACTIONS = new Set([
 ])
 
 /** Action IDs that should fire even when focus is on INPUT/TEXTAREA/SELECT elements. */
-export const GLOBAL_ACTIONS = new Set([
-  'command-palette',
-  'zoom-in',
-  'zoom-out',
-  'zoom-reset',
-])
+export const GLOBAL_ACTIONS = new Set(['command-palette', 'zoom-in', 'zoom-out', 'zoom-reset'])
 
 // ---------------------------------------------------------------------------
 // Store
