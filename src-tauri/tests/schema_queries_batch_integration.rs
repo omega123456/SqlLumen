@@ -9,7 +9,10 @@ use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 use sqllumen_lib::mysql::schema_queries::{query_all_foreign_keys_batch, query_all_indexes_batch};
 
 #[cfg(coverage)]
-use sqllumen_lib::mysql::schema_queries::{query_all_foreign_keys_batch, query_all_indexes_batch};
+use sqllumen_lib::mysql::schema_queries::{
+    query_all_foreign_keys_batch, query_all_indexes_batch, query_all_triggers_batch,
+    query_all_views_batch,
+};
 #[cfg(not(coverage))]
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 
@@ -381,6 +384,24 @@ async fn fk_batch_coverage_stub_repeated_calls_stay_empty() {
         .expect("second coverage stub should succeed");
     assert!(first.is_empty());
     assert!(second.is_empty());
+}
+
+#[cfg(coverage)]
+#[tokio::test]
+async fn views_batch_coverage_stub_non_empty_input() {
+    let result = query_all_views_batch(&(), &["app".to_string(), "analytics".to_string()])
+        .await
+        .expect("coverage stub should succeed");
+    assert!(result.is_empty());
+}
+
+#[cfg(coverage)]
+#[tokio::test]
+async fn triggers_batch_coverage_stub_non_empty_input() {
+    let result = query_all_triggers_batch(&(), &["app".to_string(), "analytics".to_string()])
+        .await
+        .expect("coverage stub should succeed");
+    assert!(result.is_empty());
 }
 
 #[cfg(coverage)]

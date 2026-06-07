@@ -23,10 +23,11 @@ describe('ShortcutsSettings', () => {
     render(<ShortcutsSettings />)
     expect(screen.getByTestId('settings-shortcuts')).toBeInTheDocument()
     expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument()
-    // Verify all 8 action rows are present
+    // Verify all action rows are present
     expect(screen.getByTestId('shortcut-row-execute-query')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-execute-all')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-format-query')).toBeInTheDocument()
+    expect(screen.getByTestId('shortcut-row-command-palette')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-save-file')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-open-file')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-new-query-tab')).toBeInTheDocument()
@@ -40,6 +41,7 @@ describe('ShortcutsSettings', () => {
     const recordBtn = screen.getByTestId('shortcut-record-execute-query')
     expect(recordBtn).toBeInTheDocument()
     expect(recordBtn.textContent).toContain('F9')
+    expect(screen.getByTestId('shortcut-record-command-palette').textContent).toContain('F2')
   })
 
   it('starts recording mode on shortcut button click', async () => {

@@ -315,6 +315,34 @@ async function applyFixtureOverrides(
   }, options)
 }
 
+async function setSchemaMetadataDelay(page: Page, delayMs: number) {
+  await page.evaluate((nextDelayMs) => {
+    ;(
+      window as typeof window & {
+        __PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__?: number
+      }
+    ).__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__ = nextDelayMs
+  }, delayMs)
+}
+
+async function openCommandPalette(page: Page) {
+  await page.keyboard.press('F2')
+  await expect(page.getByTestId('command-palette')).toBeVisible()
+  await expect(page.getByTestId('command-palette-input')).toBeFocused()
+}
+
+async function prepareCommandPalette(page: Page, options?: { recents?: string; delayMs?: number }) {
+  await applyFixtureOverrides(page, {
+    reset: true,
+    overrides:
+      options?.recents == null
+        ? []
+        : [{ domain: 'commandPaletteRecents', key: 'default', data: options.recents }],
+  })
+  await setSchemaMetadataDelay(page, options?.delayMs ?? 0)
+  await connectToSample(page)
+}
+
 async function openCopyToHostDialog(
   page: Page,
   source: 'database' | 'table',
@@ -4632,6 +4660,135 @@ for (const theme of themes) {
         `processlist-info-popover-${theme}.png`,
         { animations: 'disabled' }
       )
+    })
+  })
+}
+
+for (const theme of themes) {
+  test.describe(`command palette (${theme})`, () => {
+    test('CommandPalette — empty state', async ({ page }) => {
+      await page.addInitScript(() => {
+        ;(
+          window as typeof window & {
+            __PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__?: string
+          }
+        ).__PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__ = '{}'
+      })
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+      await expect(page.getByTestId('command-palette-loading-state')).toHaveCount(0)
+      await expect(page.getByTestId('command-palette-empty-state')).toBeVisible()
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-empty-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — recents state', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+      await expect(page.getByText('Recent')).toBeVisible()
+      await expect(page.getByTestId('command-palette-results')).toBeVisible()
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-recents-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — active results', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+      await page.getByTestId('command-palette-input').fill('user')
+      await expect(page.getByTestId('command-palette-results')).toContainText('users')
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-results-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — slash dropdown', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+      await page.getByTestId('command-palette-input').fill('/')
+      await expect(page.getByTestId('command-palette-slash-dropdown')).toBeVisible()
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-slash-dropdown-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — two pills active', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+
+      await page.getByTestId('command-palette-input').fill('/')
+      await page.getByRole('option', { name: /tables/i }).click()
+      await expect(page.getByTestId('command-palette-pill-type')).toBeVisible()
+
+      await page.getByTestId('command-palette-input').fill('/')
+      await page.getByRole('option', { name: /ecommerce_db/i }).click()
+      await expect(page.getByTestId('command-palette-pill-database')).toBeVisible()
+
+      await page.getByTestId('command-palette-input').fill('user')
+      await expect(page.getByTestId('command-palette-results')).toContainText('users')
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-two-pills-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — single pill active', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+
+      await page.getByTestId('command-palette-input').fill('/')
+      await page.getByRole('option', { name: /tables/i }).click()
+      await expect(page.getByTestId('command-palette-pill-type')).toBeVisible()
+
+      await page.getByTestId('command-palette-input').fill('user')
+      await expect(page.getByTestId('command-palette-results')).toContainText('users')
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-single-pill-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — no results', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+      await page.getByTestId('command-palette-input').fill('zzznomatch')
+      await expect(page.getByTestId('command-palette-no-results')).toBeVisible()
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-no-results-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — loading state', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page, { recents: '{}', delayMs: 1500 })
+      await openCommandPalette(page)
+      await expect(page.getByTestId('command-palette-loading-state')).toBeVisible()
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-loading-${theme}.png`,
+        { animations: 'disabled' }
+      )
+      await setSchemaMetadataDelay(page, 0)
     })
   })
 }

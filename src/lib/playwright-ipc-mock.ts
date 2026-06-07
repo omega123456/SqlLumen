@@ -6,6 +6,7 @@ import {
   getAnalyzeQueryForEditFixture,
   getBlobValueFixture,
   getCancelCopyFixture,
+  getCommandPaletteRecentsFixture,
   getCopyableObjectsFixture,
   getCopyProgressFixture,
   getCopyToHostStartFixture,
@@ -22,6 +23,7 @@ import {
   getObjectBodyFixture,
   getQueryResultFixture,
   getRoutineParamsFixture,
+  getSchemaMetadataFullFixture,
   getSchemaInfoFixture,
   getSnapshotCreatedIdFixture,
   getSnapshotListFixture,
@@ -191,6 +193,34 @@ function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
   return w.__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
 }
 
+function getCommandPaletteRecentsValue(): string {
+  const w = globalThis as typeof globalThis & {
+    __PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__?: string
+  }
+
+  return w.__PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__ ?? getCommandPaletteRecentsFixture()
+}
+
+function getSchemaMetadataDelayMs(): number {
+  const w = globalThis as typeof globalThis & {
+    __PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__?: number
+  }
+
+  const candidate = w.__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__
+  return typeof candidate === 'number' && candidate > 0 ? candidate : 0
+}
+
+async function maybeDelaySchemaMetadata(): Promise<void> {
+  const delayMs = getSchemaMetadataDelayMs()
+  if (delayMs <= 0) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, delayMs)
+  })
+}
+
 /**
  * IPC handler for `mockIPC` when the app runs under Playwright (VITE_PLAYWRIGHT).
  * Returns stable, deterministic data so UI flows and visual snapshots do not flap.
@@ -259,6 +289,9 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.preferResponsesApi': 'false',
       }
       if (key in AI_DEFAULTS) return AI_DEFAULTS[key]
+      if (key === 'commandPalette.recents') {
+        return getCommandPaletteRecentsValue()
+      }
       return null
     }
     case 'set_setting':
@@ -281,6 +314,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'connection.defaultTimeout': '10',
         'connection.defaultKeepalive': '60',
         shortcuts: '{}',
+        'commandPalette.recents': getCommandPaletteRecentsValue(),
         'session.state': 'null',
         'ai.enabled': 'false',
         'ai.endpoint': '',
@@ -843,87 +877,20 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       )
 
     case 'fetch_schema_metadata_full': {
+      const fixtureMetadata = getSchemaMetadataFullFixture()
       const baseMetadata = getSchemaMetadataOverride()
-      const fullMetadata: SchemaMetadataFull = {
-        databases: baseMetadata?.databases ?? ['ecommerce_db', 'analytics_db', 'staging_db'],
-        tables: baseMetadata?.tables ?? {
-          ecommerce_db: [
-            {
-              name: 'users',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 1000,
-              dataSize: 1048576,
-            },
-            {
-              name: 'orders',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 5000,
-              dataSize: 2097152,
-            },
-            {
-              name: 'products',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 200,
-              dataSize: 524288,
-            },
-            {
-              name: 'bit_test',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 4,
-              dataSize: 16384,
-            },
-          ],
-          analytics_db: [
-            {
-              name: 'events',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 50000,
-              dataSize: 8388608,
-            },
-          ],
-        },
-        columns: baseMetadata?.columns ?? {
-          'ecommerce_db.users': [
-            { name: 'id', dataType: 'BIGINT' },
-            { name: 'name', dataType: 'VARCHAR' },
-            { name: 'email', dataType: 'VARCHAR' },
-            { name: 'status', dataType: 'VARCHAR' },
-            { name: 'created_at', dataType: 'DATETIME' },
-          ],
-          'ecommerce_db.orders': [
-            { name: 'id', dataType: 'BIGINT' },
-            { name: 'user_id', dataType: 'BIGINT' },
-            { name: 'status', dataType: 'VARCHAR' },
-            { name: 'total', dataType: 'DECIMAL' },
-          ],
-          'ecommerce_db.bit_test': [
-            { name: 'id', dataType: 'INT' },
-            { name: 'is_active', dataType: 'BIT' },
-            { name: 'flags', dataType: 'BIT' },
-            { name: 'label', dataType: 'VARCHAR' },
-          ],
-          'analytics_db.events': [
-            { name: 'id', dataType: 'BIGINT' },
-            { name: 'event_name', dataType: 'VARCHAR' },
-            { name: 'user_id', dataType: 'BIGINT' },
-            { name: 'created_at', dataType: 'DATETIME' },
-          ],
-        },
-        routines: baseMetadata?.routines ?? {
-          ecommerce_db: [
-            { name: 'sp_get_orders', routineType: 'PROCEDURE' },
-            { name: 'fn_calculate_total', routineType: 'FUNCTION' },
-          ],
-        },
-        foreignKeys: {},
-        indexes: {},
-      }
-      return fullMetadata
+      return maybeDelaySchemaMetadata().then(
+        (): SchemaMetadataFull => ({
+          databases: baseMetadata?.databases ?? fixtureMetadata.databases,
+          tables: baseMetadata?.tables ?? fixtureMetadata.tables,
+          views: fixtureMetadata.views,
+          columns: baseMetadata?.columns ?? fixtureMetadata.columns,
+          routines: baseMetadata?.routines ?? fixtureMetadata.routines,
+          triggers: fixtureMetadata.triggers,
+          foreignKeys: fixtureMetadata.foreignKeys,
+          indexes: fixtureMetadata.indexes,
+        })
+      )
     }
 
     // --- Table data browser/editor ---

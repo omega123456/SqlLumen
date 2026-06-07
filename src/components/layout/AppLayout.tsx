@@ -21,6 +21,8 @@ import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useSnapshotStore } from '../../stores/snapshot-store'
 import { useZoomStore } from '../../stores/zoom-store'
+import { useCommandPaletteStore } from '../../stores/command-palette-store'
+import { useCommandPaletteRecentsStore } from '../../stores/command-palette-recents-store'
 import { readFile } from '../../lib/query-commands'
 import {
   splitStatements,
@@ -28,6 +30,7 @@ import {
   cursorToOffset,
 } from '../query-editor/sql-parser-utils'
 import { buildExecuteQueryPlan, runExecuteQueryPlan } from '../../lib/query-execution-plan'
+import { CommandPalette } from '../command-palette/CommandPalette'
 import styles from './AppLayout.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
@@ -46,9 +49,16 @@ export function AppLayout() {
   const closeSettingsDialog = useSettingsStore((s) => s.closeDialog)
   const importDialogRequest = useImportDialogStore((s) => s.request)
   const closeImportDialog = useImportDialogStore((s) => s.closeImportDialog)
+  const initializeCommandPaletteRecents = useCommandPaletteRecentsStore(
+    (s) => s.initializeFromBackend
+  )
 
   // Activate global keyboard shortcut listener
   useShortcut()
+
+  useEffect(() => {
+    void initializeCommandPaletteRecents()
+  }, [initializeCommandPaletteRecents])
 
   const handleSeparatorDoubleClick = () => {
     sidebarPanelRef.current?.resize('20%')
@@ -302,6 +312,10 @@ export function AppLayout() {
       void useZoomStore.getState().resetZoom()
     })
 
+    store.registerAction('command-palette', () => {
+      useCommandPaletteStore.getState().toggle()
+    })
+
     return () => {
       store.unregisterAction('execute-query')
       store.unregisterAction('execute-all')
@@ -314,6 +328,7 @@ export function AppLayout() {
       store.unregisterAction('zoom-in')
       store.unregisterAction('zoom-out')
       store.unregisterAction('zoom-reset')
+      store.unregisterAction('command-palette')
     }
   }, [])
 
@@ -350,6 +365,7 @@ export function AppLayout() {
       <ConnectionDialog />
       <SettingsDialog isOpen={isSettingsOpen} onClose={handleCloseSettings} />
       <SnapshotDialog />
+      <CommandPalette />
       {importDialogRequest && (
         <SqlImportDialog
           connectionId={importDialogRequest.connectionId}

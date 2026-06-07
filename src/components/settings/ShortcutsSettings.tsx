@@ -16,6 +16,11 @@ const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
     description: 'Run all statements in the editor',
   },
   { id: 'format-query', label: 'Format Query', description: 'Auto-format the current SQL' },
+  {
+    id: 'command-palette',
+    label: 'Command Palette',
+    description: 'Open the schema object search palette',
+  },
   { id: 'save-file', label: 'Save File', description: 'Save the current editor contents' },
   { id: 'open-file', label: 'Open File', description: 'Open a SQL file' },
   { id: 'new-query-tab', label: 'New Query Tab', description: 'Open a new query editor tab' },

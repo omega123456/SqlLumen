@@ -79,10 +79,7 @@ fn list_logs_impl_applies_threshold_and_paging() {
     let last_page = list_logs_impl(&state, 4, "warn").expect("list page 4");
     assert_eq!(last_page.entries.len(), 5);
     assert_eq!(
-        last_page
-            .entries
-            .last()
-            .map(|entry| entry.message.as_str()),
+        last_page.entries.last().map(|entry| entry.message.as_str()),
         Some("message-128")
     );
 }

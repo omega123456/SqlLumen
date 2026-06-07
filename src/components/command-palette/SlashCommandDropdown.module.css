@@ -1,0 +1,72 @@
+.dropdown {
+  padding: 8px;
+  background: var(--ui-dropdown-panel-bg);
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.24);
+  max-height: 280px;
+  overflow: auto;
+  backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
+}
+
+.section + .section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+}
+
+.sectionLabel {
+  padding: 4px 10px 8px;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--on-surface);
+  text-align: left;
+}
+
+.option:hover,
+.option[data-active='true'] {
+  background: var(--ui-dropdown-option-hover-bg);
+}
+
+.optionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+}
+
+.optionCopy {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.optionLabel {
+  color: var(--on-surface);
+  font-weight: 600;
+}
+
+.optionMeta {
+  color: var(--ui-dropdown-option-meta-color);
+  font-size: var(--type-size-sm);
+}
+
+.emptyState {
+  padding: 18px;
+  color: var(--on-surface-variant);
+}

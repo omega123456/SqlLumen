@@ -96,6 +96,18 @@ pub struct RoutineMeta {
     pub routine_type: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewMeta {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerMeta {
+    pub name: String,
+}
+
 /// Full schema metadata response for autocomplete cache.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,6 +126,8 @@ pub struct SchemaMetadataFull {
     pub tables: std::collections::HashMap<String, Vec<TableInfo>>,
     pub columns: std::collections::HashMap<String, Vec<ColumnMeta>>,
     pub routines: std::collections::HashMap<String, Vec<RoutineMeta>>,
+    pub views: std::collections::HashMap<String, Vec<ViewMeta>>,
+    pub triggers: std::collections::HashMap<String, Vec<TriggerMeta>>,
     pub foreign_keys:
         std::collections::HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>>,
     pub indexes: std::collections::HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>>,
@@ -1470,7 +1484,10 @@ pub async fn fetch_schema_metadata_full_impl(
     state: &AppState,
     connection_id: &str,
 ) -> Result<SchemaMetadataFull, String> {
-    use crate::mysql::schema_queries::{query_all_foreign_keys_batch, query_all_indexes_batch};
+    use crate::mysql::schema_queries::{
+        query_all_foreign_keys_batch, query_all_indexes_batch, query_all_triggers_batch,
+        query_all_views_batch,
+    };
 
     // First get the base metadata (databases, tables, columns, routines)
     let base = fetch_schema_metadata_impl(state, connection_id).await?;
@@ -1483,8 +1500,8 @@ pub async fn fetch_schema_metadata_full_impl(
     // Extract database names for batch queries
     let db_names: Vec<String> = base.databases.clone();
 
-    // Run both batch queries concurrently
-    let (foreign_keys, indexes) = tokio::join!(
+    // Run all additive batch queries concurrently.
+    let (foreign_keys, indexes, views, triggers) = tokio::join!(
         async {
             query_all_foreign_keys_batch(&pool, &db_names)
                 .await
@@ -1507,6 +1524,28 @@ pub async fn fetch_schema_metadata_full_impl(
                     HashMap::new()
                 })
         },
+        async {
+            query_all_views_batch(&pool, &db_names)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "failed to fetch views batch"
+                    );
+                    HashMap::new()
+                })
+        },
+        async {
+            query_all_triggers_batch(&pool, &db_names)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "failed to fetch triggers batch"
+                    );
+                    HashMap::new()
+                })
+        },
     );
 
     Ok(SchemaMetadataFull {
@@ -1514,6 +1553,8 @@ pub async fn fetch_schema_metadata_full_impl(
         tables: base.tables,
         columns: base.columns,
         routines: base.routines,
+        views,
+        triggers,
         foreign_keys,
         indexes,
     })
@@ -1532,6 +1573,8 @@ pub async fn fetch_schema_metadata_full_impl(
         tables: base.tables,
         columns: base.columns,
         routines: base.routines,
+        views: HashMap::new(),
+        triggers: HashMap::new(),
         foreign_keys: HashMap::new(),
         indexes: HashMap::new(),
     })

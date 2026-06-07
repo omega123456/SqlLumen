@@ -7,6 +7,7 @@ import { overrideFixture, resetFixtureOverrides } from '../playwright-fixtures'
 import type {
   MultiQueryResult,
   MultiQueryResultItem,
+  SchemaMetadataFull,
   SchemaMetadataResponse,
 } from '../../types/schema'
 
@@ -542,6 +543,45 @@ describe('playwrightIpcMockHandler', () => {
       connectionId: 'session-playwright-1',
     })
     expect(result).toBeNull()
+  })
+
+  it('serves fetch_schema_metadata_full from the fixture registry with views and triggers', async () => {
+    overrideFixture('schemaMetadataFull', 'default', {
+      databases: ['fixture_db'],
+      tables: {
+        fixture_db: [
+          {
+            name: 'fixture_table',
+            engine: 'InnoDB',
+            charset: 'utf8mb4',
+            rowCount: 10,
+            dataSize: 2048,
+          },
+        ],
+      },
+      views: {
+        fixture_db: [{ name: 'fixture_view' }],
+      },
+      columns: {
+        'fixture_db.fixture_table': [{ name: 'id', dataType: 'BIGINT' }],
+      },
+      routines: {
+        fixture_db: [{ name: 'fixture_proc', routineType: 'PROCEDURE' }],
+      },
+      triggers: {
+        fixture_db: [{ name: 'fixture_trigger' }],
+      },
+      foreignKeys: {},
+      indexes: {},
+    } satisfies SchemaMetadataFull)
+
+    const result = (await playwrightIpcMockHandler('fetch_schema_metadata_full', {
+      connectionId: 'conn-1',
+    })) as SchemaMetadataFull
+
+    expect(result.tables.fixture_db[0]?.name).toBe('fixture_table')
+    expect(result.views.fixture_db).toEqual([{ name: 'fixture_view' }])
+    expect(result.triggers.fixture_db).toEqual([{ name: 'fixture_trigger' }])
   })
 
   it('captures event listener callback IDs via plugin:event|listen', () => {

@@ -10,7 +10,7 @@ use chrono::{DateTime, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
 use rusqlite::Connection;
 use serde_json::Value;
 use std::fs::File;
-use std::sync::{Arc, MutexGuard};
+use std::sync::MutexGuard;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevelFilter {
@@ -109,7 +109,7 @@ pub async fn list_logs(
     state: tauri::State<'_, AppState>,
 ) -> Result<LogPage, String> {
     let threshold = LogLevelFilter::parse(&level)?.threshold();
-    let logs_db = Arc::clone(&state.logs_db);
+    let logs_db = std::sync::Arc::clone(&state.logs_db);
     // Runs off the main thread so a slow query never freezes the WebView. Note that
     // `logs_db` is a single shared connection, so this lock serializes against log
     // ingestion for the duration of the query.
@@ -130,7 +130,7 @@ pub async fn export_logs(
     state: tauri::State<'_, AppState>,
 ) -> Result<i64, String> {
     let range = parse_export_range(&start_timestamp, &end_timestamp)?;
-    let logs_db = Arc::clone(&state.logs_db);
+    let logs_db = std::sync::Arc::clone(&state.logs_db);
     tauri::async_runtime::spawn_blocking(move || {
         let exported = {
             let conn = logs_db.lock().map_err(|e| e.to_string())?;

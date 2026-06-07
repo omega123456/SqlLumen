@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ipc } from '../ipc-mock'
-import { useShortcutStore, DEFAULT_SHORTCUTS } from '../../stores/shortcut-store'
+import {
+  DEFAULT_SHORTCUTS,
+  EDITOR_CONTEXT_ACTIONS,
+  GLOBAL_ACTIONS,
+  useShortcutStore,
+} from '../../stores/shortcut-store'
 
 let mockGetSettingResult: string | null = null
 
@@ -31,11 +36,17 @@ describe('useShortcutStore', () => {
         modifiers: ['ctrl', 'shift'],
       })
       expect(state.shortcuts['format-query']).toEqual({ key: 'F12', modifiers: [] })
+      expect(state.shortcuts['command-palette']).toEqual({ key: 'F2', modifiers: [] })
       expect(state.shortcuts['save-file']).toEqual({ key: 'S', modifiers: ['ctrl'] })
       expect(state.shortcuts['open-file']).toEqual({ key: 'O', modifiers: ['ctrl'] })
       expect(state.shortcuts['new-query-tab']).toEqual({ key: 'T', modifiers: ['ctrl'] })
       expect(state.shortcuts['close-tab']).toEqual({ key: 'W', modifiers: ['ctrl'] })
       expect(state.shortcuts['settings']).toEqual({ key: ',', modifiers: ['ctrl'] })
+    })
+
+    it('allows command-palette in editor and global contexts', () => {
+      expect(EDITOR_CONTEXT_ACTIONS.has('command-palette')).toBe(true)
+      expect(GLOBAL_ACTIONS.has('command-palette')).toBe(true)
     })
 
     it('defaults are a separate reference from shortcuts', () => {

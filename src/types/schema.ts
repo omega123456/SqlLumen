@@ -299,6 +299,22 @@ export interface RoutineMeta {
   routineType: string
 }
 
+export interface ViewInfo {
+  name: string
+}
+
+export interface TriggerInfo {
+  name: string
+}
+
+export type PaletteTypeFilter = 'table' | 'view' | 'procedure' | 'function' | 'trigger'
+
+export interface SearchableObject {
+  database: string
+  objectType: PaletteTypeFilter
+  name: string
+}
+
 export interface SchemaMetadataResponse {
   databases: string[]
   tables: Record<string, TableInfo[]>
@@ -309,8 +325,10 @@ export interface SchemaMetadataResponse {
 export interface SchemaMetadataFull {
   databases: string[]
   tables: Record<string, TableInfo[]>
+  views: Record<string, ViewInfo[]>
   columns: Record<string, ColumnMeta[]>
   routines: Record<string, RoutineMeta[]>
+  triggers: Record<string, TriggerInfo[]>
   foreignKeys: Record<string, ForeignKeyInfo[]>
   indexes: Record<string, IndexInfo[]>
 }

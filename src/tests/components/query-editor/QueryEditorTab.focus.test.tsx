@@ -106,8 +106,10 @@ beforeEach(() => {
     status: 'empty',
     databases: [],
     tables: {},
+    views: {},
     columns: {},
     routines: {},
+    triggers: {},
     foreignKeys: {},
     indexes: {},
   })

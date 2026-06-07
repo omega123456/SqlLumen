@@ -7,13 +7,22 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
+import { useCommandPaletteStore } from '../../stores/command-palette-store'
+import { useCommandPaletteRecentsStore } from '../../stores/command-palette-recents-store'
 
 beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
+    activeConnectionOrder: [],
     activeTabId: null,
     dialogOpen: false,
     error: null,
+  })
+  useCommandPaletteStore.setState({ isOpen: false })
+  useCommandPaletteRecentsStore.setState({
+    recentsByProfile: {},
+    isInitialized: false,
+    initializeFromBackend: vi.fn(() => Promise.resolve()),
   })
   // Reset shortcut store actions
   useShortcutStore.getState()._actions = {}
@@ -68,12 +77,13 @@ describe('AppLayout', () => {
   })
 
   describe('shortcut action registrations', () => {
-    it('registers all 7 shortcut actions on mount', () => {
+    it('registers command-palette alongside the existing shortcut actions on mount', () => {
       render(<AppLayout />)
       const actions = useShortcutStore.getState()._actions
       expect(actions['execute-query']).toBeTypeOf('function')
       expect(actions['execute-all']).toBeTypeOf('function')
       expect(actions['format-query']).toBeTypeOf('function')
+      expect(actions['command-palette']).toBeTypeOf('function')
       expect(actions['save-file']).toBeTypeOf('function')
       expect(actions['new-query-tab']).toBeTypeOf('function')
       expect(actions['close-tab']).toBeTypeOf('function')
@@ -87,10 +97,38 @@ describe('AppLayout', () => {
       expect(actions['execute-query']).toBeUndefined()
       expect(actions['execute-all']).toBeUndefined()
       expect(actions['format-query']).toBeUndefined()
+      expect(actions['command-palette']).toBeUndefined()
       expect(actions['save-file']).toBeUndefined()
       expect(actions['new-query-tab']).toBeUndefined()
       expect(actions['close-tab']).toBeUndefined()
       expect(actions['settings']).toBeUndefined()
+    })
+
+    it('initializes command palette recents on mount', async () => {
+      const initializeFromBackend = vi.fn(() => Promise.resolve())
+      useCommandPaletteRecentsStore.setState({ initializeFromBackend } as never)
+
+      render(<AppLayout />)
+
+      await waitFor(() => {
+        expect(initializeFromBackend).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
+
+  it('mounts the command palette shell and toggles it via the registered action', async () => {
+    render(<AppLayout />)
+
+    act(() => {
+      useShortcutStore.getState().dispatchAction('command-palette')
+    })
+    expect(await screen.findByTestId('command-palette')).toBeInTheDocument()
+
+    act(() => {
+      useShortcutStore.getState().dispatchAction('command-palette')
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId('command-palette')).not.toBeInTheDocument()
     })
   })
 

@@ -6,8 +6,10 @@ import { _clearAllCaches, getCache } from '../../components/query-editor/schema-
 
 const EMPTY_SCHEMA_OBJECTS = {
   tables: {},
+  views: {},
   columns: {},
   routines: {},
+  triggers: {},
   foreignKeys: {},
   indexes: {},
 }

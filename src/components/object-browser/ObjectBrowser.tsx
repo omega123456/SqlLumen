@@ -9,6 +9,7 @@ import {
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
+import { openObjectDefaultTab } from '../../lib/object-activation'
 import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
 import type { CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { TextInput } from '../common/TextInput'
@@ -364,48 +365,14 @@ export function ObjectBrowser({
       const node = nodes[nodeId]
       if (!node) return
 
-      // Use direct field if available, fall back to parseNodeId
-      const dbName = node.databaseName ?? parseNodeId(nodeId).database
-
-      switch (node.type) {
-        case 'table':
-          openTab({
-            type: 'table-data',
-            label: node.label,
-            connectionId,
-            databaseName: dbName,
-            objectName: node.label,
-            objectType: 'table' as ObjectType,
-          })
-          break
-        case 'view':
-          openTab({
-            type: 'table-data',
-            label: node.label,
-            connectionId,
-            databaseName: dbName,
-            objectName: node.label,
-            objectType: 'view' as ObjectType,
-          })
-          break
-        case 'procedure':
-        case 'function':
-        case 'trigger':
-        case 'event':
-          openTab({
-            type: 'schema-info',
-            label: node.label,
-            connectionId,
-            databaseName: dbName,
-            objectName: node.label,
-            objectType: node.type as ObjectType,
-          })
-          break
-        default:
-          break
+      if (!['table', 'view', 'procedure', 'function', 'trigger', 'event'].includes(node.type)) {
+        return
       }
+
+      const dbName = node.databaseName ?? parseNodeId(nodeId).database
+      openObjectDefaultTab(connectionId, dbName, node.type as ObjectType, node.label, node.label)
     },
-    [connectionId, nodes, openTab]
+    [connectionId, nodes]
   )
 
   const isConnected = activeConnection?.status === 'connected'

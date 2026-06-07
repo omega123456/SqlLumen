@@ -9,9 +9,12 @@ import type {
   TableInfo,
   ColumnMeta,
   RoutineMeta,
+  ViewInfo,
+  TriggerInfo,
   ForeignKeyInfo,
   IndexInfo,
   SchemaMetadataFull,
+  SearchableObject,
 } from '../../types/schema'
 import { fetchSchemaMetadataFull } from '../../lib/query-commands'
 import { logFrontend } from '../../lib/app-log-commands'
@@ -29,8 +32,10 @@ export interface SchemaCache {
   status: CacheStatus
   databases: string[]
   tables: Record<string, TableInfo[]>
+  views: Record<string, ViewInfo[]>
   columns: Record<string, ColumnMeta[]>
   routines: Record<string, RoutineMeta[]>
+  triggers: Record<string, TriggerInfo[]>
   foreignKeys: Record<string, ForeignKeyInfo[]>
   indexes: Record<string, IndexInfo[]>
   error?: string
@@ -59,8 +64,10 @@ function emptyCache(): SchemaCache {
     status: 'empty',
     databases: [],
     tables: {},
+    views: {},
     columns: {},
     routines: {},
+    triggers: {},
     foreignKeys: {},
     indexes: {},
   }
@@ -74,10 +81,12 @@ function isNamedEntry<T extends { name?: string | null }>(entry: T | null | unde
   return !!entry && hasNonEmptyName(entry.name)
 }
 
-function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
+export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
   const tables: Record<string, TableInfo[]> = {}
+  const views: Record<string, ViewInfo[]> = {}
   const columns: Record<string, ColumnMeta[]> = {}
   const routines: Record<string, RoutineMeta[]> = {}
+  const triggers: Record<string, TriggerInfo[]> = {}
   const foreignKeys: Record<string, ForeignKeyInfo[]> = {}
   const indexes: Record<string, IndexInfo[]> = {}
   const databases = new Set<string>()
@@ -102,6 +111,23 @@ function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
     }
 
     tables[database] = validTables
+    databases.add(database)
+  }
+
+  for (const [database, viewList] of Object.entries(data.views ?? {})) {
+    if (!hasNonEmptyName(database)) {
+      continue
+    }
+    if (!Array.isArray(viewList)) {
+      continue
+    }
+
+    const validViews = viewList.filter(isNamedEntry)
+    if (validViews.length === 0) {
+      continue
+    }
+
+    views[database] = validViews
     databases.add(database)
   }
 
@@ -143,6 +169,23 @@ function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
     }
 
     routines[database] = validRoutines
+    databases.add(database)
+  }
+
+  for (const [database, triggerList] of Object.entries(data.triggers ?? {})) {
+    if (!hasNonEmptyName(database)) {
+      continue
+    }
+    if (!Array.isArray(triggerList)) {
+      continue
+    }
+
+    const validTriggers = triggerList.filter(isNamedEntry)
+    if (validTriggers.length === 0) {
+      continue
+    }
+
+    triggers[database] = validTriggers
     databases.add(database)
   }
 
@@ -199,8 +242,10 @@ function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
   return {
     databases: Array.from(databases),
     tables,
+    views,
     columns,
     routines,
+    triggers,
     foreignKeys,
     indexes,
   }
@@ -249,8 +294,10 @@ export async function loadCache(connectionId: string): Promise<void> {
         status: 'ready',
         databases: data.databases,
         tables: data.tables,
+        views: data.views,
         columns: data.columns,
         routines: data.routines,
+        triggers: data.triggers,
         foreignKeys: data.foreignKeys,
         indexes: data.indexes,
         lastRefreshAt: Date.now(),
@@ -305,8 +352,10 @@ export async function refreshCacheInBackground(connectionId: string): Promise<vo
     status: 'ready',
     databases: data.databases,
     tables: data.tables,
+    views: data.views,
     columns: data.columns,
     routines: data.routines,
+    triggers: data.triggers,
     foreignKeys: data.foreignKeys,
     indexes: data.indexes,
     lastRefreshAt: Date.now(),
@@ -352,8 +401,10 @@ export function hydrateFromSnapshot(snapshotJson: string, connectionId: string):
     status: 'ready',
     databases: data.databases,
     tables: data.tables,
+    views: data.views,
     columns: data.columns,
     routines: data.routines,
+    triggers: data.triggers,
     foreignKeys: data.foreignKeys,
     indexes: data.indexes,
     lastRefreshAt: Date.now(),
@@ -366,8 +417,10 @@ export function serializeCacheSnapshot(connectionId: string): string | null {
   return JSON.stringify({
     databases: cache.databases,
     tables: cache.tables,
+    views: cache.views,
     columns: cache.columns,
     routines: cache.routines,
+    triggers: cache.triggers,
     foreignKeys: cache.foreignKeys,
     indexes: cache.indexes,
   } satisfies SchemaMetadataFull)
@@ -434,6 +487,44 @@ export function filterRoutines(
   const routines = cache.routines[database] ?? []
   const lowerPrefix = prefix.toLowerCase()
   return routines.filter((r) => r.name.toLowerCase().startsWith(lowerPrefix))
+}
+
+export function getSearchableObjects(connectionId: string): SearchableObject[] {
+  const cache = cacheMap.get(connectionId)
+  if (!cache || cache.status !== 'ready') return []
+
+  const searchableObjects: SearchableObject[] = []
+
+  for (const [database, tables] of Object.entries(cache.tables)) {
+    for (const table of tables) {
+      searchableObjects.push({ database, objectType: 'table', name: table.name })
+    }
+  }
+
+  for (const [database, views] of Object.entries(cache.views)) {
+    for (const view of views) {
+      searchableObjects.push({ database, objectType: 'view', name: view.name })
+    }
+  }
+
+  for (const [database, routines] of Object.entries(cache.routines)) {
+    for (const routine of routines) {
+      const normalizedType = routine.routineType.trim().toUpperCase()
+      if (normalizedType === 'PROCEDURE') {
+        searchableObjects.push({ database, objectType: 'procedure', name: routine.name })
+      } else if (normalizedType === 'FUNCTION') {
+        searchableObjects.push({ database, objectType: 'function', name: routine.name })
+      }
+    }
+  }
+
+  for (const [database, triggers] of Object.entries(cache.triggers)) {
+    for (const trigger of triggers) {
+      searchableObjects.push({ database, objectType: 'trigger', name: trigger.name })
+    }
+  }
+
+  return searchableObjects
 }
 
 /**

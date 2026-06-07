@@ -28,6 +28,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'connection.defaultKeepalive': '60',
   'updates.checkInterval': DEFAULT_UPDATE_INTERVAL,
   shortcuts: '{}',
+  'commandPalette.recents': '{}',
   'session.state': 'null',
   'snapshots.frequency': 'daily',
   'snapshots.keep': '10',

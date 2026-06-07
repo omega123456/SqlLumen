@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import {
   CaretRight,
   CircleNotch,
@@ -221,6 +221,7 @@ export function TreeNode({
   onClearFilter,
   isFirstVisible,
 }: TreeNodeProps) {
+  const rowRef = useRef<HTMLDivElement | null>(null)
   const node = useSchemaStore(
     (state) =>
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes[nodeId] ??
@@ -307,6 +308,16 @@ export function TreeNode({
     [expandedNodes, filterMatchIds, filterScopeRootId, nodesMap, selectedNodeId]
   )
 
+  const isSelected = selectedNodeId === nodeId
+  const wasSelectedRef = useRef(isSelected)
+
+  useEffect(() => {
+    if (isSelected && !wasSelectedRef.current) {
+      rowRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+    wasSelectedRef.current = isSelected
+  }, [isSelected])
+
   if (!node) return null
 
   // If filter is active, skip nodes that don't match and have no matching descendants.
@@ -316,7 +327,6 @@ export function TreeNode({
     return null
   }
 
-  const isSelected = selectedNodeId === nodeId
   const { hasChildren } = node
   const showExpandedChrome = isExpanded || (filterDrivesExpand && !isSuppressedByScope)
   const { icon, className: iconClassName } = getNodeIcon(node.type, showExpandedChrome)
@@ -436,6 +446,7 @@ export function TreeNode({
   return (
     <>
       <div
+        ref={rowRef}
         className={rowClassName}
         role="treeitem"
         aria-expanded={hasChildren ? showChildren : undefined}

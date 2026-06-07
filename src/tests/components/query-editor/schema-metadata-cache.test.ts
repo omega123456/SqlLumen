@@ -17,6 +17,9 @@ import {
   filterRoutines,
   getPendingLoad,
   hydrateFromSnapshot,
+  sanitizeSchemaMetadata,
+  serializeCacheSnapshot,
+  getSearchableObjects,
   _clearAllCaches,
 } from '../../../components/query-editor/schema-metadata-cache'
 
@@ -25,8 +28,10 @@ function mockMetadata(partial: Partial<SchemaMetadataFull>): SchemaMetadataFull 
   return {
     databases: [],
     tables: {},
+    views: {},
     columns: {},
     routines: {},
+    triggers: {},
     foreignKeys: {},
     indexes: {},
     ...partial,
@@ -50,8 +55,10 @@ describe('schema-metadata-cache', () => {
     expect(cache.status).toBe('empty')
     expect(cache.databases).toEqual([])
     expect(cache.tables).toEqual({})
+    expect(cache.views).toEqual({})
     expect(cache.columns).toEqual({})
     expect(cache.routines).toEqual({})
+    expect(cache.triggers).toEqual({})
     expect(cache.foreignKeys).toEqual({})
     expect(cache.indexes).toEqual({})
   })
@@ -428,6 +435,16 @@ describe('schema-metadata-cache', () => {
         '': [{ name: 'ghost_routine', routineType: 'PROCEDURE' }],
         invalid_container: null,
       },
+      views: {
+        valid_db: [{ name: 'active_users' }, { name: '' }, null],
+        '': [{ name: 'ghost_view' }],
+        invalid_container: null,
+      },
+      triggers: {
+        valid_db: [{ name: 'before_insert_users' }, { name: '   ' }, null],
+        '': [{ name: 'ghost_trigger' }],
+        invalid_container: null,
+      },
       foreignKeys: {},
       indexes: {},
     } as never)
@@ -455,11 +472,17 @@ describe('schema-metadata-cache', () => {
         { name: ' leading_space_column', dataType: 'varchar' },
       ],
     })
+    expect(cache.views).toEqual({
+      valid_db: [{ name: 'active_users' }],
+    })
     expect(cache.routines).toEqual({
       valid_db: [
         { name: 'get_users', routineType: 'FUNCTION' },
         { name: ' leading_space_routine', routineType: 'FUNCTION' },
       ],
+    })
+    expect(cache.triggers).toEqual({
+      valid_db: [{ name: 'before_insert_users' }],
     })
   })
 
@@ -629,6 +652,123 @@ describe('schema-metadata-cache', () => {
 
       // The stale refresh result should be discarded — cache stays empty
       expect(getCache('conn-bg-inv').status).toBe('empty')
+    })
+  })
+
+  describe('schema metadata snapshot lifecycle', () => {
+    it('sanitizes views and triggers in the additive schema contract', () => {
+      const sanitized = sanitizeSchemaMetadata(
+        mockMetadata({
+          databases: ['app_db', '', '  '],
+          views: {
+            app_db: [{ name: 'active_users' }, { name: '' }, null as never],
+            '': [{ name: 'ignored_view' }],
+          },
+          triggers: {
+            app_db: [{ name: 'before_insert_users' }, { name: '   ' }, undefined as never],
+            '': [{ name: 'ignored_trigger' }],
+          },
+        })
+      )
+
+      expect(sanitized.databases).toEqual(['app_db'])
+      expect(sanitized.views).toEqual({
+        app_db: [{ name: 'active_users' }],
+      })
+      expect(sanitized.triggers).toEqual({
+        app_db: [{ name: 'before_insert_users' }],
+      })
+    })
+
+    it('hydrates and serializes views and triggers in cache snapshots', () => {
+      hydrateFromSnapshot(
+        JSON.stringify(
+          mockMetadata({
+            databases: ['app_db'],
+            views: {
+              app_db: [{ name: 'active_users' }],
+            },
+            triggers: {
+              app_db: [{ name: 'before_insert_users' }],
+            },
+          })
+        ),
+        'conn-snapshot'
+      )
+
+      expect(getCache('conn-snapshot')).toMatchObject({
+        status: 'ready',
+        databases: ['app_db'],
+        views: {
+          app_db: [{ name: 'active_users' }],
+        },
+        triggers: {
+          app_db: [{ name: 'before_insert_users' }],
+        },
+      })
+
+      expect(serializeCacheSnapshot('conn-snapshot')).toBe(
+        JSON.stringify(
+          mockMetadata({
+            databases: ['app_db'],
+            views: {
+              app_db: [{ name: 'active_users' }],
+            },
+            triggers: {
+              app_db: [{ name: 'before_insert_users' }],
+            },
+          })
+        )
+      )
+    })
+  })
+
+  describe('getSearchableObjects', () => {
+    it('returns flattened searchable objects with routine split and no events', () => {
+      hydrateFromSnapshot(
+        JSON.stringify(
+          mockMetadata({
+            databases: ['app_db'],
+            tables: {
+              app_db: [
+                {
+                  name: 'users',
+                  engine: 'InnoDB',
+                  charset: 'utf8mb4',
+                  rowCount: 10,
+                  dataSize: 100,
+                },
+              ],
+            },
+            views: {
+              app_db: [{ name: 'active_users' }],
+            },
+            routines: {
+              app_db: [
+                { name: 'sync_users', routineType: 'PROCEDURE' },
+                { name: 'count_users', routineType: 'FUNCTION' },
+                { name: 'nightly_event', routineType: 'EVENT' },
+              ],
+            },
+            triggers: {
+              app_db: [{ name: 'before_insert_users' }],
+            },
+          })
+        ),
+        'conn-searchable'
+      )
+
+      expect(getSearchableObjects('conn-searchable')).toEqual([
+        { database: 'app_db', objectType: 'table', name: 'users' },
+        { database: 'app_db', objectType: 'view', name: 'active_users' },
+        { database: 'app_db', objectType: 'procedure', name: 'sync_users' },
+        { database: 'app_db', objectType: 'function', name: 'count_users' },
+        { database: 'app_db', objectType: 'trigger', name: 'before_insert_users' },
+      ])
+    })
+
+    it('returns an empty list while the cache is not ready', () => {
+      expect(getSearchableObjects('missing-conn')).toEqual([])
     })
   })
 

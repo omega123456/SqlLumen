@@ -204,8 +204,10 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   fetch_schema_metadata_full: () => ({
     databases: [],
     tables: {},
+    views: {},
     columns: {},
     routines: {},
+    triggers: {},
     foreignKeys: {},
     indexes: {},
   }),

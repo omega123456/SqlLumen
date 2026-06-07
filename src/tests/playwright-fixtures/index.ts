@@ -3,6 +3,10 @@ import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
 import { BLOB_SAMPLE_LIST_COLUMNS, BLOB_SAMPLE_TABLE_DATA } from './blob-sample'
 import { DEFAULT_BLOB_VALUE, DEFAULT_BLOB_VALUE_BY_KEY } from './blob-value'
 import {
+  COMMAND_PALETTE_RECENTS_FIXTURE,
+  COMMAND_PALETTE_SCHEMA_FIXTURE,
+} from './command-palette'
+import {
   COPY_TO_HOST_OBJECTS,
   COPY_TO_HOST_PROGRESS_COMPLETED,
   COPY_TO_HOST_START_JOB_ID,
@@ -42,7 +46,7 @@ import {
 import type { AiModelInfo } from '../../lib/ai-commands'
 import type { LogLevelFilter, LogPage } from '../../lib/log-commands'
 import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
-import type { BlobValueResponse } from '../../types/schema'
+import type { BlobValueResponse, SchemaMetadataFull } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type {
   PlaywrightAnalyzeQueryResult,
@@ -92,6 +96,8 @@ type FixtureOverrideDomain =
   | 'snapshotList'
   | 'snapshotState'
   | 'snapshotCreatedId'
+  | 'schemaMetadataFull'
+  | 'commandPaletteRecents'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -117,6 +123,8 @@ type FixtureOverrides = {
   snapshotList: Record<string, SnapshotSummary[]>
   snapshotState: Record<string, string | null>
   snapshotCreatedId: Record<string, number>
+  schemaMetadataFull: Record<string, SchemaMetadataFull>
+  commandPaletteRecents: Record<string, string>
 }
 
 type FixtureOverrideValueMap = {
@@ -141,6 +149,8 @@ type FixtureOverrideValueMap = {
   snapshotList: SnapshotSummary[]
   snapshotState: string | null
   snapshotCreatedId: number
+  schemaMetadataFull: SchemaMetadataFull
+  commandPaletteRecents: string
 }
 
 type FixtureRegistryApi = {
@@ -179,6 +189,8 @@ type FixtureRegistryApi = {
   getSnapshotListFixture: () => SnapshotSummary[]
   getSnapshotStateFixture: (id: number | null | undefined) => string | null
   getSnapshotCreatedIdFixture: () => number
+  getSchemaMetadataFullFixture: () => SchemaMetadataFull
+  getCommandPaletteRecentsFixture: () => string
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -254,6 +266,12 @@ const DEFAULT_COPY_CANCEL_BY_KEY: Record<string, null> = {
 }
 
 const DEFAULT_BLOB_VALUE_LOOKUP: Record<string, BlobValueResponse> = DEFAULT_BLOB_VALUE_BY_KEY
+const DEFAULT_SCHEMA_METADATA_FULL_BY_KEY: Record<string, SchemaMetadataFull> = {
+  default: COMMAND_PALETTE_SCHEMA_FIXTURE,
+}
+const DEFAULT_COMMAND_PALETTE_RECENTS_BY_KEY: Record<string, string> = {
+  default: COMMAND_PALETTE_RECENTS_FIXTURE,
+}
 
 const overrides: FixtureOverrides = {
   tableData: {},
@@ -277,6 +295,8 @@ const overrides: FixtureOverrides = {
   snapshotList: {},
   snapshotState: {},
   snapshotCreatedId: {},
+  schemaMetadataFull: {},
+  commandPaletteRecents: {},
 }
 
 function getLogsPageLookupKey(
@@ -548,6 +568,16 @@ export function getSnapshotCreatedIdFixture(): number {
   return overrides.snapshotCreatedId.default ?? DEFAULT_CREATED_SNAPSHOT_ID
 }
 
+export function getSchemaMetadataFullFixture(): SchemaMetadataFull {
+  return overrides.schemaMetadataFull.default ?? DEFAULT_SCHEMA_METADATA_FULL_BY_KEY.default
+}
+
+export function getCommandPaletteRecentsFixture(): string {
+  return (
+    overrides.commandPaletteRecents.default ?? DEFAULT_COMMAND_PALETTE_RECENTS_BY_KEY.default
+  )
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -589,6 +619,8 @@ export function resetFixtureOverrides(): void {
   overrides.snapshotList = {}
   overrides.snapshotState = {}
   overrides.snapshotCreatedId = {}
+  overrides.schemaMetadataFull = {}
+  overrides.commandPaletteRecents = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -613,6 +645,8 @@ const fixtureRegistry: FixtureRegistryApi = {
   getSnapshotListFixture,
   getSnapshotStateFixture,
   getSnapshotCreatedIdFixture,
+  getSchemaMetadataFullFixture,
+  getCommandPaletteRecentsFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

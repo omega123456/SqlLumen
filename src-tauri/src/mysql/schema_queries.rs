@@ -3,6 +3,7 @@
 //! This module contains SQL query helpers that run against a live MySQL/MariaDB
 //! server. It is intentionally separate from the `db/` module which is SQLite-only.
 
+use crate::mysql::query_executor::{TriggerMeta, ViewMeta};
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 use serde::{Deserialize, Serialize};
@@ -1117,6 +1118,110 @@ pub async fn query_all_foreign_keys_batch(
     _pool: &(),
     _databases: &[String],
 ) -> Result<HashMap<String, Vec<ForeignKeyInfo>>, String> {
+    Ok(HashMap::new())
+}
+
+/// Query all views across multiple databases at once.
+/// Returns a `HashMap<String, Vec<ViewMeta>>` keyed by database name.
+#[cfg(not(coverage))]
+pub async fn query_all_views_batch(
+    pool: &MySqlPool,
+    databases: &[String],
+) -> Result<HashMap<String, Vec<ViewMeta>>, String> {
+    if databases.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut qb: sqlx::QueryBuilder<'_, sqlx::MySql> = sqlx::QueryBuilder::new(
+        "SELECT TABLE_SCHEMA, TABLE_NAME \
+         FROM information_schema.VIEWS \
+         WHERE TABLE_SCHEMA IN (",
+    );
+    let mut sep = qb.separated(", ");
+    for db in databases {
+        sep.push_bind(db.as_str());
+    }
+    sep.push_unseparated(
+        ") AND TABLE_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
+         ORDER BY TABLE_SCHEMA, TABLE_NAME",
+    );
+
+    let sql = qb.sql();
+    query_log::log_outgoing_sql_bound(sql, databases);
+    let rows = qb
+        .build()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get batch views: {e}"))?;
+    query_log::log_mysql_rows(&rows);
+
+    let mut result: HashMap<String, Vec<ViewMeta>> = HashMap::new();
+    for row in &rows {
+        let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
+        let name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+        result.entry(schema).or_default().push(ViewMeta { name });
+    }
+    Ok(result)
+}
+
+/// Coverage stub for `query_all_views_batch`.
+#[cfg(coverage)]
+pub async fn query_all_views_batch(
+    _pool: &(),
+    _databases: &[String],
+) -> Result<HashMap<String, Vec<ViewMeta>>, String> {
+    Ok(HashMap::new())
+}
+
+/// Query all triggers across multiple databases at once.
+/// Returns a `HashMap<String, Vec<TriggerMeta>>` keyed by database name.
+#[cfg(not(coverage))]
+pub async fn query_all_triggers_batch(
+    pool: &MySqlPool,
+    databases: &[String],
+) -> Result<HashMap<String, Vec<TriggerMeta>>, String> {
+    if databases.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut qb: sqlx::QueryBuilder<'_, sqlx::MySql> = sqlx::QueryBuilder::new(
+        "SELECT TRIGGER_SCHEMA, TRIGGER_NAME \
+         FROM information_schema.TRIGGERS \
+         WHERE TRIGGER_SCHEMA IN (",
+    );
+    let mut sep = qb.separated(", ");
+    for db in databases {
+        sep.push_bind(db.as_str());
+    }
+    sep.push_unseparated(
+        ") AND TRIGGER_SCHEMA NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
+         ORDER BY TRIGGER_SCHEMA, TRIGGER_NAME",
+    );
+
+    let sql = qb.sql();
+    query_log::log_outgoing_sql_bound(sql, databases);
+    let rows = qb
+        .build()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get batch triggers: {e}"))?;
+    query_log::log_mysql_rows(&rows);
+
+    let mut result: HashMap<String, Vec<TriggerMeta>> = HashMap::new();
+    for row in &rows {
+        let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
+        let name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+        result.entry(schema).or_default().push(TriggerMeta { name });
+    }
+    Ok(result)
+}
+
+/// Coverage stub for `query_all_triggers_batch`.
+#[cfg(coverage)]
+pub async fn query_all_triggers_batch(
+    _pool: &(),
+    _databases: &[String],
+) -> Result<HashMap<String, Vec<TriggerMeta>>, String> {
     Ok(HashMap::new())
 }
 

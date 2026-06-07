@@ -1,0 +1,26 @@
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.table {
+  color: var(--primary);
+}
+
+.view {
+  color: var(--secondary);
+}
+
+.procedure {
+  color: var(--on-surface-variant);
+}
+
+.function {
+  color: var(--tertiary);
+}
+
+.trigger {
+  color: var(--warning);
+}

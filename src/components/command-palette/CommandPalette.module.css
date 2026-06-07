@@ -1,0 +1,25 @@
+.panel {
+  margin-top: clamp(20px, 8vh, 72px);
+  align-self: flex-start;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.surface {
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 720px);
+  background: var(--surface);
+}
+
+.inputSection {
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.resultsSection {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}

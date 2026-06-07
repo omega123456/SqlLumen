@@ -1,8 +1,8 @@
 use chrono::{Duration, TimeZone, Utc};
 use rusqlite::Connection;
 use sqllumen_lib::logging::log_store::{
-    export_logs_in_range, init_schema, insert_log_entries, list_logs, open_log_database, prune_logs,
-    LogEntry, LOG_PAGE_SIZE,
+    export_logs_in_range, init_schema, insert_log_entries, list_logs, open_log_database,
+    prune_logs, LogEntry, LOG_PAGE_SIZE,
 };
 use tempfile::tempdir;
 

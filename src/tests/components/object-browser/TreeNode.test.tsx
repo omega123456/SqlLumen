@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TreeNode } from '../../../components/object-browser/TreeNode'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
@@ -274,14 +274,16 @@ describe('TreeNode', () => {
 
     // Set selectedNodeId in the connection state
     const connState = useSchemaStore.getState().connectionStates[CONN_ID]
-    useSchemaStore.setState({
-      connectionStates: {
-        ...useSchemaStore.getState().connectionStates,
-        [CONN_ID]: {
-          ...connState,
-          selectedNodeId: node.id,
+    act(() => {
+      useSchemaStore.setState({
+        connectionStates: {
+          ...useSchemaStore.getState().connectionStates,
+          [CONN_ID]: {
+            ...connState,
+            selectedNodeId: node.id,
+          },
         },
-      },
+      })
     })
 
     render(
