@@ -1,8 +1,9 @@
 use chrono::{Duration, TimeZone, Utc};
 use rusqlite::Connection;
+use sqllumen_lib::db::migrations::run_log_migrations;
 use sqllumen_lib::logging::log_store::{
-    export_logs_in_range, init_schema, insert_log_entries, list_logs, open_log_database,
-    prune_logs, LogEntry, LOG_PAGE_SIZE,
+    export_logs_in_range, initialize_log_database, insert_log_entries, list_logs,
+    open_log_database, prune_logs, LogEntry, LOG_PAGE_SIZE,
 };
 use tempfile::tempdir;
 
@@ -23,7 +24,7 @@ fn log_entry(
 
 fn test_conn() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory log db");
-    init_schema(&conn).expect("init log schema");
+    run_log_migrations(&conn).expect("run log migrations");
     conn
 }
 
@@ -168,4 +169,80 @@ fn open_log_database_errors_when_parent_directory_cannot_be_created() {
         result.is_err(),
         "expected open_log_database to fail when the parent cannot be created"
     );
+}
+
+#[test]
+fn initialize_log_database_yields_incremental_mode_with_schema() {
+    let dir = tempdir().expect("create tempdir");
+    let db_path = dir.path().join("sqllumen-logs.db");
+
+    let conn = initialize_log_database(&db_path).expect("initialize log database");
+
+    let mode: i64 = conn
+        .query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
+        .expect("query auto_vacuum");
+    assert_eq!(mode, 2, "expected logs database in incremental auto-vacuum mode");
+
+    for table in &["log_entries", "_vacuum_state", "_migrations"] {
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [table],
+                |row| row.get(0),
+            )
+            .expect("query sqlite_master");
+        assert_eq!(count, 1, "table '{table}' should exist");
+    }
+
+    let seeded: String = conn
+        .query_row(
+            "SELECT value FROM _vacuum_state WHERE key='last_vacuum_at'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("query seeded vacuum state");
+    assert_eq!(seeded, "0");
+}
+
+#[test]
+fn initialize_log_database_preserves_pre_existing_rows() {
+    let dir = tempdir().expect("create tempdir");
+    let db_path = dir.path().join("sqllumen-logs.db");
+
+    // Simulate a pre-upgrade logs database: only the log_entries table and a row,
+    // with no migration system in place.
+    {
+        let mut conn = Connection::open(&db_path).expect("open pre-existing log db");
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS log_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                level TEXT NOT NULL,
+                level_num INTEGER NOT NULL,
+                target TEXT NOT NULL,
+                message TEXT NOT NULL
+            );",
+        )
+        .expect("create pre-existing schema");
+        let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
+        insert_log_entries(&mut conn, &[log_entry(now, "info", 4, "pre-existing")])
+            .expect("insert pre-existing row");
+    }
+
+    let conn = initialize_log_database(&db_path).expect("initialize existing log database");
+
+    let mode: i64 = conn
+        .query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
+        .expect("query auto_vacuum");
+    assert_eq!(mode, 2, "expected incremental mode after conversion");
+
+    let count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM log_entries", [], |row| row.get(0))
+        .expect("count log entries");
+    assert_eq!(count, 1, "pre-existing rows must survive conversion");
+
+    let message: String = conn
+        .query_row("SELECT message FROM log_entries", [], |row| row.get(0))
+        .expect("read message");
+    assert_eq!(message, "pre-existing");
 }

@@ -3,6 +3,8 @@ use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::db::migrations::run_log_migrations;
+
 pub const LOG_DB_FILE_NAME: &str = "sqllumen-logs.db";
 pub const LOG_PAGE_SIZE: i64 = 20;
 pub const LOG_RETENTION_DAYS: i64 = 7;
@@ -36,6 +38,15 @@ pub struct NewLogEntry {
     pub message: String,
 }
 
+/// Open the logs database with its standard pragmas, creating the parent
+/// directory if needed.
+///
+/// This is the shared base used by both the one-time initializer and the
+/// log-writer thread. It performs ONLY directory creation, `Connection::open`,
+/// and pragma setup (WAL, synchronous, busy_timeout) — it does NOT run
+/// migrations. Callers that open the database after [`initialize_log_database`]
+/// has run (e.g. the writer thread) get a plain connection on an
+/// already-migrated database.
 pub fn open_log_database(path: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|error| {
@@ -52,25 +63,39 @@ pub fn open_log_database(path: &Path) -> Result<Connection> {
          PRAGMA synchronous=NORMAL;
          PRAGMA busy_timeout=5000;",
     )?;
-    init_schema(&conn)?;
     Ok(conn)
 }
 
-pub fn init_schema(conn: &Connection) -> Result<()> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS log_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            level TEXT NOT NULL,
-            level_num INTEGER NOT NULL,
-            target TEXT NOT NULL,
-            message TEXT NOT NULL
+/// Initialize the logs database, returning a ready reader connection.
+///
+/// Opens the database with its standard pragmas (via [`open_log_database`]),
+/// runs all pending log migrations, and — when the `002_vacuum_state` migration
+/// is newly applied — performs the one-time
+/// `PRAGMA auto_vacuum=INCREMENTAL; VACUUM;` conversion outside any transaction
+/// (SQLite forbids `VACUUM` inside a transaction, and the migration runner wraps
+/// each migration in one).
+///
+/// This must be called once, before any other code opens the logs database
+/// (in particular before the log-writer thread), so migrations and the
+/// conversion happen exactly once on a single connection with no concurrency.
+pub fn initialize_log_database(path: impl AsRef<Path>) -> Result<Connection> {
+    let conn = open_log_database(path.as_ref())?;
+
+    let applied = run_log_migrations(&conn)?;
+
+    // When the vacuum-state migration is first applied, convert the database to
+    // incremental auto-vacuum mode. Enabling incremental auto-vacuum on an
+    // existing database requires a full VACUUM to take effect. VACUUM is illegal
+    // inside a transaction, so this runs here in initialization code rather than
+    // in migration SQL.
+    if applied.iter().any(|name| name == "002_vacuum_state") {
+        tracing::info!(
+            "logs migration 002 newly applied; converting logs database to incremental auto-vacuum"
         );
-        CREATE INDEX IF NOT EXISTS idx_log_entries_timestamp
-            ON log_entries(timestamp DESC);
-        CREATE INDEX IF NOT EXISTS idx_log_entries_level_num_timestamp
-            ON log_entries(level_num, timestamp DESC);",
-    )
+        crate::db::vacuum::convert_to_incremental_vacuum(&conn, "logs database");
+    }
+
+    Ok(conn)
 }
 
 pub fn insert_log_entries(conn: &mut Connection, entries: &[NewLogEntry]) -> Result<()> {

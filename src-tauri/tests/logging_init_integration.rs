@@ -32,6 +32,12 @@ fn init_logging_and_reload_helpers() {
     let _g = RustLogGuard::isolate();
     let dir = tempfile::tempdir().expect("tempdir");
     let log_db_path = dir.path().join("sqllumen-logs.db");
+    // Mirror production startup ordering: the logs database is initialized
+    // (migrations applied + auto-vacuum conversion) once before logging is wired
+    // up. The log-writer thread then opens the already-migrated database with a
+    // plain open + pragmas via `open_log_database`.
+    let _logs_conn = sqllumen_lib::logging::log_store::initialize_log_database(&log_db_path)
+        .expect("initialize log db");
     let init = sqllumen_lib::logging::init_logging(&log_db_path).expect("init logging");
     assert!(!init.rust_log_env_set);
 

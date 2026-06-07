@@ -88,6 +88,39 @@ fn test_run_migrations_creates_connection_groups_table() {
 }
 
 #[test]
+fn test_run_migrations_applies_014_vacuum_state() {
+    let conn = test_conn();
+    run_migrations(&conn).expect("should run migrations");
+
+    let applied: String = conn
+        .query_row(
+            "SELECT name FROM _migrations WHERE name = '014_vacuum_state'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("should find 014_vacuum_state in _migrations");
+    assert_eq!(applied, "014_vacuum_state");
+
+    let table_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_vacuum_state'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("should query sqlite_master");
+    assert_eq!(table_count, 1, "_vacuum_state table should exist");
+
+    let seeded: String = conn
+        .query_row(
+            "SELECT value FROM _vacuum_state WHERE key='last_vacuum_at'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("should find seeded last_vacuum_at row");
+    assert_eq!(seeded, "0");
+}
+
+#[test]
 fn test_run_migrations_is_idempotent() {
     let conn = test_conn();
     run_migrations(&conn).expect("first run should succeed");

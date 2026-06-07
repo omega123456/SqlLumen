@@ -68,6 +68,30 @@ fn test_initialize_database_enables_wal_mode() {
 }
 
 #[test]
+fn test_initialize_database_converts_to_incremental_auto_vacuum() {
+    let (app_data_dir, _) = common::unique_temp_dir("test_init_autovacuum");
+
+    let conn = initialize_database(&app_data_dir).expect("should initialize");
+
+    let mode: i64 = conn
+        .query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
+        .expect("should query auto_vacuum");
+    assert_eq!(mode, 2, "main database should be in incremental auto-vacuum mode");
+
+    let seeded: String = conn
+        .query_row(
+            "SELECT value FROM _vacuum_state WHERE key='last_vacuum_at'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("should query seeded vacuum state");
+    assert_eq!(seeded, "0");
+
+    drop(conn);
+    let _ = std::fs::remove_dir_all(&app_data_dir);
+}
+
+#[test]
 fn test_initialize_database_is_idempotent() {
     let (app_data_dir, _) = common::unique_temp_dir("test_init_idem");
 

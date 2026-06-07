@@ -4,9 +4,8 @@ mod common;
 
 use chrono::{Duration, TimeZone, Utc};
 use sqllumen_lib::commands::logs::{export_logs_impl, list_logs_impl};
-use sqllumen_lib::logging::log_store::{
-    init_schema, insert_log_entries, NewLogEntry, LOG_PAGE_SIZE,
-};
+use sqllumen_lib::db::migrations::run_log_migrations;
+use sqllumen_lib::logging::log_store::{insert_log_entries, NewLogEntry, LOG_PAGE_SIZE};
 use tempfile::tempdir;
 
 fn seed_log(
@@ -28,7 +27,7 @@ fn prepare_logs_state() -> sqllumen_lib::state::AppState {
     let state = common::test_app_state();
     {
         let conn = state.logs_db.lock().expect("lock logs db");
-        init_schema(&conn).expect("init logs schema");
+        run_log_migrations(&conn).expect("run logs migrations");
     }
     state
 }

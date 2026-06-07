@@ -56,6 +56,23 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "013_connection_cascade_cleanup",
         include_str!("../../migrations/013_connection_cascade_cleanup.sql"),
     ),
+    (
+        "014_vacuum_state",
+        include_str!("../../migrations/014_vacuum_state.sql"),
+    ),
+];
+
+/// The list of migrations to apply to the logs database, in order.
+/// Each entry is (migration_name, sql). Mirrors `MIGRATIONS` for the logs DB.
+const LOG_MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "001_initial_schema",
+        include_str!("../../migrations/logs/001_initial_schema.sql"),
+    ),
+    (
+        "002_vacuum_state",
+        include_str!("../../migrations/logs/002_vacuum_state.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.
@@ -68,6 +85,25 @@ const MIGRATIONS: &[(&str, &str)] = &[
 /// `initialize_database` (production), so the default test helpers stay
 /// FK-off.
 pub fn run_migrations(conn: &Connection) -> Result<Vec<String>> {
+    apply_migrations(conn, MIGRATIONS)
+}
+
+/// Run all pending migrations on the logs database connection.
+///
+/// Delegates to the same core runner used by [`run_migrations`], driven by the
+/// logs-DB [`LOG_MIGRATIONS`] list. Returns the names of migrations newly
+/// applied during this invocation.
+pub fn run_log_migrations(conn: &Connection) -> Result<Vec<String>> {
+    apply_migrations(conn, LOG_MIGRATIONS)
+}
+
+/// Core migration runner shared by the main and logs databases.
+///
+/// Creates the `_migrations` tracking table if it doesn't exist, then applies
+/// each pending migration from `migrations` in order inside its own
+/// transaction, recording bookkeeping. Returns the names of migrations newly
+/// applied during this invocation.
+fn apply_migrations(conn: &Connection, migrations: &[(&str, &str)]) -> Result<Vec<String>> {
     // Create the migrations tracking table
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS _migrations (
@@ -78,7 +114,7 @@ pub fn run_migrations(conn: &Connection) -> Result<Vec<String>> {
 
     let mut applied: Vec<String> = Vec::new();
 
-    for (name, sql) in MIGRATIONS {
+    for (name, sql) in migrations {
         // Check if already applied — propagate errors, don't swallow them
         let already_applied: bool = conn
             .query_row(
@@ -115,5 +151,5 @@ fn timestamp_now() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    format!("{secs}")
+    secs.to_string()
 }

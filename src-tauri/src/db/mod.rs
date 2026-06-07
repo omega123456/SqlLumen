@@ -7,3 +7,4 @@ pub mod migrations;
 pub mod schema_cache;
 pub mod session_snapshots;
 pub mod settings;
+pub mod vacuum;

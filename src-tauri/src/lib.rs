@@ -74,6 +74,18 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
         }
     }
 
+    // When the vacuum-state migration is first applied, convert the database to
+    // incremental auto-vacuum mode. Enabling incremental auto-vacuum on an
+    // existing database requires a full VACUUM to take effect; VACUUM is illegal
+    // inside a transaction, so the conversion runs here rather than in migration
+    // SQL.
+    if applied.iter().any(|name| name == "014_vacuum_state") {
+        tracing::info!(
+            "migration 014 newly applied; converting main database to incremental auto-vacuum"
+        );
+        crate::db::vacuum::convert_to_incremental_vacuum(&conn, "main database");
+    }
+
     // Enable foreign-key enforcement for production. This is the sole owner of
     // FK enablement (run_migrations leaves it off so default test helpers stay
     // FK-off). PRAGMA foreign_keys is a no-op inside a transaction, so it is set
@@ -82,6 +94,44 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
         .map_err(|e| format!("failed to enable foreign key enforcement: {e}"))?;
 
     Ok(conn)
+}
+
+/// Run a single incremental-vacuum evaluation for one database, off the async
+/// runtime. The `Arc<Mutex<Connection>>` is locked inside `spawn_blocking`, so
+/// the std mutex guard never crosses an `.await`. Every failure (lock poison,
+/// join error, or a `vacuum_if_stale` error) is logged via `tracing::warn!` and
+/// swallowed so the caller's loop keeps running.
+#[cfg(not(any(test, coverage)))]
+async fn run_vacuum_pass(
+    handle: &std::sync::Arc<std::sync::Mutex<rusqlite::Connection>>,
+    db_label: &'static str,
+) {
+    let handle = std::sync::Arc::clone(handle);
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        match handle.lock() {
+            Ok(conn) => {
+                if let Err(e) = crate::db::vacuum::vacuum_if_stale(&conn, now) {
+                    tracing::warn!(error = ?e, db = db_label, "incremental vacuum failed");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    db = db_label,
+                    "failed to acquire db lock for incremental vacuum"
+                );
+            }
+        }
+    })
+    .await;
+
+    if let Err(e) = join_result {
+        tracing::warn!(error = %e, db = db_label, "vacuum maintenance task failed");
+    }
 }
 
 #[cfg(not(any(test, coverage)))]
@@ -172,13 +222,18 @@ pub fn run() {
             let base = app.path().app_data_dir()?;
             let dir = resolved_app_data_dir(&base);
             let log_db_path = dir.join(crate::logging::log_store::LOG_DB_FILE_NAME);
+
+            // Initialize the logs database (run migrations + one-time
+            // incremental auto-vacuum conversion) on a single connection BEFORE
+            // the log-writer thread opens its own connection, so migrations and
+            // the conversion happen exactly once with no cross-connection race.
+            let logs_conn = crate::logging::log_store::initialize_log_database(&log_db_path)
+                .map_err(|e| -> Box<dyn std::error::Error> {
+                    format!("failed to initialize log database: {e}").into()
+                })?;
+
             let logging_init = crate::logging::init_logging(&log_db_path)
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-            let logs_conn = crate::logging::log_store::open_log_database(&log_db_path).map_err(
-                |e| -> Box<dyn std::error::Error> {
-                    format!("failed to open log database: {e}").into()
-                },
-            )?;
 
             let conn = initialize_database(&dir)
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
@@ -311,6 +366,45 @@ pub fn run() {
                     }
                 }
             });
+
+            // Periodic SQLite maintenance: keep both embedded databases tidy by
+            // draining their free lists via incremental vacuum. A startup pass
+            // handles frequently-restarted sessions; a recurring 6-hour timer
+            // handles long-running sessions. All Connection access happens inside
+            // spawn_blocking so the std::sync::Mutex guard never crosses an
+            // `.await`, and every failure is logged-and-skipped so the loop is
+            // eternal.
+            let managed_state = app.state::<AppState>();
+
+            // Startup pass for both databases.
+            {
+                let startup_main = Arc::clone(&managed_state.db);
+                let startup_logs = Arc::clone(&managed_state.logs_db);
+                tauri::async_runtime::spawn(async move {
+                    run_vacuum_pass(&startup_main, "main").await;
+                    run_vacuum_pass(&startup_logs, "logs").await;
+                });
+            }
+
+            // Recurring 6-hour pass for both databases. This loop never
+            // terminates due to a vacuum error.
+            {
+                let interval_main = Arc::clone(&managed_state.db);
+                let interval_logs = Arc::clone(&managed_state.logs_db);
+                tauri::async_runtime::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(
+                        crate::db::vacuum::VACUUM_STALENESS_SECS,
+                    ));
+                    // The first tick fires immediately; consume it so the startup
+                    // pass above is not duplicated right away.
+                    interval.tick().await;
+                    loop {
+                        interval.tick().await;
+                        run_vacuum_pass(&interval_main, "main").await;
+                        run_vacuum_pass(&interval_logs, "logs").await;
+                    }
+                });
+            }
 
             Ok(())
         })
