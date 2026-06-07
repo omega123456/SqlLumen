@@ -21,6 +21,10 @@ https://github.com/user-attachments/assets/e30f01d1-2656-47fd-88f0-709e2221a34a
   - [Scripts](#scripts)
 - **Reference**
   - [Features](#features)
+  - [Command palette and shortcuts](#command-palette-and-shortcuts)
+  - [Object editor](#object-editor)
+  - [Process list](#process-list)
+  - [Settings and diagnostics](#settings-and-diagnostics)
   - [Copy To Another Host](#copy-to-another-host)
   - [BLOB viewing and editing](#blob-viewing-and-editing)
   - [Stack](#stack)
@@ -31,22 +35,65 @@ https://github.com/user-attachments/assets/e30f01d1-2656-47fd-88f0-709e2221a34a
 ## Features
 
 - **Connections** — save and open connections; test connectivity from the connection dialog
-- **Object browser** — navigate databases, tables, views, and related objects
+- **Object browser** — navigate databases, tables, views, routines, triggers, events, and favorites from the tree
+- **Command palette and shortcuts** — search objects, jump to recents, and filter by database or object type from the keyboard; shortcuts are customizable in Settings
 - **Copy to Another Host** — copy selected tables, routines, triggers, and events from one database to a different saved host with progress tracking and cancel support
-- **Query editor** — Monaco-based SQL editing with formatting and completion-oriented tooling
+- **Query editor** — Monaco-based SQL editing with formatting, completion-oriented tooling, multi-statement execution, and AI diff/review integration
 - **Workspace tabs** — inline query-tab rename plus context-menu and drag/drop reordering for workspace and connection tabs
 - **Connection workspace retention** — each open connection session keeps its full workspace mounted while you switch between connection tabs, so table-data and query-result grids preserve their scroll position and local view state when you switch to another connection and return. Only the visible connection is interactive; background connections are hidden and inert. Retention lasts until the session is closed. Heavy row payloads from long-idle inactive connections may still be released and transparently restored from cache under the existing results cache lifecycle, while the grid's mounted scroll position is preserved.
 - **Result sets** — grid, form, and text views; execution feedback and toolbars. For a successful query-editor result, the bottom status bar shows three values, rendered identically in light and dark themes: `Rows: <n>` (row count), `Exec: <n>ms` (server execution time only, up to when the first row / result header is available), and `Total: <n>ms` (execution plus row transfer and serialization). For DML/DDL or empty result sets, `Exec` and `Total` are equal. The result-editor toolbar badge and Query History `duration_ms` continue to report the combined total time.
-- **Table data** — browse and edit rows with validation and related UI (foreign keys, unsaved changes)
+- **Table data** — browse and edit rows with validation and related UI (foreign keys, unsaved changes, BLOB editing)
 - **BLOB viewer / editor** — double-click a binary cell to inspect its bytes as an image, text, or hex dump; in the table-data browser you can also replace, NULL, clear, and save the bytes (see [BLOB viewing and editing](#blob-viewing-and-editing))
+- **Object editor** — create and alter views, procedures, functions, triggers, and events with Monaco-backed DDL editing, preview, and save flow
+- **Process list** — monitor live server activity per connection with refresh, filtering, and kill actions
 - **Table designer** — column, index, and foreign-key editing with DDL preview and apply flow
 - **Schema information** — columns, indexes, foreign keys, DDL, and stats-style panels where supported
 - **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
 - **History & favorites** — query history and saved snippets/favorites
-- **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally; current workspace session restored on relaunch and auto-saved on close / every 5 minutes when enabled. The Results settings page includes a "Show table data tabs in bottom panel" toggle (opt-in, off by default) that scopes table-data tabs to the active query editor and shows them alongside query results in the query editor's lower result panel. The Logging settings page now embeds an inline log viewer with refresh, filtering, and CSV export; file-based log-directory exposure has been removed.
+- **Settings** — General, Editor, Results, Logging, Shortcuts, AI, and Updates preferences; theme (light / dark / system) persisted locally; current workspace session restored on relaunch and auto-saved on close / every 5 minutes when enabled. Results settings include the opt-in "Show table data tabs in bottom panel" toggle, which scopes table-data tabs to the active query editor and shows them alongside query results in the lower result panel. Logging settings embed an inline log viewer with refresh, filtering, and CSV export. Updates settings handles update checks, downloads, and restart prompts.
 - **Session Snapshots** — open **Session Snapshots** from the app toolbar to capture the current set of open connections and workspace tabs on demand, restore an earlier session, or delete old snapshots. Restoring first creates a safety snapshot of the current session when there is anything open, then force-closes the current session before replaying the saved one. Snapshot cadence (`Off`, `On Close`, `Daily`, `Weekly`) and retention count are configurable in Settings.
-- **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with per-tab panel state preserved across workspace tab switches, longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, and stable inline context prefixes that preserve follow-up prompt-cache reuse. Those prefixes also remain compatible with OpenAI-compatible local providers that enforce stricter system-message ordering, including vLLM. OpenAI-compatible Responses API chaining with automatic chat-completions fallback is supported where available. Use `/remember <text>` in the AI chat to save per-connection memories that persist across sessions and improve future AI responses. Manage saved memories in AI Settings. AI Settings exposes a **Chat Base URL** for chat completions and an optional **Embedding Base URL** for embedding models (used by schema search and saved memories); when the embedding URL is left blank, embeddings fall back to the chat URL, so existing single-server setups keep working unchanged. The default AI retrieval settings are now `Top-K per query = 30` and `Top-N results = 20`.
+- **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with per-tab panel state preserved across workspace tab switches, longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, and stable inline context prefixes that preserve follow-up prompt-cache reuse. Those prefixes also remain compatible with OpenAI-compatible local providers that enforce stricter system-message ordering, including vLLM. OpenAI-compatible Responses API chaining with automatic chat-completions fallback is supported where available. Use `/remember <text>` in the AI chat to save scope-aware memories for the current connection, group, or global scope; the default scope is configurable in AI Settings, and saved memories can be managed there as well. AI Settings exposes a **Chat Base URL** for chat completions and an optional **Embedding Base URL** for embedding models (used by schema search and saved memories); when the embedding URL is left blank, embeddings fall back to the chat URL, so existing single-server setups keep working unchanged. The default AI retrieval settings are now `Top-K per query = 30` and `Top-N results = 20`.
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
+
+## Command palette and shortcuts
+
+Press **F2** to open the command palette and search the active connection's schema. The palette supports recent objects when nothing is typed, and slash filters such as database names and object types to narrow the search quickly.
+
+The default shortcuts are editable in **Settings > Shortcuts**. The current defaults include:
+
+- `F9` to execute the current query statement
+- `Ctrl+Shift+Enter` to execute all statements in the editor
+- `F12` to format the current selection or statement
+- `Ctrl+S` to save the current file or DDL tab
+- `Ctrl+,` to open Settings
+
+## Object editor
+
+Use the object editor from the object browser to create or alter stored objects such as views, procedures, functions, triggers, and events.
+
+- The body opens in Monaco with DDL syntax highlighting and editing support.
+- New objects start from a generated template and transition into alter mode after the first successful save.
+- Unsaved changes are tracked, and closing or switching away from a dirty tab prompts for save / discard / cancel.
+
+## Process list
+
+Open the Process List tab from a connection to inspect live server activity for that session.
+
+- The grid refreshes automatically at a configurable interval, and you can trigger a manual refresh at any time.
+- You can filter out idle connections, sort rows, and inspect server-side session details.
+- Selected queries can be killed from the toolbar, with a summary dialog before the action is applied.
+- The tab is singleton-per-connection, so reopening it returns you to the same live view.
+
+## Settings and diagnostics
+
+Settings is split into **General**, **Editor**, **Results**, **Logging**, **Shortcuts**, **AI**, and **Updates** sections.
+
+- General settings cover application behavior, theme, zoom, and workspace/session restore.
+- Results settings include the opt-in "Show table data tabs in bottom panel" mode.
+- Logging settings include the in-app log viewer, log level controls, and CSV export for diagnostics.
+- Shortcuts settings let you inspect and remap the keyboard bindings used throughout the app.
+- AI settings cover OpenAI-compatible endpoints, model selection, retrieval tuning, and `/remember` memory scope defaults, plus a dedicated memory manager for global, group, and connection memories.
+- Updates settings manages release checks, downloads, and restart flow, including prompts when work is still open.
 
 ## Copy To Another Host
 
