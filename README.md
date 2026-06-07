@@ -4,6 +4,9 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 
 https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 
+https://github.com/user-attachments/assets/e9690b69-b9fe-4713-93f1-a88be9107f25
+
+
 ## Contents
 
 - **Install & downloads**
