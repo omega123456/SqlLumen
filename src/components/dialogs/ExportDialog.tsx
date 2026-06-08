@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, type FormEvent } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
@@ -193,6 +193,14 @@ export default function ExportDialog({
     rowIndices,
   ])
 
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      void handleExport()
+    },
+    [handleExport]
+  )
+
   return (
     <DialogShell
       isOpen={true}
@@ -201,6 +209,7 @@ export default function ExportDialog({
       testId="export-dialog"
       ariaLabel="Export Results"
       disableFocusManagement={isPlaywright}
+      formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
         {/* Header */}
@@ -307,9 +316,8 @@ export default function ExportDialog({
           {/* Buttons */}
           <div className={styles.actions}>
             <button
-              type="button"
+              type="submit"
               className={styles.exportButton}
-              onClick={handleExport}
               disabled={!filePath || isExporting}
               data-testid="export-submit-button"
             >

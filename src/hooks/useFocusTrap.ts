@@ -9,7 +9,11 @@ const FOCUSABLE_SELECTOR =
  * On Tab/Shift+Tab: cycles focus within the element.
  * On close: restores focus to the previously-focused element.
  */
-export function useFocusTrap(dialogRef: React.RefObject<HTMLElement | null>, isOpen: boolean) {
+export function useFocusTrap(
+  dialogRef: React.RefObject<HTMLElement | null>,
+  isOpen: boolean,
+  initialFocusRef?: React.RefObject<HTMLElement | null>
+) {
   const previousFocusRef = useRef<Element | null>(null)
 
   useEffect(() => {
@@ -22,12 +26,20 @@ export function useFocusTrap(dialogRef: React.RefObject<HTMLElement | null>, isO
     const dialog = dialogRef.current
     if (dialog) {
       const firstFocusable = dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-      if (firstFocusable) {
-        // Use requestAnimationFrame to ensure the dialog is rendered before focusing
-        requestAnimationFrame(() => {
-          firstFocusable.focus()
-        })
-      }
+      // Use requestAnimationFrame to ensure the dialog is rendered before focusing
+      requestAnimationFrame(() => {
+        const preferredFocus = initialFocusRef?.current
+        if (
+          preferredFocus &&
+          dialog.contains(preferredFocus) &&
+          !preferredFocus.hasAttribute('disabled')
+        ) {
+          preferredFocus.focus()
+          return
+        }
+
+        firstFocusable?.focus()
+      })
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -70,5 +82,5 @@ export function useFocusTrap(dialogRef: React.RefObject<HTMLElement | null>, isO
         prevFocus.focus()
       }
     }
-  }, [isOpen, dialogRef])
+  }, [initialFocusRef, isOpen, dialogRef])
 }

@@ -85,3 +85,9 @@ fn test_app_info_debug_impl() {
     assert!(debug_str.contains("app_version"));
     assert!(!debug_str.contains("log_directory"));
 }
+
+#[cfg(coverage)]
+#[test]
+fn test_run_stub_is_callable_in_coverage_builds() {
+    sqllumen_lib::run();
+}

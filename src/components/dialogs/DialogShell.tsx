@@ -1,4 +1,11 @@
-import { useEffect, useCallback, useRef, type CSSProperties } from 'react'
+import {
+  useEffect,
+  useCallback,
+  useRef,
+  type CSSProperties,
+  type FormHTMLAttributes,
+  type RefObject,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import styles from './DialogShell.module.css'
@@ -33,6 +40,10 @@ export interface DialogShellProps {
   panelPadding?: boolean
   /** Optional class name for the dialog panel element. */
   panelClassName?: string
+  /** Optional preferred focus target when the dialog opens. */
+  initialFocusRef?: RefObject<HTMLElement | null>
+  /** Render the panel as a form with submit semantics. */
+  formProps?: Omit<FormHTMLAttributes<HTMLFormElement>, 'children' | 'className' | 'style'>
   children: React.ReactNode
 }
 
@@ -54,10 +65,15 @@ export function DialogShell({
   nonDismissible = false,
   panelPadding = true,
   panelClassName,
+  initialFocusRef,
+  formProps,
   children,
 }: DialogShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(dialogRef, isOpen && !disableFocusManagement)
+  useFocusTrap(dialogRef, isOpen && !disableFocusManagement, initialFocusRef)
+  const setFormRef = useCallback((node: HTMLFormElement | null) => {
+    dialogRef.current = node as HTMLDivElement | null
+  }, [])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -106,6 +122,11 @@ export function DialogShell({
     }
   }
 
+  const panelClassNameValue = `ui-elevated-surface ${styles.dialog}${
+    panelClassName !== undefined ? ` ${panelClassName}` : ''
+  }`
+  const panelTestId = testId !== undefined ? `${testId}-panel` : undefined
+
   return createPortal(
     <div
       className={styles.backdrop}
@@ -115,14 +136,26 @@ export function DialogShell({
       aria-modal="true"
       aria-label={ariaLabel}
     >
-      <div
-        className={`ui-elevated-surface ${styles.dialog}${panelClassName !== undefined ? ` ${panelClassName}` : ''}`}
-        ref={dialogRef}
-        style={dialogStyle}
-        data-testid={testId !== undefined ? `${testId}-panel` : undefined}
-      >
-        {children}
-      </div>
+      {formProps ? (
+        <form
+          {...formProps}
+          className={panelClassNameValue}
+          ref={setFormRef}
+          style={dialogStyle}
+          data-testid={panelTestId}
+        >
+          {children}
+        </form>
+      ) : (
+        <div
+          className={panelClassNameValue}
+          ref={dialogRef}
+          style={dialogStyle}
+          data-testid={panelTestId}
+        >
+          {children}
+        </div>
+      )}
     </div>,
     portalRoot ?? document.body
   )

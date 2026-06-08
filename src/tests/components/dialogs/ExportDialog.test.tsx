@@ -179,6 +179,21 @@ describe('ExportDialog', () => {
     )
   }, 15000)
 
+  it('submits when the dialog form is submitted from the destination field flow', async () => {
+    render(<ExportDialog {...defaultProps} />)
+
+    setExportDestinationPath('/tmp/export.csv')
+    fireEvent.submit(screen.getByTestId('export-dialog-panel'))
+
+    await waitFor(() => {
+      const calls = ipc.calls('export_results')
+      expect(calls).toHaveLength(1)
+      const args = calls[0] as Record<string, unknown>
+      const options = args.options as Record<string, unknown>
+      expect(options.filePath).toBe('/tmp/export.csv')
+    })
+  })
+
   it('passes tableName when format is sql-insert', async () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)

@@ -24,6 +24,30 @@ describe('FilterDialog', () => {
     expect(onApply).toHaveBeenCalledWith([expect.objectContaining({ value: 'Grace' })])
   })
 
+  it('pressing Enter in a value input applies the filters', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+
+    render(
+      <FilterDialog
+        isOpen={true}
+        columns={['id', 'name']}
+        initialConditions={[{ column: 'name', operator: 'LIKE', value: 'Ada' }]}
+        onApply={onApply}
+        onCancel={vi.fn()}
+      />
+    )
+
+    const input = screen.getByTestId('filter-value-input')
+    await waitFor(() => {
+      expect(input).toHaveFocus()
+    })
+
+    await user.keyboard('{Enter}')
+
+    expect(onApply).toHaveBeenCalledWith([{ column: 'name', operator: 'LIKE', value: 'Ada' }])
+  })
+
   it('focuses the first value input when opened with conditions', async () => {
     render(
       <FilterDialog

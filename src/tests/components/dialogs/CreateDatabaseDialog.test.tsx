@@ -111,6 +111,25 @@ describe('CreateDatabaseDialog', () => {
     })
   })
 
+  it('submits when Enter is pressed in the name input', async () => {
+    const user = userEvent.setup()
+    render(<CreateDatabaseDialog {...defaultProps} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
+    })
+    await waitForCreateDatabaseEncodingIdle()
+
+    await user.type(screen.getByTestId('create-db-name-input'), 'new_database{Enter}')
+
+    await waitFor(() => {
+      const calls = ipc.calls('create_database')
+      expect(calls).toHaveLength(1)
+      const args = calls[0] as Record<string, unknown>
+      expect(args.name).toBe('new_database')
+    })
+  })
+
   it('calls onSuccess with database name on success', async () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()

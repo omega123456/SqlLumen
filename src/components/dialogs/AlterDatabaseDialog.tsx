@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { alterDatabase, getDatabaseDetails } from '../../lib/schema-commands'
@@ -93,7 +93,7 @@ export function AlterDatabaseDialog({
   const displayError = submitError || detailsError || encoding.error
   const hasBlockingLoadError = detailsError !== null || encoding.error !== null
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     setIsSubmitting(true)
     setSubmitError(null)
 
@@ -112,7 +112,15 @@ export function AlterDatabaseDialog({
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [connectionId, databaseName, encoding.charset, encoding.collation, onSuccess])
+
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      void handleSubmit()
+    },
+    [handleSubmit]
+  )
 
   // Build dropdown options
   const charsetOptions: DropdownOption[] = [
@@ -141,6 +149,7 @@ export function AlterDatabaseDialog({
       testId="alter-database-dialog"
       ariaLabel="Alter Database"
       nonDismissible={isSubmitting}
+      formProps={{ onSubmit: handleFormSubmit }}
     >
       <h2 className={styles.title}>Alter Database</h2>
       <p className={styles.subtitle}>{databaseName}</p>
@@ -194,7 +203,7 @@ export function AlterDatabaseDialog({
         </Button>
         <Button
           variant="primary"
-          onClick={handleSubmit}
+          type="submit"
           disabled={detailsLoading || encoding.isLoading || hasBlockingLoadError || isSubmitting}
           data-testid="alter-db-submit-button"
         >

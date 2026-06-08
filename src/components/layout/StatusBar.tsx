@@ -52,7 +52,7 @@ export function StatusBar() {
     }
 
     const queryTab = useQueryStore.getState().tabs[activeTab.id]
-    if (queryTab?.activeBottomPanelItem.type !== 'table-data') {
+    if (queryTab?.activeBottomPanelItem?.type !== 'table-data') {
       return null
     }
 

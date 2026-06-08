@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConfirmDialog } from '../../../components/dialogs/ConfirmDialog'
 
@@ -50,6 +50,16 @@ describe('ConfirmDialog', () => {
 
     await user.click(screen.getByTestId('confirm-confirm-button'))
     expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('focuses the confirm button when opened', async () => {
+    render(<ConfirmDialog {...defaultProps} />)
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(screen.getByTestId('confirm-confirm-button')).toHaveFocus()
   })
 
   it('Escape key calls onCancel', async () => {

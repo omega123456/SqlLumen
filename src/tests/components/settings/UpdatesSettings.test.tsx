@@ -131,7 +131,9 @@ describe('UpdatesSettings', () => {
   it('renders idle state with Check for Updates button', async () => {
     render(<UpdatesSettings />)
 
-    expect(await screen.findByTestId('updates-app-version')).toHaveTextContent('1.2.3')
+    await waitFor(() => {
+      expect(screen.getByTestId('updates-app-version')).toHaveTextContent('1.2.3')
+    })
     expect(screen.getByTestId('updates-check-button')).toHaveTextContent('Check for Updates')
   })
 

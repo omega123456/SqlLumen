@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Warning } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { DialogShell } from './DialogShell'
@@ -35,6 +36,8 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const resolvedWarning = warningText === undefined ? 'This action cannot be undone.' : warningText
+  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+
   return (
     <DialogShell
       isOpen={isOpen}
@@ -44,6 +47,7 @@ export function ConfirmDialog({
       testId="confirm-dialog"
       ariaLabel={title}
       nonDismissible={nonDismissible}
+      initialFocusRef={confirmButtonRef}
     >
       <h2 className={styles.title}>
         <span className={styles.titleIcon}>
@@ -68,6 +72,7 @@ export function ConfirmDialog({
           Cancel
         </Button>
         <Button
+          ref={confirmButtonRef}
           variant={isDestructive ? 'danger' : 'primary'}
           onClick={onConfirm}
           disabled={isLoading}

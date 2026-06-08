@@ -9,7 +9,7 @@
  * the store's `applyFilters` action.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef, type FormEvent } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
@@ -123,6 +123,14 @@ export function FilterDialog({
     onApply(conditions)
   }, [onApply, conditions])
 
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      handleApply()
+    },
+    [handleApply]
+  )
+
   const columnDropdownOptions: DropdownOption[] = useMemo(
     () => columns.map((col) => ({ value: col, label: col })),
     [columns]
@@ -161,6 +169,7 @@ export function FilterDialog({
       panelHeight={PANEL_HEIGHT}
       testId="filter-dialog"
       ariaLabel="Filter Conditions"
+      formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
         {/* Header */}
@@ -291,7 +300,7 @@ export function FilterDialog({
             <Button variant="secondary" onClick={onCancel} data-testid="filter-cancel-button">
               Cancel
             </Button>
-            <Button variant="primary" onClick={handleApply} data-testid="filter-apply-button">
+            <Button variant="primary" type="submit" data-testid="filter-apply-button">
               Apply
             </Button>
           </div>

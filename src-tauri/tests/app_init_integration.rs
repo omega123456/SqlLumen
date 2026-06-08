@@ -3,7 +3,13 @@
 mod common;
 
 use rusqlite::Connection;
-use sqllumen_lib::initialize_database;
+use sqllumen_lib::{init_sqlite_vec, initialize_database};
+
+#[test]
+fn test_init_sqlite_vec_is_idempotent() {
+    init_sqlite_vec();
+    init_sqlite_vec();
+}
 
 #[test]
 fn test_initialize_database_succeeds() {

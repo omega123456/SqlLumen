@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
@@ -35,17 +35,18 @@ export function RenameDialog({
   const trimmedNew = newName.trim()
   const isValid = trimmedNew.length > 0 && trimmedNew.length <= 64 && trimmedNew !== currentName
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (!isValid || isLoading) return
     onConfirm(trimmedNew)
-  }
+  }, [isLoading, isValid, onConfirm, trimmedNew])
 
-  const handleInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && isValid && !isLoading) {
-      e.preventDefault()
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
       handleSubmit()
-    }
-  }
+    },
+    [handleSubmit]
+  )
 
   return (
     <DialogShell
@@ -54,6 +55,7 @@ export function RenameDialog({
       maxWidth={440}
       testId="rename-dialog"
       ariaLabel={title}
+      formProps={{ onSubmit: handleFormSubmit }}
     >
       <h2 className={styles.title}>{title}</h2>
 
@@ -76,7 +78,6 @@ export function RenameDialog({
           type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={handleInputKeyDown}
           maxLength={64}
           autoFocus
           data-testid="rename-name-input"
@@ -95,7 +96,7 @@ export function RenameDialog({
         </Button>
         <Button
           variant="primary"
-          onClick={handleSubmit}
+          type="submit"
           disabled={!isValid || isLoading}
           data-testid="rename-confirm-button"
         >

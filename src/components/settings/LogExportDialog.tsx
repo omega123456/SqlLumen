@@ -3,6 +3,7 @@ import { addDays, differenceInCalendarDays, format, isValid, parse } from 'date-
 import {
   forwardRef,
   type InputHTMLAttributes,
+  type FormEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -137,6 +138,14 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
     }
   }, [busy, from, onClose, to, validationMessage])
 
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      void handleExport()
+    },
+    [handleExport]
+  )
+
   return (
     <DialogShell
       isOpen={isOpen}
@@ -146,6 +155,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
       ariaLabel="Export Logs"
       testId="log-export-dialog"
       panelPadding={false}
+      formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
         <div className={styles.header}>
@@ -228,7 +238,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
           </Button>
           <Button
             variant="primary"
-            onClick={handleExport}
+            type="submit"
             disabled={!canExport}
             data-testid="log-export-submit-button"
           >

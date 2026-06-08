@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, type FormEvent } from 'react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
@@ -38,11 +38,11 @@ export function CreateDatabaseDialog({
     setNameError(null)
   }, [isOpen])
 
-  const validateName = (value: string): string | null => {
+  const validateName = useCallback((value: string): string | null => {
     if (!value.trim()) return 'Database name is required'
     if (value.length > 64) return 'Database name cannot exceed 64 characters'
     return null
-  }
+  }, [])
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -52,7 +52,7 @@ export function CreateDatabaseDialog({
     }
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     const validation = validateName(name)
     if (validation) {
       setNameError(validation)
@@ -77,7 +77,15 @@ export function CreateDatabaseDialog({
     } finally {
       setIsSubmitting(false)
     }
-  }
+  }, [connectionId, encoding.charset, encoding.collation, name, onSuccess, validateName])
+
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      void handleSubmit()
+    },
+    [handleSubmit]
+  )
 
   // Build dropdown options
   const charsetOptions: DropdownOption[] = [
@@ -109,6 +117,7 @@ export function CreateDatabaseDialog({
       ariaLabel="Create Database"
       disableFocusManagement={isPlaywright}
       nonDismissible={isSubmitting}
+      formProps={{ onSubmit: handleFormSubmit }}
     >
       <div
         className={styles.encodingRoot}
@@ -182,7 +191,7 @@ export function CreateDatabaseDialog({
           </Button>
           <Button
             variant="primary"
-            onClick={handleSubmit}
+            type="submit"
             disabled={!isValid || isSubmitting}
             data-testid="create-db-submit-button"
           >
