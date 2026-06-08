@@ -309,7 +309,7 @@ export function TreeNode({
   )
 
   const isSelected = selectedNodeId === nodeId
-  const wasSelectedRef = useRef(isSelected)
+  const wasSelectedRef = useRef(false)
 
   useEffect(() => {
     if (isSelected && !wasSelectedRef.current) {
