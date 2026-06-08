@@ -3559,9 +3559,21 @@ for (const theme of themes) {
       await expect(page.getByTestId('log-export-dialog')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('log-export-from-input')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('log-export-to-input')).toBeVisible({ timeout: APP_READY_MS })
-      await page.evaluate(() => {
-        const el = document.activeElement
-        if (el && el instanceof HTMLElement) el.blur()
+      await page.getByTestId('log-export-from-input').click()
+      await page
+        .getByRole('dialog', { name: 'Choose Date' })
+        .last()
+        .getByRole('gridcell', { name: 'Choose Monday, June 1st, 2026' })
+        .click()
+      await page.getByTestId('log-export-to-input').click()
+      await page
+        .getByRole('dialog', { name: 'Choose Date' })
+        .last()
+        .getByRole('gridcell', { name: 'Choose Sunday, June 7th, 2026' })
+        .click()
+      await page.getByTestId('log-export-from-input').click()
+      await expect(page.getByRole('dialog', { name: 'Choose Date' }).last()).toBeVisible({
+        timeout: APP_READY_MS,
       })
       await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
         `settings-dialog-logging-export-${theme}.png`,
