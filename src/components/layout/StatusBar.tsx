@@ -3,6 +3,7 @@ import { Database, CheckCircle, WarningCircle, ArrowsClockwise } from '@phosphor
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
+import { useTableDataStore } from '../../stores/table-data-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -35,12 +36,38 @@ export function StatusBar() {
     return tabs?.find((t) => t.id === activeWorkspaceTabId)?.type ?? null
   })
 
+  const activeTableDataTabId = useWorkspaceStore((s) => {
+    if (!connectionTabId || !activeWorkspaceTabId) return null
+
+    const tabs = s.tabsByConnection[connectionTabId] ?? []
+    const activeTab = tabs.find((tab) => tab.id === activeWorkspaceTabId) ?? null
+    if (!activeTab) return null
+
+    if (activeTab.type === 'table-data') {
+      return activeTab.id
+    }
+
+    if (activeTab.type !== 'query-editor') {
+      return null
+    }
+
+    const queryTab = useQueryStore.getState().tabs[activeTab.id]
+    if (queryTab?.activeBottomPanelItem.type !== 'table-data') {
+      return null
+    }
+
+    return queryTab.activeBottomPanelItem.tabId
+  })
+
   // Get query state for the active workspace tab — read from active result
   const queryState = useQueryStore((s) =>
     activeWorkspaceTabId ? (s.tabs[activeWorkspaceTabId] ?? null) : null
   )
   const activeResultState = useQueryStore((s) =>
     activeWorkspaceTabId ? getActiveResult(s.tabs[activeWorkspaceTabId]) : null
+  )
+  const activeTableDataState = useTableDataStore((s) =>
+    activeTableDataTabId ? (s.tabs[activeTableDataTabId] ?? null) : null
   )
 
   // Schema index status for the active connection session
@@ -96,13 +123,23 @@ export function StatusBar() {
   const activeConnection = connectionTabId ? activeConnections[connectionTabId] : null
 
   const isQueryEditorTab = activeWorkspaceTabType === 'query-editor'
+  const isShowingTableData = activeTableDataTabId !== null
 
   // Show query info only for query-editor tabs when the active result is successful
   // (not the tab-level status, which may be 'success' even for partial-error multi-results)
-  const showQueryInfo = isQueryEditorTab && activeResultState?.resultStatus === 'success'
+  const showQueryInfo =
+    isQueryEditorTab && !isShowingTableData && activeResultState?.resultStatus === 'success'
 
   // Show running indicator for query-editor tabs with tabStatus === 'running'
-  const showRunningInfo = isQueryEditorTab && queryState?.tabStatus === 'running'
+  const showRunningInfo = isQueryEditorTab && !isShowingTableData && queryState?.tabStatus === 'running'
+
+  const showTableInfo =
+    isShowingTableData &&
+    activeTableDataState?.viewMode === 'grid' &&
+    activeTableDataState.columns.length > 0 &&
+    activeTableDataState.error === null
+
+  const visibleTableRows = activeTableDataState?.rows.length ?? 0
 
   const showIndexBuilding = indexStatus === 'building'
   const showIndexReady = flashType === 'ready' && !showIndexBuilding
@@ -155,7 +192,12 @@ export function StatusBar() {
     ) : null
 
   const hasActivity =
-    showIndexBuilding || showIndexReady || showIndexError || showRunningInfo || showQueryInfo
+    showIndexBuilding ||
+    showIndexReady ||
+    showIndexError ||
+    showRunningInfo ||
+    showQueryInfo ||
+    showTableInfo
 
   if (!activeConnection) {
     return (
@@ -277,6 +319,13 @@ export function StatusBar() {
               <span className={styles.queryInfoItem} data-testid="query-total-time">
                 <span className={styles.queryInfoLabel}>Total:</span>{' '}
                 <span className={styles.queryInfoTime}>{activeResultState.totalTimeMs}ms</span>
+              </span>
+            </div>
+          )}
+          {showTableInfo && (
+            <div className={styles.queryInfo} data-testid="table-data-info">
+              <span className={styles.queryInfoItem} data-testid="table-data-rows">
+                <span className={styles.queryInfoLabel}>Rows:</span> {visibleTableRows}
               </span>
             </div>
           )}

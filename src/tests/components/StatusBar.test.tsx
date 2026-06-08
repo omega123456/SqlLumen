@@ -9,10 +9,12 @@ import { useThemeStore } from '../../stores/theme-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
+import { useTableDataStore } from '../../stores/table-data-store'
 import userEvent from '@testing-library/user-event'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
-import type { WorkspaceTab } from '../../types/schema'
+import type { TableDataTabState, WorkspaceTab } from '../../types/schema'
 import { makeTabState } from '../helpers/query-test-utils'
+import { makeTableDataTabState } from '../helpers/table-data-test-utils'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -57,6 +59,46 @@ function setupActiveConnection() {
   })
 }
 
+function makeStatusBarTableState(
+  overrides: Partial<TableDataTabState> = {}
+): TableDataTabState {
+  return makeTableDataTabState({
+    columns: [
+      {
+        name: 'id',
+        dataType: 'bigint',
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'name',
+        dataType: 'varchar',
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: false,
+      },
+    ],
+    rows: [
+      [1, 'Alice'],
+      [2, 'Bob'],
+      [3, 'Cara'],
+    ],
+    viewMode: 'grid',
+    ...overrides,
+  })
+}
+
 beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
@@ -66,6 +108,7 @@ beforeEach(() => {
   })
   resetWorkspaceStore()
   useQueryStore.setState({ tabs: {} })
+  useTableDataStore.setState({ tabs: {} })
   useSchemaIndexStore.setState({
     connections: {},
     profileToSessions: {},
@@ -408,6 +451,122 @@ describe('StatusBar', () => {
 
       render(<StatusBar />)
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('table data info', () => {
+    it('shows the visible row count for an active standalone table-data grid tab', () => {
+      setupActiveConnection()
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            {
+              id: 'table-1',
+              type: 'table-data',
+              label: 'users',
+              connectionId: 'conn-1',
+              databaseName: 'mydb',
+              objectName: 'users',
+              objectType: 'table',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: { 'conn-1': 'table-1' },
+      })
+      seedVisibleConnection('conn-1')
+      useTableDataStore.setState({
+        tabs: {
+          'table-1': makeStatusBarTableState(),
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('table-data-info')).toBeInTheDocument()
+      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows: 3')
+      expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+    })
+
+    it('shows the visible row count for an active bottom-panel table-data grid tab', () => {
+      setupActiveConnection()
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            {
+              id: 'query-1',
+              type: 'query-editor',
+              label: 'Query 1',
+              connectionId: 'conn-1',
+            } as WorkspaceTab,
+            {
+              id: 'table-1',
+              type: 'table-data',
+              label: 'users',
+              connectionId: 'conn-1',
+              databaseName: 'mydb',
+              objectName: 'users',
+              objectType: 'table',
+              parentQueryTabId: 'query-1',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: { 'conn-1': 'query-1' },
+      })
+      seedVisibleConnection('conn-1')
+      useQueryStore.setState({
+        tabs: {
+          'query-1': makeTabState({
+            status: 'success',
+            totalRows: 42,
+            executionTimeMs: 12,
+            totalTimeMs: 150,
+            activeBottomPanelItem: { type: 'table-data', tabId: 'table-1' },
+          }),
+        },
+      })
+      useTableDataStore.setState({
+        tabs: {
+          'table-1': makeStatusBarTableState({
+            rows: [[1, 'Alice']],
+          }),
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('table-data-info')).toBeInTheDocument()
+      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows: 1')
+      expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+    })
+
+    it('does not show table-data row count when the active table-data tab is in form view', () => {
+      setupActiveConnection()
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            {
+              id: 'table-1',
+              type: 'table-data',
+              label: 'users',
+              connectionId: 'conn-1',
+              databaseName: 'mydb',
+              objectName: 'users',
+              objectType: 'table',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: { 'conn-1': 'table-1' },
+      })
+      seedVisibleConnection('conn-1')
+      useTableDataStore.setState({
+        tabs: {
+          'table-1': makeStatusBarTableState({ viewMode: 'form' }),
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.queryByTestId('table-data-info')).not.toBeInTheDocument()
     })
   })
 
