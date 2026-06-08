@@ -511,7 +511,7 @@ describe('GlobalContextMenu', () => {
     fireEvent.contextMenu(screen.getByTestId('field'), { clientX: 300, clientY: 220 })
 
     const menu = screen.getByTestId('global-context-menu')
-    expect(menu).toHaveStyle({ left: '250px', top: '180px' })
+    expect(menu).toHaveStyle({ left: '250px', top: '180px', position: 'absolute' })
 
     vi.restoreAllMocks()
   })

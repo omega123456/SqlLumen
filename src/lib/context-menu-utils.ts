@@ -67,7 +67,7 @@ export function positionContextMenuInPortal(
   menuHeight: number,
   margin = 4
 ): { x: number; y: number } {
-  if (portalRoot === document.body) {
+  if (portalRoot === portalRoot.ownerDocument.body) {
     return clampContextMenuPosition(
       clientX,
       clientY,
@@ -91,6 +91,14 @@ export function positionContextMenuInPortal(
     dr.height,
     margin
   )
+}
+
+/**
+ * Dialog-local menus should use absolute positioning because desktop webviews can anchor `position: fixed`
+ * differently for top-layer dialog descendants than browsers do.
+ */
+export function getContextMenuPositionMode(portalRoot: HTMLElement): 'fixed' | 'absolute' {
+  return portalRoot === portalRoot.ownerDocument.body ? 'fixed' : 'absolute'
 }
 
 function isContentEditableField(el: HTMLElement): boolean {

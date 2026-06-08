@@ -198,6 +198,22 @@ describe('applyQueryFilters — operators', () => {
     expect(result.rows).toEqual([[1, 'Alice', 30]])
   })
 
+  it('!= operator — excludes exact matches', () => {
+    setupTab('tab-1', {
+      columns: COLUMNS,
+      rows: ROWS,
+      rowLimit: 1000,
+    })
+
+    useQueryStore
+      .getState()
+      .applyQueryFilters('tab-1', 0, [{ column: 'name', operator: '!=', value: 'Alice' }])
+
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(result.rows.some((r) => r[1] === 'Alice')).toBe(false)
+    expect(result.rows).toHaveLength(4)
+  })
+
   it('NOT LIKE — excludes matching rows', () => {
     setupTab('tab-1', {
       columns: COLUMNS,

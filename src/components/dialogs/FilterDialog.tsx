@@ -9,7 +9,7 @@
  * the store's `applyFilters` action.
  */
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
@@ -28,6 +28,7 @@ const OPERATORS: readonly FilterOperator[] = [
   '<',
   '<=',
   '==',
+  '!=',
   'LIKE',
   'NOT LIKE',
   'IS NULL',
@@ -72,11 +73,16 @@ export function FilterDialog({
 }: FilterDialogProps) {
   // Local editing copy — reset from props every time dialog opens.
   const [conditions, setConditions] = useState<FilterCondition[]>([])
+  const valueInputRefs = useRef<(HTMLInputElement | null)[]>([])
+  const hasAutoFocusedForOpenRef = useRef(false)
 
   useEffect(() => {
     if (isOpen) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setConditions(initialConditions.map((c) => ({ ...c })))
+      hasAutoFocusedForOpenRef.current = false
+    } else {
+      hasAutoFocusedForOpenRef.current = false
     }
   }, [isOpen, initialConditions])
 
@@ -121,6 +127,27 @@ export function FilterDialog({
     () => columns.map((col) => ({ value: col, label: col })),
     [columns]
   )
+
+  useEffect(() => {
+    if (!isOpen || conditions.length === 0 || hasAutoFocusedForOpenRef.current) return
+
+    const firstFocusableInput = valueInputRefs.current.find((input) => input && !input.disabled)
+    if (!firstFocusableInput) return
+
+    let innerFrameId = 0
+    const frameId = requestAnimationFrame(() => {
+      innerFrameId = requestAnimationFrame(() => {
+        firstFocusableInput.focus()
+        firstFocusableInput.select()
+        hasAutoFocusedForOpenRef.current = true
+      })
+    })
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      cancelAnimationFrame(innerFrameId)
+    }
+  }, [conditions, isOpen])
 
   // --- Render ---
 
@@ -186,6 +213,9 @@ export function FilterDialog({
 
                       {/* Value */}
                       <TextInput
+                        ref={(element) => {
+                          valueInputRefs.current[idx] = element
+                        }}
                         variant="bare"
                         type="text"
                         className={`ui-field-chrome ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}

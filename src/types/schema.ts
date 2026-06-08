@@ -489,6 +489,7 @@ export type FilterOperator =
   | '<'
   | '<='
   | '=='
+  | '!='
   | 'LIKE'
   | 'NOT LIKE'
   | 'IS NULL'

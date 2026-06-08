@@ -82,4 +82,29 @@ describe('TabContextMenu', () => {
       expect(onClose).toHaveBeenCalledTimes(2)
     })
   })
+
+  it('uses absolute positioning when portaled into an open dialog', async () => {
+    const dialog = document.createElement('dialog')
+    dialog.open = true
+    document.body.appendChild(dialog)
+
+    try {
+      render(
+        <TabContextMenu
+          visible
+          x={40}
+          y={60}
+          portalRoot={dialog}
+          onClose={vi.fn()}
+          items={[{ key: 'rename', label: 'Rename', onSelect: vi.fn() }]}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByTestId('tab-context-menu')).toHaveStyle({ position: 'absolute' })
+      })
+    } finally {
+      dialog.remove()
+    }
+  })
 })

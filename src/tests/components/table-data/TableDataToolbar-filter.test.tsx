@@ -156,7 +156,7 @@ describe('TableDataToolbar — Filter auto-populate from selectedCell', () => {
     expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
   })
 
-  it('filter dialog auto-populates with selected cell value', () => {
+  it('filter dialog auto-populates with selected cell value', async () => {
     setupConnection()
     setupTabState({
       selectedCell: { columnKey: 'name', value: 'Alice' },
@@ -169,6 +169,12 @@ describe('TableDataToolbar — Filter auto-populate from selectedCell', () => {
     // Should have a filter row pre-populated (not empty state)
     expect(screen.queryByTestId('filter-empty-state')).not.toBeInTheDocument()
     expect(screen.getByTestId('filter-row')).toBeInTheDocument()
+    expect(screen.getByTestId('filter-column-select-0')).toHaveTextContent('name')
+    expect(screen.getByTestId('filter-operator-select-0')).toHaveTextContent('==')
+    expect(screen.getByTestId('filter-value-input')).toHaveValue('Alice')
+    await waitFor(() => {
+      expect(screen.getByTestId('filter-value-input')).toHaveFocus()
+    })
   })
 
   it('filter dialog auto-populates with IS NULL when cell value is null', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConnectionForm } from '../../components/connection-dialog/ConnectionForm'
@@ -166,11 +166,11 @@ describe('ConnectionForm', () => {
     expect(ipc.calls('save_connection')).toHaveLength(0)
   })
 
-  it('Connect validation prevents connect with empty fields', async () => {
+  it('Save and Connect validation prevents connect with empty fields', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.click(screen.getByText('Connect'))
+    await user.click(screen.getByText('Save and Connect'))
 
     expect(screen.getByText('Connection name is required')).toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
@@ -199,13 +199,16 @@ describe('ConnectionForm', () => {
 
     expect(screen.getByText('Test Connection')).toBeInTheDocument()
     expect(screen.getByText('Save')).toBeInTheDocument()
-    expect(screen.getByText('Connect')).toBeInTheDocument()
+    expect(screen.getByText('Save and Connect')).toBeInTheDocument()
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument()
 
     expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveClass(
       'ui-button-secondary'
     )
     expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button-secondary')
-    expect(screen.getByRole('button', { name: 'Connect' })).toHaveClass('ui-button-primary')
+    expect(screen.getByRole('button', { name: 'Save and Connect' })).toHaveClass(
+      'ui-button-primary'
+    )
   })
 
   it('renders group selector with Ungrouped option', () => {
@@ -438,7 +441,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Client Certificate')).toHaveValue('')
   })
 
-  it('Connect button saves new connection and opens it', async () => {
+  it('Save and Connect button saves new connection and opens it', async () => {
     const user = userEvent.setup()
     ipc.override('save_connection', () => 'new-conn-id')
     ipc.override('list_connections', () => [
@@ -452,7 +455,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Connect'))
+    await user.click(screen.getByText('Save and Connect'))
 
     await waitFor(() => {
       expect(ipc.calls('save_connection')).toHaveLength(1)
@@ -460,7 +463,7 @@ describe('ConnectionForm', () => {
     })
   })
 
-  it('Connect button closes dialog after connecting', async () => {
+  it('Save and Connect button closes dialog after connecting', async () => {
     const user = userEvent.setup()
     ipc.override('save_connection', () => 'new-conn-id')
     ipc.override('list_connections', () => [
@@ -474,14 +477,14 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Connect'))
+    await user.click(screen.getByText('Save and Connect'))
 
     await waitFor(() => {
       expect(useConnectionStore.getState().dialogOpen).toBe(false)
     })
   })
 
-  it('Connect shows error on failure', async () => {
+  it('Save and Connect shows error on failure', async () => {
     const user = userEvent.setup()
     ipc.override('save_connection', () => {
       throw new Error('Save failed')
@@ -492,7 +495,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Connect'))
+    await user.click(screen.getByText('Save and Connect'))
 
     await waitFor(() => {
       expect(screen.getByText('Connection failed')).toBeInTheDocument()
@@ -597,6 +600,14 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Use no password (remove saved password)')).toBeInTheDocument()
   })
 
+  it('shows a Delete button when editing a saved connection', () => {
+    const editConn = makeSavedConnection()
+
+    render(<ConnectionForm editingConnection={editConn} />)
+
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+  })
+
   it('Save can clear an existing saved password', async () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection({ hasPassword: true })
@@ -616,6 +627,33 @@ describe('ConnectionForm', () => {
         password: null,
       })
     })
+  })
+
+  it('Delete removes the currently viewed saved connection', async () => {
+    const user = userEvent.setup()
+    const onDeleteConnection = vi.fn()
+    const editConn = makeSavedConnection()
+
+    ipc.override('delete_connection', () => undefined)
+
+    render(
+      <ConnectionForm editingConnection={editConn} onDeleteConnection={onDeleteConnection} />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByRole('heading', { name: 'Delete Connection' })).toBeInTheDocument()
+    expect(screen.getByText(/Delete saved connection/i)).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('confirm-confirm-button'))
+
+    await waitFor(() => {
+      expect(ipc.calls('delete_connection')).toHaveLength(1)
+      expect(onDeleteConnection).toHaveBeenCalledWith('conn-1')
+    })
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Connection name')).toHaveValue('')
   })
 
   it('typing a new password is blocked while clear password mode is enabled', async () => {
@@ -731,7 +769,7 @@ describe('ConnectionForm', () => {
     expect(ipc.calls('save_connection')).toHaveLength(1) // still only 1
   })
 
-  it('Connect updates existing connection before opening', async () => {
+  it('Save and Connect updates existing connection before opening', async () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection()
 
@@ -751,7 +789,7 @@ describe('ConnectionForm', () => {
     await user.clear(hostInput)
     await user.type(hostInput, '10.0.0.1')
 
-    await user.click(screen.getByText('Connect'))
+    await user.click(screen.getByText('Save and Connect'))
 
     await waitFor(() => {
       expect(ipc.calls('update_connection')).toHaveLength(1)
@@ -759,7 +797,7 @@ describe('ConnectionForm', () => {
     })
   })
 
-  it('Connect does not close dialog on openConnection failure', async () => {
+  it('Save and Connect does not close dialog on openConnection failure', async () => {
     const user = userEvent.setup()
     ipc.override('save_connection', () => 'new-conn-id')
     ipc.override('list_connections', () => [
@@ -775,7 +813,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Connect'))
+    await user.click(screen.getByText('Save and Connect'))
 
     await waitFor(() => {
       expect(screen.getByText('Connection refused')).toBeInTheDocument()

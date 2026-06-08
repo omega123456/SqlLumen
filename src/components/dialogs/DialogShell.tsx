@@ -6,6 +6,8 @@ import styles from './DialogShell.module.css'
 export interface DialogShellProps {
   isOpen: boolean
   onClose: () => void
+  /** Optional portal target. Use an open native <dialog> when the shell must render inside the top layer. */
+  portalRoot?: HTMLElement | null
   maxWidth?: number
   /**
    * Panel width as a CSS length (e.g. `80vw` or `min(50vw, 720px)`). When set, the panel uses this
@@ -41,6 +43,7 @@ export interface DialogShellProps {
 export function DialogShell({
   isOpen,
   onClose,
+  portalRoot,
   maxWidth = 420,
   panelWidth,
   panelHeight,
@@ -121,6 +124,6 @@ export function DialogShell({
         {children}
       </div>
     </div>,
-    document.body
+    portalRoot ?? document.body
   )
 }

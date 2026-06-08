@@ -226,5 +226,25 @@ describe('ConnectionDialog', () => {
         expect(screen.getByLabelText('Username')).toHaveValue('')
       })
     })
+
+    it('renders the delete confirmation dialog inside the connection modal top layer', async () => {
+      const user = userEvent.setup()
+      ipc.override('list_connections', () => [testConnection])
+
+      useConnectionStore.setState({ dialogOpen: true })
+      const { container } = render(<ConnectionDialog />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByText('Test DB'))
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+      const confirmDialog = await screen.findByTestId('confirm-dialog')
+      const nativeDialog = container.querySelector('dialog')
+
+      expect(nativeDialog?.contains(confirmDialog)).toBe(true)
+    })
   })
 })

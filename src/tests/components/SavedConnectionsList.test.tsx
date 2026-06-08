@@ -45,14 +45,12 @@ function makeGroup(overrides: Partial<ConnectionGroup> = {}): ConnectionGroup {
 const defaultProps = {
   onSelectConnection: vi.fn(),
   onNewConnection: vi.fn(),
-  onDeleteConnection: vi.fn(),
   selectedConnectionId: null,
 }
 
 beforeEach(() => {
   defaultProps.onSelectConnection.mockClear()
   defaultProps.onNewConnection.mockClear()
-  defaultProps.onDeleteConnection.mockClear()
 
   useConnectionStore.setState({
     savedConnections: [],
@@ -230,8 +228,8 @@ describe('SavedConnectionsList', () => {
     })
   })
 
-  describe('context menu — connection', () => {
-    it('shows context menu with Delete on right-click', async () => {
+  describe('connection interactions', () => {
+    it('does not open a context menu when right-clicking a saved connection', () => {
       const conn = makeConnection({ id: 'c1', name: 'Right Click Me' })
 
       useConnectionStore.setState({
@@ -241,202 +239,10 @@ describe('SavedConnectionsList', () => {
 
       render(<SavedConnectionsList {...defaultProps} />)
 
-      const item = screen.getByText('Right Click Me')
-      fireEvent.contextMenu(item, { clientX: 100, clientY: 200 })
+      fireEvent.contextMenu(screen.getByText('Right Click Me'), { clientX: 100, clientY: 200 })
 
-      expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
-    })
-
-    it('clamps connection context menu position inside the viewport', () => {
-      const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
-      const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
-
-      const rectSpy = vi
-        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-        .mockImplementation(function (this: HTMLElement) {
-          if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
-            return {
-              width: 280,
-              height: 40,
-              top: 0,
-              left: 0,
-              right: 280,
-              bottom: 40,
-              x: 0,
-              y: 0,
-            } as DOMRect
-          }
-          return {
-            width: 100,
-            height: 32,
-            top: 0,
-            left: 0,
-            right: 100,
-            bottom: 32,
-            x: 0,
-            y: 0,
-          } as DOMRect
-        })
-
-      const conn = makeConnection({ id: 'c1', name: 'Right Click Me' })
-
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(<SavedConnectionsList {...defaultProps} />)
-
-      fireEvent.contextMenu(screen.getByText('Right Click Me'), { clientX: 300, clientY: 200 })
-
-      const menu = screen.getByTestId('saved-connections-context-menu')
-      expect(menu).toHaveStyle({ left: '36px', top: '196px' })
-      expect(menu.parentElement).toBe(document.body)
-
-      rectSpy.mockRestore()
-      innerWidth.mockRestore()
-      innerHeight.mockRestore()
-    })
-
-    it('portals the context menu into an open dialog and positions in dialog-local coordinates', () => {
-      const conn = makeConnection({ id: 'c1', name: 'In Dialog' })
-
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(
-        <dialog open data-testid="connection-dlg">
-          <SavedConnectionsList {...defaultProps} />
-        </dialog>
-      )
-
-      const dlg = screen.getByTestId('connection-dlg')
-      vi.spyOn(dlg, 'getBoundingClientRect').mockReturnValue({
-        x: 100,
-        y: 80,
-        width: 600,
-        height: 400,
-        top: 80,
-        left: 100,
-        right: 700,
-        bottom: 480,
-        toJSON: () => '',
-      } as DOMRect)
-
-      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-        this: HTMLElement
-      ) {
-        if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
-          return {
-            width: 200,
-            height: 40,
-            top: 0,
-            left: 0,
-            right: 200,
-            bottom: 40,
-            x: 0,
-            y: 0,
-          } as DOMRect
-        }
-        return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect
-      })
-
-      // Viewport (350, 250) → local (250, 170) relative to mocked dialog box
-      fireEvent.contextMenu(screen.getByText('In Dialog'), { clientX: 350, clientY: 250 })
-
-      const menu = screen.getByTestId('saved-connections-context-menu')
-      expect(dlg.contains(menu)).toBe(true)
-      expect(menu).toHaveStyle({ left: '250px', top: '170px' })
-
-      vi.restoreAllMocks()
-    })
-
-    it('deletes connection after confirmation', async () => {
-      const user = userEvent.setup()
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-
-      const conn = makeConnection({ id: 'c1', name: 'Delete Me' })
-
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(<SavedConnectionsList {...defaultProps} />)
-
-      const item = screen.getByText('Delete Me')
-      fireEvent.contextMenu(item, { clientX: 100, clientY: 200 })
-
-      const deleteBtn = screen.getByRole('menuitem', { name: 'Delete' })
-      await user.click(deleteBtn)
-
-      expect(confirmSpy).toHaveBeenCalledWith('Are you sure you want to delete this connection?')
-      expect(ipc.calls('delete_connection')).toHaveLength(1)
-
-      await waitFor(() => {
-        expect(defaultProps.onDeleteConnection).toHaveBeenCalledWith('c1')
-      })
-
-      confirmSpy.mockRestore()
-    })
-
-    it('does not delete connection when confirmation is cancelled', async () => {
-      const user = userEvent.setup()
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
-
-      const conn = makeConnection({ id: 'c1', name: 'Keep Me' })
-
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(<SavedConnectionsList {...defaultProps} />)
-
-      fireEvent.contextMenu(screen.getByText('Keep Me'), { clientX: 100, clientY: 200 })
-      const deleteBtn = screen.getByRole('menuitem', { name: 'Delete' })
-      await user.click(deleteBtn)
-
-      expect(confirmSpy).toHaveBeenCalled()
-      expect(ipc.calls('delete_connection')).toHaveLength(0)
-
-      confirmSpy.mockRestore()
-    })
-
-    it('dismisses context menu on Escape key', () => {
-      const conn = makeConnection({ id: 'c1', name: 'Escape Me' })
-
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(<SavedConnectionsList {...defaultProps} />)
-
-      fireEvent.contextMenu(screen.getByText('Escape Me'), { clientX: 100, clientY: 200 })
-      expect(screen.getByRole('menu')).toBeInTheDocument()
-
-      fireEvent.keyDown(document, { key: 'Escape' })
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
-    })
-
-    it('dismisses context menu on outside click', () => {
-      const conn = makeConnection({ id: 'c1', name: 'Outside Click' })
-
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(<SavedConnectionsList {...defaultProps} />)
-
-      fireEvent.contextMenu(screen.getByText('Outside Click'), { clientX: 100, clientY: 200 })
-      expect(screen.getByRole('menu')).toBeInTheDocument()
-
-      fireEvent.mouseDown(document)
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('saved-connections-context-menu')).not.toBeInTheDocument()
     })
   })
 
@@ -650,52 +456,27 @@ describe('SavedConnectionsList', () => {
   })
 
   describe('error handling', () => {
-    it('displays error when delete connection fails', async () => {
-      const user = userEvent.setup()
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-      ipc.override('delete_connection', () => {
-        throw new Error('Network error')
-      })
-
-      const conn = makeConnection({ id: 'c1', name: 'Fail Delete' })
-      useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
-      })
-
-      render(<SavedConnectionsList {...defaultProps} />)
-
-      fireEvent.contextMenu(screen.getByText('Fail Delete'), { clientX: 100, clientY: 200 })
-      await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
-
-      await waitFor(() => {
-        expect(screen.getByRole('alert')).toBeInTheDocument()
-        expect(screen.getByText('Network error')).toBeInTheDocument()
-      })
-
-      confirmSpy.mockRestore()
-    })
-
     it('error can be dismissed', async () => {
       const user = userEvent.setup()
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-      ipc.override('delete_connection', () => {
+      ipc.override('delete_connection_group', () => {
         throw new Error('Delete failed')
       })
 
-      const conn = makeConnection({ id: 'c1', name: 'Error DB' })
+      const group = makeGroup({ id: 'grp-1', name: 'Error Group' })
       useConnectionStore.setState({
-        savedConnections: [conn],
-        connectionGroups: [],
+        savedConnections: [],
+        connectionGroups: [group],
       })
 
       render(<SavedConnectionsList {...defaultProps} />)
 
-      fireEvent.contextMenu(screen.getByText('Error DB'), { clientX: 100, clientY: 200 })
+      fireEvent.contextMenu(screen.getByText('Error Group'), { clientX: 100, clientY: 200 })
       await user.click(screen.getByRole('menuitem', { name: 'Delete' }))
 
       await waitFor(() => {
         expect(screen.getByRole('alert')).toBeInTheDocument()
+        expect(screen.getByText('Delete failed')).toBeInTheDocument()
       })
 
       await user.click(screen.getByLabelText('Dismiss error'))

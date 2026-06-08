@@ -61,6 +61,7 @@ import { parseSetCellValue, serializeSetCellValue } from '../../table-data/enum-
 
 import { logFrontend } from '../../../lib/app-log-commands'
 import {
+  getContextMenuPositionMode,
   getContextMenuPortalRoot,
   positionContextMenuInPortal,
 } from '../../../lib/context-menu-utils'
@@ -1617,7 +1618,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
               className="ui-context-menu"
               role="menu"
               data-testid={testId ? `${testId}-clipboard-menu` : 'grid-clipboard-menu'}
-              style={{ left: contextMenu.x, top: contextMenu.y }}
+              style={{
+                left: contextMenu.x,
+                top: contextMenu.y,
+                position: getContextMenuPositionMode(contextMenu.portalRoot),
+              }}
               onPointerDown={(event) => event.stopPropagation()}
             >
               <button

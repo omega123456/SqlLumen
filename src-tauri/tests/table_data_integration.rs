@@ -2357,6 +2357,20 @@ fn translate_filter_model_equals() {
 }
 
 #[test]
+fn translate_filter_model_not_equals() {
+    let conditions = vec![FilterCondition {
+        column: "status".to_string(),
+        operator: "!=".to_string(),
+        value: "inactive".to_string(),
+    }];
+
+    let clause = translate_filter_model(&conditions);
+    assert!(clause.sql.contains("`status` != ?"));
+    assert_eq!(clause.params.len(), 1);
+    assert_eq!(clause.params[0], serde_json::json!("inactive"));
+}
+
+#[test]
 fn translate_filter_model_like_starts_with() {
     let conditions = vec![FilterCondition {
         column: "name".to_string(),
@@ -2638,6 +2652,22 @@ fn translate_filter_model_with_columns_json_is_not_null_only() {
     let clause = translate_filter_model_with_columns(&conditions, &columns);
     assert!(clause.sql.contains("`profile` IS NOT NULL"));
     assert!(!clause.sql.contains("`profile` != ''"));
+}
+
+#[test]
+fn translate_filter_model_with_columns_not_equals() {
+    let conditions = vec![FilterCondition {
+        column: "name".to_string(),
+        operator: "!=".to_string(),
+        value: "Alice".to_string(),
+    }];
+
+    let columns = vec![make_column_meta("name", "VARCHAR")];
+
+    let clause = translate_filter_model_with_columns(&conditions, &columns);
+    assert!(clause.sql.contains("`name` != ?"));
+    assert_eq!(clause.params.len(), 1);
+    assert_eq!(clause.params[0], serde_json::json!("Alice"));
 }
 
 #[test]

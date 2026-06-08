@@ -309,10 +309,24 @@
   background: var(--ui-form-footer-bg);
 }
 
+.footerActionsLeft,
 .footerActionsRight {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+@media (max-width: 720px) {
+  .formFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .footerActionsLeft,
+  .footerActionsRight {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
 }
 
 .resultCard {

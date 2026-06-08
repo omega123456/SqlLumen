@@ -253,7 +253,7 @@ async function openSecondSession(page: Page): Promise<void> {
   await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
   await sampleRow.click()
 
-  const connectBtn = dialog.getByRole('button', { name: 'Connect', exact: true })
+  const connectBtn = dialog.getByRole('button', { name: 'Save and Connect', exact: true })
   await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
   await connectBtn.click()
   await expect(dialog).toBeHidden({ timeout: APP_READY_MS })

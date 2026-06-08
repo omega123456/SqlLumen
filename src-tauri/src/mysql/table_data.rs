@@ -406,6 +406,7 @@ fn get_filter_op(operator: &str) -> Option<FilterOp> {
         "<" => Some(FilterOp::Comparison("<")),
         "<=" => Some(FilterOp::Comparison("<=")),
         "==" => Some(FilterOp::Comparison("=")),
+        "!=" => Some(FilterOp::Comparison("!=")),
         "LIKE" => Some(FilterOp::Like),
         "NOT LIKE" => Some(FilterOp::NotLike),
         "IS NULL" => Some(FilterOp::IsNull),

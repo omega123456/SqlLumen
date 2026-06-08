@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
-import { positionContextMenuInPortal } from '../../lib/context-menu-utils'
+import { getContextMenuPositionMode, positionContextMenuInPortal } from '../../lib/context-menu-utils'
 
 export interface TabContextMenuItem {
   key: string
@@ -58,7 +58,11 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
       ref={menuRef}
       className="ui-context-menu"
       role="menu"
-      style={{ left: x, top: y }}
+      style={{
+        left: x,
+        top: y,
+        position: getContextMenuPositionMode(portalRoot),
+      }}
       data-testid="tab-context-menu"
       onMouseDown={(e) => e.preventDefault()}
     >

@@ -351,7 +351,7 @@ export async function connectToSample(
   await openConnectionManager(page)
   const dialog = page.getByTestId('connection-dialog')
   await selectSampleConnection(dialog)
-  const connectBtn = dialog.getByRole('button', { name: 'Connect', exact: true })
+  const connectBtn = dialog.getByRole('button', { name: 'Save and Connect', exact: true })
   await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
   await connectBtn.click()
   await expect(page.getByTestId('connection-dialog')).toBeHidden({ timeout: APP_READY_MS })

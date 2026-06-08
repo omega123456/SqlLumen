@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import {
+  getContextMenuPositionMode,
   getContextMenuPortalRoot,
   positionContextMenuInPortal,
   readClipboardText,
@@ -252,7 +253,11 @@ export function GlobalContextMenu() {
     <div
       ref={menuRef}
       className="ui-context-menu"
-      style={{ left: open.x, top: open.y }}
+      style={{
+        left: open.x,
+        top: open.y,
+        position: getContextMenuPositionMode(open.portalRoot),
+      }}
       role="menu"
       data-testid="global-context-menu"
       onMouseDown={(e) => {

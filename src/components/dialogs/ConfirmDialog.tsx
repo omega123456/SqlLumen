@@ -7,6 +7,7 @@ export interface ConfirmDialogProps {
   isOpen: boolean
   title: string
   message: React.ReactNode
+  portalRoot?: HTMLElement | null
   confirmLabel: string
   isDestructive?: boolean
   isLoading?: boolean
@@ -23,6 +24,7 @@ export function ConfirmDialog({
   isOpen,
   title,
   message,
+  portalRoot,
   confirmLabel,
   isDestructive = false,
   isLoading = false,
@@ -37,6 +39,7 @@ export function ConfirmDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onCancel}
+      portalRoot={portalRoot}
       maxWidth={420}
       testId="confirm-dialog"
       ariaLabel={title}

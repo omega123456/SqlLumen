@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Database, Eye, EyeSlash, FolderOpen } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import {
+  deleteConnection,
   testConnection,
   saveConnection as saveConnectionIPC,
   updateConnection,
@@ -14,6 +15,7 @@ import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
 import { Dropdown } from '../common/Dropdown'
 import { ElevatedSurface } from '../common/ElevatedSurface'
+import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
 import { TestConnectionResult } from './TestConnectionResult'
@@ -26,6 +28,7 @@ import styles from './ConnectionForm.module.css'
 
 interface ConnectionFormProps {
   editingConnection?: SavedConnection
+  onDeleteConnection?: (id: string) => void
 }
 
 /** Build default form data, reading connection defaults from settings store. */
@@ -143,15 +146,22 @@ function SslFileField({
   )
 }
 
-export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
+export function ConnectionForm({ editingConnection, onDeleteConnection }: ConnectionFormProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const [formData, setFormData] = useState<ConnectionFormData>(getDefaultFormData)
   const [errors, setErrors] = useState<FormErrors>({})
   const [showPassword, setShowPassword] = useState(false)
   const [hasSavedPassword, setHasSavedPassword] = useState(false)
   const [clearSavedPassword, setClearSavedPassword] = useState(false)
   const [testResult, setTestResult] = useState<TestConnectionResultType | null>(null)
-  const [pendingAction, setPendingAction] = useState<'test' | 'save' | 'connect' | null>(null)
+  const [pendingAction, setPendingAction] = useState<'test' | 'save' | 'connect' | 'delete' | null>(
+    null
+  )
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [deletedConnectionId, setDeletedConnectionId] = useState<string | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null)
+  const [dialogPortalRoot, setDialogPortalRoot] = useState<HTMLElement | null>(null)
 
   const connectionGroups = useConnectionStore((s) => s.connectionGroups)
   const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
@@ -165,9 +175,19 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
   const openConnection = useConnectionStore((s) => s.openConnection)
   const closeDialog = useConnectionStore((s) => s.closeDialog)
 
+  useEffect(() => {
+    const dialog = rootRef.current?.closest('dialog')
+    if (dialog instanceof HTMLDialogElement) {
+      setDialogPortalRoot(dialog)
+      return
+    }
+    setDialogPortalRoot(null)
+  }, [])
+
   // Populate form when editingConnection changes
   useEffect(() => {
     if (editingConnection) {
+      setDeletedConnectionId(null)
       setFormData({
         name: editingConnection.name,
         host: editingConnection.host,
@@ -188,11 +208,16 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
       setSavedId(editingConnection.id)
       setHasSavedPassword(editingConnection.hasPassword)
       setClearSavedPassword(false)
+      setDeleteConfirmOpen(false)
+      setDeleteConfirmError(null)
     } else {
       setFormData(getDefaultFormData())
       setSavedId(null)
       setHasSavedPassword(false)
       setClearSavedPassword(false)
+      setDeletedConnectionId(null)
+      setDeleteConfirmOpen(false)
+      setDeleteConfirmError(null)
     }
     setErrors({})
     setTestResult(null)
@@ -227,6 +252,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
   }
 
   const isAnyPending = pendingAction !== null
+  const currentConnectionId =
+    savedId ??
+    (editingConnection && editingConnection.id !== deletedConnectionId
+      ? editingConnection.id
+      : null)
 
   function runValidation(): boolean {
     const errs = validate(formData)
@@ -324,8 +354,38 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
     }
   }
 
+  const handleDelete = async () => {
+    if (!currentConnectionId) {
+      return
+    }
+
+    setPendingAction('delete')
+    setDeleteConfirmError(null)
+    try {
+      await deleteConnection(currentConnectionId)
+      await fetchSavedConnections()
+      setFormData(getDefaultFormData())
+      setErrors({})
+      setTestResult(null)
+      setSavedId(null)
+      setHasSavedPassword(false)
+      setClearSavedPassword(false)
+      setDeletedConnectionId(currentConnectionId)
+      setDeleteConfirmOpen(false)
+      onDeleteConnection?.(currentConnectionId)
+      showSuccessToast('Connection deleted')
+    } catch (err) {
+      const failure = buildErrorResult(err)
+      setTestResult(failure)
+      setDeleteConfirmError(failure.errorMessage ?? 'Failed to delete connection')
+      showErrorToast('Failed to delete connection', failure.errorMessage ?? undefined)
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
   return (
-    <div className={styles.formGridRoot}>
+    <div ref={rootRef} className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
         <ElevatedSurface className={styles.resultCard}>
           <div className={styles.testResultSlot}>
@@ -623,23 +683,53 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
       </div>
 
       <footer className={styles.formFooter}>
-        <Button
-          variant="secondary"
-          onClick={() => void handleTestConnection()}
-          disabled={isAnyPending}
-        >
-          <Database size={20} weight="duotone" aria-hidden />
-          {pendingAction === 'test' ? 'Testing…' : 'Test Connection'}
-        </Button>
+        <div className={styles.footerActionsLeft}>
+          <Button
+            variant="secondary"
+            onClick={() => void handleTestConnection()}
+            disabled={isAnyPending}
+          >
+            <Database size={20} weight="duotone" aria-hidden />
+            {pendingAction === 'test' ? 'Testing…' : 'Test Connection'}
+          </Button>
+          {currentConnectionId ? (
+            <Button variant="danger" onClick={() => setDeleteConfirmOpen(true)} disabled={isAnyPending}>
+              Delete
+            </Button>
+          ) : null}
+        </div>
         <div className={styles.footerActionsRight}>
           <Button variant="secondary" onClick={() => void handleSave()} disabled={isAnyPending}>
             {pendingAction === 'save' ? 'Saving…' : 'Save'}
           </Button>
           <Button variant="primary" onClick={() => void handleConnect()} disabled={isAnyPending}>
-            {pendingAction === 'connect' ? 'Connecting…' : 'Connect'}
+            {pendingAction === 'connect' ? 'Connecting…' : 'Save and Connect'}
           </Button>
         </div>
       </footer>
+      <ConfirmDialog
+        isOpen={deleteConfirmOpen}
+        title="Delete Connection"
+        message={
+          <>
+            Delete saved connection <strong>{formData.name.trim() || formData.host}</strong>?
+          </>
+        }
+        portalRoot={dialogPortalRoot}
+        confirmLabel="Delete"
+        isDestructive
+        isLoading={pendingAction === 'delete'}
+        error={deleteConfirmError}
+        nonDismissible={pendingAction === 'delete'}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => {
+          if (pendingAction === 'delete') {
+            return
+          }
+          setDeleteConfirmOpen(false)
+          setDeleteConfirmError(null)
+        }}
+      />
     </div>
   )
 }

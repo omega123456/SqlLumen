@@ -5,13 +5,13 @@ import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash } from '@phosphor-ic
 import { TextInput } from '../common/TextInput'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
-  deleteConnection,
   createConnectionGroup,
   updateConnectionGroup,
   deleteConnectionGroup,
 } from '../../lib/connection-commands'
 import { useDismissOnOutsideClick } from './useDismissOnOutsideClick'
 import {
+  getContextMenuPositionMode,
   getContextMenuPortalRoot,
   isEditableFieldElement,
   positionContextMenuInPortal,
@@ -133,7 +133,6 @@ function GroupInlineInput({
 interface SavedConnectionsListProps {
   onSelectConnection: (connection: SavedConnection) => void
   onNewConnection: () => void
-  onDeleteConnection?: (id: string) => void
   selectedConnectionId: string | null
 }
 
@@ -141,15 +140,13 @@ interface ContextMenuState {
   x: number
   y: number
   portalRoot: HTMLElement
-  type: 'connection' | 'group'
-  connectionId?: string
+  type: 'group'
   groupId?: string
 }
 
 export function SavedConnectionsList({
   onSelectConnection,
   onNewConnection,
-  onDeleteConnection,
   selectedConnectionId,
 }: SavedConnectionsListProps) {
   const savedConnections = useConnectionStore((s) => s.savedConnections)
@@ -198,18 +195,6 @@ export function SavedConnectionsList({
     return () => clearTimeout(timer)
   }, [error])
 
-  const handleConnectionContextMenu = useCallback((e: React.MouseEvent, connectionId: string) => {
-    e.preventDefault()
-    const anchor = e.currentTarget as Element
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      portalRoot: getContextMenuPortalRoot(anchor),
-      type: 'connection',
-      connectionId,
-    })
-  }, [])
-
   const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string) => {
     e.preventDefault()
     const anchor = e.currentTarget as Element
@@ -221,26 +206,6 @@ export function SavedConnectionsList({
       groupId,
     })
   }, [])
-
-  const handleDeleteConnection = useCallback(
-    async (id: string) => {
-      setContextMenu(null)
-      const confirmed = window.confirm('Are you sure you want to delete this connection?')
-      if (!confirmed) return
-
-      try {
-        await deleteConnection(id)
-        await fetchSavedConnections()
-        onDeleteConnection?.(id)
-        showSuccessToast('Connection deleted')
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to delete connection'
-        setError(msg)
-        showErrorToast('Failed to delete connection', msg)
-      }
-    },
-    [fetchSavedConnections, onDeleteConnection]
-  )
 
   const handleRenameGroup = useCallback(
     (groupId: string) => {
@@ -331,7 +296,6 @@ export function SavedConnectionsList({
         className={`${styles.connectionItem} ${isSelected ? styles.connectionItemSelected : ''}`}
         style={selectedStyle}
         onClick={() => onSelectConnection(conn)}
-        onContextMenu={(e) => handleConnectionContextMenu(e, conn.id)}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => {
@@ -466,20 +430,13 @@ export function SavedConnectionsList({
             ref={contextMenuRef}
             className="ui-context-menu"
             data-testid="saved-connections-context-menu"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y,
+              position: getContextMenuPositionMode(contextMenu.portalRoot),
+            }}
             role="menu"
           >
-            {contextMenu.type === 'connection' && contextMenu.connectionId && (
-              <button
-                type="button"
-                className="ui-context-menu__item ui-context-menu__item--destructive"
-                role="menuitem"
-                onClick={() => void handleDeleteConnection(contextMenu.connectionId!)}
-              >
-                <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
-                <span>Delete</span>
-              </button>
-            )}
             {contextMenu.type === 'group' && contextMenu.groupId && (
               <>
                 <button

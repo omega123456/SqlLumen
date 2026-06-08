@@ -437,6 +437,10 @@ function prepareConditions(
         const condValue = condition.value
         return { colIndex, test: (cell) => String(cell) === condValue }
       }
+      case '!=': {
+        const condValue = condition.value
+        return { colIndex, test: (cell) => String(cell) !== condValue }
+      }
       case '>':
       case '>=':
       case '<':

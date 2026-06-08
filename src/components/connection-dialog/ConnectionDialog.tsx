@@ -97,11 +97,13 @@ export function ConnectionDialog() {
             <SavedConnectionsList
               onSelectConnection={handleSelectConnection}
               onNewConnection={handleNewConnection}
-              onDeleteConnection={handleDeleteConnection}
               selectedConnectionId={editingConnection?.id ?? null}
             />
           </aside>
-          <ConnectionForm editingConnection={editingConnection ?? undefined} />
+          <ConnectionForm
+            editingConnection={editingConnection ?? undefined}
+            onDeleteConnection={handleDeleteConnection}
+          />
         </div>
       </div>
     </dialog>
