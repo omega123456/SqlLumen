@@ -1,4 +1,5 @@
 .statusBar {
+  --status-bar-text-size: var(--type-size-sm);
   height: 24px;
   background-color: var(--status-bar-surface);
   display: flex;
@@ -11,7 +12,7 @@
 
 .statusText {
   font-family: var(--font-mono);
-  font-size: var(--type-status);
+  font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
   white-space: nowrap;
 }
@@ -88,7 +89,7 @@
 
 .queryInfoItem {
   font-family: var(--font-mono);
-  font-size: var(--type-size-xs);
+  font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
   white-space: nowrap;
 }
@@ -128,7 +129,7 @@
 
 .queryRunningText {
   font-family: var(--font-mono);
-  font-size: var(--type-size-xs);
+  font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
   opacity: 0.6;
   white-space: nowrap;
@@ -180,7 +181,7 @@
 
 .indexingText {
   font-family: var(--font-mono);
-  font-size: var(--type-size-xs);
+  font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
   opacity: 0.6;
   white-space: nowrap;
@@ -228,7 +229,7 @@
 
 .updateButtonText {
   font-family: var(--font-mono);
-  font-size: var(--type-size-xs);
+  font-size: var(--status-bar-text-size);
   color: var(--primary);
   white-space: nowrap;
 }
