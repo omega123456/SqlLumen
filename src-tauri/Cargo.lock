@@ -5544,7 +5544,7 @@ dependencies = [
 
 [[package]]
 name = "sqllumen"
-version = "2.15.0"
+version = "2.15.1"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
