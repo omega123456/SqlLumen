@@ -23,8 +23,8 @@ fn log_entry(
 }
 
 fn test_conn() -> Connection {
-    let conn = Connection::open_in_memory().expect("open in-memory log db");
-    run_log_migrations(&conn).expect("run log migrations");
+    let mut conn = Connection::open_in_memory().expect("open in-memory log db");
+    run_log_migrations(&mut conn).expect("run log migrations");
     conn
 }
 
@@ -181,9 +181,12 @@ fn initialize_log_database_yields_incremental_mode_with_schema() {
     let mode: i64 = conn
         .query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
         .expect("query auto_vacuum");
-    assert_eq!(mode, 2, "expected logs database in incremental auto-vacuum mode");
+    assert_eq!(
+        mode, 2,
+        "expected logs database in incremental auto-vacuum mode"
+    );
 
-    for table in &["log_entries", "_vacuum_state", "_migrations"] {
+    for table in &["log_entries", "_vacuum_state", "refinery_schema_history"] {
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",

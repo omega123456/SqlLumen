@@ -1,155 +1,129 @@
+use refinery::Target;
 use rusqlite::{Connection, Result};
 
-/// The list of migrations to apply, in order.
-/// Each entry is (migration_name, sql).
-/// New migrations must be added here manually when new .sql files are created.
-const MIGRATIONS: &[(&str, &str)] = &[
-    (
-        "001_initial",
-        include_str!("../../migrations/001_initial.sql"),
-    ),
-    (
-        "002_connection_timeouts",
-        include_str!("../../migrations/002_connection_timeouts.sql"),
-    ),
-    (
-        "003_history_favorites",
-        include_str!("../../migrations/003_history_favorites.sql"),
-    ),
-    (
-        "004_fix_history_favorites_schema",
-        include_str!("../../migrations/004_fix_history_favorites_schema.sql"),
-    ),
-    (
-        "005_schema_index",
-        include_str!("../../migrations/005_schema_index.sql"),
-    ),
-    (
-        "006_schema_index_signatures",
-        include_str!("../../migrations/006_schema_index_signatures.sql"),
-    ),
-    (
-        "007_schema_index_content_redesign",
-        include_str!("../../migrations/007_schema_index_content_redesign.sql"),
-    ),
-    (
-        "008_schema_index_segment_df",
-        include_str!("../../migrations/008_schema_index_segment_df.sql"),
-    ),
-    (
-        "009_ai_memory",
-        include_str!("../../migrations/009_ai_memory.sql"),
-    ),
-    (
-        "010_schema_cache",
-        include_str!("../../migrations/010_schema_cache.sql"),
-    ),
-    (
-        "011_ai_memory_multi_level",
-        include_str!("../../migrations/011_ai_memory_multi_level.sql"),
-    ),
-    (
-        "012_session_snapshots",
-        include_str!("../../migrations/012_session_snapshots.sql"),
-    ),
-    (
-        "013_connection_cascade_cleanup",
-        include_str!("../../migrations/013_connection_cascade_cleanup.sql"),
-    ),
-    (
-        "014_vacuum_state",
-        include_str!("../../migrations/014_vacuum_state.sql"),
-    ),
-];
+/// Migration version numbers that gate post-migration hooks (one-time VACUUM /
+/// auto-vacuum conversions) run outside the migration runner's transactions.
+/// These mirror the `VNN__*.sql` filenames in `migrations/main` and
+/// `migrations/logs`; keep them in sync if those files are renumbered.
+pub const MIGRATION_CONNECTION_CASCADE_CLEANUP: i32 = 13;
+pub const MIGRATION_VACUUM_STATE_MAIN: i32 = 14;
+pub const MIGRATION_VACUUM_STATE_LOGS: i32 = 2;
 
-/// The list of migrations to apply to the logs database, in order.
-/// Each entry is (migration_name, sql). Mirrors `MIGRATIONS` for the logs DB.
-const LOG_MIGRATIONS: &[(&str, &str)] = &[
-    (
-        "001_initial_schema",
-        include_str!("../../migrations/logs/001_initial_schema.sql"),
-    ),
-    (
-        "002_vacuum_state",
-        include_str!("../../migrations/logs/002_vacuum_state.sql"),
-    ),
-];
+mod embedded_main {
+    use refinery::embed_migrations;
+    embed_migrations!("migrations/main");
+}
 
-/// Run all pending migrations on the given connection.
-/// Creates the `_migrations` tracking table if it doesn't exist.
-/// Applies migrations in order, skipping already-applied ones.
+mod embedded_logs {
+    use refinery::embed_migrations;
+    embed_migrations!("migrations/logs");
+}
+
+/// Run all pending main-database migrations on the given connection via
+/// refinery, performing a one-time cutover from the legacy `_migrations`
+/// tracking table when necessary.
 ///
-/// Returns the names of migrations that were newly applied during this
-/// invocation (already-applied migrations are not included). Does NOT touch
+/// Returns the **versions** of migrations that were newly applied during this
+/// invocation (already-applied / faked migrations are not included). Pure-fake
+/// cutovers therefore return an empty vector. Does NOT touch
 /// `PRAGMA foreign_keys` — foreign-key enforcement is enabled only in
-/// `initialize_database` (production), so the default test helpers stay
-/// FK-off.
-pub fn run_migrations(conn: &Connection) -> Result<Vec<String>> {
-    apply_migrations(conn, MIGRATIONS)
+/// `initialize_database` (production), so the default test helpers stay FK-off.
+pub fn run_migrations(conn: &mut Connection) -> std::result::Result<Vec<i32>, String> {
+    run_with_runner(conn, "main", embedded_main::migrations::runner)
 }
 
-/// Run all pending migrations on the logs database connection.
+/// Run all pending logs-database migrations on the given connection via
+/// refinery, performing the same one-time cutover from the legacy `_migrations`
+/// tracking table as [`run_migrations`].
 ///
-/// Delegates to the same core runner used by [`run_migrations`], driven by the
-/// logs-DB [`LOG_MIGRATIONS`] list. Returns the names of migrations newly
-/// applied during this invocation.
-pub fn run_log_migrations(conn: &Connection) -> Result<Vec<String>> {
-    apply_migrations(conn, LOG_MIGRATIONS)
+/// Returns the **versions** of migrations that were newly applied during this
+/// invocation (already-applied / faked migrations are not included). Pure-fake
+/// cutovers therefore return an empty vector.
+pub fn run_log_migrations(conn: &mut Connection) -> std::result::Result<Vec<i32>, String> {
+    run_with_runner(conn, "logs", embedded_logs::migrations::runner)
 }
 
-/// Core migration runner shared by the main and logs databases.
+/// Shared refinery cutover + run routine for a single database.
 ///
-/// Creates the `_migrations` tracking table if it doesn't exist, then applies
-/// each pending migration from `migrations` in order inside its own
-/// transaction, recording bookkeeping. Returns the names of migrations newly
-/// applied during this invocation.
-fn apply_migrations(conn: &Connection, migrations: &[(&str, &str)]) -> Result<Vec<String>> {
-    // Create the migrations tracking table
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS _migrations (
-            name       TEXT PRIMARY KEY,
-            applied_at TEXT NOT NULL
-        );",
-    )?;
+/// `db_label` is used purely for `tracing` context. `runner` is the embedded
+/// refinery runner for this database's migration set.
+fn run_with_runner(
+    conn: &mut Connection,
+    db_label: &str,
+    runner: impl Fn() -> refinery::Runner,
+) -> std::result::Result<Vec<i32>, String> {
+    let history_exists = table_exists(conn, "refinery_schema_history")
+        .map_err(|e| map_err(db_label, "checking refinery_schema_history existence", e))?;
+    let legacy_exists = table_exists(conn, "_migrations")
+        .map_err(|e| map_err(db_label, "checking legacy _migrations existence", e))?;
 
-    let mut applied: Vec<String> = Vec::new();
-
-    for (name, sql) in migrations {
-        // Check if already applied — propagate errors, don't swallow them
-        let already_applied: bool = conn
-            .query_row(
-                "SELECT COUNT(*) FROM _migrations WHERE name = ?1",
-                [name],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|count| count > 0)?;
-
-        if !already_applied {
-            // Run migration atomically — both the schema change and the bookkeeping record
-            let tx = conn.unchecked_transaction()?;
-            tx.execute_batch(sql)?;
-            let now = timestamp_now();
-            tx.execute(
-                "INSERT INTO _migrations (name, applied_at) VALUES (?1, ?2)",
-                rusqlite::params![name, now],
-            )?;
-            tx.commit()?;
-            applied.push((*name).to_string());
+    // Cutover seed: only when refinery has never tracked this DB but the legacy
+    // custom runner did. Records migrations 1..=K in refinery_schema_history
+    // without executing their SQL (refinery computes the checksums itself).
+    if !history_exists && legacy_exists {
+        let watermark = legacy_watermark(conn)
+            .map_err(|e| map_err(db_label, "reading legacy migration watermark", e))?;
+        if let Some(k) = watermark {
+            runner()
+                .set_grouped(true)
+                .set_target(Target::FakeVersion(k))
+                .run(conn)
+                .map_err(|e| map_err(db_label, "seeding refinery history (fake run)", e))?;
         }
     }
 
-    Ok(applied)
+    // Single source of truth: drop the legacy table after (or in absence of) a
+    // seed. Idempotent and crash-safe via IF EXISTS.
+    if legacy_exists {
+        conn.execute_batch("DROP TABLE IF EXISTS _migrations;")
+            .map_err(|e| map_err(db_label, "dropping legacy _migrations table", e))?;
+    }
+
+    // Real, non-grouped run: applies remaining migrations with per-migration
+    // commits so post-migration VACUUM hooks (illegal in a transaction) work.
+    let report = runner()
+        .run(conn)
+        .map_err(|e| map_err(db_label, "running migrations", e))?;
+
+    Ok(report
+        .applied_migrations()
+        .iter()
+        .map(|m| m.version())
+        .collect())
 }
 
-/// Simple Unix timestamp string for migration tracking.
-/// Although `chrono` is already a direct dependency, a plain Unix-seconds
-/// integer string is used here intentionally — migration tracking only needs a
-/// monotonic, sortable marker, not a formatted calendar date.
-fn timestamp_now() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    secs.to_string()
+/// Returns `true` if a table with the given name exists in `sqlite_master`.
+fn table_exists(conn: &Connection, name: &str) -> Result<bool> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [name],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|count| count > 0)
+}
+
+/// Parse the highest already-applied migration version from the legacy
+/// `_migrations` table. Each `name` is of the form `NNN_description`; the
+/// watermark is the max integer parsed from the leading numeric prefix. Returns
+/// `None` when the table is empty or yields no parseable version.
+fn legacy_watermark(conn: &Connection) -> Result<Option<i32>> {
+    let mut stmt = conn.prepare("SELECT name FROM _migrations")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+
+    let mut max: Option<i32> = None;
+    for name in rows {
+        let name = name?;
+        let prefix: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if let Ok(v) = prefix.parse::<i32>() {
+            max = Some(max.map_or(v, |m| m.max(v)));
+        }
+    }
+    Ok(max)
+}
+
+/// Log an underlying refinery/rusqlite failure with operation context and
+/// return a Display-able `String` error for the caller.
+fn map_err(db_label: &str, op: &str, err: impl std::fmt::Display) -> String {
+    tracing::error!(db = db_label, operation = op, error = %err, "database migration failure");
+    format!("{db_label} migration error during {op}: {err}")
 }

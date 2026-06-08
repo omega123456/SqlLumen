@@ -26,8 +26,8 @@ fn seed_log(
 fn prepare_logs_state() -> sqllumen_lib::state::AppState {
     let state = common::test_app_state();
     {
-        let conn = state.logs_db.lock().expect("lock logs db");
-        run_log_migrations(&conn).expect("run logs migrations");
+        let mut conn = state.logs_db.lock().expect("lock logs db");
+        run_log_migrations(&mut conn).expect("run logs migrations");
     }
     state
 }

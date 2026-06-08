@@ -13,8 +13,8 @@ use sqllumen_lib::db::session_snapshots::{
 };
 
 fn test_conn() -> Connection {
-    let conn = Connection::open_in_memory().expect("should open in-memory connection");
-    run_migrations(&conn).expect("should run migrations");
+    let mut conn = Connection::open_in_memory().expect("should open in-memory connection");
+    run_migrations(&mut conn).expect("should run migrations");
     conn
 }
 

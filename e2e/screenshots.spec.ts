@@ -25,6 +25,28 @@ import { BLOB_VIEWER_SCREENSHOT_STATES } from '../src/tests/playwright-fixtures/
 
 const themes = ['light', 'dark'] as const
 const SCREENSHOT_TEST_TIMEOUT_MS = 25_000
+const FIXED_SCREENSHOT_DATE_ISO = '2026-06-08T12:00:00.000Z'
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((fixedDateIso: string) => {
+    const RealDate = Date
+    const fixedTime = RealDate.parse(fixedDateIso)
+
+    class MockDate extends RealDate {
+      constructor(...args: ConstructorParameters<DateConstructor>) {
+        super(...(args.length === 0 ? [fixedTime] : args))
+      }
+
+      static now() {
+        return fixedTime
+      }
+    }
+
+    MockDate.UTC = RealDate.UTC
+    MockDate.parse = RealDate.parse
+    ;(window as typeof window & { Date: typeof Date }).Date = MockDate as typeof Date
+  }, FIXED_SCREENSHOT_DATE_ISO)
+})
 
 async function ensureTheme(page: Page, theme: 'light' | 'dark') {
   for (let i = 0; i < 6; i++) {

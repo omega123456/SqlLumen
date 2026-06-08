@@ -358,7 +358,7 @@ fn test_migration_013_purges_orphans_and_keeps_valid_and_global_rows() {
     // apply migration 013 and assert the orphans are purged while valid and
     // global rows survive.
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
 
     // Apply migrations through 012 only (pre-013) by seeding the tracking table
     // with 013 marked applied is the wrong direction; instead run the full set
@@ -368,7 +368,7 @@ fn test_migration_013_purges_orphans_and_keeps_valid_and_global_rows() {
     //
     // Simplest correct approach: run migrations up to 012 by applying them
     // manually, seed orphans with FK off, then apply 013 alone and verify.
-    run_migrations(&conn).expect("run all migrations");
+    run_migrations(&mut conn).expect("run all migrations");
     conn.execute_batch("PRAGMA foreign_keys = OFF;")
         .expect("disable fk for orphan seeding");
 
@@ -392,7 +392,7 @@ fn test_migration_013_purges_orphans_and_keeps_valid_and_global_rows() {
     // INSERT ... SELECT copies forward only connection_id IN connections, plus
     // NULL for favorites). We invoke the migration body again to exercise the
     // copy-forward purge over the seeded orphan data.
-    let migration_013 = include_str!("../migrations/013_connection_cascade_cleanup.sql");
+    let migration_013 = include_str!("../migrations/main/V13__connection_cascade_cleanup.sql");
     conn.execute_batch(migration_013)
         .expect("re-apply migration 013 body");
 
@@ -428,8 +428,8 @@ fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
     // purged, sqlite_sequence must NOT drop below the original high-water mark,
     // otherwise a future insert reuses an id that belonged to a deleted row.
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run all migrations");
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    run_migrations(&mut conn).expect("run all migrations");
     conn.execute_batch("PRAGMA foreign_keys = OFF;")
         .expect("disable fk for orphan seeding");
 
@@ -485,7 +485,7 @@ fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
     assert_eq!(original_chunk_hwm, 2, "chunks high-water before purge");
 
     // Re-apply the migration body to purge the orphan (highest-id) rows.
-    let migration_013 = include_str!("../migrations/013_connection_cascade_cleanup.sql");
+    let migration_013 = include_str!("../migrations/main/V13__connection_cascade_cleanup.sql");
     conn.execute_batch(migration_013)
         .expect("re-apply migration 013 body");
 
@@ -504,7 +504,10 @@ fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
             |row| row.get(0),
         )
         .expect("schema_index_chunks seq after purge");
-    assert_eq!(qh_seq, 2, "query_history seq must retain original high-water");
+    assert_eq!(
+        qh_seq, 2,
+        "query_history seq must retain original high-water"
+    );
     assert_eq!(chunk_seq, 2, "chunks seq must retain original high-water");
 
     // A subsequent insert must get an id GREATER than the original high-water,

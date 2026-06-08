@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::db::migrations::run_log_migrations;
+use crate::db::migrations::{run_log_migrations, MIGRATION_VACUUM_STATE_LOGS};
 
 pub const LOG_DB_FILE_NAME: &str = "sqllumen-logs.db";
 pub const LOG_PAGE_SIZE: i64 = 20;
@@ -79,16 +79,19 @@ pub fn open_log_database(path: &Path) -> Result<Connection> {
 /// (in particular before the log-writer thread), so migrations and the
 /// conversion happen exactly once on a single connection with no concurrency.
 pub fn initialize_log_database(path: impl AsRef<Path>) -> Result<Connection> {
-    let conn = open_log_database(path.as_ref())?;
+    let mut conn = open_log_database(path.as_ref())?;
 
-    let applied = run_log_migrations(&conn)?;
+    let applied = run_log_migrations(&mut conn).map_err(rusqlite::Error::InvalidParameterName)?;
 
     // When the vacuum-state migration is first applied, convert the database to
     // incremental auto-vacuum mode. Enabling incremental auto-vacuum on an
     // existing database requires a full VACUUM to take effect. VACUUM is illegal
     // inside a transaction, so this runs here in initialization code rather than
     // in migration SQL.
-    if applied.iter().any(|name| name == "002_vacuum_state") {
+    if applied
+        .iter()
+        .any(|&version| version == MIGRATION_VACUUM_STATE_LOGS)
+    {
         tracing::info!(
             "logs migration 002 newly applied; converting logs database to incremental auto-vacuum"
         );

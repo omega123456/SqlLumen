@@ -42,7 +42,7 @@ fn test_all_tables_exist_after_migrations() {
         "settings",
         "connections",
         "connection_groups",
-        "_migrations",
+        "refinery_schema_history",
     ] {
         let count: i64 = conn
             .query_row(

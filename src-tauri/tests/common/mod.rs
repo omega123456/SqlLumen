@@ -19,8 +19,8 @@ use std::sync::{Arc, Mutex};
 
 /// Creates a fresh in-memory SQLite database with all migrations applied.
 pub fn test_db() -> Connection {
-    let conn = Connection::open_in_memory().expect("should open in-memory database");
-    migrations::run_migrations(&conn).expect("should run migrations");
+    let mut conn = Connection::open_in_memory().expect("should open in-memory database");
+    migrations::run_migrations(&mut conn).expect("should run migrations");
     // Non-cascade test helpers keep foreign keys OFF so existing tests can insert
     // child rows (chunks, history, favorites, schema-cache snapshots) without a
     // parent `connections` row. Migration 013 added ON DELETE CASCADE FKs; this
@@ -40,11 +40,56 @@ pub fn test_db() -> Connection {
 /// migrations. Do not rely on a default — this build's bundled SQLite enforces
 /// foreign keys by default, but the setting is made explicit here regardless.
 pub fn test_db_fk_enabled() -> Connection {
-    let conn = Connection::open_in_memory().expect("should open in-memory database");
-    migrations::run_migrations(&conn).expect("should run migrations");
+    let mut conn = Connection::open_in_memory().expect("should open in-memory database");
+    migrations::run_migrations(&mut conn).expect("should run migrations");
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .expect("should enable foreign keys for cascade test db");
     conn
+}
+
+/// Raw in-memory SQLite connection WITHOUT running migrations. Used by the
+/// migration-runner integration suites that exercise `run_migrations` /
+/// `run_log_migrations` directly (and the legacy-cutover path) on a blank DB.
+pub fn test_conn() -> Connection {
+    Connection::open_in_memory().expect("should open in-memory connection")
+}
+
+/// Number of rows in `refinery_schema_history` (migration-runner test helper).
+pub fn history_count(conn: &Connection) -> i64 {
+    conn.query_row("SELECT COUNT(*) FROM refinery_schema_history", [], |row| {
+        row.get(0)
+    })
+    .expect("should count refinery_schema_history rows")
+}
+
+/// Whether a table with the given name exists (migration-runner test helper).
+/// Distinct from the production `migrations::table_exists` which returns a
+/// `Result<bool>`.
+pub fn table_exists(conn: &Connection, name: &str) -> bool {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            [name],
+            |row| row.get(0),
+        )
+        .expect("should query sqlite_master");
+    count == 1
+}
+
+/// Build a legacy `_migrations` table seeded with the given `NNN_name` rows,
+/// simulating an install last touched by the old custom runner.
+pub fn seed_legacy_migrations(conn: &Connection, names: &[&str]) {
+    conn.execute_batch(
+        "CREATE TABLE _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL);",
+    )
+    .expect("create legacy _migrations");
+    for name in names {
+        conn.execute(
+            "INSERT INTO _migrations (name, applied_at) VALUES (?1, '0')",
+            [name],
+        )
+        .expect("seed legacy row");
+    }
 }
 
 /// Install the in-memory credential backend (idempotent). Use from suites that do not call [`test_app_state`].

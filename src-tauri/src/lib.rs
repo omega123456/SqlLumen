@@ -10,7 +10,9 @@ pub mod schema_index;
 pub mod state;
 
 use db::connection::open_database;
-use db::migrations::run_migrations;
+use db::migrations::{
+    run_migrations, MIGRATION_CONNECTION_CASCADE_CLEANUP, MIGRATION_VACUUM_STATE_MAIN,
+};
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
@@ -55,10 +57,10 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     init_sqlite_vec();
 
     let db_path = app_data_dir.join("sqllumen.db");
-    let conn =
+    let mut conn =
         open_database(db_path).map_err(|e| format!("failed to open SQLite database: {e}"))?;
     let applied =
-        run_migrations(&conn).map_err(|e| format!("failed to run database migrations: {e}"))?;
+        run_migrations(&mut conn).map_err(|e| format!("failed to run database migrations: {e}"))?;
 
     // When the cascade-cleanup migration is first applied it rebuilds several
     // large tables, leaving freed pages behind. Reclaim that disk space with a
@@ -66,7 +68,7 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     // runner wraps each migration in one, so it must run here, after the loop.
     if applied
         .iter()
-        .any(|name| name == "013_connection_cascade_cleanup")
+        .any(|&version| version == MIGRATION_CONNECTION_CASCADE_CLEANUP)
     {
         tracing::info!("migration 013 newly applied; running one-time VACUUM to reclaim space");
         if let Err(e) = conn.execute_batch("VACUUM;") {
@@ -79,7 +81,10 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     // existing database requires a full VACUUM to take effect; VACUUM is illegal
     // inside a transaction, so the conversion runs here rather than in migration
     // SQL.
-    if applied.iter().any(|name| name == "014_vacuum_state") {
+    if applied
+        .iter()
+        .any(|&version| version == MIGRATION_VACUUM_STATE_MAIN)
+    {
         tracing::info!(
             "migration 014 newly applied; converting main database to incremental auto-vacuum"
         );

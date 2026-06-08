@@ -20,8 +20,8 @@ mod common;
 
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
-    let conn = Connection::open_in_memory().expect("should open in-memory db");
-    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    let mut conn = Connection::open_in_memory().expect("should open in-memory db");
+    sqllumen_lib::db::migrations::run_migrations(&mut conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         logs_db: Arc::new(Mutex::new(
@@ -56,8 +56,8 @@ fn test_state() -> AppState {
 
 fn test_state_with_zero_ttl() -> AppState {
     common::ensure_fake_backend_once();
-    let conn = Connection::open_in_memory().expect("should open in-memory db");
-    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    let mut conn = Connection::open_in_memory().expect("should open in-memory db");
+    sqllumen_lib::db::migrations::run_migrations(&mut conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         logs_db: Arc::new(Mutex::new(

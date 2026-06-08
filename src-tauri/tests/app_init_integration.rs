@@ -36,7 +36,7 @@ fn test_initialize_database_runs_all_migrations() {
         "settings",
         "connections",
         "connection_groups",
-        "_migrations",
+        "refinery_schema_history",
     ] {
         let count: i64 = conn
             .query_row(
@@ -76,7 +76,10 @@ fn test_initialize_database_converts_to_incremental_auto_vacuum() {
     let mode: i64 = conn
         .query_row("PRAGMA auto_vacuum;", [], |row| row.get(0))
         .expect("should query auto_vacuum");
-    assert_eq!(mode, 2, "main database should be in incremental auto-vacuum mode");
+    assert_eq!(
+        mode, 2,
+        "main database should be in incremental auto-vacuum mode"
+    );
 
     let seeded: String = conn
         .query_row(
@@ -137,6 +140,9 @@ fn test_initialize_database_surfaces_migration_errors() {
     std::fs::create_dir_all(&app_data_dir).expect("should create app data dir");
     let db_path = app_data_dir.join("sqllumen.db");
     let conn = Connection::open(&db_path).expect("should create database file");
+    // A corrupt legacy `_migrations` table missing the `name` column. The new
+    // refinery cutover reads the legacy watermark via `SELECT name FROM
+    // _migrations`, which fails here, and the error propagates with context.
     conn.execute("CREATE TABLE _migrations (bad INTEGER)", [])
         .expect("should create incompatible migrations table");
     drop(conn);

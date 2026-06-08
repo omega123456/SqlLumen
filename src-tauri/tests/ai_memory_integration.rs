@@ -9,8 +9,8 @@ use sqllumen_lib::init_sqlite_vec;
 /// Helper: register sqlite-vec, open an in-memory DB, run all migrations.
 fn setup_db() -> Connection {
     init_sqlite_vec();
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    run_migrations(&mut conn).expect("run migrations");
     conn
 }
 

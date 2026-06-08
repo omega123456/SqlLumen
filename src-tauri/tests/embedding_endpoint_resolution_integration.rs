@@ -8,8 +8,8 @@ use sqllumen_lib::db::settings;
 
 /// Helper: open an in-memory DB and run all migrations so the `settings` table exists.
 fn setup_db() -> Connection {
-    let conn = Connection::open_in_memory().expect("open in-memory db");
-    run_migrations(&conn).expect("run migrations");
+    let mut conn = Connection::open_in_memory().expect("open in-memory db");
+    run_migrations(&mut conn).expect("run migrations");
     conn
 }
 
