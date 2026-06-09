@@ -24,6 +24,8 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
+import { FavoriteDialog } from '../history-favorites/FavoriteDialog'
+import { useFavoritesStore } from '../../stores/favorites-store'
 import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
 import type { WorkspaceTab } from '../../types/schema'
 import { WorkspaceBody } from './WorkspaceBody'
@@ -45,6 +47,8 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
       (state.settings['results.tableTabsInBottomPanel'] ??
         SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']) === 'true'
   )
+
+  const favoriteDialogOpen = useFavoritesStore((state) => state.dialogOpen)
 
   const tabs = useWorkspaceStore((state) => state.tabsByConnection[sessionId] ?? EMPTY_TABS)
   const selectedWorkspaceTabId = useWorkspaceStore(
@@ -141,6 +145,7 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
           )}
         />
       </AiDiffBridgeProvider>
+      {isActive && favoriteDialogOpen && <FavoriteDialog connectionId={sessionId} />}
     </div>
   )
 }

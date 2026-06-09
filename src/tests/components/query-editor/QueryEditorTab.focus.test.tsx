@@ -40,7 +40,9 @@ const mockEditorInstance = {
   })),
   setPosition: vi.fn(),
   revealPositionInCenter: vi.fn(),
+  getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
   addCommand: vi.fn(),
+  addAction: vi.fn(() => ({ dispose: vi.fn() })),
   updateOptions: vi.fn(),
 }
 

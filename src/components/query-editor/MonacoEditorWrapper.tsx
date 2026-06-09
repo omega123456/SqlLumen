@@ -9,6 +9,8 @@ import type * as MonacoType from 'monaco-editor'
 import { useThemeStore } from '../../stores/theme-store'
 import { useQueryStore } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
+import { useFavoritesStore } from '../../stores/favorites-store'
+import { resolveFavoriteSql, buildFavoriteDraft } from './save-favorite-utils'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { registerMonacoThemes, getMonacoThemeName } from '../../lib/monaco-theme'
@@ -240,6 +242,7 @@ export function MonacoEditorWrapper({
     // Track cursor position changes and persist to store (only in query-store mode)
     let cursorDisposable: MonacoType.IDisposable | null = null
     let selectionDisposable: MonacoType.IDisposable | null = null
+    let saveFavoriteActionDisposable: MonacoType.IDisposable | null = null
     const syncSelectedText = () => {
       if (isOverrideMode) return
 
@@ -258,6 +261,31 @@ export function MonacoEditorWrapper({
       })
 
       syncSelectedText()
+
+      // Right-click "Save as Favorite" — pre-populates the favorites dialog
+      // with the current selection, or the statement under the cursor.
+      saveFavoriteActionDisposable = editor.addAction({
+        id: 'sqllumen.save-as-favorite',
+        label: 'Save as Favorite',
+        contextMenuGroupId: 'navigation',
+        contextMenuOrder: 1.5,
+        run: (ed) => {
+          const model = ed.getModel()
+          if (!model) return
+
+          const selection = ed.getSelection()
+          const selectedText = selection ? model.getValueInRange(selection) : ''
+          const position = ed.getPosition()
+          const sql = resolveFavoriteSql(
+            model.getValue(),
+            selectedText,
+            position ? { lineNumber: position.lineNumber, column: position.column } : null
+          )
+          if (!sql) return
+
+          useFavoritesStore.getState().openDialog(buildFavoriteDraft(sql, connectionId ?? null))
+        },
+      })
     }
 
     // Subscribe to content changes so CodeLens positions refresh as the user types.
@@ -293,6 +321,7 @@ export function MonacoEditorWrapper({
     editor.onDidDispose(() => {
       cursorDisposable?.dispose()
       selectionDisposable?.dispose()
+      saveFavoriteActionDisposable?.dispose()
       contentChangeDisposable.dispose()
       // Unregister using the captured URI — model may already be disposed
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)

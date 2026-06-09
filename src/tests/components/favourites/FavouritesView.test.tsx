@@ -224,7 +224,7 @@ describe('FavouritesView', () => {
     expect(loadFavoritesSpy).toHaveBeenCalledWith('conn-1')
   })
 
-  it('renders FavoriteDialog when dialogOpen is true', () => {
+  it('does not mount FavoriteDialog itself (owned by the connection workspace)', () => {
     useFavoritesStore.setState({
       dialogOpen: true,
       editingFavorite: null,
@@ -232,12 +232,6 @@ describe('FavouritesView', () => {
     })
     render(<FavouritesView connectionId="conn-1" />)
 
-    expect(screen.getByTestId('favorite-dialog')).toBeInTheDocument()
-  })
-
-  it('does not render FavoriteDialog when dialogOpen is false', () => {
-    useFavoritesStore.setState({ dialogOpen: false, loadFavorites: noopLoadFavorites })
-    render(<FavouritesView connectionId="conn-1" />)
     expect(screen.queryByTestId('favorite-dialog')).not.toBeInTheDocument()
   })
 

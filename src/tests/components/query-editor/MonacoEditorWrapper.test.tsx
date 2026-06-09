@@ -4,6 +4,7 @@ import { MonacoEditorWrapper } from '../../../components/query-editor/MonacoEdit
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
+import { useFavoritesStore } from '../../../stores/favorites-store'
 import { DEFAULT_SHORTCUTS, useShortcutStore } from '../../../stores/shortcut-store'
 import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
 import * as CodeLensProviderModule from '../../../components/query-editor/codelens-provider'
@@ -36,6 +37,7 @@ let capturedSelectionChangeHandler:
     }) => void)
   | null = null
 const capturedAddCommandHandlers: Record<number, () => void> = {}
+const capturedActions: Record<string, { id: string; run: (ed: unknown) => void }> = {}
 
 function createMockModel(selectedText = '') {
   return {
@@ -84,6 +86,11 @@ const mockEditorInstance = {
   addCommand: vi.fn((keyCode: number, handler: () => void) => {
     capturedAddCommandHandlers[keyCode] = handler
   }),
+  addAction: vi.fn((action: { id: string; run: (ed: unknown) => void }) => {
+    capturedActions[action.id] = action
+    return { dispose: vi.fn() }
+  }),
+  getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
   updateOptions: vi.fn(),
 }
 
@@ -162,6 +169,10 @@ beforeEach(() => {
   Object.keys(capturedAddCommandHandlers).forEach(
     (k) => delete capturedAddCommandHandlers[Number(k)]
   )
+  Object.keys(capturedActions).forEach((k) => delete capturedActions[k])
+  mockEditorInstance.addAction.mockClear()
+  mockEditorInstance.getPosition.mockClear()
+  mockEditorInstance.getPosition.mockImplementation(() => ({ lineNumber: 1, column: 1 }))
   registeredDisposeHandlers.length = 0
   // Reset getModel to its default implementation
   mockEditorInstance.getModel.mockImplementation(() => createMockModel())
@@ -800,6 +811,56 @@ describe('MonacoEditorWrapper', () => {
       render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
       expect(useQueryStore.getState().tabs['tab-1']?.selectedText).toBe('')
+    })
+  })
+
+  describe('Save as Favorite context-menu action', () => {
+    beforeEach(() => {
+      useFavoritesStore.setState({ dialogOpen: false, editingFavorite: null })
+    })
+
+    it('registers the save-as-favorite action in query-store mode', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      expect(capturedActions['sqllumen.save-as-favorite']).toBeDefined()
+    })
+
+    it('does not register the action in override mode', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" value="SELECT 1" onChange={() => {}} />)
+
+      expect(capturedActions['sqllumen.save-as-favorite']).toBeUndefined()
+    })
+
+    it('opens the favorites dialog pre-populated with the current statement', () => {
+      mockEditorInstance.getModel.mockImplementation(() => createMockModel())
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      act(() => {
+        capturedActions['sqllumen.save-as-favorite'].run(mockEditorInstance)
+      })
+
+      const state = useFavoritesStore.getState()
+      expect(state.dialogOpen).toBe(true)
+      expect(state.editingFavorite?.sqlText).toBe('SELECT 1')
+      expect(state.editingFavorite?.id).toBe(0)
+      expect(state.editingFavorite?.connectionId).toBe('conn-1')
+    })
+
+    it('pre-populates with the selected text when a selection exists', () => {
+      mockEditorInstance.getModel.mockImplementation(() => createMockModel('SELECT 42'))
+      mockEditorInstance.getSelection.mockImplementation(() => ({
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 10,
+      }))
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      act(() => {
+        capturedActions['sqllumen.save-as-favorite'].run(mockEditorInstance)
+      })
+
+      expect(useFavoritesStore.getState().editingFavorite?.sqlText).toBe('SELECT 42')
     })
   })
 })

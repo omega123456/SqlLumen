@@ -23,23 +23,34 @@ describe('insertSqlIntoEditor', () => {
     expect(queryTab?.content).toBe('SELECT 1')
   })
 
-  it('reuses active query-editor tab when one exists', () => {
+  it('appends to the active query-editor tab when one exists', () => {
     // Create a query tab first
     insertSqlIntoEditor('conn-1', 'SELECT 1', 'First')
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     const firstTabId = tabs[0].id
 
-    // Now insert again — should reuse the active tab
+    // Now insert again — should reuse the active tab and append
     insertSqlIntoEditor('conn-1', 'SELECT 2', 'Second')
 
     // Still only one tab
     const updatedTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     expect(updatedTabs).toHaveLength(1)
 
-    // Content updated
+    // Content appended, separated by a blank line
     const queryTab = useQueryStore.getState().tabs[firstTabId]
-    expect(queryTab?.content).toBe('SELECT 2')
+    expect(queryTab?.content).toBe('SELECT 1\n\nSELECT 2')
+  })
+
+  it('does not prepend a blank line when the active tab is empty', () => {
+    insertSqlIntoEditor('conn-1', '', 'Empty')
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const tabId = tabs[0].id
+
+    insertSqlIntoEditor('conn-1', 'SELECT 1', 'Second')
+
+    expect(useQueryStore.getState().tabs[tabId]?.content).toBe('SELECT 1')
   })
 
   it('uses default label "Query" when no label is provided', () => {

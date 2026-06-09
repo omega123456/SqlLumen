@@ -5,7 +5,6 @@ import { insertSqlIntoEditor } from '../../lib/query-tab-utils'
 import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
-import { FavoriteDialog } from '../history-favorites/FavoriteDialog'
 import { FavouritesSnippetCard } from './FavouritesSnippetCard'
 import { FavouritesDetailPanel } from './FavouritesDetailPanel'
 import type { FavoriteEntry } from '../../types/schema'
@@ -19,7 +18,6 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
   const entries = useFavoritesStore((state) => state.entries)
   const isLoading = useFavoritesStore((state) => state.isLoading)
   const error = useFavoritesStore((state) => state.error)
-  const dialogOpen = useFavoritesStore((state) => state.dialogOpen)
   const openDialog = useFavoritesStore((state) => state.openDialog)
   const deleteFavorite = useFavoritesStore((state) => state.deleteFavorite)
   const loadFavorites = useFavoritesStore((state) => state.loadFavorites)
@@ -167,8 +165,6 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
       <div className={styles.list} data-testid="favourites-list">
         {renderListContent()}
       </div>
-
-      {dialogOpen && <FavoriteDialog connectionId={connectionId} />}
 
       <ConfirmDialog
         isOpen={pendingDeleteId != null}

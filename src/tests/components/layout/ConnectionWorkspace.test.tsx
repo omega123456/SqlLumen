@@ -7,6 +7,7 @@ import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useQueryStore } from '../../../stores/query-store'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
+import { useFavoritesStore } from '../../../stores/favorites-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
@@ -54,6 +55,7 @@ beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })
+  useFavoritesStore.setState({ dialogOpen: false, editingFavorite: null })
 })
 
 describe('ConnectionWorkspace', () => {
@@ -155,5 +157,23 @@ describe('ConnectionWorkspace', () => {
   it('renders nothing when the session is not an open connection', () => {
     const { container } = render(<ConnectionWorkspace sessionId="missing" isActive={false} />)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('mounts the favorite dialog when active and the dialog is open', () => {
+    useWorkspaceStore.getState().openQueryTab('session-a')
+    useFavoritesStore.setState({ dialogOpen: true, editingFavorite: null })
+
+    render(<ConnectionWorkspace sessionId="session-a" isActive={true} />)
+
+    expect(screen.getByTestId('favorite-dialog')).toBeInTheDocument()
+  })
+
+  it('does not mount the favorite dialog while the connection is inactive', () => {
+    useWorkspaceStore.getState().openQueryTab('session-a')
+    useFavoritesStore.setState({ dialogOpen: true, editingFavorite: null })
+
+    render(<ConnectionWorkspace sessionId="session-a" isActive={false} />)
+
+    expect(screen.queryByTestId('favorite-dialog')).not.toBeInTheDocument()
   })
 })
