@@ -292,6 +292,32 @@ describe('ConnectionTabBar', () => {
     expect(accents.length).toBe(1)
   })
 
+  it('renders a read-only padlock icon for read-only connections', () => {
+    const profile = makeSavedConnection({ readOnly: true })
+    const conn = makeActiveConnection({ id: 'sess-1', profile })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn },
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+    expect(screen.getByLabelText('Read-only connection')).toBeInTheDocument()
+  })
+
+  it('does not render a read-only padlock icon for writable connections', () => {
+    const profile = makeSavedConnection({ readOnly: false })
+    const conn = makeActiveConnection({ id: 'sess-1', profile })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn },
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+    expect(screen.queryByLabelText('Read-only connection')).not.toBeInTheDocument()
+  })
+
   it('right-click (auxclick button 2) on a tab does NOT open close confirmation', async () => {
     const conn1 = makeActiveConnection({ id: 'sess-1' })
     useConnectionStore.setState({

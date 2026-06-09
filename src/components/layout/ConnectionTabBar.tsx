@@ -10,6 +10,7 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CaretLineRightIcon,
+  LockIcon,
 } from '@phosphor-icons/react'
 import { useThemeStore } from '../../stores/theme-store'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
@@ -346,7 +347,9 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                       hostPort: `${conn.profile.host}:${conn.profile.port}`,
                     })
                   }}
-                  title={`${displayName} (${conn.profile.host}:${conn.profile.port})`}
+                  title={`${displayName} (${conn.profile.host}:${conn.profile.port})${
+                    conn.profile.readOnly ? ' — Read-only' : ''
+                  }`}
                   prefix={
                     <div className={styles.tabPrefix}>
                       {conn.profile.color && !isActive ? (
@@ -357,6 +360,14 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                         />
                       ) : null}
                       <ConnectionStatusIndicator status={conn.status} size={8} />
+                      {conn.profile.readOnly ? (
+                        <LockIcon
+                          className={styles.readOnlyIcon}
+                          size={12}
+                          weight="fill"
+                          aria-label="Read-only connection"
+                        />
+                      ) : null}
                     </div>
                   }
                   suffix={

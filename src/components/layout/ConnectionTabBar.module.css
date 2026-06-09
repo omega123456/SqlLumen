@@ -87,6 +87,11 @@
   border-radius: 3px;
 }
 
+.readOnlyIcon {
+  color: var(--on-surface-variant);
+  flex-shrink: 0;
+}
+
 .tabName {
   max-width: 120px;
   overflow: hidden;

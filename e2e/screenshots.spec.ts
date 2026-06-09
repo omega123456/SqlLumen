@@ -1414,6 +1414,43 @@ for (const theme of themes) {
       )
     })
 
+    test('ConnectionTabBar — read-only connection padlock', async ({ page }) => {
+      await connectToSample(page)
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__connectionStore__ as {
+          setState: (
+            fn: (state: {
+              activeConnections: Record<
+                string,
+                { id: string; profile: Record<string, unknown> }
+              >
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => {
+          const session = state.activeConnections['session-playwright-1']
+          return {
+            activeConnections: {
+              ...state.activeConnections,
+              'session-playwright-1': {
+                ...session,
+                profile: { ...session.profile, readOnly: true },
+              },
+            },
+          }
+        })
+      })
+      await expect(
+        page
+          .getByTestId('connection-session-tab-session-playwright-1')
+          .getByLabel('Read-only connection')
+      ).toBeVisible()
+      await expect(page.getByTestId('connection-tab-bar')).toHaveScreenshot(
+        `connection-tab-bar-read-only-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('ConnectionTabBar — context menu reorder actions', async ({ page }) => {
       await openTwoConnectionSessionsFirstActive(page)
       await page
