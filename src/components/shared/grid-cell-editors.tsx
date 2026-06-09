@@ -190,6 +190,9 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
             ) {
               e.preventDefault()
               e.stopPropagation()
+              // Close the overlay before opening the dialog so it does not float
+              // over the modal (the glide overlay portal outranks the dialog z-index).
+              onClose(true, false)
               fkLookup.onFkLookup({
                 columnKey: fieldName,
                 currentValue: isNull ? null : value,
@@ -239,6 +242,7 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
             currentValue={row[fieldName]}
             rowData={row}
             className={styles.fkTriggerButton}
+            onBeforeLookup={() => onClose(true, false)}
           />
         )}
       </div>
@@ -363,6 +367,9 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
             ) {
               e.preventDefault()
               e.stopPropagation()
+              // Close the overlay before opening the dialog so it does not float
+              // over the modal (the glide overlay portal outranks the dialog z-index).
+              onClose(true, false)
               fkLookup.onFkLookup({
                 columnKey: fieldName,
                 currentValue: isNull ? null : value,
@@ -408,6 +415,7 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
             currentValue={row[fieldName]}
             rowData={row}
             className={styles.fkTriggerButton}
+            onBeforeLookup={() => onClose(true, false)}
           />
         )}
       </div>
@@ -518,6 +526,9 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
       ) {
         e.preventDefault()
         e.stopPropagation()
+        // Close the overlay before opening the dialog so it does not float
+        // over the modal (the glide overlay portal outranks the dialog z-index).
+        onClose(true, false)
         fkLookup.onFkLookup({
           columnKey: fieldName,
           currentValue: isNull ? null : value,
@@ -639,6 +650,7 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
               currentValue={row[fieldName]}
               rowData={row}
               className={styles.fkTriggerButton}
+              onBeforeLookup={() => onClose(true, false)}
             />
           )}
         </div>

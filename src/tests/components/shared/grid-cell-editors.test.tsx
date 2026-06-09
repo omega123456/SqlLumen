@@ -283,6 +283,60 @@ describe('NullableCellEditor — store syncing', () => {
     expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
     expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
   })
+
+  // Regression: the editor overlay must be closed before the FK lookup dialog is
+  // requested, otherwise the floating glide overlay (higher z-index portal) renders
+  // above the modal.
+  it('closes the overlay before requesting FK lookup via the trigger button', async () => {
+    const user = userEvent.setup()
+    const onFkLookup = vi.fn()
+    const props = makeEditorProps({
+      foreignKey: {
+        columnName: 'col_1',
+        referencedDatabase: 'app',
+        referencedTable: 'people',
+        referencedColumn: 'id',
+        constraintName: 'fk_people',
+      },
+    })
+    render(
+      <FkLookupProvider onFkLookup={onFkLookup}>
+        <NullableCellEditor {...props} />
+      </FkLookupProvider>
+    )
+
+    await user.click(screen.getByTestId('fk-lookup-trigger'))
+
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
+    expect(onFkLookup).toHaveBeenCalledWith(expect.objectContaining({ source: 'editor-trigger' }))
+    const closeOrder = (props.onClose as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const lookupOrder = onFkLookup.mock.invocationCallOrder[0]
+    expect(closeOrder).toBeLessThan(lookupOrder)
+  })
+
+  it('closes the overlay before requesting FK lookup via F4', () => {
+    const onFkLookup = vi.fn()
+    const props = makeEditorProps({
+      foreignKey: {
+        columnName: 'col_1',
+        referencedDatabase: 'app',
+        referencedTable: 'people',
+        referencedColumn: 'id',
+        constraintName: 'fk_people',
+      },
+    })
+    render(
+      <FkLookupProvider onFkLookup={onFkLookup}>
+        <NullableCellEditor {...props} />
+      </FkLookupProvider>
+    )
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    fireEvent.keyDown(input, { key: 'F4' })
+
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
+    expect(onFkLookup).toHaveBeenCalledWith(expect.objectContaining({ source: 'keyboard' }))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -342,6 +396,32 @@ describe('EnumCellEditor — store syncing', () => {
     expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
     expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
     expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
+  })
+
+  // Regression: closing the overlay before opening the dialog keeps the floating
+  // glide overlay (higher z-index portal) from rendering above the modal.
+  it('closes the overlay before requesting FK lookup via F4', () => {
+    const onFkLookup = vi.fn()
+    const props = makeEnumProps({
+      foreignKey: {
+        columnName: 'col_2',
+        referencedDatabase: 'app',
+        referencedTable: 'status_lookup',
+        referencedColumn: 'id',
+        constraintName: 'fk_status',
+      },
+    })
+    render(
+      <FkLookupProvider onFkLookup={onFkLookup}>
+        <EnumCellEditor {...props} />
+      </FkLookupProvider>
+    )
+
+    const trigger = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    fireEvent.keyDown(trigger, { key: 'F4' })
+
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
+    expect(onFkLookup).toHaveBeenCalledWith(expect.objectContaining({ source: 'keyboard' }))
   })
 
   it('uses the dropdown as the full overlay editor when requested', () => {

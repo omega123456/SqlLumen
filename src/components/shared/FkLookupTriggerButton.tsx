@@ -19,6 +19,12 @@ interface FkLookupTriggerButtonProps {
   rowData: Record<string, unknown>
   /** CSS class for the button */
   className: string
+  /**
+   * Invoked just before the lookup dialog is requested. Cell editors pass this to
+   * close their floating overlay so it does not render above the modal (the glide
+   * overlay portal has a higher z-index than the dialog backdrop).
+   */
+  onBeforeLookup?: () => void
 }
 
 export function FkLookupTriggerButton({
@@ -27,6 +33,7 @@ export function FkLookupTriggerButton({
   currentValue,
   rowData,
   className,
+  onBeforeLookup,
 }: FkLookupTriggerButtonProps) {
   const fkLookup = useFkLookup()
 
@@ -37,6 +44,7 @@ export function FkLookupTriggerButton({
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    onBeforeLookup?.()
     fkLookup?.onFkLookup({
       columnKey,
       currentValue,
