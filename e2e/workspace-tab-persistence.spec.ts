@@ -247,9 +247,10 @@ async function openSecondSession(page: Page): Promise<void> {
   }
   await expect(dialog).toBeVisible({ timeout: APP_READY_MS })
 
-  const sampleRow = page.getByTestId('saved-connections-pane').getByRole('button', {
-    name: /Sample MySQL/,
-  })
+  const sampleRow = page
+    .getByTestId('saved-connections-pane')
+    .getByTestId('connection-list-item')
+    .filter({ hasText: 'Sample MySQL' })
   await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
   await sampleRow.click()
 

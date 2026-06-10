@@ -56,7 +56,7 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  padding: 0 8px;
+  padding: var(--space-sm);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--outline-variant-rgb), 0.35) transparent;
 }
@@ -72,6 +72,10 @@
 
 .group {
   margin-bottom: 4px;
+}
+
+.group + .group {
+  margin-top: var(--space-sm);
 }
 
 .groupHeader {
@@ -101,13 +105,16 @@
 }
 
 .connectionItem {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px;
+  padding: var(--space-md);
+  margin-bottom: var(--space-xs);
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  border-left: 4px solid transparent;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-lg);
   user-select: none;
   transition:
     background-color 0.12s ease,
@@ -117,9 +124,11 @@
 
 .connectionItem:hover {
   background-color: var(--ui-list-row-hover-bg);
+  border-color: rgba(var(--outline-variant-rgb), 0.5);
 }
 
 .connectionItemSelected {
+  border-color: rgba(var(--primary-rgb), 0.35);
   border-left-color: var(--primary);
   background: var(--ui-list-item-selected-bg);
   box-shadow: var(--ui-list-item-selected-shadow);
@@ -127,6 +136,8 @@
 
 .connectionItemSelected:hover {
   background: var(--ui-list-item-selected-bg);
+  border-color: rgba(var(--primary-rgb), 0.35);
+  border-left-color: var(--primary);
 }
 
 .colorDot {
@@ -145,6 +156,20 @@
   gap: 2px;
   min-width: 0;
   flex: 1;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: -4px -4px -4px 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.connectionItem:hover .itemActions,
+.connectionItem:focus-within .itemActions {
+  opacity: 1;
 }
 
 .connectionTitle {

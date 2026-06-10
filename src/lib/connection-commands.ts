@@ -98,14 +98,21 @@ export async function deleteConnectionGroup(id: string): Promise<void> {
 /**
  * Test a MySQL connection with the given parameters.
  * Only passes fields relevant to the connection test (excludes name, color, etc.).
+ *
+ * When the connection is already saved and no new password was typed, pass
+ * `profileId` so the backend resolves the stored password from secure storage.
  */
-export async function testConnection(params: ConnectionFormData): Promise<TestConnectionResult> {
+export async function testConnection(
+  params: ConnectionFormData,
+  profileId?: string | null
+): Promise<TestConnectionResult> {
   return invoke<TestConnectionResult>('test_connection', {
     input: {
       host: params.host,
       port: params.port,
       username: params.username,
       password: params.password,
+      profileId: profileId ?? null,
       defaultDatabase: params.defaultDatabase,
       sslEnabled: params.sslEnabled,
       sslCaPath: params.sslCaPath,

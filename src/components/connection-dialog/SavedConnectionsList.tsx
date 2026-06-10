@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash } from '@phosphor-icons/react'
+import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash, Copy } from '@phosphor-icons/react'
 import { TextInput } from '../common/TextInput'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
@@ -133,20 +133,24 @@ function GroupInlineInput({
 interface SavedConnectionsListProps {
   onSelectConnection: (connection: SavedConnection) => void
   onNewConnection: () => void
+  onDuplicateConnection: (connection: SavedConnection) => void
   selectedConnectionId: string | null
 }
 
-interface ContextMenuState {
+interface ContextMenuPosition {
   x: number
   y: number
   portalRoot: HTMLElement
-  type: 'group'
-  groupId?: string
 }
+
+type ContextMenuState =
+  | (ContextMenuPosition & { type: 'group'; groupId: string })
+  | (ContextMenuPosition & { type: 'connection'; connection: SavedConnection })
 
 export function SavedConnectionsList({
   onSelectConnection,
   onNewConnection,
+  onDuplicateConnection,
   selectedConnectionId,
 }: SavedConnectionsListProps) {
   const savedConnections = useConnectionStore((s) => s.savedConnections)
@@ -206,6 +210,29 @@ export function SavedConnectionsList({
       groupId,
     })
   }, [])
+
+  const handleConnectionContextMenu = useCallback(
+    (e: React.MouseEvent, connection: SavedConnection) => {
+      e.preventDefault()
+      const anchor = e.currentTarget as Element
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        portalRoot: getContextMenuPortalRoot(anchor),
+        type: 'connection',
+        connection,
+      })
+    },
+    []
+  )
+
+  const handleDuplicateConnection = useCallback(
+    (connection: SavedConnection) => {
+      setContextMenu(null)
+      onDuplicateConnection(connection)
+    },
+    [onDuplicateConnection]
+  )
 
   const handleRenameGroup = useCallback(
     (groupId: string) => {
@@ -296,7 +323,9 @@ export function SavedConnectionsList({
         className={`${styles.connectionItem} ${isSelected ? styles.connectionItemSelected : ''}`}
         style={selectedStyle}
         onClick={() => onSelectConnection(conn)}
+        onContextMenu={(e) => handleConnectionContextMenu(e, conn)}
         role="button"
+        data-testid="connection-list-item"
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -312,6 +341,20 @@ export function SavedConnectionsList({
         <div className={styles.connectionText}>
           <span className={styles.connectionTitle}>{titleText}</span>
           {showSubtitle && <span className={styles.connectionHost}>{conn.host}</span>}
+        </div>
+        <div className={styles.itemActions}>
+          <button
+            type="button"
+            className={styles.iconCircleBtn}
+            title="Duplicate connection"
+            aria-label={`Duplicate ${titleText}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDuplicateConnection(conn)
+            }}
+          >
+            <Copy size={14} weight="regular" />
+          </button>
         </div>
       </div>
     )
@@ -437,13 +480,13 @@ export function SavedConnectionsList({
             }}
             role="menu"
           >
-            {contextMenu.type === 'group' && contextMenu.groupId && (
+            {contextMenu.type === 'group' && (
               <>
                 <button
                   type="button"
                   className="ui-context-menu__item"
                   role="menuitem"
-                  onClick={() => handleRenameGroup(contextMenu.groupId!)}
+                  onClick={() => handleRenameGroup(contextMenu.groupId)}
                 >
                   <PencilSimple
                     className="ui-context-menu__icon"
@@ -462,12 +505,23 @@ export function SavedConnectionsList({
                   type="button"
                   className="ui-context-menu__item ui-context-menu__item--destructive"
                   role="menuitem"
-                  onClick={() => void handleDeleteGroup(contextMenu.groupId!)}
+                  onClick={() => void handleDeleteGroup(contextMenu.groupId)}
                 >
                   <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
                   <span>Delete</span>
                 </button>
               </>
+            )}
+            {contextMenu.type === 'connection' && (
+              <button
+                type="button"
+                className="ui-context-menu__item"
+                role="menuitem"
+                onClick={() => handleDuplicateConnection(contextMenu.connection)}
+              >
+                <Copy className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                <span>Duplicate</span>
+              </button>
             )}
           </div>,
           contextMenu.portalRoot

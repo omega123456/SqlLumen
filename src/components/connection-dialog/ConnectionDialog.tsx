@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { X } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
-import { ConnectionForm } from './ConnectionForm'
+import { ConnectionForm, type ConnectionFormSeed } from './ConnectionForm'
 import { SavedConnectionsList } from './SavedConnectionsList'
 import type { SavedConnection } from '../../types/connection'
 import styles from './ConnectionDialog.module.css'
@@ -13,6 +13,7 @@ export function ConnectionDialog() {
   const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
 
   const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null)
+  const [duplicateSeed, setDuplicateSeed] = useState<ConnectionFormSeed | null>(null)
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -29,6 +30,7 @@ export function ConnectionDialog() {
   const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
     if (e.target === dialogRef.current) {
       setEditingConnection(null)
+      setDuplicateSeed(null)
       closeDialog()
     }
   }
@@ -36,20 +38,49 @@ export function ConnectionDialog() {
   // Sync store when native dialog closes (e.g., Escape key)
   const handleClose = () => {
     setEditingConnection(null)
+    setDuplicateSeed(null)
     closeDialog()
   }
 
   const handleCloseButton = useCallback(() => {
     setEditingConnection(null)
+    setDuplicateSeed(null)
     closeDialog()
   }, [closeDialog])
 
   const handleSelectConnection = useCallback((connection: SavedConnection) => {
     setEditingConnection(connection)
+    setDuplicateSeed(null)
   }, [])
 
   const handleNewConnection = useCallback(() => {
     setEditingConnection(null)
+    setDuplicateSeed(null)
+  }, [])
+
+  const handleDuplicateConnection = useCallback((source: SavedConnection) => {
+    setEditingConnection(null)
+    setDuplicateSeed((prev) => ({
+      data: {
+        name: `Copy of ${source.name.trim() || source.host}`,
+        host: source.host,
+        port: source.port,
+        username: source.username,
+        password: '',
+        defaultDatabase: source.defaultDatabase,
+        sslEnabled: source.sslEnabled,
+        sslCaPath: source.sslCaPath,
+        sslCertPath: source.sslCertPath,
+        sslKeyPath: source.sslKeyPath,
+        color: source.color,
+        groupId: source.groupId,
+        readOnly: source.readOnly,
+        connectTimeoutSecs: source.connectTimeoutSecs,
+        keepaliveIntervalSecs: source.keepaliveIntervalSecs,
+      },
+      sourceHadPassword: source.hasPassword,
+      key: (prev?.key ?? 0) + 1,
+    }))
   }, [])
 
   const handleDeleteConnection = useCallback(
@@ -97,12 +128,14 @@ export function ConnectionDialog() {
             <SavedConnectionsList
               onSelectConnection={handleSelectConnection}
               onNewConnection={handleNewConnection}
+              onDuplicateConnection={handleDuplicateConnection}
               selectedConnectionId={editingConnection?.id ?? null}
             />
           </aside>
           <ConnectionForm
             editingConnection={editingConnection ?? undefined}
             onDeleteConnection={handleDeleteConnection}
+            initialData={duplicateSeed ?? undefined}
           />
         </div>
       </div>

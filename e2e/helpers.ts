@@ -322,7 +322,7 @@ export async function openConnectionManager(page: Page) {
 }
 
 export async function selectSampleConnection(dialog: Locator) {
-  const sampleRow = dialog.getByRole('button', { name: /Sample MySQL/ })
+  const sampleRow = dialog.getByTestId('connection-list-item').filter({ hasText: 'Sample MySQL' })
   await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
   await sampleRow.scrollIntoViewIfNeeded()
   await expect(sampleRow).toBeEnabled({ timeout: APP_READY_MS })

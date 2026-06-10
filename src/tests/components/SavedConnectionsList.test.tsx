@@ -45,12 +45,14 @@ function makeGroup(overrides: Partial<ConnectionGroup> = {}): ConnectionGroup {
 const defaultProps = {
   onSelectConnection: vi.fn(),
   onNewConnection: vi.fn(),
+  onDuplicateConnection: vi.fn(),
   selectedConnectionId: null,
 }
 
 beforeEach(() => {
   defaultProps.onSelectConnection.mockClear()
   defaultProps.onNewConnection.mockClear()
+  defaultProps.onDuplicateConnection.mockClear()
 
   useConnectionStore.setState({
     savedConnections: [],
@@ -229,7 +231,8 @@ describe('SavedConnectionsList', () => {
   })
 
   describe('connection interactions', () => {
-    it('does not open a context menu when right-clicking a saved connection', () => {
+    it('right-clicking a saved connection opens a context menu with Duplicate', async () => {
+      const user = userEvent.setup()
       const conn = makeConnection({ id: 'c1', name: 'Right Click Me' })
 
       useConnectionStore.setState({
@@ -241,8 +244,28 @@ describe('SavedConnectionsList', () => {
 
       fireEvent.contextMenu(screen.getByText('Right Click Me'), { clientX: 100, clientY: 200 })
 
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      const duplicateItem = await screen.findByRole('menuitem', { name: 'Duplicate' })
+      await user.click(duplicateItem)
+
+      expect(defaultProps.onDuplicateConnection).toHaveBeenCalledWith(conn)
       expect(screen.queryByTestId('saved-connections-context-menu')).not.toBeInTheDocument()
+    })
+
+    it('hover duplicate button calls onDuplicateConnection without selecting', async () => {
+      const user = userEvent.setup()
+      const conn = makeConnection({ id: 'c1', name: 'Dup Me' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.click(screen.getByLabelText('Duplicate Dup Me'))
+
+      expect(defaultProps.onDuplicateConnection).toHaveBeenCalledWith(conn)
+      expect(defaultProps.onSelectConnection).not.toHaveBeenCalled()
     })
   })
 

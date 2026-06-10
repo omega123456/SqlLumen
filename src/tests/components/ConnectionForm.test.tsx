@@ -43,6 +43,10 @@ beforeEach(() => {
   })
 })
 
+async function switchToTab(user: ReturnType<typeof userEvent.setup>, tab: 'general' | 'ssl' | 'advanced') {
+  await user.click(screen.getByTestId(`connection-form-tab-${tab}`))
+}
+
 describe('ConnectionForm', () => {
   it('renders all basic form fields', () => {
     render(<ConnectionForm />)
@@ -55,27 +59,39 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Default Database')).toBeInTheDocument()
   })
 
-  it('renders SSL certificate files collapsible section', () => {
+  it('renders General, SSL and Advanced tabs with General active', () => {
     render(<ConnectionForm />)
-    expect(screen.getByText('SSL certificate files')).toBeInTheDocument()
+
+    expect(screen.getByTestId('connection-form-tab-general')).toHaveAttribute('data-active', 'true')
+    expect(screen.getByTestId('connection-form-tab-ssl')).not.toHaveAttribute('data-active')
+    expect(screen.getByTestId('connection-form-tab-advanced')).not.toHaveAttribute('data-active')
+    expect(screen.getByTestId('connection-form-panel-general')).toBeInTheDocument()
   })
 
-  it('SSL section expands and collapses', async () => {
+  it('tabs switch the visible panel', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    const sslButton = screen.getByRole('button', { name: /SSL certificate files/ })
+    await switchToTab(user, 'ssl')
+    expect(screen.getByTestId('connection-form-panel-ssl')).toBeInTheDocument()
+    expect(screen.queryByTestId('connection-form-panel-general')).not.toBeInTheDocument()
 
-    // Initially collapsed
-    expect(sslButton).toHaveAttribute('aria-expanded', 'false')
+    await switchToTab(user, 'advanced')
+    expect(screen.getByTestId('connection-form-panel-advanced')).toBeInTheDocument()
+    expect(screen.queryByTestId('connection-form-panel-ssl')).not.toBeInTheDocument()
 
-    // Click to expand
-    await user.click(sslButton)
-    expect(sslButton).toHaveAttribute('aria-expanded', 'true')
+    await switchToTab(user, 'general')
+    expect(screen.getByTestId('connection-form-panel-general')).toBeInTheDocument()
+  })
 
-    // Click to collapse
-    await user.click(sslButton)
-    expect(sslButton).toHaveAttribute('aria-expanded', 'false')
+  it('tab panel keeps form state across switches', async () => {
+    const user = userEvent.setup()
+    render(<ConnectionForm />)
+
+    await user.type(screen.getByLabelText('Connection name'), 'Stateful')
+    await switchToTab(user, 'ssl')
+    await switchToTab(user, 'general')
+    expect(screen.getByLabelText('Connection name')).toHaveValue('Stateful')
   })
 
   it('Test Connection button calls testConnection IPC', async () => {
@@ -211,8 +227,10 @@ describe('ConnectionForm', () => {
     )
   })
 
-  it('renders group selector with Ungrouped option', () => {
+  it('renders group selector with Ungrouped option', async () => {
+    const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     const combobox = screen.getByRole('combobox', { name: 'Group' })
     expect(combobox).toBeInTheDocument()
@@ -234,6 +252,7 @@ describe('ConnectionForm', () => {
     })
 
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     await user.click(screen.getByRole('combobox', { name: 'Group' }))
     expect(screen.getByRole('option', { name: 'Production' })).toBeInTheDocument()
@@ -255,6 +274,7 @@ describe('ConnectionForm', () => {
     })
 
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     const combobox = screen.getByRole('combobox', { name: 'Group' })
     await user.click(combobox)
@@ -262,14 +282,17 @@ describe('ConnectionForm', () => {
     expect(combobox).toHaveTextContent('Production')
   })
 
-  it('renders color picker swatch', () => {
+  it('renders color picker swatch', async () => {
+    const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
     expect(screen.getByLabelText('Choose color')).toBeInTheDocument()
   })
 
   it('color picker opens popover on click', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     const swatch = screen.getByLabelText('Choose color')
     await user.click(swatch)
@@ -282,6 +305,7 @@ describe('ConnectionForm', () => {
   it('color picker Clear Color button clears the color', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     // Open the popover
     await user.click(screen.getByLabelText('Choose color'))
@@ -296,6 +320,7 @@ describe('ConnectionForm', () => {
   it('color picker hex input accepts valid hex values', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     // Open the popover
     await user.click(screen.getByLabelText('Choose color'))
@@ -310,13 +335,14 @@ describe('ConnectionForm', () => {
   it('color picker closes on outside click', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     // Open the popover
     await user.click(screen.getByLabelText('Choose color'))
     expect(screen.getByTestId('color-picker-popover')).toBeInTheDocument()
 
     // Click outside (on a form field)
-    await user.click(screen.getByLabelText('Connection name'))
+    await user.click(screen.getByLabelText('Connect Timeout'))
 
     // Popover should close
     expect(screen.queryByTestId('color-picker-popover')).not.toBeInTheDocument()
@@ -372,7 +398,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
+    await switchToTab(user, 'ssl')
 
     expect(screen.getByLabelText('CA Certificate')).toBeDisabled()
     expect(screen.getByLabelText('Client Certificate')).toBeDisabled()
@@ -383,8 +409,8 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
+    await switchToTab(user, 'ssl')
     await user.click(screen.getByLabelText('Use SSL / TLS'))
-    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     expect(screen.getByLabelText('CA Certificate')).not.toBeDisabled()
     expect(screen.getByLabelText('Client Certificate')).not.toBeDisabled()
@@ -395,7 +421,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
+    await switchToTab(user, 'ssl')
 
     expect(screen.getByLabelText('Browse CA certificate')).toBeDisabled()
     expect(screen.getByLabelText('Browse client certificate')).toBeDisabled()
@@ -409,8 +435,8 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     // Enable SSL first
+    await switchToTab(user, 'ssl')
     await user.click(screen.getByLabelText('Use SSL / TLS'))
-    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     // Click browse for CA cert
     await user.click(screen.getByLabelText('Browse CA certificate'))
@@ -429,8 +455,8 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await switchToTab(user, 'ssl')
     await user.click(screen.getByLabelText('Use SSL / TLS'))
-    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
     await user.click(screen.getByLabelText('Browse client certificate'))
 
     await waitFor(() => {
@@ -538,10 +564,12 @@ describe('ConnectionForm', () => {
     expect(dbInput).toHaveValue('mydb')
   })
 
-  it('renders timeout and read-only fields', () => {
+  it('renders timeout and access-mode fields', async () => {
+    const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
-    expect(screen.getByLabelText('Read Only')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Access mode' })).toBeInTheDocument()
     expect(screen.getByLabelText('Connect Timeout')).toBeInTheDocument()
     expect(screen.getByLabelText('Keepalive Interval')).toBeInTheDocument()
   })
@@ -549,11 +577,14 @@ describe('ConnectionForm', () => {
   it('Advanced fields accept input', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
-    // Toggle read-only
-    const readOnlyCheckbox = screen.getByLabelText('Read Only')
-    await user.click(readOnlyCheckbox)
-    expect(readOnlyCheckbox).toBeChecked()
+    // Switch access mode to read-only
+    const accessMode = screen.getByRole('combobox', { name: 'Access mode' })
+    expect(accessMode).toHaveTextContent('Allow writes (read-write)')
+    await user.click(accessMode)
+    await user.click(screen.getByRole('option', { name: 'Read-only (block writes)' }))
+    expect(accessMode).toHaveTextContent('Read-only (block writes)')
 
     // Check timeout has default value
     const timeoutInput = screen.getByLabelText('Connect Timeout')
@@ -842,8 +873,8 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     // Enable SSL
+    await switchToTab(user, 'ssl')
     await user.click(screen.getByLabelText('Use SSL / TLS'))
-    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     // Type in CA cert field
     const caInput = screen.getByLabelText('CA Certificate')
@@ -866,7 +897,8 @@ describe('ConnectionForm', () => {
     expect(dbInput).toHaveValue('')
   })
 
-  it('reads default timeout and keepalive from settings store', () => {
+  it('reads default timeout and keepalive from settings store', async () => {
+    const user = userEvent.setup()
     useSettingsStore.setState({
       settings: {
         'connection.defaultTimeout': '30',
@@ -876,11 +908,65 @@ describe('ConnectionForm', () => {
     })
 
     render(<ConnectionForm />)
+    await switchToTab(user, 'advanced')
 
     const timeoutInput = screen.getByLabelText('Connect Timeout')
     expect(timeoutInput).toHaveValue(30)
 
     const keepaliveInput = screen.getByLabelText('Keepalive Interval')
     expect(keepaliveInput).toHaveValue(120)
+  })
+
+  it('validation from another tab switches to the first tab with errors and shows error dot', async () => {
+    const user = userEvent.setup()
+    render(<ConnectionForm />)
+
+    await switchToTab(user, 'advanced')
+    await user.click(screen.getByText('Save'))
+
+    expect(screen.getByTestId('connection-form-panel-general')).toBeInTheDocument()
+    expect(screen.getByText('Connection name is required')).toBeInTheDocument()
+    const generalTab = screen.getByTestId('connection-form-tab-general')
+    expect(generalTab.querySelector('[aria-label="Has errors"]')).toBeInTheDocument()
+  })
+
+  it('tab error dot clears when the field is fixed', async () => {
+    const user = userEvent.setup()
+    render(<ConnectionForm />)
+
+    await user.click(screen.getByText('Save'))
+    const generalTab = screen.getByTestId('connection-form-tab-general')
+    expect(generalTab.querySelector('[aria-label="Has errors"]')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
+    await user.type(screen.getByLabelText('Username'), 'root')
+    expect(generalTab.querySelector('[aria-label="Has errors"]')).not.toBeInTheDocument()
+  })
+
+  it('resets to the General tab when editingConnection changes', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<ConnectionForm />)
+
+    await switchToTab(user, 'advanced')
+    expect(screen.getByTestId('connection-form-panel-advanced')).toBeInTheDocument()
+
+    rerender(<ConnectionForm editingConnection={makeSavedConnection()} />)
+    expect(screen.getByTestId('connection-form-panel-general')).toBeInTheDocument()
+    expect(screen.queryByTestId('connection-form-panel-advanced')).not.toBeInTheDocument()
+  })
+
+  it('form header shows connection name, user@host:port and updates with input', async () => {
+    const user = userEvent.setup()
+    render(<ConnectionForm />)
+
+    const header = screen.getByTestId('connection-form-header')
+    expect(header).toHaveTextContent('New Connection')
+
+    await user.type(screen.getByLabelText('Connection name'), 'My DB')
+    await user.type(screen.getByLabelText('Host address'), 'db.local')
+    await user.type(screen.getByLabelText('Username'), 'root')
+    expect(header).toHaveTextContent('My DB')
+    expect(header).toHaveTextContent('root@db.local:3306')
   })
 })

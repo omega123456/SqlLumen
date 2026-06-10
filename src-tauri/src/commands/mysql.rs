@@ -37,6 +37,10 @@ pub struct TestConnectionInput {
     pub port: u16,
     pub username: String,
     pub password: String,
+    /// Saved connection profile id. When set and `password` is empty, the saved
+    /// password is resolved from secure storage (mirrors `open_connection`).
+    #[serde(default)]
+    pub profile_id: Option<String>,
     pub default_database: Option<String>,
     pub ssl_enabled: bool,
     pub ssl_ca_path: Option<String>,
@@ -121,11 +125,35 @@ async fn close_pool(pool: sqlx::MySqlPool) {
 /// Creates a temporary pool, runs diagnostic queries, and drops the pool.
 #[cfg(not(coverage))]
 pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionResult {
+    // When testing a saved connection without a freshly typed password, resolve the
+    // stored password from secure storage so the test uses real credentials.
+    let password = if input.password.is_empty() {
+        match input.profile_id.as_deref() {
+            Some(profile_id) => match credentials::get_password(profile_id) {
+                Ok(Some(stored)) => stored,
+                Ok(None) => String::new(),
+                Err(error) => {
+                    return TestConnectionResult {
+                        success: false,
+                        server_version: None,
+                        auth_method: None,
+                        ssl_status: None,
+                        connection_time_ms: None,
+                        error_message: Some(error),
+                    };
+                }
+            },
+            None => String::new(),
+        }
+    } else {
+        input.password
+    };
+
     let params = ConnectionParams {
         host: input.host,
         port: input.port,
         username: input.username,
-        password: input.password,
+        password,
         default_database: input.default_database,
         ssl_enabled: input.ssl_enabled,
         ssl_ca_path: input.ssl_ca_path,

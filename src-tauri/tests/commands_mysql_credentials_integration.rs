@@ -296,6 +296,7 @@ fn sample_test_connection_input() -> TestConnectionInput {
         port: 13306,
         username: "user".to_string(),
         password: "password".to_string(),
+        profile_id: None,
         default_database: Some("app".to_string()),
         ssl_enabled: false,
         ssl_ca_path: None,
@@ -770,6 +771,28 @@ async fn test_connection_impl_reports_connection_failures() {
         .error_message
         .expect("error should exist")
         .starts_with("Connection failed:"));
+}
+
+// Testing a saved connection with an empty form password resolves the stored
+// password from secure storage; a keychain failure is surfaced as the test error.
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn test_connection_impl_surfaces_keychain_errors_for_saved_password() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    common::fake_credentials::queue_fake_credential_error(
+        "No matching entry found in secure storage",
+    );
+    let mut input = sample_test_connection_input();
+    input.password = String::new();
+    input.profile_id = Some("conn-saved".to_string());
+
+    let result = test_connection_impl(input).await;
+
+    assert!(!result.success);
+    assert!(result
+        .error_message
+        .expect("error should exist")
+        .contains(&retrieve_password_prefix()));
 }
 
 #[tokio::test]

@@ -1284,6 +1284,7 @@ for (const theme of themes) {
 
     test('ColorPickerPopover — open', async ({ page }) => {
       await openConnectionManager(page)
+      await page.getByTestId('connection-form-tab-advanced').click()
       await page.getByRole('button', { name: 'Choose color' }).click()
       await expect(page.getByTestId('color-picker-popover')).toBeVisible()
       await expect(page.getByTestId('color-picker-popover')).toHaveScreenshot(
@@ -1293,6 +1294,7 @@ for (const theme of themes) {
 
     test('Dropdown — group list open', async ({ page }) => {
       await openConnectionManager(page)
+      await page.getByTestId('connection-form-tab-advanced').click()
       const formMain = page.getByTestId('connection-form-main')
       await formMain.locator('#conn-group').click()
       await expect(page.getByRole('listbox', { name: 'Group' })).toBeVisible()
@@ -1308,14 +1310,23 @@ for (const theme of themes) {
       )
     })
 
-    test('CollapsibleSection — SSL certificate files expanded', async ({ page }) => {
+    test('ConnectionForm — SSL tab', async ({ page }) => {
       await openConnectionManager(page)
-      await page
-        .getByTestId('ssl-certificate-section')
-        .getByRole('button', { name: /SSL certificate files/i })
-        .click()
-      await expect(page.getByTestId('ssl-certificate-section')).toHaveScreenshot(
-        `ssl-certificate-section-expanded-${theme}.png`
+      await page.getByTestId('connection-form-tab-ssl').click()
+      await expect(page.getByTestId('connection-form-panel-ssl')).toBeVisible()
+      await expect(page.getByTestId('connection-form-main')).toHaveScreenshot(
+        `connection-form-ssl-tab-${theme}.png`,
+        { animations: 'disabled', timeout: APP_READY_MS }
+      )
+    })
+
+    test('ConnectionForm — Advanced tab', async ({ page }) => {
+      await openConnectionManager(page)
+      await page.getByTestId('connection-form-tab-advanced').click()
+      await expect(page.getByTestId('connection-form-panel-advanced')).toBeVisible()
+      await expect(page.getByTestId('connection-form-main')).toHaveScreenshot(
+        `connection-form-advanced-tab-${theme}.png`,
+        { animations: 'disabled', timeout: APP_READY_MS }
       )
     })
 

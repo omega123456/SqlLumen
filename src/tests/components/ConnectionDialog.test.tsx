@@ -227,6 +227,87 @@ describe('ConnectionDialog', () => {
       })
     })
 
+    it('hover duplicate button seeds the form with "Copy of" data and empty password', async () => {
+      const user = userEvent.setup()
+      ipc.override('list_connections', () => [testConnection])
+
+      useConnectionStore.setState({ dialogOpen: true })
+      render(<ConnectionDialog />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByLabelText('Duplicate Test DB'))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Connection name')).toHaveValue('Copy of Test DB')
+      })
+      expect(screen.getByLabelText('Host address')).toHaveValue('127.0.0.1')
+      expect(screen.getByLabelText('Username')).toHaveValue('root')
+      expect(screen.getByLabelText('Password')).toHaveValue('')
+      expect(screen.getByLabelText('Default Database')).toHaveValue('mydb')
+      // Source had a password — the not-copied hint is shown
+      expect(screen.getByTestId('duplicate-password-hint')).toBeInTheDocument()
+      // Unsaved duplicate — no Delete button
+      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+    })
+
+    it('context menu Duplicate seeds the form as a new unsaved connection', async () => {
+      const user = userEvent.setup()
+      ipc.override('list_connections', () => [testConnection])
+      ipc.override('save_connection', () => 'dup-id')
+
+      useConnectionStore.setState({ dialogOpen: true })
+      render(<ConnectionDialog />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument()
+      })
+
+      fireEvent.contextMenu(screen.getByText('Test DB'))
+      await user.click(await screen.findByRole('menuitem', { name: 'Duplicate' }))
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Connection name')).toHaveValue('Copy of Test DB')
+      })
+
+      // Saving the duplicate creates a new connection (save, not update)
+      await user.click(screen.getByText('Save'))
+      await waitFor(() => {
+        expect(ipc.calls('save_connection')).toHaveLength(1)
+      })
+      expect(ipc.calls('update_connection')).toHaveLength(0)
+    })
+
+    it('selecting another connection clears the duplicate seed', async () => {
+      const user = userEvent.setup()
+      ipc.override('list_connections', () => [testConnection])
+
+      useConnectionStore.setState({ dialogOpen: true })
+      render(<ConnectionDialog />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Test DB')).toBeInTheDocument()
+      })
+
+      await user.click(screen.getByLabelText('Duplicate Test DB'))
+      await waitFor(() => {
+        expect(screen.getByLabelText('Connection name')).toHaveValue('Copy of Test DB')
+      })
+
+      await user.click(screen.getByText('Test DB'))
+      await waitFor(() => {
+        expect(screen.getByLabelText('Connection name')).toHaveValue('Test DB')
+      })
+
+      // "+ New" yields an empty form, not the duplicate seed
+      await user.click(screen.getByTitle('New connection'))
+      await waitFor(() => {
+        expect(screen.getByLabelText('Connection name')).toHaveValue('')
+      })
+    })
+
     it('renders the delete confirmation dialog inside the connection modal top layer', async () => {
       const user = userEvent.setup()
       ipc.override('list_connections', () => [testConnection])

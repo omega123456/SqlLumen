@@ -256,6 +256,7 @@ describe('testConnection', () => {
           port: 3306,
           username: 'root',
           password: 'secret',
+          profileId: null,
           defaultDatabase: 'mydb',
           sslEnabled: false,
           sslCaPath: null,
@@ -266,6 +267,14 @@ describe('testConnection', () => {
       },
     ])
     expect(result).toEqual(mockResult)
+  })
+
+  it('passes profileId so the backend can resolve the saved password', async () => {
+    ipc.override('test_connection', () => ({ success: true }))
+    await testConnection(sampleFormData, 'conn-42')
+
+    const invokeArgs = ipc.calls('test_connection')[0] as { input: Record<string, unknown> }
+    expect(invokeArgs.input.profileId).toBe('conn-42')
   })
 
   it('does not pass name, color, groupId, readOnly, or keepaliveIntervalSecs', async () => {

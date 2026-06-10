@@ -15,8 +15,8 @@ import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
 import { Dropdown } from '../common/Dropdown'
 import { ElevatedSurface } from '../common/ElevatedSurface'
+import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
-import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
 import { TestConnectionResult } from './TestConnectionResult'
 import type {
@@ -26,9 +26,46 @@ import type {
 } from '../../types/connection'
 import styles from './ConnectionForm.module.css'
 
+export interface ConnectionFormSeed {
+  data: ConnectionFormData
+  sourceHadPassword: boolean
+  key: number
+}
+
 interface ConnectionFormProps {
   editingConnection?: SavedConnection
   onDeleteConnection?: (id: string) => void
+  /** Prefill the form as a new, unsaved connection (used by Duplicate). */
+  initialData?: ConnectionFormSeed
+}
+
+type FormTab = 'general' | 'ssl' | 'advanced'
+
+const TAB_ORDER: FormTab[] = ['general', 'ssl', 'advanced']
+
+const TAB_LABELS: Record<FormTab, string> = {
+  general: 'General',
+  ssl: 'SSL',
+  advanced: 'Advanced',
+}
+
+const ACCESS_MODE_OPTIONS = [
+  { value: 'rw', label: 'Allow writes (read-write)' },
+  { value: 'ro', label: 'Read-only (block writes)' },
+]
+
+const FIELD_TAB: Record<string, FormTab> = {
+  name: 'general',
+  host: 'general',
+  port: 'general',
+  username: 'general',
+  connectTimeoutSecs: 'advanced',
+  keepaliveIntervalSecs: 'advanced',
+}
+
+function firstTabWithError(errors: FormErrors): FormTab | null {
+  const errorTabs = new Set(Object.keys(errors).map((field) => FIELD_TAB[field] ?? 'general'))
+  return TAB_ORDER.find((tab) => errorTabs.has(tab)) ?? null
 }
 
 /** Build default form data, reading connection defaults from settings store. */
@@ -146,10 +183,16 @@ function SslFileField({
   )
 }
 
-export function ConnectionForm({ editingConnection, onDeleteConnection }: ConnectionFormProps) {
+export function ConnectionForm({
+  editingConnection,
+  onDeleteConnection,
+  initialData,
+}: ConnectionFormProps) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const nameAutoFocusRef = useRef(true)
   const [formData, setFormData] = useState<ConnectionFormData>(getDefaultFormData)
   const [errors, setErrors] = useState<FormErrors>({})
+  const [activeTab, setActiveTab] = useState<FormTab>('general')
   const [showPassword, setShowPassword] = useState(false)
   const [hasSavedPassword, setHasSavedPassword] = useState(false)
   const [clearSavedPassword, setClearSavedPassword] = useState(false)
@@ -184,7 +227,8 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
     setDialogPortalRoot(null)
   }, [])
 
-  // Populate form when editingConnection changes
+  // Populate form when editingConnection or the duplicate seed changes.
+  // Precedence: editing > duplicate seed > defaults.
   useEffect(() => {
     if (editingConnection) {
       setDeletedConnectionId(null)
@@ -211,7 +255,7 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
       setDeleteConfirmOpen(false)
       setDeleteConfirmError(null)
     } else {
-      setFormData(getDefaultFormData())
+      setFormData(initialData ? { ...initialData.data } : getDefaultFormData())
       setSavedId(null)
       setHasSavedPassword(false)
       setClearSavedPassword(false)
@@ -221,7 +265,12 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
     }
     setErrors({})
     setTestResult(null)
-  }, [editingConnection])
+    setActiveTab('general')
+  }, [editingConnection, initialData])
+
+  useEffect(() => {
+    nameAutoFocusRef.current = false
+  }, [])
 
   const updateField = <K extends keyof ConnectionFormData>(
     field: K,
@@ -261,8 +310,16 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
   function runValidation(): boolean {
     const errs = validate(formData)
     setErrors(errs)
-    return Object.keys(errs).length === 0
+    const errorTab = firstTabWithError(errs)
+    if (errorTab) {
+      setActiveTab(errorTab)
+      return false
+    }
+    return true
   }
+
+  const tabHasError = (tab: FormTab): boolean =>
+    Object.keys(errors).some((field) => (FIELD_TAB[field] ?? 'general') === tab)
 
   const handleTestConnection = async () => {
     if (!runValidation()) {
@@ -272,7 +329,14 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
     setPendingAction('test')
     setTestResult(null)
     try {
-      const result = await testConnection(formData)
+      // Use the saved keychain password only when none was freshly typed and the
+      // user isn't explicitly clearing it.
+      const useSavedPassword =
+        hasSavedPassword && !clearSavedPassword && formData.password === ''
+      const result = await testConnection(
+        formData,
+        useSavedPassword ? currentConnectionId : null
+      )
       setTestResult(result)
     } catch (err) {
       const failure = buildErrorResult(err)
@@ -387,6 +451,23 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
   return (
     <div ref={rootRef} className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
+        <header className={styles.formHeader} data-testid="connection-form-header">
+          <span
+            className={styles.formHeaderDot}
+            style={{ background: formData.color ?? 'var(--outline-variant)' }}
+            aria-hidden
+          />
+          <div className={styles.formHeaderText}>
+            <h3 className={styles.formHeaderName}>
+              {formData.name.trim() || formData.host.trim() || 'New Connection'}
+            </h3>
+            <span className={styles.formHeaderMeta}>
+              {formData.host.trim()
+                ? `${formData.username.trim() ? `${formData.username.trim()}@` : ''}${formData.host.trim()}:${formData.port}`
+                : 'Configure the parameters for your MySQL instance.'}
+            </span>
+          </div>
+        </header>
         <ElevatedSurface className={styles.resultCard}>
           <div className={styles.testResultSlot}>
             <TestConnectionResult result={testResult} />
@@ -400,9 +481,22 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
               e.preventDefault()
             }}
           >
-            <p className={styles.formIntro}>Configure the parameters for your MySQL instance.</p>
+            <UnderlineTabBar className={styles.formTabBar} data-testid="connection-form-tabs">
+              {TAB_ORDER.map((tab) => (
+                <UnderlineTab
+                  key={tab}
+                  active={activeTab === tab}
+                  onClick={() => setActiveTab(tab)}
+                  data-testid={`connection-form-tab-${tab}`}
+                >
+                  {TAB_LABELS[tab]}
+                  {tabHasError(tab) && <span className={styles.tabErrorDot} aria-label="Has errors" />}
+                </UnderlineTab>
+              ))}
+            </UnderlineTabBar>
 
-            <div className={styles.fieldGrid}>
+            {activeTab === 'general' && (
+              <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-general">
               <div className={styles.fieldGroup}>
                 <label htmlFor="conn-name" className={styles.labelCaps}>
                   Connection name
@@ -415,7 +509,7 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
                   value={formData.name}
                   onChange={(e) => updateField('name', e.target.value)}
                   placeholder="My production server"
-                  autoFocus
+                  autoFocus={nameAutoFocusRef.current}
                 />
                 {errors.name && <span className={styles.errorText}>{errors.name}</span>}
               </div>
@@ -500,6 +594,11 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
                       {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
+                  {!editingConnection && savedId === null && initialData?.sourceHadPassword && (
+                    <span className={styles.fieldHint} data-testid="duplicate-password-hint">
+                      Password is not copied — enter it to save.
+                    </span>
+                  )}
                   {hasSavedPassword && (
                     <label className={styles.label}>
                       <Checkbox
@@ -518,23 +617,85 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
                 </div>
               </div>
 
-              <div className={styles.detailsAdvancedBlock}>
-                <div className={styles.row2}>
-                  <div className={styles.fieldGroup}>
-                    <label htmlFor="conn-database" className={styles.label}>
-                      Default Database
-                    </label>
-                    <TextInput
-                      id="conn-database"
-                      type="text"
-                      variant="mono"
-                      value={formData.defaultDatabase ?? ''}
-                      onChange={(e) => updateField('defaultDatabase', e.target.value || null)}
-                      placeholder="mydb"
+                <div className={styles.fieldGroup}>
+                  <label htmlFor="conn-database" className={styles.labelCaps}>
+                    Default Database
+                  </label>
+                  <TextInput
+                    id="conn-database"
+                    type="text"
+                    variant="mono"
+                    value={formData.defaultDatabase ?? ''}
+                    onChange={(e) => updateField('defaultDatabase', e.target.value || null)}
+                    placeholder="mydb"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'ssl' && (
+              <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-ssl">
+                <div className={styles.sslBlock}>
+                  <div className={styles.sslCheckboxWrap}>
+                    <Checkbox
+                      id="ssl-enabled"
+                      checked={formData.sslEnabled}
+                      onChange={(e) => updateField('sslEnabled', e.target.checked)}
+                      aria-label="Use SSL / TLS"
                     />
                   </div>
+                  <div className={styles.sslCopy}>
+                    <span className={styles.sslTitle}>Use SSL / TLS</span>
+                    <span className={styles.sslHint}>
+                      Required for AWS RDS and many managed clusters.
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.sslFiles} data-testid="ssl-certificate-section">
+                  <SslFileField
+                    id="ssl-ca"
+                    label="CA Certificate"
+                    value={formData.sslCaPath ?? ''}
+                    onChange={(val) => updateField('sslCaPath', val || null)}
+                    onBrowse={() => void handleBrowseFile('sslCaPath')}
+                    disabled={!formData.sslEnabled}
+                    browseLabel="Browse CA certificate"
+                    placeholder="/path/to/ca.pem"
+                  />
+                  <SslFileField
+                    id="ssl-cert"
+                    label="Client Certificate"
+                    value={formData.sslCertPath ?? ''}
+                    onChange={(val) => updateField('sslCertPath', val || null)}
+                    onBrowse={() => void handleBrowseFile('sslCertPath')}
+                    disabled={!formData.sslEnabled}
+                    browseLabel="Browse client certificate"
+                    placeholder="/path/to/client-cert.pem"
+                  />
+                  <SslFileField
+                    id="ssl-key"
+                    label="Client Key"
+                    value={formData.sslKeyPath ?? ''}
+                    onChange={(val) => updateField('sslKeyPath', val || null)}
+                    onBrowse={() => void handleBrowseFile('sslKeyPath')}
+                    disabled={!formData.sslEnabled}
+                    browseLabel="Browse client key"
+                    placeholder="/path/to/client-key.pem"
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'advanced' && (
+              <div
+                className={styles.tabPanel}
+                role="tabpanel"
+                data-testid="connection-form-panel-advanced"
+              >
+                <div className={styles.rowEvenSplit}>
                   <div className={styles.fieldGroup}>
-                    <label id="conn-group-label" htmlFor="conn-group" className={styles.label}>
+                    <label id="conn-group-label" htmlFor="conn-group" className={styles.labelCaps}>
                       Group
                     </label>
                     <Dropdown
@@ -545,22 +706,36 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
                       onChange={(v) => updateField('groupId', v || null)}
                     />
                   </div>
+                  <div className={styles.fieldGroup}>
+                    <label id="conn-access-label" htmlFor="conn-access" className={styles.labelCaps}>
+                      Access mode
+                    </label>
+                    <Dropdown
+                      id="conn-access"
+                      labelledBy="conn-access-label"
+                      options={ACCESS_MODE_OPTIONS}
+                      value={formData.readOnly ? 'ro' : 'rw'}
+                      onChange={(v) => updateField('readOnly', v === 'ro')}
+                    />
+                  </div>
                 </div>
 
-                <div className={styles.toggleRow}>
-                  <label htmlFor="read-only" className={styles.label}>
-                    Read Only
-                  </label>
-                  <Checkbox
-                    id="read-only"
-                    checked={formData.readOnly}
-                    onChange={(e) => updateField('readOnly', e.target.checked)}
-                  />
+                <div className={styles.fieldGroup}>
+                  <span className={styles.labelCaps}>Tab color</span>
+                  <div className={styles.tabColorRow}>
+                    <ColorPickerPopover
+                      color={formData.color}
+                      onChange={(color) => updateField('color', color)}
+                    />
+                    <span className={styles.tabColorValue}>
+                      {formData.color ?? 'No color set'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className={styles.rowTimeouts}>
                   <div className={styles.fieldGroup}>
-                    <label htmlFor="connect-timeout" className={styles.label}>
+                    <label htmlFor="connect-timeout" className={styles.labelCaps}>
                       Connect Timeout
                     </label>
                     <div className={styles.numberInputRow}>
@@ -584,7 +759,7 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
                     )}
                   </div>
                   <div className={styles.fieldGroup}>
-                    <label htmlFor="keepalive" className={styles.label}>
+                    <label htmlFor="keepalive" className={styles.labelCaps}>
                       Keepalive Interval
                     </label>
                     <div className={styles.numberInputRow}>
@@ -609,75 +784,7 @@ export function ConnectionForm({ editingConnection, onDeleteConnection }: Connec
                   </div>
                 </div>
               </div>
-
-              <div className={styles.sslTabRow}>
-                <div className={styles.sslBlock}>
-                  <div className={styles.sslCheckboxWrap}>
-                    <Checkbox
-                      id="ssl-enabled"
-                      checked={formData.sslEnabled}
-                      onChange={(e) => updateField('sslEnabled', e.target.checked)}
-                      aria-label="Use SSL / TLS"
-                    />
-                  </div>
-                  <div className={styles.sslCopy}>
-                    <span className={styles.sslTitle}>Use SSL / TLS</span>
-                    <span className={styles.sslHint}>
-                      Required for AWS RDS and many managed clusters.
-                    </span>
-                  </div>
-                </div>
-                <div className={styles.tabColorBlock}>
-                  <span className={styles.labelCaps}>Tab color</span>
-                  <div className={styles.tabColorPickerShell}>
-                    <ColorPickerPopover
-                      color={formData.color}
-                      onChange={(color) => updateField('color', color)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.moreSections}>
-                <CollapsibleSection
-                  title="SSL certificate files"
-                  sectionTestId="ssl-certificate-section"
-                >
-                  <div className={styles.sectionContent}>
-                    <SslFileField
-                      id="ssl-ca"
-                      label="CA Certificate"
-                      value={formData.sslCaPath ?? ''}
-                      onChange={(val) => updateField('sslCaPath', val || null)}
-                      onBrowse={() => void handleBrowseFile('sslCaPath')}
-                      disabled={!formData.sslEnabled}
-                      browseLabel="Browse CA certificate"
-                      placeholder="/path/to/ca.pem"
-                    />
-                    <SslFileField
-                      id="ssl-cert"
-                      label="Client Certificate"
-                      value={formData.sslCertPath ?? ''}
-                      onChange={(val) => updateField('sslCertPath', val || null)}
-                      onBrowse={() => void handleBrowseFile('sslCertPath')}
-                      disabled={!formData.sslEnabled}
-                      browseLabel="Browse client certificate"
-                      placeholder="/path/to/client-cert.pem"
-                    />
-                    <SslFileField
-                      id="ssl-key"
-                      label="Client Key"
-                      value={formData.sslKeyPath ?? ''}
-                      onChange={(val) => updateField('sslKeyPath', val || null)}
-                      onBrowse={() => void handleBrowseFile('sslKeyPath')}
-                      disabled={!formData.sslEnabled}
-                      browseLabel="Browse client key"
-                      placeholder="/path/to/client-key.pem"
-                    />
-                  </div>
-                </CollapsibleSection>
-              </div>
-            </div>
+            )}
           </form>
         </ElevatedSurface>
       </div>
