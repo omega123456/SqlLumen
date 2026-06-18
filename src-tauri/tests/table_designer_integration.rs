@@ -57,6 +57,7 @@ fn foreign_key(name: &str, column_name: &str) -> DesignerForeignKeyDef {
     DesignerForeignKeyDef {
         name: name.to_string(),
         source_column: column_name.to_string(),
+        referenced_database: "appdb".to_string(),
         referenced_table: "roles".to_string(),
         referenced_column: "id".to_string(),
         on_delete: "CASCADE".to_string(),
@@ -209,8 +210,22 @@ fn test_create_table_with_fk() {
         .push(foreign_key("fk_users_role", "role_id"));
 
     let ddl = generate_create_table_ddl(&table, "appdb");
-    assert!(ddl
-        .contains("CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`)"));
+    assert!(ddl.contains(
+        "CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `appdb`.`roles` (`id`)"
+    ));
+}
+
+#[test]
+fn test_create_table_with_cross_database_fk() {
+    let mut table = schema(vec![column("role_id")]);
+    let mut fk = foreign_key("fk_users_role", "role_id");
+    fk.referenced_database = "authdb".to_string();
+    table.foreign_keys.push(fk);
+
+    let ddl = generate_create_table_ddl(&table, "appdb");
+    assert!(ddl.contains(
+        "CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `authdb`.`roles` (`id`)"
+    ));
 }
 
 #[test]
@@ -354,7 +369,21 @@ fn test_alter_add_fk() {
 
     let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
     assert!(ddl.contains(
-        "ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`)"
+        "ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `appdb`.`roles` (`id`)"
+    ));
+}
+
+#[test]
+fn test_alter_add_cross_database_fk() {
+    let original = schema(vec![column("role_id")]);
+    let mut current = schema(vec![column("role_id")]);
+    let mut fk = foreign_key("fk_users_role", "role_id");
+    fk.referenced_database = "authdb".to_string();
+    current.foreign_keys.push(fk);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(ddl.contains(
+        "ADD CONSTRAINT `fk_users_role` FOREIGN KEY (`role_id`) REFERENCES `authdb`.`roles` (`id`)"
     ));
 }
 
@@ -484,7 +513,7 @@ fn test_alter_clause_order() {
     let add_index = ddl
         .find("ADD UNIQUE KEY `uniq_name` (`name`)")
         .expect("missing add index");
-    let add_fk = ddl.find("ADD CONSTRAINT `fk_users_role_new` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION").expect("missing add fk");
+    let add_fk = ddl.find("ADD CONSTRAINT `fk_users_role_new` FOREIGN KEY (`role_id`) REFERENCES `appdb`.`roles` (`id`) ON DELETE CASCADE ON UPDATE NO ACTION").expect("missing add fk");
     let table_option = ddl.find("ENGINE=InnoDB").expect("missing table option");
 
     assert!(drop_fk < drop_index);
@@ -1210,6 +1239,10 @@ fn test_load_columns_query_returns_sql() {
         fk_sql.contains("REFERENTIAL_CONSTRAINTS"),
         "should query FK tables"
     );
+    assert!(
+        fk_sql.contains("REFERENCED_TABLE_SCHEMA"),
+        "should include the referenced database"
+    );
 }
 
 // ── ALTER TABLE: unchanged index is not dropped or re-added ──────
@@ -1658,6 +1691,11 @@ mod command_wrapper_integration {
                     },
                     MockColumnDef {
                         name: "COLUMN_NAME",
+                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                        colflags: ColumnFlags::NOT_NULL_FLAG,
+                    },
+                    MockColumnDef {
+                        name: "REFERENCED_TABLE_SCHEMA",
                         coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
                         colflags: ColumnFlags::NOT_NULL_FLAG,
                     },

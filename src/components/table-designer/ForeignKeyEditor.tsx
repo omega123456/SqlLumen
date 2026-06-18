@@ -1,13 +1,13 @@
 import { Link, Trash } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { listColumns, listSchemaObjects } from '../../lib/schema-commands'
+import { logFrontend } from '../../lib/app-log-commands'
+import { listColumns, listDatabases, listSchemaObjects } from '../../lib/schema-commands'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import styles from './ForeignKeyEditor.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
 interface ForeignKeyEditorProps {
   tabId: string
 }
@@ -19,6 +19,10 @@ const ACTION_DROPDOWN_OPTIONS: DropdownOption[] = ACTION_OPTIONS.map((action) =>
   label: action,
 }))
 
+function makeReferencedTargetKey(database: string, table: string): string {
+  return `${database}\u0000${table}`
+}
+
 export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
   const addForeignKey = useTableDesignerStore((state) => state.addForeignKey)
@@ -26,13 +30,21 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   const updateForeignKey = useTableDesignerStore((state) => state.updateForeignKey)
 
   const [selectedRow, setSelectedRow] = useState<number | null>(null)
-  const [referencedTables, setReferencedTables] = useState<string[]>([])
-  const [isTablesLoading, setIsTablesLoading] = useState(false)
-  const [referencedColumnsByTable, setReferencedColumnsByTable] = useState<
+  const [availableDatabases, setAvailableDatabases] = useState<string[]>([])
+  const [isDatabasesLoading, setIsDatabasesLoading] = useState(false)
+  const [referencedTablesByDatabase, setReferencedTablesByDatabase] = useState<
     Record<string, string[]>
   >({})
-  const [loadingColumnsByTable, setLoadingColumnsByTable] = useState<Record<string, boolean>>({})
+  const [loadingTablesByDatabase, setLoadingTablesByDatabase] = useState<Record<string, boolean>>(
+    {}
+  )
+  const [referencedColumnsByTarget, setReferencedColumnsByTarget] = useState<
+    Record<string, string[]>
+  >({})
+  const [loadingColumnsByTarget, setLoadingColumnsByTarget] = useState<Record<string, boolean>>({})
 
+  const loadedTablesRef = useRef<Set<string>>(new Set())
+  const loadingTablesRef = useRef<Set<string>>(new Set())
   const loadedTableColumnsRef = useRef<Set<string>>(new Set())
   const loadingTableColumnsRef = useRef<Set<string>>(new Set())
 
@@ -59,13 +71,19 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
     [columnNames]
   )
 
-  const referencedTableOptions: DropdownOption[] = useMemo(() => {
+  const databaseOptions: DropdownOption[] = useMemo(() => {
     const placeholder: DropdownOption = {
       value: '',
-      label: isTablesLoading ? 'Loading tables...' : 'Select table',
+      label: isDatabasesLoading ? 'Loading databases...' : 'Select database',
     }
-    return [placeholder, ...referencedTables.map((t) => ({ value: t, label: t }))]
-  }, [isTablesLoading, referencedTables])
+
+    const databases = new Set(availableDatabases)
+    if (databaseName) {
+      databases.add(databaseName)
+    }
+
+    return [placeholder, ...Array.from(databases).map((name) => ({ value: name, label: name }))]
+  }, [availableDatabases, databaseName, isDatabasesLoading])
 
   useEffect(() => {
     if (!connectionId || !databaseName) {
@@ -75,28 +93,30 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
     let cancelled = false
     queueMicrotask(() => {
       if (!cancelled) {
-        setIsTablesLoading(true)
+        setIsDatabasesLoading(true)
       }
     })
 
-    void listSchemaObjects(connectionId, databaseName, 'table')
-      .then((tables) => {
+    void listDatabases(connectionId)
+      .then((databases) => {
         if (!cancelled) {
-          setReferencedTables(tables)
+          setAvailableDatabases(
+            databases.includes(databaseName) ? databases : [databaseName, ...databases]
+          )
         }
       })
       .catch((error) => {
         logFrontend(
           'error',
-          ['[foreign-key-editor] Failed to load referenced tables', error].map(String).join(' ')
+          ['[foreign-key-editor] Failed to load referenced databases', error].map(String).join(' ')
         )
         if (!cancelled) {
-          setReferencedTables([])
+          setAvailableDatabases(databaseName ? [databaseName] : [])
         }
       })
       .finally(() => {
         if (!cancelled) {
-          setIsTablesLoading(false)
+          setIsDatabasesLoading(false)
         }
       })
 
@@ -106,11 +126,15 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   }, [connectionId, databaseName])
 
   useEffect(() => {
+    loadedTablesRef.current = new Set()
+    loadingTablesRef.current = new Set()
     loadedTableColumnsRef.current = new Set()
     loadingTableColumnsRef.current = new Set()
     queueMicrotask(() => {
-      setReferencedColumnsByTable({})
-      setLoadingColumnsByTable({})
+      setReferencedTablesByDatabase({})
+      setLoadingTablesByDatabase({})
+      setReferencedColumnsByTarget({})
+      setLoadingColumnsByTarget({})
     })
   }, [connectionId, databaseName])
 
@@ -119,34 +143,102 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
       return
     }
 
-    const referencedTableNames = Array.from(
+    const referencedDatabases = Array.from(
       new Set(
         foreignKeys
-          .map((foreignKey) => foreignKey.referencedTable.trim())
-          .filter((referencedTable) => referencedTable !== '')
+          .map((foreignKey) => (foreignKey.referencedDatabase || databaseName).trim())
+          .filter((referencedDatabase) => referencedDatabase !== '')
       )
     )
 
-    referencedTableNames.forEach((referencedTable) => {
+    referencedDatabases.forEach((referencedDatabase) => {
       if (
-        loadedTableColumnsRef.current.has(referencedTable) ||
-        loadingTableColumnsRef.current.has(referencedTable)
+        loadedTablesRef.current.has(referencedDatabase) ||
+        loadingTablesRef.current.has(referencedDatabase)
       ) {
         return
       }
 
-      loadingTableColumnsRef.current.add(referencedTable)
-      setLoadingColumnsByTable((current) => ({
+      loadingTablesRef.current.add(referencedDatabase)
+      setLoadingTablesByDatabase((current) => ({
         ...current,
-        [referencedTable]: true,
+        [referencedDatabase]: true,
       }))
 
-      void listColumns(connectionId, databaseName, referencedTable)
-        .then((loadedColumns) => {
-          loadedTableColumnsRef.current.add(referencedTable)
-          setReferencedColumnsByTable((current) => ({
+      void listSchemaObjects(connectionId, referencedDatabase, 'table')
+        .then((tables) => {
+          loadedTablesRef.current.add(referencedDatabase)
+          setReferencedTablesByDatabase((current) => ({
             ...current,
-            [referencedTable]: loadedColumns.map((column) => column.name),
+            [referencedDatabase]: tables,
+          }))
+        })
+        .catch((error) => {
+          logFrontend(
+            'error',
+            ['[foreign-key-editor] Failed to load referenced tables', error].map(String).join(' ')
+          )
+          setReferencedTablesByDatabase((current) => ({
+            ...current,
+            [referencedDatabase]: [],
+          }))
+        })
+        .finally(() => {
+          loadingTablesRef.current.delete(referencedDatabase)
+          setLoadingTablesByDatabase((current) => ({
+            ...current,
+            [referencedDatabase]: false,
+          }))
+        })
+    })
+  }, [connectionId, databaseName, foreignKeys])
+
+  useEffect(() => {
+    if (!connectionId || !databaseName) {
+      return
+    }
+
+    const referencedTargets = Array.from(
+      new Set(
+        foreignKeys
+          .map((foreignKey) => {
+            const referencedDatabase = (foreignKey.referencedDatabase || databaseName).trim()
+            const referencedTable = foreignKey.referencedTable.trim()
+            if (referencedDatabase === '' || referencedTable === '') {
+              return ''
+            }
+
+            return makeReferencedTargetKey(referencedDatabase, referencedTable)
+          })
+          .filter((targetKey) => targetKey !== '')
+      )
+    )
+
+    referencedTargets.forEach((targetKey) => {
+      if (
+        loadedTableColumnsRef.current.has(targetKey) ||
+        loadingTableColumnsRef.current.has(targetKey)
+      ) {
+        return
+      }
+
+      const [referencedDatabase, referencedTable] = targetKey.split('\u0000')
+      if (!referencedDatabase || !referencedTable) {
+        return
+      }
+
+      loadingTableColumnsRef.current.add(targetKey)
+      setLoadingColumnsByTarget((current) => ({
+        ...current,
+        [targetKey]: true,
+      }))
+
+      void listColumns(connectionId, referencedDatabase, referencedTable)
+        .then((loadedColumns) => {
+          loadedTableColumnsRef.current.add(targetKey)
+          setReferencedColumnsByTarget((current) => ({
+            ...current,
+            [targetKey]: loadedColumns.map((column) => column.name),
           }))
         })
         .catch((error) => {
@@ -154,16 +246,16 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
             'error',
             ['[foreign-key-editor] Failed to load referenced columns', error].map(String).join(' ')
           )
-          setReferencedColumnsByTable((current) => ({
+          setReferencedColumnsByTarget((current) => ({
             ...current,
-            [referencedTable]: [],
+            [targetKey]: [],
           }))
         })
         .finally(() => {
-          loadingTableColumnsRef.current.delete(referencedTable)
-          setLoadingColumnsByTable((current) => ({
+          loadingTableColumnsRef.current.delete(targetKey)
+          setLoadingColumnsByTarget((current) => ({
             ...current,
-            [referencedTable]: false,
+            [targetKey]: false,
           }))
         })
     })
@@ -240,6 +332,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                 '#',
                 'FK Name',
                 'Source Column',
+                'Referenced DB',
                 'Referenced Table',
                 'Referenced Column',
                 'On Delete',
@@ -274,7 +367,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                     <td className={styles.bodyCell}>
                       <span className={styles.readonlyText}>{foreignKey.name || '—'}</span>
                     </td>
-                    <td className={styles.bodyCell} colSpan={4}>
+                    <td className={styles.bodyCell} colSpan={5}>
                       <div
                         className={styles.compositeCell}
                         data-testid={`fk-composite-badge-${fkIndex}`}
@@ -284,6 +377,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                           <span>{foreignKey.sourceColumn || '—'}</span>
                           <span>→</span>
                           <span>
+                            {foreignKey.referencedDatabase || databaseName || '—'}.
                             {foreignKey.referencedTable || '—'}.{foreignKey.referencedColumn || '—'}
                           </span>
                         </div>
@@ -300,10 +394,29 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                 )
               }
 
+              const referencedDatabase = foreignKey.referencedDatabase || databaseName || ''
+              const referencedTableOptions: DropdownOption[] = [
+                {
+                  value: '',
+                  label: loadingTablesByDatabase[referencedDatabase]
+                    ? 'Loading tables...'
+                    : 'Select table',
+                },
+                ...(referencedTablesByDatabase[referencedDatabase] ?? []).map((tableName) => ({
+                  value: tableName,
+                  label: tableName,
+                })),
+              ]
+              const referencedTargetKey =
+                referencedDatabase !== '' && foreignKey.referencedTable !== ''
+                  ? makeReferencedTargetKey(referencedDatabase, foreignKey.referencedTable)
+                  : ''
               const referencedColumnOptions =
-                referencedColumnsByTable[foreignKey.referencedTable] ?? []
+                referencedTargetKey === ''
+                  ? []
+                  : (referencedColumnsByTarget[referencedTargetKey] ?? [])
               const isReferencedColumnLoading = Boolean(
-                foreignKey.referencedTable && loadingColumnsByTable[foreignKey.referencedTable]
+                referencedTargetKey && loadingColumnsByTarget[referencedTargetKey]
               )
 
               return (
@@ -338,7 +451,29 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         options={sourceColumnOptions}
                         value={foreignKey.sourceColumn}
                         data-testid={`fk-source-column-${fkIndex}`}
-                        onChange={(v) => updateForeignKey(tabId, fkIndex, 'sourceColumn', v)}
+                        onChange={(value) =>
+                          updateForeignKey(tabId, fkIndex, 'sourceColumn', value)
+                        }
+                        workspaceTabId={tabId}
+                        triggerClassName={`${styles.cellSelect} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
+                    </div>
+                  </td>
+                  <td className={styles.bodyCell}>
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Dropdown
+                        id={`fk-referenced-database-${tabId}-${fkIndex}`}
+                        ariaLabel="Referenced database"
+                        options={databaseOptions}
+                        value={referencedDatabase}
+                        data-testid={`fk-referenced-database-${fkIndex}`}
+                        onChange={(value) => {
+                          updateForeignKey(tabId, fkIndex, 'referencedDatabase', value)
+                          updateForeignKey(tabId, fkIndex, 'referencedTable', '')
+                          updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
+                        }}
                         workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
@@ -354,14 +489,15 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         options={referencedTableOptions}
                         value={foreignKey.referencedTable}
                         data-testid={`fk-referenced-table-${fkIndex}`}
-                        onChange={(v) => {
-                          updateForeignKey(tabId, fkIndex, 'referencedTable', v)
+                        onChange={(value) => {
+                          updateForeignKey(tabId, fkIndex, 'referencedTable', value)
                           updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
                         }}
                         workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
                         }`}
+                        disabled={referencedDatabase === ''}
                       />
                     </div>
                   </td>
@@ -385,7 +521,9 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                           ]}
                           value={foreignKey.referencedColumn}
                           data-testid={`fk-referenced-column-${fkIndex}`}
-                          onChange={(v) => updateForeignKey(tabId, fkIndex, 'referencedColumn', v)}
+                          onChange={(value) =>
+                            updateForeignKey(tabId, fkIndex, 'referencedColumn', value)
+                          }
                           workspaceTabId={tabId}
                           triggerClassName={`${styles.cellSelect} ${
                             isSelected ? styles.activeInput : styles.inactiveInput
@@ -415,7 +553,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         options={ACTION_DROPDOWN_OPTIONS}
                         value={foreignKey.onDelete}
                         data-testid={`fk-on-delete-${fkIndex}`}
-                        onChange={(v) => updateForeignKey(tabId, fkIndex, 'onDelete', v)}
+                        onChange={(value) => updateForeignKey(tabId, fkIndex, 'onDelete', value)}
                         workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
@@ -431,7 +569,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         options={ACTION_DROPDOWN_OPTIONS}
                         value={foreignKey.onUpdate}
                         data-testid={`fk-on-update-${fkIndex}`}
-                        onChange={(v) => updateForeignKey(tabId, fkIndex, 'onUpdate', v)}
+                        onChange={(value) => updateForeignKey(tabId, fkIndex, 'onUpdate', value)}
                         workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput

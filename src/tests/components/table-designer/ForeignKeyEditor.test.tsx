@@ -80,6 +80,7 @@ function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesi
         {
           name: 'fk_users_role',
           sourceColumn: 'role_id',
+          referencedDatabase: 'app_db',
           referencedTable: 'roles',
           referencedColumn: 'id',
           onDelete: 'CASCADE',
@@ -89,6 +90,7 @@ function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesi
         {
           name: 'fk_users_team_membership',
           sourceColumn: 'role_id,team_id',
+          referencedDatabase: 'app_db',
           referencedTable: 'teams',
           referencedColumn: 'role_id,team_id',
           onDelete: 'NO ACTION',
@@ -131,9 +133,25 @@ describe('ForeignKeyEditor', () => {
   beforeEach(() => {
     useTableDesignerStore.getState().cleanupTab('tab-1')
     useTableDesignerStore.setState({ tabs: {} })
+    ipc.override('list_databases', () => ['app_db', 'audit_db'])
     ipc.override('list_schema_objects', () => ['roles', 'teams'])
     ipc.override('list_columns', (args) => {
+      const database = (args as { database?: string })?.database
       const table = (args as { table?: string })?.table
+      if (database === 'audit_db' && table === 'audit_roles') {
+        return [
+          {
+            name: 'audit_id',
+            dataType: 'INT',
+            nullable: false,
+            columnKey: 'PRI',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 1,
+          },
+        ]
+      }
+
       if (table === 'roles') {
         return [
           {
@@ -239,6 +257,7 @@ describe('ForeignKeyEditor', () => {
 
     expect(await screen.findByTestId('fk-name-0')).toBeInTheDocument()
     expect(screen.getByTestId('fk-source-column-0')).toBeInTheDocument()
+    expect(screen.getByTestId('fk-referenced-database-0')).toBeInTheDocument()
     expect(screen.getByTestId('fk-referenced-table-0')).toBeInTheDocument()
     expect(screen.getByTestId('fk-referenced-column-0')).toBeInTheDocument()
   })
@@ -271,9 +290,47 @@ describe('ForeignKeyEditor', () => {
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.foreignKeys[0]
     ).toMatchObject({
+      referencedDatabase: 'app_db',
       referencedTable: 'teams',
       referencedColumn: '',
     })
+  })
+
+  it('changing referenced database clears table and column and loads tables from that database', async () => {
+    const user = userEvent.setup()
+    ipc.override('list_schema_objects', (args) => {
+      const database = (args as { database?: string })?.database
+      if (database === 'audit_db') {
+        return ['audit_roles']
+      }
+
+      return ['roles', 'teams']
+    })
+
+    seedStore()
+    render(<ForeignKeyEditor tabId="tab-1" />)
+
+    await user.click(await screen.findByTestId('fk-referenced-database-0'))
+    await user.click(screen.getByRole('option', { name: 'audit_db' }))
+
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.foreignKeys[0]
+    ).toMatchObject({
+      referencedDatabase: 'audit_db',
+      referencedTable: '',
+      referencedColumn: '',
+    })
+
+    await waitFor(() => {
+      expect(ipc.calls('list_schema_objects')).toContainEqual({
+        connectionId: 'conn-1',
+        database: 'audit_db',
+        objectType: 'table',
+      })
+    })
+
+    await user.click(screen.getByTestId('fk-referenced-table-0'))
+    expect(screen.getByRole('option', { name: 'audit_roles' })).toBeInTheDocument()
   })
 
   it('ON DELETE and ON UPDATE dropdowns update store', async () => {
@@ -310,6 +367,49 @@ describe('ForeignKeyEditor', () => {
     await user.click(await screen.findByTestId('fk-referenced-column-0'))
     const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
     expect(labels).toEqual(['Select column', 'id'])
+  })
+
+  it('loads referenced columns from the selected database', async () => {
+    const user = userEvent.setup()
+    ipc.override('list_schema_objects', (args) => {
+      const database = (args as { database?: string })?.database
+      if (database === 'audit_db') {
+        return ['audit_roles']
+      }
+
+      return ['roles', 'teams']
+    })
+
+    seedStore({
+      currentSchema: {
+        ...makeTabState().currentSchema,
+        foreignKeys: [
+          {
+            name: 'fk_users_role',
+            sourceColumn: 'role_id',
+            referencedDatabase: 'audit_db',
+            referencedTable: 'audit_roles',
+            referencedColumn: 'audit_id',
+            onDelete: 'CASCADE',
+            onUpdate: 'RESTRICT',
+            isComposite: false,
+          },
+        ],
+      },
+    })
+    render(<ForeignKeyEditor tabId="tab-1" />)
+
+    await waitFor(() => {
+      expect(ipc.calls('list_columns')).toContainEqual({
+        connectionId: 'conn-1',
+        database: 'audit_db',
+        table: 'audit_roles',
+      })
+    })
+
+    await user.click(await screen.findByTestId('fk-referenced-column-0'))
+    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(labels).toEqual(['Select column', 'audit_id'])
   })
 
   it('falls back to text input when referenced table columns are unavailable', async () => {

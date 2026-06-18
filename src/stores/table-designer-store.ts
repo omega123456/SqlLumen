@@ -717,6 +717,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         schema.foreignKeys.push({
           name: '',
           sourceColumn: '',
+          referencedDatabase: tab.databaseName,
           referencedTable: '',
           referencedColumn: '',
           onDelete: 'NO ACTION',

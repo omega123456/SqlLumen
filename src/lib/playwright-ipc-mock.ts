@@ -536,6 +536,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'fk_orders_user',
             sourceColumn: 'id',
+            referencedDatabase: 'ecommerce_db',
             referencedTable: 'roles',
             referencedColumn: 'id',
             onDelete: 'CASCADE',
@@ -545,6 +546,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'fk_composite_example',
             sourceColumn: 'id',
+            referencedDatabase: 'ecommerce_db',
             referencedTable: 'composite_table',
             referencedColumn: 'id',
             onDelete: 'NO ACTION',

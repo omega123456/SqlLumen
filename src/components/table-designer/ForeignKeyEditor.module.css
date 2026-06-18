@@ -26,9 +26,57 @@
 
 .table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1580px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+.table th:nth-child(1),
+.table td:nth-child(1) {
+  width: 16px;
+}
+
+.table th:nth-child(2),
+.table td:nth-child(2) {
+  width: 40px;
+}
+
+.table th:nth-child(3),
+.table td:nth-child(3) {
+  width: 215px;
+}
+
+.table th:nth-child(4),
+.table td:nth-child(4) {
+  width: 150px;
+}
+
+.table th:nth-child(5),
+.table td:nth-child(5) {
+  width: 212px;
+}
+
+.table th:nth-child(6),
+.table td:nth-child(6) {
+  width: 212px;
+}
+
+.table th:nth-child(7),
+.table td:nth-child(7) {
+  width: 200px;
+}
+
+.table th:nth-child(8),
+.table td:nth-child(8),
+.table th:nth-child(9),
+.table td:nth-child(9) {
+  width: 150px;
+}
+
+.table th:nth-child(10),
+.table td:nth-child(10) {
+  width: 42px;
 }
 
 .tableHead {

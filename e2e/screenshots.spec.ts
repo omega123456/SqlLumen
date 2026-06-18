@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
   activateResultGridCell,
@@ -1196,6 +1196,13 @@ async function resetChromeScrollPositions(page: Page) {
   await page.mouse.move(0, 0)
 }
 
+async function waitForAnimationsToFinish(locator: Locator) {
+  await locator.evaluate(async (element) => {
+    const animations = element.getAnimations({ subtree: true })
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)))
+  })
+}
+
 for (const theme of themes) {
   test.describe(`visual regression (${theme})`, () => {
     test.describe.configure({ timeout: SCREENSHOT_TEST_TIMEOUT_MS })
@@ -1296,9 +1303,15 @@ for (const theme of themes) {
       await openConnectionManager(page)
       await page.getByTestId('connection-form-tab-advanced').click()
       const formMain = page.getByTestId('connection-form-main')
+      const advancedPanel = page.getByTestId('connection-form-panel-advanced')
+      await expect(advancedPanel).toBeVisible()
+      await waitForAnimationsToFinish(advancedPanel)
+      const groupField = advancedPanel.locator('label[for="conn-group"]').locator('xpath=..')
       await formMain.locator('#conn-group').click()
-      await expect(page.getByRole('listbox', { name: 'Group' })).toBeVisible()
-      await expect(formMain).toHaveScreenshot(`group-dropdown-open-${theme}.png`)
+      const listbox = page.getByRole('listbox', { name: 'Group' })
+      await expect(listbox).toBeVisible()
+      const clip = await getUnionClip(page, [groupField, listbox])
+      await expect(page).toHaveScreenshot(`group-dropdown-open-${theme}.png`, { clip })
     })
 
     test('GlobalContextMenu — on host field', async ({ page }) => {

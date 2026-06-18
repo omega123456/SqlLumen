@@ -432,6 +432,7 @@ export interface TableDesignerIndexDef {
 export interface TableDesignerForeignKeyDef {
   name: string
   sourceColumn: string
+  referencedDatabase: string
   referencedTable: string
   referencedColumn: string
   onDelete: string

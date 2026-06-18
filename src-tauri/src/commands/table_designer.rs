@@ -284,6 +284,7 @@ pub async fn load_table_for_designer_impl(
     for row in foreign_key_rows {
         let fk_name = decode_text_cell_named(&row, "CONSTRAINT_NAME")?;
         let source_column = decode_text_cell_named(&row, "COLUMN_NAME")?;
+        let referenced_database = decode_text_cell_named(&row, "REFERENCED_TABLE_SCHEMA")?;
         let referenced_table = decode_text_cell_named(&row, "REFERENCED_TABLE_NAME")?;
         let referenced_column = decode_text_cell_named(&row, "REFERENCED_COLUMN_NAME")?;
         let on_delete = decode_text_cell_named(&row, "DELETE_RULE")?;
@@ -301,6 +302,7 @@ pub async fn load_table_for_designer_impl(
                 current_foreign_key = Some(DesignerForeignKeyDef {
                     name: fk_name,
                     source_column,
+                    referenced_database,
                     referenced_table,
                     referenced_column,
                     on_delete,
@@ -313,6 +315,7 @@ pub async fn load_table_for_designer_impl(
                 current_foreign_key = Some(DesignerForeignKeyDef {
                     name: fk_name,
                     source_column,
+                    referenced_database,
                     referenced_table,
                     referenced_column,
                     on_delete,

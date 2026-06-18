@@ -64,6 +64,7 @@ const loadedSchema: TableDesignerSchema = {
     {
       name: 'fk_users_role',
       sourceColumn: 'role_id',
+      referencedDatabase: 'app_db',
       referencedTable: 'roles',
       referencedColumn: 'id',
       onDelete: 'NO ACTION',
@@ -469,6 +470,7 @@ describe('useTableDesignerStore — FK operations', () => {
     expect(useTableDesignerStore.getState().tabs['tab-1'].currentSchema.foreignKeys[0]).toEqual({
       name: '',
       sourceColumn: '',
+      referencedDatabase: 'app_db',
       referencedTable: '',
       referencedColumn: '',
       onDelete: 'NO ACTION',

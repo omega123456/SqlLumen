@@ -40,6 +40,7 @@ pub struct DesignerIndexDef {
 pub struct DesignerForeignKeyDef {
     pub name: String,
     pub source_column: String,
+    pub referenced_database: String,
     pub referenced_table: String,
     pub referenced_column: String,
     pub on_delete: String,
@@ -121,6 +122,10 @@ pub fn validate_schema(schema: &DesignerTableSchema) -> Result<(), String> {
     for foreign_key in &schema.foreign_keys {
         validate_optional_identifier(&foreign_key.name, "Foreign key name")?;
         validate_optional_identifier(&foreign_key.source_column, "Foreign key source column")?;
+        validate_optional_identifier(
+            &foreign_key.referenced_database,
+            "Foreign key referenced database",
+        )?;
         validate_optional_identifier(
             &foreign_key.referenced_table,
             "Foreign key referenced table",
@@ -205,7 +210,7 @@ pub fn generate_create_table_ddl(schema: &DesignerTableSchema, database: &str) -
             "  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
             quote_identifier(&fk.name),
             quote_identifier(&fk.source_column),
-            quote_identifier(&fk.referenced_table),
+            format_referenced_table_name(fk, database),
             quote_identifier(&fk.referenced_column),
             fk.on_delete,
             fk.on_update
@@ -318,7 +323,7 @@ pub fn generate_alter_table_ddl(
         .collect::<Vec<_>>();
 
     let mut add_index_clauses = diff_add_indexes(original, current);
-    let add_fk_clauses = diff_add_foreign_keys(original, current);
+    let add_fk_clauses = diff_add_foreign_keys(original, current, database);
     let table_option_clauses = diff_table_options(&original.properties, &current.properties);
 
     let mut clauses = Vec::new();
@@ -387,6 +392,7 @@ pub fn load_foreign_keys_query() -> &'static str {
     r#"SELECT
         kcu.CONSTRAINT_NAME,
         kcu.COLUMN_NAME,
+        kcu.REFERENCED_TABLE_SCHEMA,
         kcu.REFERENCED_TABLE_NAME,
         kcu.REFERENCED_COLUMN_NAME,
         rc.DELETE_RULE,
@@ -427,6 +433,20 @@ fn is_generatable_foreign_key(fk: &DesignerForeignKeyDef) -> bool {
         && !identifier_is_blank(&fk.source_column)
         && !identifier_is_blank(&fk.referenced_table)
         && !identifier_is_blank(&fk.referenced_column)
+}
+
+fn format_referenced_table_name(fk: &DesignerForeignKeyDef, database: &str) -> String {
+    let referenced_database = if identifier_is_blank(&fk.referenced_database) {
+        database
+    } else {
+        &fk.referenced_database
+    };
+
+    format!(
+        "{}.{}",
+        quote_identifier(referenced_database),
+        quote_identifier(&fk.referenced_table)
+    )
 }
 
 fn escape_sql_string(value: &str) -> String {
@@ -565,6 +585,7 @@ fn indexes_equal(left: &DesignerIndexDef, right: &DesignerIndexDef) -> bool {
 
 fn foreign_keys_equal(left: &DesignerForeignKeyDef, right: &DesignerForeignKeyDef) -> bool {
     left.source_column == right.source_column
+        && left.referenced_database == right.referenced_database
         && left.referenced_table == right.referenced_table
         && left.referenced_column == right.referenced_column
         && left.on_delete == right.on_delete
@@ -687,6 +708,7 @@ fn diff_drop_foreign_keys(
 fn diff_add_foreign_keys(
     original: &DesignerTableSchema,
     current: &DesignerTableSchema,
+    database: &str,
 ) -> Vec<String> {
     let original_foreign_keys = original
         .foreign_keys
@@ -710,7 +732,7 @@ fn diff_add_foreign_keys(
                     "ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
                     quote_identifier(&fk.name),
                     quote_identifier(&fk.source_column),
-                    quote_identifier(&fk.referenced_table),
+                    format_referenced_table_name(fk, database),
                     quote_identifier(&fk.referenced_column),
                     fk.on_delete,
                     fk.on_update
