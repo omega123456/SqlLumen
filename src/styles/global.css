@@ -550,15 +550,23 @@ button {
   border-bottom: var(--ui-dropdown-trigger-open-border);
   border-top: none;
   border-radius: 0 0 var(--ui-dropdown-panel-radius) var(--ui-dropdown-panel-radius);
-  /* Match open trigger chrome: elevation + same glow/focus ring so perceived border weight matches */
+  /* Elevation + glow only. The inline focus ring is intentionally omitted: the panel is a
+     floating popover, and an outset ring would make it look wider than the trigger when the
+     trigger's own ring is clipped by an ancestor (e.g. a table cell with hidden overflow). */
   box-shadow:
-    var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow),
-    var(--ui-input-focus-shadow);
+    var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow);
   -webkit-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
   backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
   max-height: min(320px, 55vh);
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+/* The panel receives focus for keyboard navigation; selection is shown per-option, so the
+   browser's focus-visible outline around the whole list is redundant and visually noisy. */
+.ui-dropdown__panel:focus,
+.ui-dropdown__panel:focus-visible {
+  outline: none;
 }
 
 .ui-dropdown__panel--in-dialog {
@@ -571,8 +579,7 @@ button {
   border-radius: var(--ui-dropdown-panel-radius) var(--ui-dropdown-panel-radius) 0 0;
   box-shadow:
     0 -8px 32px rgba(0, 0, 0, 0.3),
-    var(--ui-dropdown-trigger-open-shadow),
-    var(--ui-input-focus-shadow);
+    var(--ui-dropdown-trigger-open-shadow);
 }
 
 .ui-dropdown__panel::-webkit-scrollbar {
@@ -591,13 +598,15 @@ button {
 .ui-dropdown__panel li {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* Padding is owned by .ui-dropdown__option; don't reset it here — this selector has a
+     higher specificity and would otherwise zero out the option's horizontal inset. */
 }
 
 .ui-dropdown__option {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  justify-content: center;
   gap: 2px;
   width: 100%;
   min-height: var(--ui-dropdown-instance-option-min-height, auto);
@@ -648,13 +657,15 @@ button {
   opacity: 1;
 }
 
-.ui-dropdown__option:hover:not(:disabled),
-.ui-dropdown__option:focus-visible:not(:disabled) {
+.ui-dropdown__option:hover:not(:disabled):not([aria-disabled='true']),
+.ui-dropdown__option:focus-visible:not(:disabled):not([aria-disabled='true']) {
   background: var(--ui-dropdown-option-hover-bg);
   outline: none;
 }
 
-.ui-dropdown__option:disabled {
+.ui-dropdown__option:disabled,
+.ui-dropdown__option[aria-disabled='true'],
+.ui-dropdown__option--disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

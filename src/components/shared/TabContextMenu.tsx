@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
-import { getContextMenuPositionMode, positionContextMenuInPortal } from '../../lib/context-menu-utils'
+import {
+  getContextMenuPositionMode,
+  positionContextMenuInPortal,
+} from '../../lib/context-menu-utils'
 
 export interface TabContextMenuItem {
   key: string

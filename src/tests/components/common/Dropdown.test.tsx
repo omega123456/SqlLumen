@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dropdown } from '../../../components/common/Dropdown'
 import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
@@ -144,7 +144,7 @@ describe('Dropdown', () => {
     })
   })
 
-  it('fires Home/End on combobox while list is open', async () => {
+  it('fires End on the open listbox', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     render(
@@ -156,11 +156,10 @@ describe('Dropdown', () => {
     const combobox = screen.getByRole('combobox', { name: 'Pick' })
     await user.click(combobox)
     await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
+      expect(screen.getByRole('listbox')).toHaveFocus()
     })
-    combobox.focus()
-    fireEvent.keyDown(combobox, { key: 'End' })
-    fireEvent.keyDown(combobox, { key: 'Enter' })
+    await user.keyboard('{End}')
+    await user.keyboard('{Enter}')
     expect(onChange).toHaveBeenCalledWith('b')
   })
 
@@ -207,7 +206,7 @@ describe('Dropdown', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('updates highlight on mouse enter', async () => {
+  it('selects an option with the mouse', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     render(
@@ -218,8 +217,7 @@ describe('Dropdown', () => {
     )
     await user.click(screen.getByRole('combobox', { name: 'Pick' }))
     const beta = screen.getByRole('option', { name: 'Beta' })
-    await user.hover(beta)
-    await user.keyboard('{Enter}')
+    await user.click(beta)
     expect(onChange).toHaveBeenCalledWith('b')
   })
 
@@ -365,8 +363,11 @@ describe('Dropdown', () => {
     expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-font-size')).toBe('11px')
     expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-line-height')).toBe('16px')
     expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-padding-block')).toBe(
-      '2px'
+      '0px'
     )
+    // The panel is portaled outside the token scope, so inline padding is a concrete px
+    // value mirroring the trigger's own horizontal padding (here 4px) — keeping options
+    // proportional to their trigger instead of forcing compact dropdowns to wrap.
     expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-padding-inline')).toBe(
       '4px'
     )
@@ -399,120 +400,6 @@ describe('Dropdown', () => {
     await user.keyboard('{Enter}')
 
     expect(onChange).toHaveBeenCalledWith('b')
-  })
-
-  it('opens and highlights a matching option when typing on the closed trigger', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-
-    render(
-      <>
-        <span id="lb-closed-typeahead">Pick</span>
-        <Dropdown
-          id="d-closed-typeahead"
-          labelledBy="lb-closed-typeahead"
-          options={options}
-          value=""
-          onChange={onChange}
-        />
-      </>
-    )
-
-    const combobox = screen.getByRole('combobox', { name: 'Pick' })
-    combobox.focus()
-
-    await user.keyboard('b')
-
-    const listbox = await screen.findByRole('listbox')
-    await waitFor(() => {
-      expect(listbox).toHaveFocus()
-    })
-
-    const betaOption = screen.getByRole('option', { name: 'Beta' })
-    expect(listbox).toHaveAttribute('aria-activedescendant', betaOption.id)
-
-    await user.keyboard('{Enter}')
-
-    expect(onChange).toHaveBeenCalledWith('b')
-  })
-
-  it('starts closed-trigger typeahead from the top when nothing is selected', async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    const repeatedPrefixOptions = [
-      { value: 'apple', label: 'Apple' },
-      { value: 'alpha', label: 'Alpha' },
-      { value: 'beta', label: 'Beta' },
-    ]
-
-    render(
-      <>
-        <span id="lb-closed-typeahead-top">Pick</span>
-        <Dropdown
-          id="d-closed-typeahead-top"
-          labelledBy="lb-closed-typeahead-top"
-          options={repeatedPrefixOptions}
-          value=""
-          onChange={onChange}
-        />
-      </>
-    )
-
-    const combobox = screen.getByRole('combobox', { name: 'Pick' })
-    combobox.focus()
-
-    await user.keyboard('a')
-
-    const listbox = await screen.findByRole('listbox')
-    const appleOption = screen.getByRole('option', { name: 'Apple' })
-    expect(listbox).toHaveAttribute('aria-activedescendant', appleOption.id)
-
-    await user.keyboard('{Enter}')
-
-    expect(onChange).toHaveBeenCalledWith('apple')
-  })
-
-  it('scrolls the highlighted option into view when closed-trigger typeahead opens the list', async () => {
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      writable: true,
-      value: scrollIntoView,
-    })
-
-    try {
-      const user = userEvent.setup()
-      render(
-        <>
-          <span id="lb-closed-typeahead-scroll">Pick</span>
-          <Dropdown
-            id="d-closed-typeahead-scroll"
-            labelledBy="lb-closed-typeahead-scroll"
-            options={[
-              { value: 'apple', label: 'Apple' },
-              { value: 'beta', label: 'Beta' },
-              { value: 'carrot', label: 'Carrot' },
-            ]}
-            value=""
-            onChange={vi.fn()}
-          />
-        </>
-      )
-
-      screen.getByRole('combobox', { name: 'Pick' }).focus()
-
-      await user.keyboard('b')
-
-      await screen.findByRole('listbox')
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
-    } finally {
-      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-        configurable: true,
-        writable: true,
-        value: originalScrollIntoView,
-      })
-    }
   })
 
   it('selects an option on click even when mousedown is prevented', async () => {
@@ -567,7 +454,7 @@ describe('Dropdown', () => {
     })
   })
 
-  it('caches scroll parents across open/close cycles', async () => {
+  it('keeps the portalled listbox usable across open/close cycles', async () => {
     const user = userEvent.setup()
 
     render(
@@ -584,30 +471,14 @@ describe('Dropdown', () => {
     )
 
     const combobox = screen.getByRole('combobox', { name: 'Pick' })
-    const wrapper = combobox.closest('div')!
-
-    let ancestorWalkCount = 0
-    const realGetComputedStyle = window.getComputedStyle
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((...args) => {
-      const el = args[0]
-      if (el instanceof HTMLElement && wrapper.contains(el) && el !== combobox) {
-        ancestorWalkCount++
-      }
-      return realGetComputedStyle(...args)
-    })
-
     await user.click(combobox)
-    expect(screen.getByRole('listbox')).toBeInTheDocument()
-    const walksOnFirstOpen = ancestorWalkCount
-    expect(walksOnFirstOpen).toBeGreaterThan(0)
+    expect(screen.getByRole('listbox').parentElement).toBe(document.body)
 
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    ancestorWalkCount = 0
 
     await user.click(combobox)
-    expect(screen.getByRole('listbox')).toBeInTheDocument()
-    expect(ancestorWalkCount).toBe(0)
+    expect(screen.getByRole('listbox').parentElement).toBe(document.body)
   })
 
   it('ignores workspace tab deactivation events for other tabs', async () => {

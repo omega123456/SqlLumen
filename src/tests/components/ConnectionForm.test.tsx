@@ -43,7 +43,10 @@ beforeEach(() => {
   })
 })
 
-async function switchToTab(user: ReturnType<typeof userEvent.setup>, tab: 'general' | 'ssl' | 'advanced') {
+async function switchToTab(
+  user: ReturnType<typeof userEvent.setup>,
+  tab: 'general' | 'ssl' | 'advanced'
+) {
   await user.click(screen.getByTestId(`connection-form-tab-${tab}`))
 }
 
@@ -667,9 +670,7 @@ describe('ConnectionForm', () => {
 
     ipc.override('delete_connection', () => undefined)
 
-    render(
-      <ConnectionForm editingConnection={editConn} onDeleteConnection={onDeleteConnection} />
-    )
+    render(<ConnectionForm editingConnection={editConn} onDeleteConnection={onDeleteConnection} />)
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
     expect(screen.getByRole('heading', { name: 'Delete Connection' })).toBeInTheDocument()

@@ -13,6 +13,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react'
+import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
 import { CaretDown, Check } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
@@ -95,66 +96,19 @@ export type DropdownProps = SingleSelectDropdownProps | MultiSelectDropdownProps
 
 const MAX_DROPDOWN_HEIGHT = 320
 const VIEWPORT_MARGIN = 8
+// Fallback inset for options when the trigger's horizontal padding can't be read. Options
+// sit inside a portaled panel (outside the token scope), so the inline padding must be a
+// concrete px value. We mirror the trigger's own padding so options stay proportional to
+// their trigger — important for compact dropdowns where extra padding would force wrapping.
+const DEFAULT_OPTION_INLINE_PADDING = 16
 
-function enabledIndices(options: DropdownOption[]): number[] {
-  const out: number[] = []
-  for (let i = 0; i < options.length; i++) {
-    if (!options[i].disabled) {
-      out.push(i)
-    }
-  }
-  return out
+function resolveOptionInlinePadding(triggerPaddingLeft: string): string {
+  const parsed = Number.parseFloat(triggerPaddingLeft)
+  return Number.isFinite(parsed) ? `${parsed}px` : `${DEFAULT_OPTION_INLINE_PADDING}px`
 }
 
 function indexOfValue(options: DropdownOption[], value: string): number {
   return options.findIndex((o) => o.value === value)
-}
-
-function normalizeTypeaheadLabel(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-function isTypeaheadKey(event: ReactKeyboardEvent<HTMLElement>): boolean {
-  return (
-    event.key.length === 1 && event.key !== ' ' && !event.altKey && !event.ctrlKey && !event.metaKey
-  )
-}
-
-function getTypeaheadMatch(
-  options: DropdownOption[],
-  highlightedIndex: number,
-  currentSearch: string,
-  character: string
-): { matchedIndex: number; search: string } | null {
-  const enabled = enabledIndices(options)
-  if (enabled.length === 0) {
-    return null
-  }
-
-  const nextCharacter = character.toLowerCase()
-  const nextSearch = `${currentSearch}${nextCharacter}`
-  const currentPosition = enabled.indexOf(highlightedIndex)
-  const orderedIndices =
-    currentPosition === -1
-      ? enabled
-      : [...enabled.slice(currentPosition + 1), ...enabled.slice(0, currentPosition + 1)]
-
-  const findMatch = (search: string) =>
-    orderedIndices.find((optionIndex) =>
-      normalizeTypeaheadLabel(options[optionIndex]?.label ?? '').startsWith(search)
-    )
-
-  const nextSearchMatch = findMatch(nextSearch)
-  const nextCharacterMatch = findMatch(nextCharacter)
-  const matchedIndex = nextSearchMatch ?? nextCharacterMatch
-  if (matchedIndex === undefined) {
-    return null
-  }
-
-  return {
-    matchedIndex,
-    search: nextSearchMatch !== undefined ? nextSearch : nextCharacter,
-  }
 }
 
 function getScrollParents(node: HTMLElement | null): (HTMLElement | Window)[] {
@@ -177,12 +131,150 @@ function isMultiSelect(props: DropdownProps): props is MultiSelectDropdownProps 
   return props.multiple === true
 }
 
-function isOptionSelected(props: DropdownProps, optionValue: string): boolean {
-  if (isMultiSelect(props)) {
-    return props.value.includes(optionValue)
-  }
+type DropdownChromeProps = {
+  open: boolean
+  options: DropdownOption[]
+  rootRef: React.RefObject<HTMLDivElement | null>
+  triggerRef: React.RefObject<HTMLButtonElement | null>
+  panelRef: React.RefObject<HTMLUListElement | null>
+  workspaceTabId?: string
+  focusListOnOpen: boolean
+  onOpenChange?: (open: boolean) => void
+  closeListbox: () => void
+  updatePlacement: () => void
+}
 
-  return props.value === optionValue
+function DropdownChrome({
+  open,
+  options,
+  rootRef,
+  triggerRef,
+  panelRef,
+  workspaceTabId,
+  focusListOnOpen,
+  onOpenChange,
+  closeListbox,
+  updatePlacement,
+}: DropdownChromeProps) {
+  const prevOpenRef = useRef(open)
+  const scrollParentsRef = useRef<Set<EventTarget> | null>(null)
+
+  useEffect(() => {
+    if (prevOpenRef.current !== open) {
+      prevOpenRef.current = open
+      onOpenChange?.(open)
+    }
+  }, [open, onOpenChange])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target
+      if (
+        target instanceof Node &&
+        (rootRef.current?.contains(target) === true || panelRef.current?.contains(target) === true)
+      ) {
+        return
+      }
+
+      closeListbox()
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+    }
+  }, [closeListbox, open, panelRef, rootRef])
+
+  useEffect(() => {
+    if (!workspaceTabId) {
+      return
+    }
+
+    return subscribeToTabDeactivated(workspaceTabId, closeListbox)
+  }, [closeListbox, workspaceTabId])
+
+  useLayoutEffect(() => {
+    if (!open || !focusListOnOpen) {
+      return
+    }
+
+    queueMicrotask(() => {
+      panelRef.current?.focus()
+    })
+  }, [focusListOnOpen, open, panelRef])
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return
+    }
+
+    const trigger = triggerRef.current
+    const panel = panelRef.current
+    if (!trigger || !panel) {
+      return
+    }
+
+    updatePlacement()
+
+    const updateInstanceMetrics = () => {
+      const triggerStyles = window.getComputedStyle(trigger)
+      const triggerRect = trigger.getBoundingClientRect()
+      const measuredTriggerHeight =
+        triggerRect.height ||
+        Number.parseFloat(triggerStyles.height) ||
+        trigger.offsetHeight ||
+        trigger.clientHeight ||
+        0
+
+      panel.style.setProperty('--ui-dropdown-instance-option-font-size', triggerStyles.fontSize)
+      panel.style.setProperty('--ui-dropdown-instance-option-line-height', triggerStyles.lineHeight)
+      // The option's min-height already matches the full trigger height, so vertical
+      // spacing is handled by min-height + centering. Adding the trigger's padding on
+      // top would leave no slack and make rows with bolder (selected) text taller.
+      panel.style.setProperty('--ui-dropdown-instance-option-padding-block', '0px')
+      // The panel is portaled to <body>, outside the --ui-dropdown-* token scope, so the
+      // CSS token fallback can't resolve there — the inline padding must be a concrete px
+      // value. Use a comfortable minimum so option text stays clear of the accent bar even
+      // when the trigger itself uses a compact, narrow horizontal padding.
+      panel.style.setProperty(
+        '--ui-dropdown-instance-option-padding-inline',
+        resolveOptionInlinePadding(triggerStyles.paddingLeft)
+      )
+      panel.style.setProperty(
+        '--ui-dropdown-instance-option-min-height',
+        `${Math.round(measuredTriggerHeight)}px`
+      )
+    }
+
+    updateInstanceMetrics()
+
+    if (!scrollParentsRef.current) {
+      scrollParentsRef.current = new Set<EventTarget>(getScrollParents(trigger))
+    }
+    const scrollParents = scrollParentsRef.current
+
+    scrollParents.forEach((target) => {
+      target.addEventListener('scroll', updatePlacement, { passive: true })
+      target.addEventListener('scroll', updateInstanceMetrics, { passive: true })
+    })
+    window.addEventListener('resize', updatePlacement)
+    window.addEventListener('resize', updateInstanceMetrics)
+
+    return () => {
+      scrollParents.forEach((target) => {
+        target.removeEventListener('scroll', updatePlacement)
+        target.removeEventListener('scroll', updateInstanceMetrics)
+      })
+      window.removeEventListener('resize', updatePlacement)
+      window.removeEventListener('resize', updateInstanceMetrics)
+    }
+  }, [open, options.length, panelRef, triggerRef, updatePlacement])
+
+  return null
 }
 
 export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
@@ -216,8 +308,6 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
     const rootRef = useRef<HTMLDivElement>(null)
     const triggerRef = useRef<HTMLButtonElement>(null)
     const panelRef = useRef<HTMLUListElement>(null)
-    const [open, setOpen] = useState(false)
-    const [highlightedIndex, setHighlightedIndex] = useState(0)
     const [placement, setPlacement] = useState<DropdownPlacement>('bottom')
     const [dropdownMaxHeight, setDropdownMaxHeight] = useState(MAX_DROPDOWN_HEIGHT)
     const [dropdownLayout, setDropdownLayout] = useState<DropdownFixedLayout>({
@@ -229,9 +319,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
     const [dropdownInstanceStyle, setDropdownInstanceStyle] = useState<DropdownInstanceStyle>({})
     const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
     const [isPortalInDialog, setIsPortalInDialog] = useState(false)
-    const typeaheadRef = useRef('')
-    const typeaheadResetTimeoutRef = useRef<number | null>(null)
-    const scrollParentsRef = useRef<Set<EventTarget> | null>(null)
+    const openRef = useRef(false)
 
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
@@ -286,121 +374,39 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       return selectedOptions[0]?.label ?? placeholder ?? options[0]?.label ?? ''
     }, [options, placeholder, props, renderTriggerValue, selectedOptions])
 
-    const resetTypeahead = useCallback(() => {
-      typeaheadRef.current = ''
-      if (typeaheadResetTimeoutRef.current !== null) {
-        window.clearTimeout(typeaheadResetTimeoutRef.current)
-        typeaheadResetTimeoutRef.current = null
-      }
-    }, [])
-
-    const scheduleTypeaheadReset = useCallback(() => {
-      if (typeaheadResetTimeoutRef.current !== null) {
-        window.clearTimeout(typeaheadResetTimeoutRef.current)
-      }
-      typeaheadResetTimeoutRef.current = window.setTimeout(() => {
-        typeaheadRef.current = ''
-        typeaheadResetTimeoutRef.current = null
-      }, 700)
-    }, [])
-
-    const close = useCallback(() => {
-      resetTypeahead()
-      setOpen(false)
-    }, [resetTypeahead])
-
-    const focusListIfNeeded = useCallback(() => {
-      if (focusListOnOpen) {
-        queueMicrotask(() => {
-          panelRef.current?.focus()
-        })
-      }
-    }, [focusListOnOpen])
-
-    const getPreferredHighlightedIndex = useCallback(() => {
-      const enabled = enabledIndices(options)
-      const selectedIndex = selectedIndices.find((idx) => enabled.includes(idx)) ?? -1
-      return selectedIndex >= 0 ? selectedIndex : (enabled[0] ?? 0)
-    }, [options, selectedIndices])
-
-    const getClosedTypeaheadStartIndex = useCallback(() => {
-      const enabled = enabledIndices(options)
-      return selectedIndices.find((idx) => enabled.includes(idx)) ?? -1
-    }, [options, selectedIndices])
-
-    const openAtHighlight = useCallback(
-      (index: number) => {
-        setHighlightedIndex(index)
-        setOpen(true)
-        focusListIfNeeded()
-      },
-      [focusListIfNeeded]
-    )
-
-    const openWithHighlight = useCallback(() => {
-      resetTypeahead()
-      openAtHighlight(getPreferredHighlightedIndex())
-    }, [getPreferredHighlightedIndex, openAtHighlight, resetTypeahead])
-
-    useEffect(() => {
-      return () => {
-        resetTypeahead()
-      }
-    }, [resetTypeahead])
-
-    useEffect(() => {
-      if (!workspaceTabId) {
-        return
-      }
-
-      return subscribeToTabDeactivated(workspaceTabId, close)
-    }, [close, workspaceTabId])
-
     const isWithinDropdownTarget = (target: EventTarget | null): boolean =>
       target instanceof Node &&
       (rootRef.current?.contains(target) === true || panelRef.current?.contains(target) === true)
 
-    const prevOpenRef = useRef(open)
-    useEffect(() => {
-      if (prevOpenRef.current !== open) {
-        prevOpenRef.current = open
-        onOpenChange?.(open)
-      }
-    }, [open, onOpenChange])
-
-    useEffect(() => {
-      if (!open) {
+    const closeListbox = useCallback(() => {
+      if (!openRef.current) {
         return
       }
 
-      const handleMouseDown = (event: MouseEvent) => {
-        if (isWithinDropdownTarget(event.target)) {
-          return
-        }
-        close()
-      }
-
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          close()
-          triggerRef.current?.focus()
-        }
-      }
-
-      document.addEventListener('mousedown', handleMouseDown)
-      document.addEventListener('keydown', handleKeyDown)
-
-      return () => {
-        document.removeEventListener('mousedown', handleMouseDown)
-        document.removeEventListener('keydown', handleKeyDown)
-      }
-    }, [close, open])
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      })
+      ;(panelRef.current ?? triggerRef.current)?.dispatchEvent(event)
+    }, [])
 
     useLayoutEffect(() => {
-      if (!open) {
+      const trigger = triggerRef.current
+      if (!trigger) {
         return
       }
 
+      if (labelledBy) {
+        trigger.setAttribute('aria-labelledby', labelledBy)
+        trigger.removeAttribute('aria-label')
+      } else if (ariaLabel) {
+        trigger.setAttribute('aria-label', ariaLabel)
+        trigger.removeAttribute('aria-labelledby')
+      }
+    }, [ariaLabel, labelledBy])
+
+    const updatePlacement = useCallback(() => {
       const trigger = triggerRef.current
       const panel = panelRef.current
       if (!trigger || !panel) {
@@ -417,353 +423,134 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         setIsPortalInDialog(false)
       }
 
-      const updatePlacement = () => {
-        const triggerRect = trigger.getBoundingClientRect()
-        const vw = window.innerWidth
-        const vh = window.innerHeight
-        const m = VIEWPORT_MARGIN
-        const triggerStyles = window.getComputedStyle(trigger)
-        const measuredTriggerHeight =
-          triggerRect.height ||
-          Number.parseFloat(triggerStyles.height) ||
-          trigger.offsetHeight ||
-          trigger.clientHeight ||
-          0
+      const triggerRect = trigger.getBoundingClientRect()
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const m = VIEWPORT_MARGIN
+      const triggerStyles = window.getComputedStyle(trigger)
+      const measuredTriggerHeight =
+        triggerRect.height ||
+        Number.parseFloat(triggerStyles.height) ||
+        trigger.offsetHeight ||
+        trigger.clientHeight ||
+        0
 
-        let left = triggerRect.left
-        let width = triggerRect.width
-        if (left < m) {
-          width -= m - left
-          left = m
-        }
-        if (left + width > vw - m) {
-          width = Math.max(80, vw - m - left)
-        }
-
-        const desiredHeight = Math.min(
-          panel.scrollHeight || MAX_DROPDOWN_HEIGHT,
-          MAX_DROPDOWN_HEIGHT
-        )
-        const availableBelow = Math.max(0, vh - m - triggerRect.bottom)
-        const availableAbove = Math.max(0, triggerRect.top - m)
-        const nextPlacement: DropdownPlacement =
-          availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
-        const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
-
-        setPlacement(nextPlacement)
-        setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
-        setDropdownInstanceStyle({
-          '--ui-dropdown-instance-option-font-size': triggerStyles.fontSize,
-          '--ui-dropdown-instance-option-line-height': triggerStyles.lineHeight,
-          '--ui-dropdown-instance-option-padding-block': triggerStyles.paddingTop,
-          '--ui-dropdown-instance-option-padding-inline': triggerStyles.paddingLeft,
-          '--ui-dropdown-instance-option-min-height': `${Math.round(measuredTriggerHeight)}px`,
-        })
-
-        const dialogRect =
-          closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
-        const leftValue = dialogRect ? left - dialogRect.left : left
-        const topValue = dialogRect
-          ? triggerRect.bottom - 1 - dialogRect.top
-          : triggerRect.bottom - 1
-        const bottomValue = dialogRect
-          ? dialogRect.bottom - triggerRect.top + 1
-          : vh - triggerRect.top + 1
-
-        if (nextPlacement === 'bottom') {
-          setDropdownLayout({
-            left: leftValue,
-            width,
-            top: topValue,
-            bottom: null,
-          })
-        } else {
-          setDropdownLayout({
-            left: leftValue,
-            width,
-            top: null,
-            bottom: bottomValue,
-          })
-        }
+      let left = triggerRect.left
+      let width = triggerRect.width
+      if (left < m) {
+        width -= m - left
+        left = m
+      }
+      if (left + width > vw - m) {
+        width = Math.max(80, vw - m - left)
       }
 
-      updatePlacement()
+      const desiredHeight = Math.min(panel.scrollHeight || MAX_DROPDOWN_HEIGHT, MAX_DROPDOWN_HEIGHT)
+      const availableBelow = Math.max(0, vh - m - triggerRect.bottom)
+      const availableAbove = Math.max(0, triggerRect.top - m)
+      const nextPlacement: DropdownPlacement =
+        availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
+      const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
 
-      if (!scrollParentsRef.current) {
-        scrollParentsRef.current = new Set<EventTarget>(getScrollParents(trigger))
-      }
-      const scrollParents = scrollParentsRef.current
-
-      scrollParents.forEach((target) => {
-        target.addEventListener('scroll', updatePlacement, { passive: true })
+      setPlacement(nextPlacement)
+      setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
+      setDropdownInstanceStyle({
+        '--ui-dropdown-instance-option-font-size': triggerStyles.fontSize,
+        '--ui-dropdown-instance-option-line-height': triggerStyles.lineHeight,
+        '--ui-dropdown-instance-option-padding-block': '0px',
+        '--ui-dropdown-instance-option-padding-inline': resolveOptionInlinePadding(
+          triggerStyles.paddingLeft
+        ),
+        '--ui-dropdown-instance-option-min-height': `${Math.round(measuredTriggerHeight)}px`,
       })
-      window.addEventListener('resize', updatePlacement)
 
-      return () => {
-        scrollParents.forEach((target) => {
-          target.removeEventListener('scroll', updatePlacement)
+      const dialogRect =
+        closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
+      const leftValue = dialogRect ? left - dialogRect.left : left
+      const topValue = dialogRect ? triggerRect.bottom - 1 - dialogRect.top : triggerRect.bottom - 1
+      const bottomValue = dialogRect
+        ? dialogRect.bottom - triggerRect.top + 1
+        : vh - triggerRect.top + 1
+
+      if (nextPlacement === 'bottom') {
+        setDropdownLayout({
+          left: leftValue,
+          width,
+          top: topValue,
+          bottom: null,
         })
-        window.removeEventListener('resize', updatePlacement)
+      } else {
+        setDropdownLayout({
+          left: leftValue,
+          width,
+          top: null,
+          bottom: bottomValue,
+        })
       }
-    }, [open, options.length])
+    }, [])
 
-    useLayoutEffect(() => {
-      if (!open) {
-        return
-      }
-
-      const activeOptionId = `${listboxId}-option-${highlightedIndex}`
-      const activeOption = document.getElementById(activeOptionId)
-      if (activeOption && panelRef.current?.contains(activeOption)) {
-        activeOption.scrollIntoView?.({ block: 'nearest' })
-      }
-    }, [highlightedIndex, listboxId, open])
-
-    const moveHighlight = useCallback(
-      (delta: number) => {
-        const enabled = enabledIndices(options)
-        if (enabled.length === 0) {
-          return
-        }
-        const currentPos = enabled.indexOf(highlightedIndex)
-        const start = currentPos === -1 ? 0 : currentPos
-        const nextPos = (start + delta + enabled.length) % enabled.length
-        setHighlightedIndex(enabled[nextPos]!)
-      },
-      [highlightedIndex, options]
-    )
-
-    const handleTypeahead = useCallback(
-      (character: string) => {
-        const match = getTypeaheadMatch(options, highlightedIndex, typeaheadRef.current, character)
-        if (!match) {
-          resetTypeahead()
-          return false
-        }
-
-        typeaheadRef.current = match.search
-        scheduleTypeaheadReset()
-
-        setHighlightedIndex(match.matchedIndex)
-        return true
-      },
-      [highlightedIndex, options, resetTypeahead, scheduleTypeaheadReset]
-    )
-
-    const selectIndex = useCallback(
-      (idx: number) => {
-        const opt = options[idx]
-        if (!opt || opt.disabled) {
-          return
-        }
-
-        if (isMultiSelect(props)) {
-          const nextValue = props.value.includes(opt.value)
-            ? props.value.filter((value) => value !== opt.value)
-            : [...props.value, opt.value]
-          props.onChange(nextValue)
-          if (closeOnSelect) {
-            close()
-            triggerRef.current?.focus()
-          } else {
-            if (focusListOnOpen) {
-              panelRef.current?.focus()
-            } else {
-              triggerRef.current?.focus()
-            }
-          }
-          return
-        }
-
-        props.onChange(opt.value)
-        if (closeOnSelect) {
-          close()
-          triggerRef.current?.focus()
+    const setPanelRef = useCallback(
+      (node: HTMLUListElement | null) => {
+        panelRef.current = node
+        if (node) {
+          updatePlacement()
         }
       },
-      [close, closeOnSelect, focusListOnOpen, options, props]
+      [updatePlacement]
     )
 
-    const handleTriggerKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
-      if (disabled) {
-        onTriggerKeyDown?.(e)
-        return
-      }
-
-      if (open) {
-        if (e.key === 'Tab') {
-          close()
-          onTriggerKeyDown?.(e)
-          return
-        }
-
-        if (e.key === 'Escape') {
-          onTriggerKeyDown?.(e)
-          if (e.defaultPrevented) {
-            return
-          }
-          e.preventDefault()
-          close()
-          return
-        }
-
-        if (isTypeaheadKey(e)) {
-          const handled = handleTypeahead(e.key)
-          if (handled) {
-            e.preventDefault()
-            return
-          }
-        }
-
-        if (e.key === 'ArrowDown') {
-          e.preventDefault()
-          moveHighlight(1)
-          return
-        }
-
-        if (e.key === 'ArrowUp') {
-          e.preventDefault()
-          moveHighlight(-1)
-          return
-        }
-
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          selectIndex(highlightedIndex)
-          return
-        }
-
-        if (e.key === 'Home') {
-          e.preventDefault()
-          const enabled = enabledIndices(options)
-          if (enabled.length > 0) {
-            setHighlightedIndex(enabled[0]!)
-          }
-          return
-        }
-
-        if (e.key === 'End') {
-          e.preventDefault()
-          const enabled = enabledIndices(options)
-          if (enabled.length > 0) {
-            setHighlightedIndex(enabled[enabled.length - 1]!)
-          }
-          return
-        }
-      }
-
-      onTriggerKeyDown?.(e)
-      if (e.defaultPrevented) {
-        return
-      }
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        openWithHighlight()
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        openWithHighlight()
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        openWithHighlight()
-      } else if (isTypeaheadKey(e)) {
-        const match = getTypeaheadMatch(options, getClosedTypeaheadStartIndex(), '', e.key)
-        if (!match) {
-          return
-        }
-
-        e.preventDefault()
-        typeaheadRef.current = match.search
-        scheduleTypeaheadReset()
-        openAtHighlight(match.matchedIndex)
-      }
-    }
-
-    const handleListKeyDown = (e: ReactKeyboardEvent<HTMLUListElement>) => {
-      onListKeyDown?.(e)
-      if (e.defaultPrevented) {
-        return
-      }
-      if (isTypeaheadKey(e)) {
-        const handled = handleTypeahead(e.key)
-        if (handled) {
-          e.preventDefault()
-          return
-        }
-      }
-      if (e.key === 'Tab') {
-        close()
-        return
-      }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        moveHighlight(1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        moveHighlight(-1)
-      } else if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        selectIndex(highlightedIndex)
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        close()
-        triggerRef.current?.focus()
-      } else if (e.key === 'Home') {
-        e.preventDefault()
-        const enabled = enabledIndices(options)
-        if (enabled.length > 0) {
-          setHighlightedIndex(enabled[0]!)
-        }
-      } else if (e.key === 'End') {
-        e.preventDefault()
-        const enabled = enabledIndices(options)
-        if (enabled.length > 0) {
-          setHighlightedIndex(enabled[enabled.length - 1]!)
-        }
-      }
-    }
-
-    const multiple = isMultiSelect(props)
     const rootClassName = ['ui-dropdown', className].filter(Boolean).join(' ')
     const triggerClass = ['ui-dropdown__trigger', triggerClassName].filter(Boolean).join(' ')
-    const activeDescendantId = open ? `${listboxId}-option-${highlightedIndex}` : undefined
-
     const listboxLabelledBy = labelledBy ?? undefined
     const listboxAriaLabel = listAriaLabel ?? (ariaLabel && !labelledBy ? ariaLabel : undefined)
+    const listboxClassName = [
+      'ui-dropdown__panel',
+      'click-outside-ignore',
+      isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
+      placement === 'top' ? 'ui-dropdown__panel--top' : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+    const listboxStyle: DropdownInstanceStyle = {
+      maxHeight: `${dropdownMaxHeight}px`,
+      left: `${dropdownLayout.left}px`,
+      width: `${dropdownLayout.width}px`,
+      ...dropdownInstanceStyle,
+      ...(placement === 'bottom'
+        ? { top: `${dropdownLayout.top}px`, bottom: 'auto' }
+        : { bottom: `${dropdownLayout.bottom}px`, top: 'auto' }),
+    }
 
-    return (
-      <div className={rootClassName} ref={rootRef}>
-        <button
-          ref={setTriggerRef}
-          id={id}
-          type="button"
-          role={multiple ? undefined : 'combobox'}
-          className={triggerClass}
-          aria-labelledby={labelledBy}
-          aria-label={ariaLabel}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={listboxId}
-          aria-activedescendant={!multiple && !focusListOnOpen ? activeDescendantId : undefined}
-          data-panel-placement={open ? placement : undefined}
-          disabled={disabled}
-          data-testid={dataTestId}
-          {...triggerRest}
-          onClick={(e) => {
-            triggerOnClick?.(e)
-            if (e.defaultPrevented || disabled) {
+    const renderOptions = (open: boolean) => {
+      if (!open) {
+        return null
+      }
+
+      return createPortal(
+        <ListboxOptions
+          static
+          as="ul"
+          modal={false}
+          ref={setPanelRef}
+          id={listboxId}
+          className={listboxClassName}
+          aria-labelledby={listboxLabelledBy}
+          aria-label={listboxAriaLabel}
+          onKeyDown={(event) => {
+            if (event.key === 'Tab') {
+              onTriggerKeyDown?.(event as unknown as ReactKeyboardEvent<HTMLButtonElement>)
+              onListKeyDown?.(event)
               return
             }
-            if (open) {
-              setOpen(false)
-            } else {
-              openWithHighlight()
+
+            if (event.key === 'Enter' || event.key === ' ') {
+              return
             }
+
+            onListKeyDown?.(event)
           }}
-          onFocus={onTriggerFocus}
           onBlur={(e) => {
-            onTriggerBlur?.(e)
-            if (e.defaultPrevented || !open || focusListOnOpen) {
+            if (!focusListOnOpen) {
               return
             }
 
@@ -771,119 +558,50 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
               return
             }
 
-            close()
+            closeListbox()
           }}
-          onKeyDown={handleTriggerKeyDown}
+          data-placement={placement}
+          style={listboxStyle}
         >
-          <span className="ui-dropdown__value">{selectedLabel}</span>
-          <CaretDown className="ui-dropdown__chevron" size={16} weight="bold" aria-hidden />
-        </button>
-        {open
-          ? createPortal(
-              <ul
-                ref={panelRef}
-                id={listboxId}
-                className={[
-                  'ui-dropdown__panel',
-                  'click-outside-ignore',
-                  isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
-                  placement === 'top' ? 'ui-dropdown__panel--top' : '',
+          {options.map((opt, idx) => (
+            <ListboxOption
+              as="li"
+              key={`${opt.value}-${idx}`}
+              id={`${listboxId}-option-${idx}`}
+              value={opt.value}
+              disabled={opt.disabled}
+              aria-label={opt.label}
+              data-testid={dataTestId ? `${dataTestId}-option-${opt.value}` : undefined}
+              className={({ selected, focus, disabled: optionDisabled }) =>
+                [
+                  'ui-dropdown__option',
+                  selected ? 'ui-dropdown__option--selected' : '',
+                  focus && !selected ? 'ui-dropdown__option--highlighted' : '',
+                  isMultiSelect(props) ? 'ui-dropdown__option--multi' : '',
+                  optionDisabled ? 'ui-dropdown__option--disabled' : '',
                 ]
                   .filter(Boolean)
-                  .join(' ')}
-                role="listbox"
-                tabIndex={0}
-                aria-labelledby={listboxLabelledBy}
-                aria-label={listboxAriaLabel}
-                aria-activedescendant={
-                  !multiple && focusListOnOpen ? activeDescendantId : undefined
+                  .join(' ')
+              }
+              onMouseDown={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              onClick={() => {
+                if (isMultiSelect(props) && closeOnSelect) {
+                  queueMicrotask(closeListbox)
                 }
-                aria-multiselectable={multiple ? 'true' : undefined}
-                onKeyDown={handleListKeyDown}
-                onBlur={(e) => {
-                  if (!focusListOnOpen) {
-                    return
-                  }
-
-                  if (isWithinDropdownTarget(e.relatedTarget)) {
-                    return
-                  }
-
-                  close()
-                }}
-                data-placement={placement}
-                style={{
-                  maxHeight: `${dropdownMaxHeight}px`,
-                  left: `${dropdownLayout.left}px`,
-                  width: `${dropdownLayout.width}px`,
-                  ...dropdownInstanceStyle,
-                  ...(placement === 'bottom'
-                    ? { top: `${dropdownLayout.top}px`, bottom: 'auto' }
-                    : { bottom: `${dropdownLayout.bottom}px`, top: 'auto' }),
-                }}
-              >
-                {options.map((opt, idx) => {
-                  const isSelected = isOptionSelected(props, opt.value)
-                  const isHighlighted = idx === highlightedIndex
-                  const optionClass = [
-                    'ui-dropdown__option',
-                    isSelected ? 'ui-dropdown__option--selected' : '',
-                    isHighlighted && !isSelected ? 'ui-dropdown__option--highlighted' : '',
-                    isMultiSelect(props) ? 'ui-dropdown__option--multi' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')
-
-                  return (
-                    <li key={`${opt.value}-${idx}`} role="presentation">
-                      <button
-                        type="button"
-                        id={`${listboxId}-option-${idx}`}
-                        role="option"
-                        aria-label={opt.label}
-                        aria-selected={isSelected}
-                        className={optionClass}
-                        disabled={opt.disabled}
-                        data-testid={dataTestId ? `${dataTestId}-option-${opt.value}` : undefined}
-                        onMouseDown={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                        }}
-                        onMouseEnter={() => {
-                          setHighlightedIndex(idx)
-                        }}
-                        onClick={() => {
-                          selectIndex(idx)
-                        }}
-                      >
-                        {isMultiSelect(props) ? (
-                          <span className="ui-dropdown__option-row">
-                            <span className="ui-dropdown__option-content">
-                              {renderOptionLabel ? (
-                                renderOptionLabel(opt, {
-                                  selected: isSelected,
-                                  highlighted: isHighlighted,
-                                })
-                              ) : (
-                                <>
-                                  <span>{opt.label}</span>
-                                  {opt.description ? (
-                                    <span className="ui-dropdown__meta">{opt.description}</span>
-                                  ) : null}
-                                </>
-                              )}
-                            </span>
-                            <Check
-                              className="ui-dropdown__check"
-                              size={16}
-                              weight="bold"
-                              aria-hidden
-                            />
-                          </span>
-                        ) : renderOptionLabel ? (
+              }}
+            >
+              {({ selected, focus }) => (
+                <>
+                  {isMultiSelect(props) ? (
+                    <span className="ui-dropdown__option-row">
+                      <span className="ui-dropdown__option-content">
+                        {renderOptionLabel ? (
                           renderOptionLabel(opt, {
-                            selected: isSelected,
-                            highlighted: isHighlighted,
+                            selected,
+                            highlighted: focus,
                           })
                         ) : (
                           <>
@@ -893,15 +611,144 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                             ) : null}
                           </>
                         )}
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>,
-              portalContainer ?? document.body
+                      </span>
+                      <Check className="ui-dropdown__check" size={16} weight="bold" aria-hidden />
+                    </span>
+                  ) : renderOptionLabel ? (
+                    renderOptionLabel(opt, {
+                      selected,
+                      highlighted: focus,
+                    })
+                  ) : (
+                    <>
+                      <span>{opt.label}</span>
+                      {opt.description ? (
+                        <span className="ui-dropdown__meta">{opt.description}</span>
+                      ) : null}
+                    </>
+                  )}
+                </>
+              )}
+            </ListboxOption>
+          ))}
+        </ListboxOptions>,
+        portalContainer ?? document.body
+      )
+    }
+
+    if (isMultiSelect(props)) {
+      return (
+        <Listbox value={props.value} onChange={props.onChange} disabled={disabled} multiple>
+          {({ open }) => {
+            openRef.current = open
+            return (
+              <div className={rootClassName} ref={rootRef}>
+                <DropdownChrome
+                  open={open}
+                  options={options}
+                  rootRef={rootRef}
+                  triggerRef={triggerRef}
+                  panelRef={panelRef}
+                  workspaceTabId={workspaceTabId}
+                  focusListOnOpen={focusListOnOpen}
+                  onOpenChange={onOpenChange}
+                  closeListbox={closeListbox}
+                  updatePlacement={updatePlacement}
+                />
+                <ListboxButton
+                  ref={setTriggerRef}
+                  id={id}
+                  className={triggerClass}
+                  aria-labelledby={labelledBy}
+                  aria-label={ariaLabel}
+                  aria-controls={listboxId}
+                  data-panel-placement={open ? placement : undefined}
+                  data-testid={dataTestId}
+                  {...triggerRest}
+                  onClick={(e) => {
+                    triggerOnClick?.(e)
+                  }}
+                  onFocus={onTriggerFocus}
+                  onBlur={(e) => {
+                    onTriggerBlur?.(e)
+                    if (e.defaultPrevented || !open || focusListOnOpen) {
+                      return
+                    }
+
+                    if (isWithinDropdownTarget(e.relatedTarget)) {
+                      return
+                    }
+
+                    closeListbox()
+                  }}
+                  onKeyDown={onTriggerKeyDown}
+                >
+                  <span className="ui-dropdown__value">{selectedLabel}</span>
+                  <CaretDown className="ui-dropdown__chevron" size={16} weight="bold" aria-hidden />
+                </ListboxButton>
+                {renderOptions(open)}
+              </div>
             )
-          : null}
-      </div>
+          }}
+        </Listbox>
+      )
+    }
+
+    return (
+      <Listbox value={props.value} onChange={props.onChange} disabled={disabled}>
+        {({ open }) => {
+          openRef.current = open
+          return (
+            <div className={rootClassName} ref={rootRef}>
+              <DropdownChrome
+                open={open}
+                options={options}
+                rootRef={rootRef}
+                triggerRef={triggerRef}
+                panelRef={panelRef}
+                workspaceTabId={workspaceTabId}
+                focusListOnOpen={focusListOnOpen}
+                onOpenChange={onOpenChange}
+                closeListbox={closeListbox}
+                updatePlacement={updatePlacement}
+              />
+              <ListboxButton
+                ref={setTriggerRef}
+                id={id}
+                role="combobox"
+                className={triggerClass}
+                aria-labelledby={labelledBy}
+                aria-label={ariaLabel}
+                aria-controls={listboxId}
+                data-panel-placement={open ? placement : undefined}
+                data-testid={dataTestId}
+                {...triggerRest}
+                onClick={(e) => {
+                  triggerOnClick?.(e)
+                }}
+                onFocus={onTriggerFocus}
+                onBlur={(e) => {
+                  onTriggerBlur?.(e)
+                  if (e.defaultPrevented || !open || focusListOnOpen) {
+                    return
+                  }
+
+                  if (isWithinDropdownTarget(e.relatedTarget)) {
+                    return
+                  }
+
+                  closeListbox()
+                }}
+                onKeyDown={onTriggerKeyDown}
+              >
+                <span className="ui-dropdown__value">{selectedLabel}</span>
+                <CaretDown className="ui-dropdown__chevron" size={16} weight="bold" aria-hidden />
+              </ListboxButton>
+              {renderOptions(open)}
+            </div>
+          )
+        }}
+      </Listbox>
     )
   }
 )

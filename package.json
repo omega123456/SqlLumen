@@ -26,6 +26,7 @@
   "dependencies": {
     "@glideapps/glide-data-grid": "6.0.3",
     "@glideapps/glide-data-grid-cells": "6.0.3",
+    "@headlessui/react": "^2.2.10",
     "@monaco-editor/react": "^4.7.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.11.0",

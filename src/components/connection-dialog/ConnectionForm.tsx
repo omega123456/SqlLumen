@@ -331,12 +331,8 @@ export function ConnectionForm({
     try {
       // Use the saved keychain password only when none was freshly typed and the
       // user isn't explicitly clearing it.
-      const useSavedPassword =
-        hasSavedPassword && !clearSavedPassword && formData.password === ''
-      const result = await testConnection(
-        formData,
-        useSavedPassword ? currentConnectionId : null
-      )
+      const useSavedPassword = hasSavedPassword && !clearSavedPassword && formData.password === ''
+      const result = await testConnection(formData, useSavedPassword ? currentConnectionId : null)
       setTestResult(result)
     } catch (err) {
       const failure = buildErrorResult(err)
@@ -490,132 +486,138 @@ export function ConnectionForm({
                   data-testid={`connection-form-tab-${tab}`}
                 >
                   {TAB_LABELS[tab]}
-                  {tabHasError(tab) && <span className={styles.tabErrorDot} aria-label="Has errors" />}
+                  {tabHasError(tab) && (
+                    <span className={styles.tabErrorDot} aria-label="Has errors" />
+                  )}
                 </UnderlineTab>
               ))}
             </UnderlineTabBar>
 
             {activeTab === 'general' && (
-              <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-general">
-              <div className={styles.fieldGroup}>
-                <label htmlFor="conn-name" className={styles.labelCaps}>
-                  Connection name
-                </label>
-                <TextInput
-                  id="conn-name"
-                  type="text"
-                  variant="mono"
-                  invalid={!!errors.name}
-                  value={formData.name}
-                  onChange={(e) => updateField('name', e.target.value)}
-                  placeholder="My production server"
-                  autoFocus={nameAutoFocusRef.current}
-                />
-                {errors.name && <span className={styles.errorText}>{errors.name}</span>}
-              </div>
-
-              <div className={styles.row2}>
+              <div
+                className={styles.tabPanel}
+                role="tabpanel"
+                data-testid="connection-form-panel-general"
+              >
                 <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-host" className={styles.labelCaps}>
-                    Host address
+                  <label htmlFor="conn-name" className={styles.labelCaps}>
+                    Connection name
                   </label>
                   <TextInput
-                    id="conn-host"
+                    id="conn-name"
                     type="text"
                     variant="mono"
-                    invalid={!!errors.host}
-                    value={formData.host}
-                    onChange={(e) => updateField('host', e.target.value)}
-                    placeholder="localhost"
+                    invalid={!!errors.name}
+                    value={formData.name}
+                    onChange={(e) => updateField('name', e.target.value)}
+                    placeholder="My production server"
+                    autoFocus={nameAutoFocusRef.current}
                   />
-                  {errors.host && <span className={styles.errorText}>{errors.host}</span>}
+                  {errors.name && <span className={styles.errorText}>{errors.name}</span>}
                 </div>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-port" className={styles.labelCaps}>
-                    Port
-                  </label>
-                  <TextInput
-                    id="conn-port"
-                    type="number"
-                    variant="mono"
-                    invalid={!!errors.port}
-                    value={formData.port}
-                    onChange={(e) => updateField('port', parseInt(e.target.value, 10) || 0)}
-                    min={1}
-                    max={65535}
-                    placeholder="3306"
-                  />
-                  {errors.port && <span className={styles.errorText}>{errors.port}</span>}
-                </div>
-              </div>
 
-              <div className={styles.rowUserPass}>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-username" className={styles.labelCaps}>
-                    Username
-                  </label>
-                  <TextInput
-                    id="conn-username"
-                    type="text"
-                    variant="mono"
-                    invalid={!!errors.username}
-                    value={formData.username}
-                    onChange={(e) => updateField('username', e.target.value)}
-                    placeholder="root"
-                  />
-                  {errors.username && <span className={styles.errorText}>{errors.username}</span>}
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-password" className={styles.labelCaps}>
-                    Password
-                  </label>
-                  <div className={styles.passwordWrapper}>
+                <div className={styles.row2}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="conn-host" className={styles.labelCaps}>
+                      Host address
+                    </label>
                     <TextInput
-                      id="conn-password"
-                      type={showPassword ? 'text' : 'password'}
+                      id="conn-host"
+                      type="text"
                       variant="mono"
-                      passwordToggleGutter
-                      value={formData.password}
-                      onChange={(e) => {
-                        updateField('password', e.target.value)
-                        if (clearSavedPassword) {
-                          setClearSavedPassword(false)
-                        }
-                      }}
-                      placeholder={hasSavedPassword && !clearSavedPassword ? '••••••••' : ''}
-                      disabled={clearSavedPassword}
+                      invalid={!!errors.host}
+                      value={formData.host}
+                      onChange={(e) => updateField('host', e.target.value)}
+                      placeholder="localhost"
                     />
-                    <button
-                      type="button"
-                      className={styles.passwordToggle}
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
-                    </button>
+                    {errors.host && <span className={styles.errorText}>{errors.host}</span>}
                   </div>
-                  {!editingConnection && savedId === null && initialData?.sourceHadPassword && (
-                    <span className={styles.fieldHint} data-testid="duplicate-password-hint">
-                      Password is not copied — enter it to save.
-                    </span>
-                  )}
-                  {hasSavedPassword && (
-                    <label className={styles.label}>
-                      <Checkbox
-                        checked={clearSavedPassword}
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="conn-port" className={styles.labelCaps}>
+                      Port
+                    </label>
+                    <TextInput
+                      id="conn-port"
+                      type="number"
+                      variant="mono"
+                      invalid={!!errors.port}
+                      value={formData.port}
+                      onChange={(e) => updateField('port', parseInt(e.target.value, 10) || 0)}
+                      min={1}
+                      max={65535}
+                      placeholder="3306"
+                    />
+                    {errors.port && <span className={styles.errorText}>{errors.port}</span>}
+                  </div>
+                </div>
+
+                <div className={styles.rowUserPass}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="conn-username" className={styles.labelCaps}>
+                      Username
+                    </label>
+                    <TextInput
+                      id="conn-username"
+                      type="text"
+                      variant="mono"
+                      invalid={!!errors.username}
+                      value={formData.username}
+                      onChange={(e) => updateField('username', e.target.value)}
+                      placeholder="root"
+                    />
+                    {errors.username && <span className={styles.errorText}>{errors.username}</span>}
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="conn-password" className={styles.labelCaps}>
+                      Password
+                    </label>
+                    <div className={styles.passwordWrapper}>
+                      <TextInput
+                        id="conn-password"
+                        type={showPassword ? 'text' : 'password'}
+                        variant="mono"
+                        passwordToggleGutter
+                        value={formData.password}
                         onChange={(e) => {
-                          const checked = e.target.checked
-                          setClearSavedPassword(checked)
-                          if (checked && formData.password) {
-                            updateField('password', '')
+                          updateField('password', e.target.value)
+                          if (clearSavedPassword) {
+                            setClearSavedPassword(false)
                           }
                         }}
-                      />{' '}
-                      Use no password (remove saved password)
-                    </label>
-                  )}
+                        placeholder={hasSavedPassword && !clearSavedPassword ? '••••••••' : ''}
+                        disabled={clearSavedPassword}
+                      />
+                      <button
+                        type="button"
+                        className={styles.passwordToggle}
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    {!editingConnection && savedId === null && initialData?.sourceHadPassword && (
+                      <span className={styles.fieldHint} data-testid="duplicate-password-hint">
+                        Password is not copied — enter it to save.
+                      </span>
+                    )}
+                    {hasSavedPassword && (
+                      <label className={styles.label}>
+                        <Checkbox
+                          checked={clearSavedPassword}
+                          onChange={(e) => {
+                            const checked = e.target.checked
+                            setClearSavedPassword(checked)
+                            if (checked && formData.password) {
+                              updateField('password', '')
+                            }
+                          }}
+                        />{' '}
+                        Use no password (remove saved password)
+                      </label>
+                    )}
+                  </div>
                 </div>
-              </div>
 
                 <div className={styles.fieldGroup}>
                   <label htmlFor="conn-database" className={styles.labelCaps}>
@@ -634,7 +636,11 @@ export function ConnectionForm({
             )}
 
             {activeTab === 'ssl' && (
-              <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-ssl">
+              <div
+                className={styles.tabPanel}
+                role="tabpanel"
+                data-testid="connection-form-panel-ssl"
+              >
                 <div className={styles.sslBlock}>
                   <div className={styles.sslCheckboxWrap}>
                     <Checkbox
@@ -701,13 +707,18 @@ export function ConnectionForm({
                     <Dropdown
                       id="conn-group"
                       labelledBy="conn-group-label"
+                      listAriaLabel="Group"
                       options={groupDropdownOptions}
                       value={formData.groupId ?? ''}
                       onChange={(v) => updateField('groupId', v || null)}
                     />
                   </div>
                   <div className={styles.fieldGroup}>
-                    <label id="conn-access-label" htmlFor="conn-access" className={styles.labelCaps}>
+                    <label
+                      id="conn-access-label"
+                      htmlFor="conn-access"
+                      className={styles.labelCaps}
+                    >
                       Access mode
                     </label>
                     <Dropdown
@@ -727,9 +738,7 @@ export function ConnectionForm({
                       color={formData.color}
                       onChange={(color) => updateField('color', color)}
                     />
-                    <span className={styles.tabColorValue}>
-                      {formData.color ?? 'No color set'}
-                    </span>
+                    <span className={styles.tabColorValue}>{formData.color ?? 'No color set'}</span>
                   </div>
                 </div>
 
@@ -800,7 +809,11 @@ export function ConnectionForm({
             {pendingAction === 'test' ? 'Testing…' : 'Test Connection'}
           </Button>
           {currentConnectionId ? (
-            <Button variant="danger" onClick={() => setDeleteConfirmOpen(true)} disabled={isAnyPending}>
+            <Button
+              variant="danger"
+              onClick={() => setDeleteConfirmOpen(true)}
+              disabled={isAnyPending}
+            >
               Delete
             </Button>
           ) : null}

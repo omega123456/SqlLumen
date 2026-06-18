@@ -7,7 +7,9 @@ import {
 describe('resolveFavoriteSql', () => {
   it('returns the trimmed selection when a selection exists', () => {
     const full = 'SELECT 1;\nSELECT 2;'
-    expect(resolveFavoriteSql(full, '  SELECT 2;  ', { lineNumber: 1, column: 1 })).toBe('SELECT 2;')
+    expect(resolveFavoriteSql(full, '  SELECT 2;  ', { lineNumber: 1, column: 1 })).toBe(
+      'SELECT 2;'
+    )
   })
 
   it('falls back to the statement under the cursor when nothing is selected', () => {

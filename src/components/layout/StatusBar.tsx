@@ -131,7 +131,8 @@ export function StatusBar() {
     isQueryEditorTab && !isShowingTableData && activeResultState?.resultStatus === 'success'
 
   // Show running indicator for query-editor tabs with tabStatus === 'running'
-  const showRunningInfo = isQueryEditorTab && !isShowingTableData && queryState?.tabStatus === 'running'
+  const showRunningInfo =
+    isQueryEditorTab && !isShowingTableData && queryState?.tabStatus === 'running'
 
   const showTableInfo =
     isShowingTableData &&

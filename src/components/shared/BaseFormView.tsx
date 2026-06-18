@@ -495,7 +495,6 @@ function FormField({
               }
               onInputChange(col.key, nextValue)
             }}
-            onTriggerFocus={onInputFocus}
             data-testid={`form-input-${col.displayName}`}
             triggerClassName={[
               styles.fieldInput,

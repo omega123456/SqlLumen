@@ -59,9 +59,7 @@ function setupActiveConnection() {
   })
 }
 
-function makeStatusBarTableState(
-  overrides: Partial<TableDataTabState> = {}
-): TableDataTabState {
+function makeStatusBarTableState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
   return makeTableDataTabState({
     columns: [
       {
