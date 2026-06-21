@@ -270,7 +270,7 @@ function removeConnectionTabs(
   const wasActiveRemoved = activeTab ? shouldRemove(activeTab) : false
   const remainingTabs = tabs.filter((tab) => !shouldRemove(tab))
   const nextActive = wasActiveRemoved
-    ? getNextActiveTabIdAfterClose(remainingTabs, activeTab, activeTabIndex)
+    ? getNextActiveTabIdAfterClose(remainingTabs, activeTab!, activeTabIndex)
     : currentActiveId
   const normalizedActive = normalizeWorkspaceActiveTab(remainingTabs, nextActive)
 

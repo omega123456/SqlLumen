@@ -39,7 +39,7 @@ function setCompactWorkspaceTabsWidth(width: number) {
       Object.defineProperty(HTMLElement.prototype, 'clientWidth', original)
       return
     }
-    delete (HTMLElement.prototype as Partial<HTMLElement>).clientWidth
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
   }
 }
 
