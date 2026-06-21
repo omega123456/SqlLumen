@@ -1,7 +1,17 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash, Copy } from '@phosphor-icons/react'
+import Fuse from 'fuse.js'
+import {
+  Plus,
+  FolderPlus,
+  ShieldCheck,
+  PencilSimple,
+  Trash,
+  Copy,
+  MagnifyingGlass,
+  X,
+} from '@phosphor-icons/react'
 import { TextInput } from '../common/TextInput'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
@@ -71,6 +81,29 @@ function buildConnectionSections(
   })
 
   return sections
+}
+
+// --- Fuzzy filter for the quick-search bar (case-insensitive, name + host) ---
+
+function filterConnectionsByQuery(
+  savedConnections: SavedConnection[],
+  query: string
+): SavedConnection[] {
+  const trimmed = query.trim()
+  if (!trimmed) {
+    return savedConnections
+  }
+
+  const fuse = new Fuse(savedConnections, {
+    keys: ['name', 'host'],
+    // threshold 0 = exact (case-insensitive) substring match anywhere in the
+    // name or host. No typo tolerance, so unrelated entries never sneak in.
+    threshold: 0,
+    ignoreLocation: true,
+    isCaseSensitive: false,
+  })
+
+  return fuse.search(trimmed).map((result) => result.item)
 }
 
 // --- Simplification 5: unified editing state for group rename / create ---
@@ -160,14 +193,23 @@ export function SavedConnectionsList({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [editingGroup, setEditingGroup] = useState<EditingGroupState>(null)
   const [error, setError] = useState<string | null>(null)
+  const [filterText, setFilterText] = useState('')
 
   const contextMenuRef = useRef<HTMLDivElement>(null)
 
+  // Fuzzy quick-filter, then build the grouped/sorted sections from the result
+  const filteredConnections = useMemo(
+    () => filterConnectionsByQuery(savedConnections, filterText),
+    [savedConnections, filterText]
+  )
+
   // Simplification 6: memoized sections
   const sections = useMemo(
-    () => buildConnectionSections(savedConnections, connectionGroups),
-    [savedConnections, connectionGroups]
+    () => buildConnectionSections(filteredConnections, connectionGroups),
+    [filteredConnections, connectionGroups]
   )
+
+  const hasMatches = filteredConnections.length > 0
 
   // Simplification 7: outside-click / Escape dismissal for context menu
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
@@ -385,16 +427,52 @@ export function SavedConnectionsList({
           </button>
         </div>
       </div>
+      <div className={styles.searchWrapper}>
+        <span className={styles.searchIcon}>
+          <MagnifyingGlass size={14} weight="regular" />
+        </span>
+        <TextInput
+          variant="bare"
+          type="text"
+          className={styles.searchInput}
+          placeholder="Filter connections..."
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          data-testid="connection-filter-input"
+          aria-label="Filter connections"
+        />
+        {filterText && (
+          <button
+            type="button"
+            className={styles.clearButton}
+            onClick={() => setFilterText('')}
+            tabIndex={-1}
+            aria-label="Clear connection filter"
+            data-testid="connection-filter-clear"
+          >
+            <X size={12} weight="bold" />
+          </button>
+        )}
+      </div>
       <div className={styles.list}>
+        {filterText.trim() && !hasMatches && (
+          <div className={styles.emptyState}>No connections match “{filterText.trim()}”</div>
+        )}
         {sections.map((section) => {
-          // Skip empty ungrouped section
-          if (section.groupId === null && section.connections.length === 0) return null
-
           const isGroupSection = section.groupId !== null
           const isRenaming =
             isGroupSection &&
             editingGroup?.mode === 'rename' &&
             editingGroup.groupId === section.groupId
+
+          // Always skip the empty ungrouped section. While a filter is active, also
+          // hide empty named groups so only matching sections remain. With no filter,
+          // empty named groups stay visible (so they can be renamed/deleted) unless
+          // they are being renamed inline.
+          if (section.connections.length === 0) {
+            const hideEmptyGroup = !isGroupSection || filterText.trim().length > 0
+            if (hideEmptyGroup && !isRenaming) return null
+          }
 
           return (
             <div key={section.groupId ?? 'ungrouped'} className={styles.group}>

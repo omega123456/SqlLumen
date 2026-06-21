@@ -458,6 +458,183 @@ describe('SavedConnectionsList', () => {
     })
   })
 
+  describe('quick filter', () => {
+    it('filters connections by name (case-insensitive)', async () => {
+      const user = userEvent.setup()
+      const conn1 = makeConnection({ id: 'c1', name: 'Production DB', host: 'prod.example.com' })
+      const conn2 = makeConnection({ id: 'c2', name: 'Staging DB', host: 'staging.example.com' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn1, conn2],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      const input = screen.getByTestId('connection-filter-input')
+      await user.type(input, 'staging')
+
+      await waitFor(() => {
+        expect(screen.getByText('Staging DB')).toBeInTheDocument()
+        expect(screen.queryByText('Production DB')).not.toBeInTheDocument()
+      })
+    })
+
+    it('matches against host as well as name', async () => {
+      const user = userEvent.setup()
+      const conn1 = makeConnection({ id: 'c1', name: 'Alpha', host: '10.0.0.5' })
+      const conn2 = makeConnection({ id: 'c2', name: 'Beta', host: '192.168.1.1' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn1, conn2],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.type(screen.getByTestId('connection-filter-input'), '192.168')
+
+      await waitFor(() => {
+        expect(screen.getByText('Beta')).toBeInTheDocument()
+        expect(screen.queryByText('Alpha')).not.toBeInTheDocument()
+      })
+    })
+
+    it('matches a substring in the middle of the name', async () => {
+      const user = userEvent.setup()
+      const conn = makeConnection({ id: 'c1', name: 'optest', host: 'h' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.type(screen.getByTestId('connection-filter-input'), 'tes')
+
+      await waitFor(() => {
+        expect(screen.getByText('optest')).toBeInTheDocument()
+      })
+    })
+
+    it('does not match on typos (exact substring only)', async () => {
+      const user = userEvent.setup()
+      const conn = makeConnection({ id: 'c1', name: 'Production', host: 'h' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.type(screen.getByTestId('connection-filter-input'), 'prodction')
+
+      await waitFor(() => {
+        expect(screen.getByText(/No connections match/)).toBeInTheDocument()
+      })
+      expect(screen.queryByText('Production')).not.toBeInTheDocument()
+    })
+
+    it('does not loosely match unrelated connections via scattered host chars', async () => {
+      const user = userEvent.setup()
+      const staging = makeConnection({
+        id: 'c1',
+        name: 'staging',
+        host: 'entdb.staging.sykes.cloud',
+      })
+      const optest = makeConnection({
+        id: 'c2',
+        name: 'optest',
+        host: 'live-test.eu-west-1.rds.amazonaws.com',
+      })
+
+      useConnectionStore.setState({
+        savedConnections: [staging, optest],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.type(screen.getByTestId('connection-filter-input'), 'tes')
+
+      await waitFor(() => {
+        expect(screen.getByText('optest')).toBeInTheDocument()
+      })
+      expect(screen.queryByText('staging')).not.toBeInTheDocument()
+    })
+
+    it('shows a no-results message when nothing matches', async () => {
+      const user = userEvent.setup()
+      const conn = makeConnection({ id: 'c1', name: 'Production' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.type(screen.getByTestId('connection-filter-input'), 'zzzznomatch')
+
+      await waitFor(() => {
+        expect(screen.queryByText('Production')).not.toBeInTheDocument()
+        expect(screen.getByText(/No connections match/)).toBeInTheDocument()
+      })
+    })
+
+    it('hides empty named groups while filtering', async () => {
+      const user = userEvent.setup()
+      const group = makeGroup({ id: 'grp-1', name: 'Production' })
+      const conn = makeConnection({ id: 'c1', name: 'Staging DB', groupId: null })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [group],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      // Empty named group visible before filtering
+      expect(screen.getByText('Production')).toBeInTheDocument()
+
+      await user.type(screen.getByTestId('connection-filter-input'), 'staging')
+
+      await waitFor(() => {
+        expect(screen.queryByText('Production')).not.toBeInTheDocument()
+        expect(screen.getByText('Staging DB')).toBeInTheDocument()
+      })
+    })
+
+    it('clears the filter via the clear button', async () => {
+      const user = userEvent.setup()
+      const conn1 = makeConnection({ id: 'c1', name: 'Production DB' })
+      const conn2 = makeConnection({ id: 'c2', name: 'Staging DB' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn1, conn2],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      await user.type(screen.getByTestId('connection-filter-input'), 'staging')
+
+      await waitFor(() => {
+        expect(screen.queryByText('Production DB')).not.toBeInTheDocument()
+      })
+
+      await user.click(screen.getByTestId('connection-filter-clear'))
+
+      await waitFor(() => {
+        expect(screen.getByText('Production DB')).toBeInTheDocument()
+        expect(screen.getByText('Staging DB')).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('connection-filter-input')).toHaveValue('')
+    })
+  })
+
   describe('connections with missing group', () => {
     it('treats connections with nonexistent groupId as ungrouped', () => {
       const conn = makeConnection({

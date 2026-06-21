@@ -52,6 +52,78 @@
   background: var(--ui-icon-action-hover-bg);
 }
 
+.searchWrapper {
+  position: relative;
+  flex-shrink: 0;
+  padding: 8px 12px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--on-surface-variant);
+  opacity: 0.5;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 28px 6px 32px;
+  background: var(--surface-container-highest);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.searchInput:focus {
+  border-color: var(--primary);
+}
+
+.searchInput::placeholder {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.clearButton {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.clearButton:hover {
+  opacity: 1;
+  background: var(--surface-container-highest);
+}
+
+.emptyState {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: var(--type-meta);
+  color: var(--on-surface-variant);
+}
+
 .list {
   flex: 1;
   overflow-y: auto;
