@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
-import { Plus, Copy, Trash, FloppyDisk, ArrowCounterClockwise } from '@phosphor-icons/react'
+import { Plus, Copy, Trash, FloppyDisk, ArrowCounterClockwise, Stop } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
@@ -46,6 +46,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const saveCurrentRow = useTableDataStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useTableDataStore((state) => state.discardCurrentRow)
   const refreshData = useTableDataStore((state) => state.refreshData)
+  const cancelLoad = useTableDataStore((state) => state.cancelLoad)
   const setViewMode = useTableDataStore((state) => state.setViewMode)
   const openExportDialog = useTableDataStore((state) => state.openExportDialog)
   const setPageSize = useTableDataStore((state) => state.setPageSize)
@@ -57,6 +58,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
 
   const executionTimeMs = tabState?.executionTimeMs ?? 0
   const isLoading = tabState?.isLoading ?? false
+  const isCancelling = tabState?.isCancelling ?? false
   const rowResidencyStatus = tabState?.rowResidency?.status ?? 'resident'
   const primaryKey = tabState?.primaryKey ?? null
   const editState = tabState?.editState ?? null
@@ -220,6 +222,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       refreshData(tabId)
     })
   }, [withNavigationGuard, refreshData, tabId])
+
+  const handleCancelLoad = useCallback(() => {
+    cancelLoad(tabId)
+  }, [cancelLoad, tabId])
 
   const handleViewMode = useCallback(
     (mode: ViewMode) => {
@@ -387,16 +393,30 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
           </>
         )}
 
-        <button
-          type="button"
-          className={styles.iconButton}
-          onClick={handleRefresh}
-          disabled={isBusy}
-          title="Refresh data"
-          data-testid="btn-refresh"
-        >
-          <ArrowCounterClockwise size={16} weight="bold" />
-        </button>
+        {isLoading && !isRestoring ? (
+          <button
+            type="button"
+            className={`${styles.cancelButton}${isCancelling ? ` ${styles.cancelling}` : ''}`}
+            onClick={handleCancelLoad}
+            disabled={isCancelling}
+            title="Cancel the running query"
+            data-testid="btn-cancel-load"
+          >
+            <Stop size={14} weight="fill" />
+            <span>{isCancelling ? 'Cancelling...' : 'Cancel'}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.iconButton}
+            onClick={handleRefresh}
+            disabled={isBusy}
+            title="Refresh data"
+            data-testid="btn-refresh"
+          >
+            <ArrowCounterClockwise size={16} weight="bold" />
+          </button>
+        )}
       </div>
 
       {/* Right section: Filter + View mode + Export + Pagination */}

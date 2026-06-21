@@ -711,6 +711,23 @@ fn cleanup_stale_dump_jobs(jobs: &mut HashMap<String, DumpJobProgress>) {
 // Type-aware value serialization for SQL dumps
 // ---------------------------------------------------------------------------
 
+/// Whether a sqlx MySQL type name (upper-cased) should be emitted as an
+/// unquoted integer literal in a SQL dump / copy `INSERT`.
+///
+/// Note: sqlx reports `TINYINT(1)` columns with `type_info().name() == "BOOLEAN"`
+/// (the MySQL boolean alias), so "BOOLEAN"/"BOOL" must be treated as integers
+/// here. Without this, those columns fall through to the string path, the raw
+/// 1-byte value is read as a UTF-8 control character, and MySQL coerces the
+/// resulting `'\x01'` literal to 0 on insert (the copy-to-host / export bug
+/// where every `tinyint(1)` row was written as 0).
+pub fn is_unquoted_integer_dump_type(type_name: &str) -> bool {
+    matches!(
+        type_name,
+        "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG" | "BOOLEAN" | "BOOL"
+    ) || type_name.contains("INT")
+        || type_name == "YEAR"
+}
+
 /// Serialize a single cell from a MySQL result row into a [`SqlDumpValue`],
 /// using the column's type metadata to choose the correct representation.
 ///
@@ -728,13 +745,8 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpVal
 
     let type_name = raw_value.type_info().name().to_uppercase();
 
-    // Integer types → emit as unquoted numbers
-    if matches!(
-        type_name.as_str(),
-        "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG"
-    ) || type_name.contains("INT")
-        || type_name == "YEAR"
-    {
+    // Integer types → emit as unquoted numbers (see `is_unquoted_integer_dump_type`).
+    if is_unquoted_integer_dump_type(&type_name) {
         if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(i) {
             return SqlDumpValue::Int(v);
         }

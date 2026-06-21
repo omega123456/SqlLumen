@@ -2231,3 +2231,99 @@ describe('useTableDataStore — deleteRows (bulk)', () => {
     expect(tab.rows).toHaveLength(1)
   })
 })
+
+describe('useTableDataStore — cancelLoad', () => {
+  it('does nothing when the tab is not loading', async () => {
+    await setupTabWithData('tab-1')
+    expect(useTableDataStore.getState().tabs['tab-1'].isLoading).toBe(false)
+
+    await useTableDataStore.getState().cancelLoad('tab-1')
+
+    expect(ipc.calls('cancel_query').length).toBe(0)
+    expect(useTableDataStore.getState().tabs['tab-1'].isCancelling).toBe(false)
+  })
+
+  it('issues cancel_query and surfaces a cancellation error on the in-flight fetch', async () => {
+    let rejectFetch: ((reason: Error) => void) | null = null
+    ipc.override(
+      'fetch_table_data',
+      () =>
+        new Promise<TableDataResponse>((_resolve, reject) => {
+          rejectFetch = reject
+        })
+    )
+    ipc.override('cancel_query', () => true)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    const fetchPromise = useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    // The fetch is in flight.
+    expect(useTableDataStore.getState().tabs['tab-1'].isLoading).toBe(true)
+
+    await useTableDataStore.getState().cancelLoad('tab-1')
+
+    // Cancel was issued for the table-data tab, flag set, success toast shown.
+    expect(ipc.calls('cancel_query')).toHaveLength(1)
+    expect(ipc.calls('cancel_query')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+    expect(useTableDataStore.getState().tabs['tab-1'].isCancelling).toBe(true)
+    await expectToast('success', 'Query cancelled')
+
+    // The backend KILL surfaces as a query error; report it as a cancellation.
+    rejectFetch!(new Error('Data query failed: query execution was interrupted'))
+    await fetchPromise
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.error).toBe('Query cancelled by user')
+    expect(tab.isLoading).toBe(false)
+    expect(tab.isCancelling).toBe(false)
+  })
+
+  it('clears isCancelling when no running query is found', async () => {
+    let resolveFetch: ((value: TableDataResponse) => void) | null = null
+    ipc.override(
+      'fetch_table_data',
+      () =>
+        new Promise<TableDataResponse>((resolve) => {
+          resolveFetch = resolve
+        })
+    )
+    // Query already finished server-side: cancel finds nothing to kill.
+    ipc.override('cancel_query', () => false)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    const fetchPromise = useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    await useTableDataStore.getState().cancelLoad('tab-1')
+
+    expect(ipc.calls('cancel_query')).toHaveLength(1)
+    expect(useTableDataStore.getState().tabs['tab-1'].isCancelling).toBe(false)
+
+    // The fetch still completes normally afterwards.
+    resolveFetch!(mockResponse)
+    await fetchPromise
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.isLoading).toBe(false)
+    expect(tab.error).toBeNull()
+  })
+
+  it('does not double-issue cancel while one is already in flight', async () => {
+    ipc.override(
+      'fetch_table_data',
+      () => new Promise<TableDataResponse>(() => {})
+    )
+    ipc.override('cancel_query', () => true)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    void useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    await useTableDataStore.getState().cancelLoad('tab-1')
+    // Second invocation is a no-op because isCancelling is already set.
+    await useTableDataStore.getState().cancelLoad('tab-1')
+
+    expect(ipc.calls('cancel_query')).toHaveLength(1)
+  })
+})

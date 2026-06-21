@@ -854,6 +854,138 @@ mod type_aware_filter_integration {
     }
 }
 
+// ── Cancellation wiring: fetch registers + cleans up the running query ──────────
+
+#[cfg(not(coverage))]
+mod fetch_cancellation_integration {
+    use super::*;
+    use crate::common::blob_step_helpers::connect_mock_pool;
+    use crate::common::mock_mysql_server::{
+        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
+    };
+    use opensrv_mysql::{ColumnFlags, ColumnType};
+    use sqllumen_lib::mysql::table_data::fetch_table_data_impl;
+    use std::collections::HashMap;
+
+    const COLUMN_META_SQL: &str = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION";
+    const PK_SQL: &str = "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION";
+
+    fn varchar(name: &'static str, flags: ColumnFlags) -> MockColumnDef {
+        MockColumnDef {
+            name,
+            coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+            colflags: flags,
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_table_data_unregisters_running_query_on_success() {
+        let server = MockMySqlServer::start_script(vec![
+            MockQueryStep {
+                query: COLUMN_META_SQL,
+                columns: vec![
+                    varchar("COLUMN_NAME", ColumnFlags::NOT_NULL_FLAG),
+                    varchar("DATA_TYPE", ColumnFlags::NOT_NULL_FLAG),
+                    varchar("COLUMN_TYPE", ColumnFlags::NOT_NULL_FLAG),
+                    varchar("IS_NULLABLE", ColumnFlags::NOT_NULL_FLAG),
+                    varchar("COLUMN_KEY", ColumnFlags::empty()),
+                    varchar("COLUMN_DEFAULT", ColumnFlags::empty()),
+                    varchar("EXTRA", ColumnFlags::NOT_NULL_FLAG),
+                ],
+                rows: vec![
+                    vec![
+                        MockCell::Bytes(b"id"),
+                        MockCell::Bytes(b"int"),
+                        MockCell::Bytes(b"int(11)"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b"PRI"),
+                        MockCell::Null,
+                        MockCell::Bytes(b"auto_increment"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"name"),
+                        MockCell::Bytes(b"varchar"),
+                        MockCell::Bytes(b"varchar(255)"),
+                        MockCell::Bytes(b"YES"),
+                        MockCell::Bytes(b""),
+                        MockCell::Null,
+                        MockCell::Bytes(b""),
+                    ],
+                ],
+                error: None,
+                affected_rows: None,
+            },
+            MockQueryStep {
+                query: PK_SQL,
+                columns: vec![varchar("COLUMN_NAME", ColumnFlags::NOT_NULL_FLAG)],
+                rows: vec![vec![MockCell::Bytes(b"id")]],
+                error: None,
+                affected_rows: None,
+            },
+            MockQueryStep {
+                query: "SELECT CONNECTION_ID()",
+                columns: vec![MockColumnDef {
+                    name: "CONNECTION_ID()",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+                }],
+                rows: vec![vec![MockCell::U64(987_654)]],
+                error: None,
+                affected_rows: None,
+            },
+            MockQueryStep {
+                query: "SELECT `id`, `name` FROM `app_db`.`users` LIMIT 50 OFFSET 0",
+                columns: vec![
+                    MockColumnDef {
+                        name: "id",
+                        coltype: ColumnType::MYSQL_TYPE_LONG,
+                        colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+                    },
+                    varchar("name", ColumnFlags::empty()),
+                ],
+                rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"alice")]],
+                error: None,
+                affected_rows: None,
+            },
+        ])
+        .await;
+
+        let pool = connect_mock_pool(&server).await;
+        let metadata_cache = MetadataCache::new();
+        let running_queries = tokio::sync::RwLock::new(HashMap::new());
+
+        let result = fetch_table_data_impl(
+            &pool,
+            "conn-1",
+            "tab-1",
+            &running_queries,
+            &metadata_cache,
+            "app_db",
+            "users",
+            1,
+            50,
+            None,
+            vec![],
+        )
+        .await
+        .expect("fetch should succeed");
+
+        pool.close().await;
+
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(result.rows[0][0], serde_json::json!(1));
+        assert_eq!(result.rows[0][1], serde_json::json!("alice"));
+
+        // The running-query entry registered during the data query must be
+        // removed once the fetch completes (no leak that would shadow a later
+        // cancel target for this tab).
+        assert!(
+            running_queries.read().await.is_empty(),
+            "running_queries must be cleaned up after a successful fetch"
+        );
+    }
+}
+
 #[cfg(coverage)]
 mod command_wrapper_coverage {
     use super::*;
@@ -2783,9 +2915,12 @@ mod coverage_stubs {
     async fn fetch_table_data_impl_stub_returns_default() {
         let pool = dummy_lazy_pool();
         let metadata_cache = MetadataCache::new();
+        let running_queries = tokio::sync::RwLock::new(HashMap::new());
         let result = fetch_table_data_impl(
             &pool,
             "test-connection",
+            "test-tab",
+            &running_queries,
             &metadata_cache,
             "test_db",
             "test_table",
@@ -2819,9 +2954,12 @@ mod coverage_stubs {
             column: "id".to_string(),
             direction: "asc".to_string(),
         });
+        let running_queries = tokio::sync::RwLock::new(HashMap::new());
         let result = fetch_table_data_impl(
             &pool,
             "test-connection",
+            "test-tab",
+            &running_queries,
             &metadata_cache,
             "db",
             "tbl",

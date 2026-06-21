@@ -1053,3 +1053,39 @@ fn test_listing_uses_query_log_helper() {
         "list_exportable_objects_impl must log through the shared query_log helper"
     );
 }
+
+// ── is_unquoted_integer_dump_type (tinyint(1)/BOOLEAN copy-as-0 regression) ─────
+
+#[test]
+fn test_boolean_alias_type_is_treated_as_integer() {
+    use sqllumen_lib::commands::sql_dump::is_unquoted_integer_dump_type;
+
+    // sqlx reports `tinyint(1)` columns as "BOOLEAN" — these must serialize as
+    // unquoted integers, not fall through to the quoted-string path (which
+    // produced a `'\x01'` literal that MySQL coerced to 0 on insert).
+    assert!(is_unquoted_integer_dump_type("BOOLEAN"));
+    assert!(is_unquoted_integer_dump_type("BOOL"));
+
+    // Existing integer families remain integers.
+    for ty in [
+        "TINYINT",
+        "SHORT",
+        "LONG",
+        "INT24",
+        "LONGLONG",
+        "INT",
+        "BIGINT",
+        "MEDIUMINT",
+        "YEAR",
+    ] {
+        assert!(is_unquoted_integer_dump_type(ty), "{ty} should be integer");
+    }
+
+    // Non-integer types stay out of the integer branch.
+    for ty in ["VARCHAR", "TEXT", "DECIMAL", "DATETIME", "BLOB", "JSON", "BIT"] {
+        assert!(
+            !is_unquoted_integer_dump_type(ty),
+            "{ty} should not be integer"
+        );
+    }
+}

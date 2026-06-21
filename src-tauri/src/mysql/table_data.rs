@@ -10,6 +10,7 @@ use crate::mysql::schema_queries::safe_identifier;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tokio::sync::RwLock as TokioRwLock;
 
 #[cfg(not(coverage))]
 use sqlx::mysql::types::MySqlTime;
@@ -1387,9 +1388,12 @@ pub async fn fetch_table_pk_cached(
 // ── fetch_table_data_impl ──────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data_impl(
     pool: &sqlx::MySqlPool,
     connection_id: &str,
+    tab_id: &str,
+    running_queries: &TokioRwLock<HashMap<(String, String), u64>>,
     metadata_cache: &MetadataCache,
     database: &str,
     table: &str,
@@ -1439,14 +1443,39 @@ pub async fn fetch_table_data_impl(
         "SELECT {projection} FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
     );
     log_table_data_sql(&data_sql, &filter_clause.params);
+
+    // Run the data query on a dedicated connection whose MySQL thread ID is
+    // tracked in `running_queries`, so it can be cancelled via `KILL QUERY`
+    // (the same mechanism the query editor uses). Filtering/sorting a large
+    // table can be slow; this lets the user abort it.
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| format!("Failed to acquire connection: {e}"))?;
+    let cancel_key = (connection_id.to_string(), tab_id.to_string());
+    let thread_id: Option<u64> = sqlx::query_scalar("SELECT CONNECTION_ID()")
+        .fetch_one(&mut *conn)
+        .await
+        .ok();
+    if let Some(tid) = thread_id {
+        running_queries
+            .write()
+            .await
+            .insert(cancel_key.clone(), tid);
+    }
+
     let mut data_query = sqlx::query(&data_sql);
     for param in &filter_clause.params {
         data_query = bind_json_value(data_query, param);
     }
-    let data_rows = data_query
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Data query failed: {e}"))?;
+    let data_result = data_query.fetch_all(&mut *conn).await;
+
+    // Always unregister the running query (on success and error).
+    if thread_id.is_some() {
+        running_queries.write().await.remove(&cancel_key);
+    }
+
+    let data_rows = data_result.map_err(|e| format!("Data query failed: {e}"))?;
     crate::mysql::query_log::log_mysql_rows(&data_rows);
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
@@ -1486,9 +1515,12 @@ pub async fn fetch_table_data_impl(
 
 /// Coverage stub: returns a default empty response without querying MySQL.
 #[cfg(coverage)]
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_table_data_impl(
     _pool: &sqlx::MySqlPool,
     _connection_id: &str,
+    _tab_id: &str,
+    _running_queries: &TokioRwLock<HashMap<(String, String), u64>>,
     _metadata_cache: &MetadataCache,
     _database: &str,
     _table: &str,

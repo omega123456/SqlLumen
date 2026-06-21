@@ -566,6 +566,8 @@ export interface TableDataTabState {
 
   // UI state
   isLoading: boolean
+  /** True while a cancel request for the in-flight data query is being issued. */
+  isCancelling?: boolean
   error: string | null
   saveError: string | null
   isExportDialogOpen: boolean

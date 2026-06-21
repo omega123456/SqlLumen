@@ -166,4 +166,44 @@
   cursor: not-allowed;
 }
 
+/* Cancel button — shown in place of Refresh while a data query is running.
+   Mirrors the query editor's RunningIndicator cancel affordance. */
+.cancelButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  background: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.cancelButton:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.cancelButton:disabled {
+  cursor: not-allowed;
+}
+
+.cancelling {
+  opacity: 0.6;
+}
+
 /* ── (Filter styles moved to shared/FilterToolbarButton.module.css) ── */

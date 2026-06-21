@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -720,7 +720,36 @@ describe('TableDataToolbar', () => {
     setupTabState({ isLoading: true })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-add-row')).toBeDisabled()
-    expect(screen.getByTestId('btn-refresh')).toBeDisabled()
+    // While loading, the refresh button is replaced by the cancel button.
+    expect(screen.queryByTestId('btn-refresh')).not.toBeInTheDocument()
+    expect(screen.getByTestId('btn-cancel-load')).toBeInTheDocument()
+  })
+
+  it('cancel button replaces refresh while loading and invokes cancelLoad', async () => {
+    const user = userEvent.setup()
+    const cancelLoad = vi.fn()
+    setupConnection()
+    setupTabState({ isLoading: true })
+    useTableDataStore.setState((state) => ({
+      ...state,
+      cancelLoad,
+    }))
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    const cancelButton = screen.getByTestId('btn-cancel-load')
+    expect(cancelButton).toBeEnabled()
+    await user.click(cancelButton)
+    expect(cancelLoad).toHaveBeenCalledWith('tab-1')
+  })
+
+  it('cancel button shows a cancelling state and is disabled', () => {
+    setupConnection()
+    setupTabState({ isLoading: true, isCancelling: true })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    const cancelButton = screen.getByTestId('btn-cancel-load')
+    expect(cancelButton).toBeDisabled()
+    expect(cancelButton).toHaveTextContent('Cancelling...')
   })
 
   it('Discard button is enabled when editState exists', () => {

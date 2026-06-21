@@ -19,6 +19,7 @@ import {
   deleteTableRow as deleteTableRowCmd,
 } from '../lib/table-data-commands'
 import { getTableForeignKeys } from '../lib/schema-commands'
+import { cancelQuery as cancelQueryCmd } from '../lib/query-commands'
 import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import { showErrorToast, showSuccessToast } from './toast-store'
@@ -523,6 +524,7 @@ function createDefaultTabState(
     sort: null,
     foreignKeys: [],
     isLoading: false,
+    isCancelling: false,
     error: null,
     saveError: null,
     isExportDialogOpen: false,
@@ -542,6 +544,7 @@ export interface TableDataStore {
   cleanupTab: (tabId: string) => void
   loadTableData: (tabId: string) => Promise<void>
   fetchPage: (tabId: string, page: number) => Promise<void>
+  cancelLoad: (tabId: string) => Promise<void>
   sortByColumn: (tabId: string, column: string, direction: 'asc' | 'desc' | null) => Promise<void>
   applyFilters: (tabId: string, conditions: FilterCondition[]) => Promise<void>
   refreshData: (tabId: string) => Promise<void>
@@ -801,6 +804,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const isDifferentPage = tab.currentPage !== page
       patchTab(tabId, {
         isLoading: true,
+        isCancelling: false,
         error: null,
         ...(isDifferentPage ? RESET_SCROLL_CELL : {}),
       })
@@ -837,6 +841,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           selectedRowKey: null,
           checkedRowKeys: [],
           isLoading: false,
+          isCancelling: false,
           rowResidency: {
             status: 'resident',
             isActive: isStillVisible,
@@ -850,10 +855,46 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       } catch (err) {
         if (!get().tabs[tabId]) return
 
+        // When the user cancelled the in-flight query, the backend KILL surfaces
+        // as a generic query error — report it as a cancellation instead.
+        const wasCancelled = get().tabs[tabId]?.isCancelling ?? false
         patchTab(tabId, {
-          error: err instanceof Error ? err.message : String(err),
+          error: wasCancelled
+            ? 'Query cancelled by user'
+            : err instanceof Error
+              ? err.message
+              : String(err),
           isLoading: false,
+          isCancelling: false,
         })
+      }
+    },
+
+    // ------ cancelLoad ------
+
+    cancelLoad: async (tabId) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+      // Nothing running, or a cancel is already in flight.
+      if (!tab.isLoading || tab.isCancelling) return
+
+      patchTab(tabId, { isCancelling: true })
+
+      try {
+        const cancelled = await cancelQueryCmd(tab.connectionId, tabId)
+        if (!get().tabs[tabId]) return
+
+        if (cancelled) {
+          showSuccessToast('Query cancelled')
+          // The in-flight fetchPage catch clause resets isCancelling/isLoading.
+        } else {
+          // No running query was found (it likely already finished).
+          patchTab(tabId, { isCancelling: false })
+        }
+      } catch (err) {
+        if (!get().tabs[tabId]) return
+        patchTab(tabId, { isCancelling: false })
+        showErrorToast('Cancel failed', err instanceof Error ? err.message : String(err))
       }
     },
 

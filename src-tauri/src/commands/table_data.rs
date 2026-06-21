@@ -134,6 +134,8 @@ pub async fn fetch_table_data(
     let result = table_data::fetch_table_data_impl(
         &pool,
         &connection_id,
+        &tab_id,
+        &state.running_queries,
         &state.metadata_cache,
         &database,
         &table,
