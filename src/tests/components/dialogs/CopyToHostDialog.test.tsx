@@ -150,6 +150,21 @@ async function selectFromDropdown(_user: UserEvent, triggerTestId: string, optio
   await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
 }
 
+/** Open a dropdown, run sync assertions while options are visible, then close and settle. */
+async function withOpenDropdown(triggerTestId: string, run: () => void) {
+  const trigger = screen.getByTestId(triggerTestId)
+  await waitFor(() => {
+    if (trigger.getAttribute('aria-expanded') !== 'true') {
+      fireEvent.click(trigger)
+    }
+    run()
+  })
+  if (trigger.getAttribute('aria-expanded') === 'true') {
+    fireEvent.click(trigger)
+  }
+  await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
+}
+
 async function chooseTarget(user: UserEvent, connectionValue: string, databaseValue: string) {
   await selectFromDropdown(user, 'copy-target-connection', connectionValue)
   await selectFromDropdown(user, 'copy-target-database', databaseValue)
@@ -263,8 +278,9 @@ describe('CopyToHostDialog', () => {
     expect(screen.getByTestId('copy-target-database-notice')).toHaveTextContent(
       'Open this target connection first'
     )
-    fireEvent.click(screen.getByTestId('copy-target-database'))
-    expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
+    await withOpenDropdown('copy-target-database', () => {
+      expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
+    })
   })
 
   it('normalizes source-host filtering with trim and lowercase', async () => {
@@ -286,11 +302,12 @@ describe('CopyToHostDialog', () => {
     render(<CopyToHostDialog {...defaultProps} />)
     await waitForLoaded()
 
-    fireEvent.click(screen.getByTestId('copy-target-connection'))
-    expect(
-      screen.queryByTestId('copy-target-connection-option-same-profile')
-    ).not.toBeInTheDocument()
-    expect(screen.getByTestId('copy-target-connection-option-target-profile')).toBeInTheDocument()
+    await withOpenDropdown('copy-target-connection', () => {
+      expect(
+        screen.queryByTestId('copy-target-connection-option-same-profile')
+      ).not.toBeInTheDocument()
+      expect(screen.getByTestId('copy-target-connection-option-target-profile')).toBeInTheDocument()
+    })
   })
 
   it('shows an error toast when target databases fail to load', async () => {
@@ -305,11 +322,12 @@ describe('CopyToHostDialog', () => {
     await selectFromDropdown(user, 'copy-target-connection', 'target-profile')
 
     await expectToast('error', 'Failed to load target databases')
-    fireEvent.click(screen.getByTestId('copy-target-database'))
-    expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
-    expect(
-      screen.queryByTestId('copy-target-database-option-target_existing')
-    ).not.toBeInTheDocument()
+    await withOpenDropdown('copy-target-database', () => {
+      expect(screen.getByTestId('copy-target-database-option-__new__')).toBeInTheDocument()
+      expect(
+        screen.queryByTestId('copy-target-database-option-target_existing')
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('reveals a new-database name input when the sentinel is chosen and hides it otherwise', async () => {

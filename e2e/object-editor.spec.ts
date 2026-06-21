@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
+  activeWorkspaceTabMembers,
   activeWorkspaceTabs,
   APP_READY_MS,
   connectToSample,
@@ -151,8 +152,12 @@ test.describe('Object Editor', () => {
     await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     // Verify the workspace tab label contains "Execute:"
-    const workspaceTabs = activeWorkspaceTabs(page)
-    await expect(workspaceTabs).toContainText('Execute:', { timeout: APP_READY_MS })
+    await expect(activeWorkspaceTabs(page).getByTestId('workspace-stack-chip-queries')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
+    await expect(activeWorkspaceTabMembers(page)).toContainText('Execute:', {
+      timeout: APP_READY_MS,
+    })
 
     // Verify the query content contains CALL
     // We check via the Monaco editor wrapper which should contain the CALL template

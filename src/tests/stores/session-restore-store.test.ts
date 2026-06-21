@@ -18,6 +18,7 @@ import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
+import { groupWorkspaceTabsByStack } from '../../lib/workspace-tab-stacks'
 
 const overrideNamedCommands = overrideNamedIpcCommands
 
@@ -2524,5 +2525,96 @@ describe('useSessionRestoreStore — pre-close hooks', () => {
     await invokeCloseHandler({ preventDefault: vi.fn() })
 
     expect(destroy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('useSessionRestoreStore — runtime stack recency', () => {
+  it('does not seed stack recency from restore order', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'session.restore': 'true',
+        'results.tableTabsInBottomPanel': 'false',
+      },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
+    })
+
+    const state: SessionState = {
+      version: 1,
+      activeConnectionIndex: 0,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 1,
+          tabs: [
+            { type: 'query-editor', tabId: 'saved-query-1', sql: 'SELECT 1', label: 'Query 1' },
+            {
+              type: 'schema-info',
+              tabId: 'saved-schema-1',
+              databaseName: 'db',
+              objectName: 'users',
+              objectType: 'table',
+            },
+            { type: 'query-editor', tabId: 'saved-query-2', sql: 'SELECT 2', label: 'Query 2' },
+          ],
+        },
+      ],
+    }
+
+    await useSessionRestoreStore.getState().restoreFromState(state)
+
+    const [sessionId] = Object.keys(useConnectionStore.getState().activeConnections)
+    const restoredTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
+
+    expect(groupWorkspaceTabsByStack(restoredTabs)).toMatchObject([
+      { key: 'queries' },
+      { key: 'schema' },
+    ])
+    expect(useWorkspaceStore.getState().stackRecencyByConnection[sessionId]).toBeUndefined()
+  })
+
+  it('resets stack recency again when restore fails', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'session.restore': 'true',
+        'results.tableTabsInBottomPanel': 'false',
+      },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
+    })
+
+    const workspaceStore = useWorkspaceStore.getState()
+    const resetStackRecencySpy = vi.spyOn(workspaceStore, 'resetStackRecency')
+    const fetchSavedConnections = vi.fn(async () => {
+      throw new Error('load failed')
+    })
+    useConnectionStore.setState({
+      fetchSavedConnections,
+    })
+
+    const state: SessionState = {
+      version: 1,
+      activeConnectionIndex: 0,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [{ type: 'query-editor', tabId: 'saved-query-1', sql: 'SELECT 1', label: 'Q1' }],
+        },
+      ],
+    }
+
+    await useSessionRestoreStore.getState().restoreFromState(state)
+
+    expect(useWorkspaceStore.getState().stackRecencyByConnection).toEqual({})
+    expect(useSessionRestoreStore.getState().restoreError).toBe('load failed')
+    expect(fetchSavedConnections).toHaveBeenCalledTimes(1)
+    expect(resetStackRecencySpy).toHaveBeenCalledTimes(2)
   })
 })

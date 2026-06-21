@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ConnectionWorkspace } from '../../../components/layout/ConnectionWorkspace'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
@@ -152,6 +153,71 @@ describe('ConnectionWorkspace', () => {
     expect(lookedUpActiveTab).toBe(false)
 
     querySpy.mockRestore()
+  })
+
+  it('does not auto-scroll active stack or member tabs while the workspace is inactive', () => {
+    const scrollIntoViewMock = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoViewMock
+
+    useWorkspaceStore.getState().openQueryTab('session-a', 'Query A')
+    useWorkspaceStore.getState().openQueryTab('session-a', 'Query B')
+
+    render(<ConnectionWorkspace sessionId="session-a" isActive={false} />)
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled()
+  })
+
+  it('scopes duplicate stack chip interactions to the active workspace root', async () => {
+    const user = userEvent.setup()
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-a': makeActiveConnection('session-a'),
+        'session-b': makeActiveConnection('session-b'),
+      },
+      activeTabId: 'session-a',
+      dialogOpen: false,
+      error: null,
+    })
+
+    useWorkspaceStore.getState().openQueryTab('session-a', 'A Query')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'session-a',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+
+    useWorkspaceStore.getState().openQueryTab('session-b', 'B Query')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'session-b',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+
+    render(
+      <>
+        <ConnectionWorkspace sessionId="session-a" isActive={true} />
+        <ConnectionWorkspace sessionId="session-b" isActive={false} />
+      </>
+    )
+
+    const activeRoot = screen.getByTestId('active-connection-workspace')
+    const inactiveRoot = screen.getByTestId('inactive-connection-workspace')
+
+    expect(within(activeRoot).getByTestId('workspace-stack-chip-tables')).toBeInTheDocument()
+    expect(within(inactiveRoot).getByTestId('workspace-stack-chip-tables')).toBeInTheDocument()
+
+    await user.click(within(activeRoot).getByTestId('workspace-stack-chip-queries'))
+
+    expect(within(activeRoot).getByText('A Query')).toBeInTheDocument()
+    expect(within(activeRoot).queryByText('users')).not.toBeInTheDocument()
+    expect(within(inactiveRoot).queryByText('B Query')).not.toBeInTheDocument()
   })
 
   it('renders nothing when the session is not an open connection', () => {

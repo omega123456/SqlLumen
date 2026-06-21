@@ -51,9 +51,11 @@ export interface UnderlineTabProps {
   children: ReactNode
   className?: string
   'data-testid'?: string
+  'aria-label'?: string
   /** When set with split layout, underline uses this color (default: primary). */
   indicatorColor?: string
   title?: string
+  autoScrollOnActive?: boolean
   /** Simple tab: one button, use onClick. */
   onClick?: () => void
   /** Split tab: main label action. */
@@ -79,8 +81,10 @@ export function UnderlineTab({
   children,
   className,
   'data-testid': testId,
+  'aria-label': ariaLabel,
   indicatorColor,
   title,
+  autoScrollOnActive = true,
   onClick,
   onSelect,
   onAuxClick,
@@ -100,10 +104,10 @@ export function UnderlineTab({
   const elementRef = useRef<HTMLDivElement | HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (active && elementRef.current) {
+    if (autoScrollOnActive && active && elementRef.current) {
       elementRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     }
-  }, [active])
+  }, [active, autoScrollOnActive])
 
   const split = prefix != null || suffix != null
   const indicatorStyle: CSSProperties | undefined = indicatorColor
@@ -199,6 +203,7 @@ export function UnderlineTab({
         <div
           role="button"
           tabIndex={0}
+          aria-label={ariaLabel}
           className={styles.labelButton}
           onClick={handleSelect}
           onKeyDown={onLabelKeyDown}
@@ -243,6 +248,7 @@ export function UnderlineTab({
       className={finalSimpleClass}
       data-active={active ? true : undefined}
       data-testid={testId}
+      aria-label={ariaLabel}
       style={indicatorStyle}
       title={title}
       onClick={handleSelect}

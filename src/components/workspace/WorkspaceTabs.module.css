@@ -1,3 +1,97 @@
+.workspaceTabs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stackRail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding-right: var(--space-xs);
+  overflow: hidden;
+}
+
+.stackRailGroups,
+.stackRailPinned {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.stackRailGroups {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.stackRailPinned {
+  flex: 0 0 auto;
+  position: relative;
+  padding-left: var(--space-sm);
+}
+
+.stackRailPinned::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 20px;
+  transform: translateY(-50%);
+  background-color: var(--outline-variant);
+}
+
+.stackChip {
+  min-width: 0;
+  max-width: 160px;
+}
+
+.stackChipLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.stackChipIcon {
+  color: var(--on-surface-variant);
+  flex-shrink: 0;
+}
+
+.stackChipCaret {
+  color: var(--on-surface-variant);
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+.stackChipCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 var(--space-2xs);
+  border-radius: 999px;
+  background-color: var(--surface-container);
+  color: var(--on-surface-variant);
+  font-size: var(--type-caption);
+  line-height: 1;
+}
+
+.stackChipDirty {
+  color: var(--primary);
+}
+
+.memberRow,
+.workspaceTabRailGroup {
+  display: contents;
+}
+
 /*
  * Paint into the separator gutter so the rail meets the sidebar; pointer-events: none keeps resize drags working.
  * Requires workspace Panel inner overflow:visible (see AppLayout).
@@ -103,18 +197,6 @@
 }
 
 /* Divider between the scrolling tab rail and the fixed (pinned + new-tab) group */
-.suffixDivider {
-  flex-shrink: 0;
-  align-self: center;
-  width: 1px;
-  height: 24px;
-  margin: 0 var(--space-sm);
-  background-color: var(--outline);
-  /* Soft shadow casts onto scrolled tabs so the boundary stays legible when tabs overflow */
-  box-shadow: -3px 0 4px -2px rgba(var(--on-surface-rgb), 0.25);
-}
-
-/* New query tab button */
 .newTabButton {
   display: flex;
   align-items: center;
@@ -137,4 +219,17 @@
 .newTabButton:hover {
   color: var(--primary);
   background-color: rgba(var(--primary-rgb), 0.08);
+}
+
+.stackRail[data-compact-mode='short'] .stackChip {
+  max-width: 108px;
+}
+
+.stackRail[data-compact-mode='icon-count'] .stackChip,
+.stackRail[data-compact-mode='icon'] .stackChip {
+  max-width: 64px;
+}
+
+.stackRail[data-compact-mode='icon'] .stackChipLabel {
+  gap: 0;
 }

@@ -38,13 +38,18 @@ test('table designer type dropdown opens upward when the bottom row lacks space 
   })
 
   const input = page.getByTestId('column-type-4')
-  const inputBox = await input.boundingBox()
-  expect(inputBox).not.toBeNull()
 
   await input.click()
 
   const dropdown = page.getByRole('listbox')
   await expect(dropdown).toBeVisible({ timeout: APP_READY_MS })
+
+  // Clicking the cell focuses it, which scrolls the (short) column-editor scroller to bring the
+  // row fully into view. The dropdown anchors to the trigger's post-scroll position, so measure
+  // the input only after the dropdown has opened — comparing against the pre-click box would use a
+  // stale position once the scroll shifts the row.
+  const inputBox = await input.boundingBox()
+  expect(inputBox).not.toBeNull()
 
   const dropdownBox = await dropdown.boundingBox()
   expect(dropdownBox).not.toBeNull()

@@ -51,6 +51,7 @@ export function resetWorkspaceStore(options: ResetWorkspaceStoreOptions = {}): v
     tabsByConnection: {},
     activeTabByConnection: {},
     visibleConnectionSessionId,
+    stackRecencyByConnection: {},
     lastFocusedSurfaceByTab: {},
     blockingNavigationByTab: {},
     pendingCascadeClose: null,

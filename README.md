@@ -22,6 +22,7 @@ https://github.com/user-attachments/assets/e30f01d1-2656-47fd-88f0-709e2221a34a
 - **Reference**
   - [Features](#features)
   - [Command palette and shortcuts](#command-palette-and-shortcuts)
+  - [Workspace tabs](#workspace-tabs)
   - [Object editor](#object-editor)
   - [Process list](#process-list)
   - [Settings and diagnostics](#settings-and-diagnostics)
@@ -66,6 +67,16 @@ The default shortcuts are editable in **Settings > Shortcuts**. The current defa
 - `F12` to format the current selection or statement
 - `Ctrl+S` to save the current file or DDL tab
 - `Ctrl+,` to open Settings
+
+## Workspace tabs
+
+SqlLumen groups non-pinned workspace tabs by tab type so the top rail stays usable as a session grows.
+
+- The top row is a stable stack picker with type-based groups: `Queries`, `Tables`, `Designers`, `Schema`, and `Objects`.
+- `History` and `Process List` stay pinned on the top row as always-available singleton tabs for the active connection.
+- The top-row `+` button always opens a new query tab and returns focus to the `Queries` stack.
+- The second row shows only the member tabs for the currently active non-pinned stack, so rename, drag/reorder, close, dirty markers, and existing per-tab actions still happen on concrete tabs instead of on stack chips.
+- Session restore does not save extra stack UI state. Restored tabs regroup naturally from their tab types, and per-stack recency starts fresh after relaunch.
 
 ## Object editor
 

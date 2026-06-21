@@ -27,8 +27,7 @@ test.describe('Process List tab', () => {
   test('has no close button (non-closable)', async ({ page }) => {
     const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
-    // Find the Process List tab entry and verify no close button with label matching /^Close / exists
-    const processListTab = tabStrip.getByText('Process List').locator('..')
+    const processListTab = tabStrip.getByTestId('workspace-pinned-tab-processlist')
     const closeBtn = processListTab.locator('button[aria-label^="Close "]')
     await expect(closeBtn).toHaveCount(0)
   })

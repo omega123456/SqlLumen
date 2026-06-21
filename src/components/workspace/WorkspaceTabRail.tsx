@@ -26,17 +26,7 @@ import { TextInput } from '../common/TextInput'
 import { TabContextMenu } from '../shared/TabContextMenu'
 import { computeHorizontalTabReorderTarget } from '../shared/use-tab-reorder'
 import {
-  CalendarBlankIcon,
-  ClockCounterClockwiseIcon,
-  CodeIcon,
-  EyeIcon,
-  FileTextIcon,
-  GearIcon,
-  LightningIcon,
-  ListBulletsIcon,
-  MathOperationsIcon,
   PencilSimpleIcon,
-  TableIcon,
   CaretLineLeftIcon,
   CaretLeftIcon,
   CaretRightIcon,
@@ -44,6 +34,7 @@ import {
 } from '@phosphor-icons/react'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
+import { getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
 
 // ---------------------------------------------------------------------------
@@ -57,34 +48,6 @@ const POINTER_DRAG_THRESHOLD_PX = 4
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type TabIconComponent = React.ComponentType<{
-  size?: number | string
-  weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'
-  className?: string
-  'aria-hidden'?: boolean
-  'data-testid'?: string
-}>
-
-const TAB_ICON_BY_TYPE: Partial<Record<WorkspaceTab['type'], TabIconComponent>> = {
-  'schema-info': FileTextIcon,
-  'table-data': TableIcon,
-  'query-editor': CodeIcon,
-  'table-designer': PencilSimpleIcon,
-  history: ClockCounterClockwiseIcon,
-  processlist: ListBulletsIcon,
-}
-
-const OBJECT_EDITOR_ICON_BY_TYPE: Record<
-  Extract<WorkspaceTab, { type: 'object-editor' }>['objectType'],
-  TabIconComponent
-> = {
-  view: EyeIcon,
-  procedure: GearIcon,
-  function: MathOperationsIcon,
-  trigger: LightningIcon,
-  event: CalendarBlankIcon,
-}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -113,6 +76,7 @@ export interface WorkspaceTabRailProps {
    * The currently active tab ID (may be a tab outside this visible group).
    */
   activeTabId: string | null
+  autoScrollOnActive?: boolean
 
   /**
    * Called when a tab rename is requested (e.g. F2 / double-click).
@@ -132,6 +96,7 @@ export interface WorkspaceTabRailProps {
    * When provided this overrides the default workspace store reorder action.
    */
   onRequestReorderTab?: (tabId: string, insertIndex: number) => void
+  onFocusOwningStackChip?: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -147,31 +112,6 @@ function isDragHandleBlocked(target: EventTarget | null): boolean {
       'button,input,textarea,select,[contenteditable="true"],[data-tab-drag-ignore="true"]'
     )
   )
-}
-
-function getTabIconDescriptor(tab: WorkspaceTab): {
-  IconComponent: TabIconComponent
-  testId: string
-} {
-  if (tab.type === 'object-editor') {
-    return {
-      IconComponent: OBJECT_EDITOR_ICON_BY_TYPE[tab.objectType],
-      testId: `workspace-tab-icon-object-editor-${tab.objectType}`,
-    }
-  }
-
-  const icon = TAB_ICON_BY_TYPE[tab.type]
-  if (icon) {
-    return {
-      IconComponent: icon,
-      testId: `workspace-tab-icon-${tab.type}`,
-    }
-  }
-
-  return {
-    IconComponent: FileTextIcon,
-    testId: 'workspace-tab-icon-default',
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -195,7 +135,7 @@ function WorkspaceTabLabel({ tab }: { tab: WorkspaceTab }) {
   })
 
   const isDirty = isDesignerDirty || isObjectEditorDirty
-  const { IconComponent, testId } = getTabIconDescriptor(tab)
+  const { IconComponent, testId } = getWorkspaceTabIconDescriptor(tab)
   const leadingIcon: ReactNode = (
     <IconComponent
       size={TAB_ICON_SIZE}
@@ -224,9 +164,11 @@ export function WorkspaceTabRail({
   tabs,
   allMovableTabIds,
   activeTabId,
+  autoScrollOnActive = true,
   onRequestRenameTab,
   onRequestMoveTab,
   onRequestReorderTab,
+  onFocusOwningStackChip,
 }: WorkspaceTabRailProps) {
   const requestActivateTab = useWorkspaceStore((state) => state.requestActivateTab)
   const closeTab = useWorkspaceStore((state) => state.closeTab)
@@ -237,6 +179,7 @@ export function WorkspaceTabRail({
   const suppressNextSelectRef = useRef(false)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const skipNextRenameBlurCommitRef = useRef(false)
+  const railRef = useRef<HTMLDivElement | null>(null)
 
   const [contextMenu, setContextMenu] = useState<{
     tabId: string
@@ -293,7 +236,7 @@ export function WorkspaceTabRail({
   // ---------------------------------------------------------------------------
 
   const focusWorkspaceTab = (tabId: string): boolean => {
-    const tabEl = document.querySelector<HTMLElement>(`[data-testid="workspace-tab-${tabId}"]`)
+    const tabEl = railRef.current?.querySelector<HTMLElement>(`[data-testid="workspace-tab-${tabId}"]`)
     if (!tabEl) {
       return false
     }
@@ -619,6 +562,7 @@ export function WorkspaceTabRail({
       <UnderlineTab
         key={tab.id}
         active={isActive}
+        autoScrollOnActive={autoScrollOnActive}
         className={styles.workspaceTab}
         data-testid={`workspace-tab-${tab.id}`}
         onSelect={() => {
@@ -633,6 +577,11 @@ export function WorkspaceTabRail({
           openTabContextMenu(tab.id, e.clientX, e.clientY, e.currentTarget, tab.id)
         }}
         onKeyDown={(e) => {
+          if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            onFocusOwningStackChip?.()
+            return
+          }
           if (e.key === 'F2') {
             e.preventDefault()
             startRename(tab.id)
@@ -731,7 +680,7 @@ export function WorkspaceTabRail({
   // ---------------------------------------------------------------------------
 
   return (
-    <>
+    <div ref={railRef} className={styles.workspaceTabRailGroup}>
       {tabs.map(renderTab)}
       {contextMenu && (
         <TabContextMenu
@@ -747,6 +696,6 @@ export function WorkspaceTabRail({
           }}
         />
       )}
-    </>
+    </div>
   )
 }

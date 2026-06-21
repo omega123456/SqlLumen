@@ -72,6 +72,11 @@ export function activeWorkspaceTabs(page: Page): Locator {
   return activeConnectionWorkspace(page).getByTestId('workspace-tabs')
 }
 
+/** Locator for the active connection's workspace member-tab rail, scoped to the visible root. */
+export function activeWorkspaceTabMembers(page: Page): Locator {
+  return activeConnectionWorkspace(page).getByTestId('workspace-tab-members')
+}
+
 export async function getColumnIndexByName(grid: Locator, columnName: string) {
   const headerIndex = await grid.evaluate((element, targetName) => {
     const testId = element.getAttribute('data-testid')

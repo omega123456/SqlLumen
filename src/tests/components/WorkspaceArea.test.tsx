@@ -632,10 +632,14 @@ describe('WorkspaceArea', () => {
 
       render(<WorkspaceArea />)
 
-      // Query tab should be in the top rail
       const topRail = screen.getByTestId('workspace-tabs')
-      expect(topRail).toHaveTextContent('Query 1')
+      const queryStackChip = within(topRail).getByTestId('workspace-stack-chip-queries')
+      const memberRow = screen.getByTestId('workspace-tab-members')
+
+      expect(queryStackChip).toHaveTextContent('Queries')
       expect(topRail).not.toHaveTextContent('users')
+      expect(within(memberRow).getByText('Query 1')).toBeInTheDocument()
+      expect(memberRow).not.toHaveTextContent('users')
     })
 
     it('saving the setting updates placement immediately without reloading', async () => {

@@ -21,6 +21,28 @@ beforeEach(() => {
   useObjectEditorStore.setState({ tabs: {} })
 })
 
+function setCompactWorkspaceTabsWidth(width: number) {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    get() {
+      const testId = this.getAttribute?.('data-testid')
+      if (testId === 'workspace-tabs') {
+        return width
+      }
+      return original?.get ? original.get.call(this) : 1024
+    },
+  })
+
+  return () => {
+    if (original) {
+      Object.defineProperty(HTMLElement.prototype, 'clientWidth', original)
+      return
+    }
+    delete (HTMLElement.prototype as Partial<HTMLElement>).clientWidth
+  }
+}
+
 describe('WorkspaceTabs', () => {
   it('renders tab bar with "+" button even when no tabs exist', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
@@ -49,7 +71,9 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
-    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-stack-chip-tables')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-stack-chip-schema')).toBeInTheDocument()
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
     expect(screen.getByText('orders')).toBeInTheDocument()
   })
 
@@ -142,7 +166,7 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     await act(async () => {
-      dispatchAuxClick(screen.getByTestId(`workspace-tab-${historyTab!.id}`))
+      dispatchAuxClick(screen.getByTestId('workspace-pinned-tab-history'))
     })
 
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(2)
@@ -168,7 +192,7 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     await act(async () => {
-      dispatchAuxClick(screen.getByTestId(`workspace-tab-${processListTab!.id}`))
+      dispatchAuxClick(screen.getByTestId('workspace-pinned-tab-processlist'))
     })
 
     expect(
@@ -186,7 +210,8 @@ describe('WorkspaceTabs', () => {
     expect(screen.getByTestId('workspace-tab-icon-processlist')).toBeInTheDocument()
   })
 
-  it('shows distinct icons for other tab types', () => {
+  it('shows distinct icons for other tab types', async () => {
+    const user = userEvent.setup()
     useWorkspaceStore.getState().openTab({
       type: 'schema-info',
       label: 'orders',
@@ -224,10 +249,25 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
+    expect(screen.getByTestId('workspace-stack-icon-schema')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-stack-icon-tables')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-stack-icon-queries')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-stack-icon-designers')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-stack-icon-objects')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('workspace-stack-chip-schema'))
     expect(screen.getByTestId('workspace-tab-icon-schema-info')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('workspace-stack-chip-tables'))
     expect(screen.getByTestId('workspace-tab-icon-table-data')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('workspace-stack-chip-queries'))
     expect(screen.getByTestId('workspace-tab-icon-query-editor')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('workspace-stack-chip-designers'))
     expect(screen.getByTestId('workspace-tab-icon-table-designer')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('workspace-stack-chip-objects'))
     expect(screen.getByTestId('workspace-tab-icon-object-editor-procedure')).toBeInTheDocument()
   })
 
@@ -290,6 +330,128 @@ describe('WorkspaceTabs', () => {
     expect(tabs).toHaveLength(2)
     expect(tabs[0].label).toBe('Query 1')
     expect(tabs[1].label).toBe('Query 2')
+  })
+
+  it('supports horizontal top-row keyboard navigation from the "+" button', async () => {
+    const user = userEvent.setup()
+
+    act(() => {
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+      useWorkspaceStore.getState().openHistoryTab('conn-1')
+      useWorkspaceStore.getState().openProcessListTab('conn-1')
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const plusButton = screen.getByTestId('new-query-tab-button')
+    const tablesChip = screen.getByTestId('workspace-stack-chip-tables')
+    const historyTab = screen.getByTestId('workspace-pinned-tab-history')
+    const processListTab = screen.getByTestId('workspace-pinned-tab-processlist')
+
+    plusButton.focus()
+    expect(plusButton).toHaveFocus()
+
+    await user.keyboard('{ArrowLeft}')
+    expect(tablesChip).toHaveFocus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(plusButton).toHaveFocus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(historyTab).toHaveFocus()
+
+    await user.keyboard('{Home}')
+    expect(tablesChip).toHaveFocus()
+
+    await user.keyboard('{End}')
+    expect(processListTab).toHaveFocus()
+  })
+
+  it('hands focus down from the active stack chip into the visible member row and back up', async () => {
+    const user = userEvent.setup()
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    const queryTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .find((tab) => tab.id === queryTabId)
+
+    if (!queryTab) {
+      throw new Error('Expected query tab to exist')
+    }
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')
+    const memberTab = screen.getByTestId(`workspace-tab-${queryTabId}`).querySelector('[role="button"]')
+
+    if (!memberTab) {
+      throw new Error('Expected workspace member tab label button to exist')
+    }
+
+    queryStackChip.focus()
+    expect(queryStackChip).toHaveFocus()
+
+    await user.keyboard('{ArrowDown}')
+
+    await waitFor(() => {
+      expect(memberTab).toHaveFocus()
+    })
+
+    await user.keyboard('{ArrowUp}')
+    expect(queryStackChip).toHaveFocus()
+    expect(screen.getByTestId(`workspace-tab-${queryTabId}`)).toHaveTextContent(queryTab.label)
+  })
+
+  it('ArrowDown uses the focused stack chip even when another stack or pinned tab is active', async () => {
+    const user = userEvent.setup()
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openHistoryTab('conn-1', false)
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await user.click(screen.getByTestId('workspace-pinned-tab-history'))
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1'].find(
+          (tab) => tab.id === useWorkspaceStore.getState().activeTabByConnection['conn-1']
+        )?.type
+    ).toBe('history')
+
+    const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')
+
+    queryStackChip.focus()
+    expect(queryStackChip).toHaveFocus()
+
+    await user.keyboard('{ArrowDown}')
+
+    await waitFor(() => {
+      const memberTab = screen
+        .getByTestId(`workspace-tab-${queryTabId}`)
+        .querySelector('[role="button"]')
+
+      if (!memberTab) {
+        throw new Error('Expected workspace member tab label button to exist')
+      }
+
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
+      expect(memberTab).toHaveFocus()
+    })
   })
 
   it('shows dirty indicator on table-designer tabs', () => {
@@ -507,6 +669,9 @@ describe('WorkspaceTabs', () => {
   })
 
   it('runs the active-tab scroll-into-view lookup while the connection is active', () => {
+    const scrollIntoViewMock = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoViewMock
+
     useWorkspaceStore.getState().openTab({
       type: 'table-data',
       label: 'users',
@@ -527,18 +692,13 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" connectionActive={true} />)
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
-    const querySpy = vi.spyOn(document, 'querySelector')
+    scrollIntoViewMock.mockClear()
 
     act(() => {
       useWorkspaceStore.getState().setActiveTab('conn-1', tabs[0].id)
     })
 
-    const lookedUpActiveTab = querySpy.mock.calls.some(
-      ([selector]) => selector === `[data-testid="workspace-tab-${tabs[0].id}"]`
-    )
-    expect(lookedUpActiveTab).toBe(true)
-
-    querySpy.mockRestore()
+    expect(scrollIntoViewMock).toHaveBeenCalled()
   })
 
   it('prevents browser autoscroll by calling preventDefault on middle-button mousedown', () => {
@@ -570,12 +730,10 @@ describe('WorkspaceTabs', () => {
 
   it('renders the "+" button outside the scrollable tab area', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
-    const tabBar = screen.getByTestId('workspace-tabs')
+    const memberRow = screen.queryByTestId('workspace-tab-members')
     const plusButton = screen.getByTestId('new-query-tab-button')
 
-    // The "+" button should NOT be a direct child of the scrollable container.
-    // It should be outside it so it remains always visible.
-    expect(plusButton.parentElement).not.toBe(tabBar)
+    expect(memberRow?.contains(plusButton) ?? false).toBe(false)
   })
 
   it('renders history and processlist tabs outside the scrollable tab area', () => {
@@ -585,15 +743,134 @@ describe('WorkspaceTabs', () => {
     })
 
     render(<WorkspaceTabs connectionId="conn-1" />)
-    const tabBar = screen.getByTestId('workspace-tabs')
-    const historyTab = screen.getByText('History').closest('[data-testid^="workspace-tab-"]')!
-    const processlistTab = screen
-      .getByText('Process List')
-      .closest('[data-testid^="workspace-tab-"]')!
+    const memberRow = screen.queryByTestId('workspace-tab-members')
+    const historyTab = screen.getByTestId('workspace-pinned-tab-history')
+    const processlistTab = screen.getByTestId('workspace-pinned-tab-processlist')
 
-    // History and processlist tabs should be pinned outside the scrollable area
-    expect(historyTab.parentElement).not.toBe(tabBar)
-    expect(processlistTab.parentElement).not.toBe(tabBar)
+    expect(memberRow?.contains(historyTab) ?? false).toBe(false)
+    expect(memberRow?.contains(processlistTab) ?? false).toBe(false)
+  })
+
+  it('gives compact stack chips a real accessible name on the focusable control', () => {
+    const restoreWidth = setCompactWorkspaceTabsWidth(230)
+
+    try {
+      useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+      useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
+
+      render(<WorkspaceTabs connectionId="conn-1" />)
+
+      expect(screen.getByLabelText('Queries stack, 2 tabs')).toHaveAttribute(
+        'data-testid',
+        'workspace-stack-chip-queries'
+      )
+    } finally {
+      restoreWidth()
+    }
+  })
+
+  it('abbreviates pinned tabs in compact modes while preserving full accessible labels', () => {
+    const restoreWidth = setCompactWorkspaceTabsWidth(230)
+
+    try {
+      act(() => {
+        useWorkspaceStore.getState().openHistoryTab('conn-1')
+        useWorkspaceStore.getState().openProcessListTab('conn-1')
+        useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+        useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
+      })
+
+      render(<WorkspaceTabs connectionId="conn-1" />)
+
+      const historyTab = screen.getByLabelText('History')
+      const processListTab = screen.getByLabelText('Process List')
+      expect(historyTab).toHaveTextContent('Hist')
+      expect(historyTab).not.toHaveTextContent('History')
+      expect(processListTab).toHaveTextContent('Proc')
+      expect(processListTab).not.toHaveTextContent('Process List')
+    } finally {
+      restoreWidth()
+    }
+  })
+
+  it('activates the most recent tab in a stack when clicking its stack chip', async () => {
+    const user = userEvent.setup()
+
+    const queryA = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const queryB = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query B')
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    act(() => {
+      useWorkspaceStore.getState().setActiveTab('conn-1', queryA)
+      useWorkspaceStore.getState().setActiveTab('conn-1', queryB)
+      useWorkspaceStore.getState().setActiveTab('conn-1', queryA)
+    })
+
+    await user.click(screen.getByTestId('workspace-stack-chip-queries'))
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryA)
+  })
+
+  it('falls back to the first visible stack member when no recency exists', async () => {
+    const user = userEvent.setup()
+
+    const queryA = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query B')
+
+    useWorkspaceStore.setState((state) => ({
+      stackRecencyByConnection: {
+        ...state.stackRecencyByConnection,
+        'conn-1': {},
+      },
+      activeTabByConnection: {
+        ...state.activeTabByConnection,
+        'conn-1': null,
+      },
+    }))
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await user.click(screen.getByTestId('workspace-stack-chip-queries'))
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryA)
+  })
+
+  it('does not activate a different stack when navigation is blocked on the current tab', async () => {
+    const user = userEvent.setup()
+
+    const activeQueryId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    const tableTabId = (() => {
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+      return useWorkspaceStore.getState().activeTabByConnection['conn-1']
+    })()
+    act(() => {
+      useWorkspaceStore.getState().setActiveTab('conn-1', activeQueryId)
+    })
+    expect(tableTabId).not.toBe(activeQueryId)
+    useWorkspaceStore.getState().setBlockingNavigation(activeQueryId, true)
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await user.click(screen.getByTestId('workspace-stack-chip-tables'))
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(activeQueryId)
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
   })
 
   it('opens tab context menu with Shift+F10 and triggers rename action for query tabs', async () => {
@@ -904,12 +1181,13 @@ describe('WorkspaceTabs', () => {
     }))
 
     render(<WorkspaceTabs connectionId="conn-1" hideTableDataTabs={true} />)
-    const tabsRail = screen.getByTestId('workspace-tabs')
+    const stackRail = screen.getByTestId('workspace-tabs')
 
-    expect(within(tabsRail).getByText('Query A')).toBeInTheDocument()
-    expect(within(tabsRail).queryByText('users')).not.toBeInTheDocument()
-    expect(within(tabsRail).queryByText('orders')).not.toBeInTheDocument()
-    expect(within(tabsRail).getByText('products')).toBeInTheDocument()
+    expect(within(stackRail).getByText('Queries')).toBeInTheDocument()
+    expect(within(stackRail).getByText('Tables')).toBeInTheDocument()
+    expect(within(stackRail).queryByText('users')).not.toBeInTheDocument()
+    expect(within(stackRail).queryByText('orders')).not.toBeInTheDocument()
+    expect(screen.queryByText('products')).not.toBeInTheDocument()
   })
 
   it('does not start pointer reorder for pinned tabs', () => {
@@ -917,8 +1195,8 @@ describe('WorkspaceTabs', () => {
     useWorkspaceStore.getState().openProcessListTab('conn-1')
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    const historyTab = screen.getByText('History').closest('[data-testid^="workspace-tab-"]')
-    const processTab = screen.getByText('Process List').closest('[data-testid^="workspace-tab-"]')
+    const historyTab = screen.getByTestId('workspace-pinned-tab-history')
+    const processTab = screen.getByTestId('workspace-pinned-tab-processlist')
 
     if (historyTab === null || processTab === null) {
       throw new Error('Expected pinned tabs to be rendered')

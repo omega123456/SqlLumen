@@ -2,6 +2,8 @@ import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
   activateResultGridCell,
+  activeConnectionWorkspace,
+  activeWorkspaceTabMembers,
   activeWorkspaceTabs,
   connectToSample,
   clickResultGridCell,
@@ -209,6 +211,74 @@ async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
   await expect(activeWorkspaceTabs(page)).toBeVisible()
   await expect(page.getByTestId('schema-info-tab')).toBeVisible()
   await expect(page.getByTestId('stats-row')).toBeVisible()
+}
+
+async function seedWorkspaceStackShowcase(page: Page) {
+  await connectToSample(page, { dismissToasts: true })
+
+  await page.getByTestId('new-query-tab-button').click()
+  await page.getByTestId('new-query-tab-button').click()
+  await page.getByTestId('new-query-tab-button').click()
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    const open = store.getState().openTab
+
+    open({
+      type: 'table-data',
+      label: 'ecommerce_db.orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+    open({
+      type: 'table-data',
+      label: 'ecommerce_db.users',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    open({
+      type: 'schema-info',
+      label: 'products',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'products',
+      objectType: 'table',
+    })
+    open({
+      type: 'object-editor',
+      label: 'Stored Procedure: sp_get_orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'sp_get_orders',
+      objectType: 'procedure',
+      mode: 'alter',
+    })
+  })
+
+  await expect(activeWorkspaceTabs(page)).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activeWorkspaceTabMembers(page)).toBeVisible({ timeout: APP_READY_MS })
+}
+
+async function activateWorkspaceStack(page: Page, stackKey: string) {
+  const stackChip = activeWorkspaceTabs(page).getByTestId(`workspace-stack-chip-${stackKey}`)
+  await expect(stackChip).toBeVisible({ timeout: APP_READY_MS })
+  await stackChip.click()
+  await expect(activeWorkspaceTabMembers(page)).toBeVisible({ timeout: APP_READY_MS })
+}
+
+async function waitForWorkspaceCompactMode(
+  page: Page,
+  mode: 'full' | 'short' | 'icon-count' | 'icon'
+) {
+  await expect(activeWorkspaceTabs(page)).toHaveAttribute('data-compact-mode', mode, {
+    timeout: APP_READY_MS,
+  })
 }
 
 async function seedCopyToHostTargets(page: Page) {
@@ -1066,10 +1136,9 @@ async function openJsonTableDataTab(page: Page) {
 /** Connect and activate the Process List tab. */
 async function openProcessListTab(page: Page) {
   await connectToSample(page, { dismissToasts: true })
-  // Click the Process List workspace tab to activate it
   const tabStrip = activeWorkspaceTabs(page)
   await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
-  await tabStrip.getByText('Process List').click()
+  await tabStrip.getByTestId('workspace-pinned-tab-processlist').click()
   await waitForGlideGrid(page, 'processlist-grid-view')
 
   await page.evaluate(() => {
@@ -1585,9 +1654,87 @@ for (const theme of themes) {
       )
     })
 
+    test('WorkspaceTabs — expanded Queries stack', async ({ page }) => {
+      await seedWorkspaceStackShowcase(page)
+      await activateWorkspaceStack(page, 'queries')
+      await resetChromeScrollPositions(page)
+      await expect(activeConnectionWorkspace(page).getByTestId('workspace-tabs-root')).toHaveScreenshot(
+        `workspace-tabs-queries-expanded-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — expanded Tables stack', async ({ page }) => {
+      await seedWorkspaceStackShowcase(page)
+      await activateWorkspaceStack(page, 'tables')
+      await expect(activeConnectionWorkspace(page).getByTestId('table-data-grid')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(activeConnectionWorkspace(page).getByTestId('workspace-tabs-root')).toHaveScreenshot(
+        `workspace-tabs-tables-expanded-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — pinned Process List active state', async ({ page }) => {
+      await openProcessListTab(page)
+      await resetChromeScrollPositions(page)
+      await expect(activeConnectionWorkspace(page).getByTestId('workspace-tabs-root')).toHaveScreenshot(
+        `workspace-tabs-processlist-pinned-active-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — compact top row at constrained width', async ({ page }) => {
+      await page.setViewportSize({ width: 700, height: 900 })
+      await seedWorkspaceStackShowcase(page)
+      await waitForWorkspaceCompactMode(page, 'short')
+      await resetChromeScrollPositions(page)
+      await expect(activeWorkspaceTabs(page)).toHaveScreenshot(
+        `workspace-tabs-compact-top-row-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — compact top row icon-count mode', async ({ page }) => {
+      await page.setViewportSize({ width: 520, height: 900 })
+      await seedWorkspaceStackShowcase(page)
+      await waitForWorkspaceCompactMode(page, 'icon-count')
+      await resetChromeScrollPositions(page)
+      await expect(activeWorkspaceTabs(page)).toHaveScreenshot(
+        `workspace-tabs-compact-icon-count-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — compact top row icon-only mode', async ({ page }) => {
+      await page.setViewportSize({ width: 340, height: 900 })
+      await seedWorkspaceStackShowcase(page)
+      await waitForWorkspaceCompactMode(page, 'icon')
+      await resetChromeScrollPositions(page)
+      await expect(activeWorkspaceTabs(page)).toHaveScreenshot(
+        `workspace-tabs-compact-icon-only-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — overflowed member row', async ({ page }) => {
+      await connectToSample(page, { dismissToasts: true })
+      for (let i = 0; i < 7; i += 1) {
+        await page.getByTestId('new-query-tab-button').click()
+      }
+      await expect(activeWorkspaceTabMembers(page)).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(activeWorkspaceTabMembers(page)).toHaveScreenshot(
+        `workspace-tabs-member-row-overflow-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('WorkspaceTabs — query rename inline input state', async ({ page }) => {
       await openQueryEditorTab(page)
-      const queryTab = page.getByText('Query 1').first()
+      const queryTab = activeWorkspaceTabMembers(page).getByText('Query 1', { exact: true })
       await expect(queryTab).toBeVisible({ timeout: APP_READY_MS })
       await queryTab.dblclick()
       await expect(page.getByTestId('workspace-tab-rename-input')).toBeVisible({
@@ -1605,7 +1752,7 @@ for (const theme of themes) {
       await page.getByTestId('new-query-tab-button').click()
       await page.getByTestId('new-query-tab-button').click()
 
-      const middleQueryTab = page.getByText('Query 2').first()
+      const middleQueryTab = activeWorkspaceTabMembers(page).getByText('Query 2', { exact: true })
       await expect(middleQueryTab).toBeVisible({ timeout: APP_READY_MS })
       await middleQueryTab.click({ button: 'right' })
       await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
@@ -1623,8 +1770,10 @@ for (const theme of themes) {
       await page.getByTestId('new-query-tab-button').click()
 
       await page.evaluate(() => {
+        const workspaceRoot = document.querySelector('[data-testid="active-connection-workspace"]')
         const tabs = Array.from(
-          document.querySelectorAll<HTMLElement>('[data-testid^="workspace-tab-"]')
+          workspaceRoot?.querySelectorAll<HTMLElement>('[data-testid="workspace-tab-members"] [data-testid^="workspace-tab-"]') ??
+            []
         )
         const dragSource = tabs.find((tab) => tab.textContent?.includes('Query 2'))
         const dropTarget = tabs.find((tab) => tab.textContent?.includes('Query 3'))
@@ -3564,9 +3713,10 @@ for (const theme of themes) {
       await activeResultTab.click()
       await expect(activeResultTab).toHaveAttribute('aria-selected', 'true')
       await expectOnlyActiveBottomPanelContentVisible(page, 'result')
-      // The BottomPanelTabs strip (56px) + ResultToolbar (56px) consume ~112px of the result
-      // panel, leaving ~110px for the grid at 720px viewport — below the default 120px minimum.
-      await expectGridRegionToBeExpanded(page, 'result-grid', 100)
+      // The workspace stack rail + member tab row, the BottomPanelTabs strip, and the ResultToolbar
+      // together consume most of the vertical space, leaving ~88px for the grid at the 720px
+      // viewport — below the default 120px minimum. Assert it is still meaningfully expanded.
+      await expectGridRegionToBeExpanded(page, 'result-grid', 80)
 
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('query-editor-tab')).toHaveScreenshot(
@@ -3580,8 +3730,9 @@ for (const theme of themes) {
       await expectOnlyActiveBottomPanelContentVisible(page, 'table-data')
       await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
-      // Same constraint as above: BottomPanelTabs strip leaves ~117px for the grid.
-      await expectGridRegionToBeExpanded(page, 'table-data-grid', 100)
+      // Same constraint as above: the stacked workspace chrome and BottomPanelTabs strip leave
+      // ~95px for the grid at the 720px viewport.
+      await expectGridRegionToBeExpanded(page, 'table-data-grid', 80)
 
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('query-editor-tab')).toHaveScreenshot(
@@ -3775,7 +3926,7 @@ for (const theme of themes) {
       // The history tab is now auto-created when a connection opens.
       // Click the History tab in the workspace tab bar to make it active.
       const workspaceTabs = activeWorkspaceTabs(page)
-      const historyTab = workspaceTabs.getByText('History')
+      const historyTab = workspaceTabs.getByTestId('workspace-pinned-tab-history')
       await expect(historyTab).toBeVisible({ timeout: APP_READY_MS })
       await historyTab.click()
       await expect(page.getByTestId('history-tab')).toBeVisible({ timeout: APP_READY_MS })

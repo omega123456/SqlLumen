@@ -133,7 +133,7 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
     await get().restoreFromState(state)
   },
 
-  restoreFromState: async (state: SessionState): Promise<void> => {
+    restoreFromState: async (state: SessionState): Promise<void> => {
     // Guard against concurrent calls (React StrictMode double-invokes effects
     // in dev, which would otherwise open each connection twice).
     if (get().isRestoring) {
@@ -145,8 +145,12 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
     }
 
     set({ isRestoring: true, restoreError: null })
+    let beganRestore = false
 
     try {
+      beganRestore = true
+      useWorkspaceStore.getState().resetStackRecency()
+
       // Ensure saved connections are loaded so we can look them up by profile ID
       await useConnectionStore.getState().fetchSavedConnections()
       const restoredSessionIdsBySavedIndex: Array<string | null> = Array.from(
@@ -180,12 +184,17 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
           useConnectionStore.getState().switchTab(activeSessionId)
         }
       }
+
+      useWorkspaceStore.getState().resetStackRecency()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       logFrontend('error', `[session-restore] Failed to restore session: ${msg}`)
       set({ restoreError: msg })
       showErrorToast('Session restore failed', msg)
     } finally {
+      if (beganRestore) {
+        useWorkspaceStore.getState().resetStackRecency()
+      }
       set({ isRestoring: false })
     }
   },

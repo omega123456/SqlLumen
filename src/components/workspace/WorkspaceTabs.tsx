@@ -16,10 +16,18 @@ import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { WorkspaceTabRail } from './WorkspaceTabRail'
-import { PlusIcon } from '@phosphor-icons/react'
+import {
+  getWorkspaceStackActivationTarget,
+  getWorkspaceStackKeyForTab,
+  groupWorkspaceTabsByStack,
+  isPinnedWorkspaceTab,
+  type WorkspaceTabStackKey,
+} from '../../lib/workspace-tab-stacks'
+import { WorkspaceStackRail } from './WorkspaceStackRail'
 import styles from './WorkspaceTabs.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
+const EMPTY_STACK_RECENCY = {}
 
 export interface WorkspaceTabsProps {
   connectionId: string
@@ -48,31 +56,45 @@ export function WorkspaceTabs({
   onRequestMoveTab,
   onRequestReorderTab,
 }: WorkspaceTabsProps) {
+  const workspaceRootRef = useRef<HTMLDivElement | null>(null)
   const tabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? EMPTY_TABS)
   const activeTabId = useWorkspaceStore(
     (state) => state.activeTabByConnection[connectionId] ?? null
   )
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
+  const requestActivateTab = useWorkspaceStore((state) => state.requestActivateTab)
+  const stackRecency = useWorkspaceStore(
+    (state) => state.stackRecencyByConnection[connectionId] ?? EMPTY_STACK_RECENCY
+  )
 
-  // Split into pinned (fixed suffix) and scrollable (delegated to rail).
-  const scrollableTabs = tabs.filter(
+  const visibleNonPinnedTabs = tabs.filter(
     (t) =>
-      t.type !== 'history' &&
-      t.type !== 'processlist' &&
+      !isPinnedWorkspaceTab(t) &&
       !(hideTableDataTabs && t.type === 'table-data' && t.parentQueryTabId !== undefined)
   )
-  const pinnedTabs = tabs.filter((t) => t.type === 'history' || t.type === 'processlist')
+  const pinnedTabs = tabs.filter(isPinnedWorkspaceTab)
+  const stackGroups = useMemo(
+    () =>
+      groupWorkspaceTabsByStack(visibleNonPinnedTabs, {
+        hideScopedTableDataTabs: hideTableDataTabs,
+      }),
+    [hideTableDataTabs, visibleNonPinnedTabs]
+  )
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
+  const activeStackKey =
+    activeTab && !isPinnedWorkspaceTab(activeTab)
+      ? getWorkspaceStackKeyForTab(activeTab, {
+          hideScopedTableDataTabs: hideTableDataTabs,
+        })
+      : null
+  const activeStackTabs = stackGroups.find((group) => group.key === activeStackKey)?.tabs ?? EMPTY_TABS
 
-  // Full movable tab ID list — ALL non-pinned tabs regardless of hideTableDataTabs.
-  // This must reflect the true full movable list in the workspace store so that
-  // WorkspaceTabRail.translateSubsetInsertIndex can correctly map visible-group
-  // reorder indices to full-list indices even when table-data tabs are hidden here.
   const allMovableTabIds = useMemo(
     () => tabs.filter((t) => t.type !== 'history' && t.type !== 'processlist').map((t) => t.id),
     [tabs]
   )
 
-  // Scroll the active tab into view whenever it changes
+  const memberRowRef = useRef<HTMLDivElement | null>(null)
   const activeTabIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (activeTabId === activeTabIdRef.current) {
@@ -89,56 +111,102 @@ export function WorkspaceTabs({
       return
     }
     activeTabIdRef.current = activeTabId
-    const tabEl = document.querySelector<HTMLElement>(
+    const tabEl = memberRowRef.current?.querySelector<HTMLElement>(
       `[data-testid="workspace-tab-${activeTabId}"]`
     )
     tabEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [activeTabId, connectionActive])
+  }, [activeTabId, connectionActive, activeStackKey])
+
+  const activateStack = (stackKey: ReturnType<typeof getWorkspaceStackKeyForTab>) => {
+    if (!stackKey) {
+      return
+    }
+
+    const target = getWorkspaceStackActivationTarget(
+      stackKey,
+      visibleNonPinnedTabs,
+      stackRecency[stackKey] ?? null,
+      {
+        hideScopedTableDataTabs: hideTableDataTabs,
+      }
+    )
+    if (!target) {
+      return
+    }
+    requestActivateTab(target.id)
+  }
+
+  const focusStackMembers = (stackKey: WorkspaceTabStackKey) => {
+    const targetStackTabs = stackGroups.find((group) => group.key === stackKey)?.tabs ?? EMPTY_TABS
+    const targetTabId =
+      getWorkspaceStackActivationTarget(stackKey, visibleNonPinnedTabs, stackRecency[stackKey] ?? null, {
+        hideScopedTableDataTabs: hideTableDataTabs,
+      })?.id ??
+      targetStackTabs[0]?.id
+
+    if (!targetTabId) {
+      return
+    }
+
+    if (activeTabId !== targetTabId) {
+      requestActivateTab(targetTabId)
+    }
+
+    requestAnimationFrame(() => {
+      const tabEl = workspaceRootRef.current?.querySelector<HTMLElement>(
+        `[data-testid="workspace-tab-${targetTabId}"]`
+      )
+      const labelButton = tabEl?.querySelector<HTMLElement>('[role="button"],button')
+      ;(labelButton ?? tabEl)?.focus()
+    })
+  }
+
+  const focusOwningStackChip = () => {
+    if (!activeStackKey) {
+      return
+    }
+
+    const stackChip = workspaceRootRef.current?.querySelector<HTMLElement>(
+      `[data-testid="workspace-stack-chip-${activeStackKey}"]`
+    )
+    const labelButton = stackChip?.querySelector<HTMLElement>('[role="button"],button')
+    ;(labelButton ?? stackChip)?.focus()
+  }
 
   return (
-    <UnderlineTabBar
-      className={styles.workspaceTabRailBleed}
-      data-testid="workspace-tabs"
-      scrollable
-      suffix={
-        <>
-          {/* Visual separator between the auto-scrolling rail and the fixed tab group */}
-          <span className={styles.suffixDivider} aria-hidden="true" />
-          {/* Pinned tabs rendered in the WorkspaceTabRail for event handling */}
-          {/* pinned tabs are never reordered */}
-          <WorkspaceTabRail
-            connectionId={connectionId}
-            tabs={pinnedTabs}
-            allMovableTabIds={[]}
-            activeTabId={activeTabId}
-            onRequestRenameTab={onRequestRenameTab}
-            onRequestMoveTab={onRequestMoveTab}
-            onRequestReorderTab={onRequestReorderTab}
-          />
-          {/* Always-visible "+" button to create a new query tab */}
-          <button
-            type="button"
-            className={styles.newTabButton}
-            title="New Query Tab"
-            aria-label="New Query Tab"
-            onClick={() => openQueryTab(connectionId)}
-            data-testid="new-query-tab-button"
-          >
-            <PlusIcon size={16} weight="bold" />
-          </button>
-        </>
-      }
-    >
-      {/* Scrollable tabs — the main visible group */}
-      <WorkspaceTabRail
-        connectionId={connectionId}
-        tabs={scrollableTabs}
-        allMovableTabIds={allMovableTabIds}
+    <div ref={workspaceRootRef} className={styles.workspaceTabs} data-testid="workspace-tabs-root">
+      <WorkspaceStackRail
+        stackGroups={stackGroups}
+        activeStackKey={activeStackKey}
+        pinnedTabs={pinnedTabs}
         activeTabId={activeTabId}
-        onRequestRenameTab={onRequestRenameTab}
-        onRequestMoveTab={onRequestMoveTab}
-        onRequestReorderTab={onRequestReorderTab}
+        connectionActive={connectionActive}
+        onActivateStack={activateStack}
+        onActivatePinnedTab={requestActivateTab}
+        onOpenQueryTab={() => openQueryTab(connectionId)}
+        onFocusStackMembers={focusStackMembers}
       />
-    </UnderlineTabBar>
+      {activeStackKey ? (
+        <UnderlineTabBar
+          className={styles.workspaceTabRailBleed}
+          data-testid="workspace-tab-members"
+          scrollable
+        >
+          <div ref={memberRowRef} className={styles.memberRow}>
+            <WorkspaceTabRail
+              connectionId={connectionId}
+              tabs={activeStackTabs}
+              allMovableTabIds={allMovableTabIds}
+              activeTabId={activeTabId}
+              autoScrollOnActive={connectionActive}
+              onRequestRenameTab={onRequestRenameTab}
+              onRequestMoveTab={onRequestMoveTab}
+              onRequestReorderTab={onRequestReorderTab}
+              onFocusOwningStackChip={focusOwningStackChip}
+            />
+          </div>
+        </UnderlineTabBar>
+      ) : null}
+    </div>
   )
 }

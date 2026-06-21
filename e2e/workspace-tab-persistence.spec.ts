@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
   activeConnectionWorkspace,
+  activeWorkspaceTabMembers,
   activeWorkspaceTabs,
   APP_READY_MS,
   connectToSample,
@@ -107,7 +108,43 @@ async function openQueryEditorWithScrollableResults(page: Page): Promise<string>
 }
 
 async function activateWorkspaceTab(page: Page, tabId: string): Promise<void> {
-  await page.locator(`[data-testid="workspace-tab-${tabId}"]`).click()
+  const stackKey = await page.evaluate((targetTabId) => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        tabsByConnection: Record<string, Array<{ id: string; type: string }>>
+      }
+    }
+    const tab = (store.getState().tabsByConnection['session-playwright-1'] ?? []).find(
+      (candidate) => candidate.id === targetTabId
+    )
+    if (!tab) {
+      throw new Error(`Missing workspace tab ${targetTabId}`)
+    }
+
+    switch (tab.type) {
+      case 'query-editor':
+        return 'queries'
+      case 'table-data':
+        return 'tables'
+      case 'table-designer':
+        return 'designers'
+      case 'schema-info':
+        return 'schema'
+      case 'object-editor':
+        return 'objects'
+      default:
+        return null
+    }
+  }, tabId)
+
+  if (stackKey) {
+    const stackChip = activeWorkspaceTabs(page).getByTestId(`workspace-stack-chip-${stackKey}`)
+    if (await stackChip.isVisible()) {
+      await stackChip.click()
+    }
+  }
+
+  await activeWorkspaceTabMembers(page).getByTestId(`workspace-tab-${tabId}`).click()
   await expect(page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)).toHaveAttribute(
     'data-active',
     'true',
@@ -203,7 +240,7 @@ test.describe('Workspace tab persistence', () => {
   })
 
   test('does not leak an open dropdown overlay after switching away', async ({ page }) => {
-    await page.getByTestId('workspace-tabs').getByText('Process List').click()
+    await activeWorkspaceTabs(page).getByTestId('workspace-pinned-tab-processlist').click()
     const processListTabId = await page.evaluate(() => {
       const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
         getState: () => { activeTabByConnection: Record<string, string | null> }

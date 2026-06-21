@@ -994,6 +994,17 @@ describe('useWorkspaceStore — closeTab', () => {
     expect(state.activeTabByConnection['conn-1']).toBe(tabs[1].id)
   })
 
+  it('keeps focus in the same stack when closing an active query in mixed flat order', () => {
+    const queryOneId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
+    const queryTwoId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryOneId)
+    useWorkspaceStore.getState().closeTab('conn-1', queryOneId)
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTwoId)
+  })
+
   it('runs activation lifecycle for the tab revealed by closeTab', async () => {
     useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
     const queryTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
@@ -1260,6 +1271,23 @@ describe('useWorkspaceStore — closeTabsByDatabase', () => {
     expect((state.tabsByConnection['conn-1'][0] as ObjectEditorTab).databaseName).toBe('db2')
     expect(cleanupSpy).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps focus in the same stack when closing the active database tab in mixed flat order', () => {
+    useWorkspaceStore
+      .getState()
+      .openTab(makeSchemaTab({ databaseName: 'db1', objectName: 'users', label: 'users schema' }))
+    const schemaOneId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore
+      .getState()
+      .openTab(makeSchemaTab({ databaseName: 'db2', objectName: 'orders', label: 'orders schema' }))
+    const schemaTwoId = useWorkspaceStore.getState().tabsByConnection['conn-1'][2].id
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', schemaOneId)
+    useWorkspaceStore.getState().closeTabsByDatabase('conn-1', 'db1')
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(schemaTwoId)
+  })
 })
 
 describe('useWorkspaceStore — closeTabsByObject', () => {
@@ -1355,6 +1383,57 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
     expect((state.tabsByConnection['conn-1'][0] as ObjectEditorTab).objectType).toBe('function')
+  })
+
+  it('keeps focus in the same stack when closing the active object tab in mixed flat order', () => {
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'users', label: 'users schema' }))
+    const schemaOneId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders schema' }))
+    const schemaTwoId = useWorkspaceStore.getState().tabsByConnection['conn-1'][2].id
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', schemaOneId)
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(schemaTwoId)
+  })
+
+  it('falls back the active scoped bottom-panel table tab to results when bulk removal closes it', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: makeQueryTabState({
+          connectionId: 'conn-1',
+          activeBottomPanelItem: { type: 'result' },
+        }),
+      },
+    })
+
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
+
+    const tableTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find(
+        (tab): tab is TableDataTab =>
+          tab.type === 'table-data' && tab.parentQueryTabId === queryTabId
+      )?.id
+
+    expect(tableTabId).toBeTruthy()
+    expect(useQueryStore.getState().getTabState(queryTabId).activeBottomPanelItem).toEqual({
+      type: 'table-data',
+      tabId: tableTabId,
+    })
+
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toEqual([
+      expect.objectContaining({ id: queryTabId, type: 'query-editor' }),
+    ])
+    expect(useQueryStore.getState().getTabState(queryTabId).activeBottomPanelItem).toEqual({
+      type: 'result',
+    })
   })
 })
 
@@ -1551,6 +1630,17 @@ describe('useWorkspaceStore — forceCloseTab', () => {
       })
       expect(useQueryStore.getState().tabs[queryTabId].results[0].rows).toEqual([[88]])
     })
+  })
+
+  it('keeps focus in the same stack when force-closing an active query in mixed flat order', () => {
+    const queryOneId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
+    const queryTwoId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryOneId)
+    useWorkspaceStore.getState().forceCloseTab('conn-1', queryOneId)
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTwoId)
   })
 })
 
@@ -1944,5 +2034,56 @@ describe('useWorkspaceStore — AI store cleanup', () => {
     useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
 
     expect(useAiStore.getState().tabs[tabId]).toBeUndefined()
+  })
+
+  it('tracks runtime stack recency for non-pinned top-level tabs only', () => {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders' }))
+    const schemaTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'].find(
+      (tab) => tab.type === 'schema-info'
+    )?.id
+
+    useWorkspaceStore.getState().openHistoryTab('conn-1')
+
+    expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toEqual({
+      queries: queryTabId,
+      schema: schemaTabId,
+    })
+  })
+
+  it('cleans up stale stack recency when tabs close or connection state clears', () => {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toEqual({
+      queries: queryTabId,
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', queryTabId)
+    expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toEqual({})
+
+    useWorkspaceStore.getState().openTab(makeSchemaTab())
+    const schemaTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toEqual({
+      schema: schemaTabId,
+    })
+
+    useWorkspaceStore.getState().clearConnectionTabs('conn-1')
+    expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toBeUndefined()
+  })
+
+  it('remaps table stack recency when scope normalization removes a scoped duplicate', () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    const standaloneTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    setBottomPanelEnabled(true)
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    setBottomPanelEnabled(false)
+    useWorkspaceStore.getState().normalizeTableDataTabScopes()
+
+    expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toMatchObject({
+      tables: standaloneTabId,
+    })
   })
 })
