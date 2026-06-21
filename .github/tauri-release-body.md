@@ -1,1 +1,1 @@
-Added stacked tab group support
+See release assets for platform installers.
