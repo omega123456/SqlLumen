@@ -734,11 +734,21 @@ export const completionService: CompletionService = async (
   }
 
   // -------------------------------------------------------------------
-  // Parse-failure fallback: suggestions is null when the parser fails.
-  // buildParseFallback includes schema items only when a ready cache is
-  // available; otherwise it still returns SQL keywords/functions immediately.
+  // Parse-failure fallback. `suggestions` is null when the parser fails
+  // outright, but dt-sql-parser also degrades to a non-null object with
+  // BOTH `syntax` and `keywords` empty when it chokes earlier in the
+  // statement — e.g. an unquoted non-reserved keyword used as an
+  // identifier (`smp.active`) leaves every caret after it with no
+  // context. Treat that degenerate state like a parse failure so we
+  // recover statement-scoped schema/keyword completions instead of
+  // returning nothing. buildParseFallback includes schema items only
+  // when a ready cache is available; otherwise it still returns SQL
+  // keywords/functions immediately.
   // -------------------------------------------------------------------
-  if (suggestions === null) {
+  if (
+    suggestions === null ||
+    (suggestions.syntax.length === 0 && suggestions.keywords.length === 0)
+  ) {
     return buildParseFallback(
       connectionId,
       currentStatementPrefix,

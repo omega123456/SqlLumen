@@ -456,6 +456,26 @@ describe('completionService — parse-failure fallback', () => {
     const classItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Class)
     expect(classItems).toHaveLength(0)
   })
+
+  // dt-sql-parser degrades to a non-null but fully-empty suggestions object
+  // when it chokes earlier in the statement — e.g. an unquoted non-reserved
+  // keyword used as an identifier (`smp.active`) starves every caret after it
+  // of context. Treat that the same as a parse failure so completions recover.
+  it('falls back to schema dump + keywords when suggestions has empty syntax AND keywords', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache().mockReturnValue(READY_CACHE)
+
+    const sql = 'SELECT smp.active, '
+    const items = await callService(sql, pos(1, sql.length + 1), buildSuggestions())
+    const labels = items.map(getLabel)
+
+    // Basic SQL keywords come back instead of nothing
+    expect(labels).toContain('SELECT')
+    expect(labels).toContain('FROM')
+    // Schema items are restored too (select-list scope dumps columns/tables)
+    expect(labels).toContain('users')
+    expect(labels).toContain('email')
+  })
 })
 
 describe('completionService — loading cache', () => {
