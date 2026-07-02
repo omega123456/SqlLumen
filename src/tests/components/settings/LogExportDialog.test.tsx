@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LogExportDialog } from '../../../components/settings/LogExportDialog'
@@ -25,10 +25,16 @@ async function pickDate(
 
 describe('LogExportDialog', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-06-15T10:00:00Z'))
     ipc.override('plugin:dialog|save', () => '/tmp/sql-lumen-logs.csv')
     ipc.override('export_logs', () => 42)
     useToastStore.setState({ toasts: [] })
     _resetToastTimeoutsForTests()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('disables export and shows validation for incomplete or oversized ranges', async () => {
@@ -66,7 +72,7 @@ describe('LogExportDialog', () => {
         })
     )
 
-    const user = userEvent.setup()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const onClose = vi.fn()
     render(<LogExportDialog isOpen={true} onClose={onClose} />)
 
@@ -95,7 +101,7 @@ describe('LogExportDialog', () => {
   })
 
   it('exports logs with the selected dates, closes on success, and shows a toast', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const onClose = vi.fn()
     render(<LogExportDialog isOpen={true} onClose={onClose} />)
 
@@ -121,7 +127,7 @@ describe('LogExportDialog', () => {
   it('stays open and idle when the save dialog is cancelled', async () => {
     ipc.override('plugin:dialog|save', () => null)
 
-    const user = userEvent.setup()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const onClose = vi.fn()
     render(<LogExportDialog isOpen={true} onClose={onClose} />)
 
@@ -141,7 +147,7 @@ describe('LogExportDialog', () => {
   })
 
   it('exports using local calendar dates so non-UTC users keep the selected inclusive days', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(<LogExportDialog isOpen={true} onClose={vi.fn()} />)
 
     setDateInput('log-export-from-input', '2026-06-01')
