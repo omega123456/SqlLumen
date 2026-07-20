@@ -812,6 +812,7 @@ async fn execute_single_statement_inner(
 
             let mut stream = sqlx::query(&sql_to_execute).fetch(&mut **conn);
 
+            let log_rows_enabled = crate::mysql::query_log::is_enabled();
             let mut columns: Vec<ColumnMeta> = vec![];
             let mut raw_rows: Vec<sqlx::mysql::MySqlRow> = vec![];
             let mut serialized_rows: Vec<Vec<serde_json::Value>> = vec![];
@@ -837,7 +838,9 @@ async fn execute_single_statement_inner(
                                 .collect();
                         }
                         serialized_rows.push(serialize_row(&row));
-                        raw_rows.push(row);
+                        if log_rows_enabled {
+                            raw_rows.push(row);
+                        }
                     }
                     Ok(None) => {
                         if !first_row_seen {

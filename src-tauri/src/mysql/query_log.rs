@@ -5,6 +5,12 @@ use sqlx::{Column, Row, TypeInfo, Value, ValueRef};
 
 pub const TARGET: &str = "mysql_traffic";
 
+/// Whether debug-level logging for `TARGET` is currently enabled. Callers should use this to
+/// skip expensive row formatting / buffering work when nothing will consume it.
+pub fn is_enabled() -> bool {
+    tracing::enabled!(target: TARGET, tracing::Level::DEBUG)
+}
+
 pub fn log_outgoing_sql(sql: &str) {
     tracing::debug!(target: TARGET, %sql, "mysql outgoing query");
 }
@@ -167,6 +173,9 @@ fn format_mysql_row(row: &MySqlRow) -> String {
 }
 
 pub fn log_mysql_rows(rows: &[MySqlRow]) {
+    if !is_enabled() {
+        return;
+    }
     tracing::debug!(target: TARGET, row_count = rows.len(), "mysql result rows (pre-serialize)");
     for (i, row) in rows.iter().enumerate() {
         let s = format_mysql_row(row);
