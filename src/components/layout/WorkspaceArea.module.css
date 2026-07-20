@@ -44,6 +44,11 @@
   pointer-events: none;
 }
 
+.connectionWorkspaceInactive,
+.connectionWorkspaceInactive * {
+  animation-play-state: paused !important;
+}
+
 .panelStack {
   position: relative;
   flex: 1;

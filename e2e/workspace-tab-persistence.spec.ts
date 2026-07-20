@@ -178,6 +178,15 @@ test.describe('Workspace tab persistence', () => {
     await connectToSample(page)
   })
 
+  test('pauses animations while the application window is unfocused', async ({ page }) => {
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+    await expect(page.locator('html')).toHaveAttribute('data-window-focused', 'false')
+    await expect(page.locator('body')).toHaveCSS('animation-play-state', 'paused')
+
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(page.locator('html')).toHaveAttribute('data-window-focused', 'true')
+  })
+
   test('retains table-data grid scroll after switching tabs', async ({ page }) => {
     const tableTabId = await openScrollTableDataTab(page)
     const tableGrid = activePanel(page).getByTestId('table-data-grid')
@@ -367,6 +376,7 @@ test.describe('Multi-session workspace persistence', () => {
     // The retained inactive workspace still has its panels mounted but inert.
     const inactiveWorkspace = page.getByTestId('inactive-connection-workspace')
     await expect(inactiveWorkspace).toHaveAttribute('aria-hidden', 'true')
+    await expect(inactiveWorkspace).toHaveCSS('animation-play-state', 'paused')
     await expect(inactiveWorkspace.getByTestId('workspace-panel').first()).toBeAttached()
   })
 

@@ -8,7 +8,8 @@
  * inert to keyboard focus.
  *
  * When `isActive` is false the component:
- *   - hides and disables its root (`visibility: hidden`, `pointer-events: none`,
+ *   - hides its root and pauses descendant animations (`visibility: hidden`,
+ *     `animation-play-state: paused`, `pointer-events: none`,
  *     `aria-hidden`, `inert`)
  *   - passes no visible active workspace tab into `WorkspaceBody`
  *   - marks every descendant `WorkspaceTabPanel` inactive

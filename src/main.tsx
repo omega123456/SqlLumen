@@ -11,6 +11,10 @@ import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
 import { hasTauriApis } from './lib/tauri-env'
 
+document.documentElement.dataset.windowFocused = String(document.hasFocus())
+window.addEventListener('focus', () => (document.documentElement.dataset.windowFocused = 'true'))
+window.addEventListener('blur', () => (document.documentElement.dataset.windowFocused = 'false'))
+
 // ---------------------------------------------------------------------------
 // Dynamic Monaco import — non-blocking so app renders immediately
 // ---------------------------------------------------------------------------

@@ -9,3 +9,8 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+.inactive,
+.inactive * {
+  animation-play-state: paused !important;
+}
