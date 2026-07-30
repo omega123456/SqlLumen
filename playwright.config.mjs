@@ -47,7 +47,7 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
   workers,
-  reporter: 'line',
+  reporter: 'list',
   timeout: 15_000,
   expect: {
     toHaveScreenshot: {
