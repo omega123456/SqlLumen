@@ -178,7 +178,10 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 ### Playwright (E2E + Visual Regression)
 
 - Specs live in `e2e/`. `pnpm test:e2e` (and therefore `pnpm test:all`) always includes `screenshots.spec.ts`.
-- Every new component / visible UI state needs screenshot coverage for **both light and dark** themes in `e2e/screenshots.spec.ts`.
+- Keep visual regression lean: each component gets at most one representative screenshot scenario
+  in `e2e/screenshots.spec.ts`, run in both light and dark themes, plus at most two representative
+  full-page scenarios. Cover additional states and interactions with functional assertions, and
+  update the existing component scenario instead of adding another baseline.
 - **Do not increase Playwright screenshot pixel tolerance** (or any visual diff threshold) to make tests pass; fix the UI/regression or intentionally update baselines instead.
 - **Do not change screenshot threshold values in `playwright.config.mjs` (`expect.toHaveScreenshot`, including the value at `playwright.config.mjs:52`) unless the user gives explicit permission in the current request.**
 - Add `data-testid` attributes on new layout surfaces when CSS modules prevent reliable selectors.
