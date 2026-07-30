@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ipc, expectToast } from '../ipc-mock'
 import { useProcessListStore } from '../../stores/processlist-store'
+import { useHistoryStore } from '../../stores/history-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type { ProcessRow, KillResult } from '../../lib/processlist-commands'
 import { isIdleProcessRow } from '../../lib/processlist-filter'
@@ -38,6 +39,7 @@ function resetStore() {
     hasFetchedByConnection: {},
   })
   useToastStore.setState({ toasts: [] })
+  useHistoryStore.getState().reset()
   _resetToastTimeoutsForTests()
 }
 
@@ -236,6 +238,20 @@ describe('processlist-store', () => {
     it('returns empty array when no selection', async () => {
       const res = await useProcessListStore.getState().killSelectedProcesses(CONN, SESSION)
       expect(res).toEqual([])
+    })
+
+    it('refreshes loaded query history after killing', async () => {
+      ipc.override('kill_queries', () => [{ id: 1, success: true, error: null }])
+      useProcessListStore.setState({
+        selectedIdsByConnection: { [CONN]: new Set([1]) },
+      })
+      useHistoryStore.setState({
+        entriesByConnection: { [CONN]: [] },
+      })
+
+      await useProcessListStore.getState().killSelectedProcesses(CONN, SESSION)
+
+      expect(ipc.calls('list_history')).toHaveLength(1)
     })
   })
 

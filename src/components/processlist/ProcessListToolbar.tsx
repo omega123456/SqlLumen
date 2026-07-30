@@ -285,7 +285,7 @@ export function ProcessListToolbar({
           type="button"
           className={styles.toolbarButtonDanger}
           data-testid="processlist-kill-button"
-          disabled={selectedCount === 0 || isReadOnly}
+          disabled={selectedCount === 0}
           onClick={handleKillClick}
         >
           <StopCircle size={16} weight="regular" />

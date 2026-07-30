@@ -4,6 +4,7 @@ import { getProcesslist, killQueries } from '../lib/processlist-commands'
 import { filterProcessListRows } from '../lib/processlist-filter'
 import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
+import { useHistoryStore } from './history-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 const DEFAULT_REFRESH_INTERVAL_MS = 2000
@@ -144,7 +145,9 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
     const selected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
     if (selected.size === 0) return []
     const ids = [...selected]
-    return killQueries(sessionId, ids)
+    const results = await killQueries(sessionId, ids)
+    useHistoryStore.getState().notifyNewQuery(connectionId)
+    return results
   },
 
   setSelectedIds: (connectionId: string, ids: Set<number>) => {

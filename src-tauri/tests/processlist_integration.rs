@@ -12,6 +12,7 @@ use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQu
 use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::history::list_history_impl;
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::mysql::open_connection_impl;
 use sqllumen_lib::commands::processlist::{get_processlist_impl, kill_queries_impl};
@@ -133,6 +134,31 @@ fn processlist_steps_with_kill_error() -> Vec<MockQueryStep> {
         error: Some((ErrorKind::ER_WRONG_VALUE, b"Cannot kill query 99")),
         affected_rows: None,
     });
+    steps
+}
+
+fn processlist_steps_with_rds_kill_error() -> Vec<MockQueryStep> {
+    let mut steps = processlist_steps();
+    steps.extend([
+        MockQueryStep {
+            query: "SELECT ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = 'mysql' AND ROUTINE_NAME = 'rds_kill' AND ROUTINE_TYPE = 'PROCEDURE' LIMIT 1",
+            columns: vec![MockColumnDef {
+                name: "ROUTINE_NAME",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            }],
+            rows: vec![vec![MockCell::Bytes(b"rds_kill")]],
+            error: None,
+            affected_rows: None,
+        },
+        MockQueryStep {
+            query: "CALL mysql.rds_kill(99)",
+            columns: vec![],
+            rows: vec![],
+            error: Some((ErrorKind::ER_WRONG_VALUE, b"Used mysql.rds_kill")),
+            affected_rows: None,
+        },
+    ]);
     steps
 }
 
@@ -309,16 +335,17 @@ async fn test_get_processlist_handles_signed_ids_and_null_fields() {
 
 #[cfg(not(coverage))]
 #[tokio::test]
-async fn test_kill_queries_read_only() {
+async fn test_kill_queries_allows_read_only_connection() {
     common::ensure_fake_backend_once();
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps()).await;
     let session_id = open_session(&state, server.port, true).await;
 
-    let result = kill_queries_impl(&state, &session_id, vec![42]).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("read-only"));
+    let results = kill_queries_impl(&state, &session_id, vec![42])
+        .await
+        .expect("read-only profiles should still be able to kill queries");
+    assert!(results[0].success);
 }
 
 #[tokio::test]
@@ -331,16 +358,54 @@ async fn test_kill_queries_invalid_session() {
 }
 
 #[tokio::test]
-async fn test_kill_queries_read_only_with_registered_mock_session() {
+async fn test_kill_queries_allows_read_only_registered_mock_session() {
     common::ensure_fake_backend_once();
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps()).await;
     register_mock_session(&state, "sess-readonly", server.port, true);
 
-    let result = kill_queries_impl(&state, "sess-readonly", vec![42]).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("read-only"));
+    let results = kill_queries_impl(&state, "sess-readonly", vec![42])
+        .await
+        .expect("read-only profiles should still be able to kill queries");
+    assert!(results[0].success);
+}
+
+#[tokio::test]
+async fn test_kill_queries_uses_rds_stored_procedure() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    state
+        .db
+        .lock()
+        .expect("db lock")
+        .execute(
+            "INSERT INTO connections (id, name, created_at, updated_at) \
+             VALUES ('profile-processlist-test', 'Test DB', '0', '0')",
+            [],
+        )
+        .expect("seed connection");
+
+    let server = MockMySqlServer::start_script(processlist_steps_with_rds_kill_error()).await;
+    register_mock_session(&state, "sess-rds", server.port, false);
+
+    let results = kill_queries_impl(&state, "sess-rds", vec![99])
+        .await
+        .expect("kill queries should return result list");
+
+    assert!(!results[0].success);
+    assert!(results[0]
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Used mysql.rds_kill"));
+
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let page =
+        list_history_impl(&state, "profile-processlist-test", 1, 50, None, None).expect("history");
+    assert_eq!(page.total, 1);
+    assert_eq!(page.entries[0].sql_text, "CALL mysql.rds_kill(99)");
+    assert!(!page.entries[0].success);
 }
 
 #[tokio::test]

@@ -134,7 +134,7 @@ describe('ProcessListToolbar', () => {
     expect(screen.getByTestId('processlist-kill-button')).not.toBeDisabled()
   })
 
-  it('disables kill button when connection is read-only', () => {
+  it('enables kill button when a row is selected on a read-only connection', () => {
     const conn: ActiveConnection = {
       id: 'conn-1',
       profile: makeSavedConnection({ readOnly: true }),
@@ -148,7 +148,7 @@ describe('ProcessListToolbar', () => {
       })
     })
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
-    expect(screen.getByTestId('processlist-kill-button')).toBeDisabled()
+    expect(screen.getByTestId('processlist-kill-button')).not.toBeDisabled()
   })
 
   it('shows Kill N when N processes are selected', () => {
