@@ -1,26 +1,37 @@
-import { Eye, Gear, Lightning, MathOperations, Table, type IconProps } from '@phosphor-icons/react'
-import type { PaletteTypeFilter } from '../../types/schema'
+import {
+  Columns,
+  Eye,
+  Gear,
+  Lightning,
+  MathOperations,
+  Table,
+  type IconProps,
+} from '@phosphor-icons/react'
+import type { PaletteResultType } from '../../types/schema'
 import styles from './ObjectTypeIcon.module.css'
 
 export interface ObjectTypeIconProps {
-  objectType: PaletteTypeFilter
+  objectType: PaletteResultType
   size?: number
   weight?: IconProps['weight']
   className?: string
 }
 
-const ICONS: Record<PaletteTypeFilter, typeof Table> = {
+const ICONS: Record<PaletteResultType, typeof Table> = {
   table: Table,
+  column: Columns,
   view: Eye,
   procedure: Gear,
   function: MathOperations,
   trigger: Lightning,
 }
 
-function getTypeClassName(objectType: PaletteTypeFilter): string {
+function getTypeClassName(objectType: PaletteResultType): string {
   switch (objectType) {
     case 'table':
       return styles.table
+    case 'column':
+      return styles.column
     case 'view':
       return styles.view
     case 'procedure':

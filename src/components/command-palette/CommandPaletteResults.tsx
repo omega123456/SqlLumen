@@ -27,6 +27,7 @@ export function CommandPaletteResults({
   results,
   activeIndex,
   state,
+  isColumnScope = false,
   onSelect,
 }: CommandPaletteResultsProps) {
   const listRef = useRef<HTMLUListElement | null>(null)
@@ -89,25 +90,29 @@ export function CommandPaletteResults({
   return (
     <div className={styles.resultsSurface}>
       <div className={styles.resultsHeader}>
-        {state === 'recents'
-          ? 'Recent'
-          : `${results.length} result${results.length === 1 ? '' : 's'}`}
+        {isColumnScope
+          ? 'Columns'
+          : state === 'recents'
+            ? 'Recent'
+            : `${results.length} result${results.length === 1 ? '' : 's'}`}
       </div>
       <ul
         ref={listRef}
         id="command-palette-results"
         role="listbox"
-        aria-label={state === 'recents' ? 'Recent objects' : 'Schema objects'}
+        aria-label={
+          isColumnScope ? 'Columns' : state === 'recents' ? 'Recent objects' : 'Schema objects'
+        }
         data-testid="command-palette-results"
         className={styles.resultsList}
       >
         {results.map((result, index) => (
           <CommandPaletteResultRow
-            key={`${result.database}-${result.objectType}-${result.name}`}
+            key={`${result.database}-${result.table ?? ''}-${result.objectType}-${result.name}`}
             id={`command-palette-result-${index}`}
             result={result}
             isActive={index === activeIndex}
-            isRecent={state === 'recents'}
+            isRecent={state === 'recents' && !isColumnScope}
             onSelect={onSelect}
           />
         ))}

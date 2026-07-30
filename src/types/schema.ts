@@ -308,11 +308,14 @@ export interface TriggerInfo {
 }
 
 export type PaletteTypeFilter = 'table' | 'view' | 'procedure' | 'function' | 'trigger'
+export type PaletteResultType = PaletteTypeFilter | 'column'
 
 export interface SearchableObject {
   database: string
-  objectType: PaletteTypeFilter
+  objectType: PaletteResultType
   name: string
+  table?: string
+  metaLabel?: string
 }
 
 export interface SchemaMetadataResponse {

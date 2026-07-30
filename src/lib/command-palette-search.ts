@@ -11,6 +11,7 @@ const RECENT_RESULTS_LIMIT = 5
 export interface PaletteSearchFilters {
   database?: string | null
   objectType?: PaletteTypeFilter | null
+  table?: string | null
 }
 
 export interface PaletteSearchResult extends SearchableObject {
@@ -38,7 +39,7 @@ export interface GetRecentPaletteResultsOptions {
 }
 
 function makeObjectKey(object: SearchableObject): string {
-  return `${object.database}\u0000${object.objectType}\u0000${object.name}`
+  return `${object.database}\u0000${object.table ?? ''}\u0000${object.objectType}\u0000${object.name}`
 }
 
 function normalizeQuery(query: string): string {
@@ -85,6 +86,10 @@ function matchesFilters(object: SearchableObject, filters?: PaletteSearchFilters
     return false
   }
 
+  if (filters.table && object.table !== filters.table) {
+    return false
+  }
+
   return true
 }
 
@@ -98,7 +103,7 @@ function getRecentRankMap(
   }
 
   for (const [index, recent] of recents.entries()) {
-    const key = `${recent.database}\u0000${recent.objectType}\u0000${recent.name}`
+    const key = `${recent.database}\u0000\u0000${recent.objectType}\u0000${recent.name}`
     if (!recentRankMap.has(key)) {
       recentRankMap.set(key, index)
     }
@@ -271,7 +276,7 @@ export function getRecentPaletteResults(
   const seen = new Set<string>()
 
   for (const recent of options.recents ?? []) {
-    const key = `${recent.database}\u0000${recent.objectType}\u0000${recent.name}`
+    const key = `${recent.database}\u0000\u0000${recent.objectType}\u0000${recent.name}`
     if (seen.has(key)) {
       continue
     }

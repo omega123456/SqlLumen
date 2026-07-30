@@ -97,6 +97,18 @@
   color: var(--text-secondary);
 }
 
+.rowTrailing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.scopeHint {
+  color: var(--text-secondary);
+  font-size: var(--type-size-sm);
+  white-space: nowrap;
+}
+
 .state {
   display: grid;
   place-items: center;

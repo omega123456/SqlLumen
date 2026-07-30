@@ -6,6 +6,7 @@ import type { ComponentType } from 'react'
 import { CompactSelection, GridCellKind, type GridSelection } from '@glideapps/glide-data-grid'
 import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBaseGridView'
 import * as GlideDataGridModule from '../../../../components/shared/glide/GlideDataGrid'
+import type { GridHandle } from '../../../../components/shared/glide/glide-grid-types'
 
 // GlideDataGrid is a forwardRef object — vi.spyOn can't intercept it.
 // Use Object.defineProperty to replace it per-test (same pattern as ResultGridView.test.tsx).
@@ -2214,6 +2215,35 @@ describe('CanvasBaseGridView', () => {
 
     expect(mockScrollToCell).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
+  })
+
+  it('does not overwrite explicit navigation with a pending scroll restore', async () => {
+    vi.useFakeTimers()
+    const gridRef = React.createRef<GridHandle>()
+
+    try {
+      render(
+        <CanvasBaseGridView
+          ref={gridRef}
+          rows={rows}
+          columns={[...columns, { ...columns[0], key: 'right', displayName: 'Right' }]}
+          editState={null}
+          initialScrollCell={{ scrollRow: 0, scrollCol: 1 }}
+        />
+      )
+
+      act(() => gridRef.current?.scrollToCell({ idx: 0 }, 'horizontal'))
+
+      await act(async () => {
+        vi.runAllTimers()
+        await Promise.resolve()
+      })
+
+      expect(mockScrollToCell).toHaveBeenCalledTimes(1)
+      expect(mockScrollToCell).toHaveBeenCalledWith({ idx: 0 }, 'horizontal')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reapplies a new persisted scroll cell when tab state changes', async () => {

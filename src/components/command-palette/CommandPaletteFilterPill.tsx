@@ -1,7 +1,7 @@
 import { Stack, XCircle } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { ObjectTypeIcon } from '../shared/ObjectTypeIcon'
-import type { PaletteTypeFilter } from '../../types/schema'
+import type { PaletteResultType } from '../../types/schema'
 import type { CommandPaletteFilterPillValue } from './CommandPalette'
 import styles from './CommandPaletteInput.module.css'
 
@@ -17,8 +17,12 @@ export function CommandPaletteFilterPill({ pill, onRemove }: CommandPaletteFilte
       data-testid={`command-palette-pill-${pill.kind === 'object-type' ? 'type' : pill.kind}`}
     >
       <span className={styles.pillIcon} aria-hidden="true">
-        {pill.kind === 'object-type' ? (
-          <ObjectTypeIcon objectType={pill.value as PaletteTypeFilter} size={14} weight="fill" />
+        {pill.kind === 'object-type' || pill.kind === 'table' ? (
+          <ObjectTypeIcon
+            objectType={(pill.kind === 'table' ? 'table' : pill.value) as PaletteResultType}
+            size={14}
+            weight="fill"
+          />
         ) : (
           <Stack size={14} weight="fill" />
         )}

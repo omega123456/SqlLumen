@@ -92,6 +92,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
   const stageBlobEnvelope = useTableDataStore((state) => state.stageBlobEnvelope)
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
+  const columnJumpRequest = useTableDataStore((state) => state.columnJumpRequests[tabId])
+  const highlightedColumnKey = useTableDataStore(
+    (state) => state.highlightedColumnByTab[tabId] ?? null
+  )
+  const consumeColumnJump = useTableDataStore((state) => state.consumeColumnJump)
+  const clearColumnHighlight = useTableDataStore((state) => state.clearColumnHighlight)
   const setScrollCell = useTableDataStore((state) => state.setScrollCell)
   const setColumnWidth = useTableDataStore((state) => state.setColumnWidth)
   const showError = useToastStore((state) => state.showError)
@@ -269,6 +275,38 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   useEffect(() => {
     rowDataRef.current = rowData
   }, [rowData])
+
+  useEffect(() => {
+    if (!columnJumpRequest) return
+    const idx = descriptorColumns.findIndex((column) => column.key === columnJumpRequest.columnKey)
+    if (idx < 0) return
+
+    if (tabState?.selectedCell && selectedRowKey) {
+      const rowIdx = findRowIndexByKey(rowData, selectedRowKey, pkColumns)
+      const row = rowData[rowIdx]
+      if (row && tabState.selectedCell.columnKey !== columnJumpRequest.columnKey) {
+        setSelectedCell(tabId, {
+          columnKey: columnJumpRequest.columnKey,
+          value: row[columnJumpRequest.columnKey],
+        })
+      } else {
+        gridRef.current?.scrollToCell({ idx }, 'horizontal')
+      }
+    } else {
+      gridRef.current?.scrollToCell({ idx }, 'horizontal')
+    }
+    consumeColumnJump(tabId)
+  }, [
+    columnJumpRequest,
+    consumeColumnJump,
+    descriptorColumns,
+    pkColumns,
+    rowData,
+    selectedRowKey,
+    setSelectedCell,
+    tabId,
+    tabState?.selectedCell,
+  ])
 
   // ---------------------------------------------------------------------------
   // Row key getter — CRITICAL: complex row identity logic
@@ -552,6 +590,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
   const handleCellClickGuard = useCallback(
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
+      if (!args.source || args.source === 'grid-pointer') {
+        clearColumnHighlight(tabId)
+      }
       const row = args.rowData
       const targetRowKey = getRowKey(row, pkColumns)
       const isKeyboardNavigation = args.source === 'keyboard'
@@ -625,6 +666,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       ensureRowEditingStarted,
       setSelectedRow,
       setSelectedCell,
+      clearColumnHighlight,
     ]
   )
 
@@ -926,6 +968,12 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           editableColumnKeys={editableColumnKeys}
           runCellClickGuardOnKeyboardSelection={!isReadOnly && hasPk}
           selectedCellPosition={selectedCellPosition}
+          highlightColumnKey={highlightedColumnKey ?? undefined}
+          onCellSelectionChange={(args) => {
+            if (!args.source || args.source === 'grid-pointer') {
+              clearColumnHighlight(tabId)
+            }
+          }}
           onSelectedCellChange={(pos) => {
             const column = descriptorColumns[pos.idx]
             const row = rowData[pos.rowIdx]

@@ -122,6 +122,37 @@ describe('command-palette-search', () => {
     ])
   })
 
+  it('keeps same-named columns distinct and filters them by table', () => {
+    const columnIndex = buildCommandPaletteSearchIndex([
+      {
+        database: 'app_main',
+        table: 'orders',
+        objectType: 'column',
+        name: 'status',
+      },
+      {
+        database: 'app_main',
+        table: 'users',
+        objectType: 'column',
+        name: 'status',
+      },
+    ])
+
+    expect(
+      searchPaletteObjects(columnIndex, {
+        query: 'status',
+        filters: { database: 'app_main', table: 'orders' },
+      })
+    ).toEqual([
+      expect.objectContaining({
+        database: 'app_main',
+        table: 'orders',
+        objectType: 'column',
+        name: 'status',
+      }),
+    ])
+  })
+
   it('boosts recent objects ahead of comparable matches', () => {
     const results = searchPaletteObjects(index, {
       query: 'user',

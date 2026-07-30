@@ -99,7 +99,11 @@ const booleanAliasColumns: TableDataColumnMeta[] = [
 beforeEach(() => {
   vi.useRealTimers()
   frontendCacheLifecycle.cleanup()
-  useTableDataStore.setState({ tabs: {} })
+  useTableDataStore.setState({
+    tabs: {},
+    columnJumpRequests: {},
+    highlightedColumnByTab: {},
+  })
   resetWorkspaceStore()
   useToastStore.setState({ toasts: [] })
   _resetToastTimeoutsForTests()
@@ -162,6 +166,37 @@ describe('useTableDataStore — initTab', () => {
 
     expect(tab.scrollRow).toBe(0)
     expect(tab.scrollCol).toBe(0)
+  })
+})
+
+describe('useTableDataStore — column jumps', () => {
+  it('keeps a pre-init request and increments the nonce for repeat jumps', () => {
+    const store = useTableDataStore.getState()
+
+    store.requestColumnJump('tab-1', 'name')
+    store.initTab('tab-1', 'conn-1', 'mydb', 'users')
+    expect(useTableDataStore.getState().columnJumpRequests['tab-1']).toEqual({
+      columnKey: 'name',
+      nonce: 1,
+    })
+
+    store.requestColumnJump('tab-1', 'name')
+    expect(useTableDataStore.getState().columnJumpRequests['tab-1']).toEqual({
+      columnKey: 'name',
+      nonce: 2,
+    })
+  })
+
+  it('consumes a request into the highlight and clears it', () => {
+    const store = useTableDataStore.getState()
+    store.requestColumnJump('tab-1', 'name')
+    store.consumeColumnJump('tab-1')
+
+    expect(useTableDataStore.getState().columnJumpRequests['tab-1']).toBeUndefined()
+    expect(useTableDataStore.getState().highlightedColumnByTab['tab-1']).toBe('name')
+
+    store.clearColumnHighlight('tab-1')
+    expect(useTableDataStore.getState().highlightedColumnByTab['tab-1']).toBeNull()
   })
 })
 
@@ -2311,10 +2346,7 @@ describe('useTableDataStore — cancelLoad', () => {
   })
 
   it('does not double-issue cancel while one is already in flight', async () => {
-    ipc.override(
-      'fetch_table_data',
-      () => new Promise<TableDataResponse>(() => {})
-    )
+    ipc.override('fetch_table_data', () => new Promise<TableDataResponse>(() => {}))
     ipc.override('cancel_query', () => true)
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')

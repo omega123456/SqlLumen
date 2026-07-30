@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  activateColumnFromPalette,
   activateObjectFromPalette,
   openObjectDefaultTab,
   revealObjectInTree,
 } from '../../lib/object-activation'
 import { makeNodeId, useSchemaStore } from '../../stores/schema-store'
+import { useTableDataStore } from '../../stores/table-data-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 
 const CONNECTION_ID = 'conn-1'
@@ -18,6 +20,10 @@ describe('object-activation', () => {
     })
     useSchemaStore.setState({
       connectionStates: {},
+    })
+    useTableDataStore.setState({
+      columnJumpRequests: {},
+      highlightedColumnByTab: {},
     })
   })
 
@@ -242,5 +248,56 @@ describe('object-activation', () => {
     expect(loadChildren).not.toHaveBeenCalled()
     expect(ensurePathExpanded).toHaveBeenCalledWith(CONNECTION_ID, objectNodeId)
     expect(selectNode).toHaveBeenCalledWith(objectNodeId, CONNECTION_ID)
+  })
+
+  it('requests a column jump on the matching table tab instead of the active query tab', () => {
+    const openTab = vi.fn()
+    useWorkspaceStore.setState({
+      openTab,
+      tabsByConnection: {
+        [CONNECTION_ID]: [
+          {
+            id: 'query-tab',
+            type: 'query-editor',
+            label: 'Query',
+            connectionId: CONNECTION_ID,
+          },
+          {
+            id: 'orders-tab',
+            type: 'table-data',
+            label: 'orders',
+            connectionId: CONNECTION_ID,
+            databaseName: DATABASE,
+            objectName: 'orders',
+            objectType: 'table',
+            parentQueryTabId: 'query-tab',
+          },
+          {
+            id: 'users-tab',
+            type: 'table-data',
+            label: 'users',
+            connectionId: CONNECTION_ID,
+            databaseName: DATABASE,
+            objectName: 'users',
+            objectType: 'table',
+          },
+        ],
+      },
+      activeTabByConnection: { [CONNECTION_ID]: 'query-tab' },
+    })
+
+    activateColumnFromPalette(CONNECTION_ID, DATABASE, 'orders', 'shipping_amount')
+
+    expect(openTab).toHaveBeenCalledWith({
+      type: 'table-data',
+      connectionId: CONNECTION_ID,
+      databaseName: DATABASE,
+      objectName: 'orders',
+      objectType: 'table',
+      label: 'orders',
+    })
+    expect(useTableDataStore.getState().columnJumpRequests).toEqual({
+      'orders-tab': { columnKey: 'shipping_amount', nonce: 1 },
+    })
   })
 })

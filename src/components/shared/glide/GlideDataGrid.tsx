@@ -198,8 +198,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   useImperativeHandle(
     ref,
     () => ({
-      scrollToCell: (pos) => {
-        editorRef.current?.scrollTo(pos.idx ?? 0, pos.rowIdx ?? 0, 'both')
+      scrollToCell: (pos, axis = 'both') => {
+        editorRef.current?.scrollTo(pos.idx ?? 0, pos.rowIdx ?? 0, axis)
       },
       selectCell: (pos, options) => {
         const enableEditor = typeof options === 'object' ? options.enableEditor === true : false

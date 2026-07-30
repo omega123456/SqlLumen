@@ -362,7 +362,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     resetSelectionKey,
   } = props
   const gridRef = useRef<GridHandle | null>(null)
-  useImperativeHandle(ref, () => gridRef.current as GridHandle, [])
   const [internalSelectedRowIndex, setInternalSelectedRowIndex] = useState<number | null>(null)
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
   const [lastResetSelectionKey, setLastResetSelectionKey] = useState<number | undefined>(
@@ -390,6 +389,26 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const pendingTypingActivationRef = useRef<PendingTypingActivation | null>(null)
   const listEditorOpeningRef = useRef(false)
   const activeSelectedRowIndex = selectedRowIndex ?? internalSelectedRowIndex
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToCell: (pos, axis) => {
+        pendingInitialScrollRestoreRef.current = null
+        suppressScrollPersistenceRef.current = false
+        gridRef.current?.scrollToCell(pos, axis)
+      },
+      selectCell: (pos, options) => {
+        pendingInitialScrollRestoreRef.current = null
+        suppressScrollPersistenceRef.current = false
+        gridRef.current?.selectCell(pos, options)
+      },
+      get element() {
+        return gridRef.current?.element ?? null
+      },
+    }),
+    []
+  )
 
   const openListEditor = useCallback((cell: { rowIdx: number; idx: number }): void => {
     if (listEditorOpeningRef.current) return
@@ -517,6 +536,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
     let releaseSuppressionFrameId = 0
     const restoreFrameId = requestAnimationFrame(() => {
+      if (!isSameScrollCell(pendingInitialScrollRestoreRef.current, normalized)) return
       gridRef.current?.scrollToCell({ rowIdx: normalized.scrollRow, idx: normalized.scrollCol })
       releaseSuppressionFrameId = requestAnimationFrame(() => {
         // Only release suppression if the pending restore already resolved
@@ -1032,7 +1052,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         const pending = pendingInitialScrollRestoreRef.current
         if (pending) {
           requestAnimationFrame(() => {
-            gridRef.current?.scrollToCell({ rowIdx: pending.scrollRow, idx: pending.scrollCol })
+            if (isSameScrollCell(pendingInitialScrollRestoreRef.current, pending)) {
+              gridRef.current?.scrollToCell({ rowIdx: pending.scrollRow, idx: pending.scrollCol })
+            }
           })
         }
         return

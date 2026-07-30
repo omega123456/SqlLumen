@@ -123,7 +123,13 @@ describe('TableDataGrid', () => {
     gridHandle.scrollToCell.mockClear()
     capturedFkLookupDialogProps = null
     capturedBlobDialogProps = null
-    act(() => useTableDataStore.setState({ tabs: { t1: tab() } }))
+    act(() =>
+      useTableDataStore.setState({
+        tabs: { t1: tab() },
+        columnJumpRequests: {},
+        highlightedColumnByTab: {},
+      })
+    )
   })
 
   it('renders table data rows and columns', () => {
@@ -135,6 +141,97 @@ describe('TableDataGrid', () => {
     }
     expect(props.columns.map((column) => column.key)).toEqual(['id', 'name', 'data'])
     expect(props.rows[0]).toMatchObject({ id: 1, name: 'Ada' })
+  })
+
+  it('uses controlled selection to jump once within the selected row', async () => {
+    act(() => {
+      useTableDataStore.setState({
+        tabs: {
+          t1: tab({
+            selectedRowKey: { id: 1 },
+            selectedCell: { columnKey: 'id', value: 1 },
+          }),
+        },
+      })
+    })
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+
+    act(() => {
+      useTableDataStore.getState().requestColumnJump('t1', 'name')
+    })
+
+    await waitFor(() => {
+      expect(useTableDataStore.getState().tabs.t1.selectedCell).toEqual({
+        columnKey: 'name',
+        value: 'Ada',
+      })
+    })
+    expect(gridHandle.scrollToCell).not.toHaveBeenCalled()
+    expect(canvasCalls[canvasCalls.length - 1]).toMatchObject({
+      highlightColumnKey: 'name',
+    })
+
+    act(() => {
+      useTableDataStore.getState().requestColumnJump('t1', 'data')
+    })
+    await waitFor(() => {
+      expect(useTableDataStore.getState().tabs.t1.selectedCell?.columnKey).toBe('data')
+    })
+    expect(gridHandle.scrollToCell).not.toHaveBeenCalled()
+
+    act(() => {
+      useTableDataStore.getState().requestColumnJump('t1', 'data')
+    })
+    await waitFor(() => {
+      expect(gridHandle.scrollToCell).toHaveBeenCalledWith({ idx: 2 }, 'horizontal')
+    })
+  })
+
+  it('waits for columns before jumping and leaves an empty selection untouched', async () => {
+    act(() => {
+      useTableDataStore.setState({ tabs: { t1: tab({ columns: [] }) } })
+    })
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+
+    act(() => {
+      useTableDataStore.getState().requestColumnJump('t1', 'name')
+    })
+    expect(gridHandle.scrollToCell).not.toHaveBeenCalled()
+
+    act(() => {
+      useTableDataStore.setState({ tabs: { t1: tab() } })
+    })
+
+    await waitFor(() => {
+      expect(gridHandle.scrollToCell).toHaveBeenCalledWith({ idx: 1 }, 'horizontal')
+    })
+    expect(useTableDataStore.getState().tabs.t1.selectedCell).toBeNull()
+  })
+
+  it('passes the highlight to the grid and clears it on a cell click', async () => {
+    act(() => {
+      useTableDataStore.setState({ highlightedColumnByTab: { t1: 'name' } })
+    })
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      highlightColumnKey: string
+      onCellClickGuard: (args: {
+        rowIdx: number
+        columnKey: string
+        rowData: Record<string, unknown>
+      }) => Promise<unknown>
+    }
+
+    expect(props.highlightColumnKey).toBe('name')
+    await act(async () => {
+      await props.onCellClickGuard({
+        rowIdx: 0,
+        columnKey: 'id',
+        rowData: { id: 1, name: 'Ada', data: '[BLOB - 24 bytes]' },
+      })
+    })
+
+    expect(useTableDataStore.getState().highlightedColumnByTab.t1).toBeNull()
   })
 
   it('enables the checkbox row marker for editable (PK) tables', () => {

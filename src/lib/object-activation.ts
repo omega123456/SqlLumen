@@ -1,4 +1,5 @@
 import { makeNodeId, useSchemaStore } from '../stores/schema-store'
+import { useTableDataStore } from '../stores/table-data-store'
 import { useWorkspaceStore } from '../stores/workspace-store'
 import type { NodeType, ObjectType } from '../types/schema'
 
@@ -88,4 +89,23 @@ export async function activateObjectFromPalette(
 
   openObjectDefaultTab(connectionId, database, objectType, name, label)
   await revealObjectInTree(connectionId, database, objectType, name)
+}
+
+export function activateColumnFromPalette(
+  connectionId: string,
+  database: string,
+  table: string,
+  columnName: string
+): void {
+  openObjectDefaultTab(connectionId, database, 'table', table, table)
+
+  const workspace = useWorkspaceStore.getState()
+  const matchingTabs = (workspace.tabsByConnection[connectionId] ?? []).filter(
+    (tab) => tab.type === 'table-data' && tab.databaseName === database && tab.objectName === table
+  )
+  const activeTabId = workspace.activeTabByConnection[connectionId]
+  const tab = matchingTabs.find((candidate) => candidate.id === activeTabId) ?? matchingTabs[0]
+  if (tab) {
+    useTableDataStore.getState().requestColumnJump(tab.id, columnName)
+  }
 }

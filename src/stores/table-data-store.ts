@@ -539,6 +539,8 @@ function createDefaultTabState(
 
 export interface TableDataStore {
   tabs: Record<string, TableDataTabState>
+  columnJumpRequests: Record<string, { columnKey: string; nonce: number }>
+  highlightedColumnByTab: Record<string, string | null>
 
   initTab: (tabId: string, connectionId: string, database: string, table: string) => void
   cleanupTab: (tabId: string) => void
@@ -597,6 +599,9 @@ export interface TableDataStore {
   /** Replace the set of checkbox-checked row keys for bulk operations. */
   setCheckedRowKeys: (tabId: string, rowKeys: Record<string, unknown>[]) => void
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
+  requestColumnJump: (tabId: string, columnKey: string) => void
+  consumeColumnJump: (tabId: string) => void
+  clearColumnHighlight: (tabId: string) => void
   setColumnWidth: (tabId: string, column: string, width: number) => void
   setPageSize: (tabId: string, newPageSize: number) => Promise<void>
   openExportDialog: (tabId: string) => void
@@ -735,6 +740,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
   return {
     tabs: {},
+    columnJumpRequests: {},
+    highlightedColumnByTab: {},
 
     // ------ initTab ------
 
@@ -758,8 +765,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
       set((state) => {
         const newTabs = { ...state.tabs }
+        const columnJumpRequests = { ...state.columnJumpRequests }
+        const highlightedColumnByTab = { ...state.highlightedColumnByTab }
         delete newTabs[tabId]
-        return { tabs: newTabs }
+        delete columnJumpRequests[tabId]
+        delete highlightedColumnByTab[tabId]
+        return { tabs: newTabs, columnJumpRequests, highlightedColumnByTab }
       })
     },
 
@@ -1565,6 +1576,47 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     setSelectedCell: (tabId, cell) => {
       patchTab(tabId, { selectedCell: cell })
+    },
+
+    requestColumnJump: (tabId, columnKey) => {
+      set((state) => ({
+        columnJumpRequests: {
+          ...state.columnJumpRequests,
+          [tabId]: {
+            columnKey,
+            nonce: (state.columnJumpRequests[tabId]?.nonce ?? 0) + 1,
+          },
+        },
+      }))
+    },
+
+    consumeColumnJump: (tabId) => {
+      set((state) => {
+        const request = state.columnJumpRequests[tabId]
+        if (!request) return state
+        const columnJumpRequests = { ...state.columnJumpRequests }
+        delete columnJumpRequests[tabId]
+        return {
+          columnJumpRequests,
+          highlightedColumnByTab: {
+            ...state.highlightedColumnByTab,
+            [tabId]: request.columnKey,
+          },
+        }
+      })
+    },
+
+    clearColumnHighlight: (tabId) => {
+      set((state) =>
+        state.highlightedColumnByTab[tabId] == null
+          ? state
+          : {
+              highlightedColumnByTab: {
+                ...state.highlightedColumnByTab,
+                [tabId]: null,
+              },
+            }
+      )
     },
 
     // ------ setColumnWidth ------

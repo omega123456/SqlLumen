@@ -57,6 +57,30 @@ describe('CommandPaletteResults', () => {
     expect(Array.from(strongSegments).map((node) => node.textContent)).toEqual(['us', 's'])
   })
 
+  it('renders column metadata and scoped labels', () => {
+    render(
+      <CommandPaletteResults
+        results={[
+          makeResult({
+            table: 'orders',
+            objectType: 'column',
+            name: 'total',
+            metaLabel: 'DECIMAL(12,2)',
+          }),
+        ]}
+        activeIndex={0}
+        state="recents"
+        isColumnScope
+        onSelect={() => {}}
+      />
+    )
+
+    expect(screen.getByText('Columns')).toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: 'Columns' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Type DECIMAL(12,2)')).toHaveTextContent('DECIMAL(12,2)')
+    expect(screen.queryByLabelText('Recent object')).not.toBeInTheDocument()
+  })
+
   it('scrolls the active row into view when the active index changes', () => {
     const scrollIntoView = vi.fn()
     vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(scrollIntoView)

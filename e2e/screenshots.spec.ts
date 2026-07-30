@@ -2344,6 +2344,43 @@ for (const theme of themes) {
       )
     })
 
+    test('TableDataGrid — command palette column jump highlight', async ({ page }) => {
+      await openTableDataTab(page)
+      await page.evaluate(() => {
+        const workspaceStore = (window as unknown as Record<string, unknown>)
+          .__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, Array<{ id: string; type: string }>>
+          }
+        }
+        const tableDataStore = (window as unknown as Record<string, unknown>)
+          .__tableDataStore__ as {
+          getState: () => {
+            requestColumnJump: (tabId: string, columnKey: string) => void
+          }
+        }
+        const tab = workspaceStore
+          .getState()
+          .tabsByConnection[
+            'session-playwright-1'
+          ]?.find((candidate) => candidate.type === 'table-data')
+        if (!tab) throw new Error('No table data tab found')
+        tableDataStore.getState().requestColumnJump(tab.id, 'login_time')
+      })
+      await page.waitForFunction(() => {
+        const store = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+          getState: () => {
+            highlightedColumnByTab: Record<string, string | null>
+          }
+        }
+        return Object.values(store.getState().highlightedColumnByTab).includes('login_time')
+      })
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-grid-column-jump-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('TableDataGrid — BIT column values display as readable numbers', async ({ page }) => {
       await openBitTestTableDataTab(page)
       const grid = page.getByTestId('table-data-grid')
@@ -4954,6 +4991,38 @@ for (const theme of themes) {
       await expect(page.getByTestId('command-palette-results')).toContainText('users')
       await expect(page.getByTestId('command-palette')).toHaveScreenshot(
         `command-palette-results-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — table column scope', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await prepareCommandPalette(page)
+      await openCommandPalette(page)
+      await page.getByTestId('command-palette-input').fill('/table orders')
+      await expect(page.getByTestId('command-palette-pill-type')).toBeVisible()
+      await expect(page.getByTestId('command-palette-results')).toContainText('orders')
+      await page.getByTestId('command-palette-input').press('Tab')
+      await expect(page.getByTestId('command-palette-pill-table')).toHaveText('orders')
+      await expect(page.getByRole('listbox', { name: 'Columns' })).toContainText('total')
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-columns-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('CommandPalette — active table prepopulates column scope', async ({ page }) => {
+      await waitForApp(page)
+      await ensureTheme(page, theme)
+      await applyFixtureOverrides(page, { reset: true, overrides: [] })
+      await openOrdersTableDataTab(page)
+      await openCommandPalette(page)
+      await expect(page.getByTestId('command-palette-pill-database')).toHaveText('ecommerce_db')
+      await expect(page.getByTestId('command-palette-pill-table')).toHaveText('orders')
+      await expect(page.getByRole('listbox', { name: 'Columns' })).toContainText('total')
+      await expect(page.getByTestId('command-palette')).toHaveScreenshot(
+        `command-palette-active-table-columns-${theme}.png`,
         { animations: 'disabled' }
       )
     })

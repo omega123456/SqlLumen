@@ -82,6 +82,7 @@ export function CommandPaletteResultRow({
   onSelect,
 }: CommandPaletteResultRowProps) {
   const highlightedName = useMemo(() => renderHighlightedName(result), [result])
+  const metaLabel = result.metaLabel ?? result.database
 
   const handleMouseDown = (event: MouseEvent<HTMLLIElement>) => {
     event.preventDefault()
@@ -103,17 +104,27 @@ export function CommandPaletteResultRow({
       </div>
       <div className={styles.rowText}>
         <span className={styles.rowName}>{highlightedName}</span>
-        <span className={styles.rowMeta} aria-label={`Database ${result.database}`}>
+        <span
+          className={styles.rowMeta}
+          aria-label={result.metaLabel ? `Type ${result.metaLabel}` : `Database ${result.database}`}
+        >
           <span aria-hidden="true" className={styles.separator}>
             {' '}
             ·{' '}
           </span>
-          {result.database}
+          {metaLabel}
         </span>
       </div>
-      {isRecent ? (
-        <span className={styles.recentBadge} aria-label="Recent object">
-          <ClockCounterClockwise size={14} weight="bold" />
+      {result.objectType === 'table' || isRecent ? (
+        <span className={styles.rowTrailing}>
+          {result.objectType === 'table' ? (
+            <span className={styles.scopeHint}>Tab to search columns</span>
+          ) : null}
+          {isRecent ? (
+            <span className={styles.recentBadge} aria-label="Recent object">
+              <ClockCounterClockwise size={14} weight="bold" />
+            </span>
+          ) : null}
         </span>
       ) : null}
     </li>

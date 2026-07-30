@@ -6,7 +6,11 @@ import { hydrateFromSnapshot } from '../../../components/query-editor/schema-met
 import { useCommandPaletteStore } from '../../../stores/command-palette-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useCommandPaletteRecentsStore } from '../../../stores/command-palette-recents-store'
+import { useQueryStore } from '../../../stores/query-store'
+import { useWorkspaceStore } from '../../../stores/workspace-store'
 import type { ActiveConnection } from '../../../types/connection'
+import { makeTabState } from '../../helpers/query-test-utils'
+import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
 import * as ObjectActivationModule from '../../../lib/object-activation'
 
@@ -15,6 +19,8 @@ import * as ObjectActivationModule from '../../../lib/object-activation'
 const activateObjectFromPaletteMock = vi.fn<
   (connectionId: string, database: string, objectType: string, name: string) => Promise<void>
 >(() => Promise.resolve())
+const activateColumnFromPaletteMock =
+  vi.fn<(connectionId: string, database: string, table: string, columnName: string) => void>()
 
 function makeActiveConnection(): ActiveConnection {
   return {
@@ -46,13 +52,54 @@ function makeActiveConnection(): ActiveConnection {
   }
 }
 
+function seedOrdersConnection() {
+  const activeConnection = makeActiveConnection()
+  useConnectionStore.setState({
+    activeConnections: { 'session-1': activeConnection },
+    activeConnectionOrder: ['session-1'],
+    activeTabId: 'session-1',
+  })
+  hydrateFromSnapshot(
+    JSON.stringify({
+      databases: ['analytics'],
+      tables: {
+        analytics: [
+          {
+            name: 'orders',
+            engine: 'InnoDB',
+            charset: 'utf8mb4',
+            rowCount: 0,
+            dataSize: 0,
+          },
+        ],
+      },
+      views: {},
+      columns: {
+        'analytics.orders': [
+          { name: 'id', dataType: 'BIGINT' },
+          { name: 'shipping_amount', dataType: 'DECIMAL(12,2)' },
+        ],
+      },
+      routines: {},
+      triggers: {},
+      foreignKeys: {},
+      indexes: {},
+    }),
+    'session-1'
+  )
+}
+
 describe('CommandPalette', () => {
   beforeEach(() => {
     vi.useRealTimers()
     activateObjectFromPaletteMock.mockReset()
+    activateColumnFromPaletteMock.mockReset()
     vi.spyOn(ObjectActivationModule, 'activateObjectFromPalette').mockImplementation(
       (connectionId, database, objectType, name) =>
         activateObjectFromPaletteMock(connectionId, database, objectType, name)
+    )
+    vi.spyOn(ObjectActivationModule, 'activateColumnFromPalette').mockImplementation(
+      activateColumnFromPaletteMock
     )
     useCommandPaletteStore.setState({ isOpen: false })
     useConnectionStore.setState({
@@ -66,6 +113,8 @@ describe('CommandPalette', () => {
       recentsByProfile: {},
       isInitialized: true,
     })
+    resetWorkspaceStore()
+    useQueryStore.setState({ tabs: {} })
     ipc.override('set_setting', () => undefined)
   })
 
@@ -78,6 +127,102 @@ describe('CommandPalette', () => {
       'No active connection'
     )
     expect(ipc.calls('fetch_schema_metadata_full')).toEqual([])
+  })
+
+  it('starts scoped to the active standalone table', async () => {
+    seedOrdersConnection()
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'session-1': [
+          {
+            id: 'orders-tab',
+            type: 'table-data',
+            label: 'orders',
+            connectionId: 'session-1',
+            databaseName: 'analytics',
+            objectName: 'orders',
+            objectType: 'table',
+          },
+        ],
+      },
+      activeTabByConnection: { 'session-1': 'orders-tab' },
+    })
+    useCommandPaletteStore.setState({ isOpen: true })
+
+    render(<CommandPalette />)
+
+    expect(await screen.findByTestId('command-palette-pill-database')).toHaveTextContent(
+      'analytics'
+    )
+    expect(screen.getByTestId('command-palette-pill-table')).toHaveTextContent('orders')
+    expect(screen.getByRole('listbox', { name: 'Columns' })).toHaveTextContent(
+      'shipping_amount · DECIMAL(12,2)'
+    )
+  })
+
+  it('starts scoped to the visible bottom-panel table', async () => {
+    seedOrdersConnection()
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'session-1': [
+          {
+            id: 'query-tab',
+            type: 'query-editor',
+            label: 'Query',
+            connectionId: 'session-1',
+          },
+          {
+            id: 'orders-tab',
+            type: 'table-data',
+            label: 'orders',
+            connectionId: 'session-1',
+            databaseName: 'analytics',
+            objectName: 'orders',
+            objectType: 'table',
+            parentQueryTabId: 'query-tab',
+          },
+        ],
+      },
+      activeTabByConnection: { 'session-1': 'query-tab' },
+    })
+    useQueryStore.setState({
+      tabs: {
+        'query-tab': makeTabState({
+          connectionId: 'session-1',
+          activeBottomPanelItem: { type: 'table-data', tabId: 'orders-tab' },
+        }),
+      },
+    })
+    useCommandPaletteStore.setState({ isOpen: true })
+
+    render(<CommandPalette />)
+
+    expect(await screen.findByTestId('command-palette-pill-database')).toHaveTextContent(
+      'analytics'
+    )
+    expect(screen.getByTestId('command-palette-pill-table')).toHaveTextContent('orders')
+  })
+
+  it('does not scope a hidden table result when Tab is pressed in the slash dropdown', async () => {
+    vi.useFakeTimers()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    seedOrdersConnection()
+    useCommandPaletteStore.setState({ isOpen: true })
+    render(<CommandPalette />)
+
+    const input = await screen.findByTestId('command-palette-input')
+    await user.type(input, 'orders')
+    await act(async () => {
+      vi.advanceTimersByTime(85)
+    })
+    expect(screen.getByRole('option', { name: /orders/i })).toHaveAttribute('data-active', 'true')
+
+    await user.clear(input)
+    await user.type(input, '/analytics')
+    expect(screen.getByTestId('command-palette-slash-dropdown')).toBeInTheDocument()
+    await user.keyboard('{Tab}')
+
+    expect(screen.queryByTestId('command-palette-pill-table')).not.toBeInTheDocument()
   })
 
   it('searches cached objects and activates the active result on Enter', async () => {
@@ -157,6 +302,84 @@ describe('CommandPalette', () => {
       name: 'users',
     })
     expect(useCommandPaletteStore.getState().isOpen).toBe(false)
+  })
+
+  it('scopes a table result to columns with Tab and activates a column without a recent', async () => {
+    vi.useFakeTimers()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const activeConnection = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'session-1': activeConnection },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    hydrateFromSnapshot(
+      JSON.stringify({
+        databases: ['analytics'],
+        tables: {
+          analytics: [
+            {
+              name: 'orders',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 0,
+              dataSize: 0,
+            },
+          ],
+        },
+        views: {},
+        columns: {
+          'analytics.orders': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'shipping_amount', dataType: 'DECIMAL(12,2)' },
+          ],
+        },
+        routines: {},
+        triggers: {},
+        foreignKeys: {},
+        indexes: {},
+      }),
+      'session-1'
+    )
+    useCommandPaletteStore.setState({ isOpen: true })
+
+    render(<CommandPalette />)
+
+    const input = await screen.findByTestId('command-palette-input')
+    await user.type(input, 'orders')
+    await act(async () => {
+      vi.advanceTimersByTime(85)
+    })
+    await user.keyboard('{Tab}')
+
+    expect(screen.getByTestId('command-palette-pill-database')).toHaveTextContent('analytics')
+    expect(screen.getByTestId('command-palette-pill-table')).toHaveTextContent('orders')
+    expect(screen.getByRole('listbox', { name: 'Columns' })).toHaveTextContent(
+      'shipping_amount · DECIMAL(12,2)'
+    )
+
+    await user.keyboard('{Backspace}')
+    expect(screen.queryByTestId('command-palette-pill-table')).not.toBeInTheDocument()
+    expect(screen.getByTestId('command-palette-pill-database')).toBeInTheDocument()
+
+    await user.type(input, 'orders')
+    await act(async () => {
+      vi.advanceTimersByTime(85)
+    })
+    await user.keyboard('{Tab}')
+    await user.type(input, 'ship')
+    await act(async () => {
+      vi.advanceTimersByTime(85)
+    })
+    await user.keyboard('{Enter}')
+
+    expect(activateColumnFromPaletteMock).toHaveBeenCalledWith(
+      'session-1',
+      'analytics',
+      'orders',
+      'shipping_amount'
+    )
+    expect(useCommandPaletteRecentsStore.getState().getRecents('profile-1')).toEqual([])
   })
 
   it('closes on Escape and restores focus to the previously active element', async () => {

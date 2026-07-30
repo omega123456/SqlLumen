@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { DialogShell } from '../dialogs/DialogShell'
 import {
+  filterColumns,
   getCache,
   getPendingLoad,
   getSearchableObjects,
 } from '../query-editor/schema-metadata-cache'
-import { activateObjectFromPalette } from '../../lib/object-activation'
+import { activateColumnFromPalette, activateObjectFromPalette } from '../../lib/object-activation'
 import {
   buildCommandPaletteSearchIndex,
   getRecentPaletteResults,
@@ -18,6 +19,8 @@ import {
   type CommandPaletteRecentEntry,
 } from '../../stores/command-palette-recents-store'
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
+import { useQueryStore } from '../../stores/query-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { PaletteTypeFilter, SearchableObject } from '../../types/schema'
 import { CommandPaletteInput } from './CommandPaletteInput'
 import { CommandPaletteResults } from './CommandPaletteResults'
@@ -26,7 +29,7 @@ import { buildSlashOptions, TYPE_ALIASES } from './slash-options'
 import styles from './CommandPalette.module.css'
 
 export interface CommandPaletteFilterPillValue {
-  kind: 'database' | 'object-type'
+  kind: 'database' | 'object-type' | 'table'
   value: string
   label: string
 }
@@ -46,6 +49,7 @@ export interface CommandPaletteResultsProps {
   results: ReadonlyArray<PaletteSearchResult>
   activeIndex: number
   state: 'no-connection' | 'loading' | 'empty' | 'recents' | 'results' | 'no-results'
+  isColumnScope?: boolean
   onSelect: (result: PaletteSearchResult) => void
 }
 
@@ -88,7 +92,46 @@ function getSearchFilters(pills: ReadonlyArray<CommandPaletteFilterPillValue>) {
     objectType:
       (pills.find((pill) => pill.kind === 'object-type')?.value as PaletteTypeFilter | undefined) ??
       null,
+    table: pills.find((pill) => pill.kind === 'table')?.label ?? null,
   }
+}
+
+function getInitialPills(connectionId: string | null): CommandPaletteFilterPillValue[] {
+  if (!connectionId) return []
+
+  const workspace = useWorkspaceStore.getState()
+  const tabs = workspace.tabsByConnection[connectionId] ?? []
+  const activeTab = tabs.find((tab) => tab.id === workspace.activeTabByConnection[connectionId])
+  const bottomPanelItem =
+    activeTab?.type === 'query-editor'
+      ? useQueryStore.getState().tabs[activeTab.id]?.activeBottomPanelItem
+      : null
+  const tableTab =
+    activeTab?.type === 'table-data'
+      ? activeTab
+      : bottomPanelItem?.type === 'table-data'
+        ? tabs.find(
+            (tab) =>
+              tab.type === 'table-data' &&
+              tab.id === bottomPanelItem.tabId &&
+              tab.parentQueryTabId === activeTab?.id
+          )
+        : null
+
+  if (tableTab?.type !== 'table-data') return []
+
+  return [
+    {
+      kind: 'database',
+      value: tableTab.databaseName,
+      label: tableTab.databaseName,
+    },
+    {
+      kind: 'table',
+      value: `${tableTab.databaseName}.${tableTab.objectName}`,
+      label: tableTab.objectName,
+    },
+  ]
 }
 
 interface ParsedSlashState {
@@ -208,7 +251,9 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
   )
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [pills, setPills] = useState<CommandPaletteFilterPillValue[]>([])
+  const [pills, setPills] = useState<CommandPaletteFilterPillValue[]>(() =>
+    getInitialPills(activeConnectionId)
+  )
   const [isSlashDropdownOpen, setIsSlashDropdownOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -255,6 +300,31 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
     () => buildCommandPaletteSearchIndex(searchableObjects),
     [searchableObjects]
   )
+  const databasePill = pills.find((pill) => pill.kind === 'database') ?? null
+  const tablePill = pills.find((pill) => pill.kind === 'table') ?? null
+  const columnObjects = useMemo<SearchableObject[]>(() => {
+    if (!activeConnectionId || !databasePill || !tablePill) {
+      return []
+    }
+    if (
+      !searchableObjects.some(
+        (object) => object.database === databasePill.value && object.name === tablePill.label
+      )
+    ) {
+      return []
+    }
+
+    return filterColumns(activeConnectionId, databasePill.value, tablePill.label, '').map(
+      (column) => ({
+        database: databasePill.value,
+        table: tablePill.label,
+        objectType: 'column',
+        name: column.name,
+        metaLabel: column.dataType,
+      })
+    )
+  }, [activeConnectionId, databasePill, searchableObjects, tablePill])
+  const columnIndex = useMemo(() => buildCommandPaletteSearchIndex(columnObjects), [columnObjects])
   const profileId = activeConnection?.profile.id ?? null
   const recents = useMemo<CommandPaletteRecentEntry[]>(
     () => (profileId ? getRecents(profileId) : []),
@@ -280,23 +350,30 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
 
   const results = useMemo(
     () =>
-      searchPaletteObjects(searchIndex, {
+      searchPaletteObjects(tablePill ? columnIndex : searchIndex, {
         query: debouncedQuery,
         filters: getSearchFilters(pills),
-        recents,
+        recents: tablePill ? [] : recents,
         limit: MAX_VISIBLE_RESULTS,
       }),
-    [debouncedQuery, pills, recents, searchIndex]
+    [columnIndex, debouncedQuery, pills, recents, searchIndex, tablePill]
   )
 
-  const recentResults = useMemo(
-    () =>
-      getRecentPaletteResults(searchableObjects, {
-        filters: getSearchFilters(pills),
-        recents,
-      }),
-    [pills, recents, searchableObjects]
-  )
+  const recentResults = useMemo(() => {
+    if (tablePill) {
+      return columnObjects.map((column) => ({
+        ...column,
+        score: 0,
+        matchIndices: [],
+        recentRank: null,
+      }))
+    }
+
+    return getRecentPaletteResults(searchableObjects, {
+      filters: getSearchFilters(pills),
+      recents,
+    })
+  }, [columnObjects, pills, recents, searchableObjects, tablePill])
 
   const slashOptions = useMemo(
     () => buildSlashOptions(slashQuery, databases),
@@ -319,6 +396,14 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
   const handleSelect = useCallback(
     async (result: PaletteSearchResult) => {
       if (!activeConnectionId || !profileId) {
+        onClose()
+        return
+      }
+
+      if (result.objectType === 'column') {
+        if (result.table) {
+          activateColumnFromPalette(activeConnectionId, result.database, result.table, result.name)
+        }
         onClose()
         return
       }
@@ -424,6 +509,27 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
         return
       }
 
+      if (event.key === 'Tab' && !isSlashDropdownOpen && activeResult?.objectType === 'table') {
+        event.preventDefault()
+        setPills([
+          {
+            kind: 'database',
+            value: activeResult.database,
+            label: activeResult.database,
+          },
+          {
+            kind: 'table',
+            value: `${activeResult.database}.${activeResult.name}`,
+            label: activeResult.name,
+          },
+        ])
+        setQuery('')
+        setDebouncedQuery('')
+        setActiveIndex(0)
+        inputRef.current?.focus()
+        return
+      }
+
       if (event.key === 'Enter' && activeResult) {
         event.preventDefault()
         void handleSelect(activeResult)
@@ -485,6 +591,7 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
             results={visibleResults}
             activeIndex={clampedActiveIndex}
             state={searchState}
+            isColumnScope={tablePill != null}
             onSelect={(result) => {
               void handleSelect(result)
             }}

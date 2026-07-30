@@ -9,6 +9,10 @@
   color: var(--primary);
 }
 
+.column {
+  color: var(--primary);
+}
+
 .view {
   color: var(--secondary);
 }
