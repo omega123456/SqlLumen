@@ -8,11 +8,13 @@ function activePanel(page: Page) {
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
   await expect(activePanel(page).getByTestId('editor-toolbar')).toBeVisible()
 }
 
-/** Set SQL content in the active query tab and wait for React to re-render. */
+/** Set SQL content in the active query tab. */
 async function setQueryContent(page: Page, sql: string) {
   await page.evaluate((content) => {
     const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
@@ -29,7 +31,6 @@ async function setQueryContent(page: Page, sql: string) {
       qStore.getState().setContent(queryTab.id, content)
     }
   }, sql)
-  await page.waitForTimeout(300)
 }
 
 /** Set the mock query delay via window.__mockQueryDelay__. */
@@ -60,8 +61,7 @@ test.describe('Query running indicator', () => {
     await openQueryEditorTab(page)
     await setQueryContent(page, 'SELECT * FROM users;')
 
-    // Set a 2-second delay on query execution
-    await setMockQueryDelay(page, 2_000)
+    await setMockQueryDelay(page, 100)
 
     try {
       // Execute via F9 shortcut (Execute Query button was removed — run is via CodeLens/F9)
@@ -75,7 +75,6 @@ test.describe('Query running indicator', () => {
       // Assert Execute All is NOT visible while running (replaced by RunningIndicator)
       await expect(page.getByTestId('toolbar-execute-all')).not.toBeVisible()
 
-      // Wait for the query to complete (the 2s delay will resolve)
       await expect(page.getByTestId('running-indicator')).not.toBeVisible({ timeout: 5_000 })
 
       // Execute All should reappear after completion
@@ -118,8 +117,7 @@ test.describe('Query running indicator', () => {
     await openQueryEditorTab(page)
     await setQueryContent(page, 'SELECT * FROM users;')
 
-    // Set a delay so the query stays running long enough to check
-    await setMockQueryDelay(page, 3_000)
+    await setMockQueryDelay(page, 100)
 
     try {
       // Execute via F9 shortcut

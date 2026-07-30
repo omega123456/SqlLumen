@@ -1,7 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
-const SUGGESTION_SETTLE_MS = 500
 const EDITOR_CLICK_POSITION = { x: 160, y: 40 } as const
 
 function activePanel(page: Page) {
@@ -78,8 +77,12 @@ const MALFORMED_SCHEMA_METADATA = {
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
-  await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({
+    timeout: APP_READY_MS,
+  })
+  await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
 }
 
 async function focusMonacoEditor(page: Page, timeout = APP_READY_MS) {
@@ -263,7 +266,6 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).toContainText('id')
     await expect(suggestWidget).toContainText('email')
     await expect(suggestWidget).toContainText('name')
-    await page.waitForTimeout(SUGGESTION_SETTLE_MS)
   })
 
   test('alias completion: FROM analytics_db.events e → e. suggests events columns', async ({
@@ -281,7 +283,6 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).toContainText('event_name')
     await expect(suggestWidget).toContainText('user_id')
     await expect(suggestWidget).toContainText('created_at')
-    await page.waitForTimeout(SUGGESTION_SETTLE_MS)
   })
 
   test('context-aware ranking: WHERE clause → columns ranked above keywords', async ({ page }) => {
@@ -293,7 +294,6 @@ test.describe('Monaco SQL autocomplete', () => {
 
     const suggestWidget = await openAutocomplete(page, 'email')
     expectAutocomplete(suggestWidget)
-    await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
     // Get ordered list of suggestion labels from the widget rows.
     // Monaco renders suggestions as role="option" elements with aria-label.
@@ -339,7 +339,6 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).not.toContainText('users')
     await expect(suggestWidget).not.toContainText('orders')
     await expect(suggestWidget).not.toContainText('events')
-    await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
     expect(parserErrors).toEqual([])
   })
@@ -352,7 +351,6 @@ test.describe('Monaco SQL autocomplete', () => {
 
     const suggestWidget = await openAutocomplete(page, 'ecommerce_db')
     expectAutocomplete(suggestWidget)
-    await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
     const optionLabels = await suggestWidget
       .locator('.monaco-list-row')
@@ -380,8 +378,12 @@ test.describe('Monaco SQL autocomplete', () => {
     await connectToSample(page)
     await selectDatabaseInObjectBrowser(page, 'ecommerce_db')
     await page.getByTestId('new-query-tab-button').click()
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
-    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({
+      timeout: APP_READY_MS,
+    })
+    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     await typeQuery(page, 'SELECT * FROM ')
 
@@ -400,13 +402,19 @@ test.describe('Monaco SQL autocomplete', () => {
     await connectToSample(page)
     await selectDatabaseInObjectBrowser(page, 'analytics_db')
     await page.getByTestId('new-query-tab-button').click()
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
-    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({
+      timeout: APP_READY_MS,
+    })
+    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     await typeQuery(page, 'SELECT DATABASE();')
     await page.keyboard.press('F9')
 
-    await expect(activePanel(page).getByTestId('result-grid')).toBeAttached({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('result-grid')).toBeAttached({
+      timeout: APP_READY_MS,
+    })
     await waitForActiveResultValue(page, 'analytics_db')
   })
 
@@ -417,8 +425,12 @@ test.describe('Monaco SQL autocomplete', () => {
     await connectToSample(page)
     await selectDatabaseInObjectBrowser(page, 'analytics_db')
     await page.getByTestId('new-query-tab-button').click()
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
-    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({
+      timeout: APP_READY_MS,
+    })
+    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     await typeQuery(page, 'SELECT * FROM ')
 
@@ -426,7 +438,6 @@ test.describe('Monaco SQL autocomplete', () => {
     expectAutocomplete(suggestWidget)
     await expect(suggestWidget).toContainText('analytics_db')
     await expect(suggestWidget).toContainText('events')
-    await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
     const optionLabels = await suggestWidget
       .locator('.monaco-list-row')
@@ -551,7 +562,6 @@ test.describe('Monaco SQL autocomplete', () => {
       const suggestWidget = await openAutocomplete(page, 'users')
       expectAutocomplete(suggestWidget)
       await expect(suggestWidget).toContainText('users')
-      await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
       expect(invalidCompletionWarnings).toEqual([])
     } finally {

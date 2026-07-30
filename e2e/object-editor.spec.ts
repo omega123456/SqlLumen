@@ -25,7 +25,6 @@ async function expandCategory(page: Page, categoryLabel: string) {
 
   // Expand category
   await page.getByTestId('object-browser').getByText(categoryLabel, { exact: true }).click()
-  await page.waitForTimeout(300) // Let tree expand settle
 }
 
 /**
@@ -149,12 +148,16 @@ test.describe('Object Editor', () => {
     await page.getByTestId('ctx-execute').click()
 
     // Verify a query editor tab opens
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
-
-    // Verify the workspace tab label contains "Execute:"
-    await expect(activeWorkspaceTabs(page).getByTestId('workspace-stack-chip-queries')).toBeVisible({
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
       timeout: APP_READY_MS,
     })
+
+    // Verify the workspace tab label contains "Execute:"
+    await expect(activeWorkspaceTabs(page).getByTestId('workspace-stack-chip-queries')).toBeVisible(
+      {
+        timeout: APP_READY_MS,
+      }
+    )
     await expect(activeWorkspaceTabMembers(page)).toContainText('Execute:', {
       timeout: APP_READY_MS,
     })
@@ -180,7 +183,9 @@ test.describe('Object Editor', () => {
     await page.getByTestId('ctx-execute').click()
 
     // Verify a query editor tab opens
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     // Verify the query content contains SELECT
     const queryEditorTab = activePanel(page).getByTestId('query-editor-tab')
@@ -250,8 +255,6 @@ test.describe('Object Editor', () => {
       }
       objStore.getState().setContent(objEditorTab.id, '-- modified content')
     })
-
-    await page.waitForTimeout(300)
 
     // Close the tab via the workspace store (triggers dirty guard)
     await page.evaluate(() => {

@@ -14,7 +14,9 @@ function activePanel(page: Page) {
 async function openQueryEditorWithResults(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
 
   const editorSurface = activePanel(page).locator('.monaco-editor').first()
   await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
@@ -25,8 +27,6 @@ async function openQueryEditorWithResults(page: Page) {
 }
 
 test('result grid renders Phosphor sort arrow icons when column is sorted', async ({ page }) => {
-  test.setTimeout(APP_READY_MS * 3)
-
   await waitForApp(page)
   await openQueryEditorWithResults(page)
 

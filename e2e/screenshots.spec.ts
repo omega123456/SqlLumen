@@ -20,7 +20,6 @@ import {
 import { BLOB_VIEWER_SCREENSHOT_STATES } from '../src/tests/playwright-fixtures/blob-value'
 
 const themes = ['light', 'dark'] as const
-const SCREENSHOT_TEST_TIMEOUT_MS = 25_000
 const FIXED_SCREENSHOT_DATE_ISO = '2026-06-08T12:00:00.000Z'
 
 test.beforeEach(async ({ page }) => {
@@ -454,8 +453,6 @@ async function openQueryEditorWithMultiResults(page: Page) {
     }
   })
 
-  await page.waitForTimeout(300)
-
   // Click the Execute All button
   await page.getByTestId('toolbar-execute-all').click()
 
@@ -489,7 +486,6 @@ async function openQueryEditorWithMultiResultsInBottomPanel(page: Page) {
     }
   })
 
-  await page.waitForTimeout(300)
   await page.getByTestId('toolbar-execute-all').click()
 
   await expect(page.getByTestId('bottom-panel-tabs')).toBeVisible({ timeout: APP_READY_MS })
@@ -537,9 +533,6 @@ async function openQueryEditorWithResults(page: Page) {
       qStore.getState().setContent(tabIds[0], 'SELECT * FROM users;')
     }
   })
-
-  // Wait a tick for React to re-render with the content
-  await page.waitForTimeout(300)
 
   // Execute via F9 shortcut (Execute Query button was removed — run is via CodeLens/F9)
   await page.keyboard.press('F9')
@@ -1025,8 +1018,6 @@ async function waitForAnimationsToFinish(locator: Locator) {
 
 for (const theme of themes) {
   test.describe(`visual regression (${theme})`, () => {
-    test.describe.configure({ timeout: SCREENSHOT_TEST_TIMEOUT_MS })
-
     test.beforeEach(async ({ page }) => {
       await waitForApp(page)
       await ensureTheme(page, theme)
@@ -1431,6 +1422,7 @@ for (const theme of themes) {
       await page.getByTestId('import-submit-button').click()
       // Wait for progress to appear (the mock returns running state)
       await expect(page.getByTestId('import-progress')).toBeVisible({ timeout: APP_READY_MS })
+      await dismissAllToasts(page)
       // Reset scroll positions for stable screenshots
       await resetChromeScrollPositions(page)
       // Full viewport screenshot with the dialog modal visible
@@ -1461,8 +1453,17 @@ for (const theme of themes) {
       const grid = page.getByTestId('table-data-grid')
       await expect(grid).toBeVisible({ timeout: APP_READY_MS })
       await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
-      // Wait for FK metadata to load (async fire-and-forget in store)
-      await page.waitForTimeout(500)
+      await page.waitForFunction(() =>
+        Object.values(
+          (
+            (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+              getState: () => {
+                tabs: Record<string, { table: string; foreignKeys: Array<unknown> }>
+              }
+            }
+          ).getState().tabs
+        ).some((tab) => tab.table === 'orders' && tab.foreignKeys.length > 0)
+      )
       const userIdColumn = await getColumnIndexByName(grid, 'user_id')
       const geometry = await getGlideGridGeometry(page, 'table-data-grid')
       await clickGlideFkEllipsis(page, 'table-data-grid', userIdColumn, 0, geometry)
@@ -1906,8 +1907,6 @@ for (const theme of themes) {
         }
       })
 
-      await page.waitForTimeout(300)
-
       // Open AI panel
       await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
       await page.getByTestId('ai-sidebar-expand').click()
@@ -2064,7 +2063,7 @@ test.describe('Date picker', () => {
         await expect(page.getByTestId('date-time-picker-popup')).toBeVisible({
           timeout: APP_READY_MS,
         })
-        await page.waitForTimeout(300) // Let animations settle
+        await waitForAnimationsToFinish(page.getByTestId('date-time-picker-popup'))
 
         // Dismiss any new toasts
         await dismissAllToasts(page)

@@ -20,7 +20,7 @@ const portText =
 if (portText === null) {
   throw new Error(
     'Missing .playwright-dev-port. Run Playwright via pnpm test:e2e / pnpm test:screenshots, ' +
-    'set PLAYWRIGHT_DEV_PORT, or first run: node scripts/ensure-playwright-port.mjs'
+      'set PLAYWRIGHT_DEV_PORT, or first run: node scripts/ensure-playwright-port.mjs'
   )
 }
 
@@ -31,15 +31,9 @@ if (Number.isNaN(port) || port <= 0) {
 
 const baseURL = `http://${DEV_SERVER_HOST}:${port}`
 
-// One shared Vite dev server cannot serve unbounded parallel Chromium + Monaco; uncapped workers
-// overload it (flaky autocomplete + net::ERR_CONNECTION_REFUSED mid-run after test:coverage + rust).
-// Keep the default e2e worker cap conservative to avoid the dev server falling over during the
-// full `pnpm test:all` gate after the coverage-heavy TypeScript + Rust suites have already run.
-// Screenshot-only runs (scripts/playwright-screenshots.mjs) may use more workers; still capped at 10.
 const availableCpus = Math.max(1, os.availableParallelism?.() ?? os.cpus().length)
 const isCI = !!process.env.CI
-const isScreenshotRun = process.env.PLAYWRIGHT_SCREENSHOT_RUN === '1'
-const workers = isCI ? 1 : Math.min(isScreenshotRun ? 10 : 2, availableCpus)
+const workers = Math.min(isCI ? 2 : 4, availableCpus)
 
 export default defineConfig({
   testDir: './e2e',
@@ -48,7 +42,7 @@ export default defineConfig({
   retries: isCI ? 2 : 0,
   workers,
   reporter: 'list',
-  timeout: 15_000,
+  timeout: 2_000,
   expect: {
     toHaveScreenshot: {
       maxDiffPixels: 50,
@@ -68,12 +62,8 @@ export default defineConfig({
     {
       name: 'monaco-autocomplete',
       testMatch: '**/query-autocomplete.spec.ts',
-      // Must be single-worker: multiple Chromium instances + Monaco against one Vite dev
-      // server stalls suggestions (timeouts, closed pages).
+      // Keep autocomplete serial: multiple Chromium instances still contend on Monaco startup.
       workers: 1,
-      // Autocomplete tests do more setup (connect + editor + type + retry Ctrl+Space).
-      // 25s gives enough headroom without the old 60s bloat.
-      timeout: 25_000,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -87,10 +77,10 @@ export default defineConfig({
     // --strictPort: if the probed port was grabbed by a race, Vite fails fast
     // and Playwright surfaces a clear error rather than silently connecting to
     // the wrong server.
-    command: `pnpm --silent exec vite --host ${DEV_SERVER_HOST} --port ${port} --strictPort --logLevel error`,
+    command: `pnpm --silent exec vite preview --host ${DEV_SERVER_HOST} --port ${port} --strictPort --logLevel error`,
     url: baseURL,
     timeout: 120_000,
-    reuseExistingServer: false, // Always start fresh to ensure VITE_PLAYWRIGHT=true
+    reuseExistingServer: false,
     stdout: 'ignore',
     stderr: 'pipe',
     env: {

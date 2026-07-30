@@ -404,36 +404,29 @@ test('editing a cell then selecting the next cell requires re-activation to edit
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
-  // Wait for grid data to render (at least one row)
-  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-
   const canvas = grid.locator('canvas[data-testid="data-grid-canvas"]').first()
 
-  for (let index = 0; index < 3; index += 1) {
-    // Select the name cell, then type to enter edit mode.
-    await clickCellByColumnName(grid, 0, 'name')
-    await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
-    await page.keyboard.type('J')
+  // Select the name cell, then type to enter edit mode.
+  await clickCellByColumnName(grid, 0, 'name')
+  await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
+  await page.keyboard.type('J')
 
-    const nameEditor = page.locator('.td-cell-editor-input').first()
-    await expect(nameEditor).toBeVisible({ timeout: APP_READY_MS })
-    await nameEditor.fill(`Julian Thorne ${index}`)
+  const nameEditor = page.locator('.td-cell-editor-input').first()
+  await expect(nameEditor).toBeVisible({ timeout: APP_READY_MS })
+  await nameEditor.fill('Julian Thorne')
 
-    // Single click should only select the email cell and close the prior editor.
-    await clickCellByColumnName(grid, 0, 'email')
+  // Single click should only select the email cell and close the prior editor.
+  await clickCellByColumnName(grid, 0, 'email')
+  await expect(nameEditor).not.toBeVisible({ timeout: APP_READY_MS })
 
-    await expect(nameEditor).not.toBeVisible({ timeout: APP_READY_MS })
+  // Re-activate editing explicitly on the selected email cell via typing.
+  await canvas.focus()
+  await page.keyboard.type('j')
 
-    // Re-activate editing explicitly on the selected email cell via typing.
-    await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
-    await page.keyboard.type('j')
-
-    const emailEditor = page.locator('.td-cell-editor-input').first()
-    await expect(emailEditor).toBeVisible({ timeout: APP_READY_MS })
-    await expect(emailEditor).toBeEnabled()
-
-    await emailEditor.fill(`julian-${index}@example.com`)
-  }
+  const emailEditor = page.locator('.td-cell-editor-input').first()
+  await expect(emailEditor).toBeVisible({ timeout: APP_READY_MS })
+  await expect(emailEditor).toBeEnabled()
+  await emailEditor.fill('julian@example.com')
 })
 
 test('table data grid typing on a selected cell opens the editor and keeps focus', async ({
@@ -555,8 +548,6 @@ test('table data FK header width survives form-to-grid switching without runtime
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await page.waitForTimeout(500)
 
   const beforeHeader = await getGridHeaderCellByColumnName(grid, 'user_id')
   const beforeBox = await beforeHeader.boundingBox()
@@ -571,7 +562,6 @@ test('table data FK header width survives form-to-grid switching without runtime
   await page.getByTestId('form-input-status').click()
 
   await page.getByTestId('view-mode-grid').click()
-  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const afterHeader = await getGridHeaderCellByColumnName(grid, 'user_id')

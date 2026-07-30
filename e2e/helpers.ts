@@ -16,7 +16,10 @@ interface GridPointHandle {
   boundingBox: () => Promise<{ x: number; y: number; width: number; height: number }>
   locator: (selector: string) => Locator
   getByTestId: (testId: string) => Locator
-  getByRole: (role: Parameters<Locator['getByRole']>[0], options?: Parameters<Locator['getByRole']>[1]) => Locator
+  getByRole: (
+    role: Parameters<Locator['getByRole']>[0],
+    options?: Parameters<Locator['getByRole']>[1]
+  ) => Locator
   toContainTextTarget: Locator
 }
 
@@ -149,7 +152,10 @@ export async function getGridCellByColumnName(
   const width = geometry.columnWidths?.[targetColIdx] ?? 150
   const x = getColumnStartOffset(geometry, targetColIdx) - geometry.scrollLeft + width / 2
   const y =
-    geometry.headerHeight - geometry.scrollTop + rowIndex * geometry.rowHeight + geometry.rowHeight / 2
+    geometry.headerHeight -
+    geometry.scrollTop +
+    rowIndex * geometry.rowHeight +
+    geometry.rowHeight / 2
 
   return {
     click: () => grid.click({ position: { x, y }, force: true }),
@@ -208,7 +214,8 @@ async function getGlideGridGeometryFromLocator(grid: Locator): Promise<GlideGrid
     const parsedColumnWidths = JSON.parse(host.dataset.glideColumnWidth ?? '[]') as unknown
     const columnWidths = Array.isArray(parsedColumnWidths)
       ? parsedColumnWidths.filter(
-          (value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
+          (value): value is number =>
+            typeof value === 'number' && Number.isFinite(value) && value > 0
         )
       : []
     const rowMarkerWidth = Number.parseFloat(host.dataset.rowMarkerWidth ?? '0') || 0
@@ -221,7 +228,8 @@ async function getGlideGridGeometryFromLocator(grid: Locator): Promise<GlideGrid
       rowMarkerWidth,
       headerHeight:
         Number.parseFloat(computedStyle.getPropertyValue('--grid-header-height').trim()) || 32,
-      rowHeight: Number.parseFloat(computedStyle.getPropertyValue('--grid-row-height').trim()) || 32,
+      rowHeight:
+        Number.parseFloat(computedStyle.getPropertyValue('--grid-row-height').trim()) || 32,
       columnWidths,
       scrollLeft: scroller.scrollLeft,
       scrollTop: scroller.scrollTop,
@@ -335,13 +343,16 @@ export async function selectSampleConnection(dialog: Locator) {
 }
 
 export async function dismissAllToasts(page: Page) {
-  for (let i = 0; i < 8; i++) {
-    const btn = page.getByTestId('toast-dismiss').first()
-    if (!(await btn.isVisible().catch(() => false))) {
-      break
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__toastStore__ as {
+      getState: () => {
+        toasts: Array<{ id: string }>
+        dismiss: (id: string) => void
+      }
     }
-    await btn.click()
-  }
+    const { toasts, dismiss } = store.getState()
+    toasts.forEach(({ id }) => dismiss(id))
+  })
 }
 
 export async function connectToSample(
@@ -372,88 +383,4 @@ export async function connectToSample(
   if (dismissToasts) {
     await dismissAllToasts(page)
   }
-}
-
-const AUTOCOMPLETE_OPEN_RETRIES = 5
-const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 3_000
-const AUTOCOMPLETE_READY_RETRIES = 16
-const AUTOCOMPLETE_RETRY_DELAY_MS = 250
-
-async function focusMonacoEditor(page: Page, timeout = APP_READY_MS) {
-  const editorSurface = page.locator('.monaco-editor').first()
-  await expect(editorSurface).toBeVisible({ timeout })
-  await editorSurface.click({ position: { x: 160, y: 40 } })
-  return editorSurface
-}
-
-async function readSuggestionLabels(suggestWidget: Locator) {
-  return suggestWidget
-    .locator('.monaco-list-row')
-    .evaluateAll((rows) =>
-      rows
-        .map((row) => (row.getAttribute('aria-label') ?? row.textContent ?? '').trim())
-        .filter((label) => label.length > 0)
-    )
-}
-
-export async function waitForAutocomplete(
-  page: Page,
-  expectedText?: string,
-  options: { allowNoWidget?: boolean } = {}
-) {
-  const suggestWidget = page.locator('.suggest-widget.visible')
-  let lastLabels: string[] = []
-
-  await page.waitForTimeout(300)
-  const widgetAlreadyVisible = await suggestWidget.isVisible().catch(() => false)
-
-  if (!widgetAlreadyVisible) {
-    await focusMonacoEditor(page)
-    await page.keyboard.press('Control+Space').catch(() => undefined)
-  }
-
-  for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
-    const isVisible = await suggestWidget
-      .waitFor({ state: 'visible', timeout: AUTOCOMPLETE_OPEN_TIMEOUT_MS })
-      .then(() => true)
-      .catch(() => false)
-
-    if (!isVisible) {
-      await focusMonacoEditor(page, AUTOCOMPLETE_OPEN_TIMEOUT_MS)
-      await page.keyboard.press('Control+Space').catch(() => undefined)
-      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
-      continue
-    }
-
-    for (let readyAttempt = 0; readyAttempt < AUTOCOMPLETE_READY_RETRIES; readyAttempt++) {
-      const stillVisible = await suggestWidget.isVisible().catch(() => false)
-      if (!stillVisible) {
-        break
-      }
-
-      lastLabels = await readSuggestionLabels(suggestWidget)
-      const labelsText = lastLabels.join(' ')
-      const isLoading = labelsText.includes('Loading...')
-      const hasExpectedText =
-        !expectedText || lastLabels.some((label) => label.includes(expectedText))
-
-      if (!isLoading && hasExpectedText) {
-        return suggestWidget
-      }
-
-      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
-    }
-
-    await page.keyboard.press('Escape').catch(() => undefined)
-    await focusMonacoEditor(page, AUTOCOMPLETE_OPEN_TIMEOUT_MS)
-    await page.keyboard.press('Control+Space').catch(() => undefined)
-  }
-
-  if (options.allowNoWidget) {
-    return null
-  }
-
-  throw new Error(
-    `Autocomplete did not become ready${lastLabels.length ? ` (last labels: ${lastLabels.join(' | ')})` : ''}`
-  )
 }
