@@ -181,6 +181,13 @@
   cursor: not-allowed;
 }
 
+.iconButton {
+  composes: exportButton;
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+
 /* ── Status area ─────────────────────────────────────────────────────────── */
 
 .statusArea {

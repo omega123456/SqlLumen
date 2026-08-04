@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore } from '../../../stores/query-store'
+import { useToastStore } from '../../../stores/toast-store'
 import { makeTabState, flat } from '../../helpers/query-test-utils'
-import { ipc } from '../../ipc-mock'
+import { expectToast, ipc } from '../../ipc-mock'
 
 /** Helper to set up store state for a tab. */
 function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
@@ -16,6 +18,7 @@ function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  useToastStore.setState({ toasts: [] })
 })
 
 describe('ResultToolbar', () => {
@@ -134,6 +137,88 @@ describe('ResultToolbar', () => {
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Next page')).not.toBeInTheDocument()
     expect(screen.queryByTestId('page-size-select')).not.toBeInTheDocument()
+  })
+
+  it('disables copying when no rows are checked', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1]],
+      checkedRowIndices: [],
+    })
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
+    expect(screen.getByTestId('btn-copy-selected-rows')).toBeDisabled()
+  })
+
+  it('copies checked query-result rows in display order', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'name', dataType: 'VARCHAR' },
+      ],
+      rows: [
+        [1, 'Ada'],
+        [2, 'Grace'],
+        [3, 'Linus, Jr.'],
+      ],
+      checkedRowIndices: [2, 0],
+    })
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
+
+    await user.click(screen.getByTestId('btn-copy-selected-rows'))
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('id,name\r\n1,Ada\r\n3,"Linus, Jr."\r\n')
+    })
+    await expectToast('success', '2 row(s) copied to clipboard.')
+    writeText.mockRestore()
+  })
+
+  it('shows an error toast when copying query-result rows fails', async () => {
+    const user = userEvent.setup()
+    const writeText = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockRejectedValue(new Error('clipboard denied'))
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1]],
+      checkedRowIndices: [0],
+    })
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
+
+    await user.click(screen.getByTestId('btn-copy-selected-rows'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    await expectToast('error', 'clipboard denied')
+    writeText.mockRestore()
   })
 
   it('shows total time', () => {

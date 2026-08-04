@@ -14,9 +14,13 @@ import { useCallback, useMemo, useState } from 'react'
 import { Copy, FloppyDisk, Trash } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { useToastStore } from '../../stores/toast-store'
+import { serializeCsv } from '../../lib/csv-utils'
+import { writeClipboardText } from '../../lib/context-menu-utils'
 import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
+import { CopySelectedRowsButton } from '../shared/toolbar/CopySelectedRowsButton'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
@@ -52,6 +56,8 @@ export function ResultToolbar({
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
   const deleteResultRows = useQueryStore((state) => state.deleteResultRows)
+  const showSuccess = useToastStore((state) => state.showSuccess)
+  const showError = useToastStore((state) => state.showError)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const status = activeResult.resultStatus
@@ -71,7 +77,7 @@ export function ResultToolbar({
   const editMode = activeResult.editMode
   const hasModifications = editState !== null && editState.modifiedColumns.size > 0
 
-  // Checkbox-selected rows for in-memory (read-only) removal.
+  // Checkbox-selected rows for toolbar actions.
   const checkedRowIndices = useMemo(
     () => activeResult.checkedRowIndices ?? [],
     [activeResult.checkedRowIndices]
@@ -112,6 +118,23 @@ export function ResultToolbar({
   const handleExport = useCallback(() => {
     openExportDialog(tabId)
   }, [openExportDialog, tabId])
+
+  const handleCopySelectedRows = useCallback(async () => {
+    const selectedRowIndices = new Set(checkedRowIndices)
+    const selectedRows = activeResult.rows.filter((_, index) => selectedRowIndices.has(index))
+
+    try {
+      await writeClipboardText(
+        serializeCsv(
+          activeResult.columns.map((column) => column.name),
+          selectedRows
+        )
+      )
+      showSuccess('Selected rows copied', `${selectedRows.length} row(s) copied to clipboard.`)
+    } catch (error) {
+      showError('Copy failed', error instanceof Error ? error.message : String(error))
+    }
+  }, [activeResult.columns, activeResult.rows, checkedRowIndices, showError, showSuccess])
 
   const handleSave = useCallback(() => {
     saveCurrentRow(tabId)
@@ -237,6 +260,11 @@ export function ResultToolbar({
       />
 
       <ExportButton disabled={!hasResults} onClick={handleExport} testId="export-button" />
+
+      <CopySelectedRowsButton
+        disabled={!hasResults || checkedCount === 0}
+        onClick={() => void handleCopySelectedRows()}
+      />
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

@@ -157,8 +157,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   )
 
   // ---------------------------------------------------------------------------
-  // Multi-select checkbox column — track checked rows as row keys so the toolbar
-  // can issue a bulk delete. Unsaved draft rows carry __tempId in their key.
+  // Multi-select checkbox column — track checked rows as row keys so toolbar
+  // actions can target them. Unsaved draft rows carry __tempId in their key.
   // ---------------------------------------------------------------------------
   const handleRowMarkersChange = useCallback(
     (selectedRows: Record<string, unknown>[]) => {
@@ -989,7 +989,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
           onFkCellAction={handleFkCellAction}
           onCellDoubleClick={handleCellDoubleClick}
-          rowMarkers={!isReadOnly && hasPk ? 'checkbox' : 'none'}
+          rowMarkers="checkbox"
           onRowMarkersChange={handleRowMarkersChange}
           resetSelectionKey={resetSelectionKey}
           testId="table-data-grid"

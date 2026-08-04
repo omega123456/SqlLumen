@@ -187,6 +187,82 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
   })
 
+  it('disables copying when no rows are checked', () => {
+    setupConnection(true)
+    setupTabState({ checkedRowKeys: [] })
+    render(<TableDataToolbar tabId="tab-1" />)
+    const copyButton = screen.getByTestId('btn-copy-selected-rows')
+    expect(copyButton).toBeDisabled()
+    expect(copyButton).toHaveAttribute('title', 'Copy selected rows to clipboard')
+    expect(copyButton).toHaveAccessibleName('Copy selected rows to clipboard')
+  })
+
+  it('copies checked rows from a read-only keyless table in display order', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    setupConnection(true)
+    setupTabState({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'bigint',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+        {
+          name: 'name',
+          dataType: 'varchar',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [
+        [1, 'Ada'],
+        [2, 'Grace'],
+        [3, 'Linus, Jr.'],
+      ],
+      primaryKey: null,
+      checkedRowKeys: [{ __rowIndex: 2 }, { __rowIndex: 0 }],
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('btn-copy-selected-rows'))
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('id,name\r\n1,Ada\r\n3,"Linus, Jr."\r\n')
+    })
+    await expectToast('success', '2 row(s) copied to clipboard.')
+    writeText.mockRestore()
+  })
+
+  it('shows an error toast when copying checked rows fails', async () => {
+    const user = userEvent.setup()
+    const writeText = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockRejectedValue(new Error('clipboard denied'))
+    setupConnection(true)
+    setupTabState({ checkedRowKeys: [{ id: 1 }] })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('btn-copy-selected-rows'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    await expectToast('error', 'clipboard denied')
+    writeText.mockRestore()
+  })
+
   it('does not show read-only badge when connection is writable', () => {
     setupConnection(false)
     setupTabState()

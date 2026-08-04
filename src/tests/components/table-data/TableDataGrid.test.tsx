@@ -240,17 +240,17 @@ describe('TableDataGrid', () => {
     expect(props.rowMarkers).toBe('checkbox')
   })
 
-  it('disables the checkbox row marker in read-only mode', () => {
+  it('enables the checkbox row marker in read-only mode', () => {
     render(<TableDataGrid tabId="t1" isReadOnly={true} />)
     const props = canvasCalls[canvasCalls.length - 1] as { rowMarkers: string }
-    expect(props.rowMarkers).toBe('none')
+    expect(props.rowMarkers).toBe('checkbox')
   })
 
-  it('disables the checkbox row marker when the table has no primary key', () => {
+  it('enables the checkbox row marker when the table has no primary key', () => {
     act(() => useTableDataStore.setState({ tabs: { t1: tab({ primaryKey: null }) } }))
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
     const props = canvasCalls[canvasCalls.length - 1] as { rowMarkers: string }
-    expect(props.rowMarkers).toBe('none')
+    expect(props.rowMarkers).toBe('checkbox')
   })
 
   it('forwards checked rows to the store as primary-key row keys', () => {

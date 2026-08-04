@@ -11,16 +11,23 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { Plus, Copy, Trash, FloppyDisk, ArrowCounterClockwise, Stop } from '@phosphor-icons/react'
-import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
+import {
+  useTableDataStore,
+  isSameRowKey,
+  findRowIndexByKey as findStoreRowIndexByKey,
+} from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
+import { serializeCsv } from '../../lib/csv-utils'
+import { writeClipboardText } from '../../lib/context-menu-utils'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { FilterDialog } from '../dialogs/FilterDialog'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
+import { CopySelectedRowsButton } from '../shared/toolbar/CopySelectedRowsButton'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import type { ViewMode } from '../../types/shared-data-view'
@@ -68,6 +75,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const checkedRowKeys = useMemo(() => tabState?.checkedRowKeys ?? [], [tabState?.checkedRowKeys])
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
+  const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
   const filterModel = useMemo<FilterCondition[]>(() => tabState?.filterModel ?? [], [tabState])
   const selectedCell = tabState?.selectedCell ?? null
   const hasLoadedTableData = columns.length > 0
@@ -239,6 +247,31 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const handleExport = useCallback(() => {
     openExportDialog(tabId)
   }, [openExportDialog, tabId])
+
+  const handleCopySelectedRows = useCallback(async () => {
+    const selectedRowIndices = new Set(
+      checkedRowKeys.map((rowKey) =>
+        typeof rowKey.__rowIndex === 'number'
+          ? rowKey.__rowIndex
+          : rowKey.__tempId === editState?.tempId
+            ? rows.length - 1
+            : findStoreRowIndexByKey(rows, columns, rowKey)
+      )
+    )
+    const selectedRows = rows.filter((_, index) => selectedRowIndices.has(index))
+
+    try {
+      await writeClipboardText(
+        serializeCsv(
+          columns.map((column) => column.name),
+          selectedRows
+        )
+      )
+      showSuccess('Selected rows copied', `${selectedRows.length} row(s) copied to clipboard.`)
+    } catch (error) {
+      showError('Copy failed', error instanceof Error ? error.message : String(error))
+    }
+  }, [checkedRowKeys, columns, editState?.tempId, rows, showError, showSuccess])
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
@@ -443,6 +476,11 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
 
         {/* Export — shared component */}
         <ExportButton disabled={isBusy || !hasLoadedTableData} onClick={handleExport} />
+
+        <CopySelectedRowsButton
+          disabled={isBusy || checkedRowKeys.length === 0}
+          onClick={() => void handleCopySelectedRows()}
+        />
 
         {/* Pagination — shared component */}
         <PaginationGroup

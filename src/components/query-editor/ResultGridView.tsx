@@ -146,8 +146,7 @@ export function ResultGridView({
   )
 
   // Multi-select checkbox column — track checked rows by their page-local index
-  // so the toolbar can delete them from the bound source table. Only shown in
-  // edit mode, where the result carries the key columns needed to delete.
+  // so toolbar actions can target them.
   const handleRowMarkersChange = useCallback(
     (selectedRows: Record<string, unknown>[]) => {
       const indices = selectedRows
@@ -833,7 +832,7 @@ export function ResultGridView({
         isActive={isActive}
         onScrollCellChange={handleScrollCellChange}
         initialScrollCell={initialScrollCell}
-        rowMarkers={editMode ? 'checkbox' : 'none'}
+        rowMarkers="checkbox"
         onRowMarkersChange={handleRowMarkersChange}
         resetSelectionKey={resetSelectionKey}
         testId="result-grid"

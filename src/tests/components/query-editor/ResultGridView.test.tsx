@@ -133,10 +133,10 @@ describe('ResultGridView', () => {
     expect(props.rowMarkers).toBe('checkbox')
   })
 
-  it('disables the checkbox row marker in read-only mode', () => {
+  it('enables the checkbox row marker in read-only mode', () => {
     render(<ResultGridView {...baseProps} editMode={null} />)
     const props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rowMarkers: string }
-    expect(props.rowMarkers).toBe('none')
+    expect(props.rowMarkers).toBe('checkbox')
   })
 
   it('forwards checked rows to the store as page-local row indices', () => {
