@@ -467,6 +467,59 @@ describe('CommandPalette', () => {
     expect(screen.getByTestId('command-palette-pill-type')).toBeInTheDocument()
   })
 
+  it('removes pills one at a time on Escape before closing', async () => {
+    vi.useFakeTimers()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const activeConnection = makeActiveConnection()
+
+    useConnectionStore.setState({
+      activeConnections: { 'session-1': activeConnection },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    hydrateFromSnapshot(
+      JSON.stringify({
+        databases: ['analytics'],
+        tables: {
+          analytics: [
+            { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+          ],
+        },
+        views: {},
+        columns: {},
+        routines: {},
+        triggers: {},
+        foreignKeys: {},
+        indexes: {},
+      }),
+      'session-1'
+    )
+    useCommandPaletteStore.setState({ isOpen: true })
+
+    render(<CommandPalette />)
+
+    const input = await screen.findByTestId('command-palette-input')
+    await user.type(input, '/table /analytics ')
+    await act(async () => {
+      vi.advanceTimersByTime(85)
+    })
+
+    expect(screen.getByTestId('command-palette-pill-type')).toBeInTheDocument()
+    expect(screen.getByTestId('command-palette-pill-database')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByTestId('command-palette-pill-database')).not.toBeInTheDocument()
+    expect(screen.getByTestId('command-palette-pill-type')).toBeInTheDocument()
+    expect(useCommandPaletteStore.getState().isOpen).toBe(true)
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByTestId('command-palette-pill-type')).not.toBeInTheDocument()
+    expect(useCommandPaletteStore.getState().isOpen).toBe(true)
+
+    await user.keyboard('{Escape}')
+    expect(useCommandPaletteStore.getState().isOpen).toBe(false)
+  })
+
   it('shows the slash dropdown and applies a selected database pill', async () => {
     const user = userEvent.setup()
     const activeConnection = makeActiveConnection()

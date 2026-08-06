@@ -458,12 +458,21 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
   const handleQueryKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Escape') {
+        event.preventDefault()
+        // DialogShell closes on Escape from a document listener, so anything handled
+        // here must stop the event before it gets there.
+        event.stopPropagation()
+
         if (isSlashDropdownOpen) {
           setIsSlashDropdownOpen(false)
           return
         }
 
-        event.preventDefault()
+        if (pills.length > 0) {
+          handlePillRemove(pills[pills.length - 1])
+          return
+        }
+
         onClose()
         return
       }
