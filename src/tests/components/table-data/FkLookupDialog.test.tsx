@@ -34,8 +34,20 @@ const response = {
       isBinary: false,
       isAutoIncrement: false,
     },
+    {
+      name: 'enabled',
+      dataType: 'tinyint',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
   ],
-  rows: [[1, 'One']],
+  rows: [[1, 'One', '\u0001']],
   currentPage: 1,
   pageSize: 100,
   primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
@@ -80,6 +92,10 @@ describe('FkLookupDialog', () => {
     expect(screen.getByTestId('fk-lookup-loading')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByTestId('fk-lookup-grid')).toBeInTheDocument())
     expect(screen.getByTestId('fk-lookup-title')).toHaveTextContent('customers.id')
+    const gridProps = canvasCalls[canvasCalls.length - 1] as {
+      rows: Record<string, unknown>[]
+    }
+    expect(gridProps.rows[0].enabled).toBe(1)
   })
 
   it('selecting a row fires apply callback', async () => {

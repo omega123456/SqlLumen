@@ -22,6 +22,56 @@ type BackendFilterCondition = {
   value: string
 }
 
+function isTinyIntBooleanAlias(dataType: string): boolean {
+  const normalized = dataType.trim().toUpperCase()
+  return (
+    normalized === 'BOOL' ||
+    normalized === 'BOOLEAN' ||
+    normalized === 'TINYINT' ||
+    normalized === 'TINYINT(1)'
+  )
+}
+
+function normalizeTinyIntDisplayValue(value: unknown): unknown {
+  if (typeof value === 'boolean') return value ? 1 : 0
+
+  if (typeof value === 'string' && value.length === 1) {
+    const code = value.charCodeAt(0)
+    if (code === 0 || code === 1) return code
+  }
+
+  return value
+}
+
+export function normalizeTinyIntRows(
+  columns: Array<{ dataType: string; isBooleanAlias?: boolean }>,
+  rows: unknown[][]
+): unknown[][] {
+  const tinyIntIndexes = columns
+    .map((column, index) =>
+      column.isBooleanAlias || isTinyIntBooleanAlias(column.dataType) ? index : -1
+    )
+    .filter((index) => index !== -1)
+
+  if (tinyIntIndexes.length === 0) return rows
+
+  const mappedRows = rows.map((row) => {
+    let copy: unknown[] | null = null
+
+    for (const index of tinyIntIndexes) {
+      const normalizedValue = normalizeTinyIntDisplayValue(row[index])
+      if (normalizedValue !== row[index]) {
+        copy ??= [...row]
+        copy[index] = normalizedValue
+      }
+    }
+
+    return copy ?? row
+  })
+
+  return mappedRows.some((row, index) => row !== rows[index]) ? mappedRows : rows
+}
+
 /**
  * Convert frontend `FilterCondition[]` to the shape expected by the Rust backend.
  * The types are structurally identical, but this function provides an explicit
@@ -46,7 +96,7 @@ export async function fetchTableData(params: {
   sortDirection?: string
   filterModel?: FilterCondition[]
 }): Promise<TableDataResponse> {
-  return invoke<TableDataResponse>('fetch_table_data', {
+  const response = await invoke<TableDataResponse>('fetch_table_data', {
     connectionId: params.connectionId,
     tabId: params.tabId,
     database: params.database,
@@ -57,6 +107,7 @@ export async function fetchTableData(params: {
     sortDirection: params.sortDirection ?? null,
     filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
   })
+  return { ...response, rows: normalizeTinyIntRows(response.columns, response.rows) }
 }
 
 export async function touchTableData(params: {

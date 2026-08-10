@@ -17,6 +17,7 @@ import {
   updateTableRow as updateTableRowCmd,
   insertTableRow as insertTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
+  normalizeTinyIntRows,
 } from '../lib/table-data-commands'
 import { getTableForeignKeys } from '../lib/schema-commands'
 import { cancelQuery as cancelQueryCmd } from '../lib/query-commands'
@@ -75,66 +76,6 @@ function findRowIndexByKey(
   })
 }
 
-function isTinyIntBooleanAlias(dataType: string): boolean {
-  const normalized = dataType.trim().toUpperCase()
-  return (
-    normalized === 'BOOL' ||
-    normalized === 'BOOLEAN' ||
-    normalized === 'TINYINT' ||
-    normalized === 'TINYINT(1)'
-  )
-}
-
-function normalizeTinyIntDisplayValue(value: unknown): unknown {
-  if (typeof value === 'boolean') {
-    return value ? 1 : 0
-  }
-
-  if (typeof value === 'string' && value.length === 1) {
-    const code = value.charCodeAt(0)
-    if (code === 0 || code === 1) {
-      return code
-    }
-  }
-
-  return value
-}
-
-function normalizeTableDataRows(columns: TableDataColumnMeta[], rows: unknown[][]): unknown[][] {
-  if (columns.length === 0 || rows.length === 0) {
-    return rows
-  }
-
-  const booleanAliasIndexes = columns.reduce<Set<number>>((indexes, column, index) => {
-    if (column.isBooleanAlias || isTinyIntBooleanAlias(column.dataType)) {
-      indexes.add(index)
-    }
-    return indexes
-  }, new Set())
-
-  if (booleanAliasIndexes.size === 0) {
-    return rows
-  }
-
-  return rows.map((row) => {
-    let changed = false
-
-    const normalizedRow = row.map((value, index) => {
-      if (booleanAliasIndexes.has(index)) {
-        const normalizedValue = normalizeTinyIntDisplayValue(value)
-        if (normalizedValue !== value) {
-          changed = true
-        }
-        return normalizedValue
-      }
-
-      return value
-    })
-
-    return changed ? normalizedRow : row
-  })
-}
-
 function getRowKeyFromData(
   rowData: Record<string, unknown>,
   pkColumns: string[],
@@ -167,7 +108,7 @@ function getRowKeyFromData(
 }
 
 // Exported for testing
-export { isSameRowKey, findRowIndexByKey, normalizeTableDataRows, getRowKeyFromData }
+export { isSameRowKey, findRowIndexByKey, getRowKeyFromData }
 
 function buildCurrentValuesFromRow(
   columns: TableDataColumnMeta[],
@@ -438,7 +379,7 @@ function applyInsertedRow(
   insertedData: [string, unknown][]
 ): unknown[][] {
   const returnedMap = Object.fromEntries(insertedData)
-  const newRow = normalizeTableDataRows(columns, [
+  const newRow = normalizeTinyIntRows(columns, [
     columns.map((col) => reconcileSavedBlobValue(returnedMap[col.name] ?? null)),
   ])[0]
   const newRows = [...rows]
@@ -843,7 +784,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
         patchTab(tabId, {
           columns: result.columns,
-          rows: normalizeTableDataRows(result.columns, result.rows),
+          rows: result.rows,
           currentPage: result.currentPage,
           pageSize: result.pageSize,
           primaryKey: result.primaryKey,
@@ -1040,7 +981,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           tabId,
           {
             columns: restored.data.columns,
-            rows: normalizeTableDataRows(restored.data.columns, restored.data.rows),
+            rows: normalizeTinyIntRows(restored.data.columns, restored.data.rows),
             currentPage: restored.data.currentPage,
             pageSize: restored.data.pageSize,
             primaryKey: restored.data.primaryKey,

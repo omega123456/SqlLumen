@@ -26,6 +26,7 @@ import {
   insertTableRow as insertTableRowCmd,
   updateTableRow as updateTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
+  normalizeTinyIntRows as normalizeQueryRows,
 } from '../lib/table-data-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
 import { useTableDataStore } from './table-data-store'
@@ -553,31 +554,6 @@ function buildEditBindingContext(
   }
 }
 
-function isTinyIntBooleanAlias(dataType: string): boolean {
-  const normalized = dataType.trim().toUpperCase()
-  return (
-    normalized === 'BOOL' ||
-    normalized === 'BOOLEAN' ||
-    normalized === 'TINYINT' ||
-    normalized === 'TINYINT(1)'
-  )
-}
-
-function normalizeTinyIntDisplayValue(value: unknown): unknown {
-  if (typeof value === 'boolean') {
-    return value ? 1 : 0
-  }
-
-  if (typeof value === 'string' && value.length === 1) {
-    const code = value.charCodeAt(0)
-    if (code === 0 || code === 1) {
-      return code
-    }
-  }
-
-  return value
-}
-
 function toDisplayedQueryCellValue(value: unknown): unknown {
   if (!isBlobEnvelope(value)) {
     return value
@@ -628,39 +604,6 @@ function seedBlobViewerEditValues(
   }
 
   return changed ? { ...editState, originalValues, currentValues } : editState
-}
-
-function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
-  if (columns.length === 0 || rows.length === 0) {
-    return rows
-  }
-
-  const booleanAliasIndexes = columns
-    .map((column, index) => (isTinyIntBooleanAlias(column.dataType) ? index : -1))
-    .filter((index) => index !== -1)
-
-  if (booleanAliasIndexes.length === 0) {
-    return rows
-  }
-
-  const mappedRows = rows.map((row) => {
-    let copy: unknown[] | null = null
-
-    for (const colIndex of booleanAliasIndexes) {
-      const value = row[colIndex]
-      const normalizedValue = normalizeTinyIntDisplayValue(value)
-      if (normalizedValue !== value) {
-        if (copy === null) {
-          copy = [...row]
-        }
-        copy[colIndex] = normalizedValue
-      }
-    }
-
-    return copy !== null ? copy : row
-  })
-
-  return mappedRows.some((r, i) => r !== rows[i]) ? mappedRows : rows
 }
 
 /** Build a SingleResultState from a MultiQueryResultItem. */
