@@ -292,6 +292,31 @@ async fn test_registry_set_default_database_noop_for_missing_entry() {
     assert!(registry.get_connection_params("missing").is_none());
 }
 
+#[tokio::test]
+async fn test_registry_lists_sessions_in_runtime_id_order() {
+    let registry = ConnectionRegistry::new();
+    let mut second = dummy_entry("session-b");
+    second.profile_id = "profile-b".to_string();
+    second.status = ConnectionStatus::Reconnecting;
+    second.connection_params.default_database = Some("analytics".to_string());
+    let mut first = dummy_entry("session-a");
+    first.profile_id = "profile-a".to_string();
+    first.status = ConnectionStatus::Disconnected;
+
+    registry.insert("session-b".to_string(), second);
+    registry.insert("session-a".to_string(), first);
+
+    let sessions = registry.list_sessions();
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(sessions[0].session_id, "session-a");
+    assert_eq!(sessions[0].profile_id, "profile-a");
+    assert_eq!(sessions[0].status, ConnectionStatus::Disconnected);
+    assert_eq!(sessions[1].session_id, "session-b");
+    assert_eq!(sessions[1].profile_id, "profile-b");
+    assert_eq!(sessions[1].status, ConnectionStatus::Reconnecting);
+    assert_eq!(sessions[1].session_database.as_deref(), Some("analytics"));
+}
+
 // --- Credential Tests (in-memory test backend; no OS keychain) ---
 
 #[test]

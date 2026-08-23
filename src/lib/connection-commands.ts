@@ -3,6 +3,7 @@ import type {
   SavedConnection,
   ConnectionGroup,
   ConnectionFormData,
+  OpenConnectionSession,
   TestConnectionResult,
 } from '../types/connection'
 
@@ -152,4 +153,9 @@ export async function getConnectionStatus(
   return invoke<'connected' | 'disconnected' | 'reconnecting' | null>('get_connection_status', {
     connectionId: sessionId,
   })
+}
+
+/** List sessions that remain open in the native connection registry. */
+export async function listOpenConnectionSessions(): Promise<OpenConnectionSession[]> {
+  return invoke<OpenConnectionSession[]>('list_open_connection_sessions')
 }

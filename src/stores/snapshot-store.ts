@@ -294,6 +294,13 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
     if (trigger !== 'beforeRestore' && get().getFrequency() === 'off') {
       return null
     }
+    if (
+      trigger !== 'beforeRestore' &&
+      trigger !== 'manual' &&
+      !useSessionRestoreStore.getState().canPersistSession()
+    ) {
+      return null
+    }
 
     set({ isBusy: true })
     try {

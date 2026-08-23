@@ -13,6 +13,7 @@ import {
   getCachedRowsFixture,
   getColumnsFixture,
   getConnectionMemoriesFixture,
+  getOpenConnectionSessionsFixture,
   getExportLogsFixture,
   getForeignKeysFixture,
   getGlobalMemoriesFixture,
@@ -355,6 +356,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return [PLAYWRIGHT_MOCK_CONNECTION]
     case 'list_connection_groups':
       return []
+    case 'list_open_connection_sessions':
+      return getOpenConnectionSessionsFixture()
     case 'open_connection':
       activeMockDatabase = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
       return { sessionId: allocatePlaywrightSessionId(), serverVersion: '8.0.33-mock' }

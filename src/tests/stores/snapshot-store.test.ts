@@ -168,6 +168,27 @@ describe('createManualSnapshot', () => {
   })
 })
 
+describe('automatic snapshot persistence guard', () => {
+  it('suppresses automatic snapshots but permits explicit snapshots', async () => {
+    useSessionRestoreStore.setState({ hasIncompleteRestore: true })
+    ipc.override('create_session_snapshot', () => 7)
+    ipc.override('list_session_snapshots', () => [])
+
+    await expect(useSnapshotStore.getState().createAutoSnapshot('daily')).resolves.toBeNull()
+    await expect(useSnapshotStore.getState().createAutoSnapshot('weekly')).resolves.toBeNull()
+    await expect(useSnapshotStore.getState().createAutoSnapshot('onClose')).resolves.toBeNull()
+    expect(ipc.calls('create_session_snapshot')).toEqual([])
+
+    await expect(useSnapshotStore.getState().createAutoSnapshot('beforeRestore')).resolves.toBe(7)
+    await useSnapshotStore.getState().createManualSnapshot()
+    expect(
+      ipc
+        .calls('create_session_snapshot')
+        .map((args) => (args as { triggerType: string }).triggerType)
+    ).toEqual(['beforeRestore', 'manual'])
+  })
+})
+
 describe('restoreSnapshot', () => {
   it('gets state, creates beforeRestore, force-closes in order, then restores IN ORDER', async () => {
     seedSession()

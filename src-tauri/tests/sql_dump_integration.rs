@@ -1082,7 +1082,9 @@ fn test_boolean_alias_type_is_treated_as_integer() {
     }
 
     // Non-integer types stay out of the integer branch.
-    for ty in ["VARCHAR", "TEXT", "DECIMAL", "DATETIME", "BLOB", "JSON", "BIT"] {
+    for ty in [
+        "VARCHAR", "TEXT", "DECIMAL", "DATETIME", "BLOB", "JSON", "BIT",
+    ] {
         assert!(
             !is_unquoted_integer_dump_type(ty),
             "{ty} should not be integer"

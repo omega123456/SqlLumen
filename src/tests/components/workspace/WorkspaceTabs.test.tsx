@@ -379,8 +379,7 @@ describe('WorkspaceTabs', () => {
     const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
     const queryTab = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .find((tab) => tab.id === queryTabId)
+      .tabsByConnection['conn-1'].find((tab) => tab.id === queryTabId)
 
     if (!queryTab) {
       throw new Error('Expected query tab to exist')
@@ -389,7 +388,9 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')
-    const memberTab = screen.getByTestId(`workspace-tab-${queryTabId}`).querySelector('[role="button"]')
+    const memberTab = screen
+      .getByTestId(`workspace-tab-${queryTabId}`)
+      .querySelector('[role="button"]')
 
     if (!memberTab) {
       throw new Error('Expected workspace member tab label button to exist')
@@ -428,9 +429,10 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1'].find(
-          (tab) => tab.id === useWorkspaceStore.getState().activeTabByConnection['conn-1']
-        )?.type
+        .tabsByConnection[
+          'conn-1'
+        ].find((tab) => tab.id === useWorkspaceStore.getState().activeTabByConnection['conn-1'])
+        ?.type
     ).toBe('history')
 
     const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')

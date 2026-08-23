@@ -130,6 +130,7 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   open_connection: () => ({ sessionId: 'session-mock-1', serverVersion: '8.0.33-mock' }),
   close_connection: () => undefined,
   get_connection_status: () => 'connected',
+  list_open_connection_sessions: () => [],
 
   // --- Schema cache ---
   load_schema_cache_snapshot: () => null,

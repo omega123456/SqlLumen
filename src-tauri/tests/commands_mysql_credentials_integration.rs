@@ -10,8 +10,9 @@ use sqllumen_lib::commands::connections::{
     update_connection_impl, SaveConnectionInput, UpdateConnectionInput,
 };
 use sqllumen_lib::commands::mysql::{
-    close_connection_impl, get_connection_status_impl, open_connection_impl, test_connection_impl,
-    OpenConnectionPayload, OpenConnectionResult, TestConnectionInput,
+    close_connection_impl, get_connection_status_impl, list_open_connection_sessions_impl,
+    open_connection_impl, test_connection_impl, OpenConnectionPayload, OpenConnectionResult,
+    TestConnectionInput,
 };
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::credentials::{self};
@@ -331,6 +332,28 @@ fn sample_registry_entry(status: ConnectionStatus) -> RegistryEntry {
         },
         read_only: false,
     }
+}
+
+#[tokio::test]
+async fn list_open_connection_sessions_returns_serializable_runtime_metadata() {
+    let state = test_state();
+    let mut entry = sample_registry_entry(ConnectionStatus::Reconnecting);
+    entry.session_id = "session-2".to_string();
+    entry.profile_id = "profile-2".to_string();
+    entry.connection_params.default_database = Some("reporting".to_string());
+    state.registry.insert("session-2".to_string(), entry);
+
+    let sessions = list_open_connection_sessions_impl(&state);
+    assert_eq!(
+        serde_json::to_value(sessions).expect("sessions should serialize"),
+        json!([{
+            "sessionId": "session-2",
+            "profileId": "profile-2",
+            "status": "reconnecting",
+            "serverVersion": "8.0.36",
+            "sessionDatabase": "reporting"
+        }])
+    );
 }
 
 fn forced_pool_error(_: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {

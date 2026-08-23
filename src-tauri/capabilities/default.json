@@ -29,6 +29,7 @@
     "allow-open-connection",
     "allow-close-connection",
     "allow-get-connection-status",
+    "allow-list-open-connection-sessions",
     "allow-list-databases",
     "allow-list-schema-objects",
     "allow-list-columns",

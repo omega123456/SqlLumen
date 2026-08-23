@@ -176,7 +176,10 @@ function selectActiveTabAfterChange(
   return newTabs.length > 0 ? newTabs[0].id : null
 }
 
-function getAdjacentTabIdAfterClose(remainingTabs: WorkspaceTab[], closingIndex: number): string | null {
+function getAdjacentTabIdAfterClose(
+  remainingTabs: WorkspaceTab[],
+  closingIndex: number
+): string | null {
   if (remainingTabs.length === 0) {
     return null
   }
@@ -265,7 +268,9 @@ function removeConnectionTabs(
 ): Partial<WorkspaceState> {
   const tabs = state.tabsByConnection[connectionId] || []
   const currentActiveId = state.activeTabByConnection[connectionId] ?? null
-  const activeTab = currentActiveId ? tabs.find((tab) => tab.id === currentActiveId) ?? null : null
+  const activeTab = currentActiveId
+    ? (tabs.find((tab) => tab.id === currentActiveId) ?? null)
+    : null
   const activeTabIndex = activeTab ? tabs.findIndex((tab) => tab.id === activeTab.id) : -1
   const wasActiveRemoved = activeTab ? shouldRemove(activeTab) : false
   const remainingTabs = tabs.filter((tab) => !shouldRemove(tab))
@@ -307,7 +312,9 @@ function getNextStackRecency(
     hideScopedTableDataTabs: isTableTabsInBottomPanelEnabled(),
   })
 
-  for (const [stackKey, tabId] of Object.entries(nextRecency) as Array<[WorkspaceTabStackKey, string]>) {
+  for (const [stackKey, tabId] of Object.entries(nextRecency) as Array<
+    [WorkspaceTabStackKey, string]
+  >) {
     if (memberIds[stackKey].has(tabId)) {
       continue
     }
@@ -1433,9 +1440,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
     resetRemovedScopedBottomPanelTables(tabs, shouldRemove)
 
-    set((currentState) =>
-      removeConnectionTabs(currentState, connectionId, shouldRemove)
-    )
+    set((currentState) => removeConnectionTabs(currentState, connectionId, shouldRemove))
 
     const nextActiveTabId = get().activeTabByConnection[connectionId] ?? null
     const nextSurface = getVisibleWorkspaceSurface(connectionId, nextActiveTabId)

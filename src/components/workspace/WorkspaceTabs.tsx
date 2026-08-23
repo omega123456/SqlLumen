@@ -87,7 +87,8 @@ export function WorkspaceTabs({
           hideScopedTableDataTabs: hideTableDataTabs,
         })
       : null
-  const activeStackTabs = stackGroups.find((group) => group.key === activeStackKey)?.tabs ?? EMPTY_TABS
+  const activeStackTabs =
+    stackGroups.find((group) => group.key === activeStackKey)?.tabs ?? EMPTY_TABS
 
   const allMovableTabIds = useMemo(
     () => tabs.filter((t) => t.type !== 'history' && t.type !== 'processlist').map((t) => t.id),
@@ -139,10 +140,14 @@ export function WorkspaceTabs({
   const focusStackMembers = (stackKey: WorkspaceTabStackKey) => {
     const targetStackTabs = stackGroups.find((group) => group.key === stackKey)?.tabs ?? EMPTY_TABS
     const targetTabId =
-      getWorkspaceStackActivationTarget(stackKey, visibleNonPinnedTabs, stackRecency[stackKey] ?? null, {
-        hideScopedTableDataTabs: hideTableDataTabs,
-      })?.id ??
-      targetStackTabs[0]?.id
+      getWorkspaceStackActivationTarget(
+        stackKey,
+        visibleNonPinnedTabs,
+        stackRecency[stackKey] ?? null,
+        {
+          hideScopedTableDataTabs: hideTableDataTabs,
+        }
+      )?.id ?? targetStackTabs[0]?.id
 
     if (!targetTabId) {
       return

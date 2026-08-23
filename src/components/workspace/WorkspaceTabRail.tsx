@@ -236,7 +236,9 @@ export function WorkspaceTabRail({
   // ---------------------------------------------------------------------------
 
   const focusWorkspaceTab = (tabId: string): boolean => {
-    const tabEl = railRef.current?.querySelector<HTMLElement>(`[data-testid="workspace-tab-${tabId}"]`)
+    const tabEl = railRef.current?.querySelector<HTMLElement>(
+      `[data-testid="workspace-tab-${tabId}"]`
+    )
     if (!tabEl) {
       return false
     }

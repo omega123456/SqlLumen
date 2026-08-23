@@ -18,8 +18,10 @@ import type {
   SessionTabState,
 } from '../lib/session-restore-commands'
 import { saveSessionState, loadSessionState } from '../lib/session-restore-commands'
+import { listOpenConnectionSessions } from '../lib/connection-commands'
 import { hasTauriApis } from '../lib/tauri-env'
 import type { WorkspaceTab } from '../types/schema'
+import type { OpenConnectionSession } from '../types/connection'
 
 export const SESSION_AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000
 
@@ -79,6 +81,8 @@ interface SessionRestoreState {
   isRestoring: boolean
   /** Error message if restore failed. */
   restoreError: string | null
+  /** True when a saved connection did not restore. */
+  hasIncompleteRestore: boolean
 
   // Actions
   saveSession: (options?: SaveSessionOptions) => Promise<void>
@@ -86,18 +90,22 @@ interface SessionRestoreState {
   /** Apply a session state directly (used by both launch-restore and snapshot-restore). */
   restoreFromState: (state: SessionState) => Promise<void>
   isEnabled: () => boolean
+  canPersistSession: () => boolean
 }
 
 export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) => ({
   isRestoring: false,
   restoreError: null,
+  hasIncompleteRestore: false,
 
   isEnabled: (): boolean => {
     return useSettingsStore.getState().getSetting('session.restore') === 'true'
   },
 
+  canPersistSession: (): boolean => !get().isRestoring && !get().hasIncompleteRestore,
+
   saveSession: async (options?: SaveSessionOptions): Promise<void> => {
-    if (!get().isEnabled()) {
+    if (!get().isEnabled() || !get().canPersistSession()) {
       return
     }
 
@@ -125,15 +133,23 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
       return
     }
 
-    const state = await loadSessionState()
-    if (!state) {
-      return
-    }
+    try {
+      const state = await loadSessionState()
+      if (!state) {
+        set({ hasIncompleteRestore: false })
+        return
+      }
 
-    await get().restoreFromState(state)
+      await get().restoreFromState(state)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      set({ restoreError: msg, hasIncompleteRestore: true })
+      logFrontend('error', `[session-restore] Failed to load saved session: ${msg}`)
+      showErrorToast('Session restore failed', 'The saved workspace was retained.')
+    }
   },
 
-    restoreFromState: async (state: SessionState): Promise<void> => {
+  restoreFromState: async (state: SessionState): Promise<void> => {
     // Guard against concurrent calls (React StrictMode double-invokes effects
     // in dev, which would otherwise open each connection twice).
     if (get().isRestoring) {
@@ -141,18 +157,29 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
     }
 
     if (!state || state.connections.length === 0) {
+      set({ hasIncompleteRestore: false })
       return
     }
 
-    set({ isRestoring: true, restoreError: null })
+    set({ isRestoring: true, restoreError: null, hasIncompleteRestore: true })
     let beganRestore = false
+    let restoredCount = 0
 
     try {
       beganRestore = true
       useWorkspaceStore.getState().resetStackRecency()
 
-      // Ensure saved connections are loaded so we can look them up by profile ID
-      await useConnectionStore.getState().fetchSavedConnections()
+      const [, openSessions] = await Promise.all([
+        useConnectionStore.getState().fetchSavedConnections(),
+        listOpenConnectionSessions(),
+      ])
+      const sessionsByProfile = new Map<string, typeof openSessions>()
+      for (const session of openSessions) {
+        const sessions = sessionsByProfile.get(session.profileId) ?? []
+        sessions.push(session)
+        sessionsByProfile.set(session.profileId, sessions)
+      }
+      const claimedSessionIds = new Set<string>()
       const restoredSessionIdsBySavedIndex: Array<string | null> = Array.from(
         { length: state.connections.length },
         () => null
@@ -160,14 +187,20 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
 
       for (const [savedIndex, connState] of state.connections.entries()) {
         try {
-          const sessionId = await connectByProfileId(connState.profileId)
+          const existingSession = sessionsByProfile.get(connState.profileId)?.shift()
+          if (existingSession) {
+            claimedSessionIds.add(existingSession.sessionId)
+          }
+          const sessionId = existingSession
+            ? attachExistingSession(existingSession)
+            : await connectByProfileId(connState.profileId)
           if (!sessionId) {
             continue
           }
-          restoredSessionIdsBySavedIndex[savedIndex] = sessionId
 
-          // Restore tabs for this connection
           await restoreConnectionTabs(sessionId, connState)
+          restoredSessionIdsBySavedIndex[savedIndex] = sessionId
+          restoredCount += 1
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e)
           logFrontend(
@@ -178,6 +211,13 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
         }
       }
 
+      for (const session of openSessions) {
+        if (claimedSessionIds.has(session.sessionId)) {
+          continue
+        }
+        attachExistingSession(session)
+      }
+
       if (typeof state.activeConnectionIndex === 'number') {
         const activeSessionId = restoredSessionIdsBySavedIndex[state.activeConnectionIndex] ?? null
         if (activeSessionId) {
@@ -186,11 +226,22 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
       }
 
       useWorkspaceStore.getState().resetStackRecency()
+      const hasIncompleteRestore = restoredCount !== state.connections.length
+      set({ hasIncompleteRestore })
+      if (hasIncompleteRestore) {
+        logFrontend(
+          'warn',
+          `[session-restore] Restored ${restoredCount} of ${state.connections.length} saved connections. Automatic persistence is paused; the saved workspace was retained.`
+        )
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      logFrontend('error', `[session-restore] Failed to restore session: ${msg}`)
-      set({ restoreError: msg })
-      showErrorToast('Session restore failed', msg)
+      logFrontend(
+        'error',
+        `[session-restore] Restoration stopped: ${msg}. Automatic persistence is paused; the saved workspace was retained.`
+      )
+      set({ restoreError: msg, hasIncompleteRestore: true })
+      showErrorToast('Session restore failed', 'The saved workspace was retained.')
     } finally {
       if (beganRestore) {
         useWorkspaceStore.getState().resetStackRecency()
@@ -394,6 +445,18 @@ async function connectByProfileId(profileId: string): Promise<string | null> {
 
   // Shouldn't happen, but guard against it
   logFrontend('warn', `[session-restore] Could not find new session ID for profile ${profileId}`)
+  return null
+}
+
+function attachExistingSession(session: OpenConnectionSession): string | null {
+  if (useConnectionStore.getState().attachExistingConnection(session)) {
+    return session.sessionId
+  }
+
+  logFrontend(
+    'warn',
+    `[session-restore] Saved profile ${session.profileId} was not found for open session ${session.sessionId}`
+  )
   return null
 }
 

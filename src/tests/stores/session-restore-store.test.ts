@@ -2,7 +2,7 @@
  * Tests for session-restore-store: save/restore session, isEnabled, error handling.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { overrideNamedIpcCommands } from '../ipc-mock'
+import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import {
   _setLoadTauriWindowApiForTests,
   _resetSessionPersistenceForTests,
@@ -19,8 +19,17 @@ import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { groupWorkspaceTabsByStack } from '../../lib/workspace-tab-stacks'
+import type { SavedConnection } from '../../types/connection'
 
-const overrideNamedCommands = overrideNamedIpcCommands
+function overrideNamedCommands(
+  commandNames: readonly string[],
+  handler: (cmd: string, args?: Record<string, unknown>) => unknown
+): void {
+  overrideNamedIpcCommands(commandNames, (cmd, args) => {
+    const result = handler(cmd, args)
+    return cmd === 'list_open_connection_sessions' && result == null ? [] : result
+  })
+}
 
 const SESSION_RESTORE_COMMANDS = [
   'close_connection',
@@ -29,12 +38,37 @@ const SESSION_RESTORE_COMMANDS = [
   'get_setting',
   'list_connection_groups',
   'list_connections',
+  'list_open_connection_sessions',
   'log_frontend',
   'open_connection',
   'plugin:event|listen',
   'plugin:event|unlisten',
   'set_setting',
 ] as const
+
+function makeSavedProfile(id: string, name = id): SavedConnection {
+  return {
+    id,
+    name,
+    host: '127.0.0.1',
+    port: 3306,
+    username: 'root',
+    hasPassword: true,
+    defaultDatabase: 'testdb',
+    sslEnabled: false,
+    sslCaPath: null,
+    sslCertPath: null,
+    sslKeyPath: null,
+    color: null,
+    groupId: null,
+    readOnly: false,
+    sortOrder: 0,
+    connectTimeoutSecs: 10,
+    keepaliveIntervalSecs: 60,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+  }
+}
 
 function setupDefaultIpc() {
   overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
@@ -78,6 +112,8 @@ function setupDefaultIpc() {
         ]
       case 'list_connection_groups':
         return []
+      case 'list_open_connection_sessions':
+        return []
       case 'open_connection':
         return { sessionId: `session-${a?.id ?? 'unknown'}`, serverVersion: '8.0.0' }
       case 'close_connection':
@@ -99,6 +135,7 @@ beforeEach(() => {
   useSessionRestoreStore.setState({
     isRestoring: false,
     restoreError: null,
+    hasIncompleteRestore: false,
   })
   useConnectionStore.setState({
     savedConnections: [],
@@ -1804,6 +1841,218 @@ describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
   })
 })
 
+describe('useSessionRestoreStore — native session reconciliation', () => {
+  it('reattaches duplicate saved sessions, appends unmatched sessions, and ignores orphans', async () => {
+    const savedState: SessionState = {
+      version: 1,
+      activeConnectionIndex: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [{ type: 'query-editor', tabId: 'saved-a', sql: 'SELECT "a"' }],
+        },
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [{ type: 'query-editor', tabId: 'saved-z', sql: 'SELECT "z"' }],
+        },
+      ],
+    }
+    const frontendLogs: string[] = []
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'get_setting' && a?.key === 'session.state') return JSON.stringify(savedState)
+      if (cmd === 'list_connections') {
+        return [makeSavedProfile('profile-1'), makeSavedProfile('profile-extra')]
+      }
+      if (cmd === 'list_connection_groups') return []
+      if (cmd === 'list_open_connection_sessions') {
+        return [
+          {
+            sessionId: 'session-a',
+            profileId: 'profile-1',
+            status: 'reconnecting',
+            serverVersion: '8.0.36',
+            sessionDatabase: 'db-a',
+          },
+          {
+            sessionId: 'session-extra',
+            profileId: 'profile-extra',
+            status: 'connected',
+            serverVersion: '8.0.36',
+            sessionDatabase: null,
+          },
+          {
+            sessionId: 'session-orphan',
+            profileId: 'profile-missing',
+            status: 'connected',
+            serverVersion: '8.0.36',
+            sessionDatabase: null,
+          },
+          {
+            sessionId: 'session-z',
+            profileId: 'profile-1',
+            status: 'disconnected',
+            serverVersion: '8.0.36',
+            sessionDatabase: 'db-z',
+          },
+        ]
+      }
+      if (cmd === 'open_connection') throw new Error('must not open a duplicate pool')
+      if (cmd === 'log_frontend') {
+        frontendLogs.push(String(a?.message ?? ''))
+        return undefined
+      }
+      return null
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    expect(ipc.calls('open_connection')).toEqual([])
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual([
+      'session-a',
+      'session-z',
+      'session-extra',
+    ])
+    expect(useConnectionStore.getState().activeTabId).toBe('session-z')
+    const restoredSql = Object.values(useQueryStore.getState().tabs).map((tab) => tab.content)
+    expect(restoredSql).toEqual(expect.arrayContaining(['SELECT "a"', 'SELECT "z"']))
+    expect(
+      useWorkspaceStore.getState().tabsByConnection['session-extra'].map((tab) => tab.type)
+    ).toEqual(['history', 'processlist'])
+    expect(useConnectionStore.getState().activeConnections['session-orphan']).toBeUndefined()
+    expect(ipc.calls('close_connection')).toEqual([])
+    expect(frontendLogs.some((message) => message.includes('session-orphan'))).toBe(true)
+    expect(useSessionRestoreStore.getState().hasIncompleteRestore).toBe(false)
+  })
+
+  it('opens only saved connections that have no matching native session', async () => {
+    const savedState: SessionState = {
+      version: 1,
+      connections: [
+        { profileId: 'profile-1', activeTabIndex: 0, tabs: [] },
+        { profileId: 'profile-2', activeTabIndex: 0, tabs: [] },
+      ],
+    }
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'get_setting' && a?.key === 'session.state') return JSON.stringify(savedState)
+      if (cmd === 'list_connections') {
+        return [makeSavedProfile('profile-1'), makeSavedProfile('profile-2')]
+      }
+      if (cmd === 'list_connection_groups') return []
+      if (cmd === 'list_open_connection_sessions') {
+        return [
+          {
+            sessionId: 'session-existing',
+            profileId: 'profile-1',
+            status: 'connected',
+            serverVersion: '8.0.36',
+            sessionDatabase: 'testdb',
+          },
+        ]
+      }
+      if (cmd === 'open_connection') {
+        return { sessionId: 'session-new', serverVersion: '8.0.36' }
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    expect(ipc.calls('open_connection')).toEqual([{ payload: { profileId: 'profile-2' } }])
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual([
+      'session-existing',
+      'session-new',
+    ])
+    expect(useSessionRestoreStore.getState().hasIncompleteRestore).toBe(false)
+  })
+
+  it('retains the saved workspace when every connection fails to restore', async () => {
+    const savedState: SessionState = {
+      version: 1,
+      connections: [{ profileId: 'profile-1', activeTabIndex: 0, tabs: [] }],
+    }
+    const frontendLogs: string[] = []
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'get_setting' && a?.key === 'session.state') return JSON.stringify(savedState)
+      if (cmd === 'list_connections') return [makeSavedProfile('profile-1')]
+      if (cmd === 'list_connection_groups' || cmd === 'list_open_connection_sessions') return []
+      if (cmd === 'open_connection') throw new Error('VPN unavailable')
+      if (cmd === 'log_frontend') {
+        frontendLogs.push(String(a?.message ?? ''))
+        return undefined
+      }
+      return null
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    expect(useSessionRestoreStore.getState().canPersistSession()).toBe(false)
+    expect(
+      frontendLogs.filter((message) => message.includes('saved workspace was retained'))
+    ).toEqual([expect.stringContaining('Restored 0 of 1 saved connections')])
+  })
+
+  it('blocks persistence after a partial restore and resumes after a successful retry', async () => {
+    const savedState: SessionState = {
+      version: 1,
+      connections: [
+        { profileId: 'profile-1', activeTabIndex: 0, tabs: [] },
+        { profileId: 'profile-2', activeTabIndex: 0, tabs: [] },
+      ],
+    }
+    let retry = false
+    let savedSessionWrites = 0
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'get_setting' && a?.key === 'session.state') return JSON.stringify(savedState)
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        savedSessionWrites += 1
+        return null
+      }
+      if (cmd === 'list_connections') {
+        return [makeSavedProfile('profile-1'), makeSavedProfile('profile-2')]
+      }
+      if (cmd === 'list_connection_groups') return []
+      if (cmd === 'list_open_connection_sessions') {
+        return retry
+          ? [
+              {
+                sessionId: 'session-profile-1',
+                profileId: 'profile-1',
+                status: 'connected',
+                serverVersion: '8.0.36',
+                sessionDatabase: 'testdb',
+              },
+            ]
+          : []
+      }
+      if (cmd === 'open_connection') {
+        const profileId = (a?.payload as { profileId: string }).profileId
+        if (profileId === 'profile-2' && !retry) throw new Error('VPN unavailable')
+        return { sessionId: `session-${profileId}`, serverVersion: '8.0.36' }
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+    expect(useSessionRestoreStore.getState().hasIncompleteRestore).toBe(true)
+    await useSessionRestoreStore.getState().saveSession()
+    expect(savedSessionWrites).toBe(0)
+
+    retry = true
+    await useSessionRestoreStore.getState().restoreFromState(savedState)
+    expect(useSessionRestoreStore.getState().hasIncompleteRestore).toBe(false)
+    await useSessionRestoreStore.getState().saveSession()
+    expect(savedSessionWrites).toBe(1)
+  })
+})
+
 describe('registerCloseHandler', () => {
   it('returns immediately when __TAURI_INTERNALS__ is absent', async () => {
     // In jsdom, __TAURI_INTERNALS__ is not defined, so canUseTauriWindow returns false
@@ -1815,6 +2064,40 @@ describe('registerCloseHandler', () => {
     ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = null
     await registerCloseHandler()
     // Covers the null check in canUseTauriWindow
+  })
+
+  it('destroys the window without replacing the saved session when restore is incomplete', async () => {
+    let closeHandler: ((event: { preventDefault: () => void }) => Promise<void> | void) | null =
+      null
+    const destroy = vi.fn(async () => undefined)
+    _setLoadTauriWindowApiForTests(async () => ({
+      getCurrentWindow: () => ({
+        onCloseRequested: async (handler) => {
+          closeHandler = handler
+        },
+        destroy,
+      }),
+    }))
+    let sessionWrites = 0
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') sessionWrites += 1
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+    useSessionRestoreStore.setState({ hasIncompleteRestore: true })
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {
+      invoke: vi.fn(),
+    }
+
+    await registerCloseHandler()
+    if (!closeHandler) throw new Error('Expected close handler to be registered')
+    const invokeCloseHandler: (event: { preventDefault: () => void }) => Promise<void> | void =
+      closeHandler
+    await invokeCloseHandler({ preventDefault: vi.fn() })
+
+    expect(sessionWrites).toBe(0)
+    expect(destroy).toHaveBeenCalledOnce()
   })
 
   it('auto-saves the current session every 5 minutes', async () => {
@@ -1876,6 +2159,23 @@ describe('registerCloseHandler', () => {
 
     await vi.advanceTimersByTimeAsync(SESSION_AUTOSAVE_INTERVAL_MS)
     expect(saveCount).toBe(2)
+  })
+
+  it('does not run the five-minute autosave while restoration is incomplete', async () => {
+    vi.useFakeTimers()
+    let saveCount = 0
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') saveCount += 1
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+    useSessionRestoreStore.setState({ hasIncompleteRestore: true })
+
+    await registerCloseHandler()
+    await vi.advanceTimersByTimeAsync(SESSION_AUTOSAVE_INTERVAL_MS)
+
+    expect(saveCount).toBe(0)
   })
 
   it('saves the current session before destroying the window on close', async () => {

@@ -431,6 +431,7 @@ pub fn run() {
             commands::mysql::open_connection,
             commands::mysql::close_connection,
             commands::mysql::get_connection_status,
+            commands::mysql::list_open_connection_sessions,
             commands::schema::list_databases,
             commands::schema::list_schema_objects,
             commands::schema::list_columns,

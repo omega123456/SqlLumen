@@ -376,6 +376,46 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
   })
 })
 
+describe('useConnectionStore — attachExistingConnection', () => {
+  it('hydrates an existing runtime session without opening a new pool', async () => {
+    const profile = makeActiveConnection('unused', 'profile-1', 'Existing Connection').profile
+    useConnectionStore.setState({ savedConnections: [profile] })
+
+    const attached = useConnectionStore.getState().attachExistingConnection({
+      sessionId: 'session-existing',
+      profileId: 'profile-1',
+      status: 'reconnecting',
+      serverVersion: '8.0.36',
+      sessionDatabase: 'reporting',
+    })
+
+    expect(attached).toBe(true)
+    expect(ipc.calls('open_connection')).toEqual([])
+    expect(useConnectionStore.getState().activeConnections['session-existing']).toMatchObject({
+      status: 'reconnecting',
+      serverVersion: '8.0.36',
+      sessionDatabase: 'reporting',
+      profile: { id: 'profile-1' },
+    })
+    expect(
+      useWorkspaceStore.getState().tabsByConnection['session-existing'].map((tab) => tab.type)
+    ).toEqual(['history', 'processlist'])
+  })
+
+  it('leaves an unknown saved profile unattached', () => {
+    expect(
+      useConnectionStore.getState().attachExistingConnection({
+        sessionId: 'orphan-session',
+        profileId: 'missing-profile',
+        status: 'connected',
+        serverVersion: '8.0.36',
+        sessionDatabase: null,
+      })
+    ).toBe(false)
+    expect(useConnectionStore.getState().activeConnections).toEqual({})
+  })
+})
+
 describe('useConnectionStore — Process List integration', () => {
   function setupActiveConnection() {
     useConnectionStore.setState({

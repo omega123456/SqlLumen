@@ -10,7 +10,10 @@ import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { UnderlineTab } from '../common/UnderlineTabs'
 import { IconButton } from '../common/IconButton'
-import { getWorkspaceStackIconDescriptor, getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
+import {
+  getWorkspaceStackIconDescriptor,
+  getWorkspaceTabIconDescriptor,
+} from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
 
 type CompactMode = 'full' | 'short' | 'icon-count' | 'icon'
@@ -268,7 +271,9 @@ export function WorkspaceStackRail({
                   data-testid={testId}
                   className={styles.stackChipIcon}
                 />
-                {getPinnedTabCompactLabel(tab) ? <span>{getPinnedTabCompactLabel(tab)}</span> : null}
+                {getPinnedTabCompactLabel(tab) ? (
+                  <span>{getPinnedTabCompactLabel(tab)}</span>
+                ) : null}
               </span>
             </UnderlineTab>
           )

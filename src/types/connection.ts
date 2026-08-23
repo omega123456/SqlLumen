@@ -57,6 +57,15 @@ export interface ActiveConnection {
   serverVersion: string
 }
 
+/** A session that remains open in the native connection registry. */
+export interface OpenConnectionSession {
+  sessionId: string
+  profileId: string
+  status: ActiveConnection['status']
+  serverVersion: string
+  sessionDatabase: string | null
+}
+
 /**
  * Result of testing a MySQL connection.
  */

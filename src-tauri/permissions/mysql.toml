@@ -21,3 +21,9 @@ identifier = "allow-get-connection-status"
 description = "Enables the get_connection_status command without any pre-configured scope."
 commands.allow = ["get_connection_status"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-list-open-connection-sessions"
+description = "Enables the list_open_connection_sessions command without any pre-configured scope."
+commands.allow = ["list_open_connection_sessions"]
+commands.deny = []

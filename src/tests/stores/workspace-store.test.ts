@@ -1386,10 +1386,14 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
   })
 
   it('keeps focus in the same stack when closing the active object tab in mixed flat order', () => {
-    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'users', label: 'users schema' }))
+    useWorkspaceStore
+      .getState()
+      .openTab(makeSchemaTab({ objectName: 'users', label: 'users schema' }))
     const schemaOneId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
     useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
-    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders schema' }))
+    useWorkspaceStore
+      .getState()
+      .openTab(makeSchemaTab({ objectName: 'orders', label: 'orders schema' }))
     const schemaTwoId = useWorkspaceStore.getState().tabsByConnection['conn-1'][2].id
 
     useWorkspaceStore.getState().setActiveTab('conn-1', schemaOneId)
@@ -1414,10 +1418,9 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
 
     const tableTabId = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1'].find(
-        (tab): tab is TableDataTab =>
-          tab.type === 'table-data' && tab.parentQueryTabId === queryTabId
-      )?.id
+      .tabsByConnection[
+        'conn-1'
+      ].find((tab): tab is TableDataTab => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId)?.id
 
     expect(tableTabId).toBeTruthy()
     expect(useQueryStore.getState().getTabState(queryTabId).activeBottomPanelItem).toEqual({
@@ -2040,9 +2043,9 @@ describe('useWorkspaceStore — AI store cleanup', () => {
     const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
 
     useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders' }))
-    const schemaTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'].find(
-      (tab) => tab.type === 'schema-info'
-    )?.id
+    const schemaTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'schema-info')?.id
 
     useWorkspaceStore.getState().openHistoryTab('conn-1')
 

@@ -13,6 +13,7 @@ import type {
   ConnectionGroup,
   ActiveConnection,
   ConnectionStatusEvent,
+  OpenConnectionSession,
 } from '../types/connection'
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
@@ -54,6 +55,7 @@ interface ConnectionState {
   // Actions
   fetchSavedConnections: () => Promise<void>
   openConnection: (id: string) => Promise<void>
+  attachExistingConnection: (session: OpenConnectionSession) => boolean
   closeConnection: (id: string, options?: { force?: boolean }) => Promise<boolean>
   closeAllConnections: (options?: { force?: boolean }) => Promise<boolean>
   connectionsWithUnsavedEdits: () => string[]
@@ -101,43 +103,17 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
     try {
       const result = await openConnectionIPC(id)
-
-      const active: ActiveConnection = {
-        id: result.sessionId,
-        profile,
-        sessionDatabase: profile.defaultDatabase,
+      get().attachExistingConnection({
+        sessionId: result.sessionId,
+        profileId: id,
         status: 'connected',
         serverVersion: result.serverVersion,
-      }
-
-      set((state) => ({
-        activeConnections: { ...state.activeConnections, [result.sessionId]: active },
-        activeConnectionOrder: normalizeActiveConnectionOrder(
-          [...state.activeConnectionOrder, result.sessionId],
-          { ...state.activeConnections, [result.sessionId]: active }
-        ),
-        activeTabId: result.sessionId,
-        error: null,
-      }))
-      useWorkspaceStore.getState().openHistoryTab(result.sessionId, false)
-      useWorkspaceStore.getState().openProcessListTab(result.sessionId)
-      // The newly opened session becomes the active connection tab; make its
-      // workspace the globally visible connection so row-surface lifecycle
-      // tracks the active session.
-      useWorkspaceStore.getState().setVisibleConnectionSession(result.sessionId)
-      showSuccessToast('Connected', profile.name)
-
-      bootstrapSchemaCache(result.sessionId, id).catch((err) => {
-        const msg = err instanceof Error ? err.message : String(err)
-        logFrontend(
-          'warn',
-          ['[connection-store] Schema cache bootstrap failed:', msg].map(String).join(' ')
-        )
+        sessionDatabase: profile.defaultDatabase,
       })
+      showSuccessToast('Connected', profile.name)
 
       // Register session for schema index and trigger initial build (fire-and-forget)
       const schemaIndexStore = useSchemaIndexStore.getState()
-      schemaIndexStore.registerSession(result.sessionId, id)
       schemaIndexStore.triggerBuild(result.sessionId).catch((err) => {
         const msg = err instanceof Error ? err.message : String(err)
         logFrontend(
@@ -151,6 +127,48 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       showErrorToast('Connection failed', errorMsg)
       throw err
     }
+  },
+
+  attachExistingConnection: (session) => {
+    if (get().activeConnections[session.sessionId]) {
+      return true
+    }
+
+    const profile = get().savedConnections.find((connection) => connection.id === session.profileId)
+    if (!profile) {
+      return false
+    }
+
+    const active: ActiveConnection = {
+      id: session.sessionId,
+      profile,
+      sessionDatabase: session.sessionDatabase,
+      status: session.status,
+      serverVersion: session.serverVersion,
+    }
+
+    set((state) => {
+      const activeConnections = { ...state.activeConnections, [session.sessionId]: active }
+      return {
+        activeConnections,
+        activeConnectionOrder: normalizeActiveConnectionOrder(
+          [...state.activeConnectionOrder, session.sessionId],
+          activeConnections
+        ),
+        activeTabId: session.sessionId,
+        error: null,
+      }
+    })
+    useWorkspaceStore.getState().openHistoryTab(session.sessionId, false)
+    useWorkspaceStore.getState().openProcessListTab(session.sessionId)
+    useWorkspaceStore.getState().setVisibleConnectionSession(session.sessionId)
+
+    bootstrapSchemaCache(session.sessionId, session.profileId).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      logFrontend('warn', `[connection-store] Schema cache bootstrap failed: ${msg}`)
+    })
+    useSchemaIndexStore.getState().registerSession(session.sessionId, session.profileId)
+    return true
   },
 
   closeConnection: async (id: string, options?: { force?: boolean }) => {

@@ -12,6 +12,7 @@ use crate::mysql::pool::ConnectionParams;
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::registry::ConnectionStatus;
+use crate::mysql::registry::OpenConnectionSession;
 #[cfg(not(coverage))]
 use crate::mysql::registry::{RegistryEntry, StoredConnectionParams};
 use crate::state::AppState;
@@ -465,6 +466,11 @@ pub fn get_connection_status_impl(
     state.registry.get_status(connection_id)
 }
 
+/// List sessions that remain open in the native connection registry.
+pub fn list_open_connection_sessions_impl(state: &AppState) -> Vec<OpenConnectionSession> {
+    state.registry.list_sessions()
+}
+
 // --- Thin Tauri command wrappers ---
 
 #[cfg(not(coverage))]
@@ -505,4 +511,10 @@ pub fn get_connection_status(
     state: State<AppState>,
 ) -> Option<ConnectionStatus> {
     get_connection_status_impl(&state, &connection_id)
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn list_open_connection_sessions(state: State<AppState>) -> Vec<OpenConnectionSession> {
+    list_open_connection_sessions_impl(&state)
 }

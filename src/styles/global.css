@@ -559,8 +559,7 @@ button {
   /* Elevation + glow only. The inline focus ring is intentionally omitted: the panel is a
      floating popover, and an outset ring would make it look wider than the trigger when the
      trigger's own ring is clipped by an ancestor (e.g. a table cell with hidden overflow). */
-  box-shadow:
-    var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow);
+  box-shadow: var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow);
   -webkit-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
   backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
   max-height: min(320px, 55vh);

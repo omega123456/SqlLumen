@@ -3,6 +3,7 @@ import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
 import { BLOB_SAMPLE_LIST_COLUMNS, BLOB_SAMPLE_TABLE_DATA } from './blob-sample'
 import { DEFAULT_BLOB_VALUE, DEFAULT_BLOB_VALUE_BY_KEY } from './blob-value'
 import { COMMAND_PALETTE_RECENTS_FIXTURE, COMMAND_PALETTE_SCHEMA_FIXTURE } from './command-palette'
+import { DEFAULT_OPEN_CONNECTION_SESSIONS } from './connections'
 import {
   COPY_TO_HOST_OBJECTS,
   COPY_TO_HOST_PROGRESS_COMPLETED,
@@ -43,6 +44,7 @@ import {
 import type { AiModelInfo } from '../../lib/ai-commands'
 import type { LogLevelFilter, LogPage } from '../../lib/log-commands'
 import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
+import type { OpenConnectionSession } from '../../types/connection'
 import type { BlobValueResponse, SchemaMetadataFull } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type {
@@ -95,6 +97,7 @@ type FixtureOverrideDomain =
   | 'snapshotCreatedId'
   | 'schemaMetadataFull'
   | 'commandPaletteRecents'
+  | 'openConnectionSessions'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -122,6 +125,7 @@ type FixtureOverrides = {
   snapshotCreatedId: Record<string, number>
   schemaMetadataFull: Record<string, SchemaMetadataFull>
   commandPaletteRecents: Record<string, string>
+  openConnectionSessions: Record<string, OpenConnectionSession[]>
 }
 
 type FixtureOverrideValueMap = {
@@ -148,6 +152,7 @@ type FixtureOverrideValueMap = {
   snapshotCreatedId: number
   schemaMetadataFull: SchemaMetadataFull
   commandPaletteRecents: string
+  openConnectionSessions: OpenConnectionSession[]
 }
 
 type FixtureRegistryApi = {
@@ -188,6 +193,7 @@ type FixtureRegistryApi = {
   getSnapshotCreatedIdFixture: () => number
   getSchemaMetadataFullFixture: () => SchemaMetadataFull
   getCommandPaletteRecentsFixture: () => string
+  getOpenConnectionSessionsFixture: () => OpenConnectionSession[]
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -294,6 +300,7 @@ const overrides: FixtureOverrides = {
   snapshotCreatedId: {},
   schemaMetadataFull: {},
   commandPaletteRecents: {},
+  openConnectionSessions: {},
 }
 
 function getLogsPageLookupKey(
@@ -573,6 +580,10 @@ export function getCommandPaletteRecentsFixture(): string {
   return overrides.commandPaletteRecents.default ?? DEFAULT_COMMAND_PALETTE_RECENTS_BY_KEY.default
 }
 
+export function getOpenConnectionSessionsFixture(): OpenConnectionSession[] {
+  return overrides.openConnectionSessions.default ?? DEFAULT_OPEN_CONNECTION_SESSIONS
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -616,6 +627,7 @@ export function resetFixtureOverrides(): void {
   overrides.snapshotCreatedId = {}
   overrides.schemaMetadataFull = {}
   overrides.commandPaletteRecents = {}
+  overrides.openConnectionSessions = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -642,6 +654,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getSnapshotCreatedIdFixture,
   getSchemaMetadataFullFixture,
   getCommandPaletteRecentsFixture,
+  getOpenConnectionSessionsFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

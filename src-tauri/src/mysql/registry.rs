@@ -6,10 +6,21 @@ use tokio_util::sync::CancellationToken;
 
 /// Status of a MySQL connection in the registry.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ConnectionStatus {
     Connected,
     Disconnected,
     Reconnecting,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenConnectionSession {
+    pub session_id: String,
+    pub profile_id: String,
+    pub status: ConnectionStatus,
+    pub server_version: String,
+    pub session_database: Option<String>,
 }
 
 /// Parameters stored in memory for reconnection.
@@ -172,6 +183,23 @@ impl ConnectionRegistry {
     pub fn get_profile_id(&self, session_id: &str) -> Option<String> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(session_id).map(|e| e.profile_id.clone())
+    }
+
+    /// List live sessions in deterministic runtime-id order.
+    pub fn list_sessions(&self) -> Vec<OpenConnectionSession> {
+        let map = self.entries.read().expect("registry lock poisoned");
+        let mut sessions = map
+            .values()
+            .map(|entry| OpenConnectionSession {
+                session_id: entry.session_id.clone(),
+                profile_id: entry.profile_id.clone(),
+                status: entry.status.clone(),
+                server_version: entry.server_version.clone(),
+                session_database: entry.connection_params.default_database.clone(),
+            })
+            .collect::<Vec<_>>();
+        sessions.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+        sessions
     }
 
     /// Reverse lookup: find a live, *connected*, writable session bound to the

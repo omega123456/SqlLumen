@@ -14,6 +14,7 @@ import {
   openConnection,
   closeConnection,
   getConnectionStatus,
+  listOpenConnectionSessions,
 } from '../lib/connection-commands'
 import type { ConnectionFormData } from '../types/connection'
 
@@ -346,5 +347,23 @@ describe('getConnectionStatus', () => {
       throw new Error('Status error')
     })
     await expect(getConnectionStatus('conn-1')).rejects.toThrow('Status error')
+  })
+})
+
+describe('listOpenConnectionSessions', () => {
+  it('returns the native registry sessions', async () => {
+    const sessions = [
+      {
+        sessionId: 'session-1',
+        profileId: 'profile-1',
+        status: 'reconnecting' as const,
+        serverVersion: '8.0.35',
+        sessionDatabase: 'reporting',
+      },
+    ]
+    ipc.override('list_open_connection_sessions', () => sessions)
+
+    await expect(listOpenConnectionSessions()).resolves.toEqual(sessions)
+    expect(ipc.calls('list_open_connection_sessions')).toEqual([{}])
   })
 })
