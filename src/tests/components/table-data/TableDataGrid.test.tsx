@@ -507,6 +507,41 @@ describe('TableDataGrid', () => {
     expect(useTableDataStore.getState().tabs.t1.editState).not.toBeNull()
   })
 
+  it('moves the selected row and cell together during read-only keyboard navigation', () => {
+    act(() => {
+      useTableDataStore.setState({
+        tabs: {
+          t1: tab({
+            rows: [
+              [1, 'Ada'],
+              [2, 'Bob'],
+            ],
+            selectedRowKey: { id: 2 },
+            selectedCell: { columnKey: 'name', value: 'Bob' },
+          }),
+        },
+      })
+    })
+
+    render(<TableDataGrid tabId="t1" isReadOnly={true} />)
+    const props = canvasCalls[canvasCalls.length - 1] as {
+      onSelectedCellChange: (pos: { rowIdx: number; idx: number }) => void
+    }
+
+    act(() => {
+      props.onSelectedCellChange({ rowIdx: 0, idx: 1 })
+    })
+
+    expect(useTableDataStore.getState().tabs.t1.selectedRowKey).toEqual({ id: 1 })
+    expect(useTableDataStore.getState().tabs.t1.selectedCell).toEqual({
+      columnKey: 'name',
+      value: 'Ada',
+    })
+    expect(canvasCalls[canvasCalls.length - 1]).toMatchObject({
+      selectedCellPosition: { rowIdx: 0, idx: 1 },
+    })
+  })
+
   it('keyboard row navigation still validates current edits and restores focus without opening an editor', async () => {
     act(() => {
       useTableDataStore.setState({

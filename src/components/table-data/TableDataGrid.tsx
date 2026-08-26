@@ -977,8 +977,10 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           onSelectedCellChange={(pos) => {
             const column = descriptorColumns[pos.idx]
             const row = rowData[pos.rowIdx]
-            if (column && row)
+            if (column && row) {
+              setSelectedRow(tabId, getRowKey(row, pkColumns))
               setSelectedCell(tabId, { columnKey: column.key, value: row[column.key] })
+            }
           }}
           onColumnResize={handleColumnResize}
           onScrollCellChange={handleScrollCellChange}
