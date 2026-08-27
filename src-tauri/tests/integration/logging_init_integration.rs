@@ -1,0 +1,93 @@
+//! Covers `logging::init_logging`, filter reload, and double-init error (one test — global subscriber).
+
+use crate::common;
+
+struct RustLogGuard {
+    previous: Option<String>,
+}
+
+impl RustLogGuard {
+    fn isolate() -> Self {
+        let previous = std::env::var("RUST_LOG").ok();
+        std::env::remove_var("RUST_LOG");
+        Self { previous }
+    }
+}
+
+impl Drop for RustLogGuard {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(v) => {
+                std::env::set_var("RUST_LOG", v);
+            }
+            None => {
+                std::env::remove_var("RUST_LOG");
+            }
+        }
+    }
+}
+
+#[test]
+fn init_logging_and_reload_helpers() {
+    let _g = RustLogGuard::isolate();
+    let dir = tempfile::tempdir().expect("tempdir");
+    let log_db_path = dir.path().join("sqllumen-logs.db");
+    // Mirror production startup ordering: the logs database is initialized
+    // (migrations applied + auto-vacuum conversion) once before logging is wired
+    // up. The log-writer thread then opens the already-migrated database with a
+    // plain open + pragmas via `open_log_database`.
+    let _logs_conn = sqllumen_lib::logging::log_store::initialize_log_database(&log_db_path)
+        .expect("initialize log db");
+    let init = sqllumen_lib::logging::init_logging(&log_db_path).expect("init logging");
+    assert!(!init.rust_log_env_set);
+
+    // Emit a tracing event to exercise BracketLevelFormat::format_event
+    tracing::info!(target: "sqllumen_lib::logging", "logging init integration test event");
+
+    assert!(
+        log_db_path.exists(),
+        "expected sqlite log database to be created"
+    );
+
+    let log_conn =
+        sqllumen_lib::logging::log_store::open_log_database(&log_db_path).expect("open log db");
+    for _ in 0..20 {
+        let count: i64 = log_conn
+            .query_row("SELECT COUNT(*) FROM log_entries", [], |row| row.get(0))
+            .expect("count log entries");
+        if count > 0 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let count: i64 = log_conn
+        .query_row("SELECT COUNT(*) FROM log_entries", [], |row| row.get(0))
+        .expect("count log entries");
+    assert!(
+        count > 0,
+        "expected emitted log event to reach sqlite log store"
+    );
+
+    let conn = common::test_db();
+    sqllumen_lib::db::settings::set_setting(
+        &conn,
+        sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY,
+        "warn",
+    )
+    .expect("set log.level");
+    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &init.filter_reload);
+
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "error");
+    sqllumen_lib::logging::reload_log_level_from_setting_value(None, "trace");
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "bogus");
+
+    let second = sqllumen_lib::logging::init_logging(&log_db_path);
+    let err = match second {
+        Err(e) => e,
+        Ok(_) => panic!("second init should fail"),
+    };
+    assert!(
+        err.contains("subscriber") || err.contains("already"),
+        "unexpected err: {err}"
+    );
+}

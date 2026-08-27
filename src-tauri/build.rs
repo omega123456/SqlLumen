@@ -6,15 +6,13 @@ fn main() {
     // activating comctl32 v6, plus VERSIONINFO and icon. Tauri links this to the bin
     // target via `rustc-link-arg-bins`.
     //
-    // Integration test binaries (in tests/) also need the comctl32 v6 manifest because
-    // dependencies (sqlx, keyring, tokio) cause the linker to pull in tao/wry symbols
-    // that reference TaskDialogIndirect. Without the manifest, test binaries crash
-    // with STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139).
+    // The integration test binary also needs the comctl32 v6 manifest because dependencies
+    // (sqlx, keyring, tokio) cause the linker to pull in tao/wry symbols that reference
+    // TaskDialogIndirect. Without the manifest, the test binary crashes with
+    // STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139).
     //
-    // We link the same resource.lib to test targets via `rustc-link-arg-tests`.
-    // This applies to `[[test]]` targets (integration tests in tests/ dir) but NOT
-    // to the lib test target (`cargo test --lib`). Command/bootstrap coverage lives
-    // under tests/commands_*_integration.rs and tests/app_init_integration.rs.
+    // We link the same resource.lib to the test target via `rustc-link-arg-tests`.
+    // Command/bootstrap coverage lives under tests/integration/.
     #[cfg(windows)]
     {
         let out_dir = std::env::var("OUT_DIR").unwrap();

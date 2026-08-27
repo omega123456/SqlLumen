@@ -197,7 +197,9 @@ Follow these steps on a new machine before **Quick start** or **Contributing**.
    ```bash
    pnpm exec playwright install chromium
    ```
-7. **cargo-nextest (for Rust integration tests)** — Not installed by `pnpm install`. The repo uses Nextest via Cargo aliases in `.cargo/config.toml` (`sqllumen-test-integration`, `sqllumen-llvm-cov`). From any directory:
+7. **cargo-nextest (for Rust integration tests)** — This tool is not installed by `pnpm install`.
+   The repo compiles the suites under `src-tauri/tests/integration/` into one `integration` target.
+   Cargo aliases in `.cargo/config.toml` run this target. Install the tool from any directory:
 
    ```bash
    cargo install cargo-nextest
@@ -246,7 +248,7 @@ pnpm dev
 | `pnpm test`                   | Run Vitest once                                                                                                                                                                                                                                                                                 |
 | `pnpm test:watch`             | Vitest in watch mode                                                                                                                                                                                                                                                                            |
 | `pnpm test:coverage`          | Vitest with coverage thresholds                                                                                                                                                                                                                                                                 |
-| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; targets and flags in `.cargo/config.toml`)                                                                                                                                                    |
+| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; single `integration` target and flags in `.cargo/config.toml`)                                                                                                                                                    |
 | `pnpm test:rust:coverage`     | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo sqllumen-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`)                                                                                                                                |
 | `pnpm test:all`               | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                                                                                                                                                |
 | `pnpm test:e2e`               | Playwright E2E tests (all specs, including visual regression)                                                                                                                                                                                                                                   |

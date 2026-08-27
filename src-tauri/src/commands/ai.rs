@@ -149,7 +149,7 @@ pub async fn list_ai_models_impl(endpoint_base: String) -> Result<AiModelsRespon
 
     tracing::info!(url = %url, "listing AI models");
 
-    let client = reqwest::Client::builder()
+    let client = crate::http_client_builder()
         .timeout(LIST_MODELS_TIMEOUT)
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
@@ -241,7 +241,7 @@ pub async fn ai_query_expand_impl(
                 "query expansion request failed on shared client; retrying with a fresh connection"
             );
 
-            let retry_client = reqwest::Client::builder()
+            let retry_client = crate::http_client_builder()
                 .connect_timeout(QUERY_EXPAND_CONNECT_TIMEOUT)
                 .pool_max_idle_per_host(0)
                 .build()

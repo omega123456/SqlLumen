@@ -27,10 +27,10 @@ pnpm test:e2e           # All Playwright specs under e2e/ (includes screenshots.
 # Single Vitest test file
 pnpm vitest run src/tests/path/to/file.test.ts
 
-# Single Rust test suite (from repo root)
-cargo nextest run --manifest-path src-tauri/Cargo.toml --features test-utils --test <suite_name>
+# Single Rust test or module (from repo root)
+cargo nextest run --manifest-path src-tauri/Cargo.toml --features test-utils --test integration -E 'test(/<filter>/)'
 # Example:
-cargo nextest run --manifest-path src-tauri/Cargo.toml --features test-utils --test settings_integration
+cargo nextest run --manifest-path src-tauri/Cargo.toml --features test-utils --test integration -E 'test(/settings_integration/)'
 
 # Regenerate Playwright screenshot baselines after intentional visual changes
 # Use test:e2e --update-snapshots to rebuild ALL baselines (screenshots.spec.ts + every other spec)
@@ -170,9 +170,10 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 
 ### Rust
 
-- Tests only in `src-tauri/tests/<area>_<focus>_integration.rs`. Name files after what they test, not meta-goals like `coverage_boost`.
+- Tests only in `src-tauri/tests/integration/<area>_<focus>_integration.rs`. Name files after what they test, not meta-goals like `coverage_boost`.
+- Add every new test file as a module in `src-tauri/tests/integration/main.rs`. Never add a Rust test file directly under `src-tauri/tests/`; that creates another expensive integration-test binary.
+- Build Reqwest clients with `sqllumen_lib::http_client()` or `sqllumen_lib::http_client_builder()`. Never call `reqwest::Client::new()` or `reqwest::Client::builder()` directly.
 - Use in-memory SQLite (`Connection::open_in_memory()`) — never mock the DB layer.
-- After adding a new test file, register it in **both** aliases in `.cargo/config.toml`: `sqllumen-test-integration` and `sqllumen-llvm-cov`.
 - Run with `pnpm test:rust` for fast iteration; `pnpm test:rust:coverage` for the coverage gate.
 
 ### Playwright (E2E + Visual Regression)

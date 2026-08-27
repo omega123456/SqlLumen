@@ -135,7 +135,7 @@ fn app_state_with_db(conn: Connection) -> AppState {
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        http_client: reqwest::Client::new(),
+        http_client: sqllumen_lib::http_client(),
         embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
     }
 }

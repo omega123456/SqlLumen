@@ -711,7 +711,7 @@ async fn stream_chat_inner<R: Runtime>(
     }
 
     // Create the HTTP client
-    let client = match reqwest::Client::builder()
+    let client = match crate::http_client_builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .build()
@@ -1143,7 +1143,7 @@ async fn stream_responses_completion<R: Runtime>(
         }
     }
 
-    let client = match reqwest::Client::builder()
+    let client = match crate::http_client_builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(REQUEST_TIMEOUT)
         .build()

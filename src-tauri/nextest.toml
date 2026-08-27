@@ -2,10 +2,8 @@
 # https://nexte.st/book/configuration.html
 
 [profile.default]
-# Which integration binaries run is set in the repo-root `.cargo/config.toml` aliases
-# (`sqllumen-test-integration`, `sqllumen-llvm-cov`) via repeated `--test <name>`.
-# Nextest `default-filter` alone is not enough: Cargo still builds/lists the lib test harness,
-# which breaks `cargo llvm-cov nextest` on some Windows setups when that binary is probed.
+# The repo-root `.cargo/config.toml` aliases select the single `integration` test binary.
+# Selecting it explicitly avoids building or listing unrelated Cargo targets.
 # Integration tests may block on I/O or DB; avoid false “hung test” kills.
 slow-timeout = { period = "120s", terminate-after = 2 }
 # End-of-run summary: list slow tests alongside pass/fail totals.

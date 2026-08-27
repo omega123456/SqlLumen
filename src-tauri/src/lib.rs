@@ -9,6 +9,17 @@ pub mod mysql;
 pub mod schema_index;
 pub mod state;
 
+pub fn http_client_builder() -> reqwest::ClientBuilder {
+    let builder = reqwest::Client::builder();
+    #[cfg(feature = "test-utils")]
+    let builder = builder.no_proxy();
+    builder
+}
+
+pub fn http_client() -> reqwest::Client {
+    http_client_builder().build().expect("http client")
+}
+
 use db::connection::open_database;
 use db::migrations::{
     run_migrations, MIGRATION_CONNECTION_CASCADE_CLEANUP, MIGRATION_VACUUM_STATE_MAIN,
@@ -327,7 +338,7 @@ pub fn run() {
                 index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
-                http_client: reqwest::Client::builder()
+                http_client: crate::http_client_builder()
                     // Give Ollama (and other local LLM servers) up to 30 s to
                     // finish loading a model before refusing the connection.
                     .connect_timeout(std::time::Duration::from_secs(30))

@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
 function readCommand(command, args) {
@@ -56,10 +56,36 @@ const env = ensureRustCoverageTools({ ...process.env })
 // Use `rustup run stable cargo` to ensure the rustup-managed rustc is used,
 // so cargo-llvm-cov resolves llvm-profdata via the correct sysroot regardless
 // of which `cargo` binary PATH resolves to (e.g. Homebrew vs rustup shim).
+const coverageDepsDir = path.join('src-tauri', 'target', 'llvm-cov-target', 'debug', 'deps')
+const hasLegacyTestTargets =
+  existsSync(coverageDepsDir) &&
+  readdirSync(coverageDepsDir).some((name) => /_integration-[0-9a-f]+/.test(name))
+const cleanModeArgs = hasLegacyTestTargets ? [] : ['--profraw-only']
+
 const hasRustup = Boolean(tryReadCommand('rustup', ['--version']))
 const [command, commandArgs] = hasRustup
   ? ['rustup', ['run', 'stable', 'cargo', 'sqllumen-llvm-cov']]
   : ['cargo', ['sqllumen-llvm-cov']]
+const cleanArgs = hasRustup
+  ? [
+      'run',
+      'stable',
+      'cargo',
+      'llvm-cov',
+      'clean',
+      ...cleanModeArgs,
+      '--manifest-path',
+      'src-tauri/Cargo.toml',
+    ]
+  : [
+      'llvm-cov',
+      'clean',
+      ...cleanModeArgs,
+      '--manifest-path',
+      'src-tauri/Cargo.toml',
+    ]
+
+execFileSync(command, cleanArgs, { cwd: process.cwd(), env, stdio: 'inherit' })
 
 const child = spawn(command, commandArgs, {
   cwd: process.cwd(),
