@@ -41,6 +41,9 @@
   position: absolute;
   inset: 0;
   visibility: hidden;
+  /* Skip layout/paint of retained hidden editors and grids (WebKit lays them out otherwise).
+     Unlike display: none, this keeps scroll positions. */
+  content-visibility: hidden;
   pointer-events: none;
 }
 

@@ -3,7 +3,7 @@
  * theme switching, query store integration, and autocomplete.
  */
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as MonacoType from 'monaco-editor'
 import { useThemeStore } from '../../stores/theme-store'
@@ -29,7 +29,6 @@ import './signature-help-provider'
 
 // Register CodeLens provider for Run + Ask AI per statement (side-effect import)
 import './codelens-provider'
-import { triggerCodeLensRefresh } from './codelens-provider'
 
 interface MonacoEditorWrapperProps {
   tabId: string
@@ -50,6 +49,37 @@ interface MonacoEditorWrapperProps {
 const MONACO_SHORTCUT_ACTIONS = ['execute-query', 'format-query', 'new-query-tab'] as const
 
 type MonacoShortcutActionId = (typeof MONACO_SHORTCUT_ACTIONS)[number]
+
+// Hoisted so nested option objects keep their identity. Every updateOptions()
+// call fires a global config event that Monaco handles by walking all models.
+const STATIC_EDITOR_OPTIONS: MonacoType.editor.IStandaloneEditorConstructionOptions = {
+  suggestFontSize: 14,
+  suggestLineHeight: 36,
+  scrollBeyondLastLine: false,
+  tabSize: 2,
+  insertSpaces: true,
+  automaticLayout: true,
+  fixedOverflowWidgets: true,
+  padding: { top: 16, bottom: 16 },
+  overviewRulerLanes: 0,
+  hideCursorInOverviewRuler: true,
+  scrollbar: {
+    vertical: 'auto',
+    horizontal: 'auto',
+    verticalScrollbarSize: 8,
+    horizontalScrollbarSize: 8,
+  },
+  suggest: {
+    showIcons: true,
+    showWords: false,
+  },
+  parameterHints: { enabled: true },
+  quickSuggestions: {
+    other: true,
+    comments: false,
+    strings: false,
+  },
+}
 
 function getMonacoKeyCode(key: string, monacoInstance: typeof MonacoType): number | null {
   const normalizedKey = key.trim().toUpperCase()
@@ -288,10 +318,9 @@ export function MonacoEditorWrapper({
       })
     }
 
-    // Subscribe to content changes so CodeLens positions refresh as the user types.
-    // Also keep the AI attached context in sync when the user edits inline.
+    // Keep the selection and AI attached context in sync when the user edits inline.
+    // (Monaco's CodeLens controller already refreshes this editor's lenses on edit.)
     const contentChangeDisposable = editor.onDidChangeModelContent(() => {
-      triggerCodeLensRefresh()
       syncSelectedText()
 
       // If there is an attached AI context for this tab, update its SQL to
@@ -345,35 +374,41 @@ export function MonacoEditorWrapper({
     if (onMount) onMount(editor)
   }
 
-  // Subscribe to settings changes and update the live editor instance
-  useEffect(() => {
-    const editor = editorRef.current
-    if (!editor) return
-    editor.updateOptions({
-      fontFamily: `'${editorFontFamily}', 'Fira Code', ui-monospace, monospace`,
+  // Memoized so @monaco-editor/react only calls updateOptions() on real changes.
+  const editorOptions = useMemo(
+    () => ({
+      ...STATIC_EDITOR_OPTIONS,
+      readOnly: isReadOnly,
       fontSize: editorFontSize || 14,
       lineHeight: (editorFontSize || 14) * (editorLineHeight || 1.6),
-      wordWrap: editorWordWrap ? 'on' : 'off',
+      fontFamily: `'${editorFontFamily}', 'Fira Code', ui-monospace, monospace`,
       minimap: { enabled: editorMinimap },
-      lineNumbers: editorLineNumbers ? 'on' : 'off',
-    })
-  }, [
-    editorFontFamily,
-    editorFontSize,
-    editorLineHeight,
-    editorWordWrap,
-    editorMinimap,
-    editorLineNumbers,
-  ])
+      lineNumbers: editorLineNumbers ? ('on' as const) : ('off' as const),
+      wordWrap: editorWordWrap ? ('on' as const) : ('off' as const),
+    }),
+    [
+      isReadOnly,
+      editorFontSize,
+      editorLineHeight,
+      editorFontFamily,
+      editorMinimap,
+      editorLineNumbers,
+      editorWordWrap,
+    ]
+  )
 
-  function handleChange(value: string | undefined) {
-    const v = value ?? ''
-    if (overrideOnChange) {
-      overrideOnChange(v)
-    } else {
-      setContent(tabId, v)
-    }
-  }
+  // Stable identity: the library re-subscribes onDidChangeModelContent whenever onChange changes.
+  const handleChange = useCallback(
+    (value: string | undefined) => {
+      const v = value ?? ''
+      if (overrideOnChange) {
+        overrideOnChange(v)
+      } else {
+        setContent(tabId, v)
+      }
+    },
+    [overrideOnChange, setContent, tabId]
+  )
 
   return (
     <div className={styles.editorContainer} data-testid="monaco-editor-wrapper">
@@ -385,41 +420,7 @@ export function MonacoEditorWrapper({
         value={effectiveContent}
         onChange={handleChange}
         onMount={handleEditorMount}
-        options={{
-          readOnly: isReadOnly,
-          fontSize: editorFontSize || 14,
-          lineHeight: (editorFontSize || 14) * (editorLineHeight || 1.6),
-          suggestFontSize: 14,
-          suggestLineHeight: 36,
-          fontFamily: `'${editorFontFamily}', 'Fira Code', ui-monospace, monospace`,
-          minimap: { enabled: editorMinimap },
-          lineNumbers: editorLineNumbers ? 'on' : 'off',
-          scrollBeyondLastLine: false,
-          wordWrap: editorWordWrap ? 'on' : 'off',
-          tabSize: 2,
-          insertSpaces: true,
-          automaticLayout: true,
-          fixedOverflowWidgets: true,
-          padding: { top: 16, bottom: 16 },
-          overviewRulerLanes: 0,
-          hideCursorInOverviewRuler: true,
-          scrollbar: {
-            vertical: 'auto',
-            horizontal: 'auto',
-            verticalScrollbarSize: 8,
-            horizontalScrollbarSize: 8,
-          },
-          suggest: {
-            showIcons: true,
-            showWords: false,
-          },
-          parameterHints: { enabled: true },
-          quickSuggestions: {
-            other: true,
-            comments: false,
-            strings: false,
-          },
-        }}
+        options={editorOptions}
       />
       {isAiLocked && (
         <div

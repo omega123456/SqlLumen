@@ -42,4 +42,12 @@ describe('registerMonacoThemes', () => {
       expect.any(Object)
     )
   })
+
+  it('defines themes only once per Monaco instance', () => {
+    const mockMonaco = { editor: { defineTheme: vi.fn() } }
+    const instance = mockMonaco as unknown as typeof import('monaco-editor')
+    registerMonacoThemes(instance)
+    registerMonacoThemes(instance)
+    expect(mockMonaco.editor.defineTheme).toHaveBeenCalledTimes(2)
+  })
 })

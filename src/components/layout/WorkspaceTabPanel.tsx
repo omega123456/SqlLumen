@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, memo, Suspense } from 'react'
 import { TableDataTab } from '../table-data/TableDataTab'
 import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
 import { QueryEditorTab } from '../query-editor/QueryEditorTab'
@@ -26,7 +26,9 @@ export interface WorkspaceTabPanelProps {
   sessionId?: string
 }
 
-export function WorkspaceTabPanel({
+// Memoized so switching tabs re-renders only the two panels whose isActive flips,
+// not every retained editor/grid.
+export const WorkspaceTabPanel = memo(function WorkspaceTabPanel({
   tab,
   isActive = true,
   connectionId,
@@ -73,4 +75,4 @@ export function WorkspaceTabPanel({
       )}
     </div>
   )
-}
+})

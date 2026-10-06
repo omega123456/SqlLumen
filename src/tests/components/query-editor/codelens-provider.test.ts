@@ -14,7 +14,6 @@ import {
   handleAskAi,
   provideCodeLenses,
   onDidChangeEmitter,
-  triggerCodeLensRefresh,
 } from '../../../components/query-editor/codelens-provider'
 import { useQueryStore } from '../../../stores/query-store'
 import { useAiStore } from '../../../stores/ai-store'
@@ -388,23 +387,25 @@ describe('global command registration', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// triggerCodeLensRefresh
-// ---------------------------------------------------------------------------
-
-describe('triggerCodeLensRefresh', () => {
-  it('coalesces repeated refresh requests until the debounce timer fires', async () => {
-    vi.useFakeTimers()
+describe('ai.enabled subscription', () => {
+  it('fires the CodeLens change event only when ai.enabled flips', () => {
+    const initial = useSettingsStore.getState().getSetting('ai.enabled') === 'true'
     vi.mocked(onDidChangeEmitter.fire).mockClear()
 
-    triggerCodeLensRefresh()
-    triggerCodeLensRefresh()
-    triggerCodeLensRefresh()
-
-    expect(onDidChangeEmitter.fire).not.toHaveBeenCalled()
-
-    await vi.runOnlyPendingTimersAsync()
-
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': String(!initial) },
+    })
     expect(onDidChangeEmitter.fire).toHaveBeenCalledTimes(1)
+
+    // Unrelated settings changes do not refresh lenses
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'editor.fontSize': '15' },
+    })
+    expect(onDidChangeEmitter.fire).toHaveBeenCalledTimes(1)
+
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': String(initial) },
+    })
+    expect(onDidChangeEmitter.fire).toHaveBeenCalledTimes(2)
   })
 })

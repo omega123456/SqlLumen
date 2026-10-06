@@ -9,6 +9,7 @@
  *
  * When `isActive` is false the component:
  *   - hides its root and pauses descendant animations (`visibility: hidden`,
+ *     `content-visibility: hidden`,
  *     `animation-play-state: paused`, `pointer-events: none`,
  *     `aria-hidden`, `inert`)
  *   - passes no visible active workspace tab into `WorkspaceBody`

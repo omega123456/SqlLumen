@@ -7,7 +7,6 @@ import { useAiStore } from '../../../stores/ai-store'
 import { useFavoritesStore } from '../../../stores/favorites-store'
 import { DEFAULT_SHORTCUTS, useShortcutStore } from '../../../stores/shortcut-store'
 import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
-import * as CodeLensProviderModule from '../../../components/query-editor/codelens-provider'
 import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
 import * as MonacoEditorReactModule from '@monaco-editor/react'
 
@@ -201,9 +200,6 @@ beforeEach(() => {
   })
   vi.spyOn(SchemaMetadataCacheModule, 'getPendingLoad').mockReturnValue(null)
 
-  // Spy on codelens-provider — triggerCodeLensRefresh is used to verify calls
-  vi.spyOn(CodeLensProviderModule, 'triggerCodeLensRefresh')
-
   // Spy on completion-service — track model connection registration
   vi.spyOn(CompletionServiceModule, 'registerModelConnection')
   vi.spyOn(CompletionServiceModule, 'unregisterModelConnection')
@@ -217,9 +213,6 @@ function mockRegisterModelConnection() {
 }
 function mockUnregisterModelConnection() {
   return CompletionServiceModule.unregisterModelConnection as ReturnType<typeof vi.fn>
-}
-function mockTriggerCodeLensRefresh() {
-  return CodeLensProviderModule.triggerCodeLensRefresh as ReturnType<typeof vi.fn>
 }
 
 describe('MonacoEditorWrapper', () => {
@@ -571,6 +564,28 @@ describe('MonacoEditorWrapper', () => {
       expect(props.options.lineNumbers).toBe('off')
     })
 
+    it('keeps the options reference stable across unrelated re-renders', () => {
+      useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      const lastOptions = () =>
+        mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1][0].options
+      const initialOptions = lastOptions()
+
+      // Content change re-renders the wrapper but must not produce new options
+      act(() => {
+        useQueryStore.getState().setContent('tab-1', 'SELECT 2')
+      })
+      expect(screen.getByTestId('monaco-editor')).toHaveValue('SELECT 2')
+      expect(lastOptions()).toBe(initialOptions)
+
+      // A real settings change produces a new options object
+      act(() => {
+        useSettingsStore.setState({ settings: { 'editor.fontSize': '18' } })
+      })
+      expect(lastOptions()).not.toBe(initialOptions)
+      expect(lastOptions().fontSize).toBe(18)
+    })
+
     it('registers the current shortcut-store binding for new-query-tab', () => {
       useShortcutStore.setState({
         shortcuts: {
@@ -609,16 +624,6 @@ describe('MonacoEditorWrapper', () => {
   // -----------------------------------------------------------------------
 
   describe('onDidChangeModelContent callback', () => {
-    it('requests a CodeLens refresh when editor content changes', () => {
-      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
-
-      // The onDidChangeModelContent callback was captured during mount
-      expect(capturedContentChangeHandler).not.toBeNull()
-      capturedContentChangeHandler!()
-
-      expect(mockTriggerCodeLensRefresh()).toHaveBeenCalledTimes(1)
-    })
-
     it('does not rewrite unchanged selected text on plain typing', () => {
       render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
@@ -666,8 +671,6 @@ describe('MonacoEditorWrapper', () => {
 
       capturedContentChangeHandler!()
 
-      // triggerCodeLensRefresh should still be called
-      expect(mockTriggerCodeLensRefresh()).toHaveBeenCalledTimes(1)
       // AI store should have no attached context for this tab
       const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
       expect(ctx).toBeFalsy()
@@ -689,8 +692,6 @@ describe('MonacoEditorWrapper', () => {
 
       capturedContentChangeHandler!()
 
-      // triggerCodeLensRefresh is still called
-      expect(mockTriggerCodeLensRefresh()).toHaveBeenCalledTimes(1)
       // The context should remain unchanged (the old value) since model was null
       const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
       expect(ctx!.sql).toBe('old')

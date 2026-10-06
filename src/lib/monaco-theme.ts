@@ -26,7 +26,14 @@ import type * as Monaco from 'monaco-editor'
 
 export type MonacoThemeName = 'precision-studio-dark' | 'precision-studio-light'
 
+// Re-defining the active theme makes Monaco rewrite its global stylesheet and
+// repaint every editor, so each Monaco instance only gets its themes once.
+const registeredInstances = new WeakSet<typeof Monaco>()
+
 export function registerMonacoThemes(monaco: typeof Monaco): void {
+  if (registeredInstances.has(monaco)) return
+  registeredInstances.add(monaco)
+
   monaco.editor.defineTheme('precision-studio-dark', {
     base: 'vs-dark',
     inherit: true,

@@ -204,8 +204,6 @@ export function provideCodeLenses(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const onDidChangeEmitter = new monaco.Emitter<any>()
-const CODELENS_REFRESH_DEBOUNCE_MS = 75
-let pendingCodeLensRefresh: ReturnType<typeof setTimeout> | null = null
 
 // ---------------------------------------------------------------------------
 // Build and register the CodeLens provider object
@@ -266,18 +264,3 @@ monaco.editor.registerCommand(
 
 // Export for testing
 export { onDidChangeEmitter, disposable }
-
-/**
- * Trigger a CodeLens refresh so Monaco re-queries `provideCodeLenses`.
- * Call this when editor content changes so lens positions stay in sync.
- */
-export function triggerCodeLensRefresh(): void {
-  if (pendingCodeLensRefresh !== null) {
-    clearTimeout(pendingCodeLensRefresh)
-  }
-
-  pendingCodeLensRefresh = setTimeout(() => {
-    pendingCodeLensRefresh = null
-    onDidChangeEmitter.fire(codeLensProvider)
-  }, CODELENS_REFRESH_DEBOUNCE_MS)
-}
