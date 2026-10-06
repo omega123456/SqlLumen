@@ -436,6 +436,9 @@ export function ResultPanel({
         <FkLookupProvider onFkLookup={handleFkLookup}>
           {viewMode === 'grid' && (
             <ResultGridView
+              // Remount per result so the grid's internal checkbox selection
+              // doesn't leak between result sub-tabs.
+              key={activeResultIndex}
               columns={columns}
               rows={rows}
               sortColumn={sortColumn}

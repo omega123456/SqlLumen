@@ -157,6 +157,13 @@ export function ResultGridView({
     [storeSetCheckedRowIndices, tabId]
   )
 
+  // The grid always mounts with no checked rows (e.g. after switching result
+  // sub-tabs or view modes), so drop any stale checked indices from the store
+  // to keep the toolbar's copy/delete state in sync with what's visible.
+  useEffect(() => {
+    storeSetCheckedRowIndices(tabId, [])
+  }, [storeSetCheckedRowIndices, tabId])
+
   // When the store's checked set transitions from non-empty to empty (e.g. the
   // toolbar cleared it after a bulk delete), push a reset signal down to the
   // grid so its internal CompactSelection.rows checkmarks are cleared too.

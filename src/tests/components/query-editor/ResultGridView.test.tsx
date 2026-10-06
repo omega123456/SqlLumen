@@ -154,6 +154,21 @@ describe('ResultGridView', () => {
     expect(setCheckedRowIndices).toHaveBeenCalledWith('tab-1', [0, 1])
   })
 
+  it('clears stale checked rows from the active result on mount', () => {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            results: [{ ...DEFAULT_RESULT_STATE, checkedRowIndices: [0, 1] }],
+            activeResultIndex: 0,
+          },
+        },
+      } as unknown as Parameters<typeof useQueryStore.setState>[0])
+    })
+    render(<ResultGridView {...baseProps} />)
+    expect(useQueryStore.getState().tabs['tab-1'].results[0].checkedRowIndices).toEqual([])
+  })
+
   it('bumps resetSelectionKey when the store checked set clears after a delete', () => {
     function seedCheckedIndices(indices: number[]) {
       act(() => {
@@ -168,8 +183,9 @@ describe('ResultGridView', () => {
       })
     }
 
-    seedCheckedIndices([0, 1])
     const { rerender } = render(<ResultGridView {...baseProps} />)
+    seedCheckedIndices([0, 1])
+    rerender(<ResultGridView {...baseProps} />)
     const initialKey = (mockCanvasBaseGridView.mock.lastCall?.[0] as { resetSelectionKey: number })
       .resetSelectionKey
 
