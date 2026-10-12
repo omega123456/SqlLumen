@@ -36,6 +36,7 @@ const DEFAULT_COLUMN_WIDTH = 120
 // Glide's default maxColumnWidth is 500px, which caps how wide a user can drag a
 // column. Lift it to an effectively-unreachable value so resizing is unbounded.
 const MAX_COLUMN_WIDTH = 100000
+const LAYER_REFRESH_DELAY_MS = 100
 
 function getColumnWidth(column: GlideGridColumn): number {
   return 'width' in column && typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
@@ -140,6 +141,31 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   const { rowHeight, headerHeight } = useGridDimensions()
   const [internalSelection, setInternalSelection] = useState<GridSelection | undefined>(undefined)
   const activeSelection = selection ?? internalSelection
+  const hasSize = size.width > 0 && size.height > 0
+
+  // WebKit (seen with scaled HiDPI modes) intermittently composites a freshly drawn canvas
+  // from a stale low-res layer, leaving the grid blurry until the tab is hidden and shown.
+  // Briefly promoting the host to its own compositing layer forces a rebuild without hiding
+  // anything; re-run once the size settles since every resize reallocates the canvas.
+  useEffect(() => {
+    const host = hostRef.current
+    if (!hasSize || !host) return
+    let frame = 0
+    const reset = () => {
+      host.style.isolation = ''
+      host.style.willChange = ''
+    }
+    const timer = window.setTimeout(() => {
+      host.style.isolation = 'isolate'
+      host.style.willChange = 'transform'
+      frame = requestAnimationFrame(() => (frame = requestAnimationFrame(reset)))
+    }, LAYER_REFRESH_DELAY_MS)
+    return () => {
+      window.clearTimeout(timer)
+      cancelAnimationFrame(frame)
+      reset()
+    }
+  }, [hasSize, size])
 
   useEffect(() => {
     const portal = document.getElementById('portal')
@@ -252,7 +278,6 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   )
 
   const hostClassName = className ? `glide-grid-host ${className}` : 'glide-grid-host'
-  const hasSize = size.width > 0 && size.height > 0
   const serializedColumnWidths = useMemo(
     () => JSON.stringify(columns.map(getColumnWidth)),
     [columns]

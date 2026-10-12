@@ -20,7 +20,7 @@ test-utils = []
 tauri-build = { version = "~2.6.2", features = [] }
 
 [dependencies]
-tauri = { version = "~2.11.2", features = ["devtools"] }
+tauri = { version = "~2.11.2", features = [] }
 tauri-plugin-dialog = { version = "~2.7.1", optional = true }
 tauri-plugin-clipboard-manager = "~2.3.2"
 tauri-plugin-prevent-default = "~4.0.4"

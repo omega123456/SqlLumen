@@ -399,4 +399,33 @@ describe('GlideDataGrid', () => {
       '[120]'
     )
   })
+
+  it('briefly promotes the host to its own layer after each resize to rebuild a stale canvas layer', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame'] })
+    try {
+      const grid = () => (
+        <GlideDataGrid columns={[]} rows={[]} getCellContent={vi.fn()} data-testid="layer-grid" />
+      )
+      const { rerender } = render(grid())
+      const host = screen.getByTestId('layer-grid')
+      const expectPromoted = (promoted: boolean) => {
+        expect(host.style.isolation).toBe(promoted ? 'isolate' : '')
+        expect(host.style.willChange).toBe(promoted ? 'transform' : '')
+      }
+      expectPromoted(false)
+
+      act(() => vi.advanceTimersByTime(100))
+      expectPromoted(true)
+      act(() => vi.advanceTimersToNextFrame())
+      act(() => vi.advanceTimersToNextFrame())
+      expectPromoted(false)
+
+      mockSize = { width: 500, height: 300 }
+      rerender(grid())
+      act(() => vi.advanceTimersByTime(100))
+      expectPromoted(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
