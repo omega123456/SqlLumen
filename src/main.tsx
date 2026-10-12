@@ -11,6 +11,13 @@ import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
 import { hasTauriApis } from './lib/tauri-env'
 
+// Canvas grids (glide) only repaint when `document.fonts.ready` settles, and webfonts are
+// fetched lazily on first DOM use. Request the grid's mono faces up front so the first
+// canvas paint isn't stuck on a fallback font until the grid remounts.
+for (const font of ['13px', '700 10px', 'italic 13px']) {
+  void document.fonts?.load(`${font} "JetBrains Mono"`)
+}
+
 document.documentElement.dataset.windowFocused = String(document.hasFocus())
 window.addEventListener('focus', () => (document.documentElement.dataset.windowFocused = 'true'))
 window.addEventListener('blur', () => (document.documentElement.dataset.windowFocused = 'false'))
