@@ -101,7 +101,7 @@ describe('CommandPalette', () => {
     vi.spyOn(ObjectActivationModule, 'activateColumnFromPalette').mockImplementation(
       activateColumnFromPaletteMock
     )
-    useCommandPaletteStore.setState({ isOpen: false })
+    useCommandPaletteStore.setState({ isOpen: false, scopeToTable: false })
     useConnectionStore.setState({
       activeConnections: {},
       activeConnectionOrder: [],
@@ -147,7 +147,7 @@ describe('CommandPalette', () => {
       },
       activeTabByConnection: { 'session-1': 'orders-tab' },
     })
-    useCommandPaletteStore.setState({ isOpen: true })
+    useCommandPaletteStore.setState({ isOpen: true, scopeToTable: true })
 
     render(<CommandPalette />)
 
@@ -158,6 +158,33 @@ describe('CommandPalette', () => {
     expect(screen.getByRole('listbox', { name: 'Columns' })).toHaveTextContent(
       'shipping_amount · DECIMAL(12,2)'
     )
+  })
+
+  it('starts unscoped on a table view when not opened in table scope', async () => {
+    seedOrdersConnection()
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'session-1': [
+          {
+            id: 'orders-tab',
+            type: 'table-data',
+            label: 'orders',
+            connectionId: 'session-1',
+            databaseName: 'analytics',
+            objectName: 'orders',
+            objectType: 'table',
+          },
+        ],
+      },
+      activeTabByConnection: { 'session-1': 'orders-tab' },
+    })
+    useCommandPaletteStore.setState({ isOpen: true })
+
+    render(<CommandPalette />)
+
+    expect(await screen.findByTestId('command-palette-input')).toBeInTheDocument()
+    expect(screen.queryByTestId('command-palette-pill-database')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('command-palette-pill-table')).not.toBeInTheDocument()
   })
 
   it('starts scoped to the visible bottom-panel table', async () => {
@@ -193,7 +220,7 @@ describe('CommandPalette', () => {
         }),
       },
     })
-    useCommandPaletteStore.setState({ isOpen: true })
+    useCommandPaletteStore.setState({ isOpen: true, scopeToTable: true })
 
     render(<CommandPalette />)
 

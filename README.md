@@ -60,7 +60,7 @@ https://github.com/user-attachments/assets/e30f01d1-2656-47fd-88f0-709e2221a34a
 
 ## Command palette and shortcuts
 
-Press **F2** to open the command palette and search the active connection's schema. The palette supports recent objects when nothing is typed, and slash filters such as database names and object types to narrow the search quickly.
+Press **F2** to open the command palette and search the active connection's schema. The palette supports recent objects when nothing is typed, and slash filters such as database names and object types to narrow the search quickly. Press **Shift+F2** on a table data view to open the palette scoped to that table so you can search its columns directly.
 
 The default shortcuts are editable in **Settings > Shortcuts**. The current defaults include:
 

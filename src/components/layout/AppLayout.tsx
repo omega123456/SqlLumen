@@ -316,6 +316,10 @@ export function AppLayout() {
       useCommandPaletteStore.getState().toggle()
     })
 
+    store.registerAction('command-palette-table', () => {
+      useCommandPaletteStore.getState().toggle(true)
+    })
+
     return () => {
       store.unregisterAction('execute-query')
       store.unregisterAction('execute-all')
@@ -329,6 +333,7 @@ export function AppLayout() {
       store.unregisterAction('zoom-out')
       store.unregisterAction('zoom-reset')
       store.unregisterAction('command-palette')
+      store.unregisterAction('command-palette-table')
     }
   }, [])
 

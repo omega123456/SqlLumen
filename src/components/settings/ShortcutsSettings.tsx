@@ -21,6 +21,11 @@ const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
     label: 'Command Palette',
     description: 'Open the schema object search palette',
   },
+  {
+    id: 'command-palette-table',
+    label: 'Search Table Columns',
+    description: 'Open the command palette scoped to the active table',
+  },
   { id: 'save-file', label: 'Save File', description: 'Save the current editor contents' },
   { id: 'open-file', label: 'Open File', description: 'Open a SQL file' },
   { id: 'new-query-tab', label: 'New Query Tab', description: 'Open a new query editor tab' },

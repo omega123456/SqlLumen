@@ -12,6 +12,7 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
   'execute-all': { key: 'Enter', modifiers: ['ctrl', 'shift'] },
   'format-query': { key: 'F12', modifiers: [] },
   'command-palette': { key: 'F2', modifiers: [] },
+  'command-palette-table': { key: 'F2', modifiers: ['shift'] },
   'save-file': { key: 'S', modifiers: ['ctrl'] },
   'open-file': { key: 'O', modifiers: ['ctrl'] },
   'new-query-tab': { key: 'T', modifiers: ['ctrl'] },
@@ -28,6 +29,7 @@ export const EDITOR_CONTEXT_ACTIONS = new Set([
   'execute-all',
   'format-query',
   'command-palette',
+  'command-palette-table',
   'new-query-tab',
   'zoom-in',
   'zoom-out',
@@ -35,7 +37,13 @@ export const EDITOR_CONTEXT_ACTIONS = new Set([
 ])
 
 /** Action IDs that should fire even when focus is on INPUT/TEXTAREA/SELECT elements. */
-export const GLOBAL_ACTIONS = new Set(['command-palette', 'zoom-in', 'zoom-out', 'zoom-reset'])
+export const GLOBAL_ACTIONS = new Set([
+  'command-palette',
+  'command-palette-table',
+  'zoom-in',
+  'zoom-out',
+  'zoom-reset',
+])
 
 // ---------------------------------------------------------------------------
 // Store

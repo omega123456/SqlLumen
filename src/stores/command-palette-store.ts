@@ -3,23 +3,28 @@ import { create } from 'zustand'
 interface CommandPaletteState {
   isOpen: boolean
   openInstance: number
-  open: () => void
+  /** When true, the palette opens pre-filled with the active table's database/table pills. */
+  scopeToTable: boolean
+  open: (scopeToTable?: boolean) => void
   close: () => void
-  toggle: () => void
+  toggle: (scopeToTable?: boolean) => void
 }
 
 export const useCommandPaletteStore = create<CommandPaletteState>()((set) => ({
   isOpen: false,
   openInstance: 0,
-  open: () =>
+  scopeToTable: false,
+  open: (scopeToTable = false) =>
     set((state) => ({
       isOpen: true,
       openInstance: state.openInstance + 1,
+      scopeToTable,
     })),
   close: () => set({ isOpen: false }),
-  toggle: () =>
-    set((state) => ({
-      isOpen: !state.isOpen,
-      openInstance: state.isOpen ? state.openInstance : state.openInstance + 1,
-    })),
+  toggle: (scopeToTable = false) =>
+    set((state) =>
+      state.isOpen
+        ? { isOpen: false }
+        : { isOpen: true, openInstance: state.openInstance + 1, scopeToTable }
+    ),
 }))

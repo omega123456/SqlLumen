@@ -37,6 +37,7 @@ describe('useShortcutStore', () => {
       })
       expect(state.shortcuts['format-query']).toEqual({ key: 'F12', modifiers: [] })
       expect(state.shortcuts['command-palette']).toEqual({ key: 'F2', modifiers: [] })
+      expect(state.shortcuts['command-palette-table']).toEqual({ key: 'F2', modifiers: ['shift'] })
       expect(state.shortcuts['save-file']).toEqual({ key: 'S', modifiers: ['ctrl'] })
       expect(state.shortcuts['open-file']).toEqual({ key: 'O', modifiers: ['ctrl'] })
       expect(state.shortcuts['new-query-tab']).toEqual({ key: 'T', modifiers: ['ctrl'] })
@@ -47,6 +48,8 @@ describe('useShortcutStore', () => {
     it('allows command-palette in editor and global contexts', () => {
       expect(EDITOR_CONTEXT_ACTIONS.has('command-palette')).toBe(true)
       expect(GLOBAL_ACTIONS.has('command-palette')).toBe(true)
+      expect(EDITOR_CONTEXT_ACTIONS.has('command-palette-table')).toBe(true)
+      expect(GLOBAL_ACTIONS.has('command-palette-table')).toBe(true)
     })
 
     it('defaults are a separate reference from shortcuts', () => {

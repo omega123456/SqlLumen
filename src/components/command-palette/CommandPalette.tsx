@@ -196,6 +196,7 @@ function parseCommandPaletteValue(
 export function CommandPalette() {
   const isOpen = useCommandPaletteStore((state) => state.isOpen)
   const openInstance = useCommandPaletteStore((state) => state.openInstance)
+  const scopeToTable = useCommandPaletteStore((state) => state.scopeToTable)
   const closePalette = useCommandPaletteStore((state) => state.close)
   const activeConnectionId = useConnectionStore((state) => state.activeTabId)
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null)
@@ -232,6 +233,7 @@ export function CommandPalette() {
       <CommandPaletteSession
         key={`${activeConnectionId ?? 'no-connection'}-${openInstance}`}
         activeConnectionId={activeConnectionId}
+        scopeToTable={scopeToTable}
         onClose={handleClose}
       />
     </DialogShell>
@@ -240,10 +242,15 @@ export function CommandPalette() {
 
 interface CommandPaletteSessionProps {
   activeConnectionId: string | null
+  scopeToTable: boolean
   onClose: () => void
 }
 
-function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSessionProps) {
+function CommandPaletteSession({
+  activeConnectionId,
+  scopeToTable,
+  onClose,
+}: CommandPaletteSessionProps) {
   const recordSelection = useCommandPaletteRecentsStore((state) => state.recordSelection)
   const getRecents = useCommandPaletteRecentsStore((state) => state.getRecents)
   const activeConnection = useConnectionStore((state) =>
@@ -252,7 +259,7 @@ function CommandPaletteSession({ activeConnectionId, onClose }: CommandPaletteSe
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [pills, setPills] = useState<CommandPaletteFilterPillValue[]>(() =>
-    getInitialPills(activeConnectionId)
+    scopeToTable ? getInitialPills(activeConnectionId) : []
   )
   const [isSlashDropdownOpen, setIsSlashDropdownOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')

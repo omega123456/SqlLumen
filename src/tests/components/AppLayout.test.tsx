@@ -84,6 +84,7 @@ describe('AppLayout', () => {
       expect(actions['execute-all']).toBeTypeOf('function')
       expect(actions['format-query']).toBeTypeOf('function')
       expect(actions['command-palette']).toBeTypeOf('function')
+      expect(actions['command-palette-table']).toBeTypeOf('function')
       expect(actions['save-file']).toBeTypeOf('function')
       expect(actions['new-query-tab']).toBeTypeOf('function')
       expect(actions['close-tab']).toBeTypeOf('function')
@@ -98,6 +99,7 @@ describe('AppLayout', () => {
       expect(actions['execute-all']).toBeUndefined()
       expect(actions['format-query']).toBeUndefined()
       expect(actions['command-palette']).toBeUndefined()
+      expect(actions['command-palette-table']).toBeUndefined()
       expect(actions['save-file']).toBeUndefined()
       expect(actions['new-query-tab']).toBeUndefined()
       expect(actions['close-tab']).toBeUndefined()
@@ -126,6 +128,23 @@ describe('AppLayout', () => {
 
     act(() => {
       useShortcutStore.getState().dispatchAction('command-palette')
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId('command-palette')).not.toBeInTheDocument()
+    })
+  })
+
+  it('opens the command palette in table scope via the table action', async () => {
+    render(<AppLayout />)
+
+    act(() => {
+      useShortcutStore.getState().dispatchAction('command-palette-table')
+    })
+    expect(await screen.findByTestId('command-palette')).toBeInTheDocument()
+    expect(useCommandPaletteStore.getState().scopeToTable).toBe(true)
+
+    act(() => {
+      useShortcutStore.getState().dispatchAction('command-palette-table')
     })
     await waitFor(() => {
       expect(screen.queryByTestId('command-palette')).not.toBeInTheDocument()
