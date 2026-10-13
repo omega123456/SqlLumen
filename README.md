@@ -70,6 +70,8 @@ The default shortcuts are editable in **Settings > Shortcuts**. The current defa
 - `Ctrl+S` to save the current file or DDL tab
 - `Ctrl+,` to open Settings
 
+In the query editor, `Ctrl+H` or `Ctrl+Shift+R` (or `Cmd` on macOS) opens Find and Replace.
+
 ## Workspace tabs
 
 SqlLumen groups non-pinned workspace tabs by tab type so the top rail stays usable as a session grows.

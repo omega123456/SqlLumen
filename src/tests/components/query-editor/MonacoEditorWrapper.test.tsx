@@ -36,7 +36,11 @@ let capturedSelectionChangeHandler:
     }) => void)
   | null = null
 const capturedAddCommandHandlers: Record<number, () => void> = {}
-const capturedActions: Record<string, { id: string; run: (ed: unknown) => void }> = {}
+const capturedActions: Record<
+  string,
+  { id: string; keybindings?: number[]; run: (ed: unknown) => void }
+> = {}
+const mockFindReplaceRun = vi.fn()
 
 function createMockModel(selectedText = '') {
   return {
@@ -90,6 +94,9 @@ const mockEditorInstance = {
     return { dispose: vi.fn() }
   }),
   getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
+  getAction: vi.fn((id: string) =>
+    id === 'editor.action.startFindReplaceAction' ? { run: mockFindReplaceRun } : null
+  ),
   updateOptions: vi.fn(),
 }
 
@@ -112,8 +119,18 @@ function createRichMonacoEditorMock() {
             setTheme: mockSetTheme,
           },
           languages: {},
-          KeyCode: { F9: 78, F12: 81, KeyT: 52, KeyN: 49, Enter: 3, Tab: 2, Comma: 6 },
-          KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512 },
+          KeyCode: {
+            F9: 78,
+            F12: 81,
+            KeyH: 38,
+            KeyN: 49,
+            KeyR: 48,
+            KeyT: 52,
+            Enter: 3,
+            Tab: 2,
+            Comma: 6,
+          },
+          KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512, WinCtrl: 256 },
         })
       }, [])
 
@@ -812,6 +829,19 @@ describe('MonacoEditorWrapper', () => {
       render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
       expect(useQueryStore.getState().tabs['tab-1']?.selectedText).toBe('')
+    })
+  })
+
+  describe('Find and Replace action', () => {
+    it('binds Ctrl/Cmd+H and Ctrl/Cmd+Shift+R to the built-in find-replace widget', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      const action = capturedActions['sqllumen.find-replace']
+      // CtrlCmd(2048)/WinCtrl(256) | KeyH(38), and | Shift(1024) | KeyR(48)
+      expect(action.keybindings).toEqual([2086, 3120, 294, 1328])
+
+      action.run(mockEditorInstance)
+      expect(mockFindReplaceRun).toHaveBeenCalledTimes(1)
     })
   })
 

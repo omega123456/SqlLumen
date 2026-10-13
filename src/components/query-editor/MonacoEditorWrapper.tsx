@@ -347,10 +347,24 @@ export function MonacoEditorWrapper({
       }
     })
 
+    // Ctrl+H / Ctrl+Shift+R open find & replace. Bound to both Ctrl and Cmd,
+    // matching how the app's shortcut system treats 'ctrl' (ctrlKey || metaKey).
+    const { KeyMod, KeyCode } = monacoInstance
+    const findReplaceActionDisposable = editor.addAction({
+      id: 'sqllumen.find-replace',
+      label: 'Find and Replace',
+      keybindings: [KeyMod.CtrlCmd, KeyMod.WinCtrl].flatMap((mod) => [
+        mod | KeyCode.KeyH,
+        mod | KeyMod.Shift | KeyCode.KeyR,
+      ]),
+      run: (ed) => ed.getAction('editor.action.startFindReplaceAction')?.run(),
+    })
+
     editor.onDidDispose(() => {
       cursorDisposable?.dispose()
       selectionDisposable?.dispose()
       saveFavoriteActionDisposable?.dispose()
+      findReplaceActionDisposable.dispose()
       contentChangeDisposable.dispose()
       // Unregister using the captured URI — model may already be disposed
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)
