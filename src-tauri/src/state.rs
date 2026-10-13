@@ -137,6 +137,8 @@ pub struct AppState {
     /// MySQL thread IDs for currently running queries, keyed by (connection_id, tab_id).
     /// Used to issue `KILL QUERY` for cancellation.
     pub running_queries: TokioRwLock<HashMap<(String, String), u64>>,
+    /// Shared query-editor MySQL session per connection_id (see `mysql::session`).
+    pub editor_sessions: Mutex<HashMap<String, crate::mysql::session::SessionSlot>>,
     /// Progress tracking for SQL dump export jobs.
     pub dump_jobs: Arc<RwLock<HashMap<String, DumpJobProgress>>>,
     /// Progress tracking for SQL import jobs.

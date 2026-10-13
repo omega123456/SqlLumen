@@ -155,6 +155,7 @@ fn schema_cache_impls_surface_poisoned_db_lock_errors() {
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

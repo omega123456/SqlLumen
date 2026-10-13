@@ -1,7 +1,7 @@
 use sqllumen_lib::mysql::query_executor::{
-    find_with_main_keyword, get_first_keyword, has_top_level_limit, inject_limit_into_select,
-    is_read_only_allowed, needs_auto_limit, read_file_impl, strip_non_executable_comments,
-    write_file_impl,
+    find_with_main_keyword, get_first_keyword, has_multiple_statements, has_top_level_limit,
+    inject_limit_into_select, is_read_only_allowed, needs_auto_limit, read_file_impl,
+    strip_non_executable_comments, write_file_impl,
 };
 
 #[test]
@@ -272,4 +272,25 @@ fn test_write_and_read_file() {
     let content = read_file_impl(path_str).expect("read should succeed");
     assert_eq!(content, "SELECT 1;");
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn test_has_multiple_statements() {
+    assert!(!has_multiple_statements("SELECT 1"));
+    assert!(!has_multiple_statements("SELECT 1;"));
+    assert!(!has_multiple_statements("SELECT 1; ;\n  "));
+    assert!(!has_multiple_statements("SELECT 'a;b', `c;d`, \"e;f\""));
+    assert!(!has_multiple_statements("SELECT 'it\\'s; fine'"));
+    assert!(!has_multiple_statements("SELECT 1; -- trailing; comment"));
+    assert!(!has_multiple_statements("SELECT 1 /* ; DROP TABLE t */"));
+    assert!(has_multiple_statements("SET @a = 1; DROP TABLE t"));
+    assert!(has_multiple_statements("SELECT ';'; DELETE FROM t"));
+    assert!(has_multiple_statements("SELECT 1 /*!; DROP TABLE t */"));
+}
+
+#[test]
+fn test_read_only_rejects_smuggled_statements() {
+    assert!(is_read_only_allowed("SET @a = 1;"));
+    assert!(!is_read_only_allowed("SET @a = 1; DROP TABLE t"));
+    assert!(!is_read_only_allowed("SELECT 1; UPDATE t SET x = 1"));
 }

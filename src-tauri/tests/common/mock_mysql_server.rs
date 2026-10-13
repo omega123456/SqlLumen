@@ -8,7 +8,8 @@ use opensrv_mysql::{
 use std::collections::HashMap;
 use std::io;
 use std::io::Write;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::io::BufWriter;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpListener;
@@ -168,6 +169,8 @@ struct MockMySqlBackend {
     unsupported_prepared_prefixes: Arc<Vec<String>>,
     prepared_steps: HashMap<u32, MockQueryStep>,
     next_statement_id: u32,
+    /// Text-protocol (COM_QUERY) statements received across all connections.
+    text_queries: Arc<Mutex<Vec<String>>>,
 }
 
 const VERSION_STATEMENT_ID: u32 = 1;
@@ -197,6 +200,7 @@ impl MockMySqlBackend {
             ),
             prepared_steps: HashMap::new(),
             next_statement_id: FIRST_QUERY_STATEMENT_ID,
+            text_queries: Arc::default(),
         }
     }
 
@@ -346,9 +350,14 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
 
     async fn on_init<'a>(
         &'a mut self,
-        _db: &'a str,
+        db: &'a str,
         writer: InitWriter<'a, BufWriter<OwnedWriteHalf>>,
     ) -> Result<(), Self::Error> {
+        // opensrv routes both COM_INIT_DB and `USE db` queries here.
+        self.text_queries
+            .lock()
+            .expect("text queries lock poisoned")
+            .push(format!("USE {db}"));
         writer.ok().await
     }
 
@@ -358,6 +367,10 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
         results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
     ) -> Result<(), Self::Error> {
         let normalized = Self::normalize_query(query);
+        self.text_queries
+            .lock()
+            .expect("text queries lock poisoned")
+            .push(normalized.clone());
 
         if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
             let cols = [Column {
@@ -382,6 +395,8 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
 pub struct MockMySqlServer {
     pub port: u16,
     accept_task: tokio::task::JoinHandle<()>,
+    connections: Arc<AtomicUsize>,
+    text_queries: Arc<Mutex<Vec<String>>>,
 }
 
 impl MockMySqlServer {
@@ -412,6 +427,9 @@ impl MockMySqlServer {
                 .collect(),
         );
 
+        let connections = Arc::new(AtomicUsize::new(0));
+        let text_queries = Arc::clone(&backend.text_queries);
+        let accepted = Arc::clone(&connections);
         let accept_task = tokio::spawn(async move {
             loop {
                 let (stream, _) = match listener.accept().await {
@@ -420,6 +438,7 @@ impl MockMySqlServer {
                         break;
                     }
                 };
+                accepted.fetch_add(1, Ordering::SeqCst);
                 let backend = backend.clone();
                 tokio::spawn(async move {
                     let (reader, writer) = stream.into_split();
@@ -433,7 +452,25 @@ impl MockMySqlServer {
             }
         });
 
-        Self { port, accept_task }
+        Self {
+            port,
+            accept_task,
+            connections,
+            text_queries,
+        }
+    }
+
+    /// Number of client connections accepted so far.
+    pub fn connection_count(&self) -> usize {
+        self.connections.load(Ordering::SeqCst)
+    }
+
+    /// Text-protocol statements received so far (whitespace-normalized).
+    pub fn text_queries(&self) -> Vec<String> {
+        self.text_queries
+            .lock()
+            .expect("text queries lock poisoned")
+            .clone()
     }
 }
 

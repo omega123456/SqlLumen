@@ -331,6 +331,7 @@ pub fn run() {
                 metadata_cache: crate::mysql::metadata_cache::MetadataCache::new(),
                 log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
                 running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+                editor_sessions: Default::default(),
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

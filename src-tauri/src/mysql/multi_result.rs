@@ -6,8 +6,9 @@
 //! - **CALL execution** (`execute_call_query`): Executes a single `CALL` statement and collects
 //!   all returned result sets.
 //!
-//! Connections are not pooled — created on-demand and disconnected after the batch completes.
-//! Cancel support is provided via thread ID registration before any statements execute.
+//! Statements run on the connection's shared editor session (`crate::mysql::session`), so
+//! session state carries over between runs and query windows. Cancel support is provided via
+//! thread ID registration before any statements execute.
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 #[cfg(not(coverage))]
@@ -143,7 +144,8 @@ pub fn column_type_display_name(
 /// Serialize raw bytes from a Bytes value, using context from the column type.
 ///
 /// This handles the dispatch logic for `mysql_async::Value::Bytes(...)` which is
-/// used for strings, DECIMAL, BIT, and BLOB/BINARY types.
+/// used for strings, DECIMAL, BIT, BLOB/BINARY types, and — over the text
+/// protocol — every numeric and temporal column.
 pub fn serialize_bytes_value(
     bytes: &[u8],
     col_type: mysql_async::consts::ColumnType,
@@ -164,6 +166,28 @@ pub fn serialize_bytes_value(
                 serde_json::Value::String(val.to_string())
             } else {
                 serde_json::Value::from(val)
+            }
+        }
+
+        // Text protocol sends numbers as ASCII — parse them so they serialize the
+        // same as binary-protocol `Int`/`UInt`/`Double` values.
+        MYSQL_TYPE_TINY | MYSQL_TYPE_SHORT | MYSQL_TYPE_INT24 | MYSQL_TYPE_LONG
+        | MYSQL_TYPE_LONGLONG | MYSQL_TYPE_YEAR => {
+            let s = String::from_utf8_lossy(bytes);
+            let parsed = s
+                .parse::<i64>()
+                .map(mysql_async::Value::Int)
+                .or_else(|_| s.parse::<u64>().map(mysql_async::Value::UInt));
+            match parsed {
+                Ok(value) => serialize_mysql_value(&value, col_type, flags),
+                Err(_) => serde_json::Value::String(s.into_owned()),
+            }
+        }
+        MYSQL_TYPE_FLOAT | MYSQL_TYPE_DOUBLE => {
+            let s = String::from_utf8_lossy(bytes);
+            match s.parse::<f64>() {
+                Ok(f) => serialize_mysql_value(&mysql_async::Value::Double(f), col_type, flags),
+                Err(_) => serde_json::Value::String(s.into_owned()),
             }
         }
 
@@ -252,7 +276,7 @@ pub fn serialize_mysql_value(
 
         mysql_async::Value::Time(is_negative, days, hours, minutes, seconds, micro) => {
             let sign = if *is_negative { "-" } else { "" };
-            let total_hours = (*days as u32) * 24 + (*hours as u32);
+            let total_hours = *days * 24 + (*hours as u32);
             if *micro == 0 {
                 serde_json::Value::String(format!(
                     "{sign}{total_hours:02}:{minutes:02}:{seconds:02}"
@@ -273,6 +297,7 @@ pub fn serialize_mysql_value(
 /// MySQL error 1317 (ER_QUERY_INTERRUPTED) is mapped to "Query cancelled".
 #[cfg(not(coverage))]
 fn map_mysql_error(e: &mysql_async::Error) -> String {
+    crate::mysql::query_log::log_mysql_async_error(e);
     if let mysql_async::Error::Server(ref server_err) = e {
         if server_err.code == 1317 {
             return "Query cancelled".to_string();
@@ -396,6 +421,7 @@ async fn execute_single_select_statement(
         .collect();
 
     let rows: Vec<mysql_async::Row> = result.collect().await.map_err(|e| map_mysql_error(&e))?;
+    crate::mysql::query_log::log_mysql_async_rows(&rows);
 
     // Drop remaining result sets (if any unexpected ones)
     drop(result);
@@ -468,6 +494,7 @@ async fn execute_single_dml_statement(
     let execution_time_ms = start.elapsed().as_millis() as u64;
 
     let affected = result.affected_rows();
+    crate::mysql::query_log::log_mysql_async_result(affected, result.last_insert_id());
     // Drain remaining result
     let _: Vec<mysql_async::Row> = result.collect().await.unwrap_or_default();
 
@@ -570,6 +597,7 @@ async fn execute_call_statement(
 
         let rows: Vec<mysql_async::Row> =
             result.collect().await.map_err(|e| map_mysql_error(&e))?;
+        crate::mysql::query_log::log_mysql_async_rows(&rows);
 
         let serialized_rows: Vec<Vec<serde_json::Value>> = rows
             .iter()
@@ -692,7 +720,7 @@ fn push_error_result(
 
 // ── Batch executor ─────────────────────────────────────────────────────────────
 
-/// Execute multiple SQL statements sequentially on a single `mysql_async` connection.
+/// Execute multiple SQL statements sequentially on the connection's shared editor session.
 ///
 /// Returns a tuple of `(Vec<StoredResult>, Vec<MultiQueryResultItem>)`.
 /// Stops on first error (which is included as the last result item).
@@ -714,113 +742,130 @@ pub async fn execute_multi_query_internal(
     ),
     String,
 > {
-    use crate::mysql::query_executor::{
-        find_with_main_keyword, get_first_keyword, is_read_only_allowed, is_select_like,
-        needs_auto_limit, strip_non_executable_comments, MultiQueryResultItem, StoredResult,
-    };
-    use mysql_async::prelude::Queryable;
+    use crate::mysql::query_executor::{is_read_only_allowed, MultiQueryResultItem, StoredResult};
 
-    let params = state
-        .registry
-        .get_connection_params(connection_id)
-        .ok_or_else(|| format!("Connection '{connection_id}' not found in registry"))?;
+    let mut guard = crate::mysql::session::acquire(state, connection_id).await?;
+    let session = guard.as_mut().expect("acquire always yields a session");
 
-    let mut conn = build_connection(&params).await?;
-
-    // Get connection thread ID for cancel support
-    let thread_id: u64 = conn
-        .query_first::<u64, _>("SELECT CONNECTION_ID()")
-        .await
-        .map_err(|e| format!("Failed to get connection ID: {e}"))?
-        .ok_or_else(|| "CONNECTION_ID() returned NULL".to_string())?;
-
-    // Register thread ID for cancellation
+    // Register thread ID for cancellation — only once the session is ours, so
+    // cancelling a queued tab never kills another tab's query.
     let key = (connection_id.to_string(), tab_id.to_string());
     state
         .running_queries
         .write()
         .await
-        .insert(key.clone(), thread_id);
+        .insert(key.clone(), session.thread_id);
 
     let row_limit_used = if row_limit == 0 { 1000 } else { row_limit };
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
-    // Run the main statement loop inside an inner block so that cleanup
-    // (running_queries removal + connection disconnect) ALWAYS executes,
-    // even when early-return `?` operators propagate errors.
-    let loop_result: Result<(), String> = async {
-        for sql in statements {
-            let sql = sql.trim();
-            if sql.is_empty() {
-                continue;
-            }
-
-            // Read-only enforcement per statement
-            if is_read_only && !is_read_only_allowed(sql) {
-                let error_msg = "This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string();
-                push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
-                break; // Stop on read-only violation
-            }
-
-            let stripped = strip_non_executable_comments(sql);
-            let keyword = get_first_keyword(&stripped);
-
-            if is_call_statement(sql) {
-                // Handle CALL statement — may produce multiple result sets
-                match execute_call_statement(&mut conn, sql, row_limit_used).await {
-                    Ok(pairs) => {
-                        for (sr, ri) in pairs {
-                            stored_results.push(sr);
-                            result_items.push(ri);
-                        }
-                    }
-                    Err(error_msg) => {
-                        push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
-                        break; // Stop on error
-                    }
-                }
-            } else {
-                // Non-CALL statement: SELECT-like or DML/DDL
-                let is_result_set = if keyword == "WITH" {
-                    let main_kw = find_with_main_keyword(&stripped);
-                    is_select_like(&main_kw) || main_kw.is_empty()
-                } else {
-                    is_select_like(&keyword)
-                };
-
-                let auto_limit_applied = needs_auto_limit(sql);
-
-                let stmt_result = if is_result_set {
-                    execute_single_select_statement(&mut conn, sql, auto_limit_applied, row_limit_used).await
-                } else {
-                    execute_single_dml_statement(&mut conn, sql, row_limit_used).await
-                };
-
-                match stmt_result {
-                    Ok((sr, ri)) => {
-                        stored_results.push(sr);
-                        result_items.push(ri);
-                    }
-                    Err(error_msg) => {
-                        push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
-                        break; // Stop on error
-                    }
-                }
-            }
+    for sql in statements {
+        let sql = sql.trim();
+        if sql.is_empty() {
+            continue;
         }
 
-        Ok(())
-    }.await;
+        // Read-only enforcement per statement
+        if is_read_only && !is_read_only_allowed(sql) {
+            let error_msg = "This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string();
+            push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
+            break; // Stop on read-only violation
+        }
 
-    // CLEANUP: Always remove thread ID and disconnect, regardless of success or error.
+        let stmt_result = if is_call_statement(sql) {
+            // CALL may produce multiple result sets
+            execute_call_statement(&mut session.conn, sql, row_limit_used).await
+        } else {
+            execute_statement(&mut session.conn, sql, row_limit_used)
+                .await
+                .map(|pair| vec![pair])
+        };
+
+        match stmt_result {
+            Ok(pairs) => {
+                for (sr, ri) in pairs {
+                    stored_results.push(sr);
+                    result_items.push(ri);
+                }
+            }
+            Err(error_msg) => {
+                push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
+                break; // Stop on error
+            }
+        }
+    }
+
     state.running_queries.write().await.remove(&key);
-    let _ = conn.disconnect().await;
-
-    // Propagate any error from the statement loop
-    loop_result?;
 
     Ok((stored_results, result_items))
+}
+
+/// Execute one non-CALL statement on the connection's shared editor session,
+/// registering the session thread ID for cancellation while it runs.
+#[cfg(not(coverage))]
+pub async fn execute_single_on_session(
+    state: &crate::state::AppState,
+    connection_id: &str,
+    tab_id: &str,
+    sql: &str,
+    row_limit: usize,
+) -> Result<
+    (
+        crate::mysql::query_executor::StoredResult,
+        crate::mysql::query_executor::MultiQueryResultItem,
+    ),
+    String,
+> {
+    let mut guard = crate::mysql::session::acquire(state, connection_id).await?;
+    let session = guard.as_mut().expect("acquire always yields a session");
+
+    let key = (connection_id.to_string(), tab_id.to_string());
+    state
+        .running_queries
+        .write()
+        .await
+        .insert(key.clone(), session.thread_id);
+
+    let result = execute_statement(&mut session.conn, sql, row_limit).await;
+
+    state.running_queries.write().await.remove(&key);
+
+    result
+}
+
+/// Execute a SELECT-like or DML/DDL statement (anything but CALL).
+#[cfg(not(coverage))]
+async fn execute_statement(
+    conn: &mut mysql_async::Conn,
+    sql: &str,
+    row_limit: usize,
+) -> Result<
+    (
+        crate::mysql::query_executor::StoredResult,
+        crate::mysql::query_executor::MultiQueryResultItem,
+    ),
+    String,
+> {
+    use crate::mysql::query_executor::{
+        find_with_main_keyword, get_first_keyword, is_select_like, needs_auto_limit,
+        strip_non_executable_comments,
+    };
+
+    let stripped = strip_non_executable_comments(sql);
+    let keyword = get_first_keyword(&stripped);
+    let is_result_set = if keyword == "WITH" {
+        let main_kw = find_with_main_keyword(&stripped);
+        is_select_like(&main_kw) || main_kw.is_empty()
+    } else {
+        is_select_like(&keyword)
+    };
+
+    if is_result_set {
+        execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit).await
+    } else {
+        execute_single_dml_statement(conn, sql, row_limit).await
+    }
 }
 
 /// Serialize a single `mysql_async::Row` to a `Vec<serde_json::Value>`.

@@ -33,6 +33,7 @@ fn test_state() -> AppState {
         metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
+        editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         copy_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),

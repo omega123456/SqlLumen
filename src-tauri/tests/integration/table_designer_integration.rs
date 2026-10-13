@@ -1373,6 +1373,7 @@ mod command_wrapper_integration {
             metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+            editor_sessions: Default::default(),
             dump_jobs: std::sync::Arc::new(
                 std::sync::RwLock::new(std::collections::HashMap::new()),
             ),

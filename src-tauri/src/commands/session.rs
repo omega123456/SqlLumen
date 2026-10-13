@@ -37,15 +37,16 @@ pub async fn select_database_impl(
     )?;
 
     #[cfg(any(test, feature = "test-utils"))]
-    if let Some(hook) = *TEST_SELECT_DATABASE_HOOK
+    let hook = *TEST_SELECT_DATABASE_HOOK
         .lock()
-        .expect("select database hook lock poisoned")
-    {
+        .expect("select database hook lock poisoned");
+    #[cfg(any(test, feature = "test-utils"))]
+    if let Some(hook) = hook {
         hook(connection_id, database_name)?;
         state
             .registry
             .set_default_database(connection_id, Some(database_name.to_string()));
-        return Ok(());
+        return crate::mysql::session::use_database(state, connection_id, database_name).await;
     }
 
     let new_pool = pool::create_pool(&stored_params.to_connection_params(password))
@@ -57,7 +58,8 @@ pub async fn select_database_impl(
         .registry
         .set_default_database(connection_id, Some(database_name.to_string()));
 
-    Ok(())
+    // Keep the query editor's session (and its variables) — just switch database.
+    crate::mysql::session::use_database(state, connection_id, database_name).await
 }
 
 #[cfg(not(coverage))]

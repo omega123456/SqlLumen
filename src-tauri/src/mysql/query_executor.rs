@@ -4,30 +4,11 @@
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
-use sqlx::mysql::types::MySqlTime;
-#[cfg(not(coverage))]
-use sqlx::mysql::MySqlValueRef;
-#[cfg(not(coverage))]
-use sqlx::Column;
-#[cfg(not(coverage))]
-use sqlx::Executor;
-#[cfg(not(coverage))]
 use sqlx::Row;
-#[cfg(not(coverage))]
-use sqlx::TypeInfo;
-#[cfg(not(coverage))]
-use sqlx::Value;
-#[cfg(not(coverage))]
-use sqlx::ValueRef;
 use std::collections::HashMap;
 use std::sync::Arc;
+#[cfg(coverage)]
 use uuid::Uuid;
-
-#[cfg(not(coverage))]
-const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
-
-#[cfg(not(coverage))]
-const JS_SAFE_INTEGER_MIN: i64 = -JS_SAFE_INTEGER_MAX;
 
 // ── Data structures ────────────────────────────────────────────────────────────
 
@@ -244,9 +225,8 @@ pub fn get_first_keyword(sql: &str) -> String {
     let trimmed = sql.trim();
 
     // Handle executable comments: /*!50001 keyword ... */
-    if trimmed.starts_with("/*!") {
-        let inner = &trimmed[3..]; // Strip /*!
-                                   // Skip optional version number (digits)
+    if let Some(inner) = trimmed.strip_prefix("/*!") {
+        // Skip optional version number (digits)
         let after_version = inner.trim_start_matches(|c: char| c.is_ascii_digit());
         let after_ws = after_version.trim_start();
         // Extract first word
@@ -382,7 +362,7 @@ pub fn has_top_level_limit(sql: &str) -> bool {
         }
 
         // At depth 0, look for LIMIT keyword (case-insensitive, word boundary)
-        if depth == 0 && i + 4 < len && chars[i].to_ascii_uppercase() == 'L' {
+        if depth == 0 && i + 4 < len && chars[i].eq_ignore_ascii_case(&'L') {
             let word: String = chars[i..i + 5].iter().collect();
             if word.eq_ignore_ascii_case("LIMIT") {
                 let before_ok = i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_');
@@ -397,6 +377,31 @@ pub fn has_top_level_limit(sql: &str) -> bool {
         i += 1;
     }
 
+    false
+}
+
+/// Returns true if a `;` outside string literals and comments is followed by
+/// more SQL (trailing semicolons alone do not count).
+pub fn has_multiple_statements(sql: &str) -> bool {
+    let stripped = strip_non_executable_comments(sql);
+    let mut quote: Option<char> = None;
+    let mut chars = stripped.char_indices();
+    while let Some((i, ch)) = chars.next() {
+        match quote {
+            Some(_) if ch == '\\' => {
+                chars.next();
+            }
+            Some(q) if ch == q => quote = None,
+            Some(_) => {}
+            None if matches!(ch, '\'' | '"' | '`') => quote = Some(ch),
+            None if ch == ';' => {
+                return !stripped[i + 1..]
+                    .trim_matches(|c: char| c == ';' || c.is_whitespace())
+                    .is_empty();
+            }
+            None => {}
+        }
+    }
     false
 }
 
@@ -478,6 +483,12 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
         return true; // empty statement, allow
     }
 
+    // The editor session uses the text protocol, which runs every `;`-separated
+    // statement — only the first would be vetted below.
+    if has_multiple_statements(trimmed) {
+        return false;
+    }
+
     let keyword = get_first_keyword(trimmed);
     match keyword.as_str() {
         "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN" | "USE" => true,
@@ -519,151 +530,7 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
     }
 }
 
-// ── Value serialization ────────────────────────────────────────────────────────
-
-#[cfg(not(coverage))]
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-
-#[cfg(not(coverage))]
-fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
-    let raw_value = match row.try_get_raw(i) {
-        Ok(value) => value,
-        Err(_) => return serde_json::Value::Null,
-    };
-
-    if raw_value.is_null() {
-        return serde_json::Value::Null;
-    }
-
-    let type_name = raw_value.type_info().name().to_uppercase();
-
-    // BIT: sqlx u64 decoder has an explicit ColumnType::Bit path that reads raw big-endian bytes
-    if type_name == "BIT" {
-        return match row.try_get::<Option<u64>, _>(i) {
-            Ok(Some(val)) => {
-                if val > JS_SAFE_INTEGER_MAX as u64 {
-                    serde_json::Value::String(val.to_string())
-                } else {
-                    serde_json::Value::from(val)
-                }
-            }
-            Ok(None) => serde_json::Value::Null,
-            Err(e) => {
-                tracing::warn!(column_index = i, error = ?e, "Failed to decode BIT column as u64");
-                serde_json::Value::Null
-            }
-        };
-    }
-
-    // Integer types
-    if matches!(
-        type_name.as_str(),
-        "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG"
-    ) || type_name.contains("INT")
-        || type_name == "YEAR"
-    {
-        if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
-            return v
-                .map(|n| {
-                    if (JS_SAFE_INTEGER_MIN..=JS_SAFE_INTEGER_MAX).contains(&n) {
-                        serde_json::Value::from(n)
-                    } else {
-                        serde_json::Value::String(n.to_string())
-                    }
-                })
-                .unwrap_or(serde_json::Value::Null);
-        }
-        if let Ok(v) = row.try_get::<Option<u64>, _>(i) {
-            return v
-                .map(|n| {
-                    if n > JS_SAFE_INTEGER_MAX as u64 {
-                        serde_json::Value::String(n.to_string())
-                    } else {
-                        serde_json::Value::from(n)
-                    }
-                })
-                .unwrap_or(serde_json::Value::Null);
-        }
-        // BIGINT UNSIGNED values > i64::MAX: serialize as string to avoid precision loss
-        if let Ok(v) = row.try_get::<Option<String>, _>(i) {
-            return v
-                .map(serde_json::Value::String)
-                .unwrap_or(serde_json::Value::Null);
-        }
-        if let Some(value) = decode_unchecked_string(row, i).map(serde_json::Value::String) {
-            return value;
-        }
-        if let Some(value) = decode_raw_string(raw_value.clone()).map(serde_json::Value::String) {
-            return value;
-        }
-    }
-
-    // Float types (FLOAT, DOUBLE — NOT DECIMAL/NUMERIC)
-    if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
-        if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
-            return v
-                .map(|f| {
-                    serde_json::Number::from_f64(f)
-                        .map(serde_json::Value::Number)
-                        .unwrap_or(serde_json::Value::Null)
-                })
-                .unwrap_or(serde_json::Value::Null);
-        }
-    }
-
-    // DECIMAL/NUMERIC: serialize as string to preserve precision for monetary values
-    if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
-        if let Ok(v) = row.try_get::<Option<String>, _>(i) {
-            return v
-                .map(serde_json::Value::String)
-                .unwrap_or(serde_json::Value::Null);
-        }
-        if let Some(value) = decode_unchecked_string(row, i).map(serde_json::Value::String) {
-            return value;
-        }
-        if let Some(value) = serialize_decimal_value(raw_value.clone()) {
-            return value;
-        }
-    }
-
-    // Date/time values
-    if matches!(
-        type_name.as_str(),
-        "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
-    ) {
-        if let Some(value) = serialize_temporal_value(raw_value.clone()) {
-            return value;
-        }
-    }
-
-    // Boolean
-    if type_name == "BOOL" || type_name == "BOOLEAN" {
-        if let Ok(v) = row.try_get::<Option<bool>, _>(i) {
-            return v
-                .map(serde_json::Value::from)
-                .unwrap_or(serde_json::Value::Null);
-        }
-    }
-
-    // Binary types
-    if type_name.contains("BLOB") || type_name == "BINARY" || type_name == "VARBINARY" {
-        if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
-            return v
-                .map(|b| serde_json::Value::String(BASE64_STANDARD.encode(&b)))
-                .unwrap_or(serde_json::Value::Null);
-        }
-    }
-
-    // Default: string
-    match row.try_get::<Option<String>, _>(i) {
-        Ok(Some(s)) => serde_json::Value::String(s),
-        Ok(None) => serde_json::Value::Null,
-        Err(_) => decode_unchecked_string(row, i)
-            .or_else(|| decode_raw_string(raw_value))
-            .map(serde_json::Value::String)
-            .unwrap_or(serde_json::Value::Null),
-    }
-}
+// ── Row decoding ───────────────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
 fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, i: usize) -> Option<String> {
@@ -678,20 +545,6 @@ fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, i: usize) -> Option<Stri
 }
 
 #[cfg(not(coverage))]
-fn decode_raw_string(value: MySqlValueRef<'_>) -> Option<String> {
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(text) = owned.try_decode::<String>() {
-        return Some(text);
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    owned
-        .try_decode::<Vec<u8>>()
-        .ok()
-        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-}
-
-#[cfg(not(coverage))]
 fn decode_required_identifier(row: &sqlx::mysql::MySqlRow, index: usize) -> Option<String> {
     decode_unchecked_string(row, index).filter(|value| !value.trim().is_empty())
 }
@@ -701,301 +554,7 @@ fn decode_metadata_text(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
     decode_unchecked_string(row, index).unwrap_or_default()
 }
 
-#[cfg(not(coverage))]
-fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Value> {
-    use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-
-    if let Ok(v) = owned.try_decode::<NaiveDateTime>() {
-        return Some(serde_json::Value::String(v.to_string()));
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<DateTime<Utc>>() {
-        return Some(serde_json::Value::String(v.naive_utc().to_string()));
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<NaiveDate>() {
-        return Some(serde_json::Value::String(v.to_string()));
-    }
-
-    let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<MySqlTime>() {
-        return Some(serde_json::Value::String(format_mysql_time(v)));
-    }
-
-    sqlx::ValueRef::to_owned(&value)
-        .try_decode::<String>()
-        .ok()
-        .map(serde_json::Value::String)
-}
-
-#[cfg(not(coverage))]
-fn format_mysql_time(value: MySqlTime) -> String {
-    let sign = if value.sign().is_negative() { "-" } else { "" };
-    let hours = value.hours();
-
-    if value.microseconds() == 0 {
-        format!(
-            "{sign}{hours:02}:{:02}:{:02}",
-            value.minutes(),
-            value.seconds()
-        )
-    } else {
-        format!(
-            "{sign}{hours:02}:{:02}:{:02}.{:06}",
-            value.minutes(),
-            value.seconds(),
-            value.microseconds()
-        )
-    }
-}
-
-#[cfg(not(coverage))]
-fn serialize_decimal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Value> {
-    decode_raw_string(value).map(serde_json::Value::String)
-}
-
-#[cfg(not(coverage))]
-fn serialize_row(row: &sqlx::mysql::MySqlRow) -> Vec<serde_json::Value> {
-    (0..row.columns().len())
-        .map(|i| serialize_value(row, i))
-        .collect()
-}
-
 // ── Core impl functions ────────────────────────────────────────────────────────
-
-/// Inner helper: execute a single SQL statement on an already-acquired connection.
-///
-/// Handles: auto-limit detection/injection, query vs DML execution, column extraction,
-/// row serialization and StoredResult + MultiQueryResultItem construction.
-///
-/// Callers are responsible for: pool retrieval, read-only enforcement, connection
-/// acquisition, thread-ID tracking, and storing the result in `state.results`.
-#[cfg(not(coverage))]
-async fn execute_single_statement_inner(
-    conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
-    pool: &sqlx::MySqlPool,
-    sql: &str,
-    row_limit: usize,
-) -> Result<(StoredResult, MultiQueryResultItem), String> {
-    // Determine effective SQL (with auto-LIMIT if needed)
-    let auto_limit_applied = needs_auto_limit(sql);
-    let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, row_limit)
-    } else {
-        sql.to_string()
-    };
-
-    // Determine if this is a SELECT-like query
-    let stripped = strip_non_executable_comments(sql);
-    let keyword = get_first_keyword(&stripped);
-    let is_result_set = if keyword == "WITH" {
-        let main_kw = find_with_main_keyword(&stripped);
-        is_select_like(&main_kw) || main_kw.is_empty()
-    } else {
-        is_select_like(&keyword)
-    };
-
-    let start = std::time::Instant::now();
-
-    // `needs_describe` defers the empty-result column-metadata fallback until
-    // after the stream is dropped so the metadata-only describe round-trip is
-    // excluded from both the execution and total timings.
-    let (columns, all_rows, affected_rows, execution_time_ms, total_time_ms, needs_describe) =
-        if is_result_set {
-            use futures::TryStreamExt;
-
-            crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-
-            let mut stream = sqlx::query(&sql_to_execute).fetch(&mut **conn);
-
-            let log_rows_enabled = crate::mysql::query_log::is_enabled();
-            let mut columns: Vec<ColumnMeta> = vec![];
-            let mut raw_rows: Vec<sqlx::mysql::MySqlRow> = vec![];
-            let mut serialized_rows: Vec<Vec<serde_json::Value>> = vec![];
-            let mut execution_time_ms: u64 = 0;
-            let mut first_row_seen = false;
-
-            loop {
-                match stream.try_next().await {
-                    Ok(Some(row)) => {
-                        if !first_row_seen {
-                            // First row available — server execution finished and
-                            // the result header arrived. Record execution time and
-                            // capture column metadata from this row.
-                            execution_time_ms = start.elapsed().as_millis() as u64;
-                            first_row_seen = true;
-                            columns = row
-                                .columns()
-                                .iter()
-                                .map(|c| ColumnMeta {
-                                    name: c.name().to_string(),
-                                    data_type: c.type_info().name().to_string(),
-                                })
-                                .collect();
-                        }
-                        serialized_rows.push(serialize_row(&row));
-                        if log_rows_enabled {
-                            raw_rows.push(row);
-                        }
-                    }
-                    Ok(None) => {
-                        if !first_row_seen {
-                            // Empty result set — the stream completed with no rows;
-                            // execution time is the elapsed time at stream completion.
-                            execution_time_ms = start.elapsed().as_millis() as u64;
-                        }
-                        break;
-                    }
-                    Err(e) => {
-                        return Err(format!("Query failed: {e}"));
-                    }
-                }
-            }
-
-            // Drop the stream to release the borrow on `conn` before any further
-            // (post-timing) use of the connection or pool.
-            drop(stream);
-
-            crate::mysql::query_log::log_mysql_rows(&raw_rows);
-
-            let total_time_ms = start.elapsed().as_millis() as u64;
-            let needs_describe = columns.is_empty();
-
-            (
-                columns,
-                serialized_rows,
-                0u64,
-                execution_time_ms,
-                total_time_ms,
-                needs_describe,
-            )
-        } else {
-            crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-            match sqlx::query(&sql_to_execute).execute(&mut **conn).await {
-                Ok(result) => {
-                    crate::mysql::query_log::log_execute_result(&result);
-                    // DML / DDL: no separate row-transfer phase, so execution and
-                    // total time are the same elapsed value.
-                    let elapsed = start.elapsed().as_millis() as u64;
-                    (
-                        vec![],
-                        vec![],
-                        result.rows_affected(),
-                        elapsed,
-                        elapsed,
-                        false,
-                    )
-                }
-                Err(e) => return Err(format!("Query failed: {e}")),
-            }
-        };
-
-    // Empty-result column-metadata fallback. Runs AFTER the stream is dropped and
-    // is intentionally excluded from both `execution_time_ms` and `total_time_ms`
-    // because `describe` is metadata-only and not part of executing the statement.
-    let columns = if needs_describe {
-        crate::mysql::query_log::log_sqlx_describe(sql_to_execute.as_str());
-        match pool.describe(sql_to_execute.as_str()).await {
-            Ok(desc) => desc
-                .columns
-                .iter()
-                .map(|c| ColumnMeta {
-                    name: c.name().to_string(),
-                    data_type: c.type_info().name().to_string(),
-                })
-                .collect(),
-            Err(_) => vec![],
-        }
-    } else {
-        columns
-    };
-
-    let total_rows = all_rows.len();
-
-    let query_id = Uuid::new_v4().to_string();
-
-    let shared_rows = Arc::new(all_rows);
-
-    let stored = StoredResult {
-        query_id: query_id.clone(),
-        columns: columns.clone(),
-        rows: Arc::clone(&shared_rows),
-        execution_time_ms,
-        total_time_ms,
-        affected_rows,
-        auto_limit_applied,
-    };
-
-    let item = MultiQueryResultItem {
-        query_id,
-        source_sql: sql.to_string(),
-        columns,
-        total_rows: total_rows as i64,
-        execution_time_ms,
-        total_time_ms,
-        affected_rows,
-        rows: shared_rows,
-        auto_limit_applied,
-        error: None,
-        re_executable: true,
-    };
-
-    Ok((stored, item))
-}
-
-/// Coverage stub for `execute_single_statement_inner`: exercises pure-function
-/// paths (auto-limit, keyword classification) without a live MySQL pool.
-#[cfg(coverage)]
-#[allow(dead_code)]
-async fn execute_single_statement_inner(
-    _conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
-    _pool: &sqlx::MySqlPool,
-    sql: &str,
-    _row_limit: usize,
-) -> Result<(StoredResult, MultiQueryResultItem), String> {
-    let auto_limit_applied = needs_auto_limit(sql);
-    let stripped = strip_non_executable_comments(sql);
-    let keyword = get_first_keyword(&stripped);
-    let _is_result = if keyword == "WITH" {
-        let main_kw = find_with_main_keyword(&stripped);
-        is_select_like(&main_kw) || main_kw.is_empty()
-    } else {
-        is_select_like(&keyword)
-    };
-    if auto_limit_applied {
-        let _sql_to_execute = inject_limit_into_select(sql, 1000);
-    }
-
-    let query_id = Uuid::new_v4().to_string();
-    Ok((
-        StoredResult {
-            query_id: query_id.clone(),
-            columns: vec![],
-            rows: Arc::new(vec![]),
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            auto_limit_applied,
-        },
-        MultiQueryResultItem {
-            query_id,
-            source_sql: sql.to_string(),
-            columns: vec![],
-            total_rows: 0,
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            rows: Arc::new(vec![]),
-            auto_limit_applied,
-            error: None,
-            re_executable: true,
-        },
-    ))
-}
 
 #[cfg(not(coverage))]
 pub async fn execute_query_impl(
@@ -1005,40 +564,23 @@ pub async fn execute_query_impl(
     sql: &str,
     row_limit: usize,
 ) -> Result<ExecuteQueryResult, String> {
-    let pool = state
-        .registry
-        .get_pool(connection_id)
-        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+    if !state.registry.contains(connection_id) {
+        return Err(format!("Connection '{connection_id}' not found"));
+    }
 
     // Read-only enforcement
     if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
         return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
     }
 
-    // Acquire a dedicated connection and capture its MySQL thread ID
-    let mut conn = pool
-        .acquire()
-        .await
-        .map_err(|e| format!("Failed to acquire connection: {e}"))?;
-    let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
-        .fetch_one(&mut *conn)
-        .await
-        .map_err(|e| format!("Failed to get connection ID: {e}"))?;
-
-    // Track the running query for cancellation
-    let key = (connection_id.to_string(), tab_id.to_string());
-    state
-        .running_queries
-        .write()
-        .await
-        .insert(key.clone(), thread_id);
-
-    let result = execute_single_statement_inner(&mut conn, &pool, sql, row_limit).await;
-
-    // Remove thread ID from running_queries (cleanup on both success and error)
-    state.running_queries.write().await.remove(&key);
-
-    let (stored, item) = result?;
+    let (stored, item) = crate::mysql::multi_result::execute_single_on_session(
+        state,
+        connection_id,
+        tab_id,
+        sql,
+        row_limit,
+    )
+    .await?;
 
     // Store result set in state — execute_query replaces the WHOLE tab result vector
     state
@@ -2036,10 +1578,9 @@ pub async fn reexecute_single_result_impl(
     sql: &str,
     row_limit: usize,
 ) -> Result<MultiQueryResultItem, String> {
-    let pool = state
-        .registry
-        .get_pool(connection_id)
-        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+    if !state.registry.contains(connection_id) {
+        return Err(format!("Connection '{connection_id}' not found"));
+    }
 
     // Read-only enforcement
     if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
@@ -2070,30 +1611,14 @@ pub async fn reexecute_single_result_impl(
         expected_query_id = Some(result_vec[result_index].query_id.clone());
     }
 
-    // Acquire a dedicated connection and capture its MySQL thread ID
-    let mut conn = pool
-        .acquire()
-        .await
-        .map_err(|e| format!("Failed to acquire connection: {e}"))?;
-    let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
-        .fetch_one(&mut *conn)
-        .await
-        .map_err(|e| format!("Failed to get connection ID: {e}"))?;
-
-    // Track the running query for cancellation
-    let key = (connection_id.to_string(), tab_id.to_string());
-    state
-        .running_queries
-        .write()
-        .await
-        .insert(key.clone(), thread_id);
-
-    let result = execute_single_statement_inner(&mut conn, &pool, sql, row_limit).await;
-
-    // Remove thread ID from running_queries
-    state.running_queries.write().await.remove(&key);
-
-    let (stored, item) = result?;
+    let (stored, item) = crate::mysql::multi_result::execute_single_on_session(
+        state,
+        connection_id,
+        tab_id,
+        sql,
+        row_limit,
+    )
+    .await?;
 
     // Replace only the targeted result entry — re-validate after the await to
     // prevent out-of-bounds panics or stale overwrites if the tab's results

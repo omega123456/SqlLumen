@@ -1252,6 +1252,42 @@ mod serialization_parity {
         assert_eq!(result, serde_json::json!(0));
     }
 
+    // ── Text-protocol numbers ────────────────────────────────────────────
+
+    #[test]
+    fn text_protocol_integers_parse_to_json_numbers() {
+        let int =
+            |b: &[u8], flags| serialize_bytes_value(b, ColumnType::MYSQL_TYPE_LONGLONG, flags);
+        assert_eq!(int(b"42", ColumnFlags::empty()), serde_json::json!(42));
+        assert_eq!(int(b"-7", ColumnFlags::empty()), serde_json::json!(-7));
+        assert_eq!(
+            int(b"9007199254740992", ColumnFlags::empty()),
+            serde_json::json!("9007199254740992")
+        );
+        assert_eq!(
+            int(b"18446744073709551615", ColumnFlags::UNSIGNED_FLAG),
+            serde_json::json!("18446744073709551615")
+        );
+        assert_eq!(
+            serialize_bytes_value(b"2024", ColumnType::MYSQL_TYPE_YEAR, ColumnFlags::empty()),
+            serde_json::json!(2024)
+        );
+        assert_eq!(int(b"abc", ColumnFlags::empty()), serde_json::json!("abc"));
+    }
+
+    #[test]
+    fn text_protocol_floats_parse_to_json_numbers() {
+        let float = |b: &[u8]| {
+            serialize_bytes_value(b, ColumnType::MYSQL_TYPE_DOUBLE, ColumnFlags::empty())
+        };
+        assert_eq!(float(b"1.5"), serde_json::json!(1.5));
+        assert_eq!(
+            serialize_bytes_value(b"0.25", ColumnType::MYSQL_TYPE_FLOAT, ColumnFlags::empty()),
+            serde_json::json!(0.25)
+        );
+        assert_eq!(float(b"nope"), serde_json::json!("nope"));
+    }
+
     // ── NULL ─────────────────────────────────────────────────────────────
 
     #[test]

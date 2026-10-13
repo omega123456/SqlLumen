@@ -204,3 +204,47 @@ pub fn log_execute_error(e: &sqlx::Error) {
         "mysql execute error",
     );
 }
+
+/// Log `mysql_async` rows (query editor session). Text-protocol values arrive as raw bytes.
+pub fn log_mysql_async_rows(rows: &[mysql_async::Row]) {
+    if !is_enabled() {
+        return;
+    }
+    tracing::debug!(target: TARGET, row_count = rows.len(), "mysql result rows (pre-serialize)");
+    for (i, row) in rows.iter().enumerate() {
+        let s = row
+            .columns_ref()
+            .iter()
+            .enumerate()
+            .map(|(idx, col)| {
+                let val = match row.as_ref(idx) {
+                    None | Some(mysql_async::Value::NULL) => "None".to_string(),
+                    Some(mysql_async::Value::Bytes(b)) => {
+                        format!("Some({:?})", String::from_utf8_lossy(b))
+                    }
+                    Some(v) => format!("Some({v:?})"),
+                };
+                format!("{}={val}", col.name_str())
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        tracing::debug!(target: TARGET, row_index = i, row = %s, "mysql row");
+    }
+}
+
+pub fn log_mysql_async_result(rows_affected: u64, last_insert_id: Option<u64>) {
+    tracing::debug!(
+        target: TARGET,
+        rows_affected,
+        last_insert_id,
+        "mysql execute result",
+    );
+}
+
+pub fn log_mysql_async_error(e: &mysql_async::Error) {
+    tracing::debug!(
+        target: TARGET,
+        error = %e,
+        "mysql execute error",
+    );
+}

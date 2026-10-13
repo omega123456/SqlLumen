@@ -15,7 +15,10 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+use sqllumen_lib::commands::mysql::{
+    close_connection_impl, open_connection_impl, OpenConnectionResult,
+};
+use sqllumen_lib::commands::session::{select_database_impl, set_test_select_database_hook};
 use sqllumen_lib::mysql::query_executor::{
     execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
     reexecute_single_result_impl, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
@@ -24,6 +27,7 @@ use sqllumen_lib::state::AppState;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
+use tauri::Manager;
 
 fn build_query_commands_app() -> (
     tauri::App<tauri::test::MockRuntime>,
@@ -37,7 +41,9 @@ fn build_query_commands_app() -> (
             execute_query,
             execute_multi_query,
             execute_call_query,
-            reexecute_single_result
+            reexecute_single_result,
+            close_connection,
+            select_database
         ])
         .build(mock_context(noop_assets()))
         .expect("should build test app");
@@ -61,6 +67,23 @@ async fn open_connection(
     state: tauri::State<'_, AppState>,
 ) -> Result<OpenConnectionResult, String> {
     open_connection_impl(&state, &payload.profile_id).await
+}
+
+#[tauri::command]
+async fn close_connection(
+    connection_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    close_connection_impl(&state, &connection_id).await
+}
+
+#[tauri::command]
+async fn select_database(
+    connection_id: String,
+    database_name: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    select_database_impl(&state, &connection_id, &database_name).await
 }
 
 #[tauri::command]
@@ -849,4 +872,195 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
     let serialized = serde_json::to_value(&result).expect("result should serialize");
     assert!(serialized.get("rows").is_some());
     assert!(serialized.get("totalPages").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_query_ipc_runs_start_transaction_without_prepared_statement_protocol() {
+    let server = MockMySqlServer::start_script_with_unsupported_prepared_prefixes(
+        vec![MockQueryStep {
+            query: "SELECT CONNECTION_ID()",
+            columns: vec![MockColumnDef {
+                name: "CONNECTION_ID()",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U64(42)]],
+            error: None,
+            affected_rows: None,
+        }],
+        vec!["START TRANSACTION"],
+    )
+    .await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+
+    let result: ExecuteQueryResultDto = invoke_tauri_command(
+        &webview,
+        "execute_query",
+        json!({
+            "connectionId": open_result.session_id,
+            "tabId": "tab-1",
+            "sql": "START TRANSACTION",
+            "rowLimit": 1000,
+        }),
+    )
+    .expect("START TRANSACTION should fall back to the text protocol");
+
+    assert_eq!(result.total_rows, 0);
+}
+
+fn connection_id_step() -> MockQueryStep {
+    MockQueryStep {
+        query: "SELECT CONNECTION_ID()",
+        columns: vec![MockColumnDef {
+            name: "CONNECTION_ID()",
+            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+            colflags: ColumnFlags::UNSIGNED_FLAG,
+        }],
+        rows: vec![vec![MockCell::U64(42)]],
+        error: None,
+        affected_rows: None,
+    }
+}
+
+fn run_single(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    connection_id: &str,
+    tab_id: &str,
+    sql: &str,
+) -> ExecuteQueryResultDto {
+    invoke_tauri_command(
+        webview,
+        "execute_query",
+        json!({
+            "connectionId": connection_id,
+            "tabId": tab_id,
+            "sql": sql,
+            "rowLimit": 1000,
+        }),
+    )
+    .expect("execute_query IPC should succeed")
+}
+
+fn session_setup_count(server: &MockMySqlServer) -> usize {
+    server
+        .text_queries()
+        .iter()
+        .filter(|q| q.as_str() == "SELECT CONNECTION_ID()")
+        .count()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn query_editor_windows_share_one_session_per_connection() {
+    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+    let connections_before = server.connection_count();
+
+    run_single(&webview, conn_id, "tab-1", "SET @region_id = 22");
+    run_single(&webview, conn_id, "tab-2", "SET @other = @region_id");
+    let multi: MultiQueryResultDto = invoke_tauri_command(
+        &webview,
+        "execute_multi_query",
+        json!({
+            "connectionId": conn_id,
+            "tabId": "tab-3",
+            "statements": ["SET @a = 1", "SET @b = @a"],
+            "rowLimit": 1000,
+        }),
+    )
+    .expect("execute_multi_query IPC should succeed");
+
+    assert!(multi.results.iter().all(|r| r.error.is_none()));
+    assert_eq!(server.connection_count(), connections_before + 1);
+    assert_eq!(session_setup_count(&server), 1);
+    let queries = server.text_queries();
+    for sql in [
+        "SET @region_id = 22",
+        "SET @other = @region_id",
+        "SET @a = 1",
+        "SET @b = @a",
+    ] {
+        assert!(
+            queries.iter().any(|q| q == sql),
+            "{sql} should use the text protocol"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn query_editor_concurrent_runs_queue_on_the_shared_session() {
+    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+    let connections_before = server.connection_count();
+
+    std::thread::scope(|scope| {
+        for tab in ["tab-1", "tab-2", "tab-3"] {
+            let webview = webview.clone();
+            scope.spawn(move || run_single(&webview, conn_id, tab, "SET @x = 1"));
+        }
+    });
+
+    assert_eq!(server.connection_count(), connections_before + 1);
+    assert_eq!(session_setup_count(&server), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn close_connection_drops_the_editor_session() {
+    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let (app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+
+    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
+    assert!(app
+        .state::<AppState>()
+        .editor_sessions
+        .lock()
+        .unwrap()
+        .contains_key(conn_id));
+
+    let _: () = invoke_tauri_command(
+        &webview,
+        "close_connection",
+        json!({ "connectionId": conn_id }),
+    )
+    .expect("close_connection IPC should succeed");
+
+    assert!(app
+        .state::<AppState>()
+        .editor_sessions
+        .lock()
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn select_database_switches_the_existing_editor_session() {
+    set_test_select_database_hook(Some(|_, _| Ok(())));
+    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+
+    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
+    let result: Result<(), _> = invoke_tauri_command(
+        &webview,
+        "select_database",
+        json!({ "connectionId": conn_id, "databaseName": "web_content" }),
+    );
+    set_test_select_database_hook(None);
+    result.expect("select_database IPC should succeed");
+
+    let queries = server.text_queries();
+    assert!(
+        queries
+            .iter()
+            .any(|q| q.starts_with("USE ") && q.contains("web_content")),
+        "session should switch database, got {queries:?}"
+    );
+    assert_eq!(session_setup_count(&server), 1);
 }

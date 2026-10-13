@@ -426,6 +426,7 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
             rq.retain(|(conn_id, _), _| conn_id != connection_id);
         }
         evict_metadata_cache_for_connection(state, connection_id);
+        crate::mysql::session::close(state, connection_id).await;
         Ok(())
     } else {
         Err(format!("Connection '{connection_id}' is not open"))
@@ -452,6 +453,7 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
     }
 
     evict_metadata_cache_for_connection(state, connection_id);
+    crate::mysql::session::close(state, connection_id).await;
 
     // Explicitly close the pool before dropping
     close_pool(entry.pool).await;
