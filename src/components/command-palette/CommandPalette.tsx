@@ -5,7 +5,9 @@ import {
   getCache,
   getPendingLoad,
   getSearchableObjects,
+  loadCache,
 } from '../query-editor/schema-metadata-cache'
+import { getPendingBootstrap } from '../../lib/schema-cache-bootstrap'
 import { activateColumnFromPalette, activateObjectFromPalette } from '../../lib/object-activation'
 import {
   buildCommandPaletteSearchIndex,
@@ -59,12 +61,13 @@ function getSearchState(args: {
   results: ReadonlyArray<PaletteSearchResult>
   recentResults: ReadonlyArray<PaletteSearchResult>
   objects: ReadonlyArray<SearchableObject>
+  isLoading: boolean
 }): CommandPaletteResultsProps['state'] {
   if (!args.connectionId) {
     return 'no-connection'
   }
 
-  if (args.objects.length === 0 && getPendingLoad(args.connectionId)) {
+  if (args.objects.length === 0 && args.isLoading) {
     return 'loading'
   }
 
@@ -274,17 +277,24 @@ function CommandPaletteSession({
       : []
 
   // The session is remounted per connection, so the initial read covers the common
-  // case. If the palette opens while the schema cache is still loading, refresh once
-  // the in-flight load resolves so we leave the loading state.
+  // case. If the schema cache is not ready, await the in-flight load — or start one,
+  // since a cache that was wiped or failed (e.g. while offline) is not reloaded by
+  // anything else — and refresh once it resolves so we leave the loading state.
   const [searchableObjects, setSearchableObjects] =
     useState<SearchableObject[]>(readSearchableObjects)
   const [databases, setDatabases] = useState<string[]>(readDatabases)
+  const [isLoading, setIsLoading] = useState(
+    () => activeConnectionId !== null && getCache(activeConnectionId).status !== 'ready'
+  )
 
   useEffect(() => {
     if (!activeConnectionId) {
       return
     }
-    const pendingLoad = getPendingLoad(activeConnectionId)
+    const pendingLoad =
+      getPendingLoad(activeConnectionId) ??
+      getPendingBootstrap(activeConnectionId) ??
+      (getCache(activeConnectionId).status === 'ready' ? null : loadCache(activeConnectionId))
     if (!pendingLoad) {
       return
     }
@@ -297,6 +307,7 @@ function CommandPaletteSession({
       setDatabases(
         [...getCache(activeConnectionId).databases].sort((left, right) => left.localeCompare(right))
       )
+      setIsLoading(false)
     }
     pendingLoad.then(refresh, refresh)
     return () => {
@@ -395,6 +406,7 @@ function CommandPaletteSession({
     results,
     recentResults,
     objects: searchableObjects,
+    isLoading,
   })
   const activeResult = visibleResults.length === 0 ? null : visibleResults[clampedActiveIndex]
   const activeDescendantId =

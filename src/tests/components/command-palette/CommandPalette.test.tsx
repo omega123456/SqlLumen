@@ -2,7 +2,12 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommandPalette } from '../../../components/command-palette/CommandPalette'
-import { hydrateFromSnapshot } from '../../../components/query-editor/schema-metadata-cache'
+import {
+  _clearAllCaches,
+  getCache,
+  hydrateFromSnapshot,
+  loadCache,
+} from '../../../components/query-editor/schema-metadata-cache'
 import { useCommandPaletteStore } from '../../../stores/command-palette-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useCommandPaletteRecentsStore } from '../../../stores/command-palette-recents-store'
@@ -127,6 +132,45 @@ describe('CommandPalette', () => {
       'No active connection'
     )
     expect(ipc.calls('fetch_schema_metadata_full')).toEqual([])
+  })
+
+  it('reloads a schema cache that failed to load (e.g. while offline) when opened', async () => {
+    const user = userEvent.setup()
+    _clearAllCaches()
+    ipc.override('fetch_schema_metadata_full', () => {
+      throw new Error('connection lost')
+    })
+    await loadCache('session-1')
+    expect(getCache('session-1').status).toBe('error')
+
+    ipc.override('fetch_schema_metadata_full', () => ({
+      databases: ['analytics'],
+      tables: {
+        analytics: [
+          { name: 'orders', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+        ],
+      },
+      views: {},
+      columns: {},
+      routines: {},
+      triggers: {},
+      foreignKeys: {},
+      indexes: {},
+    }))
+    useConnectionStore.setState({
+      activeConnections: { 'session-1': makeActiveConnection() },
+      activeConnectionOrder: ['session-1'],
+      activeTabId: 'session-1',
+    })
+    useCommandPaletteStore.setState({ isOpen: true })
+
+    render(<CommandPalette />)
+
+    expect(screen.getByTestId('command-palette-loading-state')).toBeInTheDocument()
+    await user.type(await screen.findByTestId('command-palette-input'), 'orders')
+
+    expect(await screen.findByRole('option', { name: /orders/ })).toBeInTheDocument()
+    expect(ipc.calls('fetch_schema_metadata_full')).toHaveLength(2)
   })
 
   it('starts scoped to the active standalone table', async () => {
