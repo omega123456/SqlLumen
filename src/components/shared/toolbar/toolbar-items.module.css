@@ -66,44 +66,6 @@
   flex-wrap: wrap;
 }
 
-/* Subtle small button (prototype `.b.sm.sub`) */
-.pageButton {
-  width: var(--control-height-sm);
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-sizing: border-box;
-  height: var(--control-height-sm);
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--on-surface);
-  font-family: var(--font-body);
-  font-size: var(--type-row-size);
-  line-height: var(--type-row-line);
-  font-weight: var(--type-weight-regular);
-  white-space: nowrap;
-  flex-shrink: 0;
-  cursor: default;
-}
-
-.pageButton:hover:not(:disabled) {
-  background: var(--fill-subtle-hover);
-}
-
-.pageButton:active:not(:disabled) {
-  background: var(--fill-subtle-pressed);
-  color: var(--on-surface-variant);
-}
-
-.pageButton:disabled {
-  color: var(--text-disabled);
-  cursor: not-allowed;
-}
-
 .pageText {
   font-size: var(--type-row-size);
   color: var(--on-surface-variant);

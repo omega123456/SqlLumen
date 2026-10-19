@@ -6,7 +6,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CaretLeft, CaretRight, SkipBack, SkipForward } from '@phosphor-icons/react'
+import { CaretLeftIcon, CaretRightIcon, SkipBackIcon, SkipForwardIcon } from '@phosphor-icons/react'
+import { IconButton } from '../../common/IconButton'
 import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import { TextInput } from '../../common/TextInput'
 import type {
@@ -86,27 +87,23 @@ export function PaginationGroup({
 
       <div className={styles.pagination}>
         {paginationMode === 'known' && showFirstLastButtons ? (
-          <button
-            type="button"
-            className={styles.pageButton}
+          <IconButton
             disabled={isPrevDisabled}
             onClick={() => knownTotalProps.onPageSubmit?.(1)}
             aria-label="First page"
             data-testid="pagination-first"
           >
-            <SkipBack size={14} weight="bold" />
-          </button>
+            <SkipBackIcon size={16} weight="bold" />
+          </IconButton>
         ) : null}
-        <button
-          type="button"
-          className={styles.pageButton}
+        <IconButton
           disabled={isPrevDisabled}
           onClick={onPrevPage}
           aria-label="Previous page"
           data-testid="pagination-prev"
         >
-          <CaretLeft size={14} weight="bold" />
-        </button>
+          <CaretLeftIcon size={16} weight="bold" />
+        </IconButton>
         {paginationMode === 'known' && knownTotalProps.onPageSubmit != null ? (
           <>
             <TextInput
@@ -153,27 +150,23 @@ export function PaginationGroup({
             data-testid="pagination-page-input"
           />
         )}
-        <button
-          type="button"
-          className={styles.pageButton}
+        <IconButton
           disabled={isNextDisabled}
           onClick={onNextPage}
           aria-label="Next page"
           data-testid="pagination-next"
         >
-          <CaretRight size={14} weight="bold" />
-        </button>
+          <CaretRightIcon size={16} weight="bold" />
+        </IconButton>
         {paginationMode === 'known' && showFirstLastButtons ? (
-          <button
-            type="button"
-            className={styles.pageButton}
+          <IconButton
             disabled={isNextDisabled}
             onClick={() => knownTotalProps.onPageSubmit?.(knownTotalProps.totalPages)}
             aria-label="Last page"
             data-testid="pagination-last"
           >
-            <SkipForward size={14} weight="bold" />
-          </button>
+            <SkipForwardIcon size={16} weight="bold" />
+          </IconButton>
         ) : null}
       </div>
     </div>
