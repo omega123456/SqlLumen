@@ -28,6 +28,13 @@
   border-color: var(--primary);
 }
 
+/* Must out-rank the unchecked hover above, or hovering blanks a ticked box */
+.input:checked:hover:not(:disabled),
+.input:indeterminate:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
 /* Check mark */
 .input:checked::after {
   content: '';

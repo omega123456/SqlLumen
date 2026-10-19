@@ -69,4 +69,10 @@ describe('Checkbox Fluent styles', () => {
       'background: var(--primary)'
     )
   })
+
+  it('keeps checked and mixed boxes filled on hover', () => {
+    expect(
+      cssRule(css, '.input:checked:hover:not(:disabled), .input:indeterminate:hover:not(:disabled)')
+    ).toContain('background: var(--accent-hover)')
+  })
 })

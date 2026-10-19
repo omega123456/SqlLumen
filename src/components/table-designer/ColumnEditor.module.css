@@ -94,10 +94,35 @@
 
 .row {
   color: var(--on-surface);
+  cursor: grab;
+}
+
+/* The whole row is draggable, but its controls keep their own cursors */
+.row :where(input, textarea, select, button) {
+  cursor: auto;
 }
 
 .row:hover {
   background: var(--fill-subtle-hover);
+}
+
+/* While dragging, rows slide apart to open the slot the dragged row will land in */
+.dragging .row {
+  transition: transform 0.15s ease;
+}
+
+.dragging .row,
+.dragging .row * {
+  cursor: grabbing;
+}
+
+/* The grabbed row is lifted and follows the pointer without easing */
+.row.dragSource {
+  position: relative;
+  z-index: 1;
+  background: var(--surface-container);
+  box-shadow: var(--shadow-flyout);
+  transition: none;
 }
 
 /* The drag handle replaces the row number while the row is hovered */

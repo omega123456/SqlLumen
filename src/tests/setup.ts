@@ -348,6 +348,11 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {}
 }
 
+// Polyfill Element.setPointerCapture for jsdom (needed by table designer row drag)
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = function () {}
+}
+
 // Polyfill navigator.clipboard for jsdom (needed by copy-to-clipboard flows)
 if (typeof navigator.clipboard === 'undefined') {
   Object.defineProperty(navigator, 'clipboard', {

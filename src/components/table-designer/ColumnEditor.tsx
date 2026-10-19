@@ -33,6 +33,10 @@ interface ColumnEditorProps {
 const TYPES_WITHOUT_LENGTH_SET = new Set(TYPES_WITHOUT_LENGTH)
 const NUMERIC_TYPE_SET = new Set(NUMERIC_TYPES)
 
+// Row drag: pointer travel before a press becomes a drag, and targets that keep their own pointer
+const DRAG_THRESHOLD_PX = 4
+const DRAG_IGNORE_SELECTOR = 'input, textarea, select, button, a, [role="combobox"]'
+
 const SIGNEDNESS_DROPDOWN_OPTIONS: DropdownOption[] = [
   { value: 'SIGNED', label: 'Signed' },
   { value: 'UNSIGNED', label: 'Unsigned' },
@@ -175,6 +179,13 @@ function getSelectionAfterReorder(
   return selectedIndex
 }
 
+/** Rows another row slides by to open a gap while `fromIndex` is dragged towards `toIndex`. */
+function getDragShift(rowIndex: number, fromIndex: number, toIndex: number): number {
+  if (fromIndex < rowIndex && rowIndex <= toIndex) return -1
+  if (toIndex <= rowIndex && rowIndex < fromIndex) return 1
+  return 0
+}
+
 function CellFrame({
   modified,
   testId,
@@ -202,7 +213,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const updateColumn = useTableDesignerStore((state) => state.updateColumn)
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [drag, setDrag] = useState<{ from: number; to: number; rowHeight: number } | null>(null)
+  // Live pointer state; `to` stays null until the press passes the drag threshold
+  const rowDragRef = useRef<{ from: number; startY: number; to: number | null } | null>(null)
+  const suppressRowClickRef = useRef(false)
   const [defaultModeOverrideIndex, setDefaultModeOverrideIndex] = useState<number | null>(null)
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [pendingFocusCell, setPendingFocusCell] = useState<ActiveCell | null>(null)
@@ -530,6 +544,21 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     setSelectedIndex(nextIndex)
   }
 
+  const finishRowDrag = (row: HTMLTableRowElement, commit: boolean) => {
+    const rowDrag = rowDragRef.current
+    rowDragRef.current = null
+    row.style.transform = ''
+    if (rowDrag?.to == null) return
+
+    const { from, to } = rowDrag
+    suppressRowClickRef.current = true
+    setDrag(null)
+    if (commit && from !== to) {
+      reorderColumn(tabId, from, to)
+      setSelectedIndex((current) => getSelectionAfterReorder(current, from, to))
+    }
+  }
+
   return (
     <div className={styles.container} data-testid="column-editor" ref={containerRef}>
       {/* Command bar (prototype `.p-cmd`): sm buttons, subtle except Add column */}
@@ -592,10 +621,18 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                 ))}
               </tr>
             </thead>
-            <tbody className={styles.tableBody}>
+            <tbody
+              className={`${styles.tableBody} ${drag ? styles.dragging : ''}`}
+              style={
+                drag
+                  ? ({ '--drag-row-height': `${drag.rowHeight}px` } as React.CSSProperties)
+                  : undefined
+              }
+            >
               {columns.map((column, columnIndex) => {
                 const nameError = validationErrors[`columns.${columnIndex}.name`]
                 const isSelected = effectiveSelectedIndex === columnIndex
+                const dragShift = drag ? getDragShift(columnIndex, drag.from, drag.to) : 0
                 const lengthDisabled = isTypeWithoutLength(column.type)
                 const signednessDisabled = !supportsSignedness(column.type)
                 const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
@@ -634,35 +671,51 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                 return (
                   <tr
                     key={`${column.originalName || 'new'}-${columnIndex}`}
-                    className={`${styles.row} ${isSelected ? styles.selectedRow : ''}`}
+                    className={`${styles.row} ${isSelected ? styles.selectedRow : ''} ${
+                      drag?.from === columnIndex ? styles.dragSource : ''
+                    }`}
+                    style={
+                      dragShift
+                        ? { transform: `translateY(calc(${dragShift} * var(--drag-row-height)))` }
+                        : undefined
+                    }
                     data-testid={`column-row-${columnIndex}`}
-                    draggable={true}
-                    onClick={() => setSelectedIndex(columnIndex)}
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = 'move'
-                      event.dataTransfer.setData('text/plain', String(columnIndex))
-                      setDragIndex(columnIndex)
-                    }}
-                    onDragEnd={() => setDragIndex(null)}
-                    onDragOver={(event) => {
-                      event.preventDefault()
-                      event.dataTransfer.dropEffect = 'move'
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault()
-                      const fromIndex =
-                        dragIndex ?? Number(event.dataTransfer.getData('text/plain'))
-                      if (Number.isNaN(fromIndex) || fromIndex === columnIndex) {
-                        setDragIndex(null)
+                    onClick={() => {
+                      // The click that ends a drag must not select the row's old index
+                      if (suppressRowClickRef.current) {
+                        suppressRowClickRef.current = false
                         return
                       }
-
-                      reorderColumn(tabId, fromIndex, columnIndex)
-                      setSelectedIndex((current) =>
-                        getSelectionAfterReorder(current, fromIndex, columnIndex)
-                      )
-                      setDragIndex(null)
+                      setSelectedIndex(columnIndex)
                     }}
+                    onPointerDown={(event) => {
+                      suppressRowClickRef.current = false
+                      const target = event.target as HTMLElement
+                      if (event.button !== 0 || target.closest(DRAG_IGNORE_SELECTOR)) return
+                      event.preventDefault()
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                      rowDragRef.current = { from: columnIndex, startY: event.clientY, to: null }
+                    }}
+                    onPointerMove={(event) => {
+                      const rowDrag = rowDragRef.current
+                      if (!rowDrag) return
+                      const offset = event.clientY - rowDrag.startY
+                      if (rowDrag.to === null && Math.abs(offset) < DRAG_THRESHOLD_PX) return
+                      // The grabbed row follows the pointer directly; the others slide via React
+                      const row = event.currentTarget
+                      row.style.transform = `translateY(${offset}px)`
+                      const rowHeight = row.offsetHeight || 1
+                      const to = Math.min(
+                        Math.max(rowDrag.from + Math.round(offset / rowHeight), 0),
+                        columns.length - 1
+                      )
+                      rowDrag.to = to
+                      setDrag((current) =>
+                        current?.to === to ? current : { from: rowDrag.from, to, rowHeight }
+                      )
+                    }}
+                    onPointerUp={(event) => finishRowDrag(event.currentTarget, true)}
+                    onPointerCancel={(event) => finishRowDrag(event.currentTarget, false)}
                   >
                     {/* The row number swaps for the drag handle on hover (rows are draggable) */}
                     <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>

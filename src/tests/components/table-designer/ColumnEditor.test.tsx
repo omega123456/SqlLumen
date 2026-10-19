@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ColumnEditor } from '../../../components/table-designer/ColumnEditor'
@@ -168,6 +168,90 @@ describe('ColumnEditor', () => {
 
     expect(getTab()?.currentSchema.columns).toHaveLength(1)
     expect(screen.queryByDisplayValue('email')).not.toBeInTheDocument()
+  })
+
+  describe('row drag', () => {
+    // jsdom has no PointerEvent, so pointer fields must be set on the created event
+    const pointer = (
+      type: 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel',
+      target: HTMLElement,
+      clientY: number
+    ) => {
+      const event = createEvent[type](target)
+      Object.defineProperties(event, {
+        clientY: { value: clientY },
+        button: { value: 0 },
+        pointerId: { value: 1 },
+      })
+      fireEvent(target, event)
+    }
+
+    // jsdom has no layout: give the rows a 30px height
+    const getRows = () => {
+      const rows = [screen.getByTestId('column-row-0'), screen.getByTestId('column-row-1')]
+      for (const row of rows) {
+        Object.defineProperty(row, 'offsetHeight', { value: 30 })
+      }
+      return rows
+    }
+
+    const columnNames = (getTab: () => TableDesignerTabState | undefined) =>
+      getTab()?.currentSchema.columns.map((column) => column.name)
+
+    it('the grabbed row follows the pointer while the others slide to open its slot', async () => {
+      const { getTab } = renderEditor()
+      const [row0, row1] = getRows()
+
+      pointer('pointerDown', row0, 10)
+      pointer('pointerMove', row0, 26)
+
+      expect(row0.style.transform).toBe('translateY(16px)')
+      await waitFor(() =>
+        expect(row1.style.transform).toBe('translateY(calc(-1 * var(--drag-row-height)))')
+      )
+
+      // Past the last row clamps to the last slot
+      pointer('pointerMove', row0, 500)
+      pointer('pointerUp', row0, 500)
+
+      await waitFor(() => expect(columnNames(getTab)).toEqual(['email', 'id']))
+      expect(screen.getByTestId('column-row-0').style.transform).toBe('')
+      // The click that ends the drag must not select a row
+      fireEvent.click(screen.getByTestId('column-row-1'))
+      expect(screen.getByTestId('column-row-1').className).not.toMatch(/selectedRow/)
+    })
+
+    it('a cancelled drag puts the row back', async () => {
+      const { getTab } = renderEditor()
+      const [row0, row1] = getRows()
+
+      pointer('pointerDown', row0, 10)
+      pointer('pointerMove', row0, 40)
+      await waitFor(() => expect(row1.style.transform).not.toBe(''))
+      pointer('pointerCancel', row0, 40)
+
+      await waitFor(() => expect(row1.style.transform).toBe(''))
+      expect(row0.style.transform).toBe('')
+      expect(columnNames(getTab)).toEqual(['id', 'email'])
+    })
+
+    it('presses on inputs and small movements do not start a drag', async () => {
+      const { getTab } = renderEditor()
+      const [row0] = getRows()
+
+      pointer('pointerDown', screen.getByTestId('column-name-0'), 10)
+      pointer('pointerMove', row0, 60)
+      expect(row0.style.transform).toBe('')
+
+      pointer('pointerDown', row0, 10)
+      pointer('pointerMove', row0, 12)
+      pointer('pointerUp', row0, 12)
+      fireEvent.click(row0)
+
+      expect(row0.style.transform).toBe('')
+      expect(columnNames(getTab)).toEqual(['id', 'email'])
+      await waitFor(() => expect(row0.className).toMatch(/selectedRow/))
+    })
   })
 
   it('editing Name field updates store.updateColumn', async () => {
