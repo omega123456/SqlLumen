@@ -4,7 +4,7 @@
   min-width: 0;
 }
 
-/* Tab-group row (prototype `.p-groups`): 44px, selector tabs 40px tall, 2px accent underline */
+/* Tab-group row (prototype `.p-groups`): 44px, selector tabs 40px tall, centred accent pill */
 .stackRail {
   box-sizing: border-box;
   display: flex;
@@ -60,6 +60,17 @@
 .stackChip {
   min-width: 0;
   max-width: 200px;
+}
+
+/* Same centred 16×3 accent pill as the default (table designer) tabs */
+.stackRail .stackChip[data-active]::after {
+  left: 50%;
+  right: auto;
+  bottom: 2px;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 2px;
 }
 
 .stackChipLabel {
