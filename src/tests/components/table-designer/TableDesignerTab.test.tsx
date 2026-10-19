@@ -8,7 +8,24 @@ import { useThemeStore } from '../../../stores/theme-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { ipc } from '../../ipc-mock'
-import type { TableDesignerTab as TableDesignerTabType } from '../../../types/schema'
+import type {
+  TableDesignerColumnDef,
+  TableDesignerTab as TableDesignerTabType,
+} from '../../../types/schema'
+
+function makeColumn(name: string): TableDesignerColumnDef {
+  return {
+    name,
+    type: 'INT',
+    length: '',
+    nullable: false,
+    isPrimaryKey: false,
+    isAutoIncrement: false,
+    defaultValue: { tag: 'NO_DEFAULT' },
+    comment: '',
+    originalName: name,
+  }
+}
 
 function makeTab(overrides: Partial<TableDesignerTabType> = {}): TableDesignerTabType {
   return {
@@ -118,8 +135,7 @@ describe('TableDesignerTab', () => {
     }))
 
     render(<TableDesignerTab tab={makeTab()} />)
-    expect(screen.getByText('Alter Table:')).toBeInTheDocument()
-    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Alter table users' })).toBeInTheDocument()
     expect(screen.queryByTestId('table-designer-name-input')).not.toBeInTheDocument()
   })
 
@@ -127,16 +143,31 @@ describe('TableDesignerTab', () => {
     useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
     render(<TableDesignerTab tab={makeTab({ mode: 'create', objectName: '__new_table__' })} />)
 
-    expect(screen.getByText('Create Table')).toBeInTheDocument()
+    expect(screen.getByText('Create table')).toBeInTheDocument()
     expect(screen.getByTestId('table-designer-name-input')).toBeInTheDocument()
   })
 
-  it('renders header and content inside elevated card surfaces', () => {
+  it('renders a plain page header with the database and column count caption', () => {
     useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    useTableDesignerStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          isLoading: false,
+          currentSchema: {
+            ...state.tabs['tab-1'].currentSchema,
+            tableName: 'users',
+            columns: [makeColumn('id'), makeColumn('email')],
+          },
+        },
+      },
+    }))
     render(<TableDesignerTab tab={makeTab()} />)
 
-    expect(screen.getByTestId('table-designer-header-card')).toHaveClass('ui-elevated-surface')
-    expect(screen.getByTestId('table-designer-content-card')).toHaveClass('ui-elevated-surface')
+    expect(screen.getByTestId('table-designer-header')).not.toHaveClass('ui-elevated-surface')
+    expect(screen.getByTestId('table-designer-caption')).toHaveTextContent('app_db · 2 columns')
+    expect(screen.getByTestId('table-designer-apply')).toHaveTextContent('Apply changes')
   })
 
   it('typing in create mode table name input calls store.updateTableName', async () => {
@@ -242,9 +273,9 @@ describe('TableDesignerTab', () => {
     })
     expect(screen.getByRole('button', { name: 'Columns' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Indexes' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Foreign Keys' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Table Properties' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'DDL Preview' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Foreign keys' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Table properties' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'DDL preview' })).toBeInTheDocument()
   })
 
   it('renders error state when loadError is set', () => {
@@ -264,7 +295,7 @@ describe('TableDesignerTab', () => {
     expect(screen.getByTestId('table-designer-error')).toHaveTextContent('Load failed')
   })
 
-  it('shows light theme unsaved subtitle in alter mode when dirty', () => {
+  it('shows unsaved changes through the enabled Discard and Apply buttons in both themes', () => {
     useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' })
     useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
     useTableDesignerStore.setState((state) => ({
@@ -282,7 +313,9 @@ describe('TableDesignerTab', () => {
     }))
 
     render(<TableDesignerTab tab={makeTab()} />)
-    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
+    expect(screen.getByTestId('table-designer-discard')).toBeEnabled()
+    expect(screen.getByTestId('table-designer-apply')).toHaveTextContent(/^Apply changes$/)
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument()
   })
 
   it('clicking the indexes sub-tab shows IndexEditor content', async () => {
@@ -301,7 +334,7 @@ describe('TableDesignerTab', () => {
     useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
     render(<TableDesignerTab tab={makeTab()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Foreign Keys' }))
+    await user.click(screen.getByRole('button', { name: 'Foreign keys' }))
 
     expect(screen.getByTestId('foreign-key-editor')).toBeInTheDocument()
     expect(useTableDesignerStore.getState().tabs['tab-1']?.selectedSubTab).toBe('fks')
@@ -312,7 +345,7 @@ describe('TableDesignerTab', () => {
     useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
     render(<TableDesignerTab tab={makeTab()} />)
 
-    await user.click(screen.getByRole('button', { name: 'Table Properties' }))
+    await user.click(screen.getByRole('button', { name: 'Table properties' }))
 
     expect(screen.getByTestId('table-properties-editor')).toBeInTheDocument()
     expect(useTableDesignerStore.getState().tabs['tab-1']?.selectedSubTab).toBe('properties')
@@ -323,7 +356,7 @@ describe('TableDesignerTab', () => {
     useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
     render(<TableDesignerTab tab={makeTab()} />)
 
-    await user.click(screen.getByRole('button', { name: 'DDL Preview' }))
+    await user.click(screen.getByRole('button', { name: 'DDL preview' }))
 
     expect(screen.getByTestId('table-designer-ddl-preview')).toBeInTheDocument()
     expect(useTableDesignerStore.getState().tabs['tab-1']?.selectedSubTab).toBe('ddl')
@@ -423,7 +456,7 @@ describe('TableDesignerTab', () => {
 
     const { rerender } = render(<TableDesignerTab tab={makeTab()} />)
 
-    expect(screen.getByText('Unsaved Schema Changes')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved schema changes')).toBeInTheDocument()
     await user.click(screen.getByTestId('btn-cancel-changes'))
     await waitFor(() => {
       expect(useTableDesignerStore.getState().tabs['tab-1']?.pendingNavigationAction).toBeNull()

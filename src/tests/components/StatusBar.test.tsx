@@ -274,9 +274,9 @@ describe('StatusBar', () => {
       render(<StatusBar />)
 
       expect(screen.getByTestId('query-info')).toBeInTheDocument()
-      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows: 42')
-      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec: 12ms')
-      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total: 150ms')
+      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows 42')
+      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec 12 ms')
+      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total 150 ms')
     })
 
     it('renders the query-info cluster identically in light and dark themes', () => {
@@ -293,9 +293,9 @@ describe('StatusBar', () => {
       const lightInfo = screen.getByTestId('query-info').textContent
 
       expect(lightInfo).toBe(darkInfo)
-      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows: 42')
-      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec: 12ms')
-      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total: 150ms')
+      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows 42')
+      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec 12 ms')
+      expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total 150 ms')
     })
 
     it('does not show query info when active tab is not query-editor', () => {
@@ -481,7 +481,7 @@ describe('StatusBar', () => {
       render(<StatusBar />)
 
       expect(screen.getByTestId('table-data-info')).toBeInTheDocument()
-      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows: 3')
+      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows 3')
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
@@ -533,7 +533,7 @@ describe('StatusBar', () => {
       render(<StatusBar />)
 
       expect(screen.getByTestId('table-data-info')).toBeInTheDocument()
-      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows: 1')
+      expect(screen.getByTestId('table-data-rows')).toHaveTextContent('Rows 1')
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
     })
 
@@ -599,7 +599,7 @@ describe('StatusBar', () => {
       expect(screen.getByTestId('indexing-text')).toHaveTextContent('Indexing 3/10')
     })
 
-    it('shows uppercase indexing text in light theme', () => {
+    it('shows the same sentence-case indexing text in light theme', () => {
       useThemeStore.setState({ resolvedTheme: 'light' })
       setupActiveConnection()
       useSchemaIndexStore.setState({
@@ -616,7 +616,7 @@ describe('StatusBar', () => {
 
       render(<StatusBar />)
 
-      expect(screen.getByTestId('indexing-text')).toHaveTextContent('INDEXING: 5/20 TABLES')
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Indexing 5/20')
     })
 
     it('shows "Reading schema..." during loading_schema phase with no tables yet (dark)', () => {

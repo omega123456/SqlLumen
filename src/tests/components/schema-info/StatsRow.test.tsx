@@ -66,9 +66,9 @@ describe('StatsRow', () => {
   it('renders all three stat cards', () => {
     render(<StatsRow metadata={makeMetadata()} />)
 
-    expect(screen.getByText('Total Rows')).toBeInTheDocument()
-    expect(screen.getByText('Storage Engine')).toBeInTheDocument()
-    expect(screen.getByText('Index Size')).toBeInTheDocument()
+    expect(screen.getByText('Total rows')).toBeInTheDocument()
+    expect(screen.getByText('Storage engine')).toBeInTheDocument()
+    expect(screen.getByText('Index size')).toBeInTheDocument()
   })
 
   it('renders column count card next to row count when columnCount is set', () => {
@@ -77,7 +77,7 @@ describe('StatsRow', () => {
     )
 
     expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
-    expect(screen.getByText('Column count')).toBeInTheDocument()
+    expect(screen.getByText('Columns')).toBeInTheDocument()
     expect(screen.getByText(Number(12).toLocaleString())).toBeInTheDocument()
     expect(container.querySelectorAll('.ui-elevated-surface')).toHaveLength(4)
   })

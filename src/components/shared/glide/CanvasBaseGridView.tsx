@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
@@ -43,7 +44,7 @@ import {
   buildNullCell,
   buildTextCell,
   classifyCellValue,
-  NULL_CELL_THEME_OVERRIDE,
+  nullCellThemeOverride,
 } from './glide-cell-content'
 import { buildGlideColumns } from './glide-column-adapter'
 import { drawCustomHeader } from './glide-header-rendering'
@@ -132,6 +133,17 @@ function isDropdownNullSelection(
 ): boolean {
   if (column.isNullable !== true || value == null) return false
   return getDropdownOptionValue(buildEnumAllowedValues(column)[0]) === value
+}
+
+/** Grid well (prototype `.p-grid`): a divider sits above the header row. */
+const GRID_WELL_STYLE: CSSProperties = {
+  position: 'relative',
+  width: '100%',
+  height: '100%',
+  flex: 1,
+  minHeight: 0,
+  boxSizing: 'border-box',
+  borderTop: '1px solid var(--stroke-divider)',
 }
 
 export interface CanvasBaseGridViewProps extends BaseGridViewProps {
@@ -258,7 +270,7 @@ function buildEnumDropdownCell(
     allowOverlay: editable,
     readonly: !editable,
     copyData: value ?? 'NULL',
-    ...(value == null ? { themeOverride: NULL_CELL_THEME_OVERRIDE } : {}),
+    ...(value == null ? { themeOverride: nullCellThemeOverride() } : {}),
     data: {
       kind: 'dropdown-cell',
       value: value ?? nullSentinel,
@@ -277,7 +289,7 @@ function buildSetMultiSelectCell(
     allowOverlay: editable,
     readonly: !editable,
     copyData: value ?? 'NULL',
-    ...(value == null ? { themeOverride: NULL_CELL_THEME_OVERRIDE } : {}),
+    ...(value == null ? { themeOverride: nullCellThemeOverride() } : {}),
     data: {
       kind: 'multi-select-cell',
       values: parseSetCellValue(value) ?? null,
@@ -1602,10 +1614,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   )
 
   return (
-    <div
-      onContextMenu={handleContextMenu}
-      style={{ position: 'relative', width: '100%', height: '100%', flex: 1, minHeight: 0 }}
-    >
+    <div onContextMenu={handleContextMenu} style={GRID_WELL_STYLE}>
       <GlideDataGrid
         ref={gridRef}
         columns={glideColumns}

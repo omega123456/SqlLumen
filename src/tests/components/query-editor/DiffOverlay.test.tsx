@@ -34,9 +34,9 @@ describe('DiffOverlay', () => {
     expect(screen.getByTestId('diff-overlay')).toBeInTheDocument()
   })
 
-  it('shows "Review Changes" header text', () => {
+  it('shows "Review changes" header text', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
-    expect(screen.getByText('Review Changes')).toBeInTheDocument()
+    expect(screen.getByText('Review changes')).toBeInTheDocument()
   })
 
   it('renders the mock diff editor', () => {
@@ -75,14 +75,14 @@ describe('DiffOverlay', () => {
   it('renders Accept All button with primary variant', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     const acceptBtn = screen.getByTestId('diff-accept-all-button')
-    expect(acceptBtn).toHaveTextContent('Accept All')
+    expect(acceptBtn).toHaveTextContent('Accept all')
   })
 
   it('renders Reject All button with danger variant', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     const rejectBtn = screen.getByTestId('diff-reject-button')
-    expect(rejectBtn).toHaveTextContent('Reject All')
-    expect(rejectBtn).toHaveClass('ui-button-danger')
+    expect(rejectBtn).toHaveTextContent('Reject all')
+    expect(rejectBtn).toHaveClass('ui-button--danger')
   })
 
   it('renders Accept All, Reject All, and Close buttons', () => {

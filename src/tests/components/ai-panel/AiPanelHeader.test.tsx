@@ -30,7 +30,7 @@ describe('AiPanelHeader', () => {
 
   it('shows AI Assistant title', () => {
     render(<AiPanelHeader tabId="tab-1" />)
-    expect(screen.getByText('AI Assistant')).toBeInTheDocument()
+    expect(screen.getByText('AI assistant')).toBeInTheDocument()
   })
 
   it('renders clear conversation button', () => {

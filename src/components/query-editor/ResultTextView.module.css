@@ -21,13 +21,13 @@
   gap: 4px;
   height: 26px;
   padding: 0 10px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   background: var(--surface-container);
   color: var(--on-surface-variant);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--type-caption-size);
+  font-weight: 400;
   transition:
     color 0.15s ease,
     border-color 0.15s ease,
@@ -38,7 +38,7 @@
 .copyAllButton:hover {
   color: var(--primary);
   border-color: rgba(var(--primary-rgb), 0.35);
-  background: rgba(var(--primary-rgb), 0.06);
+  background: var(--fill-subtle-hover);
 }
 
 /* Pre-formatted text — scrollable in both axes */
@@ -49,22 +49,9 @@
   padding-top: 44px; /* leave room for the Copy All button */
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--type-row-size);
   line-height: 1.6;
   color: var(--on-surface);
   white-space: pre;
   tab-size: 4;
-}
-
-/* ---- Light theme overrides ---- */
-
-[data-theme='light'] .copyAllButton {
-  background: white;
-  border-color: #e2e8f0;
-}
-
-[data-theme='light'] .copyAllButton:hover {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-  background: #f8fafc;
 }

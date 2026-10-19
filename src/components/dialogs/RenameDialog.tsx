@@ -71,7 +71,7 @@ export function RenameDialog({
 
       <div>
         <label className={styles.label} htmlFor="rename-new-name">
-          New Name
+          New name
         </label>
         <TextInput
           id="rename-new-name"
@@ -91,16 +91,16 @@ export function RenameDialog({
       )}
 
       <div className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel} data-testid="rename-cancel-button">
-          Cancel
-        </Button>
         <Button
-          variant="primary"
+          variant="accent"
           type="submit"
           disabled={!isValid || isLoading}
           data-testid="rename-confirm-button"
         >
           {isLoading ? 'Renaming...' : 'Rename'}
+        </Button>
+        <Button onClick={onCancel} data-testid="rename-cancel-button">
+          Cancel
         </Button>
       </div>
     </DialogShell>

@@ -16,6 +16,8 @@
     "allow-set-setting",
     "allow-get-all-settings",
     "allow-get-app-info",
+    "allow-set-window-theme",
+    "allow-get-window-backdrop",
     "allow-save-connection",
     "allow-get-connection",
     "allow-list-connections",

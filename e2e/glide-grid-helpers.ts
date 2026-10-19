@@ -116,7 +116,10 @@ export function getGlideCellPoint(
   rowIdx: number
 ): { x: number; y: number } {
   return {
-    x: columnOffset(geometry, colIdx) - geometry.scrollLeft + (geometry.columnWidths[colIdx] ?? 0) / 2,
+    x:
+      columnOffset(geometry, colIdx) -
+      geometry.scrollLeft +
+      (geometry.columnWidths[colIdx] ?? 0) / 2,
     y:
       geometry.headerHeight -
       geometry.scrollTop +
@@ -129,16 +132,13 @@ export function getGlideHeaderPoint(
   geometry: GlideGridGeometry,
   colIdx: number
 ): { x: number; y: number } {
-  return { x: columnOffset(geometry, colIdx) - geometry.scrollLeft + 8, y: geometry.headerHeight / 2 }
+  return {
+    x: columnOffset(geometry, colIdx) - geometry.scrollLeft + 8,
+    y: geometry.headerHeight / 2,
+  }
 }
 
-async function clickAt(
-  page: Page,
-  testId: string,
-  x: number,
-  y: number,
-  clickCount = 1
-) {
+async function clickAt(page: Page, testId: string, x: number, y: number, clickCount = 1) {
   const grid = await getGlideGrid(page, testId)
   const canvas = grid.locator('canvas[data-testid="data-grid-canvas"]').first()
   await canvas.click({ position: { x, y }, force: true, clickCount })

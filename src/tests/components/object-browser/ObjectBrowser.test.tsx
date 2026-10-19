@@ -777,7 +777,7 @@ describe('ObjectBrowser', () => {
     render(
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
     )
-    expect(screen.getByPlaceholderText('Filter objects...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Filter objects')).toBeInTheDocument()
   })
 
   it('right-clicking a tree node shows context menu', async () => {
@@ -997,7 +997,7 @@ describe('ObjectBrowser', () => {
     )
 
     await openContextMenu(user, 'users')
-    await user.click(screen.getByText('Alter Table...'))
+    await user.click(screen.getByText('Alter table...'))
 
     const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
     expect(tabs).toHaveLength(1)
@@ -1021,9 +1021,9 @@ describe('ObjectBrowser', () => {
     )
 
     await openContextMenu(user, 'ecommerce_db')
-    await user.click(screen.getByText('Copy to Another Host...'))
+    await user.click(screen.getByText('Copy to another host...'))
 
-    expect(await screen.findByRole('heading', { name: 'Copy to Another Host' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Copy to another host' })).toBeInTheDocument()
     expect((screen.getByTestId('copy-source-connection') as HTMLInputElement).value).toBe('Test DB')
     expect((screen.getByTestId('copy-source-database') as HTMLInputElement).value).toBe(
       'ecommerce_db'
@@ -1072,10 +1072,10 @@ describe('ObjectBrowser', () => {
       )
 
       await openContextMenu(user, nodeLabel)
-      await user.click(screen.getByText('Copy to Another Host...'))
+      await user.click(screen.getByText('Copy to another host...'))
 
       expect(
-        await screen.findByRole('heading', { name: 'Copy to Another Host' })
+        await screen.findByRole('heading', { name: 'Copy to another host' })
       ).toBeInTheDocument()
       expect((await screen.findByTestId(expectedCheckboxTestId)) as HTMLInputElement).toBeChecked()
     }
@@ -1092,7 +1092,7 @@ describe('ObjectBrowser', () => {
     )
 
     await openContextMenu(user, 'users')
-    await user.click(screen.getByText('Create Table...'))
+    await user.click(screen.getByText('Create table...'))
 
     const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
     expect(tabs).toHaveLength(1)
@@ -1102,7 +1102,7 @@ describe('ObjectBrowser', () => {
       objectName: '__new_table__',
       databaseName: 'ecommerce_db',
       connectionId: CONN_ID,
-      label: 'New Table',
+      label: 'New table',
     })
   })
 
@@ -1126,7 +1126,7 @@ describe('ObjectBrowser', () => {
       objectName: '__new_table__',
       databaseName: 'ecommerce_db',
       connectionId: CONN_ID,
-      label: 'New Table',
+      label: 'New table',
     })
   })
 
@@ -1142,7 +1142,7 @@ describe('ObjectBrowser', () => {
 
     await openContextMenu(user, 'users')
 
-    expect(screen.queryByText('Alter Table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Alter table...')).not.toBeInTheDocument()
   })
 
   it('create table item disabled when connection is read-only', async () => {
@@ -1157,7 +1157,7 @@ describe('ObjectBrowser', () => {
 
     await openContextMenu(user, 'users')
 
-    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create table...')).not.toBeInTheDocument()
   })
 
   it('double-clicking a view node opens a table-data tab with objectType view', async () => {
@@ -1365,11 +1365,11 @@ describe('ObjectBrowser', () => {
       )
       await openContextMenu(user, 'ecommerce_db')
 
-      await user.click(screen.getByText('Drop Database...'))
+      await user.click(screen.getByText('Drop database...'))
 
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
       // The dialog message references the database name
-      expect(screen.getByRole('heading', { name: /Drop Database/ })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /Drop database/ })).toBeInTheDocument()
     })
 
     it('drops database, closes tabs, and refreshes tree on confirm', async () => {
@@ -1387,7 +1387,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Drop Database...'))
+      await user.click(screen.getByText('Drop database...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1417,7 +1417,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Drop Database...'))
+      await user.click(screen.getByText('Drop database...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1443,11 +1443,11 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Drop Table...'))
+      await user.click(screen.getByText('Drop table...'))
 
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
       // The message references the fully-qualified table name
-      expect(screen.getByRole('heading', { name: /Drop Table/ })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /Drop table/ })).toBeInTheDocument()
     })
 
     it('drops table, closes tabs, and refreshes on confirm', async () => {
@@ -1466,7 +1466,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Drop Table...'))
+      await user.click(screen.getByText('Drop table...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1497,10 +1497,10 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Truncate Table...'))
+      await user.click(screen.getByText('Truncate table...'))
 
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: /Truncate Table/ })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /Truncate table/ })).toBeInTheDocument()
     })
 
     it('truncates table on confirm', async () => {
@@ -1517,7 +1517,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Truncate Table...'))
+      await user.click(screen.getByText('Truncate table...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
@@ -1545,7 +1545,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Rename Table...'))
+      await user.click(screen.getByText('Rename table...'))
 
       expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
       expect(screen.getByDisplayValue('users')).toBeInTheDocument()
@@ -1567,7 +1567,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Rename Table...'))
+      await user.click(screen.getByText('Rename table...'))
 
       const input = screen.getByTestId('rename-name-input')
       await user.clear(input)
@@ -1604,7 +1604,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'users')
-      await user.click(screen.getByText('Rename Table...'))
+      await user.click(screen.getByText('Rename table...'))
 
       const input = screen.getByTestId('rename-name-input')
       await user.clear(input)
@@ -1632,7 +1632,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Create Database...'))
+      await user.click(screen.getByText('Create database...'))
 
       expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
     })
@@ -1652,7 +1652,7 @@ describe('ObjectBrowser', () => {
           />
         )
         await openContextMenu(user, 'ecommerce_db')
-        await user.click(screen.getByText('Create Database...'))
+        await user.click(screen.getByText('Create database...'))
 
         await waitFor(() => {
           expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
@@ -1687,7 +1687,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Alter Database...'))
+      await user.click(screen.getByText('Alter database...'))
 
       await waitFor(() => {
         expect(screen.getByTestId('alter-database-dialog')).toBeInTheDocument()
@@ -1709,7 +1709,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Rename Database...'))
+      await user.click(screen.getByText('Rename database...'))
 
       expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
       expect(screen.getByTestId('rename-dialog-warning')).toBeInTheDocument()
@@ -1731,7 +1731,7 @@ describe('ObjectBrowser', () => {
         />
       )
       await openContextMenu(user, 'ecommerce_db')
-      await user.click(screen.getByText('Rename Database...'))
+      await user.click(screen.getByText('Rename database...'))
 
       const input = screen.getByTestId('rename-name-input')
       await user.clear(input)

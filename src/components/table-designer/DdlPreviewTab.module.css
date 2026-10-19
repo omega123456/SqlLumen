@@ -3,58 +3,58 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  border: none;
-  border-radius: 0;
-  background: transparent;
   overflow: hidden;
 }
 
+/* Command bar (prototype `.p-cmd`, 16px inset) */
 .header {
   display: flex;
-  justify-content: flex-end;
-  padding: 12px 16px 0;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: var(--command-bar-height);
+  padding: 0 16px;
 }
 
 .body {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 12px 16px 16px;
+  flex-direction: column;
+  padding: 0 20px 12px;
 }
 
-.codeSurface {
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-}
-
+/* DDL block (prototype `.ddl`): well fill, card stroke, mono 13/21 */
 .codeBlock,
 .state {
+  box-sizing: border-box;
   width: 100%;
   margin: 0;
-  padding: 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  background: transparent;
-  color: var(--on-surface);
+  padding: 14px 16px;
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-container-lowest);
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
+  font-size: var(--type-mono-size);
+  line-height: 21px;
 }
 
 .codeBlock {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
+  color: var(--token-text);
+  white-space: pre;
+  user-select: text;
 }
 
 .state {
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 120px;
   color: var(--on-surface-variant);
+  font-family: var(--font-body);
 }
 
 .error {
@@ -62,7 +62,7 @@
 }
 
 .footer {
-  padding: 0 16px 16px;
+  padding: 0 20px 16px;
   color: var(--on-surface-variant);
-  font-size: 10px;
+  font-size: var(--type-caption-size);
 }

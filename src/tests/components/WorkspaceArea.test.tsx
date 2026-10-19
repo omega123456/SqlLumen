@@ -96,24 +96,24 @@ async function waitForWorkspaceTableDesignerSettled() {
 describe('WorkspaceArea', () => {
   it('renders the welcome message when no connections', () => {
     render(<WorkspaceArea />)
-    expect(screen.getByText('Welcome!')).toBeInTheDocument()
-    expect(screen.getByText('Connect to a MySQL server to get started')).toBeInTheDocument()
+    expect(screen.getByText('Connect to a server')).toBeInTheDocument()
+    expect(
+      screen.getByText('Open a saved MySQL or MariaDB connection, or add a new one.')
+    ).toBeInTheDocument()
   })
 
   it('renders the New Connection button when no connections', () => {
     render(<WorkspaceArea />)
-    expect(screen.getByText('+ New Connection')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '+ New Connection' })).toHaveClass(
-      'ui-button-primary'
-    )
+    expect(screen.getByText('New connection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New connection' })).toHaveClass('ui-button--accent')
   })
 
-  it('"New Connection" button calls openDialog()', async () => {
+  it('"New connection" button calls openDialog()', async () => {
     const user = userEvent.setup()
     render(<WorkspaceArea />)
 
     expect(useConnectionStore.getState().dialogOpen).toBe(false)
-    await user.click(screen.getByText('+ New Connection'))
+    await user.click(screen.getByText('New connection'))
     expect(useConnectionStore.getState().dialogOpen).toBe(true)
   })
 
@@ -126,7 +126,7 @@ describe('WorkspaceArea', () => {
 
     render(<WorkspaceArea />)
 
-    expect(screen.queryByText('Welcome!')).not.toBeInTheDocument()
+    expect(screen.queryByText('Connect to a server')).not.toBeInTheDocument()
     expect(screen.getByText(/Connected to Test DB/)).toBeInTheDocument()
     expect(screen.getByText(/127\.0\.0\.1:3306/)).toBeInTheDocument()
   })
@@ -138,7 +138,7 @@ describe('WorkspaceArea', () => {
     })
 
     render(<WorkspaceArea />)
-    expect(screen.getByText('Welcome!')).toBeInTheDocument()
+    expect(screen.getByText('Connect to a server')).toBeInTheDocument()
   })
 
   it('renders TableDataTab when workspace has a table-data tab', async () => {
@@ -779,7 +779,7 @@ describe('WorkspaceArea', () => {
       expect(screen.getByText('Table data tabs')).toBeInTheDocument()
       expect(screen.getByText('Result 2')).toBeInTheDocument()
       expect(screen.getByText('users')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Discard and Close' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Discard and close' })).toBeInTheDocument()
     })
   })
 })

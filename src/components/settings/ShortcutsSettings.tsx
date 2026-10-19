@@ -9,31 +9,31 @@ import styles from './ShortcutsSettings.module.css'
 
 /** Descriptors for all shortcut actions. */
 const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
-  { id: 'execute-query', label: 'Execute Query', description: 'Run the current SQL statement' },
+  { id: 'execute-query', label: 'Execute query', description: 'Run the current SQL statement' },
   {
     id: 'execute-all',
-    label: 'Execute All',
+    label: 'Execute all',
     description: 'Run all statements in the editor',
   },
-  { id: 'format-query', label: 'Format Query', description: 'Auto-format the current SQL' },
+  { id: 'format-query', label: 'Format query', description: 'Auto-format the current SQL' },
   {
     id: 'command-palette',
-    label: 'Command Palette',
+    label: 'Command palette',
     description: 'Open the schema object search palette',
   },
   {
     id: 'command-palette-table',
-    label: 'Search Table Columns',
+    label: 'Search table columns',
     description: 'Open the command palette scoped to the active table',
   },
-  { id: 'save-file', label: 'Save File', description: 'Save the current editor contents' },
-  { id: 'open-file', label: 'Open File', description: 'Open a SQL file' },
-  { id: 'new-query-tab', label: 'New Query Tab', description: 'Open a new query editor tab' },
-  { id: 'close-tab', label: 'Close Tab', description: 'Close the active workspace tab' },
+  { id: 'save-file', label: 'Save file', description: 'Save the current editor contents' },
+  { id: 'open-file', label: 'Open file', description: 'Open a SQL file' },
+  { id: 'new-query-tab', label: 'New query tab', description: 'Open a new query editor tab' },
+  { id: 'close-tab', label: 'Close tab', description: 'Close the active workspace tab' },
   { id: 'settings', label: 'Settings', description: 'Open the settings dialog' },
-  { id: 'zoom-in', label: 'Zoom In', description: 'Increase application zoom level' },
-  { id: 'zoom-out', label: 'Zoom Out', description: 'Decrease application zoom level' },
-  { id: 'zoom-reset', label: 'Reset Zoom', description: 'Reset application zoom to 100%' },
+  { id: 'zoom-in', label: 'Zoom in', description: 'Increase application zoom level' },
+  { id: 'zoom-out', label: 'Zoom out', description: 'Decrease application zoom level' },
+  { id: 'zoom-reset', label: 'Reset zoom', description: 'Reset application zoom to 100%' },
 ]
 
 /** Check if two bindings are the same key combo. */
@@ -222,7 +222,7 @@ export function ShortcutsSettings() {
   return (
     <div data-testid="settings-shortcuts">
       <SettingsSection
-        title="Keyboard Shortcuts"
+        title="Keyboard shortcuts"
         description="Customize keyboard shortcuts. Click on a shortcut to record a new binding."
       >
         <table className={styles.table}>
@@ -279,7 +279,8 @@ export function ShortcutsSettings() {
                         <span className={styles.conflict}>
                           Conflict!{' '}
                           <Button
-                            variant="ghost"
+                            variant="subtle"
+                            size="sm"
                             onClick={() => resolveConflict()}
                             data-testid={`shortcut-resolve-${id}`}
                             style={{ fontSize: 'var(--type-size-xs)', padding: '2px 6px' }}

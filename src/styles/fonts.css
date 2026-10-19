@@ -1,17 +1,31 @@
-/* Manrope — Headlines */
-@import '@fontsource/manrope/400.css';
-@import '@fontsource/manrope/500.css';
-@import '@fontsource/manrope/600.css';
-@import '@fontsource/manrope/700.css';
-@import '@fontsource/manrope/800.css';
-
-/* Inter — Body text */
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-
-/* JetBrains Mono — Code / monospace */
+/* JetBrains Mono — Code / monospace (SQL, cell values). @import must precede other rules. */
 @import '@fontsource/jetbrains-mono/400.css';
-@import '@fontsource/jetbrains-mono/500.css';
-@import '@fontsource/jetbrains-mono/700.css';
+@import '@fontsource/jetbrains-mono/600.css';
 @import '@fontsource/jetbrains-mono/400-italic.css';
+
+/* Selawik — UI face (headlines + body). Bundled so macOS matches Windows, where Segoe UI wins.
+   Licence: src/assets/fonts/OFL.txt. U+2026 (ellipsis) is excluded so it falls back to the
+   next face in the stack. */
+@font-face {
+  font-family: 'Selawik';
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0000-2025, U+2027-FFFF;
+  src: url('../assets/fonts/selawik-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Selawik';
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0000-2025, U+2027-FFFF;
+  src: url('../assets/fonts/selawik-semibold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Selawik';
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0000-2025, U+2027-FFFF;
+  src: url('../assets/fonts/selawik-bold.woff2') format('woff2');
+}

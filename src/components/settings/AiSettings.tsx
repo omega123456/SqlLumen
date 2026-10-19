@@ -306,7 +306,7 @@ export function AiSettings() {
                 <div className={styles.categorySections} data-testid="ai-model-categories">
                   <ModelCategorySection
                     categoryKey="chat"
-                    label="Chat Models"
+                    label="Chat models"
                     icon={ChatCircleTextIcon}
                     models={chatModels}
                     selectedModelId={model}
@@ -334,7 +334,7 @@ export function AiSettings() {
 
                     <ModelCategorySection
                       categoryKey="embedding"
-                      label="Embedding Models"
+                      label="Embedding models"
                       icon={DatabaseIcon}
                       models={embeddingModels}
                       selectedModelId={embeddingModel}
@@ -347,12 +347,11 @@ export function AiSettings() {
 
               <div className={styles.reindexRow} data-testid="ai-reindex-row">
                 <Button
-                  variant="secondary"
                   onClick={() => setReindexConfirmOpen(true)}
                   disabled={isBuilding}
                   data-testid="ai-force-reindex-btn"
                 >
-                  {isBuilding ? 'Reindexing...' : 'Force Reindex'}
+                  {isBuilding ? 'Reindexing...' : 'Force reindex'}
                 </Button>
                 {isBuilding && (
                   <span
@@ -424,7 +423,7 @@ export function AiSettings() {
         </SettingsSection>
 
         <SettingsSection
-          title="AI Retrieval"
+          title="AI retrieval"
           description="Control how schema context is retrieved and ranked for AI queries."
         >
           <div className={styles.compactFieldGrid}>
@@ -597,7 +596,7 @@ export function AiSettings() {
 
       <ConfirmDialog
         isOpen={reindexConfirmOpen}
-        title="Force Reindex Vector DB"
+        title="Force reindex vector DB"
         message="This will wipe the current schema index and rebuild it from scratch for all active connections. This may take a few minutes."
         confirmLabel="Reindex"
         isDestructive

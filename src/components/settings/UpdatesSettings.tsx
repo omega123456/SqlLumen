@@ -129,7 +129,7 @@ export function UpdatesSettings() {
   }
 
   const checkForUpdatesButton = (
-    <Button variant="secondary" onClick={handleManualCheck} data-testid="updates-check-button">
+    <Button onClick={handleManualCheck} data-testid="updates-check-button">
       <ArrowsClockwise size={16} weight="regular" /> Check for Updates
     </Button>
   )
@@ -175,7 +175,7 @@ export function UpdatesSettings() {
     switch (status) {
       case 'checking':
         return (
-          <Button variant="secondary" disabled data-testid="updates-checking-button">
+          <Button disabled data-testid="updates-checking-button">
             <ArrowsClockwise size={16} weight="regular" className={styles.spinningIcon} />
             Checking…
           </Button>
@@ -199,11 +199,11 @@ export function UpdatesSettings() {
             <div className={styles.cardTitle}>Version {availableVersion ?? 'new'} is available</div>
             <div>
               <Button
-                variant="primary"
+                variant="accent"
                 onClick={handleDownloadUpdate}
                 data-testid="updates-download-button"
               >
-                <DownloadSimple size={16} weight="regular" /> Download Update
+                <DownloadSimple size={16} weight="regular" /> Download update
               </Button>
             </div>
           </div>
@@ -260,7 +260,7 @@ export function UpdatesSettings() {
             ) : null}
             <div className={styles.cardActions}>
               <Button
-                variant="primary"
+                variant="accent"
                 onClick={handleRestartAction}
                 data-testid="updates-restart-button"
               >
@@ -271,11 +271,7 @@ export function UpdatesSettings() {
                 )}
                 {readyToFinishCta}
               </Button>
-              <Button
-                variant="secondary"
-                onClick={closeSettingsDialog}
-                data-testid="updates-later-button"
-              >
+              <Button onClick={closeSettingsDialog} data-testid="updates-later-button">
                 Later
               </Button>
             </div>
@@ -288,12 +284,8 @@ export function UpdatesSettings() {
               <WarningCircle size={16} weight="fill" />
               {errorMessage ?? 'Update check failed'}
             </span>
-            <Button
-              variant="secondary"
-              onClick={handleManualCheck}
-              data-testid="updates-try-again-button"
-            >
-              Try Again
+            <Button onClick={handleManualCheck} data-testid="updates-try-again-button">
+              Try again
             </Button>
           </div>
         )
@@ -305,21 +297,21 @@ export function UpdatesSettings() {
 
   return (
     <div data-testid="settings-updates">
-      <SettingsSection title="App Version" description="Currently installed version of SqlLumen.">
+      <SettingsSection title="App version" description="Currently installed version of SqlLumen.">
         <div className={styles.versionValue} data-testid="updates-app-version">
           {appVersion}
         </div>
       </SettingsSection>
 
       <SettingsSection
-        title="Software Updates"
+        title="Software updates"
         description="Check if a newer version of SqlLumen is available."
       >
         {renderSoftwareUpdates()}
       </SettingsSection>
 
       <SettingsSection
-        title="Automatic Updates"
+        title="Automatic updates"
         description="Control how often SqlLumen checks for updates."
       >
         <div>
@@ -339,7 +331,7 @@ export function UpdatesSettings() {
 
       <ConfirmDialog
         isOpen={confirmOpen}
-        title={confirmAction === 'download' ? 'Download update?' : 'Restart App?'}
+        title={confirmAction === 'download' ? 'Download update?' : 'Restart app?'}
         message={
           <div>
             {confirmAction === 'download'
@@ -352,7 +344,7 @@ export function UpdatesSettings() {
             </ul>
           </div>
         }
-        confirmLabel={confirmAction === 'download' ? 'Download Update' : 'Restart App'}
+        confirmLabel={confirmAction === 'download' ? 'Download update' : 'Restart app'}
         isDestructive
         warningText={null}
         isLoading={isConfirmingAction}

@@ -24,9 +24,13 @@ describe('AiCodeBlock', () => {
     expect(screen.getByText('SELECT * FROM users')).toBeInTheDocument()
   })
 
-  it('displays language label', () => {
-    render(<AiCodeBlock language="sql">SELECT 1</AiCodeBlock>)
-    expect(screen.getByText('sql')).toBeInTheDocument()
+  it('labels SQL blocks "SQL" and other languages by their fence name', () => {
+    const { unmount } = render(<AiCodeBlock language="mysql">SELECT 1</AiCodeBlock>)
+    expect(screen.getByText('SQL')).toBeInTheDocument()
+    unmount()
+
+    render(<AiCodeBlock language="python">print(1)</AiCodeBlock>)
+    expect(screen.getByText('python')).toBeInTheDocument()
   })
 
   it('displays "code" when no language specified', () => {

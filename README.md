@@ -25,6 +25,7 @@ https://github.com/user-attachments/assets/e30f01d1-2656-47fd-88f0-709e2221a34a
   - [Workspace tabs](#workspace-tabs)
   - [Object editor](#object-editor)
   - [Process list](#process-list)
+  - [Appearance](#appearance)
   - [Settings and diagnostics](#settings-and-diagnostics)
   - [Copy To Another Host](#copy-to-another-host)
   - [BLOB viewing and editing](#blob-viewing-and-editing)
@@ -60,7 +61,7 @@ https://github.com/user-attachments/assets/e30f01d1-2656-47fd-88f0-709e2221a34a
 
 ## Command palette and shortcuts
 
-Press **F2** to open the command palette and search the active connection's schema. The palette supports recent objects when nothing is typed, and slash filters such as database names and object types to narrow the search quickly. Press **Shift+F2** on a table data view to open the palette scoped to that table so you can search its columns directly.
+Press **F2** to open the command palette and search the active connection's schema. The palette supports recent objects when nothing is typed, and slash filters such as database names and object types to narrow the search quickly. Press **Shift+F2** on a table data view to open the palette scoped to that table so you can search its columns directly. Each result shows its kind and database (for example "Table · ecommerce_db"), table rows offer **Tab** to search their columns, and a footer lists the palette's keys.
 
 The default shortcuts are editable in **Settings > Shortcuts**. The current defaults include:
 
@@ -98,6 +99,16 @@ Open the Process List tab from a connection to inspect live server activity for 
 - You can filter out idle connections, sort rows, and inspect server-side session details.
 - Selected queries can be killed from the toolbar, with a summary dialog before the action is applied.
 - The tab is singleton-per-connection, so reopening it returns you to the same live view.
+
+## Appearance
+
+- **Fluent look** — SqlLumen uses the Windows 11 Fluent layer model on every platform: neutral grey surfaces, the Selawik UI font with JetBrains Mono for SQL and cell values, Fluent controls and focus rings, and the accent colour only for state (selection, focus, primary actions). The SQL editor and grids sit on a darker "well", and SQL uses the VS Code Dark+ / Light+ syntax colours.
+- **Mica on Windows 11** — on Windows 11 the window gets the Mica backdrop behind the native title bar and the connection strip; work areas stay solid. Windows 10 and macOS keep the native title bar with solid colours.
+- **Theme follows the OS** — the default theme is **System**, which tracks the OS light/dark setting live; choose Light or Dark in Settings → General (or the strip's theme button) to pin it. The native title bar follows the app theme.
+- **Connection colour** — a connection's colour shows as a small marker on its connection tab and as a 2px edge across the top of its workspace (a 1px divider when the connection has no colour).
+- **Inline result bars** — query errors, DML results and similar status messages appear as inline bars with an icon above the results instead of toasts; toasts are kept for background events.
+- **Page headers** — schema info and the table designer open with an icon tile, the object name and a "Table · database" caption. Schema info for a table or view has **Alter table** and **View data** buttons that open the designer or the data tab.
+- **AI assistant panel** — the panel opens at 340px wide; drag its edge to resize it.
 
 ## Settings and diagnostics
 

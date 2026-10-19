@@ -10,7 +10,7 @@ import type { FavoriteEntry } from '../../../types/schema'
 function makeFavoriteEntry(overrides: Partial<FavoriteEntry> = {}): FavoriteEntry {
   return {
     id: 1,
-    name: 'My Query',
+    name: 'My query',
     sqlText: 'SELECT * FROM orders',
     description: 'Gets all orders',
     category: 'shopdb',
@@ -58,7 +58,7 @@ describe('FavoritesPanel', () => {
     expect(screen.getByTestId('favorite-card-2')).toBeInTheDocument()
   })
 
-  it('"New Favorite" button opens dialog with null (new mode)', async () => {
+  it('"New favorite" button opens dialog with null (new mode)', async () => {
     const user = userEvent.setup()
     render(<FavoritesPanel connectionId="conn-1" />)
 

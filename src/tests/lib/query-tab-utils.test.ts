@@ -70,13 +70,13 @@ describe('insertSqlIntoEditor', () => {
       activeTabByConnection: { 'conn-1': 'tab-1' },
     })
 
-    insertSqlIntoEditor('conn-1', 'SELECT 1', 'New Query')
+    insertSqlIntoEditor('conn-1', 'SELECT 1', 'New query')
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     // Should have 2 tabs: the history tab and the new query tab
     expect(tabs).toHaveLength(2)
     const queryTab = tabs.find((t) => t.type === 'query-editor')
     expect(queryTab).toBeDefined()
-    expect(queryTab!.label).toBe('New Query')
+    expect(queryTab!.label).toBe('New query')
   })
 })

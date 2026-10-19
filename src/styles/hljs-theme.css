@@ -1,11 +1,11 @@
 /* ============================================================
-   Custom highlight.js theme — maps hljs-* classes to CSS
-   custom properties so syntax highlighting adapts to light/dark
-   theme automatically via tokens.css
+   Custom highlight.js theme — maps hljs-* classes to the
+   --token-* syntax colours (VS Code Dark+ / Light+, prototype
+   `--sx-*`) so highlighting follows the theme via tokens.css
    ============================================================ */
 
 .hljs {
-  color: var(--on-surface);
+  color: var(--token-text);
   background: var(--ai-code-block-bg);
 }
 
@@ -28,7 +28,6 @@
 .hljs-meta,
 .hljs-deletion {
   color: var(--token-comment);
-  font-style: italic;
 }
 
 .hljs-title,
@@ -42,10 +41,13 @@
   color: var(--token-number);
 }
 
-.hljs-operator,
+.hljs-operator {
+  color: var(--token-operator);
+}
+
 .hljs-punctuation,
 .hljs-tag {
-  color: var(--token-operator);
+  color: var(--token-text);
 }
 
 .hljs-type,
@@ -59,7 +61,7 @@
 .hljs-variable,
 .hljs-template-variable,
 .hljs-params {
-  color: var(--on-surface);
+  color: var(--token-identifier);
 }
 
 .hljs-emphasis {
@@ -67,7 +69,7 @@
 }
 
 .hljs-strong {
-  font-weight: 700;
+  font-weight: var(--type-weight-semibold);
 }
 
 .hljs-link {

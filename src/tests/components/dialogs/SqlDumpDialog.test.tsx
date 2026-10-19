@@ -73,7 +73,7 @@ describe('SqlDumpDialog', () => {
     await waitForDumpDialogLoaded()
 
     // Title
-    expect(screen.getByRole('heading', { name: /Export SQL Dump/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Export SQL dump/ })).toBeInTheDocument()
 
     // Option checkboxes
     expect(screen.getByTestId('dump-include-structure')).toBeInTheDocument()
@@ -154,8 +154,8 @@ describe('SqlDumpDialog', () => {
     render(<SqlDumpDialog {...defaultProps} schemaOnly />)
     await waitForDumpDialogLoaded()
 
-    // Title should be "Export Schema DDL"
-    expect(screen.getByRole('heading', { name: /Export Schema DDL/ })).toBeInTheDocument()
+    // Title should be "Export schema DDL"
+    expect(screen.getByRole('heading', { name: /Export schema DDL/ })).toBeInTheDocument()
 
     // Data checkbox should be unchecked
     expect(screen.getByTestId('dump-include-data')).not.toBeChecked()
@@ -410,7 +410,7 @@ describe('SqlDumpDialog', () => {
     await waitForDumpDialogLoaded()
 
     expect(screen.getByTestId('dump-footer-text')).toHaveTextContent(
-      'Keep this dialog open while the export runs. Use Cancel Export to stop it.'
+      'Keep this dialog open while the export runs. Use Cancel export to stop it.'
     )
   })
 
@@ -453,7 +453,7 @@ describe('SqlDumpDialog', () => {
     await user.click(screen.getByTestId('dump-submit-button'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('dump-cancel-export-button')).toHaveTextContent('Cancel Export')
+      expect(screen.getByTestId('dump-cancel-export-button')).toHaveTextContent('Cancel export')
       expect(screen.getByTestId('dump-cancel-export-button')).toBeEnabled()
     })
   })

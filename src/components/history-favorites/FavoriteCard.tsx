@@ -30,7 +30,7 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
   const handleCopyToEditor = useCallback(() => {
-    const tabId = openQueryTab(connectionId, entry.name || 'Favorite Query')
+    const tabId = openQueryTab(connectionId, entry.name || 'Favorite query')
     if (tabId) {
       useQueryStore.getState().setContent(tabId, entry.sqlText)
     }

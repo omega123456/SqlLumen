@@ -22,7 +22,7 @@ describe('ShortcutsSettings', () => {
   it('renders the shortcut table with all action rows', () => {
     render(<ShortcutsSettings />)
     expect(screen.getByTestId('settings-shortcuts')).toBeInTheDocument()
-    expect(screen.getByText('Keyboard Shortcuts')).toBeInTheDocument()
+    expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument()
     // Verify all action rows are present
     expect(screen.getByTestId('shortcut-row-execute-query')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-execute-all')).toBeInTheDocument()

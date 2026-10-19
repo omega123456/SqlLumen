@@ -482,15 +482,15 @@ describe('StatusArea', () => {
     render(<StatusArea status="success" totalRows={42} />)
 
     expect(screen.getByTestId('status-success')).toBeInTheDocument()
-    expect(screen.getByText('42 Rows')).toBeInTheDocument()
+    expect(screen.getByText('42 rows')).toBeInTheDocument()
   })
 
   it('renders success state with row count and execution time', () => {
     render(<StatusArea status="success" totalRows={100} executionTimeMs={250} />)
 
     expect(screen.getByTestId('status-success')).toBeInTheDocument()
-    expect(screen.getByText('100 Rows')).toBeInTheDocument()
-    expect(screen.getByTestId('status-execution-time')).toHaveTextContent('(250ms)')
+    expect(screen.getByText('100 rows')).toBeInTheDocument()
+    expect(screen.getByTestId('status-execution-time')).toHaveTextContent('250 ms')
   })
 
   it('renders success state without execution time when not provided', () => {
@@ -551,6 +551,6 @@ describe('StatusArea', () => {
     render(<StatusArea status="success" totalRows={0} />)
 
     expect(screen.getByTestId('status-success')).toBeInTheDocument()
-    expect(screen.getByText('0 Rows')).toBeInTheDocument()
+    expect(screen.getByText('0 rows')).toBeInTheDocument()
   })
 })

@@ -29,7 +29,8 @@ export function CommandPaletteFilterPill({ pill, onRemove }: CommandPaletteFilte
       </span>
       <span className={styles.pillLabel}>{pill.label}</span>
       <Button
-        variant="ghost"
+        variant="subtle"
+        size="sm"
         className={styles.pillRemove}
         onClick={onRemove}
         aria-label={`Remove ${pill.label} filter`}

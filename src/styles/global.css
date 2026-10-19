@@ -42,6 +42,14 @@ textarea:not(:disabled),
   user-select: text;
 }
 
+/* Windows 11 Mica (`mica` is set on <html> by App when Rust applied the backdrop). Only the
+   connection strip base lets it show through (ConnectionTabBar.module.css); every work area
+   keeps its own opaque surface. */
+html.mica,
+html.mica body {
+  background-color: transparent;
+}
+
 #root {
   height: 100%;
   display: flex;
@@ -54,28 +62,28 @@ textarea:not(:disabled),
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--surface-container);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--surface-container-highest);
+  background: var(--scrollbar-thumb);
   border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--outline);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Selection styling */
 ::selection {
-  background: rgba(var(--primary-rgb), 0.2);
+  background: var(--fill-accent-tint);
   color: var(--on-surface);
 }
 
-/* Global focus-visible */
+/* Global focus-visible — Fluent ring: 1px inner + 2px outer (prototype `.proto :focus-visible`) */
 :focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Button reset */
@@ -114,7 +122,7 @@ button {
   box-sizing: border-box;
   width: 100%;
   padding: 8px 12px;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-bottom: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
@@ -123,10 +131,7 @@ button {
   font-family: var(--type-table-header-font);
   font-size: var(--type-table-header-size);
   font-weight: var(--type-table-header-weight);
-  letter-spacing: var(--type-table-header-tracking);
-  text-transform: uppercase;
   color: var(--on-surface-variant);
-  opacity: 0.7;
 }
 
 .ui-elevated-panel-header__actions {
@@ -136,34 +141,25 @@ button {
   gap: 8px;
 }
 
-/* Text-field shell: border, fill, focus (shared with .ui-field-chrome for bare inputs) */
-.ui-field-chrome,
-.ui-input,
-.ui-textarea,
-.ui-select {
-  box-sizing: border-box;
-  border: var(--ui-input-border);
-  border-radius: var(--ui-input-radius);
-  background: var(--ui-input-bg);
-  color: var(--ui-input-fg);
-  outline: none;
-  box-shadow: var(--ui-input-rest-shadow);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-/* Native text field chrome can hide custom borders (esp. WebKit / embedded hosts) */
+/* Text field (prototype `.fld`): control fill, control stroke, 3:1 boundary bottom edge.
+   Focus swaps to the card fill and a 2px accent bottom edge (1px border + 1px inset). */
 .ui-field-chrome,
 .ui-input,
 .ui-textarea {
+  box-sizing: border-box;
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-text-field);
+  border-radius: var(--radius-control);
+  background: var(--fill-control);
+  color: var(--on-surface);
+  outline: none;
+  box-shadow: none;
   -webkit-appearance: none;
   appearance: none;
 }
 
 .ui-input,
-.ui-textarea,
-.ui-select {
+.ui-textarea {
   width: 100%;
   padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
   font-family: var(--font-body);
@@ -174,28 +170,39 @@ button {
 .ui-field-chrome::placeholder,
 .ui-input::placeholder,
 .ui-textarea::placeholder {
-  color: rgba(var(--on-surface-rgb), var(--ui-input-placeholder-opacity));
+  color: var(--outline);
+}
+
+.ui-field-chrome:hover:not(:disabled),
+.ui-input:hover:not(:disabled),
+.ui-textarea:hover:not(:disabled) {
+  background: var(--fill-control-hover);
 }
 
 .ui-field-chrome:focus,
 .ui-input:focus,
-.ui-select:focus,
-.ui-textarea:focus {
-  border: var(--control-border-focus);
-  box-shadow: var(--control-focus-ring), var(--ui-input-rest-shadow);
+.ui-textarea:focus,
+.ui-field-chrome:focus-visible,
+.ui-input:focus-visible,
+.ui-textarea:focus-visible {
+  background: var(--surface-container-high);
+  border-bottom-color: var(--primary);
+  box-shadow: inset 0 -1px 0 var(--primary);
+  outline: none;
 }
 
 .ui-field-chrome:disabled,
 .ui-input:disabled,
-.ui-select:disabled,
 .ui-textarea:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
+  background: var(--fill-subtle-pressed);
+  border-bottom-color: var(--stroke-control);
   cursor: not-allowed;
 }
 
 .ui-label {
   font-size: var(--type-body);
-  font-weight: 500;
+  font-weight: 400;
   font-family: var(--font-body);
   color: var(--on-surface-variant);
 }
@@ -204,8 +211,6 @@ button {
   font-size: var(--type-label-caps);
   font-weight: var(--type-label-caps-weight);
   font-family: var(--font-headline);
-  letter-spacing: var(--type-label-caps-tracking);
-  text-transform: uppercase;
   color: var(--ui-label-caps-fg);
 }
 
@@ -217,249 +222,117 @@ button {
   line-height: 1.35;
 }
 
-.ui-button-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  padding: var(--ui-primary-button-padding);
-  border: none;
-  border-radius: var(--ui-action-button-radius);
-  background: var(--ui-primary-button-bg);
-  color: var(--on-primary);
-  font-size: var(--type-body-emphasis);
-  font-family: var(--font-body);
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  box-shadow: var(--ui-primary-button-shadow);
-  transition:
-    background 0.15s ease,
-    box-shadow 0.15s ease,
-    filter 0.15s ease,
-    transform 0.1s ease;
-}
+/* ============================================================
+   Button (prototype `.b`) — variants: default, accent, subtle, danger; sizes md (32) and sm (28)
+   ============================================================ */
 
-.ui-button-primary:hover:not(:disabled) {
-  background: var(--ui-primary-button-bg-hover);
-  box-shadow: var(--ui-primary-button-shadow-hover);
-  filter: var(--ui-primary-button-filter-hover);
-}
-
-.ui-button-primary:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.ui-button-primary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ui-button-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  padding: var(--ui-secondary-button-padding);
-  border: var(--ui-secondary-button-border);
-  border-radius: var(--ui-action-button-radius);
-  background: var(--ui-secondary-button-bg);
-  color: var(--ui-secondary-button-fg);
-  font-size: var(--type-body-emphasis);
-  font-family: var(--font-body);
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
+.ui-button {
   box-sizing: border-box;
-  transition: background-color 0.15s ease;
-}
-
-.ui-button-secondary:hover:not(:disabled) {
-  background: var(--ui-secondary-button-hover-bg);
-}
-
-.ui-button-secondary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Text / icon row action (e.g. connection dialog “Test Connection”) — uses --ui-test-button-* tokens */
-.ui-button-test {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border: none;
-  border-radius: var(--ui-action-button-radius);
-  background: transparent;
-  color: var(--ui-test-button-fg);
-  font-size: var(--type-body-emphasis);
-  font-family: var(--font-body);
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.ui-button-test:hover:not(:disabled) {
-  color: var(--ui-test-button-hover-fg);
-  background: var(--ui-test-button-hover-bg);
-}
-
-.ui-button-test:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ui-button-tertiary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-xs);
-  padding: 8px 12px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--primary);
-  font-size: var(--type-button-sm);
-  font-family: var(--font-body);
-  font-weight: var(--type-button-sm-weight);
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.ui-button-tertiary:hover:not(:disabled) {
-  background: var(--surface-container-low);
-}
-
-/* Destructive confirm — matches primary layout, error surface tokens */
-.ui-button-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  padding: var(--ui-primary-button-padding);
-  border: none;
-  border-radius: var(--ui-action-button-radius);
-  background: var(--error);
-  color: var(--on-error);
-  font-size: var(--type-body-emphasis);
-  font-family: var(--font-body);
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  transition:
-    filter 0.15s ease,
-    transform 0.1s ease;
-}
-
-.ui-button-danger:hover:not(:disabled) {
-  filter: brightness(0.9);
-}
-
-.ui-button-danger:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.ui-button-danger:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Table designer toolbars — compact surface pills */
-.ui-button-toolbar {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--surface-container-high);
+  gap: 8px;
+  height: var(--control-height);
+  padding: 0 12px;
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-bottom);
+  border-radius: var(--radius-control);
+  background: var(--fill-control);
   color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    opacity 0.15s ease;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-regular);
+  line-height: var(--type-body-line);
+  white-space: nowrap;
+  cursor: default;
 }
 
-.ui-button-toolbar:hover:not(:disabled) {
-  background: var(--surface-container-highest);
+.ui-button:hover:not(:disabled) {
+  background: var(--fill-control-hover);
 }
 
-.ui-button-toolbar:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.ui-button-toolbar.ui-button-toolbar--danger:hover:not(:disabled) {
-  color: var(--error);
-}
-
-[data-theme='light'] .ui-button-toolbar {
-  background: var(--surface-container-high);
-}
-
-/* DDL preview header — low-emphasis action */
-.ui-button-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
+.ui-button:active:not(:disabled) {
+  background: var(--fill-control-pressed);
   color: var(--on-surface-variant);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease,
-    opacity 0.15s ease;
 }
 
-.ui-button-ghost:hover:not(:disabled) {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+.ui-button--accent {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--stroke-accent);
+  border-bottom-color: var(--stroke-accent-bottom);
 }
 
-.ui-button-ghost:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.ui-button--accent:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 
-/* Icon-only circular row delete (table designer grids) */
-.ui-button-row-delete {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+.ui-button--accent:active:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 80%, var(--surface));
+  color: var(--on-primary);
+}
+
+.ui-button--danger {
+  background: var(--danger-fill);
+  color: var(--on-danger-fill);
+  border-color: transparent;
+}
+
+.ui-button--danger:hover:not(:disabled),
+.ui-button--danger:active:not(:disabled) {
+  color: var(--on-danger-fill);
+  background: color-mix(in srgb, var(--danger-fill) 90%, var(--on-danger-fill));
+}
+
+.ui-button--subtle {
+  background: transparent;
+  border-color: transparent;
+}
+
+.ui-button--subtle:hover:not(:disabled) {
+  background: var(--fill-subtle-hover);
+}
+
+.ui-button--subtle:active:not(:disabled) {
+  background: var(--fill-subtle-pressed);
+}
+
+.ui-button--sm {
+  height: var(--control-height-sm);
+  padding: 0 10px;
+  font-size: var(--type-row-size);
+  gap: 6px;
+}
+
+.ui-button--icon {
+  width: var(--control-height);
   padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
 }
 
-.ui-button-row-delete:hover:not(:disabled) {
+.ui-button--icon.ui-button--sm {
+  width: var(--control-height-sm);
+}
+
+.ui-button:disabled {
+  background: var(--fill-subtle-pressed);
+  color: var(--text-disabled);
+  border-color: var(--stroke-control);
+  cursor: not-allowed;
+}
+
+.ui-button--subtle:disabled {
+  background: transparent;
+  border-color: transparent;
+}
+
+.ui-button--danger-text,
+.ui-button--danger-text:active:not(:disabled) {
   color: var(--error);
-  background: rgba(var(--error-rgb), 0.08);
 }
 
 /* ============================================================
-   Custom dropdown (combobox) — tokens: --ui-dropdown-*
+   Dropdown (combobox) — trigger is a Fluent combo button (prototype `.b.combo`),
+   the listbox a detached menu flyout (prototype `.ctx.p-fly` + `.mi`)
    ============================================================ */
 
 .ui-dropdown {
@@ -468,55 +341,40 @@ button {
 }
 
 .ui-dropdown__trigger {
+  box-sizing: border-box;
   width: 100%;
+  height: var(--control-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-sm);
-  box-sizing: border-box;
-  padding: var(--ui-dropdown-trigger-padding-y) var(--ui-dropdown-trigger-padding-x);
-  border: var(--ui-dropdown-trigger-border);
-  border-radius: var(--ui-dropdown-trigger-radius);
-  background: var(--ui-dropdown-trigger-bg);
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-bottom);
+  border-radius: var(--radius-control);
+  background: var(--fill-control);
   color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: var(--ui-dropdown-trigger-font-size);
-  font-weight: var(--ui-dropdown-trigger-font-weight);
-  line-height: var(--ui-input-line-height);
-  cursor: pointer;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-regular);
+  line-height: var(--type-body-line);
+  white-space: nowrap;
   text-align: left;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    color 0.15s ease;
-  box-shadow: var(--ui-input-rest-shadow);
+  cursor: default;
 }
 
-.ui-dropdown__trigger:hover:not(:disabled):not([aria-expanded='true']) {
-  border-color: var(--ui-dropdown-trigger-hover-border-color);
+.ui-dropdown__trigger:hover:not(:disabled) {
+  background: var(--fill-control-hover);
 }
 
 .ui-dropdown__trigger[aria-expanded='true'] {
-  border: var(--ui-dropdown-trigger-open-border);
-  box-shadow:
-    var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow),
-    var(--ui-input-rest-shadow);
-  color: var(--primary);
-  font-weight: 600;
-}
-
-.ui-dropdown__trigger[aria-expanded='true'][data-panel-placement='bottom'] {
-  border-bottom: none;
-  border-radius: var(--ui-dropdown-trigger-radius) var(--ui-dropdown-trigger-radius) 0 0;
-}
-
-.ui-dropdown__trigger[aria-expanded='true'][data-panel-placement='top'] {
-  border-top: none;
-  border-radius: 0 0 var(--ui-dropdown-trigger-radius) var(--ui-dropdown-trigger-radius);
+  background: var(--fill-control-pressed);
 }
 
 .ui-dropdown__trigger:disabled {
-  opacity: 0.5;
+  background: var(--fill-subtle-pressed);
+  color: var(--text-disabled);
+  border-color: var(--stroke-control);
   cursor: not-allowed;
 }
 
@@ -530,111 +388,71 @@ button {
 
 .ui-dropdown__chevron {
   flex-shrink: 0;
-  color: var(--ui-dropdown-chevron-color);
-  transition:
-    transform 0.15s ease,
-    color 0.15s ease;
+  color: var(--on-surface-variant);
 }
 
-.ui-dropdown__trigger[aria-expanded='true'] .ui-dropdown__chevron {
-  transform: rotate(180deg);
-  color: var(--primary);
+.ui-dropdown__trigger:disabled .ui-dropdown__chevron {
+  color: var(--text-disabled);
 }
 
 .ui-dropdown__panel {
   position: fixed;
   z-index: 10040;
   margin: 0;
-  padding: var(--ui-dropdown-listbox-padding);
+  padding: 4px;
   list-style: none;
   box-sizing: border-box;
-  background: var(--ui-dropdown-panel-bg);
-  /* Same border shorthand as open trigger (left/right/bottom) so edges line up pixel-for-pixel */
-  border: none;
-  border-left: var(--ui-dropdown-trigger-open-border);
-  border-right: var(--ui-dropdown-trigger-open-border);
-  border-bottom: var(--ui-dropdown-trigger-open-border);
-  border-top: none;
-  border-radius: 0 0 var(--ui-dropdown-panel-radius) var(--ui-dropdown-panel-radius);
-  /* Elevation + glow only. The inline focus ring is intentionally omitted: the panel is a
-     floating popover, and an outset ring would make it look wider than the trigger when the
-     trigger's own ring is clipped by an ancestor (e.g. a table cell with hidden overflow). */
-  box-shadow: var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow);
-  -webkit-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
-  backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
-  max-height: min(320px, 55vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-container-high);
+  border: 1px solid var(--stroke-flyout);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-flyout);
+  max-height: min(330px, 55vh);
   overflow-x: hidden;
   overflow-y: auto;
 }
 
-/* The panel receives focus for keyboard navigation; selection is shown per-option, so the
-   browser's focus-visible outline around the whole list is redundant and visually noisy. */
+/* The panel receives focus for keyboard navigation; selection is shown per-option. */
 .ui-dropdown__panel:focus,
 .ui-dropdown__panel:focus-visible {
   outline: none;
+  box-shadow: var(--shadow-flyout);
 }
 
 .ui-dropdown__panel--in-dialog {
   position: absolute;
 }
 
-.ui-dropdown__panel--top {
-  border-top: var(--ui-dropdown-trigger-open-border);
-  border-bottom: none;
-  border-radius: var(--ui-dropdown-panel-radius) var(--ui-dropdown-panel-radius) 0 0;
-  box-shadow:
-    0 -8px 32px rgba(0, 0, 0, 0.3),
-    var(--ui-dropdown-trigger-open-shadow);
-}
-
-.ui-dropdown__panel::-webkit-scrollbar {
-  width: 4px;
-}
-
-.ui-dropdown__panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.ui-dropdown__panel::-webkit-scrollbar-thumb {
-  background: var(--outline-variant);
-  border-radius: 10px;
-}
-
 .ui-dropdown__panel li {
   list-style: none;
   margin: 0;
-  /* Padding is owned by .ui-dropdown__option; don't reset it here — this selector has a
-     higher specificity and would otherwise zero out the option's horizontal inset. */
 }
 
 .ui-dropdown__option {
+  position: relative;
   display: flex;
+  flex: none;
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
   gap: 2px;
   width: 100%;
-  min-height: var(--ui-dropdown-instance-option-min-height, auto);
+  min-height: var(--menu-item-height);
   margin: 0;
-  padding: var(--ui-dropdown-instance-option-padding-block, var(--ui-dropdown-option-padding-y))
-    var(--ui-dropdown-instance-option-padding-inline, var(--ui-dropdown-option-padding-x));
+  padding: 0 10px;
   border: none;
-  border-left: var(--ui-dropdown-option-accent-width) solid transparent;
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: var(--ui-dropdown-instance-option-font-size, var(--ui-dropdown-option-font-size));
-  font-weight: var(--ui-dropdown-option-font-weight);
-  line-height: var(--ui-dropdown-instance-option-line-height, var(--ui-input-line-height));
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-regular);
+  line-height: var(--type-body-line);
+  white-space: nowrap;
   text-align: left;
-  cursor: pointer;
-  transition: background-color 0.12s ease;
+  cursor: default;
   box-sizing: border-box;
-}
-
-.ui-dropdown__option--multi {
-  padding-right: 12px;
 }
 
 .ui-dropdown__option-row {
@@ -655,6 +473,7 @@ button {
 
 .ui-dropdown__check {
   flex-shrink: 0;
+  color: var(--primary);
   opacity: 0;
 }
 
@@ -662,156 +481,120 @@ button {
   opacity: 1;
 }
 
-.ui-dropdown__option:hover:not(:disabled):not([aria-disabled='true']),
-.ui-dropdown__option:focus-visible:not(:disabled):not([aria-disabled='true']) {
-  background: var(--ui-dropdown-option-hover-bg);
+.ui-dropdown__option:hover,
+.ui-dropdown__option--highlighted {
+  background: var(--fill-subtle-hover);
   outline: none;
+}
+
+.ui-dropdown__option--selected {
+  background: var(--fill-neutral-selected);
+}
+
+/* Selection pill (prototype `.p-fly .mi.on::before`) */
+.ui-dropdown__option--selected:not(.ui-dropdown__option--multi)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.ui-dropdown__option:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .ui-dropdown__option:disabled,
 .ui-dropdown__option[aria-disabled='true'],
 .ui-dropdown__option--disabled {
-  opacity: 0.4;
+  color: var(--text-disabled);
+  background: transparent;
   cursor: not-allowed;
-}
-
-.ui-dropdown__option--selected {
-  background: var(--ui-dropdown-option-selected-bg);
-  border-left-color: var(--primary);
-  color: var(--primary);
-  font-weight: var(--ui-dropdown-option-label-selected-weight);
-}
-
-.ui-dropdown__option--highlighted:not(.ui-dropdown__option--selected) {
-  background: var(--ui-dropdown-option-hover-bg);
 }
 
 .ui-dropdown__meta {
   font-family: var(--font-mono);
-  font-size: var(--ui-dropdown-option-meta-font-size);
-  color: var(--ui-dropdown-option-meta-color);
-  font-weight: 400;
-}
-
-.ui-dropdown__option--selected .ui-dropdown__meta {
-  color: color-mix(in srgb, var(--primary) 60%, transparent);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  color: var(--outline);
+  font-weight: var(--type-weight-regular);
+  white-space: normal;
 }
 
 /* ============================================================
-   Context menu — tokens: --ui-context-menu-*
+   Context menu — menu flyout (prototype `.ctx` + `.mi` + `.mdiv`)
    ============================================================ */
 
 .ui-context-menu {
   position: fixed;
   z-index: 1000;
-  min-width: var(--ui-context-menu-min-width);
-  padding: var(--ui-context-menu-padding-y) 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  padding: 4px;
   box-sizing: border-box;
-  background: var(--ui-context-menu-bg);
-  border: var(--ui-context-menu-border);
-  border-radius: var(--ui-context-menu-radius);
-  box-shadow: var(--ui-context-menu-shadow);
-  -webkit-backdrop-filter: var(--ui-context-menu-backdrop-filter);
-  backdrop-filter: var(--ui-context-menu-backdrop-filter);
+  background: var(--surface-container-high);
+  border: 1px solid var(--stroke-flyout);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-flyout);
 }
 
 .ui-context-menu__item {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: var(--ui-context-menu-item-gap);
+  gap: 12px;
   width: 100%;
-  padding: var(--ui-context-menu-item-padding-y) var(--ui-context-menu-item-padding-x);
+  height: var(--menu-item-height);
+  padding: 0 10px;
   border: none;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--ui-context-menu-item-fg);
+  color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: var(--ui-context-menu-item-font-size);
-  font-weight: var(--ui-context-menu-item-font-weight);
-  line-height: 1.25;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-regular);
+  line-height: var(--type-body-line);
+  white-space: nowrap;
   text-align: left;
-  cursor: pointer;
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease;
+  cursor: default;
 }
 
 .ui-context-menu__item:hover,
 .ui-context-menu__item:focus-visible {
-  background: var(--ui-context-menu-item-hover-bg);
-  color: var(--ui-context-menu-item-hover-fg);
+  background: var(--fill-subtle-hover);
   outline: none;
+  box-shadow: none;
 }
 
 .ui-context-menu__icon {
   flex-shrink: 0;
   display: inline-flex;
-  color: var(--ui-context-menu-item-icon-fg);
-  transition: color 0.12s ease;
-}
-
-.ui-context-menu__item:hover .ui-context-menu__icon,
-.ui-context-menu__item:focus-visible .ui-context-menu__icon {
-  color: var(--ui-context-menu-item-hover-icon-fg);
+  color: inherit;
 }
 
 .ui-context-menu__item--destructive {
-  color: var(--ui-context-menu-destructive-fg);
-}
-
-.ui-context-menu__item--destructive .ui-context-menu__icon {
-  color: var(--ui-context-menu-destructive-icon-fg);
-}
-
-.ui-context-menu__item--destructive:hover,
-.ui-context-menu__item--destructive:focus-visible {
-  background: var(--ui-context-menu-destructive-hover-bg);
-  color: var(--ui-context-menu-destructive-hover-fg);
-}
-
-.ui-context-menu__item--destructive:hover .ui-context-menu__icon,
-.ui-context-menu__item--destructive:focus-visible .ui-context-menu__icon {
-  color: var(--ui-context-menu-destructive-hover-icon-fg);
+  color: var(--error);
 }
 
 .ui-context-menu__separator {
   display: block;
-  height: 0;
-  margin: var(--ui-context-menu-separator-margin-y) var(--ui-context-menu-separator-margin-x);
+  flex: none;
+  height: 1px;
+  margin: 4px -4px;
   padding: 0;
   border: none;
-  border-top: var(--ui-context-menu-separator-border);
+  background: var(--stroke-divider);
 }
 
-.ui-context-menu__item:disabled {
-  opacity: 0.4;
+.ui-context-menu__item:disabled,
+.ui-context-menu__item:disabled:hover {
+  color: var(--text-disabled);
+  background: transparent;
   cursor: not-allowed;
-}
-
-.ui-context-menu__item:disabled:hover,
-.ui-context-menu__item:disabled:focus-visible {
-  background: transparent;
-  color: var(--ui-context-menu-item-fg);
-}
-
-.ui-context-menu__item:disabled .ui-context-menu__icon {
-  color: var(--ui-context-menu-item-icon-fg);
-}
-
-.ui-context-menu__item--destructive:disabled {
-  color: var(--ui-context-menu-destructive-fg);
-}
-
-.ui-context-menu__item--destructive:disabled .ui-context-menu__icon {
-  color: var(--ui-context-menu-destructive-icon-fg);
-}
-
-.ui-context-menu__item--destructive:disabled:hover,
-.ui-context-menu__item--destructive:disabled:focus-visible {
-  background: transparent;
-  color: var(--ui-context-menu-destructive-fg);
-}
-
-.ui-context-menu__item--destructive:disabled:hover .ui-context-menu__icon,
-.ui-context-menu__item--destructive:disabled:focus-visible .ui-context-menu__icon {
-  color: var(--ui-context-menu-destructive-icon-fg);
 }

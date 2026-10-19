@@ -757,8 +757,8 @@ describe('AiSettings - Model Categories', () => {
       expect(screen.getByTestId('ai-category-chat-label')).toBeInTheDocument()
     })
 
-    expect(screen.getByTestId('ai-category-chat-label')).toHaveTextContent('Chat Models')
-    expect(screen.getByTestId('ai-category-embedding-label')).toHaveTextContent('Embedding Models')
+    expect(screen.getByTestId('ai-category-chat-label')).toHaveTextContent('Chat models')
+    expect(screen.getByTestId('ai-category-embedding-label')).toHaveTextContent('Embedding models')
   })
 
   it('ARIA: category sections have role="radiogroup" with aria-labelledby', async () => {
@@ -1009,7 +1009,7 @@ describe('AiSettings - Force Reindex', () => {
     await renderAiSettings()
     await user.click(screen.getByTestId('ai-force-reindex-btn'))
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Force Reindex Vector DB')).toBeInTheDocument()
+    expect(screen.getByText('Force reindex vector DB')).toBeInTheDocument()
   })
 
   it('cancelling the confirm dialog closes it without calling forceRebuild', async () => {

@@ -6,7 +6,6 @@
  * Purely presentational — no store imports.
  */
 
-import { CheckCircle, XCircle } from '@phosphor-icons/react'
 import type { StatusAreaProps } from '../../../types/shared-data-view'
 import styles from './toolbar-items.module.css'
 
@@ -29,12 +28,16 @@ export function StatusArea({
       {status === 'success' && (
         <>
           <span className={styles.successStatus} data-testid="status-success">
-            <CheckCircle size={14} weight="fill" />
-            <span>{totalRows != null ? `${totalRows} Rows` : 'Success'}</span>
+            <span className={`${styles.statusDot} ${styles.statusDotOk}`} aria-hidden="true">
+              ✓
+            </span>
+            <b>
+              {totalRows != null ? `${totalRows} ${totalRows === 1 ? 'row' : 'rows'}` : 'Success'}
+            </b>
           </span>
           {executionTimeMs != null && (
             <span className={styles.executionTime} data-testid="status-execution-time">
-              ({executionTimeMs}ms)
+              {executionTimeMs} ms
             </span>
           )}
         </>
@@ -42,8 +45,10 @@ export function StatusArea({
 
       {status === 'error' && (
         <span className={styles.errorStatus} data-testid="status-error">
-          <XCircle size={14} weight="fill" />
-          <span>{errorMessage || 'Error'}</span>
+          <span className={`${styles.statusDot} ${styles.statusDotError}`} aria-hidden="true">
+            ✕
+          </span>
+          <b>{errorMessage || 'Error'}</b>
         </span>
       )}
 

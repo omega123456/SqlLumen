@@ -15,7 +15,6 @@ export function AiSetupRequired() {
         get started.
       </p>
       <Button
-        variant="secondary"
         onClick={() => useSettingsStore.getState().openDialog('ai')}
         data-testid="ai-setup-open-settings"
       >

@@ -60,7 +60,7 @@ describe('ResultsSettings', () => {
   it('renders the result cache section with the default cache duration', () => {
     render(<ResultsSettings />)
 
-    expect(screen.getByText('Result Cache')).toBeInTheDocument()
+    expect(screen.getByText('Result cache')).toBeInTheDocument()
     expect(
       screen.getByText(
         'Control how long query results and table data are kept in memory before being discarded.'

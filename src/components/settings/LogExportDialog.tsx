@@ -118,7 +118,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
 
     const filePath = await save({
       defaultPath: `sqllumen_logs_${formatDate(from)}_${formatDate(to)}.csv`,
-      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+      filters: [{ name: 'CSV files', extensions: ['csv'] }],
     })
 
     if (!filePath) {
@@ -152,14 +152,14 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
       onClose={onClose}
       maxWidth={480}
       nonDismissible={busy}
-      ariaLabel="Export Logs"
+      ariaLabel="Export logs"
       testId="log-export-dialog"
       panelPadding={false}
       formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
         <div className={styles.header}>
-          <h2 className={styles.title}>Export Logs</h2>
+          <h2 className={styles.title}>Export logs</h2>
           <p className={styles.subtitle}>Choose a date range of up to 7 days and save it as CSV.</p>
         </div>
 
@@ -229,15 +229,7 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
 
         <div className={styles.footer}>
           <Button
-            variant="secondary"
-            onClick={onClose}
-            disabled={busy}
-            data-testid="log-export-cancel-button"
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
+            variant="accent"
             type="submit"
             disabled={!canExport}
             data-testid="log-export-submit-button"
@@ -246,6 +238,9 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
               {busy && <span className={styles.spinner} aria-hidden="true" />}
               {busy ? 'Exporting...' : 'Export'}
             </span>
+          </Button>
+          <Button onClick={onClose} disabled={busy} data-testid="log-export-cancel-button">
+            Cancel
           </Button>
         </div>
       </div>

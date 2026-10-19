@@ -1,6 +1,8 @@
+import type { CSSProperties } from 'react'
 import { Database, ArrowClockwise, Star } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSchemaStore } from '../../stores/schema-store'
+import { IconButton } from '../common/IconButton'
 import styles from './ConnectionHeader.module.css'
 
 export interface ConnectionHeaderProps {
@@ -22,7 +24,7 @@ export function ConnectionHeader({
   if (!activeConnection) return null
 
   const connectionName = activeConnection.profile.name
-  const serverVersion = activeConnection.serverVersion || 'MySQL Server'
+  const serverVersion = activeConnection.serverVersion || 'MySQL server'
   const connectionStatus = activeConnection.status
 
   const statusClass =
@@ -45,8 +47,15 @@ export function ConnectionHeader({
 
   return (
     <div className={styles.header} data-testid="connection-header">
-      <div className={styles.iconWrapper}>
-        <Database size={18} weight="regular" />
+      <div
+        className={styles.iconWrapper}
+        style={
+          activeConnection.profile.color
+            ? ({ '--connection-color': activeConnection.profile.color } as CSSProperties)
+            : undefined
+        }
+      >
+        <Database size={16} weight="regular" />
       </div>
       <div className={styles.info}>
         <span className={styles.connectionName}>{connectionName}</span>
@@ -59,12 +68,10 @@ export function ConnectionHeader({
           <span className={styles.serverVersion}>{serverVersion}</span>
         </span>
       </div>
-      <button
-        type="button"
-        className={styles.refreshButton}
+      <IconButton
         onClick={onToggleFavourites}
-        aria-label={favouritesOpen ? 'Show Object Browser' : 'Show Favourites'}
-        title={favouritesOpen ? 'Show Object Browser' : 'Show Favourites'}
+        aria-label={favouritesOpen ? 'Show object browser' : 'Show favourites'}
+        title={favouritesOpen ? 'Show object browser' : 'Show favourites'}
         data-testid="favourites-toggle"
       >
         {favouritesOpen ? (
@@ -72,16 +79,14 @@ export function ConnectionHeader({
         ) : (
           <Star size={16} weight="regular" />
         )}
-      </button>
-      <button
-        type="button"
-        className={styles.refreshButton}
+      </IconButton>
+      <IconButton
         onClick={handleRefresh}
         aria-label="Refresh all databases"
         title="Refresh all databases"
       >
         <ArrowClockwise size={16} weight="regular" />
-      </button>
+      </IconButton>
     </div>
   )
 }

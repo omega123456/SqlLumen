@@ -31,7 +31,7 @@ function getResultTabIcon(result: SingleResultState) {
   if (result.columns.length === 0) {
     return <CheckCircle size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
   }
-  return <Table size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
+  return <Table size={16} weight="regular" className={workspaceTabStyles.tabTypeIcon} />
 }
 
 export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsProps) {
@@ -151,7 +151,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
       onKeyDown={handleKeyDown}
       data-testid="bottom-panel-tabs"
     >
-      <UnderlineTabBar className={styles.strip} scrollable>
+      <UnderlineTabBar variant="selector" className={styles.strip} scrollable>
         {items.map((item, index) => {
           const isActive = item.id === activeItemId
           const panelId =
@@ -205,7 +205,11 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                     {item.kind === 'result' ? (
                       getResultTabIcon(item.result)
                     ) : (
-                      <Table size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
+                      <Table
+                        size={16}
+                        weight="regular"
+                        className={workspaceTabStyles.tabTypeIcon}
+                      />
                     )}
                     <span className={workspaceTabStyles.tabLabelText}>{item.label}</span>
                   </span>
@@ -221,7 +225,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                     }}
                     data-testid={`bottom-panel-close-${item.tab.id}`}
                   >
-                    <X size={12} weight="bold" />
+                    <X size={12} weight="regular" />
                   </button>
                 )}
               </div>

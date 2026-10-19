@@ -24,9 +24,11 @@ import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { useQueryStore } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { PaletteTypeFilter, SearchableObject } from '../../types/schema'
+import { CommandPaletteFooter } from './CommandPaletteKeyHints'
 import { CommandPaletteInput } from './CommandPaletteInput'
 import { CommandPaletteResults } from './CommandPaletteResults'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
+import { PALETTE_KEYS } from './palette-keys'
 import { buildSlashOptions, TYPE_ALIASES } from './slash-options'
 import styles from './CommandPalette.module.css'
 
@@ -227,8 +229,9 @@ export function CommandPalette() {
       isOpen={isOpen}
       onClose={handleClose}
       panelPadding={false}
-      panelWidth="min(800px, 80vw)"
+      panelWidth="min(640px, 80vw)"
       panelClassName={styles.panel}
+      backdropClassName={styles.backdrop}
       testId="command-palette"
       ariaLabel="Command palette"
       disableFocusManagement
@@ -476,7 +479,7 @@ function CommandPaletteSession({
 
   const handleQueryKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Escape') {
+      if (event.key === PALETTE_KEYS.close.key) {
         event.preventDefault()
         // DialogShell closes on Escape from a document listener, so anything handled
         // here must stop the event before it gets there.
@@ -496,7 +499,7 @@ function CommandPaletteSession({
         return
       }
 
-      if (event.key === 'ArrowDown') {
+      if (event.key === PALETTE_KEYS.down.key) {
         event.preventDefault()
         if (isSlashDropdownOpen) {
           if (slashOptions.length > 0) {
@@ -511,7 +514,7 @@ function CommandPaletteSession({
         return
       }
 
-      if (event.key === 'ArrowUp') {
+      if (event.key === PALETTE_KEYS.up.key) {
         event.preventDefault()
         if (isSlashDropdownOpen) {
           setActiveIndex((current) => Math.max(current - 1, 0))
@@ -524,7 +527,7 @@ function CommandPaletteSession({
         return
       }
 
-      if (event.key === 'Enter' && isSlashDropdownOpen) {
+      if (event.key === PALETTE_KEYS.open.key && isSlashDropdownOpen) {
         event.preventDefault()
         if (slashOptions.length === 0) {
           return
@@ -537,7 +540,11 @@ function CommandPaletteSession({
         return
       }
 
-      if (event.key === 'Tab' && !isSlashDropdownOpen && activeResult?.objectType === 'table') {
+      if (
+        event.key === PALETTE_KEYS.columns.key &&
+        !isSlashDropdownOpen &&
+        activeResult?.objectType === 'table'
+      ) {
         event.preventDefault()
         setPills([
           {
@@ -558,7 +565,7 @@ function CommandPaletteSession({
         return
       }
 
-      if (event.key === 'Enter' && activeResult) {
+      if (event.key === PALETTE_KEYS.open.key && activeResult) {
         event.preventDefault()
         void handleSelect(activeResult)
         return
@@ -626,6 +633,7 @@ function CommandPaletteSession({
           />
         )}
       </div>
+      <CommandPaletteFooter showColumnsHint={tablePill == null} />
     </div>
   )
 }

@@ -1,21 +1,27 @@
+/* Panel header (prototype `.ai-h`): 44px, accent sparkle, 600 14px title */
 .header {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  height: 44px;
-  padding: 0 var(--space-md);
+  gap: 8px;
+  height: var(--command-bar-height);
+  padding: 0 6px 0 14px;
   background: var(--ai-panel-header-bg);
   border-bottom: 1px solid var(--ai-panel-border);
   flex-shrink: 0;
 }
 
+.sparkle {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
 .title {
   flex: 1;
-  font-family: var(--font-headline);
-  font-size: var(--type-size-sm);
-  font-weight: 700;
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface);
-  letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -24,33 +30,6 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 8px;
   flex-shrink: 0;
-}
-
-.iconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.iconButton:hover {
-  color: var(--on-surface);
-  background: rgba(var(--on-surface-rgb), 0.06);
-}
-
-.iconButton:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
 }

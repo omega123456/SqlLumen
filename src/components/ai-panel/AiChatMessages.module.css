@@ -1,22 +1,24 @@
+/* Conversation body (prototype `.ai-body`): 14px inset, 14px between items */
 .container {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-md);
+  padding: 14px;
   display: flex;
   flex-direction: column;
+  gap: 14px;
+  user-select: text;
 }
 
-.sameSenderGap {
-  margin-top: var(--space-sm);
-}
-
-.differentSenderGap {
-  margin-top: var(--space-md);
+/* Column wrapper so user bubbles can align to the end */
+.message {
+  display: flex;
+  flex-direction: column;
 }
 
 .scrollAnchor {
   height: 0;
   flex-shrink: 0;
+  margin-top: -14px;
 }
 
 .hidden {

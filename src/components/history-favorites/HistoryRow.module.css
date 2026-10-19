@@ -40,7 +40,6 @@
   border-radius: var(--radius-sm);
   font-size: var(--type-size-3xs);
   font-weight: 600;
-  text-transform: uppercase;
 }
 
 .statusSuccess {

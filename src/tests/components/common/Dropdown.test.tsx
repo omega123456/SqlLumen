@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dropdown } from '../../../components/common/Dropdown'
 import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
+import { cssRule } from '../../helpers/css-source'
 
 describe('Dropdown', () => {
   afterEach(() => {
@@ -330,48 +331,44 @@ describe('Dropdown', () => {
     expect(screen.getByRole('listbox')).toBeInTheDocument()
   })
 
-  it('matches option sizing to the trigger element metrics', async () => {
+  it('detaches the flyout 4px below the trigger and makes it at least 140px wide', async () => {
     const user = userEvent.setup()
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const isTrigger = this.getAttribute('role') === 'combobox'
+        const rect = isTrigger
+          ? { left: 100, top: 22, width: 60, height: 28, right: 160, bottom: 50 }
+          : { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 }
+        return { ...rect, x: rect.left, y: rect.top, toJSON: () => rect } as DOMRect
+      })
 
-    render(
-      <>
-        <span id="lb-size">Pick</span>
-        <Dropdown
-          id="d-size"
-          labelledBy="lb-size"
-          options={options}
-          value=""
-          onChange={vi.fn()}
-          triggerProps={{
-            style: {
-              fontSize: '11px',
-              lineHeight: '16px',
-              padding: '2px 4px',
-              height: '24px',
-            },
-          }}
-        />
-      </>
-    )
+    try {
+      render(
+        <>
+          <span id="lb-flyout">Pick</span>
+          <Dropdown
+            id="d-flyout"
+            labelledBy="lb-flyout"
+            options={options}
+            value=""
+            onChange={vi.fn()}
+          />
+        </>
+      )
 
-    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+      await user.click(screen.getByRole('combobox', { name: 'Pick' }))
 
-    const listbox = screen.getByRole('listbox')
-    await waitFor(() => {
-      expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-font-size')).toBe('11px')
-    })
-    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-font-size')).toBe('11px')
-    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-line-height')).toBe('16px')
-    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-padding-block')).toBe(
-      '0px'
-    )
-    // The panel is portaled outside the token scope, so inline padding is a concrete px
-    // value mirroring the trigger's own horizontal padding (here 4px) — keeping options
-    // proportional to their trigger instead of forcing compact dropdowns to wrap.
-    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-padding-inline')).toBe(
-      '4px'
-    )
-    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-min-height')).toBe('24px')
+      const listbox = screen.getByRole('listbox')
+      await waitFor(() => {
+        expect(listbox.style.top).toBe('54px')
+      })
+      expect(listbox.style.left).toBe('100px')
+      expect(listbox.style.width).toBe('140px')
+      expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-min-height')).toBe('')
+    } finally {
+      rectSpy.mockRestore()
+    }
   })
 
   it('supports typeahead letter navigation while the listbox is open', async () => {
@@ -506,5 +503,14 @@ describe('Dropdown', () => {
     })
 
     expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+})
+
+describe('Dropdown flyout styles', () => {
+  it('gives the panel the flyout stroke, shadow and 8px radius', () => {
+    const panel = cssRule('styles/global.css', '.ui-dropdown__panel')
+    expect(panel).toContain('border: 1px solid var(--stroke-flyout)')
+    expect(panel).toContain('border-radius: var(--radius-overlay)')
+    expect(panel).toContain('box-shadow: var(--shadow-flyout)')
   })
 })

@@ -1,44 +1,56 @@
-/* SettingsSidebar — left navigation for settings sections */
+/* Settings navigation (prototype `.d-settings .nav` + `.navi`) */
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 256px;
-  min-width: 256px;
-  padding: 16px 0;
-  background: var(--ui-dialog-sidebar-bg);
-  border-right: var(--ui-dialog-sidebar-border-right);
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  gap: 2px;
+  width: 240px;
+  min-width: 240px;
+  box-sizing: border-box;
+  padding: 4px 8px;
   overflow-y: auto;
 }
 
 .navButton {
+  position: relative;
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 10px 20px;
+  height: 36px;
+  padding: 0 12px;
   border: none;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
-  font-size: var(--type-size-sm);
+  color: var(--on-surface);
   font-family: var(--font-body);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--type-weight-regular);
   text-align: left;
+  cursor: default;
 }
 
 .navButton:hover {
-  background: rgba(var(--on-surface-rgb), 0.06);
-  color: var(--on-surface);
+  background: var(--fill-subtle-hover);
 }
 
 .navButton[data-active='true'] {
-  background: rgba(var(--primary-rgb), 0.12);
-  color: var(--primary);
+  background: var(--fill-neutral-selected);
+}
+
+/* Selection pill (prototype `.navi.sel::before`) */
+.navButton[data-active='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--primary);
 }
 
 .navButtonIcon {

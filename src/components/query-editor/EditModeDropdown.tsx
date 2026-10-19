@@ -2,7 +2,7 @@
  * EditModeDropdown — dropdown for selecting the edit target table
  * in query result inline editing.
  *
- * Shows "Read Only" as default, plus one option per detected table.
+ * Shows "Read only" as default, plus one option per detected table.
  * Hidden when: no result columns, query status is not success, connection is read-only,
  * or result is not re-executable (stored procedure results).
  */
@@ -79,7 +79,7 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
 
   const editModeOptions: DropdownOption[] = useMemo(
     () => [
-      { value: '', label: 'Read Only' },
+      { value: '', label: 'Read only' },
       ...tableOptions.map((opt) => ({ value: opt.value, label: opt.label })),
     ],
     [tableOptions]

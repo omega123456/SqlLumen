@@ -199,7 +199,7 @@ export function BlobPastePopover({
       />
       <div className={styles.footer}>
         <span className={styles.hint}>Accepts base64 or hex</span>
-        <Button onClick={handleLoad} data-testid="blob-paste-apply">
+        <Button variant="accent" onClick={handleLoad} data-testid="blob-paste-apply">
           Load
         </Button>
       </div>

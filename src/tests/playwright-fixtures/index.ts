@@ -64,6 +64,8 @@ import {
   USERS_TABLE_DATA,
 } from './users'
 import { USER_STATS_VIEW_TABLE_DATA } from './user-stats-view'
+import { DEFAULT_WINDOW_BACKDROP } from './window-chrome'
+import type { WindowBackdrop } from '../../lib/window-commands'
 
 export {
   getGlobalMemoriesFixture,
@@ -98,6 +100,7 @@ type FixtureOverrideDomain =
   | 'schemaMetadataFull'
   | 'commandPaletteRecents'
   | 'openConnectionSessions'
+  | 'windowBackdrop'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
 
@@ -126,6 +129,7 @@ type FixtureOverrides = {
   schemaMetadataFull: Record<string, SchemaMetadataFull>
   commandPaletteRecents: Record<string, string>
   openConnectionSessions: Record<string, OpenConnectionSession[]>
+  windowBackdrop: Record<string, WindowBackdrop>
 }
 
 type FixtureOverrideValueMap = {
@@ -153,6 +157,7 @@ type FixtureOverrideValueMap = {
   schemaMetadataFull: SchemaMetadataFull
   commandPaletteRecents: string
   openConnectionSessions: OpenConnectionSession[]
+  windowBackdrop: WindowBackdrop
 }
 
 type FixtureRegistryApi = {
@@ -194,6 +199,7 @@ type FixtureRegistryApi = {
   getSchemaMetadataFullFixture: () => SchemaMetadataFull
   getCommandPaletteRecentsFixture: () => string
   getOpenConnectionSessionsFixture: () => OpenConnectionSession[]
+  getWindowBackdropFixture: () => WindowBackdrop
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -301,6 +307,7 @@ const overrides: FixtureOverrides = {
   schemaMetadataFull: {},
   commandPaletteRecents: {},
   openConnectionSessions: {},
+  windowBackdrop: {},
 }
 
 function getLogsPageLookupKey(
@@ -584,6 +591,10 @@ export function getOpenConnectionSessionsFixture(): OpenConnectionSession[] {
   return overrides.openConnectionSessions.default ?? DEFAULT_OPEN_CONNECTION_SESSIONS
 }
 
+export function getWindowBackdropFixture(): WindowBackdrop {
+  return overrides.windowBackdrop.default ?? DEFAULT_WINDOW_BACKDROP
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -628,6 +639,7 @@ export function resetFixtureOverrides(): void {
   overrides.schemaMetadataFull = {}
   overrides.commandPaletteRecents = {}
   overrides.openConnectionSessions = {}
+  overrides.windowBackdrop = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -655,6 +667,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getSchemaMetadataFullFixture,
   getCommandPaletteRecentsFixture,
   getOpenConnectionSessionsFixture,
+  getWindowBackdropFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

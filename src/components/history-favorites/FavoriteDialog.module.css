@@ -1,8 +1,10 @@
 .title {
-  font-size: var(--type-heading);
-  font-weight: 600;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface);
-  margin: 0 0 var(--space-md);
+  margin: 0 0 12px;
+  font-family: var(--font-headline);
+  line-height: var(--type-subtitle-line);
 }
 
 .form {
@@ -19,13 +21,16 @@
 
 .label {
   font-size: var(--type-size-sm);
-  font-weight: 500;
+  font-weight: 400;
   color: var(--on-surface-variant);
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--space-sm);
-  margin-top: var(--space-sm);
+  gap: 8px;
+  margin: 24px -24px -24px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
 }

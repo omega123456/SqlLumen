@@ -36,7 +36,9 @@ test.describe('Process List tab', () => {
     const tabStrip = activeWorkspaceTabs(page)
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
-    await expect(activePanel(page).getByTestId('processlist-grid')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('processlist-grid')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
     await waitForGlideGrid(page, 'processlist-grid')
   })
 
@@ -69,6 +71,9 @@ test.describe('Process List tab', () => {
     await waitForGlideGrid(page, 'processlist-grid')
 
     await expect(filterDropdown).toHaveText('Exclude idle')
+    // The label must fit its trigger, not ellipsize
+    const label = filterDropdown.locator('.ui-dropdown__value')
+    expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
 
     await filterDropdown.click()
     await page.getByTestId('processlist-filter-dropdown-option-show-all').click()
@@ -86,7 +91,9 @@ test.describe('Process List tab', () => {
     const geometry = await getGlideGridGeometry(page, 'processlist-grid')
     await clickGlideRowMarker(page, 'processlist-grid', 0, geometry)
 
-    await expect(activePanel(page).getByTestId('processlist-grid').locator('canvas').first()).toBeVisible({
+    await expect(
+      activePanel(page).getByTestId('processlist-grid').locator('canvas').first()
+    ).toBeVisible({
       timeout: APP_READY_MS,
     })
   })

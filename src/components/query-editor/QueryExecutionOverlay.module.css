@@ -4,12 +4,8 @@
   pointer-events: all;
   opacity: 0;
   animation: fadeInOverlay 300ms ease 300ms forwards;
-  background: rgba(var(--scrim-rgb), 0.35);
+  background: var(--smoke);
   z-index: 10;
-}
-
-[data-theme='light'] .overlay {
-  background: rgba(var(--on-surface-rgb), 0.25);
 }
 
 @keyframes fadeInOverlay {

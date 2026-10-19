@@ -115,17 +115,13 @@ export function SnapshotDialog() {
       panelHeight="min(80vh, 640px)"
       panelPadding={false}
       testId="snapshot-dialog"
-      ariaLabel="Session Snapshots"
+      ariaLabel="Session snapshots"
     >
       <div className={styles.header}>
-        <span className={styles.title}>Session Snapshots</span>
-        <Button
-          variant="secondary"
-          onClick={handleCreateClick}
-          data-testid="snapshot-create-button"
-        >
+        <span className={styles.title}>Session snapshots</span>
+        <Button onClick={handleCreateClick} data-testid="snapshot-create-button">
           <CameraPlusIcon size={16} />
-          Create Snapshot
+          Create snapshot
         </Button>
       </div>
 
@@ -146,7 +142,7 @@ export function SnapshotDialog() {
             <p className={styles.emptyBody}>
               Snapshots capture your open connections and tabs so you can restore them later.
             </p>
-            <Button variant="secondary" onClick={handleCreateClick}>
+            <Button onClick={handleCreateClick}>
               <CameraPlusIcon size={16} />
               Create your first snapshot
             </Button>
@@ -169,7 +165,10 @@ export function SnapshotDialog() {
                   <span className={styles.timestamp}>{timestamp}</span>
                   <span className={styles.chip}>{formatSnapshotTrigger(snapshot.triggerType)}</span>
                   <Button
-                    variant="rowDelete"
+                    variant="subtle"
+                    size="sm"
+                    dangerText
+                    iconOnly
                     className={styles.deleteButton}
                     aria-label={`Delete snapshot from ${timestamp}`}
                     data-testid={`snapshot-delete-${snapshot.id}`}
@@ -194,18 +193,16 @@ export function SnapshotDialog() {
       </div>
 
       <div className={styles.footer}>
-        <Button variant="secondary" onClick={closeDialog}>
-          Close
-        </Button>
+        <Button onClick={closeDialog}>Close</Button>
         <Button
-          variant="primary"
+          variant="accent"
           disabled={restoreDisabled}
           aria-disabled={restoreDisabled}
           title={restoreDisabled ? 'Select a snapshot to restore' : undefined}
           onClick={handleRestoreClick}
           data-testid="snapshot-restore-button"
         >
-          Restore Snapshot
+          Restore snapshot
         </Button>
       </div>
 
@@ -213,7 +210,7 @@ export function SnapshotDialog() {
         isOpen={confirm?.kind === 'create'}
         title="Create snapshot?"
         message="Capture the current session as a snapshot? This saves your open connections and tabs so you can restore them later."
-        confirmLabel="Create Snapshot"
+        confirmLabel="Create snapshot"
         isDestructive={false}
         warningText={null}
         isLoading={isBusy}

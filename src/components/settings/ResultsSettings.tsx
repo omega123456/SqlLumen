@@ -22,7 +22,7 @@ export function ResultsSettings() {
 
   return (
     <div data-testid="settings-results">
-      <SettingsSection title="Data Grid" description="Customize how query results are displayed.">
+      <SettingsSection title="Data grid" description="Customize how query results are displayed.">
         <div>
           <label
             htmlFor="settings-page-size"
@@ -58,7 +58,7 @@ export function ResultsSettings() {
         </div>
       </SettingsSection>
       <SettingsSection
-        title="Result Cache"
+        title="Result cache"
         description="Control how long query results and table data are kept in memory before being discarded."
       >
         <div>
@@ -81,7 +81,7 @@ export function ResultsSettings() {
         </div>
       </SettingsSection>
       <SettingsSection
-        title="Workspace Layout"
+        title="Workspace layout"
         description="Configure where table browsing tabs appear."
       >
         <SettingsToggle

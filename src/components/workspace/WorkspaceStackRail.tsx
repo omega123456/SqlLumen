@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CaretDownIcon, PlusIcon } from '@phosphor-icons/react'
+import { PlusIcon } from '@phosphor-icons/react'
 import type { WorkspaceTab } from '../../types/schema'
 import {
   WORKSPACE_TAB_STACK_META,
@@ -190,6 +190,7 @@ export function WorkspaceStackRail({
           return (
             <UnderlineTab
               key={group.key}
+              variant="selector"
               active={isActive}
               className={styles.stackChip}
               data-testid={chipTestId}
@@ -201,7 +202,7 @@ export function WorkspaceStackRail({
             >
               <span className={styles.stackChipLabel}>
                 <IconComponent
-                  size={13}
+                  size={16}
                   weight="regular"
                   aria-hidden={true}
                   data-testid={testId}
@@ -209,12 +210,6 @@ export function WorkspaceStackRail({
                 />
                 {label ? <span>{label}</span> : null}
                 {renderCount(group.tabs.length)}
-                <CaretDownIcon
-                  size={11}
-                  weight="bold"
-                  aria-hidden={true}
-                  className={styles.stackChipCaret}
-                />
                 {group.tabs.some((tab) => {
                   if (tab.type === 'table-designer') {
                     return designerTabs[tab.id]?.isDirty ?? false
@@ -237,15 +232,15 @@ export function WorkspaceStackRail({
 
       <div className={styles.stackRailPinned}>
         <IconButton
-          size="md"
+          size="lg"
           className={styles.newTabButton}
-          title="New Query Tab"
-          aria-label="New Query Tab"
+          title="New query tab"
+          aria-label="New query tab"
           onClick={onOpenQueryTab}
           onKeyDown={(event) => handleKeyNav(event, 'new-query-tab-button')}
           data-testid="new-query-tab-button"
         >
-          <PlusIcon size={16} weight="bold" />
+          <PlusIcon size={16} weight="regular" />
         </IconButton>
         {pinnedTabs.map((tab) => {
           const { IconComponent, testId } = getWorkspaceTabIconDescriptor(tab)
@@ -254,6 +249,7 @@ export function WorkspaceStackRail({
           return (
             <UnderlineTab
               key={tab.id}
+              variant="selector"
               active={tab.id === activeTabId}
               className={styles.stackChip}
               data-testid={pinnedTestId}
@@ -265,7 +261,7 @@ export function WorkspaceStackRail({
             >
               <span className={styles.stackChipLabel}>
                 <IconComponent
-                  size={13}
+                  size={16}
                   weight="regular"
                   aria-hidden={true}
                   data-testid={testId}

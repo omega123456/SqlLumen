@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Checkbox } from '../common/Checkbox'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
+import { Button } from '../common/Button'
+import { InfoBar } from '../common/InfoBar'
 import {
   listExportableObjects,
   startSqlDump,
@@ -27,7 +29,7 @@ export interface SqlDumpDialogProps {
   initialDatabase?: string
   /** Pre-selected table name (only when a specific table node was right-clicked). */
   initialTable?: string
-  /** Whether to only include DDL (schema-only). When true, "Include Data" is unchecked. */
+  /** Whether to only include DDL (schema-only). When true, "Include data" is unchecked. */
   schemaOnly?: boolean
   onClose: () => void
 }
@@ -217,7 +219,7 @@ export default function SqlDumpDialog({
         : `sql_dump_${Date.now()}.sql`
       const selectedPath = await save({
         defaultPath: defaultName,
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
+        filters: [{ name: 'SQL files', extensions: ['sql'] }],
       })
       if (selectedPath) setFilePath(selectedPath)
     } catch {
@@ -311,14 +313,14 @@ export default function SqlDumpDialog({
       onClose={onClose}
       maxWidth={520}
       testId="sql-dump-dialog"
-      ariaLabel="Export SQL Dump"
+      ariaLabel="Export SQL dump"
       disableFocusManagement={isPlaywright}
       nonDismissible={isExporting}
     >
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>{schemaOnly ? 'Export Schema DDL' : 'Export SQL Dump'}</h2>
+          <h2 className={styles.title}>{schemaOnly ? 'Export schema DDL' : 'Export SQL dump'}</h2>
           {!isExporting && (
             <button
               type="button"
@@ -510,59 +512,51 @@ export default function SqlDumpDialog({
             </div>
           )}
 
+          <InfoBar
+            severity="info"
+            message={
+              <>
+                {schemaOnly ? (
+                  <>
+                    Only <span className={styles.footerTextBold}>DDL statements</span> will be
+                    exported (no data). Useful for version-controlling schema changes.
+                  </>
+                ) : (
+                  <>Keep this dialog open while the export runs. Use Cancel export to stop it.</>
+                )}
+              </>
+            }
+            data-testid="dump-footer-text"
+          />
+
           {/* Buttons */}
           <div className={styles.actions}>
             {isExporting ? (
-              <button
+              <Button
                 type="button"
-                className={styles.cancelExportButton}
                 onClick={handleCancel}
                 disabled={cancelPending || progress?.cancelRequested}
                 data-testid="dump-cancel-export-button"
               >
-                {cancelPending || progress?.cancelRequested ? 'Cancelling...' : 'Cancel Export'}
-              </button>
+                {cancelPending || progress?.cancelRequested ? 'Cancelling...' : 'Cancel export'}
+              </Button>
             ) : (
               <>
-                <button
+                <Button
                   type="button"
-                  className={styles.exportButton}
+                  variant="accent"
                   onClick={handleExport}
                   disabled={!canExport}
                   data-testid="dump-submit-button"
                 >
                   Export
-                </button>
-                <button
-                  type="button"
-                  className={styles.cancelButton}
-                  onClick={onClose}
-                  data-testid="dump-cancel-button"
-                >
+                </Button>
+                <Button type="button" onClick={onClose} data-testid="dump-cancel-button">
                   Cancel
-                </button>
+                </Button>
               </>
             )}
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className={styles.footer}>
-          <span className={styles.footerIcon}>
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
-            </svg>
-          </span>
-          <p className={styles.footerText} data-testid="dump-footer-text">
-            {schemaOnly ? (
-              <>
-                Only <span className={styles.footerTextBold}>DDL statements</span> will be exported
-                (no data). Useful for version-controlling schema changes.
-              </>
-            ) : (
-              <>Keep this dialog open while the export runs. Use Cancel Export to stop it.</>
-            )}
-          </p>
         </div>
       </div>
     </DialogShell>

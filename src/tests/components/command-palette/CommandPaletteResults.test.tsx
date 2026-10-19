@@ -35,6 +35,57 @@ describe('CommandPaletteResults', () => {
     expect(screen.getAllByLabelText('Recent object')).toHaveLength(2)
   })
 
+  it('renders the Objects group header with the result count', () => {
+    const { rerender } = render(
+      <CommandPaletteResults
+        results={[makeResult(), makeResult({ name: 'user_rollup', objectType: 'view' })]}
+        activeIndex={0}
+        state="results"
+        onSelect={() => {}}
+      />
+    )
+
+    const header = screen.getByTestId('command-palette-group-header')
+    expect(header).toHaveTextContent('Objects')
+    expect(header).toHaveTextContent('2 results')
+
+    rerender(
+      <CommandPaletteResults
+        results={[makeResult()]}
+        activeIndex={0}
+        state="results"
+        onSelect={() => {}}
+      />
+    )
+    expect(screen.getByTestId('command-palette-group-header')).toHaveTextContent('1 result')
+  })
+
+  it('labels each row with its kind and database, and offers Tab on tables', () => {
+    render(
+      <CommandPaletteResults
+        results={[
+          makeResult(),
+          makeResult({ name: 'user_rollup', objectType: 'view', database: 'sales' }),
+          makeResult({ name: 'sp_sync', objectType: 'procedure' }),
+        ]}
+        activeIndex={0}
+        state="results"
+        onSelect={() => {}}
+      />
+    )
+
+    expect(screen.getByText('Table · analytics')).toBeInTheDocument()
+    expect(screen.getByText('View · sales')).toBeInTheDocument()
+    expect(screen.getByText('Procedure · analytics')).toBeInTheDocument()
+
+    const tableRow = screen.getByRole('option', { name: /users/ })
+    expect(tableRow).toHaveTextContent('Search columns')
+    expect(tableRow.querySelector('kbd')).toHaveTextContent('Tab')
+    expect(screen.getByRole('option', { name: /user_rollup/ })).not.toHaveTextContent(
+      'Search columns'
+    )
+  })
+
   it('renders fuzzy highlight markup in the object name', () => {
     render(
       <CommandPaletteResults
@@ -77,7 +128,8 @@ describe('CommandPaletteResults', () => {
 
     expect(screen.getByText('Columns')).toBeInTheDocument()
     expect(screen.getByRole('listbox', { name: 'Columns' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Type DECIMAL(12,2)')).toHaveTextContent('DECIMAL(12,2)')
+    expect(screen.getByText('DECIMAL(12,2)')).toBeInTheDocument()
+    expect(screen.queryByText(/Search columns/)).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Recent object')).not.toBeInTheDocument()
   })
 

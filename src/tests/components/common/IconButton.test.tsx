@@ -2,6 +2,7 @@ import { createRef } from 'react'
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { IconButton } from '../../../components/common/IconButton'
+import { cssRule } from '../../helpers/css-source'
 
 describe('IconButton', () => {
   it('defaults to type button and md size', () => {
@@ -79,5 +80,31 @@ describe('IconButton', () => {
     )
     expect(screen.getByTestId('icon-btn')).toBeInTheDocument()
     expect(screen.getByRole('button')).toHaveAttribute('title', 'My Title')
+  })
+})
+
+describe('IconButton Fluent styles', () => {
+  const css = 'components/common/IconButton.module.css'
+
+  it('uses subtle fills for hover and pressed (prototype `.b.sub.ic`)', () => {
+    expect(cssRule(css, '.iconButton')).toContain('background: transparent')
+    expect(cssRule(css, '.iconButton:hover:not(:disabled)')).toContain(
+      'background: var(--fill-subtle-hover)'
+    )
+    expect(cssRule(css, '.iconButton:active:not(:disabled)')).toContain(
+      'background: var(--fill-subtle-pressed)'
+    )
+  })
+
+  it('sizes to 24, 28 and 32px', () => {
+    expect(cssRule(css, '.sm')).toContain('width: 24px')
+    expect(cssRule(css, '.md')).toContain('width: var(--control-height-sm)')
+    expect(cssRule(css, '.lg')).toContain('width: var(--control-height)')
+  })
+
+  it('gets the Fluent focus ring from the global :focus-visible rule', () => {
+    expect(cssRule('styles/global.css', ':focus-visible')).toBe(
+      'outline: none; box-shadow: var(--focus-ring);'
+    )
   })
 })

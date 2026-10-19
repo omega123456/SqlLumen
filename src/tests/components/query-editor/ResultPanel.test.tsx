@@ -99,7 +99,40 @@ describe('ResultPanel', () => {
       }))
     })
     render(<ResultPanel tabId="tab1" connectionId="c1" />)
-    expect(screen.getByTestId('dml-success')).toHaveTextContent('Query executed successfully')
+    const success = screen.getByTestId('dml-success')
+    expect(success).toHaveTextContent('Query executed successfully')
+    expect(success).toHaveAttribute('data-severity', 'success')
+    expect(success).toHaveAttribute('role', 'status')
+  })
+
+  it('shows query errors in an error InfoBar with a glyph', () => {
+    act(() => {
+      useQueryStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          tab1: {
+            ...state.tabs.tab1,
+            tabStatus: 'error',
+            results: [
+              {
+                ...result,
+                resultStatus: 'error' as const,
+                columns: [],
+                rows: [],
+                errorMessage: "Table 'shop.user' doesn't exist",
+              },
+            ],
+          },
+        },
+      }))
+    })
+    render(<ResultPanel tabId="tab1" connectionId="c1" />)
+    const error = screen.getByTestId('result-error')
+    expect(error).toHaveAttribute('data-severity', 'error')
+    expect(error).toHaveAttribute('role', 'alert')
+    expect(error).toHaveTextContent('Query failed')
+    expect(error).toHaveTextContent("Table 'shop.user' doesn't exist")
+    expect(error.querySelector('[aria-hidden="true"]')).toHaveTextContent('✕')
   })
 
   it('renders idle empty state when no results exist', () => {

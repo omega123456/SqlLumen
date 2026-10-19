@@ -32,42 +32,29 @@
   pointer-events: auto;
 }
 
-/* ---------- Dark — frosted card ---------- */
+/* Fluent flyout card — one look in both themes; status shown by glyph + colour */
 .toast {
   display: flex;
   flex-direction: column;
   max-width: var(--ui-toast-max-width);
-  border-radius: var(--ui-toast-dark-radius);
-  background: var(--ui-toast-dark-surface);
-  backdrop-filter: var(--ui-toast-dark-backdrop-filter);
-  -webkit-backdrop-filter: var(--ui-toast-dark-backdrop-filter);
-  border: var(--ui-toast-dark-border-default);
-  box-shadow: var(--ui-toast-dark-shadow);
-  transition: transform 0.2s ease;
+  border-radius: var(--ui-toast-radius);
+  background: var(--ui-toast-surface);
+  border: var(--ui-toast-border);
+  box-shadow: var(--ui-toast-shadow);
 }
 
-.toast:hover {
-  transform: translateX(-4px);
-}
-
-.toastError {
-  border: var(--ui-toast-dark-border-error);
-}
-
-.toastSuccess {
-  border: var(--ui-toast-dark-border-success);
-}
-
+.toastError,
+.toastSuccess,
 .toastWarning {
-  border: var(--ui-toast-dark-border-warning);
+  border: var(--ui-toast-border);
 }
 
 .surface {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  gap: var(--ui-toast-dark-row-gap);
-  padding: var(--ui-toast-dark-inner-padding);
+  gap: var(--ui-toast-row-gap);
+  padding: var(--ui-toast-padding);
   width: 100%;
   box-sizing: border-box;
 }
@@ -76,24 +63,26 @@
   flex-shrink: 0;
   width: var(--ui-toast-icon-well-size);
   height: var(--ui-toast-icon-well-size);
-  border-radius: var(--ui-toast-dark-icon-well-radius);
+  margin-top: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
+.iconWell svg {
+  width: var(--ui-toast-icon-well-size);
+  height: var(--ui-toast-icon-well-size);
+}
+
 .iconWellWarning {
-  background: var(--ui-toast-dark-icon-well-warning-bg);
   color: var(--warning);
 }
 
 .iconWellError {
-  background: var(--ui-toast-dark-icon-well-error-bg);
   color: var(--error);
 }
 
 .iconWellSuccess {
-  background: var(--ui-toast-dark-icon-well-success-bg);
   color: var(--tertiary);
 }
 
@@ -111,41 +100,39 @@
 
 .title {
   margin: 0;
-  font-family: var(--font-headline);
-  font-size: var(--type-body-lg);
-  font-weight: 700;
-  line-height: 1.25;
-  color: var(--ui-toast-dark-title-fg);
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-semibold);
+  line-height: var(--type-body-line);
+  color: var(--ui-toast-title-fg);
 }
 
 .message {
-  margin: var(--space-xs) 0 0;
+  margin: 2px 0 0;
   font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  line-height: 1.5;
-  color: var(--ui-toast-dark-body-fg);
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  color: var(--ui-toast-body-fg);
 }
 
 .close {
   flex-shrink: 0;
   padding: 0;
-  margin: -2px 0 0;
+  margin: 0;
   line-height: 1;
-  color: var(--ui-toast-dark-close-fg);
+  color: var(--ui-toast-close-fg);
   cursor: pointer;
   border: none;
   background: none;
 }
 
 .close:hover {
-  color: var(--ui-toast-dark-close-hover-fg);
+  color: var(--ui-toast-close-hover-fg);
 }
 
+/* Auto-dismiss timer is not drawn (Fluent toasts carry no progress bar) */
 .progressTrack {
   display: none;
-  width: 100%;
-  height: 4px;
-  background: var(--ui-toast-light-progress-track);
 }
 
 .progressFill {
@@ -159,77 +146,13 @@
 }
 
 .progressSuccess {
-  background: var(--ui-toast-light-progress-success);
+  background: var(--tertiary);
 }
 
 .progressError {
-  background: var(--ui-toast-light-progress-error);
+  background: var(--error);
 }
 
 .progressWarning {
-  background: var(--ui-toast-light-progress-warning);
-}
-
-/* ---------- Light ---------- */
-:global([data-theme='light']) .toast {
-  overflow: hidden;
-  background: var(--ui-toast-light-card-bg);
-  border: var(--ui-toast-light-border);
-  border-radius: var(--ui-toast-light-radius);
-  box-shadow: var(--ui-toast-light-shadow);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-:global([data-theme='light']) .toast:hover {
-  transform: none;
-}
-
-:global([data-theme='light']) .toastError,
-:global([data-theme='light']) .toastSuccess,
-:global([data-theme='light']) .toastWarning {
-  border: var(--ui-toast-light-border);
-}
-
-:global([data-theme='light']) .surface {
-  padding: var(--ui-toast-dark-inner-padding);
-}
-
-:global([data-theme='light']) .iconWell {
-  border-radius: 50%;
-}
-
-:global([data-theme='light']) .iconWellWarning {
-  background: var(--ui-toast-light-warning-well-bg);
-  color: var(--ui-toast-light-warning-icon-fg);
-}
-
-:global([data-theme='light']) .iconWellError {
-  background: var(--error-container);
-  color: var(--error);
-}
-
-:global([data-theme='light']) .iconWellSuccess {
-  background: var(--ui-toast-light-success-well-bg);
-  color: var(--ui-toast-light-success-icon-fg);
-}
-
-:global([data-theme='light']) .title {
-  color: var(--on-surface);
-}
-
-:global([data-theme='light']) .message {
-  color: var(--on-surface-variant);
-}
-
-:global([data-theme='light']) .close {
-  color: color-mix(in srgb, var(--on-surface-variant) 40%, transparent);
-}
-
-:global([data-theme='light']) .close:hover {
-  color: var(--on-surface);
-}
-
-:global([data-theme='light']) .progressTrack {
-  display: block;
+  background: var(--warning);
 }

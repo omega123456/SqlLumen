@@ -31,7 +31,7 @@ function setReadyToFinishState(version: string, platform: 'windows' | 'linux' | 
     status: 'ready-to-finish',
     currentPlatform: platform,
     readyToFinishAction: isLinux ? 'manual-quit' : 'relaunch',
-    readyToFinishCta: isLinux ? 'Got it' : 'Restart App',
+    readyToFinishCta: isLinux ? 'Got it' : 'Restart app',
     readyToFinishMessage: isLinux
       ? `Quit and reopen SqlLumen to finish installing version ${version}.`
       : `Restart SqlLumen to finish installing version ${version}.`,
@@ -92,7 +92,7 @@ function resetStores(): void {
     status: 'idle',
     currentPlatform: 'windows',
     readyToFinishAction: 'relaunch',
-    readyToFinishCta: 'Restart App',
+    readyToFinishCta: 'Restart app',
     readyToFinishMessage: 'Restart SqlLumen to finish installing version the latest version.',
     availableVersion: null,
     downloadProgress: 0,
@@ -158,7 +158,7 @@ describe('UpdatesSettings', () => {
     expect(screen.getByTestId('updates-available-card')).toHaveTextContent(
       'Version 2.0.0 is available'
     )
-    expect(screen.getByTestId('updates-download-button')).toHaveTextContent('Download Update')
+    expect(screen.getByTestId('updates-download-button')).toHaveTextContent('Download update')
   })
 
   it('renders installing state with progress bar and percentage', async () => {
@@ -182,7 +182,7 @@ describe('UpdatesSettings', () => {
       platform: 'windows',
       expectedTitle: 'Update downloaded',
       expectedMessage: 'Restart SqlLumen to finish installing version 2.0.0.',
-      expectedButton: 'Restart App',
+      expectedButton: 'Restart app',
     },
     {
       platform: 'linux',
@@ -217,7 +217,7 @@ describe('UpdatesSettings', () => {
     expect(screen.getByTestId('updates-ready-error')).toHaveTextContent(
       'Restart failed: restart failed'
     )
-    expect(screen.getByTestId('updates-restart-button')).toHaveTextContent('Restart App')
+    expect(screen.getByTestId('updates-restart-button')).toHaveTextContent('Restart app')
   })
 
   it('renders error state with Try Again button', async () => {
@@ -225,7 +225,7 @@ describe('UpdatesSettings', () => {
     render(<UpdatesSettings />)
     await screen.findByTestId('updates-app-version')
     expect(screen.getByTestId('updates-error-state')).toHaveTextContent('network down')
-    expect(screen.getByTestId('updates-try-again-button')).toHaveTextContent('Try Again')
+    expect(screen.getByTestId('updates-try-again-button')).toHaveTextContent('Try again')
   })
 
   it('manual check button triggers a manual update check from idle state', async () => {
@@ -309,7 +309,7 @@ describe('UpdatesSettings', () => {
     await user.click(screen.getByTestId('updates-restart-button'))
 
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Restart App?')).toBeInTheDocument()
+    expect(screen.getByText('Restart app?')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('confirm-confirm-button'))
     await waitFor(() => {

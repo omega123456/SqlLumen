@@ -5,7 +5,7 @@
 
 import { useThemeStore } from '../stores/theme-store'
 
-const FALLBACK_ROW = 32
+const FALLBACK_ROW = 28
 const FALLBACK_HEADER = 32
 
 export function useGridDimensions(): { rowHeight: number; headerHeight: number } {

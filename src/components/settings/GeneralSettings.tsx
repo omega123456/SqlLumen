@@ -102,7 +102,7 @@ export function GeneralSettings() {
       </SettingsSection>
 
       <SettingsSection
-        title="Session Snapshots"
+        title="Session snapshots"
         description="Periodically capture your open connections and tabs so you can restore them later."
       >
         <div>
@@ -140,7 +140,7 @@ export function GeneralSettings() {
       </SettingsSection>
 
       <SettingsSection
-        title="Connection Defaults"
+        title="Connection defaults"
         description="Default values for new connections."
       >
         <div>

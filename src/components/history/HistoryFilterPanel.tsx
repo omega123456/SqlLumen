@@ -8,16 +8,16 @@ export interface HistoryFilterPanelProps {
 }
 
 const FILTERS: { label: string; value: TimeRange }[] = [
-  { label: 'All History', value: 'all' },
+  { label: 'All history', value: 'all' },
   { label: 'Past 24h', value: '24h' },
-  { label: 'Last 7 Days', value: '7d' },
-  { label: 'Last 30 Days', value: '30d' },
+  { label: 'Last 7 days', value: '7d' },
+  { label: 'Last 30 days', value: '30d' },
 ]
 
 export function HistoryFilterPanel({ value, onChange }: HistoryFilterPanelProps) {
   return (
     <div className={styles.panel} data-testid="history-filter-panel">
-      <h3 className={styles.heading}>Time Range</h3>
+      <h3 className={styles.heading}>Time range</h3>
       <div className={styles.buttonList}>
         {FILTERS.map((filter) => (
           <button

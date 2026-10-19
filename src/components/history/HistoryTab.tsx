@@ -81,11 +81,11 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
     [entries, selectedEntryId]
   )
 
-  // Handle "Open in Editor" — reuse active query tab if one exists
+  // Handle "Open in editor" — reuse active query tab if one exists
   const handleOpenInEditor = useCallback(
     (entry: HistoryEntry) => {
       if (!connectionId) return
-      insertSqlIntoEditor(connectionId, entry.sqlText, 'History Query')
+      insertSqlIntoEditor(connectionId, entry.sqlText, 'History query')
     },
     [connectionId]
   )
@@ -109,7 +109,12 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
       {error ? (
         <div className={styles.errorState} data-testid="history-error">
           <p className={styles.errorMessage}>{error}</p>
-          <Button variant="ghost" onClick={() => reload(timeRange)} data-testid="history-retry">
+          <Button
+            variant="subtle"
+            size="sm"
+            onClick={() => reload(timeRange)}
+            data-testid="history-retry"
+          >
             Retry
           </Button>
         </div>

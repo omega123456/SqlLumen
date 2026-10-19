@@ -85,6 +85,10 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
     appVersion: '0.1.0',
   }),
 
+  // --- Window chrome ---
+  set_window_theme: () => undefined,
+  get_window_backdrop: () => 'solid',
+
   // --- Connection CRUD ---
   save_connection: () => 'conn-mock-new',
   get_connection: () => ({

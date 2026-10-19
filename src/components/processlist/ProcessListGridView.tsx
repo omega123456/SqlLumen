@@ -187,7 +187,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     const hostRect = host.getBoundingClientRect()
     const rootStyles = getComputedStyle(document.documentElement)
     const headerHeight = parseFloat(rootStyles.getPropertyValue('--grid-header-height')) || 32
-    const rowHeight = parseFloat(rootStyles.getPropertyValue('--grid-row-height')) || 32
+    const rowHeight = parseFloat(rootStyles.getPropertyValue('--grid-row-height')) || 28
     const columnStart =
       rowMarkerWidth +
       columnWidths.slice(0, infoColumnIndex).reduce((sum, next) => sum + next, 0) -

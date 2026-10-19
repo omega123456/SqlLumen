@@ -56,7 +56,7 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
       </div>
       {/* Visual elements — timer is aria-hidden to prevent per-second re-announcement */}
       <span className={styles.spinner} aria-hidden="true" />
-      <span className={styles.label}>RUNNING</span>
+      <span className={styles.label}>Running</span>
       <span className={styles.timer} data-testid="running-timer" aria-hidden="true">
         {formatElapsedTime(elapsed)}
       </span>

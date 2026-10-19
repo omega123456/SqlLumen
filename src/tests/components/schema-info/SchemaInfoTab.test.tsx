@@ -96,6 +96,44 @@ describe('SchemaInfoTab', () => {
     })
   })
 
+  it('renders the page header and opens the designer and data tabs from it', async () => {
+    const user = userEvent.setup()
+    ipc.override('get_schema_info', () => makeSchemaInfoResponse())
+
+    render(<SchemaInfoTab tab={makeTab()} />)
+
+    const header = await screen.findByTestId('schema-info-header')
+    expect(screen.getByRole('heading', { name: 'users' })).toBeInTheDocument()
+    expect(header).toHaveTextContent('Table · mydb')
+
+    await user.click(screen.getByTestId('schema-info-alter-table'))
+    await user.click(screen.getByTestId('schema-info-view-data'))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1'] ?? []
+    expect(tabs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'table-designer', mode: 'alter', objectName: 'users' }),
+        expect.objectContaining({ type: 'table-data', objectName: 'users', databaseName: 'mydb' }),
+      ])
+    )
+  })
+
+  it('shows only View data for views and no header actions for routines', async () => {
+    ipc.override('get_schema_info', () =>
+      makeSchemaInfoResponse({ indexes: [], foreignKeys: [], metadata: null })
+    )
+    const { unmount } = render(<SchemaInfoTab tab={makeTab({ objectType: 'view' })} />)
+
+    expect(await screen.findByTestId('schema-info-view-data')).toBeInTheDocument()
+    expect(screen.getByTestId('schema-info-header')).toHaveTextContent('View · mydb')
+    expect(screen.queryByTestId('schema-info-alter-table')).not.toBeInTheDocument()
+    unmount()
+
+    render(<SchemaInfoTab tab={makeTab({ objectType: 'procedure' })} />)
+    expect(await screen.findByTestId('schema-info-header')).toHaveTextContent('Procedure · mydb')
+    expect(screen.queryByTestId('schema-info-view-data')).not.toBeInTheDocument()
+  })
+
   it('shows correct sub-tabs for table (all 4)', async () => {
     ipc.override('get_schema_info', () => makeSchemaInfoResponse())
     const tab = makeTab({ objectType: 'table' })
@@ -106,7 +144,7 @@ describe('SchemaInfoTab', () => {
       expect(screen.getByRole('button', { name: 'Columns' })).toBeInTheDocument()
     })
     expect(screen.getByText('Indexes')).toBeInTheDocument()
-    expect(screen.getByText('Foreign Keys')).toBeInTheDocument()
+    expect(screen.getByText('Foreign keys')).toBeInTheDocument()
     expect(screen.getByText('DDL')).toBeInTheDocument()
   })
 
@@ -123,7 +161,7 @@ describe('SchemaInfoTab', () => {
     })
     expect(screen.getByText('DDL')).toBeInTheDocument()
     expect(screen.queryByText('Indexes')).not.toBeInTheDocument()
-    expect(screen.queryByText('Foreign Keys')).not.toBeInTheDocument()
+    expect(screen.queryByText('Foreign keys')).not.toBeInTheDocument()
   })
 
   it('shows correct sub-tabs for procedure (ddl only)', async () => {
@@ -135,11 +173,11 @@ describe('SchemaInfoTab', () => {
     render(<SchemaInfoTab tab={tab} />)
 
     await waitFor(() => {
-      expect(screen.getByText('DDL')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'DDL' })).toBeInTheDocument()
     })
     expect(screen.queryByText('Columns')).not.toBeInTheDocument()
     expect(screen.queryByText('Indexes')).not.toBeInTheDocument()
-    expect(screen.queryByText('Foreign Keys')).not.toBeInTheDocument()
+    expect(screen.queryByText('Foreign keys')).not.toBeInTheDocument()
   })
 
   it('shows column count stat on every table sub-tab', async () => {

@@ -77,7 +77,7 @@ describe('AiChatInput', () => {
 
       await waitFor(() => {
         const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
-        expect(textarea.style.height).toBe('36px')
+        expect(textarea.style.height).toBe('32px')
       })
     } finally {
       if (originalScrollHeight) {
@@ -543,7 +543,7 @@ describe('AiChatInput', () => {
   })
 
   // -----------------------------------------------------------------------
-  // /remember "Always Ask" scope picker
+  // /remember "Always ask" scope picker
   // -----------------------------------------------------------------------
 
   describe('/remember Always Ask flow', () => {

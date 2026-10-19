@@ -16,6 +16,7 @@ import { TableDataFormView } from './TableDataFormView'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
 import type { WorkspaceTab, TableDataTab as TableDataTabType } from '../../types/schema'
+import { InfoBar } from '../common/InfoBar'
 import styles from './TableDataTab.module.css'
 
 interface TableDataTabProps {
@@ -155,14 +156,13 @@ export function TableDataTab({
 
       {/* No-PK Warning Banner */}
       {showNoPkWarning && (
-        <div className={styles.warningBanner} data-testid="no-pk-warning">
-          <span className={styles.warningIcon} aria-hidden="true">
-            &#9888;
-          </span>
-          <span>
-            This table has no primary key or unique key. Editing is disabled. Data can be browsed
-            but not modified.
-          </span>
+        <div className={styles.warningHost}>
+          <InfoBar
+            severity="warning"
+            title="Read only"
+            message="This table has no primary key or unique key. Editing is disabled. Data can be browsed but not modified."
+            data-testid="no-pk-warning"
+          />
         </div>
       )}
 

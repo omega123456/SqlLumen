@@ -1,150 +1,69 @@
-/* Monaco SQL suggest widget + parameter hints widget — shared chrome */
+/* Monaco SQL suggest widget + parameter hints widget — Fluent flyout chrome.
+   Same flyout as the dropdown panel and command palette (prototype `.p-fly`): card surface
+   (set in monaco-theme.ts), flyout stroke, 8px radius and the flyout shadow, no blur. */
 
-/* ---------------------------------------------------------------------------
-   Shared chrome — light theme
-   --------------------------------------------------------------------------- */
-
-[data-theme='light'] .monaco-editor .suggest-widget,
-[data-theme='light'] .monaco-editor .parameter-hints-widget {
-  border-radius: 12px !important;
-  box-shadow: 0 25px 50px -12px rgba(25, 28, 31, 0.18) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  border: 1px solid rgba(193, 198, 213, 0.2) !important;
+.monaco-editor .suggest-widget,
+.monaco-editor .parameter-hints-widget {
+  border-radius: var(--radius-overlay) !important;
+  box-shadow: var(--shadow-flyout) !important;
+  border: 1px solid var(--stroke-flyout) !important;
+  overflow: hidden;
 }
 
 /* ---------------------------------------------------------------------------
-   Shared chrome — dark theme
+   Suggest widget
    --------------------------------------------------------------------------- */
 
-[data-theme='dark'] .monaco-editor .suggest-widget,
-[data-theme='dark'] .monaco-editor .parameter-hints-widget {
-  border-radius: 8px !important;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45) !important;
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(64, 71, 81, 0.35) !important;
-}
-
-/* ---------------------------------------------------------------------------
-   Suggest widget — light theme (widget-specific rules)
-   --------------------------------------------------------------------------- */
-
-[data-theme='light'] .monaco-editor .suggest-widget {
+.monaco-editor .suggest-widget {
   min-width: 256px !important;
   max-width: min(600px, 90vw) !important;
   box-sizing: border-box;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
   padding-left: 10px;
   padding-right: 10px;
 }
 
-[data-theme='light']
-  .monaco-editor
-  .suggest-widget
-  .monaco-list
-  .monaco-list-row:hover:not(.focused) {
-  background-color: #f2f4f6 !important;
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
+  background-color: var(--fill-subtle-hover) !important;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
-  background-color: #0066cc !important;
-  color: #ffffff !important;
+/* Focused row: neutral selected fill with the 3×16 accent pill (prototype `.p-fly .mi.on`) */
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  position: relative;
+  background-color: var(--fill-neutral-selected) !important;
+  color: var(--on-surface) !important;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
-  color: #dfe8ff !important;
-  opacity: 0.85;
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--primary);
 }
 
-[data-theme='light']
-  .monaco-editor
-  .suggest-widget
-  .monaco-list
-  .monaco-list-row.focused
-  .monaco-icon-label {
-  color: #ffffff !important;
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: var(--primary) !important;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .details-label {
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
+  color: var(--on-surface) !important;
+}
+
+.monaco-editor .suggest-widget .details-label {
   font-family: var(--font-body);
-  font-size: var(--type-size-2xs);
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-weight-regular);
   opacity: 1 !important;
-  color: #414753;
+  color: var(--outline);
 }
 
-[data-theme='light']
-  .monaco-editor
-  .suggest-widget
-  .monaco-list
-  .monaco-list-row.focused
-  .details-label {
-  color: rgba(255, 255, 255, 0.72);
-  font-weight: 700;
-}
-
-/* ---------------------------------------------------------------------------
-   Suggest widget — dark theme (widget-specific rules)
-   --------------------------------------------------------------------------- */
-
-[data-theme='dark'] .monaco-editor .suggest-widget {
-  min-width: 256px !important;
-  max-width: min(600px, 90vw) !important;
-  box-sizing: border-box;
-}
-
-[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
-  padding-left: 10px;
-  padding-right: 10px;
-}
-
-[data-theme='dark']
-  .monaco-editor
-  .suggest-widget
-  .monaco-list
-  .monaco-list-row:hover:not(.focused) {
-  background-color: #31394d !important;
-}
-
-[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
-  background-color: rgba(123, 208, 255, 0.1) !important;
-  border-left: 2px solid #7bd0ff;
-  box-sizing: border-box;
-  color: #ffffff !important;
-}
-
-[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
-  color: #7bd0ff !important;
-}
-
-[data-theme='dark']
-  .monaco-editor
-  .suggest-widget
-  .monaco-list
-  .monaco-list-row.focused
-  .monaco-icon-label {
-  color: #ffffff !important;
-}
-
-[data-theme='dark'] .monaco-editor .suggest-widget .details-label {
-  font-family: var(--font-body);
-  font-size: var(--type-size-2xs);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  opacity: 1 !important;
-  color: #64748b;
-}
-
-[data-theme='dark']
-  .monaco-editor
-  .suggest-widget
-  .monaco-list
-  .monaco-list-row.focused
-  .details-label {
-  color: #64748b;
-  font-weight: 500;
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
+  color: var(--on-surface-variant);
 }

@@ -16,21 +16,21 @@ const EXPORT_FORMAT_REGEX: Record<'csv' | 'json' | 'xlsx' | 'sql-insert', RegExp
   csv: /CSV \(Comma Separated Values\)/,
   json: /JSON \(JavaScript Object Notation\)/,
   xlsx: /Excel \(\.xlsx\)/,
-  'sql-insert': /SQL INSERT Statements/,
+  'sql-insert': /SQL INSERT statements/,
 }
 
 const EXPORT_FORMAT_LABELS = {
   csv: 'CSV (Comma Separated Values)',
   json: 'JSON (JavaScript Object Notation)',
   xlsx: 'Excel (.xlsx)',
-  'sql-insert': 'SQL INSERT Statements',
+  'sql-insert': 'SQL INSERT statements',
 } as const
 
 const EXPORT_FORMAT_DESCRIPTIONS = [
   'Comma Separated Values',
-  'JSON Array of Objects',
+  'JSON array of objects',
   'Excel Spreadsheet (.xlsx)',
-  'SQL INSERT Statements',
+  'SQL INSERT statements',
 ] as const
 
 async function pickExportFormat(
@@ -108,7 +108,7 @@ describe('ExportDialog', () => {
 
   it('renders the dialog title', () => {
     render(<ExportDialog {...defaultProps} />)
-    expect(screen.getByRole('heading', { name: /Export Results/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Export results/ })).toBeInTheDocument()
   })
 
   it('format selector changes update state', async () => {
@@ -531,9 +531,9 @@ describe('ExportDialog', () => {
 
     const listbox = await openExportFormatListbox(user)
     expect(listbox).toHaveTextContent('Comma Separated Values')
-    expect(listbox).toHaveTextContent('JSON Array of Objects')
+    expect(listbox).toHaveTextContent('JSON array of objects')
     expect(listbox).toHaveTextContent('Excel Spreadsheet (.xlsx)')
-    expect(listbox).toHaveTextContent('SQL INSERT Statements')
+    expect(listbox).toHaveTextContent('SQL INSERT statements')
 
     for (const description of EXPORT_FORMAT_DESCRIPTIONS) {
       expect(listbox).toHaveTextContent(description)
@@ -563,9 +563,9 @@ describe('ExportDialog', () => {
 
     const listbox = await openExportFormatListbox(user)
     expect(listbox).toHaveTextContent('Comma Separated Values')
-    expect(listbox).toHaveTextContent('JSON Array of Objects')
+    expect(listbox).toHaveTextContent('JSON array of objects')
     expect(listbox).toHaveTextContent('Excel Spreadsheet (.xlsx)')
-    expect(listbox).not.toHaveTextContent('SQL INSERT Statements')
+    expect(listbox).not.toHaveTextContent('SQL INSERT statements')
   })
 
   it('resets format to csv if isView=true and format was sql-insert', async () => {

@@ -16,15 +16,15 @@ describe('HistoryFilterPanel', () => {
   it('displays correct labels', () => {
     render(<HistoryFilterPanel value="all" onChange={vi.fn()} />)
 
-    expect(screen.getByText('All History')).toBeInTheDocument()
+    expect(screen.getByText('All history')).toBeInTheDocument()
     expect(screen.getByText('Past 24h')).toBeInTheDocument()
-    expect(screen.getByText('Last 7 Days')).toBeInTheDocument()
-    expect(screen.getByText('Last 30 Days')).toBeInTheDocument()
+    expect(screen.getByText('Last 7 days')).toBeInTheDocument()
+    expect(screen.getByText('Last 30 days')).toBeInTheDocument()
   })
 
   it('renders "TIME RANGE" heading', () => {
     render(<HistoryFilterPanel value="all" onChange={vi.fn()} />)
-    expect(screen.getByText('Time Range')).toBeInTheDocument()
+    expect(screen.getByText('Time range')).toBeInTheDocument()
   })
 
   it('active button has aria-pressed=true', () => {

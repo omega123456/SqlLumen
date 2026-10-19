@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-overlay);
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -16,18 +16,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 32px;
-  background: var(--surface-container-high);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  padding: 24px 24px 0;
+  background: transparent;
 }
 
 .title {
   margin: 0;
-  font-size: var(--type-size-xl);
-  font-weight: 700;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   font-family: var(--font-headline);
   color: var(--on-surface);
-  letter-spacing: -0.01em;
+  line-height: var(--type-subtitle-line);
 }
 
 .closeButton {
@@ -36,16 +35,16 @@
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  color: var(--on-surface-variant);
+  border-radius: var(--radius-control);
+  color: var(--on-surface);
   transition:
     color 0.15s ease,
     background-color 0.15s ease;
 }
 
 .closeButton:hover {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  color: var(--on-surface);
+  background: var(--fill-subtle-hover);
 }
 
 .closeButton svg {
@@ -56,10 +55,10 @@
 /* ── Body ───────────────────────────────────────────────────────────────── */
 
 .body {
-  padding: 24px 32px;
+  padding: 12px 24px 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 /* ── File path section ──────────────────────────────────────────────────── */
@@ -71,37 +70,22 @@
 }
 
 .label {
-  font-size: var(--type-size-2xs);
-  font-weight: 700;
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-regular);
   font-family: var(--font-body);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--on-surface-variant);
-}
-
-[data-theme='light'] .label {
-  font-size: var(--type-size-sm);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: normal;
   color: var(--on-surface);
 }
 
 .filePath {
   font-family: var(--font-mono);
-  font-size: var(--type-size-sm);
+  font-size: var(--type-mono-size);
   color: var(--on-surface);
-  padding: 10px 14px;
-  background: var(--surface-container-high);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
-  border-radius: 8px;
+  padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
+  background: var(--ui-input-bg);
+  border: var(--ui-input-border);
+  border-radius: var(--radius-control);
   word-break: break-all;
-}
-
-[data-theme='light'] .filePath {
-  background: #ffffff;
-  border: 1px solid #c1c6d5;
-  border-radius: 12px;
+  line-height: var(--ui-input-line-height);
 }
 
 /* ── Options ────────────────────────────────────────────────────────────── */
@@ -115,14 +99,10 @@
 
 .checkboxLabel {
   font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  color: rgba(var(--on-surface-rgb), 0.8);
+  font-size: var(--type-body-size);
+  color: var(--on-surface);
   user-select: none;
   cursor: pointer;
-}
-
-[data-theme='light'] .checkboxLabel {
-  color: #414753;
 }
 
 /* ── Progress bar ───────────────────────────────────────────────────────── */
@@ -131,20 +111,21 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background: var(--fill-control);
 }
 
 .progressBar {
   width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(var(--outline-variant-rgb), 0.2);
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fill-neutral-selected);
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--primary), var(--primary-container));
+  border-radius: 2px;
+  background: var(--primary);
   transition: width 0.3s ease;
 }
 
@@ -169,16 +150,16 @@
   font-family: var(--font-body);
   color: var(--error);
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
-  border: 1px solid rgba(var(--error-rgb), 0.2);
+  background: var(--error-container);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--stroke-card);
 }
 
 .errorSql {
   display: block;
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: rgba(var(--on-surface-rgb), 0.6);
+  font-size: var(--type-caption-size);
+  color: var(--outline);
   margin-top: 4px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -202,118 +183,13 @@
 /* ── Action buttons ─────────────────────────────────────────────────────── */
 
 .actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-top: 8px;
-}
-
-.importButton {
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-container));
-  color: var(--on-primary-container);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.3);
-  transition:
-    filter 0.15s ease,
-    transform 0.1s ease,
-    opacity 0.15s ease;
-}
-
-.importButton:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.importButton:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.importButton:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-[data-theme='light'] .importButton {
-  background: #0066cc;
-  color: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-[data-theme='light'] .importButton:hover:not(:disabled) {
-  background: #0052a3;
-  filter: none;
-}
-
-.cancelButton {
-  width: 100%;
-  padding: 8px;
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.cancelButton:hover {
-  color: var(--on-surface);
-}
-
-[data-theme='light'] .cancelButton {
-  color: #727784;
-  font-weight: 600;
-}
-
-[data-theme='light'] .cancelButton:hover {
-  color: #191c1e;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  margin: 8px -24px -24px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 /* ── Footer (info bar) ──────────────────────────────────────────────────── */
-
-.footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 32px;
-  background: rgba(var(--outline-variant-rgb), 0.08);
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.05);
-}
-
-.footerIcon {
-  flex-shrink: 0;
-  color: rgba(var(--primary-rgb), 0.7);
-}
-
-.footerIcon svg {
-  width: 18px;
-  height: 18px;
-}
-
-.footerText {
-  margin: 0;
-  font-size: 11px;
-  font-family: var(--font-body);
-  color: var(--on-surface-variant);
-  line-height: 1.5;
-}
-
-[data-theme='light'] .footer {
-  background: #f7f9fb;
-  border-top: 1px solid rgba(193, 198, 213, 0.3);
-}
-
-[data-theme='light'] .footerText {
-  font-size: 12px;
-  color: #414753;
-}

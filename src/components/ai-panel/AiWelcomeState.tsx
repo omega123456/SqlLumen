@@ -29,7 +29,8 @@ export function AiWelcomeState({ onSuggestionClick }: AiWelcomeStateProps) {
         {SUGGESTIONS.map((s) => (
           <Button
             key={s.label}
-            variant="ghost"
+            variant="subtle"
+            size="sm"
             className={styles.chip}
             onClick={() => onSuggestionClick(s.text)}
             data-testid="ai-suggestion-chip"

@@ -24,11 +24,9 @@
 
 .label {
   color: var(--primary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--type-size-xs);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 600;
 }
 
 .timer {
@@ -48,14 +46,12 @@
   border-radius: var(--radius-sm);
   font-family: var(--font-body);
   font-size: var(--type-size-xs);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   background-color: var(--surface-container-highest);
   color: var(--on-surface-variant);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  border: 1px solid var(--stroke-card);
   transition:
     color 0.15s ease,
     border-color 0.15s ease,

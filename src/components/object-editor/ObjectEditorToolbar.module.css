@@ -5,11 +5,7 @@
   padding: var(--space-sm) var(--space-md);
   flex-shrink: 0;
   background-color: var(--surface-container);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-}
-
-[data-theme='light'] .toolbar {
-  background-color: var(--surface-container-low);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .leftSection {

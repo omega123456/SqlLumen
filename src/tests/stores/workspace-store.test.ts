@@ -863,7 +863,7 @@ describe('useWorkspaceStore — renameQueryTab', () => {
       .getState()
       .tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')?.id
 
-    useWorkspaceStore.getState().renameQueryTab('conn-1', queryTabId, 'New Name')
+    useWorkspaceStore.getState().renameQueryTab('conn-1', queryTabId, 'New name')
     if (!dataTabId) {
       throw new Error('Expected table-data tab id')
     }
@@ -872,7 +872,7 @@ describe('useWorkspaceStore — renameQueryTab', () => {
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     const queryTab = tabs.find((tab) => tab.id === queryTabId)
     const dataTab = tabs.find((tab) => tab.id === dataTabId)
-    expect(queryTab?.label).toBe('New Name')
+    expect(queryTab?.label).toBe('New name')
     expect(dataTab?.label).toBe('users')
   })
 

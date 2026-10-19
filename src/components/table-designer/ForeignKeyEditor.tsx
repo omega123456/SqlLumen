@@ -296,20 +296,21 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
     <div className={styles.container} data-testid="foreign-key-editor">
       <div className={styles.toolbar}>
         <Button
-          type="button"
-          variant="secondary"
+          size="sm"
           onClick={() => {
             addForeignKey(tabId)
             setSelectedRow(foreignKeys.length)
           }}
           data-testid="foreign-key-editor-add"
         >
-          <Link size={16} weight="bold" />
+          <Link size={16} weight="regular" />
           <span>Add FK</span>
         </Button>
+        <span className={styles.toolbarDivider} aria-hidden />
         <Button
-          type="button"
-          variant="danger"
+          variant="subtle"
+          size="sm"
+          dangerText
           onClick={() => {
             if (effectiveSelectedRow !== null) {
               handleDelete(effectiveSelectedRow)
@@ -318,41 +319,115 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
           disabled={!canDeleteSelected}
           data-testid="foreign-key-editor-delete-selected"
         >
-          <Trash size={16} weight="bold" />
-          <span>Delete Selected</span>
+          <Trash size={16} weight="regular" />
+          <span>Delete selected</span>
         </Button>
       </div>
 
-      <div className={styles.tableScroller}>
-        <table className={styles.table}>
-          <thead className={styles.tableHead}>
-            <tr>
-              {[
-                '',
-                '#',
-                'FK Name',
-                'Source Column',
-                'Referenced DB',
-                'Referenced Table',
-                'Referenced Column',
-                'On Delete',
-                'On Update',
-                '',
-              ].map((label, index) => (
-                <th key={`${label}-${index}`} className={styles.headerCell} scope="col">
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className={styles.tableBody}>
-            {foreignKeys.map((foreignKey, fkIndex) => {
-              const isSelected = effectiveSelectedRow === fkIndex
-              const rowClassName = `${styles.row} ${
-                isSelected ? styles.selectedRow : fkIndex % 2 === 0 ? styles.evenRow : styles.oddRow
-              }`
+      <div className={styles.gridCard}>
+        <div className={styles.tableScroller}>
+          <table className={styles.table}>
+            <thead className={styles.tableHead}>
+              <tr>
+                {[
+                  '',
+                  '#',
+                  'FK name',
+                  'Source column',
+                  'Referenced DB',
+                  'Referenced table',
+                  'Referenced column',
+                  'On delete',
+                  'On update',
+                  '',
+                ].map((label, index) => (
+                  <th key={`${label}-${index}`} className={styles.headerCell} scope="col">
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className={styles.tableBody}>
+              {foreignKeys.map((foreignKey, fkIndex) => {
+                const isSelected = effectiveSelectedRow === fkIndex
+                const rowClassName = `${styles.row} ${
+                  isSelected
+                    ? styles.selectedRow
+                    : fkIndex % 2 === 0
+                      ? styles.evenRow
+                      : styles.oddRow
+                }`
 
-              if (foreignKey.isComposite) {
+                if (foreignKey.isComposite) {
+                  return (
+                    <tr
+                      key={`fk-${fkIndex}`}
+                      className={rowClassName}
+                      data-testid={`fk-row-${fkIndex}`}
+                      onClick={() => setSelectedRow(fkIndex)}
+                    >
+                      <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
+                        <span className={styles.rowAccent} aria-hidden />
+                      </td>
+                      <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>
+                        {fkIndex + 1}
+                      </td>
+                      <td className={styles.bodyCell}>
+                        <span className={styles.readonlyText}>{foreignKey.name || '—'}</span>
+                      </td>
+                      <td className={styles.bodyCell} colSpan={5}>
+                        <div
+                          className={styles.compositeCell}
+                          data-testid={`fk-composite-badge-${fkIndex}`}
+                        >
+                          <span className={styles.warningBadge}>Multi-column — view only</span>
+                          <div className={styles.compositeSummary}>
+                            <span>{foreignKey.sourceColumn || '—'}</span>
+                            <span>→</span>
+                            <span>
+                              {foreignKey.referencedDatabase || databaseName || '—'}.
+                              {foreignKey.referencedTable || '—'}.
+                              {foreignKey.referencedColumn || '—'}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className={styles.bodyCell}>
+                        <span className={styles.readonlyText}>{foreignKey.onDelete || '—'}</span>
+                      </td>
+                      <td className={styles.bodyCell}>
+                        <span className={styles.readonlyText}>{foreignKey.onUpdate || '—'}</span>
+                      </td>
+                      <td className={`${styles.bodyCell} ${styles.deleteCell}`} />
+                    </tr>
+                  )
+                }
+
+                const referencedDatabase = foreignKey.referencedDatabase || databaseName || ''
+                const referencedTableOptions: DropdownOption[] = [
+                  {
+                    value: '',
+                    label: loadingTablesByDatabase[referencedDatabase]
+                      ? 'Loading tables...'
+                      : 'Select table',
+                  },
+                  ...(referencedTablesByDatabase[referencedDatabase] ?? []).map((tableName) => ({
+                    value: tableName,
+                    label: tableName,
+                  })),
+                ]
+                const referencedTargetKey =
+                  referencedDatabase !== '' && foreignKey.referencedTable !== ''
+                    ? makeReferencedTargetKey(referencedDatabase, foreignKey.referencedTable)
+                    : ''
+                const referencedColumnOptions =
+                  referencedTargetKey === ''
+                    ? []
+                    : (referencedColumnsByTarget[referencedTargetKey] ?? [])
+                const isReferencedColumnLoading = Boolean(
+                  referencedTargetKey && loadingColumnsByTarget[referencedTargetKey]
+                )
+
                 return (
                   <tr
                     key={`fk-${fkIndex}`}
@@ -365,164 +440,28 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                     </td>
                     <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{fkIndex + 1}</td>
                     <td className={styles.bodyCell}>
-                      <span className={styles.readonlyText}>{foreignKey.name || '—'}</span>
-                    </td>
-                    <td className={styles.bodyCell} colSpan={5}>
-                      <div
-                        className={styles.compositeCell}
-                        data-testid={`fk-composite-badge-${fkIndex}`}
-                      >
-                        <span className={styles.warningBadge}>Multi-column — view only</span>
-                        <div className={styles.compositeSummary}>
-                          <span>{foreignKey.sourceColumn || '—'}</span>
-                          <span>→</span>
-                          <span>
-                            {foreignKey.referencedDatabase || databaseName || '—'}.
-                            {foreignKey.referencedTable || '—'}.{foreignKey.referencedColumn || '—'}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <span className={styles.readonlyText}>{foreignKey.onDelete || '—'}</span>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <span className={styles.readonlyText}>{foreignKey.onUpdate || '—'}</span>
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.deleteCell}`} />
-                  </tr>
-                )
-              }
-
-              const referencedDatabase = foreignKey.referencedDatabase || databaseName || ''
-              const referencedTableOptions: DropdownOption[] = [
-                {
-                  value: '',
-                  label: loadingTablesByDatabase[referencedDatabase]
-                    ? 'Loading tables...'
-                    : 'Select table',
-                },
-                ...(referencedTablesByDatabase[referencedDatabase] ?? []).map((tableName) => ({
-                  value: tableName,
-                  label: tableName,
-                })),
-              ]
-              const referencedTargetKey =
-                referencedDatabase !== '' && foreignKey.referencedTable !== ''
-                  ? makeReferencedTargetKey(referencedDatabase, foreignKey.referencedTable)
-                  : ''
-              const referencedColumnOptions =
-                referencedTargetKey === ''
-                  ? []
-                  : (referencedColumnsByTarget[referencedTargetKey] ?? [])
-              const isReferencedColumnLoading = Boolean(
-                referencedTargetKey && loadingColumnsByTarget[referencedTargetKey]
-              )
-
-              return (
-                <tr
-                  key={`fk-${fkIndex}`}
-                  className={rowClassName}
-                  data-testid={`fk-row-${fkIndex}`}
-                  onClick={() => setSelectedRow(fkIndex)}
-                >
-                  <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
-                    <span className={styles.rowAccent} aria-hidden />
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{fkIndex + 1}</td>
-                  <td className={styles.bodyCell}>
-                    <TextInput
-                      type="text"
-                      variant="tableCell"
-                      value={foreignKey.name}
-                      className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
-                      data-testid={`fk-name-${fkIndex}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) =>
-                        updateForeignKey(tabId, fkIndex, 'name', event.target.value)
-                      }
-                    />
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Dropdown
-                        id={`fk-source-column-${tabId}-${fkIndex}`}
-                        ariaLabel="Source column"
-                        options={sourceColumnOptions}
-                        value={foreignKey.sourceColumn}
-                        data-testid={`fk-source-column-${fkIndex}`}
-                        onChange={(value) =>
-                          updateForeignKey(tabId, fkIndex, 'sourceColumn', value)
+                      <TextInput
+                        type="text"
+                        variant="tableCell"
+                        value={foreignKey.name}
+                        className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
+                        data-testid={`fk-name-${fkIndex}`}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) =>
+                          updateForeignKey(tabId, fkIndex, 'name', event.target.value)
                         }
-                        workspaceTabId={tabId}
-                        triggerClassName={`${styles.cellSelect} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
                       />
-                    </div>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Dropdown
-                        id={`fk-referenced-database-${tabId}-${fkIndex}`}
-                        ariaLabel="Referenced database"
-                        options={databaseOptions}
-                        value={referencedDatabase}
-                        data-testid={`fk-referenced-database-${fkIndex}`}
-                        onChange={(value) => {
-                          updateForeignKey(tabId, fkIndex, 'referencedDatabase', value)
-                          updateForeignKey(tabId, fkIndex, 'referencedTable', '')
-                          updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
-                        }}
-                        workspaceTabId={tabId}
-                        triggerClassName={`${styles.cellSelect} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
-                      />
-                    </div>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Dropdown
-                        id={`fk-referenced-table-${tabId}-${fkIndex}`}
-                        ariaLabel="Referenced table"
-                        options={referencedTableOptions}
-                        value={foreignKey.referencedTable}
-                        data-testid={`fk-referenced-table-${fkIndex}`}
-                        onChange={(value) => {
-                          updateForeignKey(tabId, fkIndex, 'referencedTable', value)
-                          updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
-                        }}
-                        workspaceTabId={tabId}
-                        triggerClassName={`${styles.cellSelect} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
-                        disabled={referencedDatabase === ''}
-                      />
-                    </div>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    {foreignKey.referencedTable !== '' && referencedColumnOptions.length > 0 ? (
+                    </td>
+                    <td className={styles.bodyCell}>
                       <div onClick={(event) => event.stopPropagation()}>
                         <Dropdown
-                          id={`fk-referenced-column-${tabId}-${fkIndex}`}
-                          ariaLabel="Referenced column"
-                          options={[
-                            {
-                              value: '',
-                              label: isReferencedColumnLoading
-                                ? 'Loading columns...'
-                                : 'Select column',
-                            },
-                            ...referencedColumnOptions.map((columnName) => ({
-                              value: columnName,
-                              label: columnName,
-                            })),
-                          ]}
-                          value={foreignKey.referencedColumn}
-                          data-testid={`fk-referenced-column-${fkIndex}`}
+                          id={`fk-source-column-${tabId}-${fkIndex}`}
+                          ariaLabel="Source column"
+                          options={sourceColumnOptions}
+                          value={foreignKey.sourceColumn}
+                          data-testid={`fk-source-column-${fkIndex}`}
                           onChange={(value) =>
-                            updateForeignKey(tabId, fkIndex, 'referencedColumn', value)
+                            updateForeignKey(tabId, fkIndex, 'sourceColumn', value)
                           }
                           workspaceTabId={tabId}
                           triggerClassName={`${styles.cellSelect} ${
@@ -530,71 +469,145 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                           }`}
                         />
                       </div>
-                    ) : (
-                      <TextInput
-                        type="text"
-                        variant="tableCell"
-                        value={foreignKey.referencedColumn}
-                        placeholder="column name"
-                        className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
-                        data-testid={`fk-referenced-column-${fkIndex}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) =>
-                          updateForeignKey(tabId, fkIndex, 'referencedColumn', event.target.value)
-                        }
-                      />
-                    )}
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Dropdown
-                        id={`fk-on-delete-${tabId}-${fkIndex}`}
-                        ariaLabel="On delete"
-                        options={ACTION_DROPDOWN_OPTIONS}
-                        value={foreignKey.onDelete}
-                        data-testid={`fk-on-delete-${fkIndex}`}
-                        onChange={(value) => updateForeignKey(tabId, fkIndex, 'onDelete', value)}
-                        workspaceTabId={tabId}
-                        triggerClassName={`${styles.cellSelect} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
-                      />
-                    </div>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Dropdown
-                        id={`fk-on-update-${tabId}-${fkIndex}`}
-                        ariaLabel="On update"
-                        options={ACTION_DROPDOWN_OPTIONS}
-                        value={foreignKey.onUpdate}
-                        data-testid={`fk-on-update-${fkIndex}`}
-                        onChange={(value) => updateForeignKey(tabId, fkIndex, 'onUpdate', value)}
-                        workspaceTabId={tabId}
-                        triggerClassName={`${styles.cellSelect} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
-                      />
-                    </div>
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                    <Button
-                      variant="rowDelete"
-                      aria-label={`Delete foreign key ${foreignKey.name || fkIndex + 1}`}
-                      data-testid={`fk-delete-${fkIndex}`}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleDelete(fkIndex)
-                      }}
-                    >
-                      <Trash size={14} weight="bold" />
-                    </Button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Dropdown
+                          id={`fk-referenced-database-${tabId}-${fkIndex}`}
+                          ariaLabel="Referenced database"
+                          options={databaseOptions}
+                          value={referencedDatabase}
+                          data-testid={`fk-referenced-database-${fkIndex}`}
+                          onChange={(value) => {
+                            updateForeignKey(tabId, fkIndex, 'referencedDatabase', value)
+                            updateForeignKey(tabId, fkIndex, 'referencedTable', '')
+                            updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
+                          }}
+                          workspaceTabId={tabId}
+                          triggerClassName={`${styles.cellSelect} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          }`}
+                        />
+                      </div>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Dropdown
+                          id={`fk-referenced-table-${tabId}-${fkIndex}`}
+                          ariaLabel="Referenced table"
+                          options={referencedTableOptions}
+                          value={foreignKey.referencedTable}
+                          data-testid={`fk-referenced-table-${fkIndex}`}
+                          onChange={(value) => {
+                            updateForeignKey(tabId, fkIndex, 'referencedTable', value)
+                            updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
+                          }}
+                          workspaceTabId={tabId}
+                          triggerClassName={`${styles.cellSelect} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          }`}
+                          disabled={referencedDatabase === ''}
+                        />
+                      </div>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      {foreignKey.referencedTable !== '' && referencedColumnOptions.length > 0 ? (
+                        <div onClick={(event) => event.stopPropagation()}>
+                          <Dropdown
+                            id={`fk-referenced-column-${tabId}-${fkIndex}`}
+                            ariaLabel="Referenced column"
+                            options={[
+                              {
+                                value: '',
+                                label: isReferencedColumnLoading
+                                  ? 'Loading columns...'
+                                  : 'Select column',
+                              },
+                              ...referencedColumnOptions.map((columnName) => ({
+                                value: columnName,
+                                label: columnName,
+                              })),
+                            ]}
+                            value={foreignKey.referencedColumn}
+                            data-testid={`fk-referenced-column-${fkIndex}`}
+                            onChange={(value) =>
+                              updateForeignKey(tabId, fkIndex, 'referencedColumn', value)
+                            }
+                            workspaceTabId={tabId}
+                            triggerClassName={`${styles.cellSelect} ${
+                              isSelected ? styles.activeInput : styles.inactiveInput
+                            }`}
+                          />
+                        </div>
+                      ) : (
+                        <TextInput
+                          type="text"
+                          variant="tableCell"
+                          value={foreignKey.referencedColumn}
+                          placeholder="column name"
+                          className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
+                          data-testid={`fk-referenced-column-${fkIndex}`}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) =>
+                            updateForeignKey(tabId, fkIndex, 'referencedColumn', event.target.value)
+                          }
+                        />
+                      )}
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Dropdown
+                          id={`fk-on-delete-${tabId}-${fkIndex}`}
+                          ariaLabel="On delete"
+                          options={ACTION_DROPDOWN_OPTIONS}
+                          value={foreignKey.onDelete}
+                          data-testid={`fk-on-delete-${fkIndex}`}
+                          onChange={(value) => updateForeignKey(tabId, fkIndex, 'onDelete', value)}
+                          workspaceTabId={tabId}
+                          triggerClassName={`${styles.cellSelect} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          }`}
+                        />
+                      </div>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Dropdown
+                          id={`fk-on-update-${tabId}-${fkIndex}`}
+                          ariaLabel="On update"
+                          options={ACTION_DROPDOWN_OPTIONS}
+                          value={foreignKey.onUpdate}
+                          data-testid={`fk-on-update-${fkIndex}`}
+                          onChange={(value) => updateForeignKey(tabId, fkIndex, 'onUpdate', value)}
+                          workspaceTabId={tabId}
+                          triggerClassName={`${styles.cellSelect} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          }`}
+                        />
+                      </div>
+                    </td>
+                    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
+                      <Button
+                        variant="subtle"
+                        size="sm"
+                        dangerText
+                        iconOnly
+                        aria-label={`Delete foreign key ${foreignKey.name || fkIndex + 1}`}
+                        data-testid={`fk-delete-${fkIndex}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDelete(fkIndex)
+                        }}
+                      >
+                        <Trash size={14} weight="bold" />
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

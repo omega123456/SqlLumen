@@ -480,7 +480,8 @@ export function BlobViewerDialog({
           <div className={styles.headerActions}>
             {!isEdit && (
               <Button
-                variant="toolbar"
+                variant="subtle"
+                size="sm"
                 onClick={handleSaveToFile}
                 disabled={!canSave}
                 title={saveTitle}
@@ -535,7 +536,8 @@ export function BlobViewerDialog({
           <div className={styles.toolbar} data-testid="blob-action-bar">
             <div className={styles.toolbarGroup}>
               <Button
-                variant="toolbar"
+                variant="subtle"
+                size="sm"
                 onClick={handleLoadFromFile}
                 title="Load bytes from a file"
                 aria-label="Load file"
@@ -547,7 +549,8 @@ export function BlobViewerDialog({
               <div className={styles.pasteAnchor}>
                 <Button
                   ref={pasteAnchorRef}
-                  variant="toolbar"
+                  variant="subtle"
+                  size="sm"
                   onClick={() => setPasteOpen((v) => !v)}
                   title="Paste base64 or hex"
                   aria-label="Paste"
@@ -565,7 +568,8 @@ export function BlobViewerDialog({
                 />
               </div>
               <Button
-                variant="toolbar"
+                variant="subtle"
+                size="sm"
                 onClick={handleSaveToFile}
                 disabled={!canSave}
                 title={saveTitle}
@@ -579,7 +583,9 @@ export function BlobViewerDialog({
             <div className={styles.toolbarDivider} aria-hidden="true" />
             <div className={styles.toolbarGroup}>
               <Button
-                variant="toolbarDanger"
+                variant="subtle"
+                size="sm"
+                dangerText
                 onClick={handleSetNull}
                 title="Stage a SQL NULL value"
                 aria-label="Set NULL"
@@ -589,7 +595,9 @@ export function BlobViewerDialog({
                 Set NULL
               </Button>
               <Button
-                variant="toolbarDanger"
+                variant="subtle"
+                size="sm"
+                dangerText
                 onClick={handleClear}
                 title="Clear to zero bytes"
                 aria-label="Clear"
@@ -645,15 +653,15 @@ export function BlobViewerDialog({
         <div className={styles.footer}>
           {isEdit ? (
             <>
-              <Button variant="secondary" onClick={onClose} data-testid="blob-cancel">
-                Cancel
-              </Button>
-              <Button onClick={handleApply} data-testid="blob-apply">
+              <Button variant="accent" onClick={handleApply} data-testid="blob-apply">
                 Apply
+              </Button>
+              <Button onClick={onClose} data-testid="blob-cancel">
+                Cancel
               </Button>
             </>
           ) : (
-            <Button onClick={onClose} data-testid="blob-close-footer">
+            <Button variant="accent" onClick={onClose} data-testid="blob-close-footer">
               Close
             </Button>
           )}

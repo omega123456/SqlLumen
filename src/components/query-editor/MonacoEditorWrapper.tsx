@@ -60,7 +60,14 @@ const STATIC_EDITOR_OPTIONS: MonacoType.editor.IStandaloneEditorConstructionOpti
   insertSpaces: true,
   automaticLayout: true,
   fixedOverflowWidgets: true,
-  padding: { top: 16, bottom: 16 },
+  // Prototype `.p-editor`: 8px top inset, a 48px gutter with numbers ending 14px before the code,
+  // and the current line only highlighted while the editor has focus (`.p-code:focus`).
+  padding: { top: 8, bottom: 16 },
+  lineNumbersMinChars: 4,
+  lineDecorationsWidth: 14,
+  showFoldingControls: 'never',
+  renderLineHighlight: 'line',
+  renderLineHighlightOnlyWhenFocus: true,
   overviewRulerLanes: 0,
   hideCursorInOverviewRuler: true,
   scrollbar: {
@@ -292,11 +299,11 @@ export function MonacoEditorWrapper({
 
       syncSelectedText()
 
-      // Right-click "Save as Favorite" — pre-populates the favorites dialog
+      // Right-click "Save as favorite" — pre-populates the favorites dialog
       // with the current selection, or the statement under the cursor.
       saveFavoriteActionDisposable = editor.addAction({
         id: 'sqllumen.save-as-favorite',
-        label: 'Save as Favorite',
+        label: 'Save as favorite',
         contextMenuGroupId: 'navigation',
         contextMenuOrder: 1.5,
         run: (ed) => {
@@ -352,7 +359,7 @@ export function MonacoEditorWrapper({
     const { KeyMod, KeyCode } = monacoInstance
     const findReplaceActionDisposable = editor.addAction({
       id: 'sqllumen.find-replace',
-      label: 'Find and Replace',
+      label: 'Find and replace',
       keybindings: [KeyMod.CtrlCmd, KeyMod.WinCtrl].flatMap((mod) => [
         mod | KeyCode.KeyH,
         mod | KeyMod.Shift | KeyCode.KeyR,

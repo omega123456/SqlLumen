@@ -46,7 +46,7 @@ export function HistoryDetailPanel({ entry, onOpenInEditor }: HistoryDetailPanel
 
   return (
     <div className={styles.panel} data-testid="history-detail-panel">
-      <h4 className={styles.sectionHeading}>Statement Preview</h4>
+      <h4 className={styles.sectionHeading}>Statement preview</h4>
 
       <ElevatedCodePanel
         label="SQL"
@@ -74,7 +74,7 @@ export function HistoryDetailPanel({ entry, onOpenInEditor }: HistoryDetailPanel
         <span className={styles.metaLabel}>Duration</span>
         <span className={styles.metaValue}>{formatDuration(entry.durationMs)}</span>
 
-        <span className={styles.metaLabel}>Rows Affected</span>
+        <span className={styles.metaLabel}>Rows affected</span>
         <span className={styles.metaValue}>{entry.rowCount ?? entry.affectedRows ?? 0}</span>
 
         <span className={styles.metaLabel}>Status</span>

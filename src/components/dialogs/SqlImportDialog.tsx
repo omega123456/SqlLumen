@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Checkbox } from '../common/Checkbox'
 import { DialogShell } from './DialogShell'
+import { Button } from '../common/Button'
+import { InfoBar } from '../common/InfoBar'
 import {
   startSqlImport,
   getImportProgress,
@@ -134,14 +136,14 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
       onClose={onClose}
       maxWidth={520}
       testId="sql-import-dialog"
-      ariaLabel="Import SQL Script"
+      ariaLabel="Import SQL script"
       disableFocusManagement={isPlaywright}
       nonDismissible={isImporting}
     >
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>Import SQL Script</h2>
+          <h2 className={styles.title}>Import SQL script</h2>
           <button
             type="button"
             className={styles.closeButton}
@@ -234,63 +236,46 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
             </div>
           )}
 
-          {/* Action buttons */}
+          <InfoBar
+            severity="info"
+            message={
+              <>
+                Statements are executed sequentially. Large scripts may take several minutes. The
+                import runs in the background.
+              </>
+            }
+            data-testid="import-footer-text"
+          />
+
+          {/* Buttons */}
           <div className={styles.actions}>
             {!isTerminal && (
-              <button
+              <Button
                 type="button"
-                className={styles.importButton}
+                variant="accent"
                 onClick={handleImport}
                 disabled={isImporting}
                 data-testid="import-submit-button"
               >
                 {isImporting ? 'Importing...' : 'Import'}
-              </button>
+              </Button>
             )}
             {isImporting && (
-              <button
-                type="button"
-                className={styles.cancelButton}
-                onClick={handleCancel}
-                data-testid="import-cancel-button"
-              >
-                Cancel Import
-              </button>
+              <Button type="button" onClick={handleCancel} data-testid="import-cancel-button">
+                Cancel import
+              </Button>
             )}
             {isTerminal && (
-              <button
-                type="button"
-                className={styles.cancelButton}
-                onClick={onClose}
-                data-testid="import-done-button"
-              >
+              <Button type="button" onClick={onClose} data-testid="import-done-button">
                 Close
-              </button>
+              </Button>
             )}
             {!isImporting && !isTerminal && (
-              <button
-                type="button"
-                className={styles.cancelButton}
-                onClick={onClose}
-                data-testid="import-dismiss-button"
-              >
+              <Button type="button" onClick={onClose} data-testid="import-dismiss-button">
                 Cancel
-              </button>
+              </Button>
             )}
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className={styles.footer}>
-          <span className={styles.footerIcon}>
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
-            </svg>
-          </span>
-          <p className={styles.footerText} data-testid="import-footer-text">
-            Statements are executed sequentially. Large scripts may take several minutes. The import
-            runs in the background.
-          </p>
         </div>
       </div>
     </DialogShell>

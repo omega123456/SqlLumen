@@ -8,7 +8,7 @@ function joinClasses(...parts: (string | undefined)[]): string {
 
 export interface StatsRowProps {
   metadata: TableMetadata
-  /** When set, shows a Column count card after Total Rows. */
+  /** When set, shows a Columns card after Total rows. */
   columnCount?: number
 }
 
@@ -28,21 +28,21 @@ export function StatsRow({ metadata, columnCount }: StatsRowProps) {
       data-testid="stats-row"
     >
       <ElevatedSurface className={styles.card}>
-        <div className={styles.cardLabel}>Total Rows</div>
+        <div className={styles.cardLabel}>Total rows</div>
         <div className={styles.cardValue}>{metadata.tableRows.toLocaleString()}</div>
       </ElevatedSurface>
       {showColumnCard ? (
         <ElevatedSurface className={styles.card} data-testid="stats-columns-card">
-          <div className={styles.cardLabel}>Column count</div>
+          <div className={styles.cardLabel}>Columns</div>
           <div className={styles.cardValue}>{columnCount.toLocaleString()}</div>
         </ElevatedSurface>
       ) : null}
       <ElevatedSurface className={styles.card}>
-        <div className={styles.cardLabel}>Storage Engine</div>
+        <div className={styles.cardLabel}>Storage engine</div>
         <div className={styles.cardValue}>{metadata.engine}</div>
       </ElevatedSurface>
       <ElevatedSurface className={styles.card}>
-        <div className={styles.cardLabel}>Index Size</div>
+        <div className={styles.cardLabel}>Index size</div>
         <div className={styles.cardValue}>{formatBytes(metadata.indexLength)}</div>
       </ElevatedSurface>
     </div>

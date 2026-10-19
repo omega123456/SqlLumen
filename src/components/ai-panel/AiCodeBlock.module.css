@@ -1,74 +1,56 @@
+/* Code block (prototype `.ai-code`): well body under a card-coloured header */
 .codeBlock {
   border: 1px solid var(--ai-code-block-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-card);
   overflow: hidden;
-  margin: var(--space-sm) 0;
+  background: var(--ai-code-block-bg);
+  font-family: var(--font-body);
+  white-space: normal;
 }
 
+/* Prototype `.ai-code .hd` */
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--ai-code-block-bg);
-  border-bottom: 1px solid var(--ai-code-block-border);
+  gap: 2px;
+  height: 34px;
+  padding: 0 4px 0 12px;
+  background: var(--surface-container-high);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .language {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  line-height: 20px;
   color: var(--on-surface-variant);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 2px;
 }
 
-.actionButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
+/* Prototype `.ai-code .hd .b`: subtle sm buttons in the secondary text colour */
+.actions > :global(.ui-button) {
   color: var(--on-surface-variant);
-  font-size: 11px;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
 }
 
-.actionButton:hover {
-  color: var(--on-surface);
-  background: rgba(var(--on-surface-rgb), 0.06);
-}
-
-.actionButton:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-
-.actionLabel {
-  font-family: var(--font-body);
-}
-
-.pre {
+/* Prototype `.ai-code pre`: mono 12.5/19, wrapped (outranks the bubble's `pre` spacing) */
+.codeBlock .pre {
   margin: 0;
-  padding: var(--space-md);
-  background: var(--ai-code-block-bg);
-  overflow-x: auto;
+  padding: 10px 12px;
   font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: var(--type-code-lh);
+  font-size: 12.5px;
+  line-height: 19px;
+  white-space: pre-wrap;
+  color: var(--token-text);
 }
 
-.pre code {
+/* Outranks the bubble's 14px `.markdownBody code` rule */
+.codeBlock .pre code {
   font-family: inherit;
   font-size: inherit;
 }

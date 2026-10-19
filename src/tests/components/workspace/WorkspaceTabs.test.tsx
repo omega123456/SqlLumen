@@ -785,11 +785,11 @@ describe('WorkspaceTabs', () => {
       render(<WorkspaceTabs connectionId="conn-1" />)
 
       const historyTab = screen.getByLabelText('History')
-      const processListTab = screen.getByLabelText('Process List')
+      const processListTab = screen.getByLabelText('Process list')
       expect(historyTab).toHaveTextContent('Hist')
       expect(historyTab).not.toHaveTextContent('History')
       expect(processListTab).toHaveTextContent('Proc')
-      expect(processListTab).not.toHaveTextContent('Process List')
+      expect(processListTab).not.toHaveTextContent('Process list')
     } finally {
       restoreWidth()
     }

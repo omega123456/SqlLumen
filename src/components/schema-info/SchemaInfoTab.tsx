@@ -1,9 +1,21 @@
+import {
+  CalendarBlank,
+  Eye,
+  Gear,
+  GridNine,
+  Lightning,
+  MathOperations,
+  Table,
+  Wrench,
+  type Icon,
+} from '@phosphor-icons/react'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type {
   SchemaInfoTab as SchemaInfoTabType,
   SchemaInfoResponse,
   ObjectType,
 } from '../../types/schema'
+import { openObjectDefaultTab } from '../../lib/object-activation'
 import { getSchemaInfo } from '../../lib/schema-commands'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { ColumnsPanel } from './ColumnsPanel'
@@ -11,6 +23,7 @@ import { IndexesPanel } from './IndexesPanel'
 import { ForeignKeysPanel } from './ForeignKeysPanel'
 import { DdlPanel } from './DdlPanel'
 import { StatsRow } from './StatsRow'
+import { Button } from '../common/Button'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './SchemaInfoTab.module.css'
 
@@ -34,8 +47,26 @@ const SUB_TAB_VISIBILITY: Record<ObjectType, SubTab[]> = {
 const SUB_TAB_LABELS: Record<SubTab, string> = {
   columns: 'Columns',
   indexes: 'Indexes',
-  fks: 'Foreign Keys',
+  fks: 'Foreign keys',
   ddl: 'DDL',
+}
+
+const OBJECT_TYPE_LABELS: Record<ObjectType, string> = {
+  table: 'Table',
+  view: 'View',
+  procedure: 'Procedure',
+  function: 'Function',
+  trigger: 'Trigger',
+  event: 'Event',
+}
+
+const TILE_ICONS: Record<ObjectType, Icon> = {
+  table: Table,
+  view: Eye,
+  procedure: Gear,
+  function: MathOperations,
+  trigger: Lightning,
+  event: CalendarBlank,
 }
 
 function getDefaultSubTab(objectType: ObjectType): SubTab {
@@ -109,6 +140,23 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     [setSubTab, tab.connectionId, tab.id]
   )
 
+  const handleAlterTable = useCallback(() => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-designer',
+      mode: 'alter',
+      connectionId: tab.connectionId,
+      databaseName: tab.databaseName,
+      objectName: tab.objectName,
+      label: tab.objectName,
+    })
+  }, [tab.connectionId, tab.databaseName, tab.objectName])
+
+  const handleViewData = useCallback(() => {
+    openObjectDefaultTab(tab.connectionId, tab.databaseName, tab.objectType, tab.objectName)
+  }, [tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
+
+  const TileIcon = TILE_ICONS[tab.objectType]
+
   if (loading) {
     return (
       <div className={styles.container} data-testid="schema-info-tab">
@@ -133,14 +181,29 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
 
   return (
     <div className={styles.container} data-testid="schema-info-tab">
-      {/* Header row */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <span className={styles.objectTypeLabel}>{tab.objectType.toUpperCase()}</span>
-          <span className={styles.objectName}>
-            {tab.databaseName}.{tab.objectName}
+      {/* Page header (prototype `.vh`): icon tile, name, "<Type> · <database>" caption */}
+      <div className={styles.header} data-testid="schema-info-header">
+        <span className={styles.tile} aria-hidden>
+          <TileIcon size={16} weight="regular" />
+        </span>
+        <div className={styles.titleBlock}>
+          <h1 className={styles.objectName}>{tab.objectName}</h1>
+          <span className={styles.caption}>
+            {OBJECT_TYPE_LABELS[tab.objectType]} · {tab.databaseName}
           </span>
         </div>
+        {tab.objectType === 'table' ? (
+          <Button size="sm" onClick={handleAlterTable} data-testid="schema-info-alter-table">
+            <Wrench size={16} weight="regular" />
+            Alter table
+          </Button>
+        ) : null}
+        {tab.objectType === 'table' || tab.objectType === 'view' ? (
+          <Button size="sm" onClick={handleViewData} data-testid="schema-info-view-data">
+            <GridNine size={16} weight="regular" />
+            View data
+          </Button>
+        ) : null}
       </div>
 
       {/* Stats row (tables only); column count shown on every sub-tab */}

@@ -13,6 +13,7 @@ import { openObjectDefaultTab } from '../../lib/object-activation'
 import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
 import type { CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { TextInput } from '../common/TextInput'
+import { IconButton } from '../common/IconButton'
 import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
@@ -318,7 +319,7 @@ export function ObjectBrowser({
         objectName: '__new_table__',
         databaseName,
         connectionId,
-        label: 'New Table',
+        label: 'New table',
       })
     },
     [connectionId, openTab]
@@ -392,29 +393,29 @@ export function ObjectBrowser({
         <>
           <div className={styles.searchWrapper}>
             <span className={styles.searchIcon}>
-              <MagnifyingGlass size={14} weight="regular" />
+              <MagnifyingGlass size={16} weight="regular" />
             </span>
             <TextInput
               ref={filterInputRef}
-              variant="bare"
               type="text"
               className={styles.searchInput}
-              placeholder="Filter objects..."
+              placeholder="Filter objects"
               value={filterText}
               onChange={handleFilterChange}
               data-testid="filter-input"
               aria-label="Filter objects"
             />
             {filterText && (
-              <button
+              <IconButton
+                size="sm"
                 className={styles.clearButton}
                 onClick={handleClearFilter}
                 tabIndex={-1}
                 aria-label="Clear filter"
                 data-testid="filter-clear-button"
               >
-                <X size={12} weight="bold" />
-              </button>
+                <X size={16} weight="regular" />
+              </IconButton>
             )}
           </div>
 

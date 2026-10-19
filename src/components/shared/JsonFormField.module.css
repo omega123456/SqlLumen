@@ -27,7 +27,7 @@
 .editorShell {
   max-height: 300px;
   overflow: hidden;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   border-radius: var(--radius-sm);
   background: var(--background);
 }
@@ -38,7 +38,7 @@
 
 .nullValue {
   background: var(--background);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   color: var(--on-surface-variant);
   font-size: var(--type-size-md);
   font-family: var(--font-mono);
@@ -70,33 +70,4 @@
 
 .punctuation {
   color: var(--on-surface-variant);
-}
-
-[data-theme='light'] .editorShell {
-  background: #ffffff;
-  border-color: #d8dce8;
-}
-
-[data-theme='light'] .key {
-  color: #0066cc;
-}
-
-[data-theme='light'] .string {
-  color: #2e7d32;
-}
-
-[data-theme='light'] .number {
-  color: #c65d00;
-}
-
-[data-theme='light'] .boolean {
-  color: #7c3aed;
-}
-
-[data-theme='light'] .null {
-  color: #b42318;
-}
-
-[data-theme='light'] .punctuation {
-  color: #475467;
 }

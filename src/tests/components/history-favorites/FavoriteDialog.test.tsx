@@ -8,7 +8,7 @@ import type { FavoriteEntry } from '../../../types/schema'
 function makeFavoriteEntry(overrides: Partial<FavoriteEntry> = {}): FavoriteEntry {
   return {
     id: 1,
-    name: 'My Query',
+    name: 'My query',
     sqlText: 'SELECT * FROM orders',
     description: 'Gets all orders',
     category: 'shopdb',
@@ -32,19 +32,19 @@ beforeEach(() => {
 })
 
 describe('FavoriteDialog', () => {
-  it('renders in "New Favorite" mode when editingFavorite is null', () => {
+  it('renders in "New favorite" mode when editingFavorite is null', () => {
     render(<FavoriteDialog connectionId="conn-1" />)
 
     expect(screen.getByTestId('favorite-dialog-panel')).toHaveClass('ui-elevated-surface')
-    expect(screen.getByText('New Favorite')).toBeInTheDocument()
+    expect(screen.getByText('New favorite')).toBeInTheDocument()
     expect(screen.getByTestId('favorite-dialog-save')).toHaveTextContent('Save')
   })
 
-  it('renders in "Edit Favorite" mode when editingFavorite has id', () => {
+  it('renders in "Edit favorite" mode when editingFavorite has id', () => {
     useFavoritesStore.setState({ editingFavorite: makeFavoriteEntry() })
     render(<FavoriteDialog connectionId="conn-1" />)
 
-    expect(screen.getByText('Edit Favorite')).toBeInTheDocument()
+    expect(screen.getByText('Edit favorite')).toBeInTheDocument()
     expect(screen.getByTestId('favorite-dialog-save')).toHaveTextContent('Update')
   })
 
@@ -52,7 +52,7 @@ describe('FavoriteDialog', () => {
     useFavoritesStore.setState({ editingFavorite: makeFavoriteEntry() })
     render(<FavoriteDialog connectionId="conn-1" />)
 
-    expect(screen.getByTestId('favorite-name-input')).toHaveValue('My Query')
+    expect(screen.getByTestId('favorite-name-input')).toHaveValue('My query')
     expect(screen.getByTestId('favorite-sql-input')).toHaveValue('SELECT * FROM orders')
     expect(screen.getByTestId('favorite-category-input')).toHaveValue('shopdb')
     expect(screen.getByTestId('favorite-description-input')).toHaveValue('Gets all orders')
@@ -192,7 +192,7 @@ describe('FavoriteDialog', () => {
   })
 
   it('pre-populates SQL from history entry (save-as-favorite flow)', () => {
-    // This simulates clicking "Save as Favorite" from a history row —
+    // This simulates clicking "Save as favorite" from a history row —
     // editingFavorite has id=0 but has sqlText populated
     useFavoritesStore.setState({
       editingFavorite: {
@@ -210,7 +210,7 @@ describe('FavoriteDialog', () => {
     render(<FavoriteDialog connectionId="conn-1" />)
 
     // Should be in "New" mode (not "Edit") because id is 0 (falsy)
-    expect(screen.getByText('New Favorite')).toBeInTheDocument()
+    expect(screen.getByText('New favorite')).toBeInTheDocument()
     // But SQL should be pre-populated
     expect(screen.getByTestId('favorite-sql-input')).toHaveValue('SELECT * FROM history_query')
   })
@@ -276,7 +276,7 @@ describe('FavoriteDialog', () => {
 
     await waitFor(() => {
       expect(updateFavoriteSpy).toHaveBeenCalledWith(1, {
-        name: 'My Query',
+        name: 'My query',
         sqlText: 'SELECT * FROM orders',
         category: 'shopdb',
         description: 'Gets all orders',

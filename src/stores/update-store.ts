@@ -74,7 +74,7 @@ function getReadyToFinishBehavior(
 
   return {
     readyToFinishAction: 'relaunch',
-    readyToFinishCta: 'Restart App',
+    readyToFinishCta: 'Restart app',
     readyToFinishMessage: `Restart SqlLumen to finish installing version ${version}.`,
   }
 }

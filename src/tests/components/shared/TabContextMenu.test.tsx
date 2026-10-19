@@ -21,8 +21,8 @@ describe('TabContextMenu', () => {
             icon: <PencilSimpleIcon size={14} weight="regular" />,
             onSelect: vi.fn(),
           },
-          { key: 'move-left', label: 'Move Left', disabled: true, onSelect: vi.fn() },
-          { key: 'move-right', label: 'Move Right', disabled: true, onSelect: vi.fn() },
+          { key: 'move-left', label: 'Move left', disabled: true, onSelect: vi.fn() },
+          { key: 'move-right', label: 'Move right', disabled: true, onSelect: vi.fn() },
         ]}
       />
     )

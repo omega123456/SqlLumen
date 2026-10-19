@@ -1,11 +1,4 @@
-import {
-  ArrowDown,
-  ArrowUp,
-  CaretDown,
-  DotsSixVertical,
-  PlusCircle,
-  Trash,
-} from '@phosphor-icons/react'
+import { ArrowDown, ArrowUp, CaretDown, DotsSixVertical, Plus, Trash } from '@phosphor-icons/react'
 import {
   useCallback,
   useEffect,
@@ -235,20 +228,20 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const canMoveDown = effectiveSelectedIndex !== null && effectiveSelectedIndex < columns.length - 1
   const canDelete = effectiveSelectedIndex !== null && effectiveSelectedIndex < columns.length
 
+  // Prototype `.dz-grid th`: #, Nullable, PK and AI are centred; the rest align left.
   const headerCells = useMemo(
     () => [
-      '',
-      '#',
-      'Name',
-      'Type',
-      'Length',
-      'Signed',
-      'Nullable',
-      'PK',
-      'AI',
-      'Default',
-      'Comment',
-      '',
+      { label: '#', centred: true },
+      { label: 'Name', centred: false },
+      { label: 'Type', centred: false },
+      { label: 'Length', centred: false },
+      { label: 'Signed', centred: false },
+      { label: 'Nullable', centred: true },
+      { label: 'PK', centred: true },
+      { label: 'AI', centred: true },
+      { label: 'Default', centred: false },
+      { label: 'Comment', centred: false },
+      { label: '', centred: false },
     ],
     []
   )
@@ -539,39 +532,37 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
   return (
     <div className={styles.container} data-testid="column-editor" ref={containerRef}>
+      {/* Command bar (prototype `.p-cmd`): sm buttons, subtle except Add column */}
       <div className={styles.toolbar}>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={handleAddColumn}
-          data-testid="column-editor-add"
-        >
-          <PlusCircle size={16} weight="bold" />
-          <span>Add Column</span>
+        <Button size="sm" onClick={handleAddColumn} data-testid="column-editor-add">
+          <Plus size={16} weight="regular" />
+          <span>Add column</span>
         </Button>
         <Button
-          type="button"
-          variant="secondary"
+          variant="subtle"
+          size="sm"
           onClick={() => handleMoveSelected(-1)}
           disabled={!canMoveUp}
           data-testid="column-editor-move-up"
         >
-          <ArrowUp size={16} weight="bold" />
-          <span>Move Up</span>
+          <ArrowUp size={16} weight="regular" />
+          <span>Move up</span>
         </Button>
         <Button
-          type="button"
-          variant="secondary"
+          variant="subtle"
+          size="sm"
           onClick={() => handleMoveSelected(1)}
           disabled={!canMoveDown}
           data-testid="column-editor-move-down"
         >
-          <ArrowDown size={16} weight="bold" />
-          <span>Move Down</span>
+          <ArrowDown size={16} weight="regular" />
+          <span>Move down</span>
         </Button>
+        <span className={styles.toolbarDivider} aria-hidden />
         <Button
-          type="button"
-          variant="danger"
+          variant="subtle"
+          size="sm"
+          dangerText
           onClick={() => {
             if (effectiveSelectedIndex !== null) {
               handleDeleteAtIndex(effectiveSelectedIndex)
@@ -580,472 +571,492 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
           disabled={!canDelete}
           data-testid="column-editor-delete"
         >
-          <Trash size={16} weight="bold" />
+          <Trash size={16} weight="regular" />
           <span>Delete</span>
         </Button>
       </div>
 
-      <div className={styles.tableScroller} data-testid="column-editor-scroller">
-        <table className={styles.table}>
-          <thead className={styles.tableHead}>
-            <tr>
-              {headerCells.map((label, index) => (
-                <th key={`${label}-${index}`} className={styles.headerCell} scope="col">
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className={styles.tableBody}>
-            {columns.map((column, columnIndex) => {
-              const nameError = validationErrors[`columns.${columnIndex}.name`]
-              const isSelected = effectiveSelectedIndex === columnIndex
-              const lengthDisabled = isTypeWithoutLength(column.type)
-              const signednessDisabled = !supportsSignedness(column.type)
-              const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
-              const signednessValue = getSignednessValue(column.type, column.typeModifier)
+      <div className={styles.gridCard}>
+        <div className={styles.tableScroller} data-testid="column-editor-scroller">
+          <table className={styles.table}>
+            <thead className={styles.tableHead}>
+              <tr>
+                {headerCells.map(({ label, centred }, index) => (
+                  <th
+                    key={`${label}-${index}`}
+                    className={`${styles.headerCell} ${centred ? styles.centred : ''}`}
+                    scope="col"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className={styles.tableBody}>
+              {columns.map((column, columnIndex) => {
+                const nameError = validationErrors[`columns.${columnIndex}.name`]
+                const isSelected = effectiveSelectedIndex === columnIndex
+                const lengthDisabled = isTypeWithoutLength(column.type)
+                const signednessDisabled = !supportsSignedness(column.type)
+                const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
+                const signednessValue = getSignednessValue(column.type, column.typeModifier)
 
-              const isDefaultOverride = defaultModeOverrideIndex === columnIndex
-              const defaultMode = column.defaultValue.tag
-              const defaultText = 'value' in column.defaultValue ? column.defaultValue.value : ''
-              const showDefaultDropdown =
-                isDefaultOverride || defaultMode === 'NO_DEFAULT' || defaultMode === 'NULL_DEFAULT'
+                const isDefaultOverride = defaultModeOverrideIndex === columnIndex
+                const defaultMode = column.defaultValue.tag
+                const defaultText = 'value' in column.defaultValue ? column.defaultValue.value : ''
+                const showDefaultDropdown =
+                  isDefaultOverride ||
+                  defaultMode === 'NO_DEFAULT' ||
+                  defaultMode === 'NULL_DEFAULT'
 
-              const captureDefaultBaseline = () => {
-                cancelDefaultCellBlur(columnIndex)
-                const key = `${columnIndex}:default`
-                if (editStartValuesRef.current[key] === undefined) {
-                  setEditStartValue(columnIndex, 'default', JSON.stringify(column.defaultValue))
+                const captureDefaultBaseline = () => {
+                  cancelDefaultCellBlur(columnIndex)
+                  const key = `${columnIndex}:default`
+                  if (editStartValuesRef.current[key] === undefined) {
+                    setEditStartValue(columnIndex, 'default', JSON.stringify(column.defaultValue))
+                  }
                 }
-              }
 
-              const applyDefaultModeChange = (nextMode: string) => {
-                let newDefault: DefaultValueModel
-                if (nextMode === 'NO_DEFAULT') newDefault = { tag: 'NO_DEFAULT' }
-                else if (nextMode === 'NULL_DEFAULT') newDefault = { tag: 'NULL_DEFAULT' }
-                else if (nextMode === 'LITERAL') newDefault = { tag: 'LITERAL', value: defaultText }
-                else newDefault = { tag: 'EXPRESSION', value: defaultText }
-                setDefaultModeOverrideIndex(null)
-                updateColumn(tabId, columnIndex, 'defaultValue', newDefault)
-                if (nextMode === 'LITERAL' || nextMode === 'EXPRESSION') {
-                  setPendingFocusCell({ rowIndex: columnIndex, cellKey: 'default' })
+                const applyDefaultModeChange = (nextMode: string) => {
+                  let newDefault: DefaultValueModel
+                  if (nextMode === 'NO_DEFAULT') newDefault = { tag: 'NO_DEFAULT' }
+                  else if (nextMode === 'NULL_DEFAULT') newDefault = { tag: 'NULL_DEFAULT' }
+                  else if (nextMode === 'LITERAL')
+                    newDefault = { tag: 'LITERAL', value: defaultText }
+                  else newDefault = { tag: 'EXPRESSION', value: defaultText }
+                  setDefaultModeOverrideIndex(null)
+                  updateColumn(tabId, columnIndex, 'defaultValue', newDefault)
+                  if (nextMode === 'LITERAL' || nextMode === 'EXPRESSION') {
+                    setPendingFocusCell({ rowIndex: columnIndex, cellKey: 'default' })
+                  }
                 }
-              }
 
-              return (
-                <tr
-                  key={`${column.originalName || 'new'}-${columnIndex}`}
-                  className={`${styles.row} ${isSelected ? styles.selectedRow : ''}`}
-                  data-testid={`column-row-${columnIndex}`}
-                  draggable={true}
-                  onClick={() => setSelectedIndex(columnIndex)}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = 'move'
-                    event.dataTransfer.setData('text/plain', String(columnIndex))
-                    setDragIndex(columnIndex)
-                  }}
-                  onDragEnd={() => setDragIndex(null)}
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                    event.dataTransfer.dropEffect = 'move'
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    const fromIndex = dragIndex ?? Number(event.dataTransfer.getData('text/plain'))
-                    if (Number.isNaN(fromIndex) || fromIndex === columnIndex) {
+                return (
+                  <tr
+                    key={`${column.originalName || 'new'}-${columnIndex}`}
+                    className={`${styles.row} ${isSelected ? styles.selectedRow : ''}`}
+                    data-testid={`column-row-${columnIndex}`}
+                    draggable={true}
+                    onClick={() => setSelectedIndex(columnIndex)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'move'
+                      event.dataTransfer.setData('text/plain', String(columnIndex))
+                      setDragIndex(columnIndex)
+                    }}
+                    onDragEnd={() => setDragIndex(null)}
+                    onDragOver={(event) => {
+                      event.preventDefault()
+                      event.dataTransfer.dropEffect = 'move'
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault()
+                      const fromIndex =
+                        dragIndex ?? Number(event.dataTransfer.getData('text/plain'))
+                      if (Number.isNaN(fromIndex) || fromIndex === columnIndex) {
+                        setDragIndex(null)
+                        return
+                      }
+
+                      reorderColumn(tabId, fromIndex, columnIndex)
+                      setSelectedIndex((current) =>
+                        getSelectionAfterReorder(current, fromIndex, columnIndex)
+                      )
                       setDragIndex(null)
-                      return
-                    }
-
-                    reorderColumn(tabId, fromIndex, columnIndex)
-                    setSelectedIndex((current) =>
-                      getSelectionAfterReorder(current, fromIndex, columnIndex)
-                    )
-                    setDragIndex(null)
-                  }}
-                >
-                  <td className={`${styles.bodyCell} ${styles.dragCell}`}>
-                    <span className={styles.rowAccent} aria-hidden />
-                    <span className={styles.dragHandle} aria-hidden>
-                      <DotsSixVertical size={16} weight="bold" />
-                    </span>
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>
-                    {columnIndex + 1}
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'name')}
-                      testId={`cell-${columnIndex}-name`}
-                    >
-                      <TextInput
-                        type="text"
-                        variant="tableCell"
-                        value={column.name}
-                        invalid={!!nameError}
-                        className={
-                          isSelected ? styles.activeInput : getCellInputClass(columnIndex, 'name')
-                        }
-                        aria-invalid={nameError ? 'true' : 'false'}
-                        title={nameError}
-                        data-row-index={columnIndex}
-                        data-cell-key="name"
-                        data-testid={`column-name-${columnIndex}`}
-                        onFocus={() => {
-                          setSelectedIndex(columnIndex)
-                          setActiveCell({ rowIndex: columnIndex, cellKey: 'name' })
-                          setEditStartValue(columnIndex, 'name', column.name)
-                        }}
-                        onBlur={() => clearEditStartValue(columnIndex, 'name')}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'name')}
-                        onChange={(event) =>
-                          updateColumn(tabId, columnIndex, 'name', event.target.value)
-                        }
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'type')}
-                      testId={`cell-${columnIndex}-type`}
-                    >
-                      <div onClick={(event) => event.stopPropagation()}>
-                        <Dropdown
-                          id={`column-type-${tabId}-${columnIndex}`}
-                          ariaLabel="MySQL type"
-                          options={TYPE_DROPDOWN_OPTIONS}
-                          value={column.type}
-                          data-testid={`column-type-${columnIndex}`}
-                          focusListOnOpen={false}
-                          triggerProps={{
-                            'data-row-index': columnIndex,
-                            'data-cell-key': 'type',
-                            onClick: (event) => {
-                              event.stopPropagation()
-                            },
-                          }}
-                          onChange={(nextType) => {
-                            updateColumn(tabId, columnIndex, 'type', nextType)
-                            if (
-                              column.isAutoIncrement &&
-                              (!isNumericType(nextType) || !column.isPrimaryKey)
-                            ) {
-                              updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
-                            }
-                          }}
-                          onTriggerFocus={() => {
-                            setSelectedIndex(columnIndex)
-                            setActiveCell({ rowIndex: columnIndex, cellKey: 'type' })
-                          }}
-                          onTriggerKeyDown={(event) =>
-                            handleEditableKeyDown(event, columnIndex, 'type')
-                          }
-                          triggerClassName={`${styles.cellInput} ${styles.selectInput} ${
-                            isSelected ? styles.activeInput : styles.inactiveInput
-                          } ${styles.typeSelectInput}`}
-                        />
-                      </div>
-                    </CellFrame>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'length')}
-                      testId={`cell-${columnIndex}-length`}
-                    >
-                      <TextInput
-                        type="text"
-                        variant="tableCell"
-                        value={column.length}
-                        disabled={lengthDisabled}
-                        className={`${
-                          isSelected ? styles.activeInput : getCellInputClass(columnIndex, 'length')
-                        } ${styles.lengthInput}`}
-                        data-row-index={columnIndex}
-                        data-cell-key="length"
-                        data-testid={`column-length-${columnIndex}`}
-                        onFocus={() => {
-                          setSelectedIndex(columnIndex)
-                          setActiveCell({ rowIndex: columnIndex, cellKey: 'length' })
-                          setEditStartValue(columnIndex, 'length', column.length)
-                        }}
-                        onBlur={() => clearEditStartValue(columnIndex, 'length')}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'length')}
-                        onChange={(event) =>
-                          updateColumn(tabId, columnIndex, 'length', event.target.value)
-                        }
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'typeModifier')}
-                      testId={`cell-${columnIndex}-signedness`}
-                    >
-                      <Dropdown
-                        id={`column-signedness-${tabId}-${columnIndex}`}
-                        ariaLabel="Signedness"
-                        options={SIGNEDNESS_DROPDOWN_OPTIONS}
-                        value={signednessValue}
-                        disabled={signednessDisabled}
-                        data-testid={`column-signedness-${columnIndex}`}
-                        triggerProps={{
-                          'data-row-index': columnIndex,
-                          'data-cell-key': 'signedness',
-                          onClick: (event) => {
-                            event.stopPropagation()
-                          },
-                        }}
-                        onChange={(v) => {
-                          const nextSignedness = v === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
-                          updateColumn(
-                            tabId,
-                            columnIndex,
-                            'typeModifier',
-                            applySignedness(column.typeModifier, nextSignedness)
-                          )
-                        }}
-                        onTriggerFocus={() => {
-                          setSelectedIndex(columnIndex)
-                          setActiveCell({ rowIndex: columnIndex, cellKey: 'signedness' })
-                          setEditStartValue(columnIndex, 'signedness', column.typeModifier ?? '')
-                        }}
-                        onTriggerBlur={() => clearEditStartValue(columnIndex, 'signedness')}
-                        onTriggerKeyDown={(event) =>
-                          handleEditableKeyDown(event, columnIndex, 'signedness')
-                        }
-                        triggerClassName={`${styles.cellInput} ${styles.selectInput} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'nullable')}
-                      testId={`cell-${columnIndex}-nullable`}
-                    >
-                      <Checkbox
-                        checked={column.nullable}
-                        data-testid={`column-nullable-${columnIndex}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          updateColumn(tabId, columnIndex, 'nullable', event.target.checked)
-                        }}
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'isPrimaryKey')}
-                      testId={`cell-${columnIndex}-pk`}
-                    >
-                      <Checkbox
-                        checked={column.isPrimaryKey}
-                        data-testid={`column-pk-${columnIndex}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          const checked = event.target.checked
-                          updateColumn(tabId, columnIndex, 'isPrimaryKey', checked)
-                          if (checked) {
-                            updateColumn(tabId, columnIndex, 'nullable', false)
-                          } else if (column.isAutoIncrement) {
-                            updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
-                          }
-                        }}
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'isAutoIncrement')}
-                      testId={`cell-${columnIndex}-ai`}
-                    >
-                      <Checkbox
-                        checked={column.isAutoIncrement}
-                        disabled={!autoIncrementEnabled}
-                        data-testid={`column-ai-${columnIndex}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => {
-                          updateColumn(tabId, columnIndex, 'isAutoIncrement', event.target.checked)
-                        }}
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'defaultValue')}
-                      testId={`cell-${columnIndex}-defaultValue`}
-                    >
-                      <div
-                        className={styles.defaultValueCell}
-                        onClick={(event) => event.stopPropagation()}
+                    }}
+                  >
+                    {/* The row number swaps for the drag handle on hover (rows are draggable) */}
+                    <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>
+                      <span className={styles.rowAccent} aria-hidden />
+                      <span className={styles.rowNumber}>{columnIndex + 1}</span>
+                      <span className={styles.dragHandle} aria-hidden>
+                        <DotsSixVertical size={16} weight="bold" />
+                      </span>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'name')}
+                        testId={`cell-${columnIndex}-name`}
                       >
-                        {showDefaultDropdown ? (
+                        <TextInput
+                          type="text"
+                          variant="tableCell"
+                          value={column.name}
+                          invalid={!!nameError}
+                          className={`${
+                            isSelected ? styles.activeInput : getCellInputClass(columnIndex, 'name')
+                          } ${styles.nameInput}`}
+                          aria-invalid={nameError ? 'true' : 'false'}
+                          title={nameError}
+                          data-row-index={columnIndex}
+                          data-cell-key="name"
+                          data-testid={`column-name-${columnIndex}`}
+                          onFocus={() => {
+                            setSelectedIndex(columnIndex)
+                            setActiveCell({ rowIndex: columnIndex, cellKey: 'name' })
+                            setEditStartValue(columnIndex, 'name', column.name)
+                          }}
+                          onBlur={() => clearEditStartValue(columnIndex, 'name')}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'name')}
+                          onChange={(event) =>
+                            updateColumn(tabId, columnIndex, 'name', event.target.value)
+                          }
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'type')}
+                        testId={`cell-${columnIndex}-type`}
+                      >
+                        <div onClick={(event) => event.stopPropagation()}>
                           <Dropdown
-                            id={`column-default-${tabId}-${columnIndex}`}
-                            ariaLabel="Default value"
-                            options={DEFAULT_MODE_OPTIONS}
-                            value={defaultMode}
+                            id={`column-type-${tabId}-${columnIndex}`}
+                            ariaLabel="MySQL type"
+                            options={TYPE_DROPDOWN_OPTIONS}
+                            value={column.type}
+                            data-testid={`column-type-${columnIndex}`}
                             focusListOnOpen={false}
-                            data-testid={`column-default-${columnIndex}`}
                             triggerProps={{
                               'data-row-index': columnIndex,
-                              'data-cell-key': 'default',
+                              'data-cell-key': 'type',
                               onClick: (event) => {
                                 event.stopPropagation()
                               },
                             }}
-                            triggerClassName={`${styles.cellInput} ${styles.selectInput} ${
+                            onChange={(nextType) => {
+                              updateColumn(tabId, columnIndex, 'type', nextType)
+                              if (
+                                column.isAutoIncrement &&
+                                (!isNumericType(nextType) || !column.isPrimaryKey)
+                              ) {
+                                updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
+                              }
+                            }}
+                            onTriggerFocus={() => {
+                              setSelectedIndex(columnIndex)
+                              setActiveCell({ rowIndex: columnIndex, cellKey: 'type' })
+                            }}
+                            onTriggerKeyDown={(event) =>
+                              handleEditableKeyDown(event, columnIndex, 'type')
+                            }
+                            triggerClassName={`${styles.cellInput} ${styles.typeInput} ${
                               isSelected ? styles.activeInput : styles.inactiveInput
                             }`}
-                            onTriggerFocus={() => {
-                              captureDefaultBaseline()
-                              setSelectedIndex(columnIndex)
-                              setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
-                            }}
-                            onTriggerBlur={() => scheduleDefaultCellBlur(columnIndex)}
-                            onTriggerKeyDown={(event) => {
-                              if (isDefaultOverride) {
-                                if (event.key === 'Tab' || event.key === 'Escape') {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  setDefaultModeOverrideIndex(null)
-                                  setPendingFocusCell({
-                                    rowIndex: columnIndex,
-                                    cellKey: 'default',
-                                  })
-                                  return
-                                }
-                              }
-                              handleEditableKeyDown(event, columnIndex, 'default')
-                            }}
-                            onChange={applyDefaultModeChange}
-                            onOpenChange={
-                              isDefaultOverride
-                                ? (open: boolean) => {
-                                    if (open) {
-                                      defaultOverrideOpenedRef.current = true
-                                    } else if (defaultOverrideOpenedRef.current) {
-                                      setDefaultModeOverrideIndex(null)
-                                    }
-                                  }
-                                : undefined
-                            }
-                            ref={isDefaultOverride ? defaultOverrideTriggerRef : undefined}
                           />
-                        ) : (
-                          <div className={styles.defaultValueInputContainer}>
-                            <TextInput
-                              type="text"
-                              variant="tableCell"
-                              value={defaultText}
-                              data-testid={`column-default-input-${columnIndex}`}
-                              data-row-index={columnIndex}
-                              data-cell-key="default"
-                              className={
-                                isSelected
-                                  ? styles.activeInput
-                                  : getCellInputClass(columnIndex, 'default')
-                              }
-                              onFocus={() => {
+                        </div>
+                      </CellFrame>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'length')}
+                        testId={`cell-${columnIndex}-length`}
+                      >
+                        <TextInput
+                          type="text"
+                          variant="tableCell"
+                          value={column.length}
+                          disabled={lengthDisabled}
+                          className={`${
+                            isSelected
+                              ? styles.activeInput
+                              : getCellInputClass(columnIndex, 'length')
+                          } ${styles.lengthInput}`}
+                          data-row-index={columnIndex}
+                          data-cell-key="length"
+                          data-testid={`column-length-${columnIndex}`}
+                          onFocus={() => {
+                            setSelectedIndex(columnIndex)
+                            setActiveCell({ rowIndex: columnIndex, cellKey: 'length' })
+                            setEditStartValue(columnIndex, 'length', column.length)
+                          }}
+                          onBlur={() => clearEditStartValue(columnIndex, 'length')}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'length')}
+                          onChange={(event) =>
+                            updateColumn(tabId, columnIndex, 'length', event.target.value)
+                          }
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'typeModifier')}
+                        testId={`cell-${columnIndex}-signedness`}
+                      >
+                        <Dropdown
+                          id={`column-signedness-${tabId}-${columnIndex}`}
+                          ariaLabel="Signedness"
+                          options={SIGNEDNESS_DROPDOWN_OPTIONS}
+                          value={signednessValue}
+                          disabled={signednessDisabled}
+                          data-testid={`column-signedness-${columnIndex}`}
+                          triggerProps={{
+                            'data-row-index': columnIndex,
+                            'data-cell-key': 'signedness',
+                            onClick: (event) => {
+                              event.stopPropagation()
+                            },
+                          }}
+                          onChange={(v) => {
+                            const nextSignedness = v === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
+                            updateColumn(
+                              tabId,
+                              columnIndex,
+                              'typeModifier',
+                              applySignedness(column.typeModifier, nextSignedness)
+                            )
+                          }}
+                          onTriggerFocus={() => {
+                            setSelectedIndex(columnIndex)
+                            setActiveCell({ rowIndex: columnIndex, cellKey: 'signedness' })
+                            setEditStartValue(columnIndex, 'signedness', column.typeModifier ?? '')
+                          }}
+                          onTriggerBlur={() => clearEditStartValue(columnIndex, 'signedness')}
+                          onTriggerKeyDown={(event) =>
+                            handleEditableKeyDown(event, columnIndex, 'signedness')
+                          }
+                          triggerClassName={`${styles.cellInput} ${styles.signedInput} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          }`}
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'nullable')}
+                        testId={`cell-${columnIndex}-nullable`}
+                      >
+                        <Checkbox
+                          checked={column.nullable}
+                          data-testid={`column-nullable-${columnIndex}`}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
+                            updateColumn(tabId, columnIndex, 'nullable', event.target.checked)
+                          }}
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'isPrimaryKey')}
+                        testId={`cell-${columnIndex}-pk`}
+                      >
+                        <Checkbox
+                          checked={column.isPrimaryKey}
+                          data-testid={`column-pk-${columnIndex}`}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
+                            const checked = event.target.checked
+                            updateColumn(tabId, columnIndex, 'isPrimaryKey', checked)
+                            if (checked) {
+                              updateColumn(tabId, columnIndex, 'nullable', false)
+                            } else if (column.isAutoIncrement) {
+                              updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
+                            }
+                          }}
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'isAutoIncrement')}
+                        testId={`cell-${columnIndex}-ai`}
+                      >
+                        <Checkbox
+                          checked={column.isAutoIncrement}
+                          disabled={!autoIncrementEnabled}
+                          data-testid={`column-ai-${columnIndex}`}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
+                            updateColumn(
+                              tabId,
+                              columnIndex,
+                              'isAutoIncrement',
+                              event.target.checked
+                            )
+                          }}
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'defaultValue')}
+                        testId={`cell-${columnIndex}-defaultValue`}
+                      >
+                        <div
+                          className={styles.defaultValueCell}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {showDefaultDropdown ? (
+                            <Dropdown
+                              id={`column-default-${tabId}-${columnIndex}`}
+                              ariaLabel="Default value"
+                              options={DEFAULT_MODE_OPTIONS}
+                              value={defaultMode}
+                              focusListOnOpen={false}
+                              data-testid={`column-default-${columnIndex}`}
+                              triggerProps={{
+                                'data-row-index': columnIndex,
+                                'data-cell-key': 'default',
+                                onClick: (event) => {
+                                  event.stopPropagation()
+                                },
+                              }}
+                              triggerClassName={`${styles.cellInput} ${
+                                isSelected ? styles.activeInput : styles.inactiveInput
+                              }`}
+                              onTriggerFocus={() => {
                                 captureDefaultBaseline()
                                 setSelectedIndex(columnIndex)
                                 setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
                               }}
-                              onBlur={() => scheduleDefaultCellBlur(columnIndex)}
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={(event) => {
-                                updateColumn(tabId, columnIndex, 'defaultValue', {
-                                  tag: defaultMode as 'LITERAL' | 'EXPRESSION',
-                                  value: event.target.value,
-                                })
-                              }}
-                              onKeyDown={(event) => {
-                                if (event.altKey && event.key === 'ArrowDown') {
-                                  event.preventDefault()
-                                  setDefaultModeOverrideIndex(columnIndex)
-                                  return
+                              onTriggerBlur={() => scheduleDefaultCellBlur(columnIndex)}
+                              onTriggerKeyDown={(event) => {
+                                if (isDefaultOverride) {
+                                  if (event.key === 'Tab' || event.key === 'Escape') {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    setDefaultModeOverrideIndex(null)
+                                    setPendingFocusCell({
+                                      rowIndex: columnIndex,
+                                      cellKey: 'default',
+                                    })
+                                    return
+                                  }
                                 }
                                 handleEditableKeyDown(event, columnIndex, 'default')
                               }}
+                              onChange={applyDefaultModeChange}
+                              onOpenChange={
+                                isDefaultOverride
+                                  ? (open: boolean) => {
+                                      if (open) {
+                                        defaultOverrideOpenedRef.current = true
+                                      } else if (defaultOverrideOpenedRef.current) {
+                                        setDefaultModeOverrideIndex(null)
+                                      }
+                                    }
+                                  : undefined
+                              }
+                              ref={isDefaultOverride ? defaultOverrideTriggerRef : undefined}
                             />
-                            <Button
-                              variant="secondary"
-                              tabIndex={-1}
-                              aria-label="Change default mode"
-                              data-testid={`column-default-mode-${columnIndex}`}
-                              className={styles.defaultModeIconButton}
-                              onClick={() => setDefaultModeOverrideIndex(columnIndex)}
-                            >
-                              <CaretDown size={16} weight="bold" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </CellFrame>
-                  </td>
-                  <td className={styles.bodyCell}>
-                    <CellFrame
-                      modified={isModifiedCell(tabState, column, 'comment')}
-                      testId={`cell-${columnIndex}-comment`}
-                    >
-                      <TextInput
-                        type="text"
-                        variant="tableCell"
-                        value={column.comment}
-                        className={
-                          isSelected
-                            ? styles.activeInput
-                            : getCellInputClass(columnIndex, 'comment')
-                        }
-                        data-row-index={columnIndex}
-                        data-cell-key="comment"
-                        data-testid={`column-comment-${columnIndex}`}
-                        onFocus={() => {
-                          setSelectedIndex(columnIndex)
-                          setActiveCell({ rowIndex: columnIndex, cellKey: 'comment' })
-                          setEditStartValue(columnIndex, 'comment', column.comment)
+                          ) : (
+                            <div className={styles.defaultValueInputContainer}>
+                              <TextInput
+                                type="text"
+                                variant="tableCell"
+                                value={defaultText}
+                                data-testid={`column-default-input-${columnIndex}`}
+                                data-row-index={columnIndex}
+                                data-cell-key="default"
+                                className={
+                                  isSelected
+                                    ? styles.activeInput
+                                    : getCellInputClass(columnIndex, 'default')
+                                }
+                                onFocus={() => {
+                                  captureDefaultBaseline()
+                                  setSelectedIndex(columnIndex)
+                                  setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
+                                }}
+                                onBlur={() => scheduleDefaultCellBlur(columnIndex)}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => {
+                                  updateColumn(tabId, columnIndex, 'defaultValue', {
+                                    tag: defaultMode as 'LITERAL' | 'EXPRESSION',
+                                    value: event.target.value,
+                                  })
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.altKey && event.key === 'ArrowDown') {
+                                    event.preventDefault()
+                                    setDefaultModeOverrideIndex(columnIndex)
+                                    return
+                                  }
+                                  handleEditableKeyDown(event, columnIndex, 'default')
+                                }}
+                              />
+                              <Button
+                                tabIndex={-1}
+                                aria-label="Change default mode"
+                                data-testid={`column-default-mode-${columnIndex}`}
+                                className={styles.defaultModeIconButton}
+                                onClick={() => setDefaultModeOverrideIndex(columnIndex)}
+                              >
+                                <CaretDown size={16} weight="bold" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CellFrame>
+                    </td>
+                    <td className={styles.bodyCell}>
+                      <CellFrame
+                        modified={isModifiedCell(tabState, column, 'comment')}
+                        testId={`cell-${columnIndex}-comment`}
+                      >
+                        <TextInput
+                          type="text"
+                          variant="tableCell"
+                          value={column.comment}
+                          className={`${
+                            isSelected
+                              ? styles.activeInput
+                              : getCellInputClass(columnIndex, 'comment')
+                          } ${styles.commentInput}`}
+                          data-row-index={columnIndex}
+                          data-cell-key="comment"
+                          data-testid={`column-comment-${columnIndex}`}
+                          onFocus={() => {
+                            setSelectedIndex(columnIndex)
+                            setActiveCell({ rowIndex: columnIndex, cellKey: 'comment' })
+                            setEditStartValue(columnIndex, 'comment', column.comment)
+                          }}
+                          onBlur={() => clearEditStartValue(columnIndex, 'comment')}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) =>
+                            handleEditableKeyDown(event, columnIndex, 'comment')
+                          }
+                          onChange={(event) =>
+                            updateColumn(tabId, columnIndex, 'comment', event.target.value)
+                          }
+                        />
+                      </CellFrame>
+                    </td>
+                    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
+                      <Button
+                        variant="subtle"
+                        size="sm"
+                        dangerText
+                        iconOnly
+                        aria-label={`Delete column ${column.name || columnIndex + 1}`}
+                        data-testid={`column-delete-${columnIndex}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDeleteAtIndex(columnIndex)
                         }}
-                        onBlur={() => clearEditStartValue(columnIndex, 'comment')}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'comment')}
-                        onChange={(event) =>
-                          updateColumn(tabId, columnIndex, 'comment', event.target.value)
-                        }
-                      />
-                    </CellFrame>
-                  </td>
-                  <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                    <Button
-                      variant="rowDelete"
-                      aria-label={`Delete column ${column.name || columnIndex + 1}`}
-                      data-testid={`column-delete-${columnIndex}`}
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        handleDeleteAtIndex(columnIndex)
-                      }}
-                    >
-                      <Trash size={14} weight="bold" />
-                    </Button>
-                  </td>
-                </tr>
-              )
-            })}
+                      >
+                        <Trash size={14} weight="bold" />
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
 
-            <tr
-              className={styles.ghostRow}
-              onClick={handleAddColumn}
-              data-testid="column-editor-ghost-add"
-            >
-              <td className={styles.bodyCell}>+</td>
-              <td className={styles.bodyCell} colSpan={11}>
-                Click to add new column...
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              <tr
+                className={styles.ghostRow}
+                onClick={handleAddColumn}
+                data-testid="column-editor-ghost-add"
+              >
+                <td className={styles.bodyCell}>+</td>
+                <td className={styles.bodyCell} colSpan={10}>
+                  Click to add new column...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

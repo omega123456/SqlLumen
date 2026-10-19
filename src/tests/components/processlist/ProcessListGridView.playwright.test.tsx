@@ -189,7 +189,7 @@ describe('ProcessListGridView Playwright helpers', () => {
     expect(screen.getByTestId('info-popover')).toHaveAttribute('data-anchor-left', '397')
     expect(screen.getByTestId('info-popover')).toHaveAttribute('data-anchor-top', '227')
     expect(screen.getByTestId('info-popover')).toHaveAttribute('data-anchor-width', '80')
-    expect(screen.getByTestId('info-popover')).toHaveAttribute('data-anchor-height', '32')
+    expect(screen.getByTestId('info-popover')).toHaveAttribute('data-anchor-height', '28')
   })
 
   it('returns false for mismatched targets and removes the Playwright API on unmount', async () => {

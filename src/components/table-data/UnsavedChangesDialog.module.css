@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-overlay);
 }
 
 .header {
@@ -15,10 +15,9 @@
 .title {
   margin: 0;
   font-size: var(--type-size-xl);
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--font-headline);
   color: var(--on-surface);
-  letter-spacing: -0.01em;
 }
 
 .body {
@@ -39,8 +38,8 @@
   font-family: var(--font-body);
   color: var(--error);
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
+  background: var(--error-container);
+  border-radius: var(--radius-card);
   border: 1px solid rgba(var(--error-rgb), 0.2);
 }
 
@@ -49,7 +48,7 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 24px 20px;
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .cancelButton {
@@ -58,7 +57,7 @@
   color: var(--on-surface-variant);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   border: none;
   border-radius: var(--radius-sm);
@@ -85,21 +84,20 @@
 }
 
 .discardButton:hover {
-  background: rgba(var(--error-rgb), 0.06);
+  background: var(--fill-subtle-hover);
   border-color: rgba(var(--error-rgb), 0.4);
 }
 
 .saveButton {
   padding: 8px 16px;
-  background: linear-gradient(135deg, var(--primary), var(--primary-container));
-  color: var(--on-primary-container);
+  background: var(--primary);
+  color: var(--on-primary);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   border: none;
   border-radius: var(--radius-sm);
-  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.2);
   transition:
     filter 0.15s ease,
     opacity 0.15s ease;

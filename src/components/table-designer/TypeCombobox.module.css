@@ -2,7 +2,7 @@
   width: 100%;
   min-height: 40px;
   padding: 10px 42px 10px 14px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   border-radius: var(--radius-lg);
   background: transparent;
   color: var(--on-surface);

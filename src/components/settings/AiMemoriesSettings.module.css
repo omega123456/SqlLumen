@@ -26,7 +26,5 @@
   background: var(--surface-container-high);
   font-size: var(--type-size-xs, 11px);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--on-surface-variant);
 }

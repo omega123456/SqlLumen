@@ -2,7 +2,7 @@
  * Monospace text view — renders all query result rows in fixed-width columns.
  *
  * Columns are padded to their max content width (capped at 40 chars) and
- * separated by two spaces. A "Copy All" button copies the entire formatted
+ * separated by two spaces. A "Copy all" button copies the entire formatted
  * output to the clipboard.
  *
  * `formatTextOutput` is exported for direct unit testing.
@@ -88,7 +88,7 @@ export function ResultTextView({ columns, rows }: ResultTextViewProps) {
         data-testid="copy-all-button"
       >
         <CopySimple size={14} />
-        <span>Copy All</span>
+        <span>Copy all</span>
       </button>
       <pre className={styles.pre}>{formattedText}</pre>
     </div>

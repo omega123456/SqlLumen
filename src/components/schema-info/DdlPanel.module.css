@@ -1,25 +1,41 @@
 .container {
-  padding: 16px;
+  padding: 12px 20px;
   user-select: text;
 }
 
-/* Top section: two-column layout for tables */
+/* Two-column layout for tables: DDL beside the metadata card */
 .topSection {
   display: grid;
-  grid-template-columns: 65% 35%;
+  grid-template-columns: minmax(0, 13fr) minmax(0, 7fr);
   gap: 16px;
-  margin-bottom: 16px;
+  align-items: start;
 }
 
-.ddlColumn {
-  min-width: 0;
-}
-
+.ddlColumn,
 .metadataColumn {
   min-width: 0;
 }
 
-/* DDL-only layout (non-table) */
 .ddlOnly {
   width: 100%;
+}
+
+/* Header strip on the card fill above the well, as on the AI code block (prototype `.ai-code`) */
+.codePanel {
+  border: 1px solid var(--stroke-card);
+  box-shadow: none;
+  background: var(--surface-container-lowest);
+}
+
+.codePanel > :global(.ui-elevated-panel-header) {
+  height: 34px;
+  padding: 0 4px 0 12px;
+  background: var(--surface-container-high);
+}
+
+/* Prototype `.ddl`: well fill, mono 13/21, 14px 16px inset */
+.codePanel .ddl {
+  padding: 14px 16px;
+  font-size: var(--type-mono-size);
+  line-height: 21px;
 }

@@ -165,7 +165,7 @@ describe('DdlPanel', () => {
   it('uses the same label text format as table DDL preview', () => {
     render(<DdlPanel ddl="CREATE PROCEDURE p() BEGIN END" objectType="procedure" />)
 
-    expect(screen.getByText('<> DDL')).toBeInTheDocument()
+    expect(screen.getByText('DDL')).toBeInTheDocument()
   })
 
   it('no dangerouslySetInnerHTML used', () => {

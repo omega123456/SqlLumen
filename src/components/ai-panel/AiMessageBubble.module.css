@@ -1,53 +1,55 @@
-/* User message bubble — right-aligned, primary-tinted */
+/* User message (prototype `.ai-u`): end-aligned accent-tint bubble */
 .userBubble {
   align-self: flex-end;
   max-width: 85%;
-  padding: var(--space-sm) var(--space-md);
+  padding: 8px 12px;
   background: var(--ai-user-bubble-bg);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
-  font-size: var(--type-size-md);
-  line-height: 1.5;
+  border-radius: var(--radius-overlay) var(--radius-overlay) 2px var(--radius-overlay);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   color: var(--on-surface);
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
-/* Assistant message bubble — left-aligned, left accent border */
+/* Assistant message (prototype `.ai-a`): plain 14/20 text on the panel */
 .assistantBubble {
-  align-self: flex-start;
+  align-self: stretch;
   max-width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  padding-left: calc(var(--space-md) - 2px);
-  border-left: 2px solid var(--ai-assistant-accent);
-  font-size: var(--type-size-md);
-  line-height: 1.5;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   color: var(--on-surface);
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
-/* System message — centered, small, muted */
+/* Context line (prototype `.ai-ctx`): 12px tertiary, centred */
 .systemMessage {
-  font-size: var(--type-size-2xs);
-  color: var(--on-surface-variant);
-  opacity: 0.5;
-  padding: var(--space-xs) var(--space-md);
+  font-size: var(--type-caption-size);
+  line-height: 20px;
+  color: var(--outline);
   text-align: center;
   user-select: none;
 }
 
 /* Markdown body styles within assistant messages */
+/* Blocks sit 10px apart (prototype `.ai-a` gap) */
 .markdownBody p {
-  margin: 0 0 var(--space-sm);
+  margin: 0 0 10px;
 }
 
-.markdownBody p:last-child {
-  margin-bottom: 0;
-}
-
+/* Markdown wraps each code block in a <pre>; that wrapper carries the block spacing */
 .markdownBody pre {
-  margin: var(--space-sm) 0;
+  margin: 10px 0;
   overflow-x: auto;
+}
+
+.markdownBody > div > :first-child {
+  margin-top: 0;
+}
+
+.markdownBody > div > :last-child {
+  margin-bottom: 0;
 }
 
 .markdownBody code {
@@ -83,7 +85,7 @@
 
 .markdownBody th {
   background: var(--ai-code-block-bg);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Streaming blinking cursor */

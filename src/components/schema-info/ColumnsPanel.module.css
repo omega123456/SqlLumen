@@ -1,109 +1,88 @@
+/* Column table card (prototype `.tblcard`) */
 .container {
-  padding: 16px;
+  padding: 12px 20px;
   user-select: text;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--type-body);
   font-family: var(--font-body);
+  font-size: var(--type-row-size);
+  line-height: 20px;
 }
 
 .th {
-  text-align: left;
-  padding: 8px 12px;
+  height: 32px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--stroke-divider);
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
   font-family: var(--type-table-header-font);
   font-size: var(--type-table-header-size);
   font-weight: var(--type-table-header-weight);
-  letter-spacing: var(--type-table-header-tracking);
-  text-transform: uppercase;
-  color: var(--on-surface-variant);
-  opacity: 0.7;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  text-align: left;
   white-space: nowrap;
 }
 
-.row {
-  transition: background-color 0.1s ease;
-}
-
 .row:hover {
-  background: rgba(var(--on-surface-rgb), 0.03);
+  background: var(--fill-subtle-hover);
 }
 
 .td {
-  padding: 8px 12px;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  height: 36px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--stroke-divider);
+  color: var(--on-surface);
   vertical-align: middle;
 }
 
+.row:last-child .td {
+  border-bottom: 0;
+}
+
+/* Prototype `td.mo`: mono 12.5px */
+.columnName,
+.dataType,
+.defaultValue,
+.extra,
+.nullValue {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
 .columnName {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--on-surface);
+  font-weight: var(--type-weight-semibold);
 }
 
-.dataType {
-  font-family: var(--font-mono);
-  color: var(--on-surface-variant);
-}
-
-.nullYes {
-  color: var(--on-surface-variant);
-  opacity: 0.7;
-  font-size: var(--type-size-xs);
-}
-
-.nullNo {
-  color: var(--on-surface);
-  font-weight: 600;
-  font-size: var(--type-size-xs);
-}
-
+/* Prototype `.pill` */
 .keyBadge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: var(--type-meta);
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: var(--type-weight-semibold);
+  white-space: nowrap;
 }
 
 .keyPri {
-  background: var(--tertiary-container);
-  color: var(--tertiary);
+  background: var(--fill-accent-tint);
+  color: var(--primary);
 }
 
-.keyMul {
-  background: var(--secondary-container);
-  color: var(--secondary);
-}
-
-.keyUni {
-  background: var(--surface-container-highest);
+.keyOther {
+  background: var(--fill-neutral-selected);
   color: var(--on-surface-variant);
 }
 
 .empty {
-  color: var(--on-surface-variant);
-  opacity: 0.4;
+  color: var(--outline);
 }
 
-.defaultValue {
-  font-family: var(--font-mono);
-  color: var(--on-surface);
-}
-
+/* Prototype `.nul` */
 .nullValue {
-  font-family: var(--font-mono);
-  color: var(--on-surface-variant);
-  opacity: 0.5;
+  color: var(--outline);
   font-style: italic;
-}
-
-.extra {
-  font-family: var(--font-mono);
-  color: var(--on-surface-variant);
-  font-size: var(--type-size-xs);
 }

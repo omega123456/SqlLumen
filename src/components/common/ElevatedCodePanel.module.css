@@ -18,5 +18,5 @@
   line-height: var(--type-code-lh);
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--on-surface);
+  color: var(--token-text);
 }

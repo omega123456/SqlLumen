@@ -59,7 +59,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
-    expect(screen.getByLabelText('Default Database')).toBeInTheDocument()
+    expect(screen.getByLabelText('Default database')).toBeInTheDocument()
   })
 
   it('renders General, SSL and Advanced tabs with General active', () => {
@@ -113,7 +113,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Test Connection'))
+    await user.click(screen.getByText('Test connection'))
 
     await waitFor(() => {
       expect(ipc.calls('test_connection')).toHaveLength(1)
@@ -142,7 +142,7 @@ describe('ConnectionForm', () => {
 
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Test Connection'))
+    await user.click(screen.getByText('Test connection'))
 
     expect(screen.getByText('Host is required')).toBeInTheDocument()
   })
@@ -153,7 +153,7 @@ describe('ConnectionForm', () => {
 
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
-    await user.click(screen.getByText('Test Connection'))
+    await user.click(screen.getByText('Test connection'))
 
     expect(screen.getByText('Username is required')).toBeInTheDocument()
   })
@@ -162,7 +162,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.click(screen.getByText('Test Connection'))
+    await user.click(screen.getByText('Test connection'))
     expect(screen.getByText('Connection name is required')).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Connection name'), 'Local')
@@ -189,7 +189,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.click(screen.getByText('Save and Connect'))
+    await user.click(screen.getByText('Save and connect'))
 
     expect(screen.getByText('Connection name is required')).toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
@@ -216,17 +216,15 @@ describe('ConnectionForm', () => {
   it('renders action buttons', () => {
     render(<ConnectionForm />)
 
-    expect(screen.getByText('Test Connection')).toBeInTheDocument()
+    expect(screen.getByText('Test connection')).toBeInTheDocument()
     expect(screen.getByText('Save')).toBeInTheDocument()
-    expect(screen.getByText('Save and Connect')).toBeInTheDocument()
+    expect(screen.getByText('Save and connect')).toBeInTheDocument()
     expect(screen.queryByText('Delete')).not.toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveClass(
-      'ui-button-secondary'
-    )
-    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button-secondary')
-    expect(screen.getByRole('button', { name: 'Save and Connect' })).toHaveClass(
-      'ui-button-primary'
+    expect(screen.getByRole('button', { name: 'Test connection' })).toHaveClass('ui-button')
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button')
+    expect(screen.getByRole('button', { name: 'Save and connect' })).toHaveClass(
+      'ui-button--accent'
     )
   })
 
@@ -302,7 +300,7 @@ describe('ConnectionForm', () => {
 
     expect(screen.getByTestId('color-picker-popover')).toBeInTheDocument()
     expect(screen.getByLabelText('Hex color value')).toBeInTheDocument()
-    expect(screen.getByText('Clear Color')).toBeInTheDocument()
+    expect(screen.getByText('Clear color')).toBeInTheDocument()
   })
 
   it('color picker Clear Color button clears the color', async () => {
@@ -314,7 +312,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByLabelText('Choose color'))
 
     // Click clear color
-    await user.click(screen.getByText('Clear Color'))
+    await user.click(screen.getByText('Clear color'))
 
     // Popover should close
     expect(screen.queryByTestId('color-picker-popover')).not.toBeInTheDocument()
@@ -345,7 +343,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByTestId('color-picker-popover')).toBeInTheDocument()
 
     // Click outside (on a form field)
-    await user.click(screen.getByLabelText('Connect Timeout'))
+    await user.click(screen.getByLabelText('Connect timeout'))
 
     // Popover should close
     expect(screen.queryByTestId('color-picker-popover')).not.toBeInTheDocument()
@@ -367,13 +365,15 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Test Connection'))
+    await user.click(screen.getByText('Test connection'))
 
     await waitFor(() => {
-      expect(screen.getByText('Connection successful')).toBeInTheDocument()
+      expect(screen.getByText('Connected')).toBeInTheDocument()
     })
-    expect(screen.getByText('8.0.35')).toBeInTheDocument()
-    expect(screen.getByText('42 ms')).toBeInTheDocument()
+    expect(screen.getByText('8.0.35 in 42 ms')).toBeInTheDocument()
+    expect(
+      screen.getByText('Auth method mysql_native_password · SSL Not using SSL')
+    ).toBeInTheDocument()
     expect(screen.getByRole('status')).toBeInTheDocument()
   })
 
@@ -388,7 +388,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Test Connection'))
+    await user.click(screen.getByText('Test connection'))
 
     await waitFor(() => {
       expect(screen.getByText('Connection failed')).toBeInTheDocument()
@@ -403,9 +403,9 @@ describe('ConnectionForm', () => {
 
     await switchToTab(user, 'ssl')
 
-    expect(screen.getByLabelText('CA Certificate')).toBeDisabled()
-    expect(screen.getByLabelText('Client Certificate')).toBeDisabled()
-    expect(screen.getByLabelText('Client Key')).toBeDisabled()
+    expect(screen.getByLabelText('CA certificate')).toBeDisabled()
+    expect(screen.getByLabelText('Client certificate')).toBeDisabled()
+    expect(screen.getByLabelText('Client key')).toBeDisabled()
   })
 
   it('SSL fields become enabled when SSL toggle is on', async () => {
@@ -415,9 +415,9 @@ describe('ConnectionForm', () => {
     await switchToTab(user, 'ssl')
     await user.click(screen.getByLabelText('Use SSL / TLS'))
 
-    expect(screen.getByLabelText('CA Certificate')).not.toBeDisabled()
-    expect(screen.getByLabelText('Client Certificate')).not.toBeDisabled()
-    expect(screen.getByLabelText('Client Key')).not.toBeDisabled()
+    expect(screen.getByLabelText('CA certificate')).not.toBeDisabled()
+    expect(screen.getByLabelText('Client certificate')).not.toBeDisabled()
+    expect(screen.getByLabelText('Client key')).not.toBeDisabled()
   })
 
   it('Browse buttons are disabled when SSL is off', async () => {
@@ -449,7 +449,7 @@ describe('ConnectionForm', () => {
     })
 
     // Check that the file path was set
-    expect(screen.getByLabelText('CA Certificate')).toHaveValue('/path/to/ca.pem')
+    expect(screen.getByLabelText('CA certificate')).toHaveValue('/path/to/ca.pem')
   })
 
   it('file browse handles user cancellation gracefully', async () => {
@@ -467,7 +467,7 @@ describe('ConnectionForm', () => {
     })
 
     // Field should remain empty
-    expect(screen.getByLabelText('Client Certificate')).toHaveValue('')
+    expect(screen.getByLabelText('Client certificate')).toHaveValue('')
   })
 
   it('Save and Connect button saves new connection and opens it', async () => {
@@ -484,7 +484,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Save and Connect'))
+    await user.click(screen.getByText('Save and connect'))
 
     await waitFor(() => {
       expect(ipc.calls('save_connection')).toHaveLength(1)
@@ -506,7 +506,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Save and Connect'))
+    await user.click(screen.getByText('Save and connect'))
 
     await waitFor(() => {
       expect(useConnectionStore.getState().dialogOpen).toBe(false)
@@ -524,7 +524,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Save and Connect'))
+    await user.click(screen.getByText('Save and connect'))
 
     await waitFor(() => {
       expect(screen.getByText('Connection failed')).toBeInTheDocument()
@@ -562,7 +562,7 @@ describe('ConnectionForm', () => {
     await user.type(hostInput, '192.168.1.1')
     expect(hostInput).toHaveValue('192.168.1.1')
 
-    const dbInput = screen.getByLabelText('Default Database')
+    const dbInput = screen.getByLabelText('Default database')
     await user.type(dbInput, 'mydb')
     expect(dbInput).toHaveValue('mydb')
   })
@@ -573,8 +573,8 @@ describe('ConnectionForm', () => {
     await switchToTab(user, 'advanced')
 
     expect(screen.getByRole('combobox', { name: 'Access mode' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Connect Timeout')).toBeInTheDocument()
-    expect(screen.getByLabelText('Keepalive Interval')).toBeInTheDocument()
+    expect(screen.getByLabelText('Connect timeout')).toBeInTheDocument()
+    expect(screen.getByLabelText('Keepalive interval')).toBeInTheDocument()
   })
 
   it('Advanced fields accept input', async () => {
@@ -590,11 +590,11 @@ describe('ConnectionForm', () => {
     expect(accessMode).toHaveTextContent('Read-only (block writes)')
 
     // Check timeout has default value
-    const timeoutInput = screen.getByLabelText('Connect Timeout')
+    const timeoutInput = screen.getByLabelText('Connect timeout')
     expect(timeoutInput).toHaveValue(10)
 
     // Check keepalive has default value
-    const keepaliveInput = screen.getByLabelText('Keepalive Interval')
+    const keepaliveInput = screen.getByLabelText('Keepalive interval')
     expect(keepaliveInput).toHaveValue(60)
   })
 
@@ -613,7 +613,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Host address')).toHaveValue('10.0.0.1')
     expect(screen.getByLabelText('Port')).toHaveValue(3307)
     expect(screen.getByLabelText('Username')).toHaveValue('admin')
-    expect(screen.getByLabelText('Default Database')).toHaveValue('production')
+    expect(screen.getByLabelText('Default database')).toHaveValue('production')
     // Password should be empty (user re-enters)
     expect(screen.getByLabelText('Password')).toHaveValue('')
   })
@@ -673,7 +673,7 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm editingConnection={editConn} onDeleteConnection={onDeleteConnection} />)
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
-    expect(screen.getByRole('heading', { name: 'Delete Connection' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Delete connection' })).toBeInTheDocument()
     expect(screen.getByText(/Delete saved connection/i)).toBeInTheDocument()
 
     await user.click(screen.getByTestId('confirm-confirm-button'))
@@ -821,7 +821,7 @@ describe('ConnectionForm', () => {
     await user.clear(hostInput)
     await user.type(hostInput, '10.0.0.1')
 
-    await user.click(screen.getByText('Save and Connect'))
+    await user.click(screen.getByText('Save and connect'))
 
     await waitFor(() => {
       expect(ipc.calls('update_connection')).toHaveLength(1)
@@ -845,7 +845,7 @@ describe('ConnectionForm', () => {
     await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
-    await user.click(screen.getByText('Save and Connect'))
+    await user.click(screen.getByText('Save and connect'))
 
     await waitFor(() => {
       expect(screen.getByText('Connection refused')).toBeInTheDocument()
@@ -878,7 +878,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByLabelText('Use SSL / TLS'))
 
     // Type in CA cert field
-    const caInput = screen.getByLabelText('CA Certificate')
+    const caInput = screen.getByLabelText('CA certificate')
     await user.type(caInput, '/path/to/ca.pem')
     expect(caInput).toHaveValue('/path/to/ca.pem')
   })
@@ -891,7 +891,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm editingConnection={editConn} />)
 
-    const dbInput = screen.getByLabelText('Default Database')
+    const dbInput = screen.getByLabelText('Default database')
     expect(dbInput).toHaveValue('mydb')
 
     await user.clear(dbInput)
@@ -911,10 +911,10 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
     await switchToTab(user, 'advanced')
 
-    const timeoutInput = screen.getByLabelText('Connect Timeout')
+    const timeoutInput = screen.getByLabelText('Connect timeout')
     expect(timeoutInput).toHaveValue(30)
 
-    const keepaliveInput = screen.getByLabelText('Keepalive Interval')
+    const keepaliveInput = screen.getByLabelText('Keepalive interval')
     expect(keepaliveInput).toHaveValue(120)
   })
 
@@ -962,7 +962,7 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     const header = screen.getByTestId('connection-form-header')
-    expect(header).toHaveTextContent('New Connection')
+    expect(header).toHaveTextContent('New connection')
 
     await user.type(screen.getByLabelText('Connection name'), 'My DB')
     await user.type(screen.getByLabelText('Host address'), 'db.local')

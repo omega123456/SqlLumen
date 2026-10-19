@@ -1,17 +1,21 @@
 .statusBar {
-  --status-bar-text-size: var(--type-size-sm);
-  height: 24px;
+  --status-bar-text-size: var(--type-caption-size);
+  height: var(--status-bar-height);
   background-color: var(--status-bar-surface);
+  border-top: 1px solid var(--stroke-divider);
+  box-sizing: border-box;
+  line-height: var(--type-caption-line);
   display: flex;
   align-items: center;
-  gap: var(--space-md);
-  padding: 0 var(--space-md);
+  /* Prototype `.p-status`: 10px bar inset plus 10px per item */
+  gap: 20px;
+  padding: 0 20px;
   flex-shrink: 0;
   overflow: hidden;
 }
 
 .statusText {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
   white-space: nowrap;
@@ -22,7 +26,7 @@
 .left {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: 20px;
   min-width: 0;
   flex: 0 1 auto;
 }
@@ -30,7 +34,7 @@
 .segment {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -54,7 +58,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-md);
+  gap: 20px;
   flex-shrink: 0;
 }
 
@@ -71,11 +75,9 @@
   display: none;
 }
 
+/* The Fluent status bar separates items by spacing only (prototype `.p-status`) */
 .divider {
-  width: 1px;
-  height: 13px;
-  background-color: rgba(var(--outline-variant-rgb), 0.45);
-  flex-shrink: 0;
+  display: none;
 }
 
 /* ---------- Query Info ---------- */
@@ -83,12 +85,12 @@
 .queryInfo {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 20px;
   flex-shrink: 0;
 }
 
 .queryInfoItem {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
   white-space: nowrap;
@@ -99,7 +101,8 @@
 }
 
 .queryInfoTime {
-  color: var(--primary);
+  color: var(--on-surface);
+  font-weight: var(--type-weight-semibold);
 }
 
 /* ---------- Query Running Indicator ---------- */
@@ -128,17 +131,10 @@
 }
 
 .queryRunningText {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
-  opacity: 0.6;
   white-space: nowrap;
-}
-
-[data-theme='light'] .queryRunningText {
-  letter-spacing: 0.05em;
-  opacity: 1;
-  color: var(--primary);
 }
 
 /* ---------- Schema Indexing Indicator ---------- */
@@ -180,32 +176,17 @@
 }
 
 .indexingText {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--status-bar-text-size);
   color: var(--on-surface-variant);
-  opacity: 0.6;
   white-space: nowrap;
-}
-
-[data-theme='light'] .indexingText {
-  letter-spacing: 0.05em;
-  opacity: 1;
-  color: var(--primary);
 }
 
 .indexingReady {
   color: var(--tertiary);
 }
 
-[data-theme='light'] .indexingReady {
-  color: var(--tertiary);
-}
-
 .indexingError {
-  color: var(--error);
-}
-
-[data-theme='light'] .indexingError {
   color: var(--error);
 }
 
@@ -228,14 +209,10 @@
 }
 
 .updateButtonText {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--status-bar-text-size);
   color: var(--primary);
   white-space: nowrap;
-}
-
-[data-theme='light'] .updateButtonText {
-  letter-spacing: 0.05em;
 }
 
 .updateButton:hover .updateButtonText,

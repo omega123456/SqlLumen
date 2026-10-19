@@ -220,9 +220,15 @@ export function DateTimePicker({
     if (disabled) return
     const timer = setTimeout(() => {
       if (!internalPopupRef.current) return
-      const focusable = internalPopupRef.current.querySelector<HTMLElement>(
-        'button, [tabindex]:not([tabindex="-1"]), input'
-      )
+      // Prefer the selected day (react-datepicker's roving tabindex) so arrow keys move the
+      // date; fall back to the first control only when no day is focusable.
+      const focusable =
+        internalPopupRef.current.querySelector<HTMLElement>(
+          '.react-datepicker__day[tabindex="0"]'
+        ) ??
+        internalPopupRef.current.querySelector<HTMLElement>(
+          'button, [tabindex]:not([tabindex="-1"]), input'
+        )
       if (focusable) focusable.focus()
     }, 50)
     return () => clearTimeout(timer)

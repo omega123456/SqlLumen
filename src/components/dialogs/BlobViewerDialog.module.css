@@ -14,21 +14,22 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-md);
-  padding: var(--space-md) var(--space-lg);
-  background: var(--ui-dialog-header-bg);
-  border-bottom: var(--ui-dialog-header-border-bottom);
+  padding: 24px 24px 0;
+  background: transparent;
   flex-shrink: 0;
 }
 
 .title {
   margin: 0;
-  font-size: var(--type-dialog-title);
-  font-weight: 600;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-headline);
+  line-height: var(--type-subtitle-line);
 }
 
 .columnName {
@@ -79,7 +80,7 @@
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-lg);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  border-bottom: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
@@ -118,7 +119,7 @@
   background: transparent;
   color: var(--on-surface-variant);
   font-size: var(--type-size-sm);
-  font-weight: 500;
+  font-weight: 400;
   padding: var(--space-sm) var(--space-md);
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -269,14 +270,7 @@
 .skeletonBar {
   height: var(--space-lg);
   border-radius: var(--radius-sm);
-  background: linear-gradient(
-    90deg,
-    var(--skeleton-base) 0%,
-    var(--skeleton-highlight) 50%,
-    var(--skeleton-base) 100%
-  );
-  background-size: 200% 100%;
-  animation: skeletonShimmer 1.4s ease-in-out infinite;
+  background: var(--skeleton-base);
 }
 
 .skeletonBar:nth-child(2) {
@@ -287,24 +281,15 @@
   width: 60%;
 }
 
-@keyframes skeletonShimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
 /* Footer */
 .footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  background: var(--ui-form-footer-bg);
-  border-top: var(--ui-form-footer-border-top);
+  gap: 8px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
@@ -318,7 +303,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-md);
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-accent-tint);
   border: 2px dashed var(--primary);
   border-radius: var(--radius-lg);
   color: var(--primary);

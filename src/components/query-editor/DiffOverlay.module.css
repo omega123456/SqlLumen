@@ -16,18 +16,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
+  height: var(--command-bar-height);
   padding: 0 var(--space-lg);
   background: var(--surface-container-high);
   flex-shrink: 0;
 }
 
 .header {
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .footer {
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  border-top: 1px solid var(--stroke-divider);
   justify-content: flex-end;
 }
 
@@ -36,7 +36,6 @@
   font-size: var(--type-size-sm);
   font-weight: 600;
   color: var(--on-surface);
-  letter-spacing: var(--letter-spacing-label-md);
 }
 
 .actions {
@@ -50,22 +49,6 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
-}
-
-/* Slightly compact overlay toolbar buttons (still a touch smaller than global defaults) */
-.compactToolbar :global(.ui-button-primary),
-.compactToolbar :global(.ui-button-danger),
-.compactToolbar :global(.ui-button-secondary) {
-  padding: 6px var(--space-md);
-  font-size: var(--type-size-md);
-  font-weight: 600;
-  line-height: 1.25;
-  box-shadow: none;
-}
-
-.compactToolbar :global(.ui-button-primary:hover:not(:disabled)),
-.compactToolbar :global(.ui-button-danger:hover:not(:disabled)) {
-  box-shadow: none;
 }
 
 /* One-line view zone on the original pane — keeps rows aligned with modified Accept rows. */

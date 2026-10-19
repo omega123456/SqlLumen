@@ -165,8 +165,8 @@ describe('ResultTextView', () => {
     expect(pre!.textContent).not.toContain('Alice')
   })
 
-  it('Copy All button text says "Copy All"', () => {
+  it('Copy All button text says "Copy all"', () => {
     render(<ResultTextView columns={columns} rows={rows} />)
-    expect(screen.getByTestId('copy-all-button')).toHaveTextContent('Copy All')
+    expect(screen.getByTestId('copy-all-button')).toHaveTextContent('Copy all')
   })
 })

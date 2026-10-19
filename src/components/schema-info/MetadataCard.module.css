@@ -1,17 +1,18 @@
+/* Metadata card: card fill and stroke (prototype `.card`) */
 .card {
-  padding: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--stroke-card);
+  box-shadow: none;
   user-select: text;
 }
 
 .title {
+  margin: 0 0 8px;
   font-family: var(--type-table-header-font);
   font-size: var(--type-table-header-size);
   font-weight: var(--type-table-header-weight);
-  letter-spacing: var(--type-table-header-tracking);
-  text-transform: uppercase;
+  line-height: 20px;
   color: var(--on-surface-variant);
-  opacity: 0.7;
-  margin: 0 0 16px 0;
 }
 
 .list {
@@ -19,28 +20,24 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .label {
-  font-size: var(--type-meta);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--type-caption-size);
+  line-height: 20px;
   color: var(--on-surface-variant);
-  opacity: 0.6;
 }
 
 .value {
-  font-size: var(--type-body);
-  font-weight: 600;
-  color: var(--on-surface);
-  font-family: var(--font-mono);
   margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 20px;
+  color: var(--on-surface);
 }

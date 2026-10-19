@@ -23,7 +23,7 @@ describe('UnsavedChangesDialog', () => {
 
   it('renders title and message', () => {
     render(<UnsavedChangesDialog {...defaultProps} />)
-    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
     expect(screen.getByText(/You have unsaved changes on the current row/)).toBeInTheDocument()
   })
 
@@ -69,26 +69,26 @@ describe('UnsavedChangesDialog', () => {
     expect(screen.getByText('Saving...')).toBeInTheDocument()
   })
 
-  it('Save button text says "Save Changes" when not saving', () => {
+  it('Save button text says "Save changes" when not saving', () => {
     render(<UnsavedChangesDialog {...defaultProps} isSaving={false} />)
-    expect(screen.getByText('Save Changes')).toBeInTheDocument()
+    expect(screen.getByText('Save changes')).toBeInTheDocument()
   })
 
   it('renders custom title, message, and button labels', () => {
     render(
       <UnsavedChangesDialog
         {...defaultProps}
-        title="Unsaved Schema Changes"
+        title="Unsaved schema changes"
         message="You have unsaved table design changes."
-        saveLabel="Apply Changes"
+        saveLabel="Apply changes"
         discardLabel="Discard Design"
         cancelLabel="Keep Editing"
       />
     )
 
-    expect(screen.getByText('Unsaved Schema Changes')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved schema changes')).toBeInTheDocument()
     expect(screen.getByText('You have unsaved table design changes.')).toBeInTheDocument()
-    expect(screen.getByText('Apply Changes')).toBeInTheDocument()
+    expect(screen.getByText('Apply changes')).toBeInTheDocument()
     expect(screen.getByText('Discard Design')).toBeInTheDocument()
     expect(screen.getByText('Keep Editing')).toBeInTheDocument()
   })
@@ -106,7 +106,7 @@ describe('UnsavedChangesDialog', () => {
   it('re-export from table-data path renders identically', () => {
     render(<ReExportedDialog {...defaultProps} />)
     expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
   })
 
   it('shows an internal error when onSave rejects', async () => {

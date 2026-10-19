@@ -1,13 +1,15 @@
 .sidebar {
   height: 100%;
-  background-color: var(--surface-container-low);
+  background-color: var(--surface-container);
+  border-right: 1px solid var(--stroke-divider);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 .emptyState {
-  font-size: var(--type-nav);
+  font-size: var(--type-row-size);
   font-weight: var(--type-nav-weight);
   color: var(--on-surface-variant);
   text-align: center;

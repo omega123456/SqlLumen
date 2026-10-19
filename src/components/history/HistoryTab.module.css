@@ -10,7 +10,7 @@
   width: 180px;
   flex-shrink: 0;
   overflow: hidden;
-  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-right: 1px solid var(--stroke-divider);
 }
 
 .panelGroup {
@@ -33,7 +33,7 @@
 
 .resizeHandle:hover,
 .resizeHandle[data-resize-handle-state='drag'] {
-  background-color: rgba(var(--primary-rgb), 0.1);
+  background-color: var(--fill-subtle-hover);
 }
 
 .resizePill {

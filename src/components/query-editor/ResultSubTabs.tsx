@@ -93,7 +93,7 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
       onKeyDown={handleKeyDown}
       data-testid="result-sub-tabs"
     >
-      <UnderlineTabBar className={styles.strip} scrollable>
+      <UnderlineTabBar variant="selector" className={styles.strip} scrollable>
         {results.map((result, index) => {
           const isActive = index === activeResultIndex
           return (

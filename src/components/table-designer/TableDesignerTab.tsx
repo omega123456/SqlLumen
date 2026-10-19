@@ -1,16 +1,14 @@
-import { Table } from '@phosphor-icons/react'
+import { Wrench } from '@phosphor-icons/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { showErrorToast } from '../../stores/toast-store'
 import { useSchemaStore } from '../../stores/schema-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
-import { useThemeStore } from '../../stores/theme-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { invalidateSchemaIndex } from '../../lib/schema-index-commands'
 import type { DesignerSubTab, TableDesignerTab as TableDesignerTabType } from '../../types/schema'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
-import { ElevatedSurface } from '../common/ElevatedSurface'
-import { UnderlineTabBar } from '../common/UnderlineTabs'
+import { UnderlineTab, UnderlineTabBar } from '../common/UnderlineTabs'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import { ApplySchemaChangesDialog } from './ApplySchemaChangesDialog'
 import { ColumnEditor } from './ColumnEditor'
@@ -29,9 +27,9 @@ interface TableDesignerTabProps {
 const SUB_TAB_LABELS: Record<DesignerSubTab, string> = {
   columns: 'Columns',
   indexes: 'Indexes',
-  fks: 'Foreign Keys',
-  properties: 'Table Properties',
-  ddl: 'DDL Preview',
+  fks: 'Foreign keys',
+  properties: 'Table properties',
+  ddl: 'DDL preview',
 }
 
 function clearPendingNavigationAction(tabId: string) {
@@ -68,7 +66,6 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
   const refreshCategory = useSchemaStore((state) => state.refreshCategory)
   const updateWorkspaceDesignerTab = useWorkspaceStore((state) => state.updateTableDesignerTab)
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
 
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false)
   const postApplyActionRef = useRef<(() => void) | null>(null)
@@ -95,6 +92,7 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
   const ddl = tabState?.ddl ?? ''
   const ddlWarnings = tabState?.ddlWarnings ?? []
   const tableName = currentSchema?.tableName ?? ''
+  const columnCount = currentSchema?.columns.length ?? 0
   const hasValidationErrors = Object.keys(validationErrors).length > 0
   const resolvedMode = tabState?.mode ?? mode
   const isCreateMode = resolvedMode === 'create'
@@ -233,109 +231,78 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
 
   return (
     <div className={styles.container} data-testid="table-designer-tab">
-      <ElevatedSurface className={styles.headerCard} data-testid="table-designer-header-card">
-        <div className={styles.header}>
-          <div className={styles.headerMain}>
-            <div className={styles.titleBlock}>
-              <span
-                className={`${styles.tableIcon} ${
-                  resolvedTheme === 'dark' ? styles.tableIconDark : styles.tableIconLight
-                }`}
-                aria-hidden
-              >
-                <Table size={24} weight="fill" />
-              </span>
+      {/* Page header (prototype `.vh`): icon tile, title and caption, then the actions */}
+      <div className={styles.header} data-testid="table-designer-header">
+        <span className={styles.tile} aria-hidden>
+          <Wrench size={16} weight="regular" />
+        </span>
+        <div className={styles.headingStack}>
+          {isCreateMode ? (
+            <>
+              <h1 className={styles.heading}>Create table</h1>
+              <TextInput
+                variant="bare"
+                type="text"
+                value={tableName}
+                placeholder="table_name"
+                className={`ui-field-chrome ${styles.tableNameInput}`}
+                data-testid="table-designer-name-input"
+                onChange={(event) => updateTableName(tabId, event.target.value)}
+              />
+            </>
+          ) : (
+            <h1 className={styles.heading}>Alter table {tableName || objectName}</h1>
+          )}
+          <span className={styles.caption} data-testid="table-designer-caption">
+            {databaseName} · {columnCount} {columnCount === 1 ? 'column' : 'columns'}
+          </span>
+        </div>
+        <Button
+          onClick={() => discardChanges(tabId)}
+          disabled={!isDirty}
+          data-testid="table-designer-discard"
+        >
+          Discard
+        </Button>
+        <Button
+          variant="accent"
+          disabled={isApplyDisabled}
+          onClick={() => void prepareApplyDialog()}
+          data-testid="table-designer-apply"
+        >
+          Apply changes
+        </Button>
+      </div>
 
-              {isCreateMode ? (
-                <div className={styles.headingStack}>
-                  <h1 className={styles.heading}>Create Table</h1>
-                  <TextInput
-                    variant="bare"
-                    type="text"
-                    value={tableName}
-                    placeholder="table_name"
-                    className={`ui-field-chrome ${styles.tableNameInput}`}
-                    data-testid="table-designer-name-input"
-                    onChange={(event) => updateTableName(tabId, event.target.value)}
-                  />
-                  {resolvedTheme === 'light' && isDirty && (
-                    <div className={styles.unsavedSubtitle}>Unsaved Changes</div>
-                  )}
-                </div>
-              ) : (
-                <div className={styles.headingStack}>
-                  <h1 className={styles.heading}>
-                    Alter Table: <span className={styles.tableName}>{tableName || objectName}</span>
-                  </h1>
-                  {resolvedTheme === 'light' && isDirty && (
-                    <div className={styles.unsavedSubtitle}>Unsaved Changes</div>
-                  )}
-                </div>
-              )}
-            </div>
+      <UnderlineTabBar className={styles.subTabBar} data-testid="table-designer-subtabs">
+        {(Object.keys(SUB_TAB_LABELS) as DesignerSubTab[]).map((subTabKey) => (
+          <UnderlineTab
+            key={subTabKey}
+            active={selectedSubTab === subTabKey}
+            data-testid={`table-designer-subtab-${subTabKey}`}
+            onClick={() => setSelectedSubTab(tabId, subTabKey)}
+          >
+            {SUB_TAB_LABELS[subTabKey]}
+          </UnderlineTab>
+        ))}
+      </UnderlineTabBar>
 
-            <div className={styles.headerActions}>
-              <Button
-                variant="secondary"
-                className={styles.discardButton}
-                onClick={() => discardChanges(tabId)}
-                disabled={!isDirty}
-                data-testid="table-designer-discard"
-              >
-                Discard
-              </Button>
-              <Button
-                variant="primary"
-                className={styles.applyButton}
-                disabled={isApplyDisabled}
-                onClick={() => void prepareApplyDialog()}
-                data-testid="table-designer-apply"
-              >
-                Apply Changes{resolvedTheme === 'dark' && isDirty ? ' ●' : ''}
-              </Button>
-            </div>
+      <div className={styles.content} data-testid="table-designer-content">
+        {isLoading && !loadError && (
+          <div className={styles.loadingState} data-testid="table-designer-loading">
+            <div className={styles.spinner} aria-hidden />
+            <span>Loading table schema...</span>
           </div>
+        )}
 
-          <UnderlineTabBar className={styles.subTabBar} data-testid="table-designer-subtabs">
-            {(Object.keys(SUB_TAB_LABELS) as DesignerSubTab[]).map((subTabKey) => (
-              <Button
-                key={subTabKey}
-                type="button"
-                variant="ghost"
-                data-active={selectedSubTab === subTabKey ? true : undefined}
-                data-testid={`table-designer-subtab-${subTabKey}`}
-                className={
-                  selectedSubTab === subTabKey
-                    ? `${styles.designerSubTab} ${styles.designerSubTabActive}`
-                    : styles.designerSubTab
-                }
-                onClick={() => setSelectedSubTab(tabId, subTabKey)}
-              >
-                {SUB_TAB_LABELS[subTabKey]}
-              </Button>
-            ))}
-          </UnderlineTabBar>
-        </div>
-      </ElevatedSurface>
+        {loadError && (
+          <div className={styles.errorState} data-testid="table-designer-error">
+            {loadError}
+          </div>
+        )}
 
-      <ElevatedSurface className={styles.contentCard} data-testid="table-designer-content-card">
-        <div className={styles.content}>
-          {isLoading && !loadError && (
-            <div className={styles.loadingState} data-testid="table-designer-loading">
-              <div className={styles.spinner} aria-hidden />
-              <span>Loading table schema...</span>
-            </div>
-          )}
-
-          {loadError && (
-            <div className={styles.errorState} data-testid="table-designer-error">
-              {loadError}
-            </div>
-          )}
-
-          {!isLoading && !loadError && renderContent()}
-        </div>
-      </ElevatedSurface>
+        {!isLoading && !loadError && renderContent()}
+      </div>
 
       <ApplySchemaChangesDialog
         isOpen={isApplyDialogOpen}
@@ -357,9 +324,9 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
           onSave={handleSaveNavigation}
           onDiscard={handleDiscardNavigation}
           onCancel={handleCancelNavigation}
-          title="Unsaved Schema Changes"
+          title="Unsaved schema changes"
           message="You have unsaved table design changes. What would you like to do?"
-          saveLabel="Apply Changes"
+          saveLabel="Apply changes"
         />
       )}
     </div>

@@ -31,6 +31,7 @@ import {
   getSnapshotStateFixture,
   getTableDataFixture,
   getTargetDatabasesFixture,
+  getWindowBackdropFixture,
 } from '../tests/playwright-fixtures'
 
 const MOCK_TS = '2025-01-01T00:00:00.000Z'
@@ -350,6 +351,12 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     // --- App info ---
     case 'get_app_info':
       return { rustLogOverride: false, appVersion: '0.1.0' }
+
+    // --- Window chrome ---
+    case 'set_window_theme':
+      return null
+    case 'get_window_backdrop':
+      return getWindowBackdropFixture()
 
     // --- Connection management ---
     case 'list_connections':

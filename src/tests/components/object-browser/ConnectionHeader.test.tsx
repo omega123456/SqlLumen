@@ -111,7 +111,7 @@ describe('ConnectionHeader', () => {
         onToggleFavourites={() => {}}
       />
     )
-    expect(screen.getByText('MySQL Server')).toBeInTheDocument()
+    expect(screen.getByText('MySQL server')).toBeInTheDocument()
   })
 
   it('renders nothing when connection not found', () => {

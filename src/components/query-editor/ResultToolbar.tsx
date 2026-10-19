@@ -105,7 +105,7 @@ export function ResultToolbar({
 
   // Auto-limit custom content
   const autoLimitContent = autoLimitApplied ? (
-    <span className={styles.autoLimit}>({configuredRowLimit} row limit applied)</span>
+    <span className={styles.autoLimit}>· {configuredRowLimit}-row limit applied</span>
   ) : undefined
 
   const handleViewMode = useCallback(
@@ -268,7 +268,7 @@ export function ResultToolbar({
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title={checkedCount > 1 ? 'Delete Rows' : 'Delete Row'}
+        title={checkedCount > 1 ? 'Delete rows' : 'Delete row'}
         message={
           checkedCount > 1
             ? `Are you sure you want to delete these ${checkedCount} rows from the database?`

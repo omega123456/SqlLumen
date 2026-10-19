@@ -306,26 +306,26 @@ export function MemorySection({
               />
               <div className={styles.addActions}>
                 <Button
-                  variant="secondary"
-                  data-testid={`ai-memory-add-cancel-${sectionKey}`}
-                  onClick={() => closeAdd(true)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
+                  variant="accent"
                   disabled={saving || draft.trim().length === 0}
                   data-testid={`ai-memory-add-save-${sectionKey}`}
                   onClick={() => void handleSave()}
                 >
                   Save
                 </Button>
+                <Button
+                  data-testid={`ai-memory-add-cancel-${sectionKey}`}
+                  onClick={() => closeAdd(true)}
+                >
+                  Cancel
+                </Button>
               </div>
             </div>
           ) : (
             <Button
               ref={addTriggerRef}
-              variant="ghost"
+              variant="subtle"
+              size="sm"
               className={styles.addTrigger}
               aria-expanded={false}
               aria-controls={formId}

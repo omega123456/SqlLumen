@@ -3,7 +3,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--ui-modal-backdrop-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17,4 +17,12 @@
   min-width: min(90vw, 320px);
   max-width: 90vw;
   box-sizing: border-box;
+}
+
+/* Dialog chrome — card surface, flyout stroke, overlay radius, dialog shadow */
+.backdrop > .dialog {
+  background: var(--ui-modal-bg);
+  border: var(--ui-modal-border);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--ui-modal-shadow);
 }

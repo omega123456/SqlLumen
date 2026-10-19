@@ -9,7 +9,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-overlay);
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -18,18 +18,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
-  background: var(--surface-container-high);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  padding: 24px 24px 0;
+  background: transparent;
 }
 
 .title {
   margin: 0;
-  font-size: var(--type-size-xl);
-  font-weight: 700;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   font-family: var(--font-headline);
   color: var(--on-surface);
-  letter-spacing: -0.01em;
+  line-height: var(--type-subtitle-line);
 }
 
 .closeButton {
@@ -39,9 +38,9 @@
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
+  color: var(--on-surface);
   cursor: pointer;
   transition:
     color 0.15s ease,
@@ -49,14 +48,14 @@
 }
 
 .closeButton:hover {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  color: var(--on-surface);
+  background: var(--fill-subtle-hover);
 }
 
 /* ── Body ───────────────────────────────────────────────────────────────── */
 
 .body {
-  padding: 24px;
+  padding: 12px 24px 24px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -150,7 +149,7 @@
 
 .removeButton:hover {
   color: var(--error);
-  background: rgba(var(--error-rgb), 0.08);
+  background: var(--fill-subtle-hover);
 }
 
 /* ── Add Condition button ───────────────────────────────────────────────── */
@@ -174,7 +173,7 @@
 }
 
 .addButton:hover {
-  background: rgba(var(--primary-rgb), 0.06);
+  background: var(--fill-subtle-hover);
 }
 
 /* ── Empty state ────────────────────────────────────────────────────────── */
@@ -215,9 +214,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
-  background: rgba(var(--outline-variant-rgb), 0.08);
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.05);
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
+  gap: 8px;
 }
 
 .footerLeft {

@@ -6,17 +6,9 @@ export interface ColumnsPanelProps {
   columns: ColumnInfo[]
 }
 
-function keyBadgeClass(columnKey: string): string | undefined {
-  switch (columnKey) {
-    case 'PRI':
-      return styles.keyPri
-    case 'MUL':
-      return styles.keyMul
-    case 'UNI':
-      return styles.keyUni
-    default:
-      return undefined
-  }
+/** Primary keys get the accent pill (prototype `.pill.acc`); other keys the neutral pill. */
+function keyBadgeClass(columnKey: string): string {
+  return columnKey === 'PRI' ? styles.keyPri : styles.keyOther
 }
 
 export function ColumnsPanel({ columns }: ColumnsPanelProps) {
@@ -43,14 +35,10 @@ export function ColumnsPanel({ columns }: ColumnsPanelProps) {
                 <td className={styles.td}>
                   <span className={styles.dataType}>{col.dataType}</span>
                 </td>
-                <td className={styles.td}>
-                  <span className={col.nullable ? styles.nullYes : styles.nullNo}>
-                    {col.nullable ? 'YES' : 'NO'}
-                  </span>
-                </td>
+                <td className={styles.td}>{col.nullable ? 'Yes' : 'No'}</td>
                 <td className={styles.td}>
                   {col.columnKey ? (
-                    <span className={`${styles.keyBadge} ${keyBadgeClass(col.columnKey) ?? ''}`}>
+                    <span className={`${styles.keyBadge} ${keyBadgeClass(col.columnKey)}`}>
                       {col.columnKey}
                     </span>
                   ) : (
@@ -65,7 +53,11 @@ export function ColumnsPanel({ columns }: ColumnsPanelProps) {
                   </span>
                 </td>
                 <td className={styles.td}>
-                  <span className={styles.extra}>{col.extra || '—'}</span>
+                  {col.extra ? (
+                    <span className={styles.extra}>{col.extra}</span>
+                  ) : (
+                    <span className={styles.empty}>—</span>
+                  )}
                 </td>
               </tr>
             ))}

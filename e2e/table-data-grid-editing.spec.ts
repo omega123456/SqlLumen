@@ -287,7 +287,7 @@ async function openQueryEditorWithResults(page: Page) {
   await editModeDropdown.click()
   await expect(page.getByRole('option')).toHaveCount(2, { timeout: APP_READY_MS })
   await page.getByRole('option').nth(1).click()
-  await expect(editModeDropdown).not.toHaveText('Read Only', { timeout: APP_READY_MS })
+  await expect(editModeDropdown).not.toHaveText('Read only', { timeout: APP_READY_MS })
   await expect(activePanel(page).getByTestId('result-grid')).toBeVisible({
     timeout: APP_READY_MS,
   })
@@ -441,6 +441,8 @@ test('table data grid typing on a selected cell opens the editor and keeps focus
 
   await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
+  // The overlay edge is the focus indicator; the global focus ring would leak as a bar by NULL
+  await expect(page.locator('.td-cell-editor-input').first()).toHaveCSS('box-shadow', 'none')
 })
 
 test('table data grid Escape after typing activation restores the original cell value', async ({
@@ -675,6 +677,7 @@ test('table data enum editor fills the cell height and gives options comfortable
   }
 
   await expect(glideDropdownCombobox(page)).toBeVisible({ timeout: APP_READY_MS })
+  await expect(enumEditor.locator('input').first()).toHaveCSS('box-shadow', 'none')
 })
 
 test('table data enum editor opens its dropdown and supports typeahead selection', async ({
@@ -834,8 +837,10 @@ test('query result grid supports keyboard navigation, copy, edit cancel, and tab
   await page.keyboard.press('ArrowRight')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')
-  const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''))
-  expect(copied.length).toBeGreaterThan(0)
+  // The copy writes the clipboard asynchronously; poll instead of reading once.
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText().catch(() => '')))
+    .not.toBe('')
 
   // Reset deterministically onto the name cell before exercising cancel/commit flows.
   const editor = await openResultCellEditorByTyping(page, 0, 'name', 'C')

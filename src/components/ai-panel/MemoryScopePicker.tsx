@@ -37,7 +37,7 @@ const BASE_OPTIONS: ScopeOption[] = [
 ]
 
 /**
- * Inline "Always Ask" level chooser shown above the chat input when a
+ * Inline "Always ask" level chooser shown above the chat input when a
  * `/remember` save needs a scope. Mirrors the `SlashCommandDropdown` listbox
  * look + keyboard model; the Group option is visible but unselectable and
  * skipped in arrow-key navigation when the active connection has no group.

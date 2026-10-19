@@ -124,7 +124,7 @@ export function AlterDatabaseDialog({
 
   // Build dropdown options
   const charsetOptions: DropdownOption[] = [
-    { value: '', label: 'Server Default' },
+    { value: '', label: 'Server default' },
     ...encoding.charsets.map((cs) => ({
       value: cs.charset,
       label: cs.charset,
@@ -147,11 +147,11 @@ export function AlterDatabaseDialog({
       onClose={onCancel}
       maxWidth={480}
       testId="alter-database-dialog"
-      ariaLabel="Alter Database"
+      ariaLabel="Alter database"
       nonDismissible={isSubmitting}
       formProps={{ onSubmit: handleFormSubmit }}
     >
-      <h2 className={styles.title}>Alter Database</h2>
+      <h2 className={styles.title}>Alter database</h2>
       <p className={styles.subtitle}>{databaseName}</p>
 
       {isLoading ? (
@@ -160,7 +160,7 @@ export function AlterDatabaseDialog({
         <>
           <div className={styles.formGroup}>
             <label className={styles.label} id="alter-db-charset-label">
-              Character Set
+              Character set
             </label>
             <Dropdown
               id="alter-db-charset"
@@ -194,20 +194,15 @@ export function AlterDatabaseDialog({
 
       <div className={styles.actions}>
         <Button
-          variant="secondary"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          data-testid="alter-db-cancel-button"
-        >
-          Cancel
-        </Button>
-        <Button
-          variant="primary"
+          variant="accent"
           type="submit"
           disabled={detailsLoading || encoding.isLoading || hasBlockingLoadError || isSubmitting}
           data-testid="alter-db-submit-button"
         >
-          {isSubmitting ? 'Saving...' : 'Alter Database'}
+          {isSubmitting ? 'Saving...' : 'Alter database'}
+        </Button>
+        <Button onClick={onCancel} disabled={isSubmitting} data-testid="alter-db-cancel-button">
+          Cancel
         </Button>
       </div>
     </DialogShell>

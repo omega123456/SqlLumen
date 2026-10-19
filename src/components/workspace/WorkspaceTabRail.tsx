@@ -23,6 +23,7 @@ import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { UnderlineTab } from '../common/UnderlineTabs'
 import { TextInput } from '../common/TextInput'
+import { IconButton } from '../common/IconButton'
 import { TabContextMenu } from '../shared/TabContextMenu'
 import { computeHorizontalTabReorderTarget } from '../shared/use-tab-reorder'
 import {
@@ -31,6 +32,7 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CaretLineRightIcon,
+  XIcon,
 } from '@phosphor-icons/react'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
@@ -41,7 +43,7 @@ import styles from './WorkspaceTabs.module.css'
 // Constants
 // ---------------------------------------------------------------------------
 
-const TAB_ICON_SIZE = 13
+const TAB_ICON_SIZE = 16
 const TAB_ICON_WEIGHT = 'regular'
 const POINTER_DRAG_THRESHOLD_PX = 4
 
@@ -489,7 +491,7 @@ export function WorkspaceTabRail({
         },
         {
           key: 'move-start',
-          label: 'Move to Start',
+          label: 'Move to start',
           icon: <CaretLineLeftIcon size={14} weight="regular" />,
           disabled: contextMenuVisibleIndex <= 0,
           onSelect: () => {
@@ -503,7 +505,7 @@ export function WorkspaceTabRail({
         },
         {
           key: 'move-left',
-          label: 'Move Left',
+          label: 'Move left',
           icon: <CaretLeftIcon size={14} weight="regular" />,
           disabled: contextMenuVisibleIndex <= 0,
           onSelect: () => {
@@ -518,7 +520,7 @@ export function WorkspaceTabRail({
         },
         {
           key: 'move-right',
-          label: 'Move Right',
+          label: 'Move right',
           icon: <CaretRightIcon size={14} weight="regular" />,
           disabled:
             contextMenuVisibleIndex < 0 || contextMenuVisibleIndex >= visibleTabIds.length - 1,
@@ -534,7 +536,7 @@ export function WorkspaceTabRail({
         },
         {
           key: 'move-end',
-          label: 'Move to End',
+          label: 'Move to end',
           icon: <CaretLineRightIcon size={14} weight="regular" />,
           disabled:
             contextMenuVisibleIndex < 0 || contextMenuVisibleIndex >= visibleTabIds.length - 1,
@@ -563,6 +565,7 @@ export function WorkspaceTabRail({
     return (
       <UnderlineTab
         key={tab.id}
+        variant="document"
         active={isActive}
         autoScrollOnActive={autoScrollOnActive}
         className={styles.workspaceTab}
@@ -609,8 +612,8 @@ export function WorkspaceTabRail({
         }
         suffix={
           !isPinned ? (
-            <button
-              type="button"
+            <IconButton
+              size="sm"
               className={styles.tabClose}
               aria-label={`Close ${tab.label}`}
               draggable={false}
@@ -622,8 +625,8 @@ export function WorkspaceTabRail({
                 closeTab(connectionId, tab.id)
               }}
             >
-              ×
-            </button>
+              <XIcon size={16} weight="regular" aria-hidden />
+            </IconButton>
           ) : undefined
         }
       >

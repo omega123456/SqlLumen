@@ -1,6 +1,6 @@
 .workspace {
   height: 100%;
-  background-color: var(--surface);
+  background-color: var(--surface-container);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9,7 +9,7 @@
 
 .workspaceTabbed {
   height: 100%;
-  background-color: var(--surface);
+  background-color: var(--surface-container);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -67,33 +67,56 @@
   transform: translate(-50%, -50%);
 }
 
-.welcomeCard,
+/* Welcome (prototype `.p-welcome`): icon tile, 28px title, no card */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  text-align: center;
+}
+
+.welcomeTile {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: var(--fill-accent-tint);
+  color: var(--primary);
+}
+
+.welcomeTitle {
+  margin: 0;
+  font-family: var(--font-headline);
+  font-size: var(--type-title-size);
+  line-height: var(--type-title-line);
+  font-weight: var(--type-weight-semibold);
+  color: var(--on-surface);
+}
+
+.welcomeMessage {
+  margin: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  color: var(--on-surface-variant);
+}
+
+.welcomeActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .connectedPlaceholder {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-md);
   padding: var(--space-2xl);
-  background-color: var(--surface-container);
-  border-radius: var(--radius-lg);
   text-align: center;
-  box-shadow: var(--elevation-overlay);
-}
-
-.welcomeCard {
-  max-width: 360px;
-}
-
-.welcomeTitle {
-  font-size: var(--type-size-xl);
-  font-weight: 600;
-  color: var(--on-surface);
-  font-family: var(--font-headline);
-}
-
-.welcomeMessage {
-  font-size: var(--type-body);
-  color: var(--on-surface-variant);
 }
 
 /* Connected placeholder */
@@ -104,7 +127,7 @@
 .connectedText {
   font-size: var(--type-body-lg);
   color: var(--on-surface);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* Placeholder content for tabs not yet implemented */

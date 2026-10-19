@@ -38,9 +38,9 @@ describe('RunningIndicator', () => {
     expect(statusRegion).toHaveTextContent('Running')
   })
 
-  it('displays "RUNNING" label', () => {
+  it('displays "Running" label', () => {
     render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
-    expect(screen.getByText('RUNNING')).toBeInTheDocument()
+    expect(screen.getByText('Running', { selector: 'span' })).toBeInTheDocument()
   })
 
   it('timer shows formatted elapsed time', () => {

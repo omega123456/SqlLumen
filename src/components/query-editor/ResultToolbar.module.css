@@ -9,13 +9,11 @@
      (absolute top: -4px + wrapper margin-top: -4px) inside this border box,
      so ResultPanel tabPanel overflow:hidden does not clip it. */
   box-sizing: border-box;
-  height: 56px;
-  padding: 0 12px 8px;
+  height: var(--command-bar-height);
+  padding: 0 8px;
   overflow: visible;
-  background: color-mix(in srgb, var(--surface-container-high) 50%, transparent);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.05);
   flex-shrink: 0;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Status wrapper — provides flex expansion for the status area */
@@ -26,11 +24,8 @@
 
 /* Auto-limit indicator (query-specific) */
 .autoLimit {
-  font-size: 10px;
-  color: var(--on-surface-variant);
-  opacity: 0.6;
-  text-transform: none;
-  font-weight: 400;
+  margin-left: -4px;
+  white-space: nowrap;
 }
 
 /* Edit actions group (Save / Discard) */
@@ -41,94 +36,48 @@
   flex-shrink: 0;
 }
 
-.saveButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.cloneButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease,
-    opacity 0.15s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.cloneButton:hover:not(:disabled) {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-  background: rgba(var(--primary-rgb), 0.06);
-}
-
-.cloneButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.saveButton:hover {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-  background: rgba(var(--primary-rgb), 0.06);
-}
-
+/* Subtle small button (prototype `.b.sm.sub`) */
+.saveButton,
+.cloneButton,
 .discardButton {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 30px;
+  box-sizing: border-box;
+  height: var(--control-height-sm);
   padding: 0 10px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  font-weight: var(--type-weight-regular);
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: default;
 }
 
-.discardButton:hover {
-  color: var(--error);
-  border-color: rgba(var(--error-rgb, 239, 68, 68), 0.35);
-  background: rgba(var(--error-rgb, 239, 68, 68), 0.06);
+.saveButton:hover:not(:disabled),
+.cloneButton:hover:not(:disabled),
+.discardButton:hover:not(:disabled) {
+  background: var(--fill-subtle-hover);
+}
+
+.saveButton:active:not(:disabled),
+.cloneButton:active:not(:disabled),
+.discardButton:active:not(:disabled) {
+  background: var(--fill-subtle-pressed);
+  color: var(--on-surface-variant);
+}
+
+.saveButton:disabled,
+.cloneButton:disabled,
+.discardButton:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
 }
 
 /* ── (Filter styles moved to shared/FilterToolbarButton.module.css) ── */

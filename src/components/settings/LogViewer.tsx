@@ -4,6 +4,7 @@ import { format } from 'date-fns'
 import { Button } from '../common/Button'
 import { Dropdown } from '../common/Dropdown'
 import { IconButton } from '../common/IconButton'
+import { InfoBar } from '../common/InfoBar'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { logFrontend } from '../../lib/app-log-commands'
 import { type LogEntry, type LogLevelFilter, listLogs } from '../../lib/log-commands'
@@ -177,7 +178,8 @@ export function LogViewer() {
             </button>
 
             <Button
-              variant="toolbar"
+              variant="subtle"
+              size="sm"
               onClick={() => setExportOpen(true)}
               data-testid="log-viewer-export"
             >
@@ -195,13 +197,12 @@ export function LogViewer() {
         </div>
 
         {errorMessage ? (
-          <div
-            className={`${styles.state} ${styles.errorState}`}
+          <InfoBar
+            severity="error"
+            className={styles.errorState}
+            message="Failed to load logs."
             data-testid="log-viewer-error"
-            role="alert"
-          >
-            Failed to load logs.
-          </div>
+          />
         ) : !isLoading && entries.length === 0 ? (
           <div className={styles.state} data-testid="log-viewer-empty">
             No log entries match this filter.

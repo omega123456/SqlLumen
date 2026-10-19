@@ -10,7 +10,8 @@ interface CopySelectedRowsButtonProps {
 export function CopySelectedRowsButton({ disabled, onClick }: CopySelectedRowsButtonProps) {
   return (
     <Button
-      variant="toolbar"
+      variant="subtle"
+      size="sm"
       className={styles.iconButton}
       disabled={disabled}
       onClick={onClick}

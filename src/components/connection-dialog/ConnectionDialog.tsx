@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X } from '@phosphor-icons/react'
+import { Plug, X } from '@phosphor-icons/react'
+import { IconButton } from '../common/IconButton'
 import { useConnectionStore } from '../../stores/connection-store'
 import { ConnectionForm, type ConnectionFormSeed } from './ConnectionForm'
 import { SavedConnectionsList } from './SavedConnectionsList'
@@ -103,25 +104,13 @@ export function ConnectionDialog() {
     >
       <div className={styles.dialogContent}>
         <div className={styles.dialogHeader}>
-          <div className={styles.dialogHeaderLeft}>
-            <span className={styles.logoMark} aria-hidden>
-              <span className={styles.logoDot} />
-              <span className={styles.logoDot} />
-              <span className={styles.logoDot} />
-              <span className={styles.logoDot} />
-            </span>
-            <h2 id="connection-dialog-title" className={styles.dialogTitle}>
-              Connection Manager
-            </h2>
-          </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            aria-label="Close dialog"
-            onClick={handleCloseButton}
-          >
-            <X size={20} weight="regular" />
-          </button>
+          <Plug size={16} weight="regular" aria-hidden />
+          <h2 id="connection-dialog-title" className={styles.dialogTitle}>
+            Connection manager
+          </h2>
+          <IconButton aria-label="Close dialog" title="Close" onClick={handleCloseButton}>
+            <X size={16} weight="regular" />
+          </IconButton>
         </div>
         <div className={styles.dialogBody}>
           <aside className={styles.leftPane} data-testid="saved-connections-pane">

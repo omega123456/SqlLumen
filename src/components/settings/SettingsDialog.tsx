@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { DialogShell } from '../dialogs/DialogShell'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
+import { GearSix, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
+import { IconButton } from '../common/IconButton'
 import { SettingsSidebar } from './SettingsSidebar'
+import { SETTINGS_SECTIONS } from './settings-sections'
 import { GeneralSettings } from './GeneralSettings'
 import { EditorSettings } from './EditorSettings'
 import { ResultsSettings } from './ResultsSettings'
@@ -136,32 +139,40 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         panelClassName={styles.panelNoPadding}
       >
         <div className={styles.layout}>
+          <div className={styles.header}>
+            <GearSix size={16} weight="regular" aria-hidden />
+            <span className={styles.headerTitle}>Settings</span>
+            <IconButton aria-label="Close settings" title="Close" onClick={handleCancel}>
+              <X size={16} weight="regular" />
+            </IconButton>
+          </div>
           <SettingsSidebar activeSection={activeSection} onSelect={handleSectionSelect} />
-          <div className={styles.content}>
-            <div className={styles.scrollArea} data-testid="settings-content">
-              {renderContent()}
-            </div>
-            <div className={styles.footer}>
+          <div className={styles.scrollArea} data-testid="settings-content">
+            <h2 className={styles.pageTitle}>
+              {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
+            </h2>
+            {renderContent()}
+          </div>
+          <div className={styles.footer}>
+            <Button
+              variant="subtle"
+              onClick={handleResetSection}
+              data-testid="settings-reset-section"
+            >
+              Reset section
+            </Button>
+            <div className={styles.footerRight}>
               <Button
-                variant="secondary"
-                onClick={handleResetSection}
-                data-testid="settings-reset-section"
+                variant="accent"
+                onClick={() => void handleSave()}
+                disabled={!isDirty}
+                data-testid="settings-save"
               >
-                Reset Section
+                Save
               </Button>
-              <div className={styles.footerRight}>
-                <Button variant="secondary" onClick={handleCancel} data-testid="settings-cancel">
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => void handleSave()}
-                  disabled={!isDirty}
-                  data-testid="settings-save"
-                >
-                  Save
-                </Button>
-              </div>
+              <Button onClick={handleCancel} data-testid="settings-cancel">
+                Cancel
+              </Button>
             </div>
           </div>
         </div>
@@ -169,7 +180,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
       <ConfirmDialog
         isOpen={confirmOpen}
-        title="Discard Changes"
+        title="Discard changes"
         message="You have unsaved settings changes. Are you sure you want to discard them?"
         confirmLabel="Discard"
         isDestructive

@@ -1,7 +1,6 @@
 import {
   useEffect,
   useRef,
-  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -9,6 +8,25 @@ import {
   type ReactNode,
 } from 'react'
 import styles from './UnderlineTabs.module.css'
+
+/**
+ * - default: WinUI SelectorBar — centred 16×3 accent pill (dialog and view tabs)
+ * - selector: tab-group row — semibold text, accent icon and a 2px accent underline
+ * - document: rounded 32px document tabs in a 38px strip; the selected tab joins the content below
+ */
+export type UnderlineTabVariant = 'default' | 'selector' | 'document'
+
+const BAR_VARIANT_CLASS: Record<UnderlineTabVariant, string> = {
+  default: '',
+  selector: styles.barSelector,
+  document: styles.barDocument,
+}
+
+const TAB_VARIANT_CLASS: Record<UnderlineTabVariant, string> = {
+  default: '',
+  selector: styles.tabSelector,
+  document: styles.tabDocument,
+}
 
 export interface UnderlineTabBarProps {
   children: ReactNode
@@ -18,6 +36,7 @@ export interface UnderlineTabBarProps {
   suffix?: ReactNode
   /** When true, always reserve scrollbar space (overflow-x: scroll). Use for tab bars that can overflow. */
   scrollable?: boolean
+  variant?: UnderlineTabVariant
 }
 
 export function UnderlineTabBar({
@@ -26,11 +45,16 @@ export function UnderlineTabBar({
   'data-testid': testId,
   suffix,
   scrollable,
+  variant = 'default',
 }: UnderlineTabBarProps) {
-  const barClass = scrollable ? `${styles.bar} ${styles.barScrollable}` : styles.bar
+  const barClass = [styles.bar, scrollable ? styles.barScrollable : '', BAR_VARIANT_CLASS[variant]]
+    .filter(Boolean)
+    .join(' ')
   const barChildren = scrollable ? <div className={styles.barContent}>{children}</div> : children
   if (suffix) {
-    const wrapperClass = className ? `${styles.barWrapper} ${className}` : styles.barWrapper
+    const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
+      .filter(Boolean)
+      .join(' ')
     return (
       <div className={wrapperClass} data-testid={testId}>
         <div className={barClass}>{barChildren}</div>
@@ -52,8 +76,6 @@ export interface UnderlineTabProps {
   className?: string
   'data-testid'?: string
   'aria-label'?: string
-  /** When set with split layout, underline uses this color (default: primary). */
-  indicatorColor?: string
   title?: string
   autoScrollOnActive?: boolean
   /** Simple tab: one button, use onClick. */
@@ -74,6 +96,7 @@ export interface UnderlineTabProps {
   dropIndicator?: 'before' | 'after'
   prefix?: ReactNode
   suffix?: ReactNode
+  variant?: UnderlineTabVariant
 }
 
 export function UnderlineTab({
@@ -82,7 +105,6 @@ export function UnderlineTab({
   className,
   'data-testid': testId,
   'aria-label': ariaLabel,
-  indicatorColor,
   title,
   autoScrollOnActive = true,
   onClick,
@@ -100,6 +122,7 @@ export function UnderlineTab({
   dropIndicator,
   prefix,
   suffix,
+  variant = 'default',
 }: UnderlineTabProps) {
   const elementRef = useRef<HTMLDivElement | HTMLButtonElement>(null)
 
@@ -110,9 +133,6 @@ export function UnderlineTab({
   }, [active, autoScrollOnActive])
 
   const split = prefix != null || suffix != null
-  const indicatorStyle: CSSProperties | undefined = indicatorColor
-    ? ({ '--underline-tab-indicator': indicatorColor } as CSSProperties)
-    : undefined
   const handleSelect = onSelect ?? onClick
   const dropIndicatorClass =
     dropIndicator === 'before'
@@ -124,6 +144,7 @@ export function UnderlineTab({
   if (split) {
     const cellClass = [
       styles.cell,
+      TAB_VARIANT_CLASS[variant],
       active ? styles.cellActive : '',
       dragging ? styles.dragging : '',
       dropIndicatorClass,
@@ -182,7 +203,6 @@ export function UnderlineTab({
         className={cellClass}
         data-active={active ? true : undefined}
         data-testid={testId}
-        style={indicatorStyle}
         title={title}
         onAuxClick={onAuxClick}
         onContextMenu={onContextMenu}
@@ -234,7 +254,12 @@ export function UnderlineTab({
     )
   }
 
-  const simpleClass = [styles.simple, active ? styles.simpleActive : '', className ?? '']
+  const simpleClass = [
+    styles.simple,
+    TAB_VARIANT_CLASS[variant],
+    active ? styles.simpleActive : '',
+    className ?? '',
+  ]
     .filter(Boolean)
     .join(' ')
   const finalSimpleClass = [simpleClass, dragging ? styles.dragging : '', dropIndicatorClass]
@@ -249,7 +274,6 @@ export function UnderlineTab({
       data-active={active ? true : undefined}
       data-testid={testId}
       aria-label={ariaLabel}
-      style={indicatorStyle}
       title={title}
       onClick={handleSelect}
       onAuxClick={onAuxClick}

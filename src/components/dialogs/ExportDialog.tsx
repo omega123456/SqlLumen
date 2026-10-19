@@ -3,6 +3,7 @@ import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
 import { DialogShell } from './DialogShell'
+import { Button } from '../common/Button'
 import { exportResults } from '../../lib/export-commands'
 import { useQueryStore } from '../../stores/query-store'
 import type { ExportFormat } from '../../types/schema'
@@ -49,14 +50,14 @@ const EXPORT_FORMAT_CONFIG: Record<
     extension: 'csv',
     supportsHeaders: true,
     requiresTableName: false,
-    description: 'Comma Separated Values',
+    description: 'Comma-separated values',
   },
   json: {
     label: 'JSON (JavaScript Object Notation)',
     extension: 'json',
     supportsHeaders: false,
     requiresTableName: false,
-    description: 'JSON Array of Objects',
+    description: 'JSON array of objects',
   },
   xlsx: {
     label: 'Excel (.xlsx)',
@@ -66,11 +67,11 @@ const EXPORT_FORMAT_CONFIG: Record<
     description: 'Excel Spreadsheet (.xlsx)',
   },
   'sql-insert': {
-    label: 'SQL INSERT Statements',
+    label: 'SQL INSERT statements',
     extension: 'sql',
     supportsHeaders: false,
     requiresTableName: true,
-    description: 'SQL INSERT Statements',
+    description: 'SQL INSERT statements',
   },
 }
 
@@ -207,14 +208,14 @@ export default function ExportDialog({
       onClose={onClose}
       maxWidth={440}
       testId="export-dialog"
-      ariaLabel="Export Results"
+      ariaLabel="Export results"
       disableFocusManagement={isPlaywright}
       formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>Export Results</h2>
+          <h2 className={styles.title}>Export results</h2>
           <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path d="M18 6L6 18M6 6l12 12" />
@@ -278,7 +279,7 @@ export default function ExportDialog({
           {EXPORT_FORMAT_CONFIG[format].requiresTableName && (
             <div className={styles.fieldGroup}>
               <label className={styles.label} htmlFor="export-table-name">
-                Table Name
+                Table name
               </label>
               <TextInput
                 id="export-table-name"
@@ -315,22 +316,17 @@ export default function ExportDialog({
 
           {/* Buttons */}
           <div className={styles.actions}>
-            <button
+            <Button
               type="submit"
-              className={styles.exportButton}
+              variant="accent"
               disabled={!filePath || isExporting}
               data-testid="export-submit-button"
             >
               {isExporting ? 'Exporting...' : 'Export'}
-            </button>
-            <button
-              type="button"
-              className={styles.cancelButton}
-              onClick={onClose}
-              data-testid="export-cancel-button"
-            >
+            </Button>
+            <Button type="button" onClick={onClose} data-testid="export-cancel-button">
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -317,7 +317,7 @@ export async function clickFkLookupGridRow(page: Page, rowIndex: number) {
 }
 
 export async function openConnectionManager(page: Page) {
-  const btn = page.getByRole('button', { name: 'New Connection' }).first()
+  const btn = page.getByRole('button', { name: 'New connection' }).first()
   const dialog = page.getByTestId('connection-dialog')
 
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -367,7 +367,7 @@ export async function connectToSample(
   await openConnectionManager(page)
   const dialog = page.getByTestId('connection-dialog')
   await selectSampleConnection(dialog)
-  const connectBtn = dialog.getByRole('button', { name: 'Save and Connect', exact: true })
+  const connectBtn = dialog.getByRole('button', { name: 'Save and connect', exact: true })
   await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
   await connectBtn.click()
   await expect(page.getByTestId('connection-dialog')).toBeHidden({ timeout: APP_READY_MS })

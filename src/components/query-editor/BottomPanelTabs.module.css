@@ -1,60 +1,62 @@
+/* Result tabs strip (prototype `.p-btabs`): 38px, 13px selector tabs, 2px accent underline */
 .strip {
-  /* Scrollbar styling is inherited from UnderlineTabBar's .barScrollable class */
+  --underline-tab-row-height: var(--doc-tab-strip-height);
+  padding: 0 8px;
 }
-
 .item {
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
 }
 
+/* Vertical divider (prototype `.p-btabs .vdiv`) */
 .separator {
+  align-self: center;
   width: 1px;
-  margin: 10px 2px;
-  background: rgba(var(--outline-variant-rgb), 0.45);
+  height: 20px;
+  margin: 0 6px;
+  background: var(--stroke-divider);
   flex-shrink: 0;
 }
 
 .tab {
   position: relative;
   display: flex;
-  align-items: stretch;
-  min-width: 0;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
   background: transparent;
   color: var(--on-surface-variant);
   font-family: var(--font-body);
-  font-size: var(--type-nav-tab);
-  font-weight: var(--type-nav-weight);
-  flex-shrink: 0;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  font-weight: var(--type-weight-regular);
+  white-space: nowrap;
+  cursor: default;
 }
 
 .tab:hover {
   color: var(--on-surface);
-  background-color: rgba(var(--on-surface-rgb), 0.03);
 }
 
 .tabActive {
-  color: var(--primary);
-  font-weight: var(--type-nav-weight-active);
-  background-color: var(--underline-tab-active-bg);
-}
-
-.tabActive:hover {
-  background-color: var(--underline-tab-active-bg);
+  color: var(--on-surface);
+  font-weight: var(--type-weight-semibold);
 }
 
 .tabActive::after {
   content: '';
   position: absolute;
+  left: 10px;
+  right: 10px;
   bottom: 0;
-  left: 0;
-  right: 0;
   height: 2px;
-  background: var(--underline-tab-indicator, var(--primary));
-  border-radius: 1px 1px 0 0;
+  border-radius: 2px 2px 0 0;
+  background: var(--primary);
 }
 
 .tabButton {
@@ -62,7 +64,8 @@
   align-items: center;
   min-width: 0;
   flex: 1;
-  padding: 12px 12px 12px 20px;
+  height: 100%;
+  padding: 0 14px;
   border: none;
   background: transparent;
   color: inherit;
@@ -73,17 +76,24 @@
   white-space: nowrap;
 }
 
-.tabButton:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-}
-
 .errorIcon {
   color: var(--error);
 }
 
+/* Close (prototype `.p-btabs .bx`) */
 .closeButton {
   align-self: center;
-  margin-left: var(--space-xs);
-  margin-right: 14px;
+  width: 20px;
+  height: 20px;
+  margin: 0 8px 0 -6px;
+  color: var(--outline);
+}
+
+.tabActive .closeButton,
+.tab:hover .closeButton {
+  visibility: visible;
+}
+
+.tabActive svg {
+  color: var(--primary);
 }

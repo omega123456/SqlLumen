@@ -71,7 +71,7 @@ export function EditorSettings() {
         />
       </SettingsSection>
 
-      <SettingsSection title="Editor Behavior" description="Toggle editor features.">
+      <SettingsSection title="Editor behavior" description="Toggle editor features.">
         <SettingsToggle
           label="Word wrap"
           description="Wrap long lines at the editor edge."

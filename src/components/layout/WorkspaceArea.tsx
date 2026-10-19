@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { Database, Plus } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -53,12 +54,20 @@ export function WorkspaceArea() {
   if (!activeConnection) {
     return (
       <div className={styles.workspace} data-testid="workspace-area">
-        <div className={styles.welcomeCard}>
-          <h2 className={styles.welcomeTitle}>Welcome!</h2>
-          <p className={styles.welcomeMessage}>Connect to a MySQL server to get started</p>
-          <Button variant="primary" onClick={openDialog}>
-            + New Connection
-          </Button>
+        <div className={styles.welcome}>
+          <div className={styles.welcomeTile} aria-hidden="true">
+            <Database size={32} weight="light" />
+          </div>
+          <h2 className={styles.welcomeTitle}>Connect to a server</h2>
+          <p className={styles.welcomeMessage}>
+            Open a saved MySQL or MariaDB connection, or add a new one.
+          </p>
+          <div className={styles.welcomeActions}>
+            <Button variant="accent" onClick={openDialog}>
+              <Plus size={16} weight="regular" aria-hidden="true" />
+              New connection
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -107,7 +116,7 @@ export function WorkspaceArea() {
             </div>
           ) : null
         }
-        confirmLabel="Discard and Close"
+        confirmLabel="Discard and close"
         isDestructive
         onConfirm={() => pendingCascadeClose?.onConfirm()}
         onCancel={() => pendingCascadeClose?.onCancel()}

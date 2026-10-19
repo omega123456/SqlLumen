@@ -137,7 +137,7 @@ describe('SettingsDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
     })
-    expect(screen.getByText('Discard Changes')).toBeInTheDocument()
+    expect(screen.getByText('Discard changes')).toBeInTheDocument()
   })
 
   it('Discard confirmation discards changes and closes', async () => {

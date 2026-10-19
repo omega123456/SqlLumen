@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import {
   SunIcon,
   MoonIcon,
@@ -11,8 +11,14 @@ import {
   CaretRightIcon,
   CaretLineRightIcon,
   LockIcon,
+  MagnifyingGlassIcon,
 } from '@phosphor-icons/react'
 import { useThemeStore } from '../../stores/theme-store'
+import { useCommandPaletteStore } from '../../stores/command-palette-store'
+import { useShortcutStore } from '../../stores/shortcut-store'
+import { shortcutLabelParts } from '../../lib/shortcut-labels'
+import { Button } from '../common/Button'
+import { IconButton } from '../common/IconButton'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
 import type { Theme } from '../../stores/theme-store'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
@@ -72,6 +78,8 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
   const removePointerListenersRef = useRef<(() => void) | null>(null)
 
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
+  const togglePalette = useCommandPaletteStore((state) => state.toggle)
+  const paletteBinding = useShortcutStore((state) => state.shortcuts['command-palette'])
   const setTheme = useThemeStore((state) => state.setTheme)
 
   const activeConnections = useConnectionStore((state) => state.activeConnections)
@@ -291,143 +299,162 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     }
   }
 
+  const activeConnection = activeTabId ? activeConnections[activeTabId] : undefined
+  const edgeColor = activeConnection?.profile.color || null
+  const stripStyle = (
+    edgeColor ? { '--connection-edge-color': edgeColor, '--connection-edge-width': '2px' } : {}
+  ) as CSSProperties
+
   return (
-    <div className={styles.tabBar} data-testid="connection-tab-bar">
-      <div className={styles.leftSection}>
-        <button
-          className={styles.iconButton}
-          type="button"
-          aria-label="New Connection"
-          title="New Connection"
-          onClick={openDialog}
-        >
-          <PlusIcon size={20} weight="regular" />
-        </button>
-      </div>
+    <div
+      className={styles.tabBar}
+      data-testid="connection-tab-bar"
+      data-edge-color={edgeColor ? 'connection' : 'none'}
+      style={stripStyle}
+    >
       {tabs.length > 0 && (
-        <div className={styles.tabsSection}>
-          <UnderlineTabBar className={styles.connectionTabRail}>
-            {tabs.map((conn) => {
-              const isActive = conn.id === activeTabId
-              const displayName = tabDisplayName(conn)
-              return (
-                <UnderlineTab
-                  key={conn.id}
-                  data-testid={`connection-session-tab-${conn.id}`}
-                  active={isActive}
-                  className={styles.connectionTab}
-                  indicatorColor={isActive && conn.profile.color ? conn.profile.color : undefined}
-                  onSelect={() => {
-                    if (suppressNextSelectRef.current) {
-                      return
-                    }
-                    switchTab(conn.id)
-                  }}
-                  onPointerDown={(event) => startPointerDrag(conn.id, event)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    openTabContextMenu(conn.id, e.clientX, e.clientY, e.currentTarget, conn.id)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) {
-                      return
-                    }
-                    e.preventDefault()
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                    openTabContextMenu(conn.id, rect.left, rect.bottom, e.currentTarget, conn.id)
-                  }}
-                  dragging={draggingTabId === conn.id}
-                  dropIndicator={dropTarget?.tabId === conn.id ? dropTarget.indicator : undefined}
-                  onAuxClick={(e) => {
-                    if (e.button !== 1) return
-                    e.preventDefault()
-                    setPendingConnectionClose({
-                      id: conn.id,
-                      displayName,
-                      hostPort: `${conn.profile.host}:${conn.profile.port}`,
-                    })
-                  }}
-                  title={`${displayName} (${conn.profile.host}:${conn.profile.port})${
-                    conn.profile.readOnly ? ' — Read-only' : ''
-                  }`}
-                  prefix={
-                    <div className={styles.tabPrefix}>
-                      {conn.profile.color && !isActive ? (
-                        <span
-                          className={styles.colorAccent}
-                          style={{ backgroundColor: conn.profile.color }}
-                          aria-hidden
-                        />
-                      ) : null}
-                      <ConnectionStatusIndicator status={conn.status} size={8} />
-                      {conn.profile.readOnly ? (
-                        <LockIcon
-                          className={styles.readOnlyIcon}
-                          size={12}
-                          weight="fill"
-                          aria-label="Read-only connection"
-                        />
-                      ) : null}
-                    </div>
+        <UnderlineTabBar variant="document" className={styles.connectionTabRail}>
+          {tabs.map((conn) => {
+            const isActive = conn.id === activeTabId
+            const displayName = tabDisplayName(conn)
+            return (
+              <UnderlineTab
+                key={conn.id}
+                variant="document"
+                data-testid={`connection-session-tab-${conn.id}`}
+                active={isActive}
+                className={styles.connectionTab}
+                onSelect={() => {
+                  if (suppressNextSelectRef.current) {
+                    return
                   }
-                  suffix={
-                    <button
-                      type="button"
-                      className={styles.closeButton}
-                      aria-label={`Close ${displayName}`}
-                      draggable={false}
-                      data-tab-drag-ignore="true"
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={() => {
-                        void closeConnection(conn.id)
-                      }}
-                    >
-                      <XIcon size={14} weight="regular" />
-                    </button>
+                  switchTab(conn.id)
+                }}
+                onPointerDown={(event) => startPointerDrag(conn.id, event)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  openTabContextMenu(conn.id, e.clientX, e.clientY, e.currentTarget, conn.id)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) {
+                    return
                   }
-                >
-                  <span className={styles.tabName}>{displayName}</span>
-                </UnderlineTab>
-              )
-            })}
-          </UnderlineTabBar>
-        </div>
+                  e.preventDefault()
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                  openTabContextMenu(conn.id, rect.left, rect.bottom, e.currentTarget, conn.id)
+                }}
+                dragging={draggingTabId === conn.id}
+                dropIndicator={dropTarget?.tabId === conn.id ? dropTarget.indicator : undefined}
+                onAuxClick={(e) => {
+                  if (e.button !== 1) return
+                  e.preventDefault()
+                  setPendingConnectionClose({
+                    id: conn.id,
+                    displayName,
+                    hostPort: `${conn.profile.host}:${conn.profile.port}`,
+                  })
+                }}
+                title={`${displayName} (${conn.profile.host}:${conn.profile.port})${
+                  conn.profile.readOnly ? ' — Read-only' : ''
+                }`}
+                prefix={
+                  <>
+                    {conn.profile.color ? (
+                      <span
+                        className={styles.colorMarker}
+                        style={{ backgroundColor: conn.profile.color }}
+                        data-testid={`connection-color-marker-${conn.id}`}
+                        aria-hidden
+                      />
+                    ) : null}
+                    <ConnectionStatusIndicator status={conn.status} size={8} />
+                    {conn.profile.readOnly ? (
+                      <LockIcon
+                        className={styles.readOnlyIcon}
+                        size={12}
+                        weight="fill"
+                        aria-label="Read-only connection"
+                      />
+                    ) : null}
+                  </>
+                }
+                suffix={
+                  <IconButton
+                    size="sm"
+                    className={styles.closeButton}
+                    aria-label={`Close ${displayName}`}
+                    draggable={false}
+                    data-tab-drag-ignore="true"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={() => {
+                      void closeConnection(conn.id)
+                    }}
+                  >
+                    <XIcon size={16} weight="regular" />
+                  </IconButton>
+                }
+              >
+                <span className={styles.tabName}>{displayName}</span>
+              </UnderlineTab>
+            )
+          })}
+        </UnderlineTabBar>
       )}
-      <div className={styles.rightSection}>
-        <button
-          className={styles.iconButton}
-          type="button"
+      <IconButton
+        className={styles.newConnectionButton}
+        aria-label="New connection"
+        title="New connection"
+        onClick={openDialog}
+      >
+        <PlusIcon size={16} weight="regular" />
+      </IconButton>
+      <div className={styles.dragSpace} />
+      <Button
+        variant="subtle"
+        className={styles.searchBox}
+        onClick={() => togglePalette()}
+        data-testid="connection-strip-search"
+      >
+        <MagnifyingGlassIcon size={16} weight="regular" aria-hidden />
+        <span className={styles.searchLabel}>Search tables, views, routines</span>
+        {paletteBinding ? (
+          <span className={styles.searchShortcut}>
+            {shortcutLabelParts(paletteBinding).join(' ')}
+          </span>
+        ) : null}
+      </Button>
+      <div className={styles.tools}>
+        <IconButton
+          size="lg"
           aria-label={resolvedTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
           title={resolvedTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
           onClick={handleThemeToggle}
           data-testid="theme-toggle"
         >
           {resolvedTheme === 'light' ? (
-            <SunIcon size={20} weight="regular" />
+            <SunIcon size={16} weight="regular" />
           ) : (
-            <MoonIcon size={20} weight="regular" />
+            <MoonIcon size={16} weight="regular" />
           )}
-        </button>
-        <button
-          className={styles.iconButton}
-          type="button"
-          aria-label="Session Snapshots"
-          title="Session Snapshots"
+        </IconButton>
+        <IconButton
+          size="lg"
+          aria-label="Session snapshots"
+          title="Session snapshots"
           onClick={onOpenSnapshots}
           data-testid="snapshots-button"
         >
-          <ClockCounterClockwiseIcon size={20} weight="regular" />
-        </button>
-        <button
-          className={styles.iconButton}
-          type="button"
+          <ClockCounterClockwiseIcon size={16} weight="regular" />
+        </IconButton>
+        <IconButton
+          size="lg"
           aria-label="Settings"
           title="Settings"
           onClick={onOpenSettings}
           data-testid="settings-button"
         >
-          <GearSixIcon size={20} weight="regular" />
-        </button>
+          <GearSixIcon size={16} weight="regular" />
+        </IconButton>
       </div>
       {contextMenu && (
         <TabContextMenu
@@ -438,28 +465,28 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
           items={[
             {
               key: 'move-start',
-              label: 'Move to Start',
+              label: 'Move to start',
               icon: <CaretLineLeftIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex <= 0,
               onSelect: () => reorderActiveConnection(contextMenu.sessionId, 0),
             },
             {
               key: 'move-left',
-              label: 'Move Left',
+              label: 'Move left',
               icon: <CaretLeftIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex <= 0,
               onSelect: () => moveActiveConnection(contextMenu.sessionId, 'left'),
             },
             {
               key: 'move-right',
-              label: 'Move Right',
+              label: 'Move right',
               icon: <CaretRightIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex < 0 || contextMenuTabIndex >= sessionIds.length - 1,
               onSelect: () => moveActiveConnection(contextMenu.sessionId, 'right'),
             },
             {
               key: 'move-end',
-              label: 'Move to End',
+              label: 'Move to end',
               icon: <CaretLineRightIcon size={14} weight="regular" />,
               disabled: contextMenuTabIndex < 0 || contextMenuTabIndex >= sessionIds.length - 1,
               onSelect: () => reorderActiveConnection(contextMenu.sessionId, sessionIds.length),

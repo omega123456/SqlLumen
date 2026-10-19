@@ -502,7 +502,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title={deleteTargetCount > 1 ? 'Delete Rows' : 'Delete Row'}
+        title={deleteTargetCount > 1 ? 'Delete rows' : 'Delete row'}
         message={
           deleteTargetCount > 1
             ? `Are you sure you want to delete these ${deleteTargetCount} rows?`

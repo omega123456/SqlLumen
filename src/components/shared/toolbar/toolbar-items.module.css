@@ -2,48 +2,44 @@
 
 /* ── View mode group ─────────────────────────────────────────────────────── */
 
+/* Segmented control (prototype `.segc`) */
 .viewModeGroup {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-control);
+  background: var(--fill-control);
+  flex-shrink: 0;
 }
 
 .viewModeButton {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  gap: 6px;
+  height: 26px;
+  min-width: 30px;
+  padding: 0 8px;
   border: none;
+  border-radius: 3px;
   background: transparent;
   color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-  position: relative;
+  font-size: var(--type-row-size);
+  cursor: default;
 }
 
 .viewModeButton:hover {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.06);
+  background: var(--fill-subtle-hover);
+  color: var(--on-surface);
 }
 
-.viewModeActive {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.1);
-}
-
-.viewModeActive::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 4px;
-  right: 4px;
-  height: 2px;
+.viewModeActive,
+.viewModeActive:hover {
   background: var(--primary);
-  border-radius: 1px;
+  color: var(--on-primary);
+  font-weight: var(--type-weight-semibold);
 }
 
 /* ── Pagination group ────────────────────────────────────────────────────── */
@@ -55,26 +51,11 @@
   flex-shrink: 0;
 }
 
+/* Small combo (prototype `.b.sm.combo`, 84px) — chrome from .ui-dropdown__trigger */
 .pageSizeSelect {
-  height: 28px;
-  padding: 0 6px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-size: 12px;
-  line-height: 16px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  outline: none;
-}
-
-.pageSizeSelect:focus {
-  border-color: var(--primary);
-}
-
-.pageSizeSelect option {
-  background: var(--surface-container);
-  color: var(--on-surface);
+  width: 84px;
+  height: var(--control-height-sm);
+  font-size: var(--type-row-size);
 }
 
 .pagination {
@@ -85,31 +66,46 @@
   flex-wrap: wrap;
 }
 
+/* Subtle small button (prototype `.b.sm.sub`) */
 .pageButton {
-  display: flex;
+  width: var(--control-height-sm);
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
+  gap: 6px;
+  box-sizing: border-box;
+  height: var(--control-height-sm);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s ease;
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  font-weight: var(--type-weight-regular);
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
 }
 
 .pageButton:hover:not(:disabled) {
-  color: var(--primary);
+  background: var(--fill-subtle-hover);
+}
+
+.pageButton:active:not(:disabled) {
+  background: var(--fill-subtle-pressed);
+  color: var(--on-surface-variant);
 }
 
 .pageButton:disabled {
-  opacity: 0.4;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
 .pageText {
-  font-size: 12px;
+  font-size: var(--type-row-size);
   color: var(--on-surface-variant);
   white-space: nowrap;
   user-select: none;
@@ -118,132 +114,162 @@
 }
 
 .pageOfText {
-  font-size: 12px;
+  font-size: var(--type-row-size);
   color: var(--on-surface-variant);
   white-space: nowrap;
   user-select: none;
 }
 
+/* Small text field (prototype `.fld`, 28px) */
 .pageInput {
+  box-sizing: border-box;
   width: 44px;
-  height: 28px;
+  height: var(--control-height-sm);
   padding: 0 6px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-size: 12px;
-  line-height: 16px;
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-text-field);
+  border-radius: var(--radius-control);
+  background: var(--fill-control);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
   text-align: center;
   outline: none;
 }
 
-.pageInput:focus {
-  border-color: var(--primary);
+.pageInput:focus,
+.pageInput:focus-visible {
+  background: var(--surface-container-high);
+  border-bottom-color: var(--primary);
+  box-shadow: inset 0 -1px 0 var(--primary);
 }
 
 .pageInput:disabled {
-  opacity: 0.4;
+  color: var(--text-disabled);
+  background: var(--fill-subtle-pressed);
+  border-bottom-color: var(--stroke-control);
   cursor: not-allowed;
 }
 
 /* ── Export button ────────────────────────────────────────────────────────── */
 
+/* Subtle small button (prototype `.b.sm.sub`) */
 .exportButton {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  box-sizing: border-box;
+  height: var(--control-height-sm);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  font-weight: var(--type-weight-regular);
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: default;
 }
 
 .exportButton:hover:not(:disabled) {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-  background: rgba(var(--primary-rgb), 0.06);
+  background: var(--fill-subtle-hover);
+}
+
+.exportButton:active:not(:disabled) {
+  background: var(--fill-subtle-pressed);
+  color: var(--on-surface-variant);
 }
 
 .exportButton:disabled {
-  opacity: 0.4;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 
 .iconButton {
   composes: exportButton;
-  width: 30px;
+  width: var(--control-height-sm);
   padding: 0;
-  justify-content: center;
 }
 
 /* ── Status area ─────────────────────────────────────────────────────────── */
 
+/* Result status (prototype `.rstat` + `.sdot`) */
 .statusArea {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  margin-left: 6px;
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  color: var(--on-surface-variant);
   min-width: 90px;
+  max-width: 100%;
+  flex-shrink: 0;
   overflow: hidden;
 }
 
-.successStatus {
+.statusArea b {
+  color: var(--on-surface);
+  font-weight: var(--type-weight-semibold);
+}
+
+.successStatus,
+.loadingStatus {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--result-status-success-fg);
+  gap: 8px;
   white-space: nowrap;
 }
 
 .executionTime {
-  font-size: 10px;
-  color: var(--on-surface-variant);
-  opacity: 0.6;
-  text-transform: none;
-  font-weight: 400;
   white-space: nowrap;
 }
 
 .errorStatus {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--error);
-  font-size: 12px;
+  gap: 8px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.loadingStatus {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--on-surface-variant);
-  white-space: nowrap;
+.errorStatus b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusDot {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--surface);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.statusDotOk {
+  background: var(--tertiary);
+}
+
+.statusDotError {
+  background: var(--error);
 }
 
 .miniSpinner {
   width: 12px;
   height: 12px;
-  border: 1.5px solid rgba(var(--primary-rgb), 0.2);
-  border-top-color: var(--primary);
+  border: 2px solid var(--primary);
+  border-right-color: transparent;
   border-radius: 50%;
   animation: toolbarItemSpin 0.7s linear infinite;
 }

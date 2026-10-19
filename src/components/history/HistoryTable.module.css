@@ -10,7 +10,7 @@
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-bottom: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
@@ -53,11 +53,9 @@
   font-family: var(--type-table-header-font);
   font-size: var(--type-table-header-size);
   font-weight: var(--type-table-header-weight);
-  letter-spacing: var(--type-table-header-tracking);
-  text-transform: uppercase;
   color: var(--on-surface-variant);
   white-space: nowrap;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .thTimestamp {
@@ -97,11 +95,11 @@
 
 .rowSelected {
   border-left: 2px solid var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-accent-tint);
 }
 
 .rowSelected:hover {
-  background: rgba(var(--primary-rgb), 0.12);
+  background: var(--fill-subtle-hover);
 }
 
 .td {
@@ -127,7 +125,7 @@
 .tdSql {
   font-family: var(--font-mono);
   font-size: var(--type-size-xs);
-  color: rgba(var(--on-surface-rgb), 0.8);
+  color: var(--on-surface-variant);
 }
 
 .tdSqlSelected {
@@ -157,7 +155,7 @@
 }
 
 .actionButton:hover {
-  background: rgba(var(--primary-rgb), 0.12);
+  background: var(--fill-subtle-hover);
   color: var(--primary);
 }
 
@@ -175,7 +173,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-sm) var(--space-md);
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-top: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
@@ -185,7 +183,7 @@
   color: var(--primary);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   padding: var(--space-xs) var(--space-md);
   border-radius: var(--radius-md);
@@ -193,7 +191,7 @@
 }
 
 .loadMoreButton:hover {
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-subtle-hover);
 }
 
 .loadMoreButton:disabled {

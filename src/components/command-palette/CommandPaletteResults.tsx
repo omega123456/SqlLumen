@@ -89,12 +89,11 @@ export function CommandPaletteResults({
 
   return (
     <div className={styles.resultsSurface}>
-      <div className={styles.resultsHeader}>
-        {isColumnScope
-          ? 'Columns'
-          : state === 'recents'
-            ? 'Recent'
-            : `${results.length} result${results.length === 1 ? '' : 's'}`}
+      <div className={styles.resultsHeader} data-testid="command-palette-group-header">
+        <span>{isColumnScope ? 'Columns' : state === 'recents' ? 'Recent' : 'Objects'}</span>
+        <span className={styles.resultsCount}>
+          {results.length} result{results.length === 1 ? '' : 's'}
+        </span>
       </div>
       <ul
         ref={listRef}

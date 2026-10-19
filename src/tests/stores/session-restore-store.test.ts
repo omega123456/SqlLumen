@@ -242,7 +242,7 @@ describe('useSessionRestoreStore — saveSession', () => {
       },
     })
 
-    const tabId = useWorkspaceStore.getState().openQueryTab('session-1', 'My Query')
+    const tabId = useWorkspaceStore.getState().openQueryTab('session-1', 'My query')
     useQueryStore.getState().setContent(tabId, 'SELECT * FROM users')
     useQueryStore.getState().setCursorPosition(tabId, { lineNumber: 1, column: 10 })
 
@@ -258,7 +258,7 @@ describe('useSessionRestoreStore — saveSession', () => {
     expect(parsed.connections[0].tabs[0].sql).toBe('SELECT * FROM users')
     expect(parsed.connections[0].tabs[0].cursorLine).toBe(1)
     expect(parsed.connections[0].tabs[0].cursorColumn).toBe(10)
-    expect(parsed.connections[0].tabs[0].label).toBe('My Query')
+    expect(parsed.connections[0].tabs[0].label).toBe('My query')
   })
 
   it('serializes the active scoped bottom-panel table tab on query tabs', async () => {
@@ -313,7 +313,7 @@ describe('useSessionRestoreStore — saveSession', () => {
       },
     }))
 
-    const queryTabId = useWorkspaceStore.getState().openQueryTab('session-1', 'My Query')
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('session-1', 'My query')
     useWorkspaceStore.getState().openTab({
       type: 'table-data',
       label: 'users',
@@ -688,7 +688,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
     // Process List tab should be auto-created for the restored connection
     const processlistTab = workspaceTabs.find((t) => t.type === 'processlist')
     expect(processlistTab).toBeDefined()
-    expect(processlistTab!.label).toBe('Process List')
+    expect(processlistTab!.label).toBe('Process list')
   })
 
   it('restores active connection using saved activeConnectionIndex', async () => {

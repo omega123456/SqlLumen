@@ -173,14 +173,7 @@ function getNodeIcon(
 ): { icon: React.ReactNode; className: string } {
   switch (type) {
     case 'database':
-      return {
-        icon: isExpanded ? (
-          <FolderOpen size={16} weight="regular" />
-        ) : (
-          <Folder size={16} weight="regular" />
-        ),
-        className: styles.iconDatabase,
-      }
+      return { icon: <Database size={16} weight="regular" />, className: styles.iconDatabase }
     case 'table':
       return { icon: <Table size={16} weight="regular" />, className: styles.iconTable }
     case 'view':
@@ -198,9 +191,9 @@ function getNodeIcon(
     case 'category':
       return {
         icon: isExpanded ? (
-          <FolderOpen size={14} weight="regular" />
+          <FolderOpen size={16} weight="fill" />
         ) : (
-          <Folder size={14} weight="regular" />
+          <Folder size={16} weight="fill" />
         ),
         className: styles.iconCategory,
       }

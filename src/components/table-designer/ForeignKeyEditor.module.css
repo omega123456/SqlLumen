@@ -9,17 +9,43 @@
   overflow: hidden;
 }
 
+/* Command bar and grid card shared with the Columns editor (prototype `.p-cmd`, `.dz-grid`) */
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.08);
-  background: transparent;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: var(--command-bar-height);
+  padding: 0 16px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.toolbar > * {
+  flex-shrink: 0;
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--stroke-divider);
+}
+
+.gridCard {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 20px 16px;
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-container-high);
+  overflow: hidden;
 }
 
 .tableScroller {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
 }
@@ -88,15 +114,14 @@
 .headerCell {
   position: sticky;
   top: 0;
-  padding: 10px 12px;
-  background: transparent;
+  height: var(--grid-header-height);
+  padding: 0 8px;
+  background: var(--surface-container);
   color: var(--on-surface-variant);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  border-bottom: 1px solid var(--stroke-divider);
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
@@ -118,7 +143,7 @@
 }
 
 .row:hover {
-  background: rgba(var(--on-surface-rgb), 0.04);
+  background: var(--fill-subtle-hover);
 }
 
 .evenRow {
@@ -129,8 +154,9 @@
   background: transparent;
 }
 
-.selectedRow {
-  background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
+.selectedRow,
+.row.selectedRow:hover {
+  background: var(--fill-accent-tint);
 }
 
 .selectedRow .rowAccent {
@@ -139,8 +165,8 @@
 
 .bodyCell {
   position: relative;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.06);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--stroke-divider);
   vertical-align: middle;
 }
 
@@ -155,7 +181,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 3px;
   background: transparent;
 }
 
@@ -174,12 +200,11 @@
     color 0.15s ease;
 }
 
-.inactiveInput {
-  background: transparent;
-}
-
+/* Cell controls keep the Fluent control fill in every row (prototype `.dz-grid .fld`, `.combo`);
+   the row itself shows the selection. */
+.inactiveInput,
 .activeInput {
-  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
+  background: var(--fill-control);
 }
 
 .readonlyText {
@@ -199,10 +224,8 @@
   border-radius: 999px;
   background: color-mix(in srgb, var(--warning-container) 45%, transparent);
   color: var(--warning);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
 }
 
 .compositeSummary {

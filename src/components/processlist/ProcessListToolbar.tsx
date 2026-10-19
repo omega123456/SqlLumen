@@ -196,7 +196,7 @@ export function ProcessListToolbar({
   const killLabel =
     selectedCount > 0
       ? `Kill ${selectedCount} ${selectedCount === 1 ? 'Query' : 'Queries'}`
-      : 'Kill Query'
+      : 'Kill query'
 
   // Build the confirm content with truncated SQL for each selected process
   const confirmMessage =
@@ -295,7 +295,7 @@ export function ProcessListToolbar({
 
       <ConfirmDialog
         isOpen={isConfirmDialogOpen}
-        title="Kill Processes"
+        title="Kill processes"
         message={confirmMessage}
         confirmLabel="Kill"
         isDestructive

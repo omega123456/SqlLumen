@@ -32,10 +32,34 @@ export interface ClassifyCellValueOptions {
 
 export type ClassifiedCellValue = CellStateFlags & { displayValue: string; copyValue: string }
 
-export const NULL_CELL_THEME_OVERRIDE = {
-  baseFontStyle: 'italic 13px',
-  textDark: 'rgba(128, 128, 128, 0.75)',
-} as const
+/** Canvas cells cannot read CSS variables, so resolve the NULL tokens once per theme. */
+let nullTokenCache: { theme: string | null; color: string; mono: string } | null = null
+
+function nullTokens(): { color: string; mono: string } {
+  const theme = document.documentElement.getAttribute('data-theme')
+  if (nullTokenCache === null || nullTokenCache.theme !== theme) {
+    const styles = getComputedStyle(document.documentElement)
+    nullTokenCache = {
+      theme,
+      color: styles.getPropertyValue('--td-null-text-color').trim(),
+      mono: styles.getPropertyValue('--font-mono').trim(),
+    }
+  }
+  return nullTokenCache
+}
+
+function nullTextColor(): string {
+  return nullTokens().color
+}
+
+/**
+ * Theme override for NULL placeholders: italic mono in the tertiary text colour.
+ * The mono stack carries a trailing comma because Glide appends the grid font family.
+ */
+export function nullCellThemeOverride(): { baseFontStyle: string; textDark: string } {
+  const { color, mono } = nullTokens()
+  return { baseFontStyle: mono ? `italic 13px ${mono},` : 'italic 13px', textDark: color }
+}
 
 /**
  * Render the placeholder shown for a binary cell.
@@ -165,7 +189,7 @@ export function buildNullCell(copyValue = 'NULL'): GridCell {
     copyData: copyValue,
     allowOverlay: false,
     readonly: true,
-    themeOverride: NULL_CELL_THEME_OVERRIDE,
+    themeOverride: nullCellThemeOverride(),
   } satisfies TextCell
 }
 
@@ -178,7 +202,7 @@ export function buildBlobCell(displayValue: string, copyValue = displayValue): G
     allowOverlay: false,
     readonly: true,
     style: 'faded',
-    themeOverride: { textDark: 'rgba(128, 128, 128, 0.7)' },
+    themeOverride: { textDark: nullTextColor() },
   } satisfies TextCell
 }
 

@@ -96,7 +96,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           id: 'session-1',
           profile: {
             id: 'profile-1',
-            name: 'Test Connection',
+            name: 'Test connection',
             host: 'localhost',
             port: 3306,
             username: 'root',
@@ -424,7 +424,7 @@ describe('useConnectionStore — Process List integration', () => {
           id: 'session-1',
           profile: {
             id: 'profile-1',
-            name: 'Test Connection',
+            name: 'Test connection',
             host: 'localhost',
             port: 3306,
             username: 'root',
@@ -490,7 +490,7 @@ describe('useConnectionStore — openConnection creates default workspace tabs',
       savedConnections: [
         {
           id: 'profile-1',
-          name: 'Test Connection',
+          name: 'Test connection',
           host: 'localhost',
           port: 3306,
           username: 'root',

@@ -100,7 +100,7 @@ function copyToHostMenuItem(args: {
   const { databaseName, onCopyToHost, closeMenu, objectSelection } = args
   return {
     key: 'copy-to-host',
-    label: 'Copy to Another Host...',
+    label: 'Copy to another host...',
     icon: <ArrowSquareOut size={18} weight="regular" />,
     disabled: !onCopyToHost,
     destructive: false,
@@ -497,7 +497,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
       return [
         {
           key: 'copy-name',
-          label: 'Copy Column Name',
+          label: 'Copy column name',
           icon: <CopySimple size={18} weight="regular" />,
           disabled: false,
           destructive: false,
@@ -544,7 +544,7 @@ function buildDatabaseMenu(args: {
     return [
       {
         key: 'export-dump',
-        label: 'Export SQL Dump...',
+        label: 'Export SQL dump...',
         icon: <Export size={18} weight="regular" />,
         disabled: !onExportDump,
         destructive: false,
@@ -556,7 +556,7 @@ function buildDatabaseMenu(args: {
       copyToHostMenuItem({ databaseName, onCopyToHost, closeMenu }),
       {
         key: 'export-ddl',
-        label: 'Export Schema DDL...',
+        label: 'Export schema DDL...',
         icon: <FileCode size={18} weight="regular" />,
         disabled: !onExportDdl,
         destructive: false,
@@ -580,7 +580,7 @@ function buildDatabaseMenu(args: {
   return [
     {
       key: 'create-database',
-      label: 'Create Database...',
+      label: 'Create database...',
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateDatabase,
       destructive: false,
@@ -591,7 +591,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'create-table',
-      label: 'Create Table...',
+      label: 'Create table...',
       icon: <Table size={18} weight="regular" />,
       disabled: !onCreateTable,
       destructive: false,
@@ -602,7 +602,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'create-view',
-      label: 'Create View...',
+      label: 'Create view...',
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateObject,
       destructive: false,
@@ -613,7 +613,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'create-procedure',
-      label: 'Create Procedure...',
+      label: 'Create procedure...',
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateObject,
       destructive: false,
@@ -624,7 +624,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'create-function',
-      label: 'Create Function...',
+      label: 'Create function...',
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateObject,
       destructive: false,
@@ -635,7 +635,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'create-trigger',
-      label: 'Create Trigger...',
+      label: 'Create trigger...',
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateObject,
       destructive: false,
@@ -646,7 +646,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'create-event',
-      label: 'Create Event...',
+      label: 'Create event...',
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateObject,
       destructive: false,
@@ -657,7 +657,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'alter-database',
-      label: 'Alter Database...',
+      label: 'Alter database...',
       icon: <Database size={18} weight="regular" />,
       disabled: !onAlterDatabase,
       destructive: false,
@@ -668,7 +668,7 @@ function buildDatabaseMenu(args: {
     },
     {
       key: 'rename-database',
-      label: 'Rename Database...',
+      label: 'Rename database...',
       icon: <PencilSimple size={18} weight="regular" />,
       disabled: !onRenameDatabase,
       destructive: false,
@@ -680,7 +680,7 @@ function buildDatabaseMenu(args: {
     { key: 'sep-1', separator: true },
     {
       key: 'export-dump',
-      label: 'Export SQL Dump...',
+      label: 'Export SQL dump...',
       icon: <Export size={18} weight="regular" />,
       disabled: !onExportDump,
       destructive: false,
@@ -692,7 +692,7 @@ function buildDatabaseMenu(args: {
     copyToHostMenuItem({ databaseName, onCopyToHost, closeMenu }),
     {
       key: 'export-ddl',
-      label: 'Export Schema DDL...',
+      label: 'Export schema DDL...',
       icon: <FileCode size={18} weight="regular" />,
       disabled: !onExportDdl,
       destructive: false,
@@ -704,7 +704,7 @@ function buildDatabaseMenu(args: {
     { key: 'sep-2', separator: true },
     {
       key: 'drop-database',
-      label: 'Drop Database...',
+      label: 'Drop database...',
       icon: <Trash size={18} weight="regular" />,
       disabled: !onDropDatabase,
       destructive: true,
@@ -764,7 +764,7 @@ function buildTableMenu(args: {
     return [
       {
         key: 'schema-info',
-        label: 'Schema Info',
+        label: 'Schema info',
         icon: <Info size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -772,7 +772,7 @@ function buildTableMenu(args: {
       },
       {
         key: 'export-dump',
-        label: 'Export SQL Dump...',
+        label: 'Export SQL dump...',
         icon: <Export size={18} weight="regular" />,
         disabled: !onExportDump,
         destructive: false,
@@ -790,7 +790,7 @@ function buildTableMenu(args: {
       }),
       {
         key: 'copy-name',
-        label: 'Copy Table Name',
+        label: 'Copy table name',
         icon: <CopySimple size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -810,7 +810,7 @@ function buildTableMenu(args: {
   return [
     {
       key: 'create-table',
-      label: 'Create Table...',
+      label: 'Create table...',
       icon: <Table size={18} weight="regular" />,
       disabled: !onCreateTable,
       destructive: false,
@@ -821,7 +821,7 @@ function buildTableMenu(args: {
     },
     {
       key: 'select-rows',
-      label: 'Select Top 100 Rows',
+      label: 'Select top 100 rows',
       icon: <ListNumbers size={18} weight="regular" />,
       disabled: true, // Phase 4
       destructive: false,
@@ -831,7 +831,7 @@ function buildTableMenu(args: {
     },
     {
       key: 'design-table',
-      label: 'Alter Table...',
+      label: 'Alter table...',
       icon: <Wrench size={18} weight="regular" />,
       disabled: !onDesignTable,
       destructive: false,
@@ -842,7 +842,7 @@ function buildTableMenu(args: {
     },
     {
       key: 'schema-info',
-      label: 'Schema Info',
+      label: 'Schema info',
       icon: <Info size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -851,7 +851,7 @@ function buildTableMenu(args: {
     { key: 'sep-1', separator: true },
     {
       key: 'export-dump',
-      label: 'Export SQL Dump...',
+      label: 'Export SQL dump...',
       icon: <Export size={18} weight="regular" />,
       disabled: !onExportDump,
       destructive: false,
@@ -868,7 +868,7 @@ function buildTableMenu(args: {
     }),
     {
       key: 'export-ddl',
-      label: 'Export Schema DDL...',
+      label: 'Export schema DDL...',
       icon: <FileCode size={18} weight="regular" />,
       disabled: !onExportDdl,
       destructive: false,
@@ -880,7 +880,7 @@ function buildTableMenu(args: {
     { key: 'sep-2', separator: true },
     {
       key: 'truncate-table',
-      label: 'Truncate Table...',
+      label: 'Truncate table...',
       icon: <Eraser size={18} weight="regular" />,
       disabled: !onTruncateTable,
       destructive: true,
@@ -891,7 +891,7 @@ function buildTableMenu(args: {
     },
     {
       key: 'drop-table',
-      label: 'Drop Table...',
+      label: 'Drop table...',
       icon: <Trash size={18} weight="regular" />,
       disabled: !onDropTable,
       destructive: true,
@@ -903,7 +903,7 @@ function buildTableMenu(args: {
     { key: 'sep-3', separator: true },
     {
       key: 'rename-table',
-      label: 'Rename Table...',
+      label: 'Rename table...',
       icon: <PencilSimple size={18} weight="regular" />,
       disabled: !onRenameTable,
       destructive: false,
@@ -914,7 +914,7 @@ function buildTableMenu(args: {
     },
     {
       key: 'copy-name',
-      label: 'Copy Table Name',
+      label: 'Copy table name',
       icon: <CopySimple size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -955,7 +955,7 @@ function buildCategoryMenu(args: {
   if (categoryType === 'table' && !isReadOnly) {
     entries.push({
       key: 'create-table',
-      label: 'Create Table...',
+      label: 'Create table...',
       icon: <Table size={18} weight="regular" />,
       disabled: !onCreateTable,
       destructive: false,
@@ -976,10 +976,9 @@ function buildCategoryMenu(args: {
   }
   const objectType = categoryType ? objectCategoryMap[categoryType] : undefined
   if (objectType && !isReadOnly) {
-    const typeLabel = categoryType!.charAt(0).toUpperCase() + categoryType!.slice(1)
     entries.push({
       key: `create-${objectType}`,
-      label: `Create ${typeLabel}...`,
+      label: `Create ${categoryType}...`,
       icon: <PlusCircle size={18} weight="regular" />,
       disabled: !onCreateObject,
       destructive: false,
@@ -1035,7 +1034,7 @@ function buildViewMenu(args: {
     return [
       {
         key: 'view-data',
-        label: 'View Data',
+        label: 'View data',
         icon: <Rows size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1043,7 +1042,7 @@ function buildViewMenu(args: {
       },
       {
         key: 'schema-info',
-        label: 'Schema Info',
+        label: 'Schema info',
         icon: <Info size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1051,7 +1050,7 @@ function buildViewMenu(args: {
       },
       {
         key: 'copy-name',
-        label: 'Copy Name',
+        label: 'Copy name',
         icon: <CopySimple size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1071,7 +1070,7 @@ function buildViewMenu(args: {
   return [
     {
       key: 'view-data',
-      label: 'View Data',
+      label: 'View data',
       icon: <Rows size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -1079,7 +1078,7 @@ function buildViewMenu(args: {
     },
     {
       key: 'schema-info',
-      label: 'Schema Info',
+      label: 'Schema info',
       icon: <Info size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -1087,7 +1086,7 @@ function buildViewMenu(args: {
     },
     {
       key: 'alter-view',
-      label: 'Alter View...',
+      label: 'Alter view...',
       icon: <PencilSimple size={18} weight="regular" />,
       disabled: !onAlterObject,
       destructive: false,
@@ -1099,7 +1098,7 @@ function buildViewMenu(args: {
     { key: 'sep-1', separator: true },
     {
       key: 'drop-view',
-      label: 'Drop View...',
+      label: 'Drop view...',
       icon: <Trash size={18} weight="regular" />,
       disabled: !onDropObject,
       destructive: true,
@@ -1111,7 +1110,7 @@ function buildViewMenu(args: {
     { key: 'sep-2', separator: true },
     {
       key: 'copy-name',
-      label: 'Copy Name',
+      label: 'Copy name',
       icon: <CopySimple size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -1161,13 +1160,13 @@ function buildRoutineMenu(args: {
     closeMenu,
   } = args
   const category: CopyObjectCategory = nodeType === 'procedure' ? 'procedures' : 'functions'
-  const typeLabel = nodeType === 'procedure' ? 'Procedure' : 'Function'
+  const typeLabel = nodeType === 'procedure' ? 'procedure' : 'function'
 
   if (isReadOnly) {
     return [
       {
         key: 'schema-info',
-        label: 'Schema Info',
+        label: 'Schema info',
         icon: <Info size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1181,7 +1180,7 @@ function buildRoutineMenu(args: {
       }),
       {
         key: 'copy-name',
-        label: 'Copy Name',
+        label: 'Copy name',
         icon: <CopySimple size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1201,7 +1200,7 @@ function buildRoutineMenu(args: {
   return [
     {
       key: 'schema-info',
-      label: 'Schema Info',
+      label: 'Schema info',
       icon: <Info size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -1250,7 +1249,7 @@ function buildRoutineMenu(args: {
     }),
     {
       key: 'copy-name',
-      label: 'Copy Name',
+      label: 'Copy name',
       icon: <CopySimple size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -1294,13 +1293,13 @@ function buildTriggerEventMenu(args: {
     closeMenu,
   } = args
   const category: CopyObjectCategory = nodeType === 'trigger' ? 'triggers' : 'events'
-  const typeLabel = nodeType === 'trigger' ? 'Trigger' : 'Event'
+  const typeLabel = nodeType === 'trigger' ? 'trigger' : 'event'
 
   if (isReadOnly) {
     return [
       {
         key: 'schema-info',
-        label: 'Schema Info',
+        label: 'Schema info',
         icon: <Info size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1314,7 +1313,7 @@ function buildTriggerEventMenu(args: {
       }),
       {
         key: 'copy-name',
-        label: 'Copy Name',
+        label: 'Copy name',
         icon: <CopySimple size={18} weight="regular" />,
         disabled: false,
         destructive: false,
@@ -1334,7 +1333,7 @@ function buildTriggerEventMenu(args: {
   return [
     {
       key: 'schema-info',
-      label: 'Schema Info',
+      label: 'Schema info',
       icon: <Info size={18} weight="regular" />,
       disabled: false,
       destructive: false,
@@ -1372,7 +1371,7 @@ function buildTriggerEventMenu(args: {
     }),
     {
       key: 'copy-name',
-      label: 'Copy Name',
+      label: 'Copy name',
       icon: <CopySimple size={18} weight="regular" />,
       disabled: false,
       destructive: false,

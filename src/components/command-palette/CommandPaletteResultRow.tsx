@@ -1,7 +1,9 @@
 import { ClockCounterClockwise } from '@phosphor-icons/react'
 import { Fragment, useMemo, type MouseEvent } from 'react'
 import type { PaletteSearchResult } from '../../lib/command-palette-search'
+import type { PaletteResultType } from '../../types/schema'
 import { ObjectTypeIcon } from '../shared/ObjectTypeIcon'
+import { SearchColumnsHint } from './CommandPaletteKeyHints'
 import styles from './CommandPaletteResults.module.css'
 
 export interface CommandPaletteResultRowProps {
@@ -10,6 +12,15 @@ export interface CommandPaletteResultRowProps {
   isActive: boolean
   isRecent: boolean
   onSelect: (result: PaletteSearchResult) => void
+}
+
+const KIND_LABELS: Record<PaletteResultType, string> = {
+  table: 'Table',
+  view: 'View',
+  procedure: 'Procedure',
+  function: 'Function',
+  trigger: 'Trigger',
+  column: 'Column',
 }
 
 function buildHighlightFlags(
@@ -82,7 +93,8 @@ export function CommandPaletteResultRow({
   onSelect,
 }: CommandPaletteResultRowProps) {
   const highlightedName = useMemo(() => renderHighlightedName(result), [result])
-  const metaLabel = result.metaLabel ?? result.database
+  // Columns show their data type; objects show "<Kind> · <database>" (prototype `.pi-row .db`).
+  const metaLabel = result.metaLabel ?? `${KIND_LABELS[result.objectType]} · ${result.database}`
 
   const handleMouseDown = (event: MouseEvent<HTMLLIElement>) => {
     event.preventDefault()
@@ -100,26 +112,15 @@ export function CommandPaletteResultRow({
       onClick={() => onSelect(result)}
     >
       <div className={styles.rowIcon}>
-        <ObjectTypeIcon objectType={result.objectType} size={18} weight="duotone" />
+        <ObjectTypeIcon objectType={result.objectType} size={16} weight="regular" />
       </div>
       <div className={styles.rowText}>
         <span className={styles.rowName}>{highlightedName}</span>
-        <span
-          className={styles.rowMeta}
-          aria-label={result.metaLabel ? `Type ${result.metaLabel}` : `Database ${result.database}`}
-        >
-          <span aria-hidden="true" className={styles.separator}>
-            {' '}
-            ·{' '}
-          </span>
-          {metaLabel}
-        </span>
+        <span className={styles.rowMeta}>{metaLabel}</span>
       </div>
       {result.objectType === 'table' || isRecent ? (
         <span className={styles.rowTrailing}>
-          {result.objectType === 'table' ? (
-            <span className={styles.scopeHint}>Tab to search columns</span>
-          ) : null}
+          {result.objectType === 'table' ? <SearchColumnsHint /> : null}
           {isRecent ? (
             <span className={styles.recentBadge} aria-label="Recent object">
               <ClockCounterClockwise size={14} weight="bold" />

@@ -4,7 +4,6 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
-import { useThemeStore } from '../../stores/theme-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
@@ -20,7 +19,6 @@ const statusLabel: Record<string, string> = {
 export function StatusBar() {
   const activeConnections = useConnectionStore((s) => s.activeConnections)
   const connectionTabId = useConnectionStore((s) => s.activeTabId)
-  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
   const updateStatus = useUpdateStore((s) => s.status)
   const openSettingsDialog = useSettingsStore((s) => s.openDialog)
 
@@ -151,29 +149,22 @@ export function StatusBar() {
   const isEmbeddingPhase = indexPhase === 'embedding' && (indexState?.tablesTotal ?? 0) > 0
   const isFinalizingPhase = indexPhase === 'finalizing' && hasTableTotals
   const isCountBasedProgressPhase = isEmbeddingPhase || isFinalizingPhase
-  const isDark = resolvedTheme === 'dark'
 
   function buildIndexingLabel(): string {
     if (!indexState) {
-      return isDark ? 'Preparing index...' : 'PREPARING INDEX...'
+      return 'Preparing index...'
     }
     if (isFinalizingPhase) {
-      return isDark
-        ? `Finalizing ${indexState.tablesDone}/${indexState.tablesTotal}`
-        : `FINALIZING: ${indexState.tablesDone}/${indexState.tablesTotal}`
+      return `Finalizing ${indexState.tablesDone}/${indexState.tablesTotal}`
     }
     if (isEmbeddingPhase) {
-      return isDark
-        ? `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
-        : `INDEXING: ${indexState.tablesDone}/${indexState.tablesTotal} TABLES`
+      return `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
     }
     // loading_schema or unknown pre-progress phase
     if (indexPhase === 'loading_schema' && indexState.tablesDone > 0) {
-      return isDark
-        ? `Reading schema (${indexState.tablesDone} tables)...`
-        : `READING SCHEMA (${indexState.tablesDone} TABLES)...`
+      return `Reading schema (${indexState.tablesDone} tables)...`
     }
-    return isDark ? 'Reading schema...' : 'READING SCHEMA...'
+    return 'Reading schema...'
   }
 
   const indexingLabel = buildIndexingLabel()
@@ -282,9 +273,7 @@ export function StatusBar() {
                 weight="fill"
                 className={`${styles.indexingIcon} ${styles.indexingReady}`}
               />
-              <span className={`${styles.indexingText} ${styles.indexingReady}`}>
-                {resolvedTheme === 'dark' ? 'Index ready' : 'INDEX READY'}
-              </span>
+              <span className={`${styles.indexingText} ${styles.indexingReady}`}>Index ready</span>
             </div>
           )}
           {showIndexError && (
@@ -297,9 +286,7 @@ export function StatusBar() {
                 weight="fill"
                 className={`${styles.indexingIcon} ${styles.indexingError}`}
               />
-              <span className={`${styles.indexingText} ${styles.indexingError}`}>
-                {resolvedTheme === 'dark' ? 'Index error' : 'INDEX ERROR'}
-              </span>
+              <span className={`${styles.indexingText} ${styles.indexingError}`}>Index error</span>
             </div>
           )}
           {showRunningInfo && (
@@ -311,22 +298,24 @@ export function StatusBar() {
           {showQueryInfo && activeResultState && (
             <div className={styles.queryInfo} data-testid="query-info">
               <span className={styles.queryInfoItem} data-testid="query-rows">
-                <span className={styles.queryInfoLabel}>Rows:</span> {activeResultState.totalRows}
+                <span className={styles.queryInfoLabel}>Rows</span>{' '}
+                <b className={styles.queryInfoTime}>{activeResultState.totalRows}</b>
               </span>
               <span className={styles.queryInfoItem} data-testid="query-time">
-                <span className={styles.queryInfoLabel}>Exec:</span>{' '}
-                <span className={styles.queryInfoTime}>{activeResultState.executionTimeMs}ms</span>
+                <span className={styles.queryInfoLabel}>Exec</span>{' '}
+                <b className={styles.queryInfoTime}>{activeResultState.executionTimeMs} ms</b>
               </span>
               <span className={styles.queryInfoItem} data-testid="query-total-time">
-                <span className={styles.queryInfoLabel}>Total:</span>{' '}
-                <span className={styles.queryInfoTime}>{activeResultState.totalTimeMs}ms</span>
+                <span className={styles.queryInfoLabel}>Total</span>{' '}
+                <b className={styles.queryInfoTime}>{activeResultState.totalTimeMs} ms</b>
               </span>
             </div>
           )}
           {showTableInfo && (
             <div className={styles.queryInfo} data-testid="table-data-info">
               <span className={styles.queryInfoItem} data-testid="table-data-rows">
-                <span className={styles.queryInfoLabel}>Rows:</span> {visibleTableRows}
+                <span className={styles.queryInfoLabel}>Rows</span>{' '}
+                <b className={styles.queryInfoTime}>{visibleTableRows}</b>
               </span>
             </div>
           )}

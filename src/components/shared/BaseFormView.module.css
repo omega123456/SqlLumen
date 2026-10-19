@@ -17,16 +17,15 @@
   justify-content: space-between;
   padding: 16px 24px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .recordTitle {
   font-family: var(--font-headline);
   font-size: var(--type-size-xl);
-  font-weight: 800;
+  font-weight: 600;
   color: var(--on-surface);
   margin: 0;
-  letter-spacing: -0.01em;
 }
 
 .navGroup {
@@ -54,10 +53,8 @@
   color: var(--on-surface);
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   cursor: pointer;
   transition:
     color 0.15s ease,
@@ -85,12 +82,10 @@
   padding: 6px 16px;
   background: transparent;
   color: var(--on-surface-variant);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   cursor: pointer;
   transition:
     color 0.15s ease,
@@ -100,7 +95,7 @@
 
 .discardButton:hover:not(:disabled) {
   color: var(--on-surface);
-  border-color: rgba(var(--outline-variant-rgb), 0.4);
+  border-color: var(--stroke-card);
 }
 
 .discardButton:disabled {
@@ -114,12 +109,9 @@
   color: var(--on-primary);
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.2);
   transition:
     filter 0.15s ease,
     box-shadow 0.15s ease;
@@ -127,7 +119,6 @@
 
 .saveButton:hover:not(:disabled) {
   filter: brightness(1.1);
-  box-shadow: 0 6px 18px rgba(var(--primary-rgb), 0.3);
 }
 
 .saveButton:disabled {
@@ -146,14 +137,14 @@
 .formCard {
   background: var(--surface-container);
   border: 1px solid var(--outline-variant);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 24px;
 }
 
 /* Individual field group */
 .fieldGroup {
   padding: 12px 0;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .fieldGroup:last-child {
@@ -169,11 +160,9 @@
 }
 
 .fieldLabel {
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   color: var(--on-surface-variant);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   font-family: var(--font-headline);
   display: flex;
   align-items: center;
@@ -181,11 +170,10 @@
 }
 
 .fieldLabelSuffix {
-  font-size: 10px;
+  font-size: var(--type-caption-size);
   font-weight: 600;
-  color: rgba(var(--on-surface-rgb), 0.35);
+  color: var(--outline);
   text-transform: none;
-  letter-spacing: 0.05em;
 }
 
 /* Lock icon for non-editable columns in edit mode */
@@ -209,12 +197,10 @@
   padding: 2px 8px;
   background: transparent;
   color: var(--on-surface-variant);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  border: 1px solid var(--stroke-card);
   border-radius: var(--radius-sm);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   cursor: pointer;
   transition:
     color 0.15s ease,
@@ -230,7 +216,7 @@
 .fieldNullBtnActive {
   color: var(--primary);
   border-color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-accent-tint);
 }
 
 /* Field value row (input + copy button + calendar button) */
@@ -253,7 +239,7 @@
 .fieldInputReadonly {
   flex: 1;
   background: var(--background);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   color: var(--on-surface-variant);
   font-size: var(--type-size-md);
   font-family: var(--font-mono);
@@ -267,7 +253,7 @@
 .fieldBlobReadonly {
   flex: 1;
   background: var(--background);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border: 1px solid var(--stroke-card);
   color: var(--on-surface-variant);
   font-size: var(--type-size-md);
   font-family: var(--font-mono);
@@ -313,7 +299,7 @@
 
 .fieldCopyBtn:hover {
   color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-subtle-hover);
 }
 
 /* Per-field date/time picker button */
@@ -336,7 +322,7 @@
 
 .fieldCalendarBtn:hover {
   color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-subtle-hover);
 }
 
 .fieldCalendarBtn:disabled {
@@ -364,7 +350,7 @@
 
 .fieldFkButton:hover {
   color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-subtle-hover);
 }
 
 /* "Unsaved change detected" note */
@@ -373,15 +359,13 @@
   align-items: center;
   gap: 6px;
   margin-top: 6px;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   color: var(--primary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
 .fieldModifiedNoteIcon {
-  font-size: 14px;
+  font-size: var(--type-body-size);
   line-height: 1;
 }
 
@@ -393,33 +377,4 @@
   height: 100%;
   color: var(--on-surface-variant);
   font-size: var(--type-size-sm);
-}
-
-/* ---- Light theme overrides ---- */
-
-[data-theme='light'] .formCard {
-  background: white;
-  border-color: #e2e8f0;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-[data-theme='light'] .navButtonGroup {
-  background: #e2e8f0;
-  border-color: #e2e8f0;
-}
-
-[data-theme='light'] .navButton {
-  background: white;
-  color: #334155;
-}
-
-[data-theme='light'] .navButton:hover:not(:disabled) {
-  color: var(--primary);
-  background: #f1f5f9;
-}
-
-[data-theme='light'] .fieldLabel {
-  color: #64748b;
 }

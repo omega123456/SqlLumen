@@ -44,6 +44,7 @@ export function ApplySchemaChangesDialog({
         identifier: styles.identifier,
         type: styles.type,
         string: styles.string,
+        number: styles.number,
       }),
     [ddl]
   )
@@ -85,13 +86,13 @@ export function ApplySchemaChangesDialog({
       onClose={onCancel}
       maxWidth={760}
       testId="apply-schema-dialog"
-      ariaLabel="Apply Schema Changes"
+      ariaLabel="Apply schema changes"
       disableFocusManagement={isPlaywright}
       nonDismissible={isExecuting}
     >
       <div className={styles.root}>
         <div className={styles.header}>
-          <h2 className={styles.title}>Apply Schema Changes</h2>
+          <h2 className={styles.title}>Apply schema changes</h2>
           <p className={styles.description}>The following SQL will be executed:</p>
         </div>
 
@@ -121,22 +122,21 @@ export function ApplySchemaChangesDialog({
 
         <div className={styles.actions}>
           <Button
-            variant="secondary"
+            variant="accent"
+            className={styles.executeButton}
+            onClick={handleExecute}
+            disabled={isExecuting}
+            data-testid="apply-schema-confirm"
+          >
+            {isExecuting ? 'Executing...' : 'Execute changes'}
+          </Button>
+          <Button
             className={styles.cancelButton}
             onClick={onCancel}
             disabled={isExecuting}
             data-testid="apply-schema-cancel"
           >
             Cancel
-          </Button>
-          <Button
-            variant="primary"
-            className={styles.executeButton}
-            onClick={handleExecute}
-            disabled={isExecuting}
-            data-testid="apply-schema-confirm"
-          >
-            {isExecuting ? 'Executing...' : 'Execute Changes'}
           </Button>
         </div>
       </div>

@@ -6,16 +6,14 @@
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--type-size-2xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .error {
-  background: rgba(var(--error-rgb), 0.18);
+  background: var(--error-container);
   border-color: rgba(var(--error-rgb), 0.3);
   color: var(--error);
 }
@@ -27,14 +25,14 @@
 }
 
 .info {
-  background: rgba(var(--primary-rgb), 0.16);
+  background: var(--fill-accent-tint);
   border-color: rgba(var(--primary-rgb), 0.28);
   color: var(--primary);
 }
 
 .debug {
-  background: rgba(var(--on-surface-rgb), 0.1);
-  border-color: rgba(var(--on-surface-rgb), 0.16);
+  background: var(--fill-neutral-selected);
+  border-color: var(--stroke-control);
   color: var(--secondary);
 }
 

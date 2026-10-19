@@ -1,108 +1,185 @@
 /* ============================================================
-   Design Tokens — CSS Custom Properties
-   Dark theme is default (:root), light theme applied via
-   [data-theme="light"] on <html>
+   Design Tokens — CSS Custom Properties (Fluent layer model)
+
+   Source of truth: .agent/plans/2026-10-19_fluent-redesign_proposal/index.html
+   ("Token map", "Shape and elevation", "Heights", "Type ramp").
+
+   Structure:
+   - :root holds the dark theme primitives AND every semantic token.
+   - [data-theme='light'] overrides primitives only (plus the -rgb triplets).
+     Semantic tokens reference primitives, so they follow the theme
+     automatically (data-theme is only ever set on <html>).
+   - Components consume tokens only; tokens are the single colour source.
    ============================================================ */
 
 :root {
-  /* Colors — Dark Theme (default) */
-  --surface: #0b1326;
-  --surface-dim: #0b1326;
-  --surface-bright: #31394d;
-  --surface-container-lowest: #060e20;
-  --surface-container-low: #131b2e;
-  --surface-container: #171f33;
-  --surface-container-high: #222a3d;
-  --surface-container-highest: #2d3449;
-  --surface-variant: #2d3449;
-  --surface-tint: #7bd0ff;
-  --surface-tint-rgb: 123, 208, 255;
-  --primary: #7bd0ff;
-  --primary-rgb: 123, 208, 255;
-  --primary-container: #007fac;
-  --primary-gradient-from: #7bd0ff;
-  --primary-gradient-to: #007fac;
-  --on-primary: #00354a;
-  --on-primary-container: #ffffff;
-  --secondary: #b9c8de;
-  --secondary-container: #39485a;
-  --tertiary: #4ae176;
-  --tertiary-container: #00893c;
-  --warning: #fcd34d;
-  --warning-container: #78350f;
-  --error: #ffb4ab;
-  --error-rgb: 255, 180, 171;
-  --error-container: #93000a;
-  --on-surface: #dae2fd;
-  --on-surface-rgb: 218, 226, 253;
-  --on-surface-variant: #c0c7d3;
-  --on-error: #690005;
-  --on-error-container: #ffdad6;
-  --outline: #8a919d;
-  --outline-variant: #404751;
-  --outline-variant-rgb: 64, 71, 81;
-  --inverse-surface: #dae2fd;
-  --inverse-on-surface: #283044;
-  --background: #0b1326;
-  --on-background: #dae2fd;
-  --glass-surface: rgba(23, 31, 51, 0.85);
-  --glass-surface-rgb: 23, 31, 51;
+  color-scheme: dark;
+
+  /* ---------- Fluent primitives — dark ---------- */
+  /* Surfaces: base (title/status strips) → layer (sidebar, workspace) → card → well */
+  --surface: #202020;
+  --surface-dim: #202020;
+  --surface-bright: #2c2c2c;
+  --surface-container-lowest: #1c1c1c;
+  --surface-container-low: #272727;
+  --surface-container: #272727;
+  --surface-container-high: #2c2c2c;
+  --surface-container-highest: rgba(255, 255, 255, 0.07);
+  --surface-variant: rgba(255, 255, 255, 0.07);
+  --surface-strip: rgba(0, 0, 0, 0.16);
+  --background: #202020;
+  --on-background: #ffffff;
+  --status-bar-surface: #202020;
+  --inverse-surface: #ffffff;
+  --inverse-on-surface: #202020;
+
+  /* Strokes */
+  --stroke-card: rgba(255, 255, 255, 0.07);
+  --stroke-divider: rgba(255, 255, 255, 0.08);
+  --stroke-flyout: rgba(0, 0, 0, 0.35);
+  --stroke-control: rgba(255, 255, 255, 0.07);
+  --stroke-control-bottom: rgba(255, 255, 255, 0.04);
+  --stroke-text-field: #9a9a9a;
+  --outline-variant: rgba(255, 255, 255, 0.07);
+  --outline-variant-rgb: 255, 255, 255;
+
+  /* Fills */
+  --fill-control: rgba(255, 255, 255, 0.06);
+  --fill-control-hover: rgba(255, 255, 255, 0.084);
+  --fill-control-pressed: rgba(255, 255, 255, 0.033);
+  --fill-subtle-hover: rgba(255, 255, 255, 0.06);
+  --fill-subtle-pressed: rgba(255, 255, 255, 0.04);
+  --fill-neutral-selected: rgba(255, 255, 255, 0.07);
+  --fill-accent-tint: rgba(76, 194, 255, 0.15);
+
+  /* Text */
+  --on-surface: #ffffff;
+  --on-surface-rgb: 255, 255, 255;
+  --on-surface-variant: #cfcfcf;
+  --outline: #9d9d9d;
+  --text-disabled: #717171;
+  --secondary: #cfcfcf;
+  --secondary-container: rgba(255, 255, 255, 0.07);
+
+  /* Accent */
+  --primary: #4cc2ff;
+  --primary-rgb: 76, 194, 255;
+  --surface-tint: #4cc2ff;
+  --surface-tint-rgb: 76, 194, 255;
+  --accent-hover: #47b1e8;
+  --on-primary: #000000;
+  --primary-container: rgba(76, 194, 255, 0.15);
+  --on-primary-container: #4cc2ff;
+
+  /* Status (fg / bg) */
+  --error: #ff99a4;
+  --error-rgb: 255, 153, 164;
+  --error-container: #442726;
+  --on-error: #000000;
+  --on-error-container: #ff99a4;
+  --danger-fill: #d13438;
+  --on-danger-fill: #ffffff;
+  /* Accent button edges (same in both themes) */
+  --stroke-accent: rgba(255, 255, 255, 0.08);
+  --stroke-accent-bottom: rgba(0, 0, 0, 0.4);
+  --warning: #fce100;
+  --warning-container: #433519;
+  --tertiary: #6ccb5f;
+  --tertiary-container: #393d1b;
+
+  /* Focus ring: 2px outer + 1px inner (WCAG 2.4.13) */
+  --focus-outer: #ffffff;
+  --focus-inner: #000000;
+  --focus-ring: 0 0 0 1px var(--focus-inner), 0 0 0 3px var(--focus-outer);
+
+  /* Elevation */
   --scrim-rgb: 0, 0, 0;
-  --status-bar-surface: #060e20;
+  --smoke: rgba(0, 0, 0, 0.45);
+  /* Lighter smoke behind the command palette (both themes) */
+  --smoke-palette: rgba(0, 0, 0, 0.18);
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.26);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.37), 0 2px 21px rgba(0, 0, 0, 0.37);
 
-  /* Typography */
-  --font-headline: 'Manrope', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', 'Menlo', monospace;
+  /* Object browser glyphs */
+  --folder: #f6c445;
+  --view-icon: #a78bfa;
 
-  /* ---- Typography: type scale (only place literal font sizes belong) ----
-   * 4px grid. Semantic roles point here; components use --type-* or --ui-* only.
-   */
-  --type-size-3xs: 9px;
-  --type-size-2xs: 10px;
-  --type-size-xs: 11px;
-  --type-size-sm: 12px;
-  --type-size-md: 13px;
-  --type-size-lg: 14px;
-  --type-size-xl: 16px;
-  --type-size-2xl: 20px;
-  --type-size-3xl: 32px;
-  --type-size-4xl: 48px;
+  /* ---------- Typography ---------- */
+  --font-headline:
+    'Segoe UI Variable Display', 'Segoe UI', 'Selawik', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-body:
+    'Segoe UI Variable Text', 'Segoe UI', 'Selawik', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
 
-  --type-body: var(--type-size-md);
-  --type-body-lh: 1.5;
-  --type-body-lg: var(--type-size-lg);
-  --type-body-emphasis: var(--type-size-lg);
-  --type-nav: var(--type-size-lg);
-  --type-nav-tab: var(--type-size-lg);
-  --type-nav-weight: 500;
-  --type-nav-weight-active: 600;
-  --type-label-caps: var(--type-size-xs);
-  --type-label-caps-weight: 800;
-  --type-label-caps-tracking: 0.1em;
-  --type-button-sm: var(--type-size-sm);
-  --type-button-sm-weight: 600;
-  --type-subtitle: var(--type-size-sm);
-  --type-dialog-title: var(--type-size-lg);
-  --type-section-title: var(--type-size-lg);
-  --type-title-hero: var(--type-size-xl);
-  --type-display-lg: var(--type-size-3xl);
-  --type-headline-md: 24px;
-  --type-title-lg: var(--type-size-2xl);
-  --type-object-name: 1.1rem;
-  --type-code: var(--type-size-lg);
-  --type-code-lh: 1.6;
-  --type-meta: var(--type-size-2xs);
-  --type-status: var(--type-size-2xs);
-  --type-context-menu: var(--type-size-md);
+  /* Type ramp — 28/36, 20/28, 14/20, 13/18, 12/16, mono 13/20. Weights 400 and 600 only. */
+  --type-title-size: 28px;
+  --type-title-line: 36px;
+  --type-subtitle-size: 20px;
+  --type-subtitle-line: 28px;
+  --type-body-size: 14px;
+  --type-body-line: 20px;
+  --type-row-size: 13px;
+  --type-row-line: 18px;
+  --type-caption-size: 12px;
+  --type-caption-line: 16px;
+  --type-mono-size: 13px;
+  --type-mono-line: 20px;
+  --type-weight-regular: 400;
+  --type-weight-semibold: 600;
 
-  /* Table / panel column headers — dark: 10px mono; light overrides below */
-  --type-table-header-size: var(--type-size-2xs);
-  --type-table-header-weight: 700;
-  --type-table-header-tracking: 0.08em;
-  --type-table-header-font: var(--font-mono);
+  /* Legacy size scale — every step lands on a ramp size (12px is the minimum). */
+  --type-size-3xs: var(--type-caption-size);
+  --type-size-2xs: var(--type-caption-size);
+  --type-size-xs: var(--type-caption-size);
+  --type-size-sm: var(--type-caption-size);
+  --type-size-md: var(--type-row-size);
+  --type-size-lg: var(--type-body-size);
+  --type-size-xl: var(--type-subtitle-size);
+  --type-size-2xl: var(--type-subtitle-size);
+  --type-size-3xl: var(--type-title-size);
+  --type-size-4xl: var(--type-title-size);
 
-  /* Spacing */
+  --type-body: var(--type-body-size);
+  --type-body-lh: var(--type-body-line);
+  --type-body-lg: var(--type-body-size);
+  --type-body-emphasis: var(--type-body-size);
+  --type-nav: var(--type-body-size);
+  --type-nav-tab: var(--type-body-size);
+  --type-nav-weight: var(--type-weight-regular);
+  --type-nav-weight-active: var(--type-weight-semibold);
+  /* Former uppercase caps labels: 12px sentence-case section label */
+  --type-label-caps: var(--type-caption-size);
+  --type-label-caps-weight: var(--type-weight-semibold);
+  --type-label-caps-tracking: normal;
+  --type-button-sm: var(--type-row-size);
+  --type-button-sm-weight: var(--type-weight-regular);
+  --type-subtitle: var(--type-row-size);
+  --type-dialog-title: var(--type-subtitle-size);
+  --type-section-title: var(--type-body-size);
+  --type-title-hero: var(--type-subtitle-size);
+  --type-display-lg: var(--type-title-size);
+  --type-headline-md: var(--type-subtitle-size);
+  --type-title-lg: var(--type-subtitle-size);
+  --type-object-name: var(--type-subtitle-size);
+  --type-code: var(--type-mono-size);
+  --type-code-lh: var(--type-mono-line);
+  --type-meta: var(--type-caption-size);
+  --type-status: var(--type-caption-size);
+  --type-context-menu: var(--type-body-size);
+
+  /* Table / panel column headers — 12px semibold, sentence case */
+  --type-table-header-size: var(--type-caption-size);
+  --type-table-header-weight: var(--type-weight-semibold);
+  --type-table-header-tracking: normal;
+  --type-table-header-font: var(--font-body);
+
+  --letter-spacing-display-tight: normal;
+  --letter-spacing-dialog-title: normal;
+  --letter-spacing-label-md: normal;
+
+  /* ---------- Spacing ---------- */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
@@ -110,630 +187,407 @@
   --space-xl: 24px;
   --space-2xl: 32px;
 
-  /* Border Radius — design spec md = 0.375rem; connection_manager `rounded` = 0.125rem */
-  --radius-2xs: 0.125rem;
-  --radius-sm: 4px;
-  --radius-md: 0.375rem;
-  --radius-lg: 8px;
+  /* ---------- Shape — control 4px, card 6px, overlay and tabs 8px ---------- */
+  --radius-control: 4px;
+  --radius-card: 6px;
+  --radius-overlay: 8px;
+  --radius-2xs: var(--radius-control);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-card);
+  --radius-lg: var(--radius-overlay);
 
-  /* Typography — shared scale (theme-specific sizes override in [data-theme]) */
-  --letter-spacing-display-tight: -0.02em;
-  --letter-spacing-dialog-title: -0.01em;
-  --letter-spacing-label-md: 0.05rem;
-  /* Utility tokens */
-  --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
-  --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.42);
+  /* ---------- Heights ---------- */
+  --title-strip-height: 40px;
+  --command-bar-height: 44px;
+  --tab-group-row-height: 44px;
+  --doc-tab-height: 32px;
+  --doc-tab-strip-height: 38px;
+  --control-height: 32px;
+  --control-height-sm: 28px;
+  --menu-item-height: 32px;
+  --status-bar-height: 24px;
+
+  /* ---------- Utility tokens ---------- */
+  --elevation-overlay: var(--shadow-flyout);
+  --control-border: 1px solid var(--stroke-control);
   --control-border-focus: 1px solid var(--primary);
-  --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  --control-focus-ring: inset 0 -1px 0 var(--primary);
   --control-focus-ring-tight: 0 0 0 1px var(--primary);
-  --glass-blur: blur(20px);
 
   /* Tree / Object Browser */
   --tree-indent: 16px;
   --tree-row-height: 28px;
 
-  /* Underline tabs — rail is transparent; active tab uses this fill */
-  --underline-tab-active-bg: var(--surface-container-low);
   /* Width of react-resizable-panels Separator between sidebar and workspace (tab rail bleeds left by this much) */
   --resize-handle-width: 4px;
 
-  /* ---------- Semantic UI tokens — dark (query_slate) ---------- */
-  --ui-modal-bg: var(--surface-container);
-  --ui-modal-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
-  --ui-modal-shadow: var(--elevation-overlay);
-  --ui-modal-backdrop-scrim: rgba(var(--scrim-rgb), 0.55);
+  /* Scrollbars */
+  --scrollbar-thumb: var(--text-disabled);
+  --scrollbar-thumb-hover: var(--outline);
+
+  /* ---------- Semantic UI tokens ---------- */
+  --ui-modal-bg: var(--surface-container-high);
+  --ui-modal-border: 1px solid var(--stroke-flyout);
+  --ui-modal-shadow: var(--shadow-dialog);
+  --ui-modal-backdrop-scrim: var(--smoke);
   --ui-modal-backdrop-blur: none;
 
-  --ui-dialog-header-bg: var(--surface-container-low);
-  --ui-dialog-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  --ui-dialog-header-bg: var(--surface-container-high);
+  --ui-dialog-header-border-bottom: 1px solid var(--stroke-divider);
   --ui-dialog-header-padding-y: var(--space-md);
   --ui-dialog-header-padding-x: var(--space-lg);
   --ui-dialog-title-size: var(--type-dialog-title);
-  --ui-dialog-title-weight: 600;
+  --ui-dialog-title-weight: var(--type-weight-semibold);
 
-  --ui-dialog-sidebar-bg: var(--status-bar-surface);
-  --ui-dialog-sidebar-border-right: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+  --ui-dialog-sidebar-bg: var(--surface);
+  --ui-dialog-sidebar-border-right: 1px solid var(--stroke-divider);
 
-  --ui-close-button-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
-  --ui-close-button-fg: var(--on-surface-variant);
-  --ui-close-button-hover-fg: var(--primary);
-  --ui-close-button-hover-bg: rgba(var(--primary-rgb), 0.08);
-  --ui-close-button-hover-border-color: rgba(var(--primary-rgb), 0.55);
+  --ui-close-button-border: 1px solid transparent;
+  --ui-close-button-fg: var(--on-surface);
+  --ui-close-button-hover-fg: var(--on-surface);
+  --ui-close-button-hover-bg: var(--fill-subtle-hover);
+  --ui-close-button-hover-border-color: transparent;
 
-  --ui-form-main-bg: var(--surface-container-lowest);
-  --ui-form-footer-bg: var(--status-bar-surface);
-  --ui-form-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+  --ui-form-main-bg: var(--surface-container-high);
+  --ui-form-footer-bg: var(--surface);
+  --ui-form-footer-border-top: 1px solid var(--stroke-divider);
 
-  --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
-  /* Nested / expandable blocks — no fill; elevation from shadow only */
-  --ui-subsection-surface-bg: transparent;
-  --ui-subsection-border: none;
-  --ui-subsection-radius: var(--ui-input-radius);
-  --ui-subsection-elevation-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.28),
-    0 0 0 1px rgba(var(--outline-variant-rgb), 0.22);
-  --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  --ui-section-divider-border: 1px solid var(--stroke-divider);
+  /* Nested / expandable blocks — card with a stroke only */
+  --ui-subsection-surface-bg: var(--surface-container-high);
+  --ui-subsection-border: 1px solid var(--stroke-card);
+  --ui-subsection-radius: var(--radius-card);
+  --ui-subsection-elevation-shadow: none;
+  --ui-collapsible-content-border-top: 1px solid var(--stroke-divider);
 
-  /* Filled raised panels (workspace schema cards / tables) — shadow matches collapsibles */
-  --ui-elevated-surface-bg: var(--surface-container-low);
-  --ui-elevated-surface-shadow: var(--ui-subsection-elevation-shadow);
-  --ui-elevated-surface-radius: 12px;
+  /* Filled raised panels (workspace schema cards / tables) — card fill + stroke, no shadow */
+  --ui-elevated-surface-bg: var(--surface-container-high);
+  --ui-elevated-surface-shadow: 0 0 0 1px var(--stroke-card);
+  --ui-elevated-surface-radius: var(--radius-card);
 
-  --ui-input-bg: var(--surface-container-highest);
+  /* Text fields: 32px tall (1px stroke + 5px + 20px line + 5px + 1px) */
+  --ui-input-bg: var(--fill-control);
   --ui-input-fg: var(--on-surface);
-  --ui-input-font-size: var(--type-body);
-  --ui-input-line-height: 1.25;
-  /* Slight rounding for text fields, dropdowns, textareas (matches connection form mockup) */
-  --ui-input-radius: var(--radius-md);
-  --ui-input-padding-y: 10px;
-  --ui-input-padding-x: 16px;
+  --ui-input-font-size: var(--type-body-size);
+  --ui-input-line-height: var(--type-body-line);
+  --ui-input-radius: var(--radius-control);
+  --ui-input-padding-y: 5px;
+  --ui-input-padding-x: 10px;
   --ui-input-focus-shadow: var(--control-focus-ring);
-  --ui-input-placeholder-opacity: 0.35;
-  /* Contrast border on --ui-input-bg; alpha tuned per theme below */
-  --ui-input-border: 1px solid rgba(var(--on-surface-rgb), 0.26);
-  --ui-input-rest-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --ui-input-placeholder-opacity: 1;
+  --ui-input-border: 1px solid var(--stroke-control);
+  /* Text-field boundary (bottom edge) — consumed by the Phase 2 field restyle */
+  --ui-input-boundary: var(--stroke-text-field);
+  --ui-input-rest-shadow: none;
 
   --ui-label-caps-fg: var(--on-surface-variant);
   --ui-subtitle-size: var(--type-subtitle);
   --ui-title-hero-size: var(--type-title-hero);
-  --ui-title-hero-weight: 800;
+  --ui-title-hero-weight: var(--type-weight-semibold);
 
   --ui-password-toggle-hover-fg: var(--on-surface);
 
-  --ui-chip-bg: var(--surface-container-low);
-  --ui-chip-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+  --ui-chip-bg: var(--fill-neutral-selected);
+  --ui-chip-border: 1px solid var(--stroke-card);
 
   --ui-icon-action-fg: var(--primary);
-  --ui-icon-action-hover-bg: rgba(var(--on-surface-rgb), 0.06);
+  --ui-icon-action-hover-bg: var(--fill-subtle-hover);
 
   --ui-test-button-fg: var(--on-surface);
-  --ui-test-button-hover-fg: var(--primary);
-  --ui-test-button-hover-bg: rgba(var(--on-surface-rgb), 0.06);
+  --ui-test-button-hover-fg: var(--on-surface);
+  --ui-test-button-hover-bg: var(--fill-subtle-hover);
 
-  --ui-secondary-button-bg: var(--surface-container-high);
+  --ui-secondary-button-bg: var(--fill-control);
   --ui-secondary-button-fg: var(--on-surface);
-  --ui-secondary-button-border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
-  --ui-secondary-button-hover-bg: var(--surface-container-highest);
+  --ui-secondary-button-border: 1px solid var(--stroke-control);
+  --ui-secondary-button-hover-bg: var(--fill-control-hover);
   --ui-secondary-button-padding: 11px 26px;
 
-  --ui-primary-button-bg: linear-gradient(
-    135deg,
-    var(--primary-gradient-from),
-    var(--primary-gradient-to)
-  );
-  --ui-primary-button-bg-hover: var(--ui-primary-button-bg);
-  --ui-primary-button-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.25);
-  --ui-primary-button-shadow-hover: 0 6px 18px rgba(var(--primary-rgb), 0.35);
-  --ui-primary-button-filter-hover: brightness(1.06);
+  --ui-primary-button-bg: var(--primary);
+  --ui-primary-button-bg-hover: var(--accent-hover);
+  --ui-primary-button-shadow: none;
+  --ui-primary-button-shadow-hover: none;
+  --ui-primary-button-filter-hover: none;
   --ui-primary-button-padding: 11px 48px;
 
-  /* Modal/footer CTAs — sharp corners per connection_manager_light_mode Tailwind `rounded` */
-  --ui-action-button-radius: var(--radius-2xs);
+  --ui-action-button-radius: var(--radius-control);
 
-  --ui-browse-button-bg: var(--surface-container-high);
-  --ui-browse-button-fg: var(--on-surface-variant);
-  --ui-browse-button-border: var(--ui-input-border);
-  --ui-browse-button-hover-bg: var(--surface-container-highest);
+  --ui-browse-button-bg: var(--fill-control);
+  --ui-browse-button-fg: var(--on-surface);
+  --ui-browse-button-border: 1px solid var(--stroke-control);
+  --ui-browse-button-hover-bg: var(--fill-control-hover);
   --ui-browse-button-hover-fg: var(--on-surface);
 
-  --ui-collapsible-trigger-font: var(--font-headline);
-  --ui-collapsible-trigger-size: var(--type-size-sm);
-  --ui-collapsible-trigger-hover-bg: rgba(var(--on-surface-rgb), 0.04);
+  --ui-collapsible-trigger-font: var(--font-body);
+  --ui-collapsible-trigger-size: var(--type-body-size);
+  --ui-collapsible-trigger-hover-bg: var(--fill-subtle-hover);
 
-  --ui-list-row-hover-bg: rgba(var(--on-surface-rgb), 0.05);
-  --ui-list-item-selected-bg: rgba(var(--primary-rgb), 0.12);
+  --ui-list-row-hover-bg: var(--fill-subtle-hover);
+  --ui-list-item-selected-bg: var(--fill-accent-tint);
   --ui-list-item-selected-shadow: none;
   --ui-list-title-idle-fg: var(--on-surface);
-  --ui-list-title-idle-weight: 700;
+  --ui-list-title-idle-weight: var(--type-weight-regular);
   --ui-list-title-hover-fg: var(--on-surface);
   --ui-list-meta-fg: var(--on-surface-variant);
   --ui-storage-footer-fg: var(--on-surface-variant);
-  --ui-storage-icon-fg: var(--primary);
+  --ui-storage-icon-fg: var(--on-surface-variant);
 
-  --ui-profiles-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
-  --ui-storage-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  --ui-profiles-header-border-bottom: 1px solid var(--stroke-divider);
+  --ui-storage-footer-border-top: 1px solid var(--stroke-divider);
 
   --ui-ssl-hint-fg: var(--on-surface-variant);
 
-  /* ---------- Dropdown (trigger matches .input / .ui-input geometry & fill) ---------- */
+  /* ---------- Dropdown (trigger matches .ui-input geometry & fill) ---------- */
   --ui-dropdown-trigger-bg: var(--ui-input-bg);
   --ui-dropdown-trigger-border: var(--ui-input-border);
-  --ui-dropdown-trigger-hover-border-color: rgba(var(--primary-rgb), 0.5);
+  --ui-dropdown-trigger-hover-border-color: var(--stroke-control);
   --ui-dropdown-trigger-radius: var(--ui-input-radius);
   --ui-dropdown-trigger-padding-y: var(--ui-input-padding-y);
   --ui-dropdown-trigger-padding-x: var(--ui-input-padding-x);
   --ui-dropdown-trigger-font-size: var(--ui-input-font-size);
-  --ui-dropdown-trigger-font-weight: 400;
-  --ui-dropdown-trigger-open-shadow: 0 0 15px rgba(var(--primary-rgb), 0.1);
+  --ui-dropdown-trigger-font-weight: var(--type-weight-regular);
+  --ui-dropdown-trigger-open-shadow: none;
   --ui-dropdown-trigger-open-border: var(--control-border-focus);
   --ui-dropdown-chevron-color: var(--on-surface-variant);
 
-  --ui-dropdown-panel-bg: rgba(23, 31, 51, 0.8);
-  --ui-dropdown-panel-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
-  --ui-dropdown-panel-backdrop-filter: blur(20px);
-  --ui-dropdown-panel-radius: var(--ui-input-radius);
+  --ui-dropdown-panel-bg: var(--surface-container-high);
+  --ui-dropdown-panel-shadow: var(--shadow-flyout);
+  --ui-dropdown-panel-backdrop-filter: none;
+  --ui-dropdown-panel-radius: var(--radius-overlay);
   --ui-dropdown-panel-padding: 0;
-  /* Flush options: no outer gap/margin; square corners */
   --ui-dropdown-option-gap: 0;
   --ui-dropdown-option-padding-y: var(--ui-input-padding-y);
   --ui-dropdown-option-padding-x: var(--ui-input-padding-x);
   --ui-dropdown-option-margin-x: 0;
   --ui-dropdown-option-radius: 0;
   --ui-dropdown-option-font-size: var(--ui-input-font-size);
-  --ui-dropdown-option-font-weight: 400;
-  --ui-dropdown-option-accent-width: 2px;
-  --ui-dropdown-option-hover-bg: var(--surface-bright);
-  --ui-dropdown-option-selected-bg: rgba(var(--primary-rgb), 0.1);
-  --ui-dropdown-option-label-selected-weight: 700;
+  --ui-dropdown-option-font-weight: var(--type-weight-regular);
+  --ui-dropdown-option-accent-width: 3px;
+  --ui-dropdown-option-hover-bg: var(--fill-subtle-hover);
+  --ui-dropdown-option-selected-bg: var(--fill-neutral-selected);
+  --ui-dropdown-option-label-selected-weight: var(--type-weight-semibold);
   --ui-dropdown-option-meta-font-size: var(--type-meta);
-  --ui-dropdown-option-meta-color: color-mix(in srgb, var(--on-surface-variant) 65%, transparent);
+  --ui-dropdown-option-meta-color: var(--outline);
   --ui-dropdown-listbox-padding: 0;
 
-  /* Shared popover surface (color picker, etc.) — match dropdown panel */
-  --ui-popover-bg: var(--ui-dropdown-panel-bg);
-  --ui-popover-border: 1px solid rgba(var(--primary-rgb), 0.35);
-  --ui-popover-radius: var(--ui-dropdown-panel-radius);
-  --ui-popover-shadow: var(--ui-dropdown-panel-shadow);
-  --ui-popover-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
+  /* Shared popover surface (color picker, etc.) — flyout */
+  --ui-popover-bg: var(--surface-container-high);
+  --ui-popover-border: 1px solid var(--stroke-flyout);
+  --ui-popover-radius: var(--radius-overlay);
+  --ui-popover-shadow: var(--shadow-flyout);
+  --ui-popover-backdrop-filter: none;
 
-  /* Context menu — right_click_context_menu_dark_mode */
-  --ui-context-menu-min-width: 256px;
-  --ui-context-menu-bg: #1e293b;
-  --ui-context-menu-border: 1px solid rgba(148, 163, 184, 0.5);
-  --ui-context-menu-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
-  --ui-context-menu-radius: var(--radius-lg);
-  --ui-context-menu-padding-y: 6px;
+  /* Context menu — flyout */
+  --ui-context-menu-min-width: 260px;
+  --ui-context-menu-bg: var(--surface-container-high);
+  --ui-context-menu-border: 1px solid var(--stroke-flyout);
+  --ui-context-menu-shadow: var(--shadow-flyout);
+  --ui-context-menu-radius: var(--radius-overlay);
+  --ui-context-menu-padding-y: 4px;
   --ui-context-menu-backdrop-filter: none;
-  --ui-context-menu-item-padding-x: var(--space-lg);
-  --ui-context-menu-item-padding-y: 8px;
+  --ui-context-menu-item-padding-x: 10px;
+  --ui-context-menu-item-padding-y: 6px;
   --ui-context-menu-item-font-size: var(--type-context-menu);
-  --ui-context-menu-item-font-weight: 500;
+  --ui-context-menu-item-font-weight: var(--type-weight-regular);
   --ui-context-menu-item-gap: var(--space-md);
-  --ui-context-menu-item-fg: #f1f5f9;
-  --ui-context-menu-item-icon-fg: #94a3b8;
-  --ui-context-menu-item-hover-bg: rgba(var(--primary-rgb), 0.2);
-  --ui-context-menu-item-hover-fg: var(--primary);
-  --ui-context-menu-item-hover-icon-fg: var(--primary);
-  --ui-context-menu-separator-margin-x: 12px;
+  --ui-context-menu-item-fg: var(--on-surface);
+  --ui-context-menu-item-icon-fg: var(--on-surface);
+  --ui-context-menu-item-hover-bg: var(--fill-subtle-hover);
+  --ui-context-menu-item-hover-fg: var(--on-surface);
+  --ui-context-menu-item-hover-icon-fg: var(--on-surface);
+  --ui-context-menu-separator-margin-x: 0;
   --ui-context-menu-separator-margin-y: 4px;
-  --ui-context-menu-separator-border: 1px solid rgba(148, 163, 184, 0.5);
-  --ui-context-menu-destructive-fg: rgba(var(--error-rgb), 0.8);
-  --ui-context-menu-destructive-icon-fg: rgba(var(--error-rgb), 0.6);
-  --ui-context-menu-destructive-hover-bg: rgba(var(--error-rgb), 0.1);
+  --ui-context-menu-separator-border: 1px solid var(--stroke-divider);
+  --ui-context-menu-destructive-fg: var(--error);
+  --ui-context-menu-destructive-icon-fg: var(--error);
+  --ui-context-menu-destructive-hover-bg: var(--fill-subtle-hover);
   --ui-context-menu-destructive-hover-fg: var(--error);
   --ui-context-menu-destructive-hover-icon-fg: var(--error);
 
-  /* Toast — toast_notifications_dark_mode/code.html */
+  /* Toast — flyout card, same look in both themes */
   --ui-toast-z-index: 10050;
-  --ui-toast-stack-padding: var(--space-xl);
-  --ui-toast-stack-gap: var(--space-md);
-  --ui-toast-max-width: 24rem;
-  --ui-toast-status-bar-offset: 24px;
-  --ui-toast-dark-surface: color-mix(in srgb, var(--surface-container-high) 60%, transparent);
-  --ui-toast-dark-backdrop-filter: blur(24px);
-  --ui-toast-dark-border-default: 1px solid rgba(255, 255, 255, 0.05);
-  --ui-toast-dark-border-error: 1px solid color-mix(in srgb, var(--error) 10%, transparent);
-  --ui-toast-dark-border-success: 1px solid color-mix(in srgb, var(--tertiary) 10%, transparent);
-  --ui-toast-dark-border-warning: 1px solid color-mix(in srgb, var(--warning) 10%, transparent);
-  --ui-toast-dark-shadow: 0 12px 32px rgba(218, 226, 253, 0.06);
-  --ui-toast-dark-radius: 8px;
-  --ui-toast-dark-inner-padding: var(--space-md);
-  --ui-toast-dark-row-gap: var(--space-md);
-  --ui-toast-dark-title-fg: #f1f5f9;
-  --ui-toast-dark-body-fg: #94a3b8;
-  --ui-toast-dark-close-fg: #64748b;
-  --ui-toast-dark-close-hover-fg: #cbd5e1;
-  --ui-toast-icon-well-size: 40px;
-  --ui-toast-dark-icon-well-radius: 4px;
-  --ui-toast-dark-icon-well-warning-bg: color-mix(
-    in srgb,
-    var(--warning-container) 20%,
-    transparent
-  );
-  --ui-toast-dark-icon-well-error-bg: color-mix(in srgb, var(--error-container) 20%, transparent);
-  --ui-toast-dark-icon-well-success-bg: color-mix(
-    in srgb,
-    var(--tertiary-container) 20%,
-    transparent
-  );
+  --ui-toast-stack-padding: var(--space-lg);
+  --ui-toast-stack-gap: var(--space-sm);
+  --ui-toast-max-width: 380px;
+  --ui-toast-status-bar-offset: var(--status-bar-height);
+  --ui-toast-surface: var(--surface-container-high);
+  --ui-toast-border: 1px solid var(--stroke-flyout);
+  --ui-toast-shadow: var(--shadow-flyout);
+  --ui-toast-radius: var(--radius-overlay);
+  --ui-toast-padding: 14px 8px 14px 16px;
+  --ui-toast-row-gap: var(--space-md);
+  --ui-toast-title-fg: var(--on-surface);
+  --ui-toast-body-fg: var(--on-surface-variant);
+  --ui-toast-close-fg: var(--on-surface);
+  --ui-toast-close-hover-fg: var(--on-surface);
+  --ui-toast-icon-well-size: 16px;
 
   /* ---------- Query Editor tokens ---------- */
-  --editor-bg: var(--surface);
-  --editor-toolbar-bg: var(--surface-container-high);
-  --editor-toolbar-border: rgba(var(--outline-variant-rgb), 0.1);
-  --editor-resize-handle-bg: var(--surface-container-low);
-  --editor-resize-pill-color: var(--outline-variant);
+  --editor-bg: var(--surface-container-lowest);
+  --editor-toolbar-bg: var(--surface-container);
+  --editor-toolbar-border: var(--stroke-divider);
+  --editor-resize-handle-bg: var(--surface-container);
+  --editor-resize-pill-color: var(--outline);
 
   /* ---------- Result grid tokens ---------- */
-  --result-grid-bg: var(--surface-container-low);
-  --result-grid-header-bg: var(--surface-container-high);
-  --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
-  --result-grid-row-selected-bg: var(--secondary-container);
-  --result-grid-row-hover-bg: color-mix(in srgb, var(--surface-variant) 30%, transparent);
+  --result-grid-bg: var(--surface-container-lowest);
+  --result-grid-header-bg: var(--surface-container);
+  --result-grid-border: var(--stroke-divider);
+  --result-grid-row-alt-bg: transparent;
+  --result-grid-row-selected-bg: var(--fill-accent-tint);
+  --result-grid-row-hover-bg: var(--fill-subtle-hover);
   --result-grid-row-selected-accent: var(--primary);
   --result-status-success-fg: var(--tertiary);
 
-  /* Grid — inline_editable_grid_dark_mode_pro_sync_v2 */
-  --grid-cell-padding-x: var(--space-lg);
-  --grid-cell-padding-y: var(--space-sm);
+  /* Grid — 28px rows, 32px header, 10px cell inset */
+  --grid-cell-padding-x: 10px;
+  --grid-cell-padding-y: 4px;
   /* Must include px: unitless values break line-height (interpreted as font-size multiplier). */
-  --grid-row-height: 32px;
+  --grid-row-height: 28px;
   --grid-header-height: 32px;
   --grid-scrollbar-size: 8px;
-  --grid-scrollbar-thumb: var(--surface-container-highest);
-  --grid-scrollbar-thumb-hover: var(--outline-variant);
-  --grid-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  --grid-header-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --grid-scrollbar-thumb: var(--scrollbar-thumb);
+  --grid-scrollbar-thumb-hover: var(--scrollbar-thumb-hover);
+  --grid-header-border-bottom: 1px solid var(--stroke-divider);
+  --grid-header-shadow: none;
 
   /* ---------- Table Data Editing States ---------- */
-  --td-editing-row-bg: rgba(var(--primary-rgb), 0.05);
+  --td-editing-row-bg: var(--fill-accent-tint);
   --td-modified-cell-indicator: var(--primary);
-  --td-null-text-color: rgba(var(--on-surface-rgb), 0.4);
-  --td-warning-bg: rgba(252, 211, 77, 0.08);
+  --td-null-text-color: var(--outline);
+  --td-warning-bg: var(--warning-container);
   --td-warning-text: var(--warning);
-  --td-readonly-badge-bg: var(--surface-container-highest);
+  --td-readonly-badge-bg: var(--fill-neutral-selected);
   --td-readonly-badge-text: var(--on-surface-variant);
 
   /* ---------- FK Lookup ---------- */
-  --fk-lookup-trigger-hover-bg: rgba(255, 255, 255, 0.08);
-  --fk-lookup-trigger-hover-border-color: rgba(255, 255, 255, 0.15);
-  --fk-lookup-target-col-bg: rgba(99, 102, 241, 0.08);
-  --fk-lookup-target-col-header-fg: #818cf8;
+  --fk-lookup-trigger-hover-bg: var(--fill-subtle-hover);
+  --fk-lookup-trigger-hover-border-color: var(--stroke-control);
+  --fk-lookup-target-col-bg: var(--fill-accent-tint);
+  --fk-lookup-target-col-header-fg: var(--primary);
 
   /* ---------- Query Result Grid Editing ---------- */
-  --color-cell-readonly-bg: rgba(255, 255, 255, 0.03);
+  --color-cell-readonly-bg: var(--fill-subtle-pressed);
   --color-cell-readonly-opacity: 0.65;
 
   /* ---------- Autocomplete doc panel tokens ---------- */
   --autocomplete-bg: var(--surface-container-high);
-  --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
-  --autocomplete-backdrop: blur(12px);
+  --autocomplete-border: var(--stroke-flyout);
+  --autocomplete-backdrop: none;
 
   /* ---------- AI Panel tokens ---------- */
-  --ai-panel-bg: var(--surface-container-low);
+  --ai-panel-bg: var(--surface-container);
   --ai-panel-header-bg: var(--surface-container);
-  --ai-panel-border: rgba(var(--outline-variant-rgb), 0.25);
-  --ai-user-bubble-bg: var(--surface-container-high);
-  --ai-assistant-accent: var(--primary);
-  --ai-code-block-bg: var(--surface-container-highest);
-  --ai-code-block-border: rgba(var(--outline-variant-rgb), 0.2);
-  --ai-error-bg: rgba(var(--error-rgb), 0.08);
+  --ai-panel-border: var(--stroke-divider);
+  --ai-user-bubble-bg: var(--fill-accent-tint);
+  --ai-code-block-bg: var(--surface-container-lowest);
+  --ai-code-block-border: var(--stroke-card);
+  --ai-error-bg: var(--error-container);
   --ai-cursor-color: var(--primary);
-  --ai-context-chip-bg: var(--surface-container-high);
-  --ai-context-chip-border: rgba(var(--outline-variant-rgb), 0.3);
+  --ai-context-chip-bg: var(--fill-control);
+  --ai-context-chip-border: var(--stroke-card);
 
-  /* Token colors for syntax highlighting — dark theme */
-  --token-keyword: #c792ea;
-  --token-string: #c3e88d;
-  --token-comment: #697098;
-  --token-function: #82aaff;
-  --token-number: #f78c6c;
-  --token-operator: #89ddff;
-  --token-type: #ffcb6b;
+  /* Syntax colours — VS Code Dark+ (prototype `--sx-*`). Keywords and data types share the
+     keyword colour, back-quoted identifiers get their own, operator symbols are plain code text,
+     as in the rendered prototype (Monaco alone gives `*` the keyword colour).
+     Comments and functions aren't in the prototype and use the Dark+ values.
+     src/lib/monaco-theme.ts copies these as hex (Monaco can't read CSS variables). */
+  --token-text: #d4d4d4;
+  --token-keyword: #569cd6;
+  --token-string: #ce9178;
+  --token-number: #b5cea8;
+  --token-identifier: #9cdcfe;
+  --token-comment: #6a9955;
+  --token-function: #dcdcaa;
+  --token-operator: var(--token-text);
+  --token-type: var(--token-keyword);
 
   /* Skeleton / shimmer */
-  --skeleton-base: #2d3449;
-  --skeleton-highlight: rgba(74, 90, 112, 0.6);
+  --skeleton-base: var(--fill-neutral-selected);
+  --skeleton-highlight: var(--fill-subtle-hover);
 }
 
-/* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
+/* Light theme primitives (applied via [data-theme="light"] on <html>) */
 [data-theme='light'] {
-  --surface: #f7f9fb;
-  --surface-dim: #e6e8ea;
+  color-scheme: light;
+
+  --surface: #f3f3f3;
+  --surface-dim: #f3f3f3;
   --surface-bright: #ffffff;
   --surface-container-lowest: #ffffff;
-  --surface-container-low: #f2f4f6;
-  --surface-container: #f2f4f6;
-  --surface-container-high: #e6e8ea;
-  --surface-container-highest: #dee1e5;
-  --surface-variant: #e6e8ea;
-  --surface-tint: #0066cc;
-  --surface-tint-rgb: 0, 102, 204;
-  --primary: #0066cc;
-  --primary-rgb: 0, 102, 204;
-  --primary-container: #e6f0ff;
-  --primary-fixed: #d7e3ff;
-  --primary-fixed-rgb: 215, 227, 255;
-  --primary-gradient-from: #004e9f;
-  --primary-gradient-to: #0066cc;
+  --surface-container-low: #f9f9f9;
+  --surface-container: #f9f9f9;
+  --surface-container-high: #ffffff;
+  --surface-container-highest: rgba(0, 0, 0, 0.06);
+  --surface-variant: rgba(0, 0, 0, 0.06);
+  --surface-strip: rgba(0, 0, 0, 0.035);
+  --background: #f3f3f3;
+  --on-background: #1b1b1b;
+  --status-bar-surface: #f3f3f3;
+  --inverse-surface: #1b1b1b;
+  --inverse-on-surface: #f3f3f3;
+
+  --stroke-card: rgba(0, 0, 0, 0.07);
+  --stroke-divider: rgba(0, 0, 0, 0.08);
+  --stroke-flyout: rgba(0, 0, 0, 0.1);
+  --stroke-control: rgba(0, 0, 0, 0.08);
+  --stroke-control-bottom: rgba(0, 0, 0, 0.17);
+  --stroke-text-field: #767676;
+  --outline-variant: rgba(0, 0, 0, 0.07);
+  --outline-variant-rgb: 0, 0, 0;
+
+  --fill-control: rgba(255, 255, 255, 0.7);
+  --fill-control-hover: rgba(249, 249, 249, 0.5);
+  --fill-control-pressed: rgba(249, 249, 249, 0.3);
+  --fill-subtle-hover: rgba(0, 0, 0, 0.04);
+  --fill-subtle-pressed: rgba(0, 0, 0, 0.025);
+  --fill-neutral-selected: rgba(0, 0, 0, 0.06);
+  --fill-accent-tint: rgba(0, 103, 192, 0.11);
+
+  --on-surface: #1b1b1b;
+  --on-surface-rgb: 27, 27, 27;
+  --on-surface-variant: #5d5d5d;
+  --outline: #6e6e6e;
+  --text-disabled: #a3a3a3;
+  --secondary: #5d5d5d;
+  --secondary-container: rgba(0, 0, 0, 0.06);
+
+  --primary: #0067c0;
+  --primary-rgb: 0, 103, 192;
+  --surface-tint: #0067c0;
+  --surface-tint-rgb: 0, 103, 192;
+  --accent-hover: #1975c5;
   --on-primary: #ffffff;
-  --on-primary-container: #ffffff;
-  --secondary: #475569;
-  --secondary-container: #e6f0ff;
-  --tertiary: #00893c;
-  --tertiary-container: #e6f7ed;
-  --warning: #d97706;
-  --warning-container: #fef3c7;
-  --error: #cc0000;
-  --error-rgb: 204, 0, 0;
-  --error-container: #fff0f0;
-  --on-surface: #191c1e;
-  --on-surface-rgb: 25, 28, 30;
-  --on-surface-variant: #414753;
+  --primary-container: rgba(0, 103, 192, 0.11);
+  --on-primary-container: #0067c0;
+
+  --error: #c42b1c;
+  --error-rgb: 196, 43, 28;
+  --error-container: #fde7e9;
   --on-error: #ffffff;
-  --on-error-container: #cc0000;
-  --outline: #c1c6d5;
-  --outline-variant: #c1c6d5;
-  --outline-variant-rgb: 193, 198, 213;
-  --inverse-surface: #191c1e;
-  --inverse-on-surface: #f7f9fb;
-  --background: #f7f9fb;
-  --on-background: #191c1e;
-  --glass-surface: rgba(255, 255, 255, 0.8);
-  --glass-surface-rgb: 255, 255, 255;
-  --scrim-rgb: 0, 0, 0;
-  --status-bar-surface: #e6e8ea;
+  --on-error-container: #c42b1c;
+  --danger-fill: #c42b1c;
+  --on-danger-fill: #ffffff;
+  --warning: #9d5d00;
+  --warning-container: #fff4ce;
+  --tertiary: #0f7b0f;
+  --tertiary-container: #dff6dd;
 
-  /* Active underline tab fill in light theme */
-  --underline-tab-active-bg: #ffffff;
+  --focus-outer: #1b1b1b;
+  --focus-inner: #ffffff;
 
-  /* Utility tokens */
-  --elevation-overlay: 0 20px 40px -12px rgba(var(--on-surface-rgb), 0.08);
-  /* Softer chrome for chips, browse, etc.; text fields use --ui-input-border */
-  --control-border: 1px solid #cbd5e1;
-  --control-border-focus: 1px solid var(--primary);
-  --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.14);
-  --control-focus-ring-tight: 0 0 0 1px var(--primary);
-  --glass-blur: blur(20px);
-  /* Typography — light theme (query_slate_light) */
-  --type-subtitle: var(--type-size-lg);
-  --type-dialog-title: 1.125rem;
-  --type-table-header-size: var(--type-size-2xs);
-  --type-table-header-font: var(--font-body);
-  --type-table-header-tracking: 0.1em;
-  --letter-spacing-dialog-title: -0.025em;
+  --smoke: rgba(0, 0, 0, 0.3);
+  --shadow-flyout: 0 8px 16px rgba(0, 0, 0, 0.14);
+  --shadow-dialog: 0 32px 64px rgba(0, 0, 0, 0.19), 0 2px 21px rgba(0, 0, 0, 0.15);
 
-  /* ---------- Semantic UI tokens — light (query_slate_light) ---------- */
-  --ui-modal-bg: var(--surface-container-lowest);
-  --ui-modal-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
-  --ui-modal-shadow: 0 25px 50px -12px rgba(var(--on-surface-rgb), 0.18);
-  --ui-modal-backdrop-scrim: rgba(var(--on-surface-rgb), 0.4);
-  --ui-modal-backdrop-blur: blur(4px);
+  --folder: #e8a92a;
 
-  --ui-dialog-header-bg: var(--surface-container-lowest);
-  --ui-dialog-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
-  --ui-dialog-header-padding-y: 16px;
-  --ui-dialog-header-padding-x: 24px;
-  --ui-dialog-title-size: var(--type-dialog-title);
-  --ui-dialog-title-weight: 700;
-
-  --ui-dialog-sidebar-bg: var(--status-bar-surface);
-  --ui-dialog-sidebar-border-right: 1px solid rgba(var(--outline-variant-rgb), 0.25);
-
-  --ui-close-button-border: 1px solid transparent;
-  --ui-close-button-fg: var(--on-surface-variant);
-  --ui-close-button-hover-fg: var(--on-surface);
-  --ui-close-button-hover-bg: transparent;
-  --ui-close-button-hover-border-color: transparent;
-
-  --ui-form-main-bg: var(--surface-container-low);
-  --ui-form-footer-bg: var(--status-bar-surface);
-  --ui-form-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
-
-  --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.12);
-  --ui-subsection-surface-bg: transparent;
-  --ui-subsection-border: none;
-  --ui-subsection-elevation-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.08),
-    0 0 0 1px rgba(var(--outline-variant-rgb), 0.14);
-  --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
-
-  --ui-elevated-surface-bg: var(--surface-container-lowest);
-  --ui-elevated-surface-shadow: var(--ui-subsection-elevation-shadow);
-  --ui-elevated-surface-radius: 12px;
-
-  /* Filled field surface on white forms (mockup: gray-50) */
-  --ui-input-bg: #f9fafb;
-  --ui-input-fg: var(--on-surface);
-  --ui-input-font-size: var(--type-size-lg);
-  --ui-input-border: 1px solid rgba(var(--on-surface-rgb), 0.22);
-  --ui-input-rest-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-
-  --ui-label-caps-fg: var(--on-surface-variant);
-  --ui-subtitle-size: var(--type-subtitle);
-
-  --ui-password-toggle-hover-fg: var(--primary);
-
-  --ui-chip-bg: var(--surface-container-low);
-  --ui-chip-border: var(--control-border);
-
-  --ui-icon-action-fg: var(--primary);
-  --ui-icon-action-hover-bg: var(--surface-container-high);
-
-  /* Footer actions — connection_manager_light_mode/code.html */
-  --ui-test-button-fg: #64748b;
-  --ui-test-button-hover-fg: var(--primary);
-  --ui-test-button-hover-bg: transparent;
-
-  /* Save: bg-white, text-slate-600, border-slate-200, hover:bg-slate-100 */
-  --ui-secondary-button-bg: #ffffff;
-  --ui-secondary-button-fg: #475569;
-  --ui-secondary-button-border: 1px solid #e2e8f0;
-  --ui-secondary-button-hover-bg: #f1f5f9;
-
-  /* Connect: solid #0066CC, shadow-md, hover #0052A3 */
-  --ui-primary-button-bg: #0066cc;
-  --ui-primary-button-bg-hover: #0052a3;
-  --ui-primary-button-shadow:
-    0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.1);
-  --ui-primary-button-shadow-hover:
-    0 6px 12px -2px rgba(15, 23, 42, 0.12), 0 3px 6px -2px rgba(15, 23, 42, 0.08);
-  --ui-primary-button-filter-hover: none;
-  --ui-secondary-button-padding: 12px 28px;
-  --ui-primary-button-padding: 12px 56px;
-
-  --ui-browse-button-bg: var(--surface-container-high);
-  --ui-browse-button-fg: var(--on-surface-variant);
-  --ui-browse-button-border: var(--ui-input-border);
-  --ui-browse-button-hover-bg: var(--surface-container);
-  --ui-browse-button-hover-fg: var(--on-surface);
-
-  --ui-collapsible-trigger-font: var(--font-body);
-  --ui-collapsible-trigger-size: var(--type-size-lg);
-
-  --ui-list-row-hover-bg: var(--surface-container-high);
-  --ui-list-item-selected-bg: var(--surface-container-lowest);
-  --ui-list-item-selected-shadow: 0 1px 2px rgba(var(--on-surface-rgb), 0.06);
-  --ui-list-title-idle-fg: var(--on-surface-variant);
-  --ui-list-title-idle-weight: 600;
-  --ui-list-title-hover-fg: var(--on-surface);
-  --ui-list-meta-fg: var(--on-surface-variant);
-  --ui-storage-footer-fg: var(--on-surface-variant);
-  --ui-storage-icon-fg: var(--on-surface-variant);
-
-  --ui-profiles-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.22);
-  --ui-storage-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
-
-  --ui-ssl-hint-fg: var(--on-surface-variant);
-
-  --ui-input-focus-shadow: var(--control-focus-ring);
-  --ui-collapsible-trigger-hover-bg: var(--surface-container-high);
-
-  /* ---------- Dropdown + context menu — dropdowns_light_mode / context menu light ---------- */
-  --ui-dropdown-trigger-bg: var(--ui-input-bg);
-  --ui-dropdown-trigger-border: var(--ui-input-border);
-  --ui-dropdown-trigger-hover-border-color: rgba(var(--primary-rgb), 0.5);
-  --ui-dropdown-trigger-open-shadow: 0 1px 2px rgba(var(--on-surface-rgb), 0.06);
-  --ui-dropdown-trigger-open-border: var(--control-border-focus);
-
-  --ui-dropdown-panel-bg: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
-  --ui-dropdown-panel-shadow: 0 25px 50px -12px rgba(var(--on-surface-rgb), 0.18);
-  --ui-dropdown-panel-backdrop-filter: blur(24px);
-  --ui-dropdown-option-hover-bg: var(--surface-container-low);
-  --ui-dropdown-option-selected-bg: color-mix(in srgb, var(--primary-fixed) 30%, transparent);
-  --ui-dropdown-option-accent-width: 4px;
-  --ui-dropdown-option-meta-color: color-mix(in srgb, var(--on-surface-variant) 60%, transparent);
-
-  --ui-popover-bg: var(--ui-dropdown-panel-bg);
-  --ui-popover-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
-  --ui-popover-radius: var(--ui-dropdown-panel-radius);
-  --ui-popover-shadow: var(--ui-dropdown-panel-shadow);
-  --ui-popover-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
-
-  --ui-context-menu-bg: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
-  --ui-context-menu-border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
-  --ui-context-menu-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.12);
-  --ui-context-menu-backdrop-filter: blur(24px);
-  --ui-context-menu-item-font-size: var(--type-size-lg);
-  --ui-context-menu-item-fg: var(--on-surface-variant);
-  --ui-context-menu-item-icon-fg: var(--on-surface-variant);
-  --ui-context-menu-item-hover-bg: var(--primary);
-  --ui-context-menu-item-hover-fg: #ffffff;
-  --ui-context-menu-item-hover-icon-fg: #ffffff;
-  --ui-context-menu-separator-margin-x: 8px;
-  --ui-context-menu-separator-margin-y: 6px;
-  --ui-context-menu-separator-border: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  --ui-context-menu-destructive-fg: var(--error);
-  --ui-context-menu-destructive-icon-fg: var(--error);
-  --ui-context-menu-destructive-hover-bg: var(--error);
-  --ui-context-menu-destructive-hover-fg: #ffffff;
-  --ui-context-menu-destructive-hover-icon-fg: #ffffff;
-
-  /* Toast — toast_notifications_light_mode/code.html */
-  --ui-toast-light-card-bg: var(--surface-container-lowest);
-  --ui-toast-light-shadow: 0 24px 40px -12px rgba(25, 28, 31, 0.06);
-  --ui-toast-light-border: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  --ui-toast-light-radius: 8px;
-  --ui-toast-light-success-well-bg: #f0fdf4;
-  --ui-toast-light-success-icon-fg: #16a34a;
-  --ui-toast-light-progress-track: var(--surface-container-low);
-  --ui-toast-light-progress-success: #22c55e;
-  --ui-toast-light-progress-error: var(--error);
-  --ui-toast-light-warning-well-bg: color-mix(in srgb, var(--warning-container) 55%, transparent);
-  --ui-toast-light-warning-icon-fg: var(--warning);
-  --ui-toast-light-progress-warning: var(--warning);
-
-  /* Query editor light overrides */
-  --editor-bg: var(--surface-container-lowest);
-  --editor-toolbar-bg: var(--surface-container-low);
-  --editor-toolbar-border: rgba(var(--outline-variant-rgb), 0.1);
-
-  /* Result grid light overrides — inline_editable_grid_light_mode_pro_sync_v2 */
-  --result-grid-bg: var(--surface-container-lowest);
-  --result-grid-header-bg: var(--surface-container-low);
-  --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
-  --result-grid-row-hover-bg: var(--surface-container-low);
-  --result-grid-row-selected-bg: var(--secondary-container);
-  --result-grid-row-selected-accent: var(--primary);
-  --result-status-success-fg: var(--primary);
-
-  --grid-cell-padding-x: var(--space-xl);
-  --grid-cell-padding-y: 10px;
-  --grid-row-height: 36px;
-  --grid-header-height: 36px;
-  --grid-scrollbar-size: 6px;
-  --grid-scrollbar-thumb: var(--outline-variant);
-  --grid-scrollbar-thumb-hover: var(--outline);
-  --grid-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  --grid-header-shadow: none;
-
-  /* Table Data Editing States — light overrides */
-  --td-editing-row-bg: rgba(var(--primary-rgb), 0.05);
-  --td-modified-cell-indicator: var(--primary);
-  --td-null-text-color: rgba(var(--on-surface-rgb), 0.4);
-  --td-warning-bg: rgba(217, 119, 6, 0.06);
-  --td-warning-text: var(--warning);
-  --td-readonly-badge-bg: var(--surface-container-high);
-  --td-readonly-badge-text: var(--on-surface-variant);
-
-  /* Autocomplete doc panel light overrides */
-  --autocomplete-bg: color-mix(in srgb, var(--surface-container-low) 95%, transparent);
-  --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
-  --autocomplete-backdrop: blur(20px);
-
-  /* FK Lookup — light overrides */
-  --fk-lookup-trigger-hover-bg: rgba(0, 0, 0, 0.06);
-  --fk-lookup-trigger-hover-border-color: rgba(0, 0, 0, 0.15);
-  --fk-lookup-target-col-bg: rgba(99, 102, 241, 0.06);
-  --fk-lookup-target-col-header-fg: #4f46e5;
-
-  /* Query Result Grid Editing — light */
-  --color-cell-readonly-bg: rgba(0, 0, 0, 0.03);
-  --color-cell-readonly-opacity: 0.65;
-
-  /* ---------- AI Panel tokens — light overrides ---------- */
-  --ai-panel-bg: var(--surface-container-lowest);
-  --ai-panel-header-bg: var(--surface-container-low);
-  --ai-panel-border: rgba(var(--outline-variant-rgb), 0.2);
-  --ai-user-bubble-bg: var(--surface-container);
-  --ai-assistant-accent: var(--primary);
-  --ai-code-block-bg: var(--surface-container);
-  --ai-code-block-border: rgba(var(--outline-variant-rgb), 0.15);
-  --ai-error-bg: rgba(var(--error-rgb), 0.08);
-  --ai-cursor-color: var(--primary);
-  --ai-context-chip-bg: var(--surface-container-low);
-  --ai-context-chip-border: rgba(var(--outline-variant-rgb), 0.2);
-
-  /* Token colors for syntax highlighting — light theme */
-  --token-keyword: #7c4dff;
-  --token-string: #2e7d32;
-  --token-comment: #90a4ae;
-  --token-function: #1565c0;
-  --token-number: #e65100;
-  --token-operator: #0277bd;
-  --token-type: #bf360c;
-
-  /* Skeleton / shimmer */
-  --skeleton-base: #e6e8ea;
-  --skeleton-highlight: rgba(255, 255, 255, 0.7);
+  /* Syntax colours — VS Code Light+ (prototype `--sx-*`) */
+  --token-text: #1b1b1b;
+  --token-keyword: #0000ff;
+  --token-string: #a31515;
+  --token-number: #098658;
+  --token-identifier: #001080;
+  --token-comment: #008000;
+  --token-function: #795e26;
 }

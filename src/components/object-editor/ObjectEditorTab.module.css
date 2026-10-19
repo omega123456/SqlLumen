@@ -26,7 +26,7 @@
 .spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid rgba(var(--outline-variant-rgb), 0.35);
+  border: 2px solid var(--stroke-card);
   border-top-color: var(--primary);
   border-radius: 999px;
   animation: object-editor-spin 0.85s linear infinite;

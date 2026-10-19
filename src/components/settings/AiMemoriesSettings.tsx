@@ -271,11 +271,11 @@ export function AiMemoriesSettings() {
             )
           })}
 
-          {/* Ungrouped connections — a tier-1 "No Group" block parallel to real groups */}
+          {/* Ungrouped connections — a tier-1 "No group" block parallel to real groups */}
           {ungroupedConnections.length > 0 && (
             <div className={styles.ungroupedBlock}>
               <div className={styles.ungroupedLabel} data-testid="ai-memory-ungrouped-label">
-                No Group
+                No group
               </div>
               {ungroupedConnections.map((conn) => (
                 <MemorySection
@@ -299,7 +299,7 @@ export function AiMemoriesSettings() {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        title="Delete Memory"
+        title="Delete memory"
         message="Are you sure you want to delete this memory?"
         confirmLabel="Delete"
         isDestructive

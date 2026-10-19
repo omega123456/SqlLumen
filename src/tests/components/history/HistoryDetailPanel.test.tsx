@@ -41,7 +41,7 @@ describe('HistoryDetailPanel', () => {
     expect(screen.getByText('SELECT * FROM orders')).toBeInTheDocument()
     expect(screen.getByText('125ms')).toBeInTheDocument()
     expect(screen.getByText('50')).toBeInTheDocument()
-    expect(screen.getByText('Statement Preview')).toBeInTheDocument()
+    expect(screen.getByText('Statement preview')).toBeInTheDocument()
   })
 
   it('shows correct status icon for success', () => {
@@ -72,7 +72,7 @@ describe('HistoryDetailPanel', () => {
     expect(screen.getByText('Error')).toBeInTheDocument()
   })
 
-  it('"Open in Editor" button calls onOpenInEditor', async () => {
+  it('"Open in editor" button calls onOpenInEditor', async () => {
     const user = userEvent.setup()
     const onOpenInEditor = vi.fn()
     const entry = makeHistoryEntry()

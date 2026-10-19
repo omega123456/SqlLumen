@@ -49,13 +49,15 @@ async function openScrollTableDataTab(page: Page): Promise<string> {
     objectType: 'table',
   })
 
-  await expect(page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)).toHaveAttribute(
-    'data-active',
-    'true',
-    { timeout: APP_READY_MS }
-  )
-  await expect(activePanel(page).getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(activePanel(page).getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
+  await expect(
+    page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)
+  ).toHaveAttribute('data-active', 'true', { timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('table-data-grid')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+  await expect(
+    activePanel(page).getByTestId('table-data-grid').locator('canvas').first()
+  ).toBeVisible({
     timeout: APP_READY_MS,
   })
   return tabId
@@ -73,12 +75,12 @@ async function openQueryEditorTab(page: Page): Promise<string> {
     return activeTabId
   })
 
-  await expect(page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)).toHaveAttribute(
-    'data-active',
-    'true',
-    { timeout: APP_READY_MS }
-  )
-  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(
+    page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)
+  ).toHaveAttribute('data-active', 'true', { timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
 
   return tabId
 }
@@ -86,11 +88,9 @@ async function openQueryEditorTab(page: Page): Promise<string> {
 async function openQueryEditorWithScrollableResults(page: Page): Promise<string> {
   const tabId = await openQueryEditorTab(page)
 
-  await expect(page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)).toHaveAttribute(
-    'data-active',
-    'true',
-    { timeout: APP_READY_MS }
-  )
+  await expect(
+    page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)
+  ).toHaveAttribute('data-active', 'true', { timeout: APP_READY_MS })
 
   await page.evaluate((queryTabId) => {
     const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
@@ -145,11 +145,9 @@ async function activateWorkspaceTab(page: Page, tabId: string): Promise<void> {
   }
 
   await activeWorkspaceTabMembers(page).getByTestId(`workspace-tab-${tabId}`).click()
-  await expect(page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)).toHaveAttribute(
-    'data-active',
-    'true',
-    { timeout: APP_READY_MS }
-  )
+  await expect(
+    page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)
+  ).toHaveAttribute('data-active', 'true', { timeout: APP_READY_MS })
 }
 
 async function scrollGrid(grid: Locator, deltaY: number): Promise<number> {
@@ -197,7 +195,9 @@ test.describe('Workspace tab persistence', () => {
     await activateWorkspaceTab(page, queryTabId)
     await activateWorkspaceTab(page, tableTabId)
 
-    await expect.poll(() => getGridScrollTop(activePanel(page).getByTestId('table-data-grid'))).toBeGreaterThan(0)
+    await expect
+      .poll(() => getGridScrollTop(activePanel(page).getByTestId('table-data-grid')))
+      .toBeGreaterThan(0)
   })
 
   test('retains query result grid scroll after switching tabs', async ({ page }) => {
@@ -210,7 +210,9 @@ test.describe('Workspace tab persistence', () => {
     await activateWorkspaceTab(page, tableTabId)
     await activateWorkspaceTab(page, queryTabId)
 
-    await expect.poll(() => getGridScrollTop(activePanel(page).getByTestId('result-grid'))).toBeGreaterThan(0)
+    await expect
+      .poll(() => getGridScrollTop(activePanel(page).getByTestId('result-grid')))
+      .toBeGreaterThan(0)
   })
 
   test('keeps multiple workspace panels mounted with one active panel', async ({ page }) => {
@@ -220,7 +222,9 @@ test.describe('Workspace tab persistence', () => {
     const panels = page.getByTestId('workspace-panel')
     await expect(panels).toHaveCount(4, { timeout: APP_READY_MS })
     await expect(page.locator('[data-testid="workspace-panel"][data-active="true"]')).toHaveCount(1)
-    await expect(page.locator('[data-testid="workspace-panel"][data-active="false"]')).toHaveCount(3)
+    await expect(page.locator('[data-testid="workspace-panel"][data-active="false"]')).toHaveCount(
+      3
+    )
   })
 
   test('ignores FK lookup keyboard actions dispatched from an inactive grid', async ({ page }) => {
@@ -232,18 +236,22 @@ test.describe('Workspace tab persistence', () => {
       objectName: 'orders',
       objectType: 'table',
     })
-    await expect(page.locator(`[data-testid="workspace-panel"][data-tab-id="${tableTabId}"]`)).toHaveAttribute(
-      'data-active',
-      'true',
-      { timeout: APP_READY_MS }
-    )
-    await expect(activePanel(page).getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(
+      page.locator(`[data-testid="workspace-panel"][data-tab-id="${tableTabId}"]`)
+    ).toHaveAttribute('data-active', 'true', { timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('table-data-grid')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     await openQueryEditorTab(page)
-    const inactivePanel = page.locator(`[data-testid="workspace-panel"][data-tab-id="${tableTabId}"]`)
+    const inactivePanel = page.locator(
+      `[data-testid="workspace-panel"][data-tab-id="${tableTabId}"]`
+    )
     await expect(inactivePanel).toHaveAttribute('data-active', 'false')
 
-    await inactivePanel.getByTestId('table-data-grid').dispatchEvent('keydown', { key: 'F4', code: 'F4' })
+    await inactivePanel
+      .getByTestId('table-data-grid')
+      .dispatchEvent('keydown', { key: 'F4', code: 'F4' })
     await expect(page.getByTestId('fk-lookup-dialog')).toBeHidden()
     await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible()
   })
@@ -289,7 +297,7 @@ async function openSecondSession(page: Page): Promise<void> {
 
   const dialog = page.getByTestId('connection-dialog')
   if (!(await dialog.isVisible())) {
-    await page.getByRole('button', { name: 'New Connection' }).first().click()
+    await page.getByRole('button', { name: 'New connection' }).first().click()
   }
   await expect(dialog).toBeVisible({ timeout: APP_READY_MS })
 
@@ -300,7 +308,7 @@ async function openSecondSession(page: Page): Promise<void> {
   await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
   await sampleRow.click()
 
-  const connectBtn = dialog.getByRole('button', { name: 'Save and Connect', exact: true })
+  const connectBtn = dialog.getByRole('button', { name: 'Save and connect', exact: true })
   await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
   await connectBtn.click()
   await expect(dialog).toBeHidden({ timeout: APP_READY_MS })
@@ -365,7 +373,9 @@ test.describe('Multi-session workspace persistence', () => {
       .toBeGreaterThan(0)
   })
 
-  test('retains each open session workspace subtree while only one is visible', async ({ page }) => {
+  test('retains each open session workspace subtree while only one is visible', async ({
+    page,
+  }) => {
     await openScrollTableDataTab(page)
     await openSecondSession(page)
 

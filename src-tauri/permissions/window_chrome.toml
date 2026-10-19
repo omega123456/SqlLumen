@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-set-window-theme"
+description = "Allows syncing the native title bar with the app theme"
+[permission.commands]
+allow = ["set_window_theme"]
+
+[[permission]]
+identifier = "allow-get-window-backdrop"
+description = "Allows reading which window backdrop (mica or solid) was applied"
+[permission.commands]
+allow = ["get_window_backdrop"]

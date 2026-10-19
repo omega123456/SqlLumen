@@ -10,13 +10,13 @@ beforeEach(() => {
 describe('ConfirmDialog', () => {
   const defaultProps = {
     isOpen: true,
-    title: 'Drop Table',
+    title: 'Drop table',
     message: (
       <>
         Are you sure you want to drop table <strong>users</strong>?
       </>
     ),
-    confirmLabel: 'Drop Table',
+    confirmLabel: 'Drop table',
     onConfirm: vi.fn(),
     onCancel: vi.fn(),
   }
@@ -24,7 +24,7 @@ describe('ConfirmDialog', () => {
   it('renders title and message', () => {
     render(<ConfirmDialog {...defaultProps} />)
     // Title appears in the h2 heading
-    expect(screen.getByRole('heading', { name: /Drop Table/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Drop table/ })).toBeInTheDocument()
     expect(screen.getByText(/Are you sure you want to drop table/)).toBeInTheDocument()
     expect(screen.getByText('users')).toBeInTheDocument()
   })
@@ -74,14 +74,14 @@ describe('ConfirmDialog', () => {
   it('isDestructive confirm button has danger variant styling', () => {
     render(<ConfirmDialog {...defaultProps} isDestructive />)
     const btn = screen.getByTestId('confirm-confirm-button')
-    expect(btn.className).toContain('ui-button-danger')
-    expect(btn.className).not.toContain('ui-button-primary')
+    expect(btn.className).toContain('ui-button--danger')
+    expect(btn.className).not.toContain('ui-button--accent')
   })
 
   it('non-destructive confirm button has primary styling', () => {
     render(<ConfirmDialog {...defaultProps} isDestructive={false} />)
     const btn = screen.getByTestId('confirm-confirm-button')
-    expect(btn.className).toContain('ui-button-primary')
+    expect(btn.className).toContain('ui-button--accent')
   })
 
   it('isLoading disables confirm button and shows a spinner with loading state', () => {

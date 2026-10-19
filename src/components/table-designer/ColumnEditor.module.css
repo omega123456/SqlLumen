@@ -9,26 +9,55 @@
   overflow: hidden;
 }
 
+/* Command bar (prototype `.p-cmd`, 16px inset) */
 .toolbar {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.08);
-  background: transparent;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: var(--command-bar-height);
+  padding: 0 16px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.toolbar > * {
+  flex-shrink: 0;
+}
+
+/* Prototype `.vdiv` */
+.toolbarDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--stroke-divider);
+}
+
+/* Grid card (prototype `.dz-grid`): card fill and stroke, 20px side margins */
+.gridCard {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 20px 16px;
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-container-high);
+  overflow: hidden;
 }
 
 .tableScroller {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow: auto;
 }
 
+/* Columns keep their fixed widths; the card scrolls sideways when they overflow */
 .table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 1100px;
 }
 
 .tableHead {
@@ -40,33 +69,27 @@
 .headerCell {
   position: sticky;
   top: 0;
-  padding: 10px 12px;
-  background: transparent;
+  height: var(--grid-header-height);
+  padding: 0 8px;
+  background: var(--surface-container);
   color: var(--on-surface-variant);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  border-bottom: 1px solid var(--stroke-divider);
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
 
-.headerCell:nth-child(6),
-.headerCell:nth-child(7),
-.headerCell:nth-child(8),
-.headerCell:nth-child(9),
-.headerCell:nth-child(2),
+.centred,
 .bodyCell.checkboxCell,
-.rowNumberCell,
-.deleteCell {
+.rowNumberCell {
   text-align: center;
 }
 
 .tableBody {
-  font-family: var(--font-mono);
-  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
 }
 
 .row {
@@ -74,29 +97,33 @@
 }
 
 .row:hover {
-  background: rgba(var(--on-surface-rgb), 0.04);
+  background: var(--fill-subtle-hover);
 }
 
-.row:hover .dragHandle,
-.selectedRow .dragHandle {
+/* The drag handle replaces the row number while the row is hovered */
+.row:hover .dragHandle {
   opacity: 0.9;
 }
 
-.selectedRow {
-  background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
+.row:hover .rowNumber {
+  visibility: hidden;
+}
+
+.selectedRow,
+.row.selectedRow:hover {
+  background: var(--fill-accent-tint);
 }
 
 .bodyCell {
   position: relative;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.06);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--stroke-divider);
   vertical-align: middle;
 }
 
-.dragCell {
-  width: 28px;
-  padding-left: 0;
-  padding-right: 0;
+/* The card edge closes the last row (prototype `.dz-grid tr:last-child td`) */
+.tableBody tr:last-child .bodyCell {
+  border-bottom: 0;
 }
 
 .rowAccent {
@@ -104,7 +131,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 3px;
   background: transparent;
 }
 
@@ -113,18 +140,21 @@
 }
 
 .dragHandle {
-  display: inline-flex;
+  position: absolute;
+  inset: 0;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
   color: var(--on-surface-variant);
   opacity: 0;
   transition: opacity 0.15s ease;
 }
 
+/* Prototype `.dz-grid td.n` */
 .rowNumberCell {
-  width: 40px;
-  color: var(--on-surface-variant);
+  width: 36px;
+  color: var(--outline);
+  font-variant-numeric: tabular-nums;
 }
 
 .cellFrame {
@@ -141,41 +171,53 @@
   border-left: 8px solid transparent;
 }
 
-/* Padding/layout only; border/shadow from global .ui-dropdown__trigger */
+/* Cell combos at the designer's 30px cell height (prototype `.dz-grid .combo`);
+   border/shadow from global .ui-dropdown__trigger */
 .cellInput {
-  width: 100%;
-  padding: 7px 8px;
+  height: 30px;
+  padding: 0 8px 0 10px;
   color: var(--on-surface);
-  font: inherit;
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
   transition:
     background-color 0.15s ease,
     color 0.15s ease;
 }
 
-.inactiveInput {
-  background: transparent;
+/* Cell controls keep the Fluent control fill in every row (prototype `.dz-grid .fld`, `.combo`);
+   the row itself shows the selection. */
+.inactiveInput,
+.activeInput {
+  background: var(--fill-control);
 }
 
-.activeInput {
-  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
+/* Fixed field widths (prototype `.dz-grid` inline widths) */
+.nameInput {
+  width: 150px;
+  font-family: var(--font-mono);
+}
+
+.typeInput {
+  width: 130px;
 }
 
 .lengthInput {
-  text-align: center;
+  width: 70px;
+  font-family: var(--font-mono);
+  text-align: right;
 }
 
-.selectInput {
-  min-height: 36px;
-  text-align: center;
+.signedInput {
+  width: 118px;
 }
 
-.typeSelectInput {
-  min-height: 40px;
-  padding: 10px 42px 10px 14px;
+.commentInput {
+  width: 170px;
 }
 
+/* Prototype `.dz-grid td.c` */
 .checkboxCell {
-  width: 76px;
+  width: 64px;
 }
 
 .defaultValueCell {
@@ -183,7 +225,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 180px;
+  width: 170px;
 }
 
 .defaultValueInputContainer {
@@ -198,6 +240,7 @@
   flex: 1;
   min-width: 0;
   width: 0;
+  font-family: var(--font-mono);
 }
 
 .defaultModeIconButton {
@@ -224,5 +267,5 @@
 }
 
 .ghostRow:hover {
-  background: rgba(var(--primary-rgb), 0.06);
+  background: var(--fill-subtle-hover);
 }

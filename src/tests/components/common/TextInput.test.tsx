@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TextInput } from '../../../components/common/TextInput'
 import styles from '../../../components/common/TextInput.module.css'
+import { cssRule } from '../../helpers/css-source'
 
 describe('TextInput', () => {
   it('applies ui-input for default variant', () => {
@@ -54,5 +55,26 @@ describe('TextInput', () => {
   it('allows overriding autoCapitalize', () => {
     render(<TextInput autoCapitalize="sentences" data-testid="inp" />)
     expect(screen.getByTestId('inp')).toHaveAttribute('autocapitalize', 'sentences')
+  })
+})
+
+describe('TextInput field chrome', () => {
+  const global = 'styles/global.css'
+  const fields = '.ui-field-chrome, .ui-input, .ui-textarea'
+
+  it('has a control stroke with a boundary bottom edge and no glow ring', () => {
+    const rest = cssRule(global, fields)
+    expect(rest).toContain('border: 1px solid var(--stroke-control)')
+    expect(rest).toContain('border-bottom-color: var(--stroke-text-field)')
+    expect(rest).toContain('box-shadow: none')
+  })
+
+  it('shows a 2px accent bottom edge on focus', () => {
+    const focus = cssRule(
+      global,
+      '.ui-field-chrome:focus, .ui-input:focus, .ui-textarea:focus, .ui-field-chrome:focus-visible, .ui-input:focus-visible, .ui-textarea:focus-visible'
+    )
+    expect(focus).toContain('border-bottom-color: var(--primary)')
+    expect(focus).toContain('box-shadow: inset 0 -1px 0 var(--primary)')
   })
 })

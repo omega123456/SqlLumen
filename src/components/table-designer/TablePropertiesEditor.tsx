@@ -256,7 +256,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
 
           <div className={styles.fieldGroup}>
             <label className={styles.label} id={`table-properties-charset-label-${tabId}`}>
-              <span>Character Set</span>
+              <span>Character set</span>
               {isCharsetsLoading && <SpinnerGap size={12} className={styles.spinner} aria-hidden />}
             </label>
             <Dropdown
@@ -294,7 +294,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
 
           <div className={styles.fieldGroup}>
             <label className={styles.label} htmlFor={`table-properties-auto-increment-${tabId}`}>
-              Auto Increment
+              Auto increment
             </label>
             <TextInput
               id={`table-properties-auto-increment-${tabId}`}
@@ -314,7 +314,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
         <div className={styles.column}>
           <div className={styles.fieldGroup}>
             <label className={styles.label} id={`table-properties-row-format-label-${tabId}`}>
-              Row Format
+              Row format
             </label>
             <Dropdown
               id={`table-properties-row-format-${tabId}`}

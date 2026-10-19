@@ -7,7 +7,7 @@ import type { FavoriteEntry } from '../../../types/schema'
 function makeFavourite(overrides: Partial<FavoriteEntry> = {}): FavoriteEntry {
   return {
     id: 1,
-    name: 'My Query',
+    name: 'My query',
     sqlText: 'SELECT * FROM orders',
     description: 'Gets all orders',
     category: 'shopdb',
@@ -23,7 +23,7 @@ describe('FavouritesDetailPanel', () => {
     const favourite = makeFavourite()
     render(<FavouritesDetailPanel favourite={favourite} onInsert={vi.fn()} onDelete={vi.fn()} />)
 
-    expect(screen.getByText('My Query')).toBeInTheDocument()
+    expect(screen.getByText('My query')).toBeInTheDocument()
     expect(screen.getByText('Gets all orders')).toBeInTheDocument()
   })
 

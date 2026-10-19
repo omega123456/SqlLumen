@@ -512,7 +512,7 @@ export function FkLookupDialog({
           {showError && (
             <div className={styles.errorContainer} data-testid="fk-lookup-error">
               <span className={styles.errorMessage}>{error}</span>
-              <Button variant="secondary" onClick={handleRetry} data-testid="fk-lookup-retry">
+              <Button onClick={handleRetry} data-testid="fk-lookup-retry">
                 Retry
               </Button>
             </div>
@@ -545,16 +545,16 @@ export function FkLookupDialog({
 
           {/* ── Footer ─────────────────────────────────── */}
           <div className={styles.footer}>
-            <Button variant="secondary" onClick={onClose} data-testid="fk-lookup-cancel">
-              Cancel
-            </Button>
             <Button
-              variant="primary"
+              variant="accent"
               disabled={selectedRowKey === null || isReadOnly || isLoading || !!error}
               onClick={handleApply}
               data-testid="fk-lookup-apply"
             >
               Apply
+            </Button>
+            <Button onClick={onClose} data-testid="fk-lookup-cancel">
+              Cancel
             </Button>
           </div>
         </div>

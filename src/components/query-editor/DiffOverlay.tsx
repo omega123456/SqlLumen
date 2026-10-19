@@ -343,7 +343,7 @@ export function DiffOverlay({
   }, [lineChanges, handleAcceptHunk])
 
   /**
-   * Accept All — apply the final SQL to the main editor.
+   * Accept all — apply the final SQL to the main editor.
    *
    * If the user accepted individual hunks first, the left-side model
    * (`origModel`) already contains a mix of original + accepted AI changes.
@@ -361,7 +361,7 @@ export function DiffOverlay({
 
   /**
    * Close — if any per-hunk accepts were applied in the overlay, persist the
-   * merged left-pane SQL to the main editor (same payload as Accept All in
+   * merged left-pane SQL to the main editor (same payload as Accept all in
    * that state). Otherwise dismiss without changing the query tab.
    */
   const handleClose = useCallback(() => {
@@ -379,13 +379,18 @@ export function DiffOverlay({
   return (
     <div className={styles.overlay} data-testid="diff-overlay">
       <div className={styles.header}>
-        <span className={styles.title}>Review Changes</span>
-        <div className={`${styles.actions} ${styles.compactToolbar}`}>
-          <Button variant="danger" onClick={onReject} data-testid="diff-reject-button">
-            Reject All
+        <span className={styles.title}>Review changes</span>
+        <div className={styles.actions}>
+          <Button variant="danger" size="sm" onClick={onReject} data-testid="diff-reject-button">
+            Reject all
           </Button>
-          <Button variant="primary" onClick={handleAcceptAll} data-testid="diff-accept-all-button">
-            Accept All
+          <Button
+            variant="accent"
+            size="sm"
+            onClick={handleAcceptAll}
+            data-testid="diff-accept-all-button"
+          >
+            Accept all
           </Button>
         </div>
       </div>
@@ -405,9 +410,9 @@ export function DiffOverlay({
         />
       </div>
       <div className={styles.footer}>
-        <div className={`${styles.actions} ${styles.compactToolbar}`}>
+        <div className={styles.actions}>
           <Button
-            variant="secondary"
+            size="sm"
             onClick={handleClose}
             title={closeLabel}
             aria-label={closeLabel}

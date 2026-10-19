@@ -11,7 +11,7 @@ import type { FavoriteEntry } from '../../../types/schema'
 function makeFavourite(overrides: Partial<FavoriteEntry> = {}): FavoriteEntry {
   return {
     id: 1,
-    name: 'My Query',
+    name: 'My query',
     sqlText: 'SELECT * FROM orders',
     description: 'Gets all orders',
     category: 'shopdb',
@@ -115,7 +115,7 @@ describe('FavouritesView', () => {
   it('Insert opens query tab and sets content', async () => {
     const user = userEvent.setup()
     useFavoritesStore.setState({
-      entries: [makeFavourite({ id: 1, name: 'My Query', sqlText: 'SELECT 1' })],
+      entries: [makeFavourite({ id: 1, name: 'My query', sqlText: 'SELECT 1' })],
       loadFavorites: noopLoadFavorites,
     })
 
@@ -126,7 +126,7 @@ describe('FavouritesView', () => {
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     expect(tabs).toHaveLength(1)
     expect(tabs[0].type).toBe('query-editor')
-    expect(tabs[0].label).toBe('My Query')
+    expect(tabs[0].label).toBe('My query')
 
     const queryTab = useQueryStore.getState().tabs[tabs[0].id]
     expect(queryTab?.content).toBe('SELECT 1')
@@ -177,7 +177,7 @@ describe('FavouritesView', () => {
 
     // Confirmation dialog should appear
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Delete Favourite')).toBeInTheDocument()
+    expect(screen.getByText('Delete favourite')).toBeInTheDocument()
 
     // deleteFavorite should NOT have been called yet
     expect(deleteFavoriteSpy).not.toHaveBeenCalled()

@@ -76,31 +76,31 @@ export function AiCodeBlock({
   return (
     <div className={styles.codeBlock} data-testid="ai-code-block">
       <div className={styles.header}>
-        <span className={styles.language}>{language ?? 'code'}</span>
+        <span className={styles.language}>{isSql ? 'SQL' : (language ?? 'code')}</span>
         <div className={styles.actions}>
           {showDiffButton && isSql && isSingleStatement && onTriggerDiff && (
             <Button
-              variant="ghost"
-              className={styles.actionButton}
+              variant="subtle"
+              size="sm"
               onClick={handleDiff}
               title="View diff"
               aria-label="View diff"
               data-testid="ai-code-diff-button"
             >
-              <GitDiff size={14} />
-              <span className={styles.actionLabel}>Diff</span>
+              <GitDiff size={16} />
+              Diff
             </Button>
           )}
           <Button
-            variant="ghost"
-            className={styles.actionButton}
+            variant="subtle"
+            size="sm"
             onClick={handleCopy}
             title={copied ? 'Copied!' : 'Copy code'}
             aria-label={copied ? 'Copied!' : 'Copy SQL'}
             data-testid="ai-code-copy-button"
           >
-            <Copy size={14} />
-            <span className={styles.actionLabel}>{copied ? 'Copied!' : 'Copy'}</span>
+            <Copy size={16} />
+            {copied ? 'Copied!' : 'Copy'}
           </Button>
         </div>
       </div>

@@ -8,7 +8,7 @@ function mergeClassNames(...parts: (string | undefined)[]): string {
 }
 
 export type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  /** Visual size: sm (20px), md (28px), lg (36px). Defaults to md. */
+  /** Visual size: sm (24px), md (28px), lg (32px). Defaults to md. */
   size?: IconButtonSize
 }
 

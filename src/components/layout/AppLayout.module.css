@@ -5,8 +5,10 @@
   overflow: hidden;
 }
 
+/* One layer surface for sidebar and workspace (prototype `.p-body`) */
 .mainContent {
   flex: 1;
+  background-color: var(--surface-container);
   overflow: hidden;
   min-height: 0;
 }

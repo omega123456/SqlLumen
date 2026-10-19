@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   margin-top: var(--space-md);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border: 1px solid var(--stroke-card);
   border-radius: var(--radius-lg);
   background: var(--surface-container-low);
   overflow: hidden;
@@ -14,7 +14,7 @@
   justify-content: space-between;
   gap: var(--space-md);
   padding: var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border-bottom: 1px solid var(--stroke-divider);
   background: var(--surface-container-lowest);
 }
 
@@ -53,7 +53,7 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border: 1px solid var(--stroke-card);
   border-radius: 999px;
   background: transparent;
   color: var(--on-surface-variant);
@@ -99,13 +99,13 @@
   justify-content: space-between;
   gap: var(--space-md);
   padding: var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border-bottom: 1px solid var(--stroke-divider);
   background: var(--surface-container-lowest);
 }
 
 .paginationBar:last-of-type {
   border-bottom: none;
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .summary {
@@ -133,14 +133,12 @@
 
 .tableHeader {
   padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border-bottom: 1px solid var(--stroke-divider);
   color: var(--on-surface-variant);
   font-family: var(--type-table-header-font);
   font-size: var(--type-table-header-size);
   font-weight: var(--type-table-header-weight);
-  letter-spacing: var(--type-table-header-tracking);
   text-align: left;
-  text-transform: uppercase;
 }
 
 .levelColumn {
@@ -173,7 +171,7 @@
 
 .cell {
   padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  border-bottom: 1px solid var(--stroke-divider);
   vertical-align: top;
 }
 
@@ -204,14 +202,7 @@
   display: block;
   height: 14px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(
-    90deg,
-    rgba(var(--outline-variant-rgb), 0.12) 25%,
-    rgba(var(--outline-variant-rgb), 0.24) 37%,
-    rgba(var(--outline-variant-rgb), 0.12) 63%
-  );
-  background-size: 400% 100%;
-  animation: logViewerShimmer 1.4s ease-in-out infinite;
+  background: var(--skeleton-base);
 }
 
 .skeletonBadge {
@@ -234,7 +225,7 @@
 }
 
 .errorState {
-  color: var(--error);
+  margin: var(--space-lg);
 }
 
 @keyframes logViewerSpin {
@@ -254,16 +245,6 @@
 
   100% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--tertiary) 0%, transparent);
-  }
-}
-
-@keyframes logViewerShimmer {
-  0% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0 50%;
   }
 }
 

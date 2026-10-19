@@ -30,11 +30,9 @@
 }
 
 .sectionHeading {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--type-label-caps);
   font-weight: var(--type-label-caps-weight);
-  letter-spacing: var(--type-label-caps-tracking);
-  text-transform: uppercase;
   color: var(--on-surface-variant);
   margin: 0;
 }
@@ -62,7 +60,7 @@
   align-items: center;
   gap: var(--space-xs);
   color: var(--tertiary);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .statusError {
@@ -70,7 +68,7 @@
   align-items: center;
   gap: var(--space-xs);
   color: var(--error);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .errorMessage {
@@ -94,7 +92,7 @@
   color: var(--primary);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
@@ -103,7 +101,7 @@
 }
 
 .openButton:hover {
-  background: rgba(var(--primary-rgb), 0.08);
+  background: var(--fill-subtle-hover);
 }
 
 .copyButton {
@@ -115,7 +113,7 @@
   color: var(--on-surface-variant);
   font-family: var(--font-body);
   font-size: var(--type-size-2xs);
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
   padding: 2px 6px;
   border-radius: var(--radius-sm);
@@ -125,6 +123,6 @@
 }
 
 .copyButton:hover {
-  background: rgba(var(--on-surface-rgb), 0.06);
+  background: var(--fill-subtle-hover);
   color: var(--on-surface);
 }

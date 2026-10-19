@@ -1,90 +1,87 @@
+/* Connection strip (prototype `.p-title`, `.p-ctabs`, `.p-ctab`, `.p-search`, `.p-tools`).
+   The strip's bottom edge is the workspace's top edge: a 1px stroke, or 2px in the active
+   connection's colour (prototype `.p-body` border-top with `--acc-cc` / `--acc-bw`). */
+
 .tabBar {
-  --underline-tab-row-height: 44px;
-  height: 44px;
-  background-color: var(--surface-container);
+  --connection-edge-color: var(--stroke-card);
+  --connection-edge-width: 1px;
+  position: relative;
+  box-sizing: content-box;
+  height: var(--title-strip-height);
+  padding: 0 0 var(--connection-edge-width) 4px;
+  background-color: var(--surface);
   display: flex;
   align-items: stretch;
-  padding: 0 var(--space-sm);
   flex-shrink: 0;
-  gap: 0;
   overflow: hidden;
 }
 
-.leftSection,
-.rightSection {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  flex-shrink: 0;
+/* Windows 11: the strip base is transparent so Mica shows through, joined with the native
+   title bar above it (prototype `.proto[data-os='win']`). */
+:global(html.mica) .tabBar {
+  background-color: transparent;
 }
 
-.rightSection {
-  margin-left: auto;
+.tabBar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--connection-edge-width);
+  background: var(--connection-edge-color);
 }
 
-.iconButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  color: var(--on-surface-variant);
-  transition:
-    background-color 0.1s ease,
-    color 0.1s ease;
-}
-
-.iconButton:hover {
-  background-color: var(--surface-container-high);
-  color: var(--on-surface);
-}
-
-/* Scrollable tabs area — outer chrome keeps surface-container; active tab fill via UnderlineTabs token */
-.tabsSection {
-  display: flex;
-  align-items: stretch;
-  flex: 1;
+/* Document-style tab rail; the selected tab joins the workspace below */
+.tabBar .connectionTabRail {
+  --underline-tab-row-height: var(--title-strip-height);
+  position: relative;
+  z-index: 1;
+  align-self: flex-start;
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
-  padding: 0 var(--space-xs);
-  scrollbar-width: none; /* Firefox */
+  height: calc(var(--title-strip-height) + var(--connection-edge-width));
+  padding: 0 0 0 6px;
+  background-color: transparent;
+  box-shadow: none;
+  scrollbar-width: none;
 }
 
-.tabsSection::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+.tabBar .connectionTabRail::-webkit-scrollbar {
+  display: none;
 }
 
-.connectionTabRail {
-  --underline-tab-row-height: 44px;
-  flex: 1;
-  min-width: 0;
-  align-self: stretch;
-}
-
-.connectionTab {
+.tabBar .connectionTab {
+  min-width: 170px;
+  margin-bottom: var(--connection-edge-width);
   cursor: grab;
+}
+
+.tabBar .connectionTab > [role='button'] {
+  gap: 10px;
 }
 
 .connectionTab:active {
   cursor: grabbing;
 }
 
-/* Prefix row: flex inside split-tab label (div role=button, not native <button>) */
-.tabPrefix {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  flex-shrink: 0;
+/* With a 1px stroke edge the selected tab covers it, so it reads as joined to the workspace.
+   A coloured 2px edge stays visible under the tab (prototype `.has-acc .p-ctab.on`). */
+.tabBar[data-edge-color='none'] .connectionTab[data-active] {
+  height: calc(var(--doc-tab-height) + 1px);
+  margin-bottom: 0;
 }
 
-/* Vertical bar — ~80% of tab bar row height */
-.colorAccent {
-  display: block;
-  width: 4px;
-  height: calc(44px * 0.5);
-  min-height: calc(44px * 0.5);
-  flex-shrink: 0;
-  border-radius: 3px;
+/* 3×16 connection colour marker (prototype `.p-ctab .cstripe`) */
+.colorMarker {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
 }
 
 .readOnlyIcon {
@@ -93,30 +90,85 @@
 }
 
 .tabName {
-  max-width: 120px;
+  flex: 1;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .closeButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-sm);
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  transition:
-    background-color 0.1s ease,
-    color 0.1s ease;
+  visibility: hidden;
 }
 
-.closeButton:hover {
-  background-color: var(--surface-container-high);
+.connectionTab:hover .closeButton,
+.connectionTab[data-active] .closeButton,
+.closeButton:focus-visible {
+  visibility: visible;
+}
+
+.newConnectionButton {
+  align-self: center;
+  margin-left: 2px;
+}
+
+.dragSpace {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Search box (prototype `.p-search`) — opens the command palette. Scoped under .tabBar so it
+   outranks the shared .ui-button rules it is rendered with. */
+.tabBar .searchBox {
+  box-sizing: border-box;
+  align-self: center;
+  flex: none;
+  width: 280px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 6px 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-bottom);
+  background: var(--fill-control);
+  /* Rendered prototype: `.proto button { font: inherit; color: inherit }` outranks `.p-search`,
+     so the label is 14/20 in the primary text colour; only the shortcut hint is tertiary. */
   color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.tabBar .searchBox:hover:not(:disabled),
+.tabBar .searchBox:active:not(:disabled) {
+  background: var(--fill-control-hover);
+  color: var(--on-surface);
+}
+
+.searchLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.searchShortcut {
+  margin-left: auto;
+  padding: 0 5px;
+  border: 1px solid var(--stroke-card);
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--outline);
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 12px;
+  flex-shrink: 0;
 }

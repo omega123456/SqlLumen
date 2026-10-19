@@ -15,8 +15,10 @@
 .title {
   margin: 0;
   font-family: var(--font-headline);
-  font-size: var(--type-title-lg);
-  line-height: 1.15;
+  font-size: var(--type-subtitle-size);
+  line-height: var(--type-subtitle-line);
+  font-weight: var(--type-weight-semibold);
+  color: var(--on-surface);
 }
 
 .description {
@@ -24,36 +26,38 @@
   color: var(--on-surface-variant);
 }
 
+/* DDL block (prototype `.ddl`): well fill, card stroke, mono 13/21 */
 .codeBlock {
   margin: 0;
-  padding: var(--space-lg);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
-  border-radius: var(--radius-md);
-  background: var(--surface-container-low);
-  color: var(--on-surface);
+  padding: 14px 16px;
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
+  background: var(--surface-container-lowest);
+  color: var(--token-text);
   font-family: var(--font-mono);
-  font-size: var(--type-size-sm);
-  line-height: 1.55;
+  font-size: var(--type-mono-size);
+  line-height: 21px;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 300px;
   overflow-y: auto;
 }
 
-.keyword {
-  color: var(--primary);
+.keyword,
+.type {
+  color: var(--token-keyword);
 }
 
 .identifier {
-  color: var(--tertiary);
-}
-
-.type {
-  color: var(--secondary);
+  color: var(--token-identifier);
 }
 
 .string {
-  color: var(--secondary);
+  color: var(--token-string);
+}
+
+.number {
+  color: var(--token-number);
 }
 
 .warningSection {
@@ -71,7 +75,7 @@
   align-items: center;
   gap: var(--space-sm);
   color: var(--warning);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .warningList {

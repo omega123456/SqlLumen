@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Play, CheckCircle, ClockCountdown } from '@phosphor-icons/react'
+import { Play, ClockCountdown } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useToastStore } from '../../stores/toast-store'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
@@ -26,6 +26,7 @@ import { ResultFormView } from './ResultFormView'
 import { ResultTextView } from './ResultTextView'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import { Button } from '../common/Button'
+import { InfoBar } from '../common/InfoBar'
 import ExportDialog from '../dialogs/ExportDialog'
 import { FilterDialog } from '../dialogs/FilterDialog'
 import type {
@@ -485,13 +486,17 @@ export function ResultPanel({
           {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
         </FkLookupProvider>
       ) : (
-        <div className={styles.emptyState} data-testid="dml-success">
-          <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
-          <span>
-            {affectedRows > 0
-              ? `Query executed: ${affectedRows} rows affected`
-              : 'Query executed successfully'}
-          </span>
+        <div className={styles.infoBody}>
+          <InfoBar
+            severity="success"
+            title="Query OK"
+            message={
+              affectedRows > 0
+                ? `${affectedRows} ${affectedRows === 1 ? 'row' : 'rows'} affected`
+                : 'Query executed successfully'
+            }
+            data-testid="dml-success"
+          />
         </div>
       )}
     </div>
@@ -514,8 +519,13 @@ export function ResultPanel({
         isCloneVisible={cloneVisible}
         isCloneDisabled={true}
       />
-      <div className={styles.errorBody}>
-        <span className={styles.errorMessage}>{activeResult.errorMessage}</span>
+      <div className={styles.infoBody}>
+        <InfoBar
+          severity="error"
+          title="Query failed"
+          message={activeResult.errorMessage}
+          data-testid="result-error"
+        />
       </div>
     </div>
   )
@@ -561,7 +571,6 @@ export function ResultPanel({
               </div>
             </div>
             <Button
-              variant="secondary"
               onClick={handleRetryExpired}
               disabled={displayStatus === 'restoring'}
               style={{ marginTop: 8 }}

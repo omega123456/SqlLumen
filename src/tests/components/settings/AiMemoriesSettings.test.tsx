@@ -140,7 +140,7 @@ describe('AiMemoriesSettings', () => {
     expect(screen.getByText('prod-db')).toBeInTheDocument()
   })
 
-  it('renders ungrouped connections under "No Group" with their memories', async () => {
+  it('renders ungrouped connections under "No group" with their memories', async () => {
     setupStore({ connections: [buildConnection({ id: 'conn-1', name: 'local-dev' })] })
     ipc.override('list_connection_memories', () => [connMemory])
     render(<AiMemoriesSettings />)
@@ -175,7 +175,7 @@ describe('AiMemoriesSettings', () => {
     })
 
     await user.click(screen.getByTestId('ai-memory-delete-1'))
-    expect(screen.getByText('Delete Memory')).toBeInTheDocument()
+    expect(screen.getByText('Delete memory')).toBeInTheDocument()
 
     const dialogBtns = screen.getAllByRole('button', { name: 'Delete' })
     const confirmBtn =
@@ -882,10 +882,10 @@ describe('AiMemoriesSettings', () => {
 
     // Open + cancel the delete dialog (global memory present).
     await user.click(screen.getByTestId('ai-memory-delete-1'))
-    expect(screen.getByText('Delete Memory')).toBeInTheDocument()
+    expect(screen.getByText('Delete memory')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
     await waitFor(() => {
-      expect(screen.queryByText('Delete Memory')).not.toBeInTheDocument()
+      expect(screen.queryByText('Delete memory')).not.toBeInTheDocument()
     })
   })
 

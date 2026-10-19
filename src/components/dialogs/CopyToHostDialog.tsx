@@ -46,7 +46,7 @@ const CATEGORY_LABELS = COPY_OBJECT_CATEGORY_LABELS
 const CATEGORY_ORDER = COPY_OBJECT_CATEGORY_ORDER
 
 const COPY_TYPE_OPTIONS: DropdownOption[] = [
-  { value: 'both', label: 'Structure + Data' },
+  { value: 'both', label: 'Structure + data' },
   { value: 'structureOnly', label: 'Structure only' },
   { value: 'dataOnly', label: 'Data only' },
 ]
@@ -544,17 +544,18 @@ export default function CopyToHostDialog({
       panelHeight="min(92vh, max(70vh, 820px))"
       panelPadding={false}
       testId="copy-to-host-dialog"
-      ariaLabel="Copy to Another Host"
+      ariaLabel="Copy to another host"
       disableFocusManagement={skipFocusManagement}
       nonDismissible={isCopying}
     >
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>Copy to Another Host</h2>
+          <h2 className={styles.title}>Copy to another host</h2>
           {!isCopying && (
             <Button
-              variant="ghost"
+              variant="subtle"
+              size="sm"
               className={styles.closeButton}
               onClick={onClose}
               aria-label="Close"
@@ -685,7 +686,8 @@ export default function CopyToHostDialog({
                     <div key={category} className={styles.objectCategory}>
                       <div className={styles.objectCategoryHeader}>
                         <Button
-                          variant="ghost"
+                          variant="subtle"
+                          size="sm"
                           className={styles.caretButton}
                           onClick={() => toggleCategoryExpanded(category)}
                           aria-expanded={isExpanded}
@@ -914,7 +916,7 @@ export default function CopyToHostDialog({
         <div className={styles.footerActions}>
           {showProgress ? (
             <Button
-              variant={isTerminal ? 'secondary' : 'danger'}
+              variant={isTerminal ? 'default' : 'danger'}
               onClick={isTerminal ? onClose : handleCancel}
               disabled={!isTerminal && (cancelPending || progress?.cancelRequested)}
               data-testid="copy-progress-action"
@@ -927,16 +929,16 @@ export default function CopyToHostDialog({
             </Button>
           ) : (
             <>
-              <Button variant="secondary" onClick={onClose} data-testid="copy-cancel-button">
-                Cancel
-              </Button>
               <Button
-                variant="primary"
+                variant="accent"
                 onClick={handleCopy}
                 disabled={!canCopy}
                 data-testid="copy-submit-button"
               >
                 Copy
+              </Button>
+              <Button onClick={onClose} data-testid="copy-cancel-button">
+                Cancel
               </Button>
             </>
           )}

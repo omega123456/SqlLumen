@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { getThemeSetting, setThemeSetting } from '../lib/tauri-commands'
+import { syncNativeTheme } from '../lib/window-commands'
 
 export type Theme = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
@@ -16,15 +17,18 @@ function resolveTheme(theme: Theme): ResolvedTheme {
   return theme
 }
 
-function applyTheme(resolved: ResolvedTheme): void {
+// Applies the theme to the DOM and the native title bar; returns the resolved theme.
+// The native sync is fire-and-forget: it logs its own failures and never blocks the UI.
+function applyTheme(theme: Theme): ResolvedTheme {
+  const resolved = resolveTheme(theme)
   document.documentElement.setAttribute('data-theme', resolved)
+  void syncNativeTheme(theme)
+  return resolved
 }
 
 // Internal helper — resolve theme, apply to DOM, update state
 function applyThemeState(theme: Theme, set: (partial: Partial<ThemeState>) => void): void {
-  const resolved = resolveTheme(theme)
-  applyTheme(resolved)
-  set({ theme, resolvedTheme: resolved })
+  set({ theme, resolvedTheme: applyTheme(theme) })
 }
 
 interface ThemeState {
@@ -75,9 +79,7 @@ export const useThemeStore = create<ThemeState>()((set, get) => ({
     const state = get()
     // Capture the current theme on the first preview call only
     const snapshot = state._previewSnapshot ?? state.theme
-    const resolved = resolveTheme(theme)
-    applyTheme(resolved)
-    set({ resolvedTheme: resolved, _previewSnapshot: snapshot })
+    set({ resolvedTheme: applyTheme(theme), _previewSnapshot: snapshot })
   },
 
   revertPreview: () => {

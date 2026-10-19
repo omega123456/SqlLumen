@@ -25,17 +25,23 @@ export function useGlideGridTheme(): Partial<Theme> {
 
   return useMemo(() => {
     void themeVersion
-    const fontFamily = readCssVar('--font-mono')
-    const bodyFontSize = readCssVar('--type-size-md') || '13px'
-    const headerFontSize = readCssVar('--type-table-header-size') || '10px'
-    const headerWeight = readCssVar('--type-table-header-weight') || '700'
-    const horizontalPadding = readPxVar('--grid-cell-padding-x', 16)
-    const verticalPadding = readPxVar('--grid-cell-padding-y', 8)
+    // Glide builds every canvas font as `${style} ${fontFamily}`. The family is the UI font
+    // (headers); cell styles prepend the mono stack plus a trailing comma so cell text
+    // resolves to mono first: "13px <mono>, <ui>".
+    const fontFamily = readCssVar('--font-body')
+    const monoFamily = readCssVar('--font-mono')
+    const cellFontSize = readCssVar('--type-mono-size') || '13px'
+    const bodyFontSize = monoFamily ? `${cellFontSize} ${monoFamily},` : cellFontSize
+    const headerFontSize = readCssVar('--type-table-header-size') || '12px'
+    const headerWeight = readCssVar('--type-table-header-weight') || '600'
+    const horizontalPadding = readPxVar('--grid-cell-padding-x', 10)
+    const verticalPadding = readPxVar('--grid-cell-padding-y', 4)
+    const gridBorder = readCssVar('--result-grid-border')
 
     return {
       accentColor: readCssVar('--primary'),
       accentFg: readCssVar('--on-primary'),
-      accentLight: `rgba(${readCssVar('--primary-rgb')}, 0.12)`,
+      accentLight: readCssVar('--fill-accent-tint'),
       textDark: readCssVar('--on-surface'),
       textMedium: readCssVar('--on-surface-variant'),
       textLight: readCssVar('--td-null-text-color') || readCssVar('--on-surface-variant'),
@@ -52,9 +58,9 @@ export function useGlideGridTheme(): Partial<Theme> {
       bgBubble: readCssVar('--surface-container-high'),
       bgBubbleSelected: readCssVar('--result-grid-row-selected-bg'),
       bgSearchResult: readCssVar('--fk-lookup-target-col-bg'),
-      borderColor: `rgba(${readCssVar('--outline-variant-rgb')}, 0.15)`,
-      horizontalBorderColor: `rgba(${readCssVar('--outline-variant-rgb')}, 0.1)`,
-      headerBottomBorderColor: readCssVar('--outline-variant'),
+      borderColor: gridBorder,
+      horizontalBorderColor: gridBorder,
+      headerBottomBorderColor: gridBorder,
       drilldownBorder: readCssVar('--outline-variant'),
       linkColor: readCssVar('--primary'),
       cellHorizontalPadding: horizontalPadding,
@@ -64,9 +70,9 @@ export function useGlideGridTheme(): Partial<Theme> {
       baseFontStyle: bodyFontSize,
       markerFontStyle: bodyFontSize,
       fontFamily,
-      editorFontSize: bodyFontSize,
+      editorFontSize: cellFontSize,
       lineHeight: rowHeight,
-      roundingRadius: 4,
+      roundingRadius: readPxVar('--radius-control', 4),
     }
   }, [headerHeight, rowHeight, themeVersion])
 }

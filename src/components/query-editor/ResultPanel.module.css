@@ -15,7 +15,7 @@
   height: 100%;
   gap: 8px;
   color: var(--on-surface-variant);
-  font-size: 13px;
+  font-size: var(--type-row-size);
 }
 
 .emptyIcon {
@@ -49,30 +49,17 @@
   opacity: 0.85;
   z-index: 10;
   color: var(--on-surface-variant);
-  font-size: 13px;
+  font-size: var(--type-row-size);
 }
 
-.errorBody {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+/* Inline result InfoBar host (prototype `.p-resinfo`) */
+.infoBody {
   flex: 1;
-  padding: 16px;
+  min-height: 0;
+  padding: 12px;
   overflow-y: auto;
-}
-
-.errorMessage {
-  color: var(--error);
-  font-size: 13px;
-  text-align: center;
-  max-width: 600px;
-  word-break: break-word;
-}
-
-.successIcon {
-  opacity: 0.4;
-  color: var(--result-status-success-fg);
+  background: var(--result-grid-bg);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 /* tabpanel wrapper — must fill remaining space and contain overflow

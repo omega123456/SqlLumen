@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { GlobalContextMenu } from '../../../components/common/GlobalContextMenu'
+import { cssRule } from '../../helpers/css-source'
 
 describe('GlobalContextMenu', () => {
   beforeEach(() => {
@@ -529,5 +530,18 @@ describe('GlobalContextMenu', () => {
     fireEvent.contextMenu(screen.getByTestId('field'), { clientX: 200, clientY: 100 })
 
     expect(screen.getByTestId('global-context-menu').parentElement).toBe(document.body)
+  })
+})
+
+describe('context menu flyout styles', () => {
+  const global = 'styles/global.css'
+
+  it('is a menu flyout with 32px items (prototype `.ctx` + `.mi`)', () => {
+    const menu = cssRule(global, '.ui-context-menu')
+    expect(menu).toContain('border: 1px solid var(--stroke-flyout)')
+    expect(menu).toContain('border-radius: var(--radius-overlay)')
+    expect(menu).toContain('box-shadow: var(--shadow-flyout)')
+    expect(cssRule(global, '.ui-context-menu__item')).toContain('height: var(--menu-item-height)')
+    expect(cssRule('styles/tokens.css', ':root')).toContain('--menu-item-height: 32px')
   })
 })

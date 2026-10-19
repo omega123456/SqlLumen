@@ -24,3 +24,4 @@ pub mod settings;
 pub mod sql_dump;
 pub mod table_data;
 pub mod table_designer;
+pub mod window_chrome;

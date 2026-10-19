@@ -1,3 +1,4 @@
+import { Copy } from '@phosphor-icons/react'
 import { useCallback, useMemo } from 'react'
 import type { TableMetadata, ObjectType } from '../../types/schema'
 import { writeClipboardText } from '../../lib/context-menu-utils'
@@ -24,6 +25,7 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
         identifier: sqlHighlightStyles.identifier,
         type: sqlHighlightStyles.type,
         string: sqlHighlightStyles.string,
+        number: sqlHighlightStyles.number,
       }),
     [ddl]
   )
@@ -40,9 +42,12 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
 
   const codePanel = (
     <ElevatedCodePanel
-      label={isTable ? '<> SHOW CREATE TABLE' : '<> DDL'}
+      className={styles.codePanel}
+      preClassName={styles.ddl}
+      label={isTable ? 'SHOW CREATE TABLE' : 'DDL'}
       headerActions={
-        <Button type="button" variant="secondary" onClick={() => void handleCopy()}>
+        <Button variant="subtle" size="sm" onClick={() => void handleCopy()}>
+          <Copy size={16} weight="regular" />
           Copy SQL
         </Button>
       }

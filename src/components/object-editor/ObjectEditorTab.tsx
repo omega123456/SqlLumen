@@ -165,7 +165,7 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
           onSave={handleSaveNavigation}
           onDiscard={handleDiscardNavigation}
           onCancel={handleCancelNavigation}
-          title="Unsaved Changes"
+          title="Unsaved changes"
           message="You have unsaved DDL changes. What would you like to do?"
           saveLabel="Save"
         />

@@ -5,7 +5,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-overlay);
 }
 
 .header {
@@ -15,10 +15,9 @@
 .title {
   margin: 0;
   font-size: var(--type-size-xl);
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--font-headline);
   color: var(--on-surface);
-  letter-spacing: -0.01em;
 }
 
 .body {
@@ -39,8 +38,8 @@
   font-family: var(--font-body);
   color: var(--error);
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
+  background: var(--error-container);
+  border-radius: var(--radius-card);
   border: 1px solid rgba(var(--error-rgb), 0.2);
 }
 
@@ -49,45 +48,5 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 24px 20px;
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-}
-
-.cancelButton:global(.ui-button-ghost) {
-  padding: 8px 16px;
-  gap: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 500;
-}
-
-.cancelButton:global(.ui-button-ghost):hover:not(:disabled) {
-  color: var(--on-surface);
-  background: transparent;
-}
-
-.discardButton:global(.ui-button-ghost) {
-  padding: 8px 16px;
-  gap: 0;
-  border: 1px solid rgba(var(--error-rgb), 0.2);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--error);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 600;
-}
-
-.discardButton:global(.ui-button-ghost):hover:not(:disabled) {
-  background: rgba(var(--error-rgb), 0.06);
-  border-color: rgba(var(--error-rgb), 0.4);
-  color: var(--error);
-}
-
-.saveButton:global(.ui-button-primary) {
-  padding: 8px 16px;
-  font-size: var(--type-size-sm);
-  line-height: 1.25;
+  border-top: 1px solid var(--stroke-divider);
 }

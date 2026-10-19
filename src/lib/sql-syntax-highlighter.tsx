@@ -5,6 +5,7 @@ type TokenClassNameMap = {
   identifier?: string
   type?: string
   string?: string
+  number?: string
 }
 
 export class SqlSyntaxHighlighter {
@@ -131,8 +132,9 @@ export class SqlSyntaxHighlighter {
 
   private static readonly IDENTIFIER_PATTERN = '`[^`]+`'
   private static readonly STRING_PATTERN = String.raw`'(?:[^'\\]|\\.)*'`
+  private static readonly NUMBER_PATTERN = String.raw`\b\d+(?:\.\d+)?\b`
   private static readonly TOKEN_REGEX = new RegExp(
-    `(${SqlSyntaxHighlighter.IDENTIFIER_PATTERN}|${SqlSyntaxHighlighter.STRING_PATTERN}|\\b(?:${Array.from(SqlSyntaxHighlighter.KEYWORDS, SqlSyntaxHighlighter.escapeRegexToken).join('|')})\\b|\\b(?:${Array.from(SqlSyntaxHighlighter.TYPES, SqlSyntaxHighlighter.escapeRegexToken).join('|')})\\b|\\b[A-Z_]+\\b)`,
+    `(${SqlSyntaxHighlighter.IDENTIFIER_PATTERN}|${SqlSyntaxHighlighter.STRING_PATTERN}|${SqlSyntaxHighlighter.NUMBER_PATTERN}|\\b(?:${Array.from(SqlSyntaxHighlighter.KEYWORDS, SqlSyntaxHighlighter.escapeRegexToken).join('|')})\\b|\\b(?:${Array.from(SqlSyntaxHighlighter.TYPES, SqlSyntaxHighlighter.escapeRegexToken).join('|')})\\b|\\b[A-Z_]+\\b)`,
     'gi'
   )
 
@@ -163,6 +165,14 @@ export class SqlSyntaxHighlighter {
     if (token.startsWith("'")) {
       return (
         <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.string, 'string')}>
+          {token}
+        </span>
+      )
+    }
+
+    if (/^\d/.test(token)) {
+      return (
+        <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.number, 'number')}>
           {token}
         </span>
       )

@@ -275,8 +275,8 @@ export function AppLayout() {
           const result = await openFileDialog({
             multiple: false,
             filters: [
-              { name: 'SQL Files', extensions: ['sql'] },
-              { name: 'All Files', extensions: ['*'] },
+              { name: 'SQL files', extensions: ['sql'] },
+              { name: 'All files', extensions: ['*'] },
             ],
           })
           const filePath = Array.isArray(result) ? result[0] : result

@@ -288,7 +288,7 @@ export function BaseFormView({
                 onClick={handleSave}
                 data-testid="btn-form-save"
               >
-                Save Changes
+                Save changes
               </button>
             </div>
           )}
@@ -434,7 +434,7 @@ function FormField({
             onClick={() => onNullToggle(col, colIdx)}
             data-testid={`btn-null-${col.displayName}`}
           >
-            {isNull ? 'Set Value' : 'Set NULL'}
+            {isNull ? 'Set value' : 'Set NULL'}
           </button>
         )}
         {isModified && (
@@ -455,7 +455,6 @@ function FormField({
             </div>
             {onBlobView && (
               <Button
-                variant="secondary"
                 onClick={() => onBlobView(col, currentRowData)}
                 className={styles.fieldBlobViewBtn}
                 disabled={blobViewDisabled}

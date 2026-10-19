@@ -73,9 +73,9 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ executionTimeMs: 15 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.queryByText('42 Rows')).not.toBeInTheDocument()
+    expect(screen.queryByText('42 rows')).not.toBeInTheDocument()
     expect(screen.getByText('Success')).toBeInTheDocument()
-    expect(screen.getByText('(15ms)')).toBeInTheDocument()
+    expect(screen.getByText('15 ms')).toBeInTheDocument()
   })
 
   it('Add Row button is disabled when no PK', () => {
@@ -463,7 +463,7 @@ describe('TableDataToolbar', () => {
     await user.click(deleteBtn)
     // Confirmation dialog should appear
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Delete Row')).toBeInTheDocument()
+    expect(screen.getByText('Delete row')).toBeInTheDocument()
     expect(screen.getByText('Are you sure you want to delete this row?')).toBeInTheDocument()
   })
 
@@ -573,7 +573,7 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
 
     await user.click(screen.getByTestId('btn-delete-row'))
-    expect(screen.getByText('Delete Rows')).toBeInTheDocument()
+    expect(screen.getByText('Delete rows')).toBeInTheDocument()
     expect(screen.getByText('Are you sure you want to delete these 2 rows?')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('confirm-confirm-button'))

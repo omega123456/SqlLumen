@@ -136,7 +136,7 @@ function isObjectScopedTab(tab: WorkspaceTab): tab is ObjectScopedTab {
 
 /** Maps EditableObjectType to the display label for object-editor tabs. */
 const OBJECT_EDITOR_TYPE_LABELS: Record<EditableObjectType, string> = {
-  procedure: 'Stored Procedure',
+  procedure: 'Stored procedure',
   function: 'Function',
   trigger: 'Trigger',
   event: 'Event',
@@ -965,7 +965,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const newTab: ProcessListTab = {
       id: `processlist-${connectionId}`,
       type: 'processlist',
-      label: 'Process List',
+      label: 'Process list',
       connectionId,
     }
 

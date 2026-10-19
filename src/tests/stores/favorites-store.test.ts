@@ -72,7 +72,7 @@ describe('useFavoritesStore', () => {
 
       const id = await useFavoritesStore.getState().createFavorite({
         connectionId: 'conn-1',
-        name: 'New Favorite',
+        name: 'New favorite',
         sqlText: 'SELECT 2',
         description: null,
         category: null,

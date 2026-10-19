@@ -8,7 +8,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-overlay);
   /* Match the application object browser (left sidebar) surface. */
   background: var(--surface-container-low);
 }
@@ -19,19 +19,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px;
+  padding: 24px 24px 0;
   background: transparent;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   flex-shrink: 0;
 }
 
 .title {
   margin: 0;
-  font-size: var(--type-size-xl);
-  font-weight: 700;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   font-family: var(--font-headline);
   color: var(--on-surface);
-  letter-spacing: -0.01em;
+  line-height: var(--type-subtitle-line);
 }
 
 .closeButton {
@@ -41,13 +40,13 @@
   width: 32px;
   height: 32px;
   padding: 0;
-  border-radius: 50%;
-  color: var(--on-surface-variant);
+  border-radius: var(--radius-control);
+  color: var(--on-surface);
 }
 
 .closeButton:hover {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
+  color: var(--on-surface);
+  background: var(--fill-subtle-hover);
 }
 
 .closeButton svg {
@@ -58,7 +57,7 @@
 /* ── Body (scrolls) ─────────────────────────────────────────────────────── */
 
 .body {
-  padding: 16px 24px;
+  padding: 12px 24px 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -82,10 +81,9 @@
 .sectionTitle {
   margin: 0;
   font-size: var(--type-size-sm);
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--font-headline);
   color: var(--on-surface);
-  letter-spacing: -0.01em;
 }
 
 .sectionBody {
@@ -154,9 +152,9 @@
 .objectTree {
   max-height: 460px;
   overflow-y: auto;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
-  border-radius: 8px;
-  background: var(--surface-container-high);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
+  background: var(--fill-control);
   padding: 8px;
 }
 
@@ -221,7 +219,7 @@
 .objectItemLabel {
   font-family: var(--font-mono);
   font-size: var(--type-size-2xs);
-  color: rgba(var(--on-surface-rgb), 0.8);
+  color: var(--on-surface-variant);
 }
 
 /* ── Options groups ─────────────────────────────────────────────────────── */
@@ -235,10 +233,8 @@
 
 .optionGroupLabel {
   font-size: var(--type-size-2xs);
-  font-weight: 700;
+  font-weight: 600;
   font-family: var(--font-body);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   color: var(--on-surface-variant);
 }
 
@@ -265,8 +261,8 @@
 
 .checkboxLabel {
   font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  color: rgba(var(--on-surface-rgb), 0.8);
+  font-size: var(--type-body-size);
+  color: var(--on-surface);
   user-select: none;
   cursor: pointer;
 }
@@ -286,8 +282,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 14px 24px;
-  background: rgba(var(--outline-variant-rgb), 0.06);
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  background: var(--fill-control);
+  border-top: 1px solid var(--stroke-divider);
   /* Pinned above the footer — never collapses while the body scrolls. */
   flex-shrink: 0;
 }
@@ -320,16 +316,16 @@
 
 .macroBar {
   flex: 1;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(var(--outline-variant-rgb), 0.2);
+  height: 4px;
+  border-radius: 2px;
+  background: var(--fill-neutral-selected);
   overflow: hidden;
 }
 
 .macroFill {
   height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, var(--primary), var(--primary-container));
+  border-radius: 2px;
+  background: var(--primary);
   transition: width 0.3s ease;
 }
 
@@ -337,7 +333,7 @@
   width: 100%;
   height: 3px;
   border-radius: 2px;
-  background: rgba(var(--outline-variant-rgb), 0.2);
+  background: var(--fill-neutral-selected);
   overflow: hidden;
 }
 
@@ -359,10 +355,8 @@
 
 .typeBadge {
   font-family: var(--font-body);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
   color: var(--tertiary);
   white-space: nowrap;
 }
@@ -386,8 +380,8 @@
   font-family: var(--font-body);
   color: var(--error);
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
+  background: var(--error-container);
+  border-radius: var(--radius-card);
   border: 1px solid rgba(var(--error-rgb), 0.2);
   line-height: 1.4;
 }
@@ -405,13 +399,13 @@
 }
 
 .error {
-  font-size: var(--type-size-sm);
+  font-size: var(--type-body-size);
   font-family: var(--font-body);
   color: var(--error);
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
-  border: 1px solid rgba(var(--error-rgb), 0.2);
+  background: var(--error-container);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--stroke-card);
 }
 
 /* ── Footer actions ─────────────────────────────────────────────────────── */
@@ -421,7 +415,7 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  border-top: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
@@ -430,22 +424,22 @@
 .footer {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 24px;
-  background: rgba(var(--outline-variant-rgb), 0.08);
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.05);
+  gap: 8px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
   flex-shrink: 0;
 }
 
 .footerIcon {
   flex-shrink: 0;
-  color: rgba(var(--primary-rgb), 0.7);
+  color: var(--primary);
 }
 
 .footerText {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--type-caption-size);
   font-family: var(--font-body);
   color: var(--on-surface-variant);
-  line-height: 1.5;
+  line-height: var(--type-caption-line);
 }

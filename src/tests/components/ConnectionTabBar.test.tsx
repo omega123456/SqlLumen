@@ -5,7 +5,9 @@ import userEvent from '@testing-library/user-event'
 import { ConnectionTabBar } from '../../components/layout/ConnectionTabBar'
 import { useThemeStore } from '../../stores/theme-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { setupMatchMedia } from '../helpers/mock-match-media'
+import { cssRule } from '../helpers/css-source'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
@@ -59,7 +61,7 @@ beforeEach(() => {
 describe('ConnectionTabBar', () => {
   it('renders the New Connection button', () => {
     render(<ConnectionTabBar />)
-    expect(screen.getByLabelText('New Connection')).toBeInTheDocument()
+    expect(screen.getByLabelText('New connection')).toBeInTheDocument()
   })
 
   it('renders the theme toggle button', () => {
@@ -74,7 +76,7 @@ describe('ConnectionTabBar', () => {
 
   it('renders empty tab bar with only utility buttons when no connections active', () => {
     render(<ConnectionTabBar />)
-    expect(screen.getByLabelText('New Connection')).toBeInTheDocument()
+    expect(screen.getByLabelText('New connection')).toBeInTheDocument()
     expect(screen.getByTestId('theme-toggle')).toBeInTheDocument()
     expect(screen.getByLabelText('Settings')).toBeInTheDocument()
     // No tabs should be rendered
@@ -244,7 +246,7 @@ describe('ConnectionTabBar', () => {
     render(<ConnectionTabBar />)
 
     expect(useConnectionStore.getState().dialogOpen).toBe(false)
-    await user.click(screen.getByLabelText('New Connection'))
+    await user.click(screen.getByLabelText('New connection'))
     expect(useConnectionStore.getState().dialogOpen).toBe(true)
   })
 
@@ -276,9 +278,32 @@ describe('ConnectionTabBar', () => {
     expect(container.querySelector('[class*="colorAccent"]')).not.toBeInTheDocument()
   })
 
-  it('renders vertical color accent only on inactive tabs when profiles have color', () => {
+  it('renders a 3x16 colour marker on every tab whose profile has a colour', () => {
     const conn1 = makeActiveConnection({ id: 'sess-1' })
     const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB', color: '#ef4444' })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: profile2 })
+    const profile3 = makeSavedConnection({ id: 'conn-3', name: 'Plain DB', color: null })
+    const conn3 = makeActiveConnection({ id: 'sess-3', profile: profile3 })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2, 'sess-3': conn3 },
+      activeConnectionOrder: ['sess-1', 'sess-2', 'sess-3'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+    expect(screen.getByTestId('connection-color-marker-sess-1')).toHaveStyle({
+      backgroundColor: '#3b82f6',
+    })
+    expect(screen.getByTestId('connection-color-marker-sess-2')).toHaveStyle({
+      backgroundColor: '#ef4444',
+    })
+    expect(screen.queryByTestId('connection-color-marker-sess-3')).not.toBeInTheDocument()
+  })
+
+  it("sets the workspace edge variable to the active connection's colour", () => {
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Plain DB', color: null })
     const conn2 = makeActiveConnection({ id: 'sess-2', profile: profile2 })
 
     useConnectionStore.setState({
@@ -287,9 +312,45 @@ describe('ConnectionTabBar', () => {
       activeTabId: 'sess-1',
     })
 
-    const { container } = render(<ConnectionTabBar />)
-    const accents = container.querySelectorAll('[class*="colorAccent"]')
-    expect(accents.length).toBe(1)
+    render(<ConnectionTabBar />)
+    const strip = screen.getByTestId('connection-tab-bar')
+    expect(strip).toHaveAttribute('data-edge-color', 'connection')
+    expect(strip.style.getPropertyValue('--connection-edge-color')).toBe('#3b82f6')
+    expect(strip.style.getPropertyValue('--connection-edge-width')).toBe('2px')
+
+    act(() => {
+      useConnectionStore.setState({ activeTabId: 'sess-2' })
+    })
+    expect(strip).toHaveAttribute('data-edge-color', 'none')
+    expect(strip.style.getPropertyValue('--connection-edge-color')).toBe('')
+    expect(strip.style.getPropertyValue('--connection-edge-width')).toBe('')
+  })
+
+  it('falls back to the stroke edge when no connection is open', () => {
+    render(<ConnectionTabBar />)
+    const strip = screen.getByTestId('connection-tab-bar')
+    expect(strip).toHaveAttribute('data-edge-color', 'none')
+    expect(strip.style.getPropertyValue('--connection-edge-color')).toBe('')
+  })
+
+  it('opens the command palette from the search box, like the palette shortcut', async () => {
+    const user = userEvent.setup()
+    act(() => {
+      useCommandPaletteStore.setState({ isOpen: false, openInstance: 0, scopeToTable: false })
+    })
+    render(<ConnectionTabBar />)
+
+    const search = screen.getByTestId('connection-strip-search')
+    expect(search).toHaveTextContent('Search tables, views, routines')
+    expect(search).toHaveTextContent('F2')
+
+    await user.click(search)
+    expect(useCommandPaletteStore.getState().isOpen).toBe(true)
+    expect(useCommandPaletteStore.getState().openInstance).toBe(1)
+    expect(useCommandPaletteStore.getState().scopeToTable).toBe(false)
+    act(() => {
+      useCommandPaletteStore.getState().close()
+    })
   })
 
   it('renders a read-only padlock icon for read-only connections', () => {
@@ -646,5 +707,19 @@ describe('ConnectionTabBar', () => {
     expect(screen.getByText(/^Prod$/)).toBeInTheDocument()
     expect(screen.getByText('Prod (2)')).toBeInTheDocument()
     expect(screen.getByText('Prod (3)')).toBeInTheDocument()
+  })
+})
+
+describe('ConnectionTabBar — strip CSS', () => {
+  const css = 'components/layout/ConnectionTabBar.module.css'
+
+  it('gives the search box the prototype fixed 280px width', () => {
+    const rule = cssRule(css, '.tabBar .searchBox')
+    expect(rule).toContain('flex: none;')
+    expect(rule).toContain('width: 280px;')
+  })
+
+  it('lets Mica show through the strip base on Windows 11', () => {
+    expect(cssRule(css, ':global(html.mica) .tabBar')).toBe('background-color: transparent;')
   })
 })

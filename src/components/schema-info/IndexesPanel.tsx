@@ -13,7 +13,7 @@ export function IndexesPanel({ indexes }: IndexesPanelProps) {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th className={styles.th}>Index Name</th>
+              <th className={styles.th}>Name</th>
               <th className={styles.th}>Type</th>
               <th className={styles.th}>Cardinality</th>
               <th className={styles.th}>Columns</th>

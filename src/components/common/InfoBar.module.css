@@ -1,0 +1,94 @@
+/* InfoBar (prototype `.ibar` + `.sdot`) */
+
+.bar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 8px 12px 14px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--stroke-card);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  user-select: text;
+}
+
+.info {
+  background: var(--surface-container-high);
+}
+
+.success {
+  background: var(--tertiary-container);
+}
+
+.warning {
+  background: var(--warning-container);
+}
+
+.error {
+  background: var(--error-container);
+}
+
+.glyph {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  color: var(--surface);
+  font-size: 10px;
+  /* Prototype `.sdot` weight; renders with Selawik Bold, the heaviest bundled face. */
+  font-weight: 800;
+  line-height: 1;
+}
+
+.info .glyph {
+  background: var(--primary);
+}
+
+.success .glyph {
+  background: var(--tertiary);
+}
+
+.warning .glyph {
+  background: var(--warning);
+}
+
+.error .glyph {
+  background: var(--error);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.title {
+  font-weight: var(--type-weight-semibold);
+}
+
+.message {
+  color: var(--on-surface);
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  width: 100%;
+  color: var(--on-surface-variant);
+  font-size: var(--type-row-size);
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+}

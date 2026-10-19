@@ -40,6 +40,8 @@ export interface DialogShellProps {
   panelPadding?: boolean
   /** Optional class name for the dialog panel element. */
   panelClassName?: string
+  /** Optional class name for the backdrop (e.g. a lighter smoke). */
+  backdropClassName?: string
   /** Optional preferred focus target when the dialog opens. */
   initialFocusRef?: RefObject<HTMLElement | null>
   /** Render the panel as a form with submit semantics. */
@@ -65,6 +67,7 @@ export function DialogShell({
   nonDismissible = false,
   panelPadding = true,
   panelClassName,
+  backdropClassName,
   initialFocusRef,
   formProps,
   children,
@@ -129,7 +132,7 @@ export function DialogShell({
 
   return createPortal(
     <div
-      className={styles.backdrop}
+      className={backdropClassName ? `${styles.backdrop} ${backdropClassName}` : styles.backdrop}
       data-testid={testId}
       onClick={handleBackdropClick}
       role="dialog"

@@ -43,7 +43,7 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
 
   const handleInsert = useCallback(
     (favourite: FavoriteEntry) => {
-      insertSqlIntoEditor(connectionId, favourite.sqlText, favourite.name || 'Favorite Query')
+      insertSqlIntoEditor(connectionId, favourite.sqlText, favourite.name || 'Favorite query')
     },
     [connectionId]
   )
@@ -90,7 +90,8 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
         <div className={styles.errorState} data-testid="favourites-error">
           <span className={styles.errorMessage}>{error}</span>
           <Button
-            variant="ghost"
+            variant="subtle"
+            size="sm"
             onClick={() => void loadFavorites(connectionId)}
             data-testid="favourites-retry"
           >
@@ -140,7 +141,12 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
     <div className={styles.container} data-testid="favourites-view">
       <div className={styles.headerRow}>
         <h2 className={styles.title}>Favourites</h2>
-        <Button variant="toolbar" onClick={handleCreateNew} data-testid="favourites-new-snippet">
+        <Button
+          variant="subtle"
+          size="sm"
+          onClick={handleCreateNew}
+          data-testid="favourites-new-snippet"
+        >
           <Plus size={14} weight="bold" />
           &nbsp;New Snippet
         </Button>
@@ -168,7 +174,7 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
 
       <ConfirmDialog
         isOpen={pendingDeleteId != null}
-        title="Delete Favourite"
+        title="Delete favourite"
         message="Are you sure you want to delete this favourite snippet?"
         confirmLabel="Delete"
         isDestructive

@@ -33,7 +33,9 @@ async function enableAiViaStore(page: Page) {
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
   await expect(activePanel(page).getByTestId('editor-toolbar')).toBeVisible()
 }
 
@@ -87,7 +89,9 @@ test.describe('AI Assistant', () => {
     await openAiPanel(page)
 
     // Welcome state should be visible with no messages
-    await expect(aiPanel(page).getByTestId('ai-welcome-state')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(aiPanel(page).getByTestId('ai-welcome-state')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
     await expect(page.getByText('Ask AI about your SQL')).toBeVisible()
     await expect(page.getByText('Get help writing, explaining,')).toBeVisible()
 
@@ -110,11 +114,17 @@ test.describe('AI Assistant', () => {
     await aiPanel(page).getByTestId('ai-send-button').click()
 
     // User message should appear
-    await expect(aiPanel(page).getByTestId('ai-message-user')).toBeVisible({ timeout: APP_READY_MS })
-    await expect(aiPanel(page).getByTestId('ai-message-user')).toContainText('How do I select active users?')
+    await expect(aiPanel(page).getByTestId('ai-message-user')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
+    await expect(aiPanel(page).getByTestId('ai-message-user')).toContainText(
+      'How do I select active users?'
+    )
 
     // Wait for the AI response to finish streaming
-    await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
     await expect(aiPanel(page).getByTestId('ai-message-assistant')).toContainText(
       'This query filters for active users',
       { timeout: APP_READY_MS }
@@ -176,7 +186,9 @@ test.describe('AI Assistant', () => {
     await aiPanel(page).getByTestId('ai-send-button').click()
 
     // Wait for response
-    await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
     await expect(aiPanel(page).getByTestId('ai-message-assistant')).toContainText(
       'This query filters for active users',
       { timeout: APP_READY_MS }
@@ -186,7 +198,9 @@ test.describe('AI Assistant', () => {
     await aiPanel(page).getByTestId('ai-clear-button').click()
 
     // Welcome state should return
-    await expect(aiPanel(page).getByTestId('ai-welcome-state')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(aiPanel(page).getByTestId('ai-welcome-state')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
     await expect(aiPanel(page).getByTestId('ai-message-user')).toBeHidden()
     await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeHidden()
   })
@@ -206,7 +220,9 @@ test.describe('AI Assistant', () => {
     await aiPanel(page).getByTestId('ai-send-button').click()
 
     // Wait for the error banner to appear
-    await expect(aiPanel(page).getByTestId('ai-error-banner')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(aiPanel(page).getByTestId('ai-error-banner')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
     await expect(aiPanel(page).getByTestId('ai-error-banner')).toContainText('Connection refused')
 
     // Clean up
@@ -257,7 +273,9 @@ test.describe('AI Assistant', () => {
     await aiPanel(page).getByTestId('ai-send-button').click()
 
     // Wait for the AI response
-    await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(aiPanel(page).getByTestId('ai-message-assistant')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     // The schema context is injected into the system prompt, not directly visible in the
     // chat UI. We verify that the mock semantic_search response (which includes

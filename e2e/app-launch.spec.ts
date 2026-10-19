@@ -10,5 +10,5 @@ test('layout sections are visible', async ({ page }) => {
   // Wait for layout to render
   await expect(page.getByText('Ready')).toBeVisible()
   await expect(page.getByText('No active connection')).toBeVisible()
-  await expect(page.getByText('Welcome!')).toBeVisible()
+  await expect(page.getByText('Connect to a server')).toBeVisible()
 })

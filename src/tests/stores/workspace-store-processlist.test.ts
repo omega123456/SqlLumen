@@ -16,7 +16,7 @@ describe('openProcessListTab', () => {
     const tabs = useWorkspaceStore.getState().tabsByConnection[CONN]
     expect(tabs).toHaveLength(1)
     expect(tabs[0].type).toBe('processlist')
-    expect(tabs[0].label).toBe('Process List')
+    expect(tabs[0].label).toBe('Process list')
     expect(tabs[0].id).toBe(`processlist-${CONN}`)
   })
 

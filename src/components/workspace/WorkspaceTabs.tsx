@@ -193,6 +193,7 @@ export function WorkspaceTabs({
       />
       {activeStackKey ? (
         <UnderlineTabBar
+          variant="document"
           className={styles.workspaceTabRailBleed}
           data-testid="workspace-tab-members"
           scrollable

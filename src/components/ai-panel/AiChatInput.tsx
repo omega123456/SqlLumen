@@ -18,7 +18,8 @@ import type { MemoryScope } from '../../lib/ai-memory-commands'
 import styles from './AiChatInput.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
-const MIN_TEXTAREA_HEIGHT_PX = 36
+/** One line of the 32px Fluent field (prototype `.ai-row .fld`). */
+const MIN_TEXTAREA_HEIGHT_PX = 32
 const MAX_TEXTAREA_HEIGHT_PX = 140
 
 export interface AiChatInputProps {
@@ -49,7 +50,7 @@ export function AiChatInput({
   const [showDropdown, setShowDropdown] = useState(false)
   const [filteredCmds, setFilteredCmds] = useState<SlashCommand[]>([])
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
-  // When set, the "Always Ask" memory scope picker is shown above the input.
+  // When set, the "Always ask" memory scope picker is shown above the input.
   // The string is the (trimmed) memory content awaiting a scope choice.
   const [pendingRememberContent, setPendingRememberContent] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -116,8 +117,10 @@ export function AiChatInput({
       return
     }
     el.style.height = 'auto'
+    // The field is border-box, so add its borders to the content-and-padding scroll height
+    const borders = el.offsetHeight - el.clientHeight
     el.style.height = `${Math.min(
-      Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT_PX),
+      Math.max(el.scrollHeight + borders, MIN_TEXTAREA_HEIGHT_PX),
       MAX_TEXTAREA_HEIGHT_PX
     )}px`
   }, [value])
@@ -290,7 +293,7 @@ export function AiChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      // While the "Always Ask" scope picker is open it owns Enter/Arrow/Escape
+      // While the "Always ask" scope picker is open it owns Enter/Arrow/Escape
       // (handled at the document level inside MemoryScopePicker); swallow those
       // keys here so they neither send a message nor insert a newline.
       if (pendingRememberContent !== null) {
@@ -390,7 +393,6 @@ export function AiChatInput({
         )}
         <Textarea
           ref={textareaRef}
-          variant="bare"
           className={styles.textarea}
           value={value}
           onChange={handleChange}
@@ -408,10 +410,10 @@ export function AiChatInput({
             externalPlaceholder
               ? externalPlaceholder
               : !aiEnabled
-                ? 'AI is disabled — enable it in Settings'
+                ? 'AI is disabled — enable it in settings'
                 : !hasEndpoint || !hasModel
-                  ? 'Configure AI endpoint and model in Settings'
-                  : 'Ask about your database...'
+                  ? 'Configure AI endpoint and model in settings'
+                  : 'Ask about your SQL or schema'
           }
           disabled={externalDisabled || isGenerating}
           rows={1}
@@ -422,25 +424,25 @@ export function AiChatInput({
       {isGenerating ? (
         <Button
           variant="danger"
-          className={styles.stopButton}
+          iconOnly
           onClick={handleCancel}
           title="Stop generation"
           aria-label="Stop generation"
           data-testid="ai-stop-button"
         >
-          <StopIcon size={18} weight="fill" />
+          <StopIcon size={16} weight="fill" />
         </Button>
       ) : (
         <Button
-          variant="primary"
-          className={styles.sendButton}
+          variant="accent"
+          iconOnly
           onClick={handleSend}
           disabled={!canSend}
           title="Send message"
           aria-label="Send message"
           data-testid="ai-send-button"
         >
-          <PaperPlaneRightIcon size={18} weight="fill" />
+          <PaperPlaneRightIcon size={16} weight="regular" />
         </Button>
       )}
     </div>

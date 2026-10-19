@@ -58,7 +58,7 @@ describe('CreateDatabaseDialog', () => {
   it('renders charset and collation dropdowns', async () => {
     render(<CreateDatabaseDialog {...defaultProps} />)
     await waitFor(() => {
-      expect(screen.getByText('Character Set')).toBeInTheDocument()
+      expect(screen.getByText('Character set')).toBeInTheDocument()
       expect(screen.getByText('Collation')).toBeInTheDocument()
     })
     await waitForCreateDatabaseEncodingIdle()
@@ -302,7 +302,7 @@ describe('CreateDatabaseDialog', () => {
 
     await waitForCreateDatabaseEncodingIdle()
 
-    const charsetCombobox = screen.getByRole('combobox', { name: 'Character Set' })
+    const charsetCombobox = screen.getByRole('combobox', { name: 'Character set' })
     // Use fireEvent.click to open the dropdown: avoids userEvent's full pointer simulation
     // which can trigger the focus-trap's requestAnimationFrame focus restoration causing
     // the dropdown to close before the portal commits the <ul> to the DOM.
@@ -319,7 +319,7 @@ describe('CreateDatabaseDialog', () => {
     // Flush state updates from selectIndex (setCharsetState + setCollation)
     await act(async () => {})
 
-    expect(screen.getByRole('combobox', { name: 'Character Set' })).toHaveTextContent('latin1')
+    expect(screen.getByRole('combobox', { name: 'Character set' })).toHaveTextContent('latin1')
     expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent(
       'latin1_swedish_ci'
     )
@@ -329,8 +329,8 @@ describe('CreateDatabaseDialog', () => {
 
     await waitForCreateDatabaseEncodingIdle()
 
-    expect(screen.getByRole('combobox', { name: 'Character Set' })).toHaveTextContent(
-      'Server Default'
+    expect(screen.getByRole('combobox', { name: 'Character set' })).toHaveTextContent(
+      'Server default'
     )
     expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent('Default')
   })

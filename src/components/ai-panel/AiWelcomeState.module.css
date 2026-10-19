@@ -20,7 +20,7 @@
 .headline {
   margin: 0 0 var(--space-xs);
   font-family: var(--font-headline);
-  font-size: 14px;
+  font-size: var(--type-body-size);
   font-weight: 600;
   color: var(--on-surface-variant);
   text-align: center;
@@ -29,7 +29,7 @@
 .subtext {
   margin: 0 0 var(--space-lg);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--on-surface-variant);
   opacity: 0.6;
   text-align: center;
@@ -54,7 +54,7 @@
   background: var(--surface-container-high);
   color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   line-height: 1.3;
   cursor: pointer;
   text-align: center;

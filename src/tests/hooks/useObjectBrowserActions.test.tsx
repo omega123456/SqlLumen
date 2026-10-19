@@ -175,11 +175,11 @@ describe('useObjectBrowserActions — object editor actions', () => {
 
   describe('handleCreateObject', () => {
     const cases: Array<{ objectType: EditableObjectType; placeholder: string; label: string }> = [
-      { objectType: 'procedure', placeholder: 'new_procedure', label: 'New Procedure' },
-      { objectType: 'function', placeholder: 'new_function', label: 'New Function' },
-      { objectType: 'trigger', placeholder: 'new_trigger', label: 'New Trigger' },
-      { objectType: 'event', placeholder: 'new_event', label: 'New Event' },
-      { objectType: 'view', placeholder: 'new_view', label: 'New View' },
+      { objectType: 'procedure', placeholder: 'new_procedure', label: 'New procedure' },
+      { objectType: 'function', placeholder: 'new_function', label: 'New function' },
+      { objectType: 'trigger', placeholder: 'new_trigger', label: 'New trigger' },
+      { objectType: 'event', placeholder: 'new_event', label: 'New event' },
+      { objectType: 'view', placeholder: 'new_view', label: 'New view' },
     ]
 
     for (const { objectType, placeholder, label } of cases) {
@@ -246,7 +246,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       })
 
       // Confirm the drop
-      const confirmButton = screen.getByRole('button', { name: /Drop View/i })
+      const confirmButton = screen.getByRole('button', { name: /Drop view/i })
       await user.click(confirmButton)
 
       await waitFor(() => {
@@ -474,7 +474,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
         result.onDropDatabase(OLD_DB_NAME)
       })
 
-      const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
+      const confirmButton = screen.getByRole('button', { name: /Drop database/i })
       await user.click(confirmButton)
 
       await waitFor(() => {
@@ -502,7 +502,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
         result.onDropDatabase(OLD_DB_NAME)
       })
 
-      const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
+      const confirmButton = screen.getByRole('button', { name: /Drop database/i })
       await user.click(confirmButton)
 
       await expectToast('error', 'Failed to drop database')

@@ -84,7 +84,7 @@ function setupConnectionStore(connectionId: string, readOnly = false) {
         id: connectionId,
         profile: {
           id: 'profile-1',
-          name: 'Test Connection',
+          name: 'Test connection',
           host: '127.0.0.1',
           port: 3306,
           username: 'test',
@@ -234,7 +234,7 @@ describe('EditModeDropdown', () => {
       expect(screen.getByTestId('edit-mode-group')).toBeInTheDocument()
     })
 
-    it('shows "Read Only" as default option', () => {
+    it('shows "Read only" as default option', () => {
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -242,7 +242,7 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      expect(screen.getByTestId('edit-mode-dropdown')).toHaveTextContent('Read Only')
+      expect(screen.getByTestId('edit-mode-dropdown')).toHaveTextContent('Read only')
     })
 
     it('shows detected table names as options', async () => {
@@ -348,7 +348,7 @@ describe('EditModeDropdown', () => {
       expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, 'test_db.users')
     })
 
-    it('calls setEditMode with null when "Read Only" is selected', async () => {
+    it('calls setEditMode with null when "Read only" is selected', async () => {
       const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
@@ -364,7 +364,7 @@ describe('EditModeDropdown', () => {
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
       await user.click(screen.getByTestId('edit-mode-dropdown'))
-      await user.click(screen.getByRole('option', { name: 'Read Only' }))
+      await user.click(screen.getByRole('option', { name: 'Read only' }))
 
       expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, null)
     })
@@ -392,7 +392,7 @@ describe('EditModeDropdown', () => {
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
       await user.click(screen.getByTestId('edit-mode-dropdown'))
-      await user.click(screen.getByRole('option', { name: 'Read Only' }))
+      await user.click(screen.getByRole('option', { name: 'Read only' }))
 
       expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
     })
@@ -424,7 +424,7 @@ describe('EditModeDropdown', () => {
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
       await user.click(screen.getByTestId('edit-mode-dropdown'))
-      await user.click(screen.getByRole('option', { name: 'Read Only' }))
+      await user.click(screen.getByRole('option', { name: 'Read only' }))
 
       expect(requestNavSpy).not.toHaveBeenCalled()
       expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, null)

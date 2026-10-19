@@ -63,7 +63,7 @@ describe('AppLayout', () => {
     // Sidebar empty state
     expect(screen.getByText('No active connection')).toBeInTheDocument()
     // Workspace welcome
-    expect(screen.getByText('Welcome!')).toBeInTheDocument()
+    expect(screen.getByText('Connect to a server')).toBeInTheDocument()
   })
 
   it('renders the theme toggle button', () => {
@@ -73,7 +73,9 @@ describe('AppLayout', () => {
 
   it('renders the New Connection button in workspace', () => {
     render(<AppLayout />)
-    expect(screen.getByText('+ New Connection')).toBeInTheDocument()
+    // One in the connection strip and one on the welcome screen
+    expect(screen.getAllByRole('button', { name: /^New connection$/ })).toHaveLength(2)
+    expect(screen.getByTestId('connection-tab-bar')).toBeInTheDocument()
   })
 
   describe('shortcut action registrations', () => {

@@ -83,7 +83,7 @@ describe('ConnectionDialog', () => {
       await Promise.resolve()
     })
 
-    const title = screen.getByText('Connection Manager')
+    const title = screen.getByText('Connection manager')
     expect(title).toBeInTheDocument()
     expect(title.id).toBe('connection-dialog-title')
 
@@ -246,7 +246,7 @@ describe('ConnectionDialog', () => {
       expect(screen.getByLabelText('Host address')).toHaveValue('127.0.0.1')
       expect(screen.getByLabelText('Username')).toHaveValue('root')
       expect(screen.getByLabelText('Password')).toHaveValue('')
-      expect(screen.getByLabelText('Default Database')).toHaveValue('mydb')
+      expect(screen.getByLabelText('Default database')).toHaveValue('mydb')
       // Source had a password — the not-copied hint is shown
       expect(screen.getByTestId('duplicate-password-hint')).toBeInTheDocument()
       // Unsaved duplicate — no Delete button

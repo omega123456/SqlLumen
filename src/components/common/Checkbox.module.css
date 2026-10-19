@@ -1,35 +1,72 @@
-/* Shared checkbox — matches export dialog / design tokens (surface-container-highest, outline-variant, primary accent). */
+/* Checkbox — 20px Fluent box on the native input (prototype `.cb`). */
 
 .input {
-  width: 16px;
-  height: 16px;
+  position: relative;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
   margin: 0;
-  border-radius: 3px;
-  border: 1.5px solid var(--outline-variant);
-  background: var(--surface-container-highest);
-  accent-color: var(--primary);
-  cursor: pointer;
-  flex-shrink: 0;
+  padding: 0;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--on-surface-variant);
+  background: var(--fill-control);
+  color: var(--on-primary);
+  cursor: default;
+  flex: none;
   outline: none;
-  transition: box-shadow 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.input:hover:not(:disabled) {
+  background: var(--fill-control-hover);
+}
+
+.input:checked,
+.input:indeterminate {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Check mark */
+.input:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  width: 10px;
+  height: 5px;
+  border-left: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: translate(-50%, -50%) translateY(-1px) rotate(-45deg);
+}
+
+/* Mixed state */
+.input:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  width: 10px;
+  height: 0;
+  border-top: 1.6px solid currentColor;
+  transform: translate(-50%, -50%);
 }
 
 .input:focus-visible {
-  box-shadow: 0 0 0 2px var(--primary);
+  box-shadow: var(--focus-ring);
 }
 
 .input:disabled {
-  opacity: 0.45;
+  border-color: var(--text-disabled);
+  background: transparent;
   cursor: not-allowed;
 }
 
-[data-theme='light'] .input {
-  width: 20px;
-  height: 20px;
-  border-color: #c1c6d5;
-  accent-color: #0066cc;
-}
-
-[data-theme='light'] .input:focus-visible {
-  box-shadow: 0 0 0 2px var(--primary);
+.input:checked:disabled,
+.input:indeterminate:disabled {
+  background: var(--text-disabled);
+  border-color: transparent;
 }

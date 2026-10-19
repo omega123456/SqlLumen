@@ -393,7 +393,7 @@ describe('DateTimePicker', () => {
 
   // ---- Focus management ----
 
-  it('auto-focuses a focusable element inside the picker on mount', async () => {
+  it('auto-focuses the selected day inside the picker on mount', async () => {
     vi.useFakeTimers()
     renderPicker({ columnType: 'DATE', value: '2023-11-24' })
 
@@ -403,8 +403,10 @@ describe('DateTimePicker', () => {
     })
 
     const popup = screen.getByTestId('date-time-picker-popup')
-    // Focus should be inside the picker popup
+    // Focus lands on the selected day, not the previous-month arrow
     expect(popup.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement).toHaveClass('react-datepicker__day--selected')
+    expect(document.activeElement).toHaveTextContent('24')
 
     vi.useRealTimers()
   })

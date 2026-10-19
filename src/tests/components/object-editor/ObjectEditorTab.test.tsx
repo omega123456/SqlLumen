@@ -232,7 +232,7 @@ describe('ObjectEditorTab', () => {
     })
 
     render(<ObjectEditorTab tab={makeTab()} />)
-    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
     expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
   })
 

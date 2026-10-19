@@ -25,6 +25,13 @@ describe('AiErrorBanner', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
+  it('renders as an error InfoBar with a glyph', () => {
+    render(<AiErrorBanner error="Connection failed" />)
+    const banner = screen.getByTestId('ai-error-banner')
+    expect(banner).toHaveAttribute('data-severity', 'error')
+    expect(banner.querySelector('[aria-hidden="true"]')).toHaveTextContent('✕')
+  })
+
   it('displays error message text', () => {
     render(<AiErrorBanner error="Could not reach the AI service at localhost:11434" />)
     expect(

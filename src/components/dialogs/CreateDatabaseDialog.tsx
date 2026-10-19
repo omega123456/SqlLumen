@@ -89,7 +89,7 @@ export function CreateDatabaseDialog({
 
   // Build dropdown options
   const charsetOptions: DropdownOption[] = [
-    { value: '', label: 'Server Default' },
+    { value: '', label: 'Server default' },
     ...encoding.charsets.map((cs) => ({
       value: cs.charset,
       label: cs.charset,
@@ -114,7 +114,7 @@ export function CreateDatabaseDialog({
       onClose={onCancel}
       maxWidth={480}
       testId="create-database-dialog"
-      ariaLabel="Create Database"
+      ariaLabel="Create database"
       disableFocusManagement={isPlaywright}
       nonDismissible={isSubmitting}
       formProps={{ onSubmit: handleFormSubmit }}
@@ -124,11 +124,11 @@ export function CreateDatabaseDialog({
         data-testid="create-db-form"
         aria-busy={encoding.isLoading ? true : undefined}
       >
-        <h2 className={styles.title}>Create Database</h2>
+        <h2 className={styles.title}>Create database</h2>
 
         <div className={styles.formGroup}>
           <label className={styles.label} htmlFor="create-db-name">
-            Database Name
+            Database name
           </label>
           <TextInput
             id="create-db-name"
@@ -150,7 +150,7 @@ export function CreateDatabaseDialog({
 
         <div className={styles.formGroup}>
           <label className={styles.label} id="create-db-charset-label">
-            Character Set
+            Character set
           </label>
           <Dropdown
             id="create-db-charset"
@@ -182,20 +182,15 @@ export function CreateDatabaseDialog({
 
         <div className={styles.actions}>
           <Button
-            variant="secondary"
-            onClick={onCancel}
-            disabled={isSubmitting}
-            data-testid="create-db-cancel-button"
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
+            variant="accent"
             type="submit"
             disabled={!isValid || isSubmitting}
             data-testid="create-db-submit-button"
           >
-            {isSubmitting ? 'Creating...' : 'Create Database'}
+            {isSubmitting ? 'Creating...' : 'Create database'}
+          </Button>
+          <Button onClick={onCancel} disabled={isSubmitting} data-testid="create-db-cancel-button">
+            Cancel
           </Button>
         </div>
       </div>

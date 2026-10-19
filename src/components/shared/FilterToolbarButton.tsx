@@ -6,6 +6,7 @@
  */
 
 import { Funnel, FunnelX } from '@phosphor-icons/react'
+import { Button } from '../common/Button'
 import styles from './FilterToolbarButton.module.css'
 
 export interface FilterToolbarButtonProps {
@@ -40,8 +41,9 @@ export function FilterToolbarButton({
   return (
     <>
       <div className={`${styles.filterButtonWrapper} ${isActive ? styles.filterButtonActive : ''}`}>
-        <button
-          type="button"
+        <Button
+          variant="subtle"
+          size="sm"
           className={styles.filterButton}
           onClick={onFilterClick}
           disabled={isDisabled}
@@ -50,7 +52,7 @@ export function FilterToolbarButton({
         >
           <Funnel size={16} weight={isActive ? 'fill' : 'regular'} />
           <span>Filter</span>
-        </button>
+        </Button>
         {isActive && (
           <span className={styles.filterBadge} data-testid={filterBadgeTestId}>
             {activeCount}
@@ -59,9 +61,10 @@ export function FilterToolbarButton({
       </div>
 
       {isActive && (
-        <button
-          type="button"
-          className={styles.clearFilterButton}
+        <Button
+          variant="subtle"
+          size="sm"
+          iconOnly
           onClick={onClearClick}
           disabled={isDisabled}
           title="Clear filters"
@@ -69,7 +72,7 @@ export function FilterToolbarButton({
           data-testid={clearButtonTestId}
         >
           <FunnelX size={16} weight="regular" />
-        </button>
+        </Button>
       )}
     </>
   )

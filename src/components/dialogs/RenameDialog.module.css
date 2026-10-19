@@ -1,19 +1,20 @@
 /* RenameDialog — content styles (shell handled by DialogShell) */
 
 .title {
-  margin: 0 0 16px;
-  font-size: var(--type-size-xl);
-  font-weight: 700;
+  margin: 0 0 12px;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   font-family: var(--font-headline);
   color: var(--on-surface);
+  line-height: var(--type-subtitle-line);
 }
 
 .warningBox {
   margin-bottom: 16px;
   padding: 10px 12px;
-  background: rgba(252, 211, 77, 0.08);
-  border: 1px solid rgba(252, 211, 77, 0.25);
-  border-radius: 8px;
+  background: var(--warning-container);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
   font-size: var(--type-size-sm);
   font-family: var(--font-body);
   color: var(--warning);
@@ -37,7 +38,7 @@
   display: block;
   margin-bottom: 6px;
   font-size: var(--type-size-sm);
-  font-weight: 500;
+  font-weight: 400;
   font-family: var(--font-body);
   color: var(--on-surface-variant);
 }
@@ -48,8 +49,8 @@
   color: var(--error);
   margin-top: 12px;
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
+  background: var(--error-container);
+  border-radius: var(--radius-card);
   border: 1px solid rgba(var(--error-rgb), 0.2);
 }
 
@@ -57,5 +58,8 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 24px;
+  margin: 24px -24px -24px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
 }

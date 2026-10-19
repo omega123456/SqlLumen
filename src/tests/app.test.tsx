@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 
 import App from '../App'
+import { ipc } from './ipc-mock'
 import { useConnectionStore } from '../stores/connection-store'
 import { useSessionRestoreStore } from '../stores/session-restore-store'
 import { useShortcutStore } from '../stores/shortcut-store'
@@ -68,6 +69,23 @@ describe('App', () => {
 
     unmount()
     expect(stopPeriodicCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks <html> with mica when the window got the Windows 11 backdrop', async () => {
+    ipc.override('get_window_backdrop', () => 'mica')
+    render(<App />)
+    await vi.waitFor(() => {
+      expect(document.documentElement).toHaveClass('mica')
+    })
+    document.documentElement.classList.remove('mica')
+  })
+
+  it('keeps <html> solid when the backdrop is solid', async () => {
+    render(<App />)
+    await vi.waitFor(() => {
+      expect(ipc.calls('get_window_backdrop')).toHaveLength(1)
+    })
+    expect(document.documentElement).not.toHaveClass('mica')
   })
 
   it('registers and cleans up the schema invalidation listener', async () => {

@@ -7,16 +7,17 @@
   justify-content: space-between;
   gap: var(--space-md);
   flex-shrink: 0;
-  padding: var(--ui-dialog-header-padding-y) var(--ui-dialog-header-padding-x);
-  background: var(--ui-dialog-header-bg);
-  border-bottom: var(--ui-dialog-header-border-bottom);
+  padding: 24px 24px 0;
+  background: transparent;
 }
 
 .title {
-  font-size: var(--type-body-lg);
-  font-weight: 600;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   font-family: var(--font-headline);
   color: var(--on-surface);
+  margin: 0;
+  line-height: var(--type-subtitle-line);
 }
 
 .list {
@@ -50,10 +51,8 @@
 .rowSelected,
 .rowSelected:hover {
   border-left-color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.16);
-  box-shadow:
-    inset 0 0 0 1px rgba(var(--primary-rgb), 0.45),
-    0 2px 6px rgba(var(--on-surface-rgb), 0.12);
+  background: var(--fill-subtle-hover);
+  box-shadow: inset 0 0 0 1px rgba(var(--primary-rgb), 0.45);
 }
 
 .rowHeader {
@@ -76,7 +75,7 @@
   border-radius: var(--radius-md);
   background: var(--ui-chip-bg);
   font-size: var(--type-size-xs);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--on-surface-variant);
 }
 
@@ -154,11 +153,11 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-sm);
+  gap: 8px;
   flex-shrink: 0;
-  padding: var(--space-md) var(--space-lg);
-  background: var(--ui-form-footer-bg);
-  border-top: var(--ui-form-footer-border-top);
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .unsavedWarning {

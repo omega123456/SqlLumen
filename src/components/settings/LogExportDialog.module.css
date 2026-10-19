@@ -2,21 +2,21 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-overlay);
 }
 
 .header {
-  padding: 24px 28px 18px;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
-  background: var(--surface-container-high);
+  padding: 24px 24px 0;
+  background: transparent;
 }
 
 .title {
   margin: 0;
-  font-size: var(--type-size-xl);
-  font-weight: 700;
+  font-size: var(--type-subtitle-size);
+  font-weight: var(--type-weight-semibold);
   font-family: var(--font-headline);
   color: var(--on-surface);
+  line-height: var(--type-subtitle-line);
 }
 
 .subtitle {
@@ -30,7 +30,7 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 24px 28px 20px;
+  padding: 12px 24px 24px;
 }
 
 .fieldGroup {
@@ -41,9 +41,7 @@
 
 .label {
   font-size: var(--type-size-2xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-weight: 600;
   color: var(--on-surface-variant);
 }
 
@@ -70,8 +68,10 @@
 .footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 0 28px 24px;
+  gap: 8px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .actionContent {
@@ -107,7 +107,7 @@
 
 .calendar :global(.react-datepicker__header) {
   background: transparent;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .calendar :global(.react-datepicker__current-month),
@@ -137,7 +137,7 @@
 }
 
 .calendar :global(.react-datepicker__day--disabled) {
-  color: rgba(var(--on-surface-rgb), 0.35);
+  color: var(--outline);
   background: transparent;
 }
 

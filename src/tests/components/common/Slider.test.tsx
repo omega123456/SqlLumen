@@ -29,10 +29,10 @@ describe('Slider', () => {
   })
 
   it('has accessible aria attributes', () => {
-    render(<Slider min={10} max={200} step={5} value={50} onChange={() => {}} label="Font Size" />)
+    render(<Slider min={10} max={200} step={5} value={50} onChange={() => {}} label="Font size" />)
 
     const slider = screen.getByRole('slider')
-    expect(slider).toHaveAttribute('aria-label', 'Font Size')
+    expect(slider).toHaveAttribute('aria-label', 'Font size')
     expect(slider).toHaveAttribute('aria-valuenow', '50')
     expect(slider).toHaveAttribute('aria-valuemin', '10')
     expect(slider).toHaveAttribute('aria-valuemax', '200')

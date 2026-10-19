@@ -551,7 +551,7 @@ describe('BaseFormView — NULL toggle', () => {
     expect(btn).toHaveTextContent('Set NULL')
   })
 
-  it('NULL toggle text shows "Set Value" when value is null', () => {
+  it('NULL toggle text shows "Set value" when value is null', () => {
     const editState: RowEditState = {
       rowKey: '1',
       currentValues: { id: 1, name: null },
@@ -563,7 +563,7 @@ describe('BaseFormView — NULL toggle', () => {
       currentRow: [1, 'Alice', null],
     })
     const btn = screen.getByTestId('btn-null-name')
-    expect(btn).toHaveTextContent('Set Value')
+    expect(btn).toHaveTextContent('Set value')
   })
 
   it('clicking NULL toggle calls onUpdateCell with null when value is not null', () => {

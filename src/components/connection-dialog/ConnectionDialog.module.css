@@ -1,4 +1,4 @@
-/* Connection dialog — layout + theme via tokens (query_slate / query_slate_light) */
+/* Connection manager (prototype `.dlg.d-conn`) */
 
 .dialog {
   position: fixed;
@@ -6,14 +6,14 @@
   margin: 0;
   margin: auto;
   border: var(--ui-modal-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-overlay);
   padding: 0;
   background: var(--ui-modal-bg);
   color: var(--on-surface);
-  width: min(1280px, calc(100vw - 32px), max(520px, 86vw));
-  height: min(860px, calc(100vh - 32px), max(420px, 80vh));
-  max-width: min(1280px, calc(100vw - 32px));
-  max-height: min(860px, calc(100vh - 32px));
+  width: min(920px, calc(100vw - 32px));
+  height: min(600px, calc(100vh - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
   box-shadow: var(--ui-modal-shadow);
   overflow: hidden;
 }
@@ -31,76 +31,32 @@
   min-height: 0;
 }
 
+/* 48px header row with a 12px title (prototype `.d-conn .hdr`) */
 .dialogHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   flex-shrink: 0;
-  padding: var(--ui-dialog-header-padding-y) var(--ui-dialog-header-padding-x);
-  border-bottom: var(--ui-dialog-header-border-bottom);
-  background: var(--ui-dialog-header-bg);
-}
-
-.dialogHeaderLeft {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  min-width: 0;
-}
-
-.logoMark {
-  display: grid;
-  grid-template-columns: repeat(2, 4px);
-  grid-template-rows: repeat(2, 4px);
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.logoDot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 6px rgba(var(--primary-rgb), 0.65);
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--stroke-divider);
+  color: var(--on-surface);
 }
 
 .dialogTitle {
-  font-size: var(--ui-dialog-title-size);
-  font-weight: var(--ui-dialog-title-weight);
-  font-family: var(--font-headline);
-  color: var(--on-surface);
+  flex: 1;
   margin: 0;
-  letter-spacing: var(--letter-spacing-dialog-title);
-}
-
-.closeButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  color: var(--ui-close-button-fg);
-  background: transparent;
-  border: var(--ui-close-button-border);
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.closeButton:hover {
-  color: var(--ui-close-button-hover-fg);
-  border-color: var(--ui-close-button-hover-border-color);
-  background: var(--ui-close-button-hover-bg);
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  font-weight: var(--type-weight-regular);
+  color: var(--on-surface);
 }
 
 .dialogBody {
   display: grid;
-  grid-template-columns: 288px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   grid-template-areas:
     'sidebar form'
@@ -114,6 +70,6 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ui-dialog-sidebar-bg);
-  border-right: var(--ui-dialog-sidebar-border-right);
+  background: var(--surface);
+  border-right: 1px solid var(--stroke-divider);
 }

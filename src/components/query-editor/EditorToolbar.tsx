@@ -1,6 +1,6 @@
 import { logFrontend } from '../../lib/app-log-commands'
 /**
- * Toolbar above the Monaco editor with Execute, Execute All, Save, Open,
+ * Toolbar above the Monaco editor with Execute, Execute all, Save, Open,
  * History (placeholder), and Format actions.
  *
  * Execute actions are guarded by the query store's requestNavigationAction
@@ -20,6 +20,8 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { readFile, writeFile } from '../../lib/query-commands'
 import { splitStatements } from './sql-parser-utils'
+import { Button } from '../common/Button'
+import { IconButton } from '../common/IconButton'
 import { RunningIndicator } from './RunningIndicator'
 import styles from './EditorToolbar.module.css'
 
@@ -68,7 +70,7 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
     setIsSaving(true)
     try {
       const path = await saveDialog({
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
+        filters: [{ name: 'SQL files', extensions: ['sql'] }],
         defaultPath: 'query.sql',
       })
       if (path) {
@@ -90,7 +92,7 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
     setIsOpening(true)
     try {
       const result = await openDialog({
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
+        filters: [{ name: 'SQL files', extensions: ['sql'] }],
         multiple: false,
       })
       const path = Array.isArray(result) ? result[0] : result
@@ -130,7 +132,7 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
   async function handleImportSql() {
     try {
       const result = await openDialog({
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
+        filters: [{ name: 'SQL files', extensions: ['sql'] }],
         multiple: false,
       })
       const path = Array.isArray(result) ? result[0] : result
@@ -149,46 +151,42 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
     <div className={styles.toolbar} data-testid="editor-toolbar">
       {/* Left: icon actions */}
       <div className={styles.leftActions}>
-        <button
-          type="button"
-          className={styles.iconButton}
+        <IconButton
+          size="lg"
           title="Save (Ctrl+S)"
           onClick={handleSave}
           disabled={isSaving || isDisabled}
           data-testid="toolbar-save"
         >
           <FloppyDisk size={16} weight="regular" />
-        </button>
-        <button
-          type="button"
-          className={styles.iconButton}
+        </IconButton>
+        <IconButton
+          size="lg"
           title="Open SQL file"
           onClick={handleOpen}
           disabled={isOpening || isDisabled}
           data-testid="toolbar-open"
         >
           <FolderOpen size={16} weight="regular" />
-        </button>
-        <button
-          type="button"
-          className={styles.iconButton}
+        </IconButton>
+        <IconButton
+          size="lg"
           title="Format SQL"
           onClick={handleFormat}
           disabled={isDisabled}
           data-testid="toolbar-format"
         >
           <MagicWand size={16} weight="regular" />
-        </button>
-        <button
-          type="button"
-          className={styles.iconButton}
+        </IconButton>
+        <IconButton
+          size="lg"
           title={isReadOnly ? 'Import SQL (disabled for read-only connections)' : 'Import SQL'}
           onClick={handleImportSql}
           disabled={isDisabled || isReadOnly}
           data-testid="toolbar-import-sql"
         >
           <UploadSimple size={16} weight="regular" />
-        </button>
+        </IconButton>
       </div>
 
       {/* Right: execute buttons or running indicator */}
@@ -196,16 +194,15 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         {isRunning ? (
           <RunningIndicator connectionId={connectionId} tabId={tabId} />
         ) : (
-          <button
-            type="button"
-            className={`${styles.executeButton} ${styles.executeAll}`}
+          <Button
+            variant="accent"
             onClick={handleExecuteAll}
             disabled={!content.trim()}
             data-testid="toolbar-execute-all"
           >
-            <FastForward size={14} weight="fill" />
-            <span>Execute All</span>
-          </button>
+            <FastForward size={16} weight="regular" />
+            <span>Execute all</span>
+          </Button>
         )}
       </div>
     </div>

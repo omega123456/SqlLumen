@@ -25,10 +25,10 @@ export function ForeignKeysPanel({ foreignKeys }: ForeignKeysPanelProps) {
             <tr>
               <th className={styles.th}>Name</th>
               <th className={styles.th}>Column</th>
-              <th className={styles.th}>Referenced Table</th>
-              <th className={styles.th}>Referenced Column</th>
-              <th className={styles.th}>On Delete</th>
-              <th className={styles.th}>On Update</th>
+              <th className={styles.th}>Referenced table</th>
+              <th className={styles.th}>Referenced column</th>
+              <th className={styles.th}>On delete</th>
+              <th className={styles.th}>On update</th>
             </tr>
           </thead>
           <tbody>

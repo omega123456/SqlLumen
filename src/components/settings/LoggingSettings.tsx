@@ -44,7 +44,7 @@ export function LoggingSettings() {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Log Level" description="Set the minimum log level for the backend.">
+      <SettingsSection title="Log level" description="Set the minimum log level for the backend.">
         <div>
           <label
             id="log-level-label"

@@ -6,7 +6,6 @@ import sqlHighlightStyles from '../../styles/sql-syntax-highlight.module.css'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
-import { ElevatedSurface } from '../common/ElevatedSurface'
 import styles from './DdlPreviewTab.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
@@ -28,6 +27,7 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
         identifier: sqlHighlightStyles.identifier,
         type: sqlHighlightStyles.type,
         string: sqlHighlightStyles.string,
+        number: sqlHighlightStyles.number,
       }),
     [ddl]
   )
@@ -50,34 +50,33 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
     <div className={styles.container} data-testid="table-designer-ddl-preview">
       <div className={styles.header}>
         <Button
-          variant="secondary"
+          variant="subtle"
+          size="sm"
           onClick={() => {
             void handleCopy()
           }}
           disabled={ddl.trim() === ''}
           data-testid="ddl-preview-copy"
         >
-          <Copy size={16} weight="bold" />
-          <span>Copy to Clipboard</span>
+          <Copy size={16} weight="regular" />
+          <span>Copy to clipboard</span>
         </Button>
       </div>
 
       <div className={styles.body}>
-        <ElevatedSurface className={styles.codeSurface}>
-          {isDdlLoading ? (
-            <div className={styles.state} data-testid="ddl-preview-loading">
-              Generating...
-            </div>
-          ) : ddlError ? (
-            <div className={`${styles.state} ${styles.error}`} data-testid="ddl-preview-error">
-              {ddlError}
-            </div>
-          ) : (
-            <pre className={styles.codeBlock} data-testid="ddl-preview-code">
-              <code>{highlightedSql}</code>
-            </pre>
-          )}
-        </ElevatedSurface>
+        {isDdlLoading ? (
+          <div className={styles.state} data-testid="ddl-preview-loading">
+            Generating...
+          </div>
+        ) : ddlError ? (
+          <div className={`${styles.state} ${styles.error}`} data-testid="ddl-preview-error">
+            {ddlError}
+          </div>
+        ) : (
+          <pre className={styles.codeBlock} data-testid="ddl-preview-code">
+            <code>{highlightedSql}</code>
+          </pre>
+        )}
       </div>
 
       {!isDdlLoading && !ddlError && (

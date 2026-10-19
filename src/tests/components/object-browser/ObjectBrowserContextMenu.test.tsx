@@ -232,7 +232,7 @@ describe('ObjectBrowserContextMenu', () => {
     ['trigger (read-only)', () => makeNodes().triggerId, true],
     ['event', () => makeNodes().eventId, false],
     ['event (read-only)', () => makeNodes().eventId, true],
-  ] as const)('shows "Copy to Another Host..." for %s menus', (_, getNodeId, isReadOnly) => {
+  ] as const)('shows "Copy to another host..." for %s menus', (_, getNodeId, isReadOnly) => {
     const { nodes } = makeNodes()
     setNodes(nodes)
 
@@ -249,7 +249,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Copy to Another Host...')).toBeInTheDocument()
+    expect(screen.getByText('Copy to another host...')).toBeInTheDocument()
     expect(screen.getByTestId('ctx-copy-to-host')).toBeInTheDocument()
   })
 
@@ -295,11 +295,11 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Create Database...')).toBeInTheDocument()
-    expect(screen.getByText('Create Table...')).toBeInTheDocument()
-    expect(screen.getByText('Alter Database...')).toBeInTheDocument()
-    expect(screen.getByText('Rename Database...')).toBeInTheDocument()
-    expect(screen.getByText('Drop Database...')).toBeInTheDocument()
+    expect(screen.getByText('Create database...')).toBeInTheDocument()
+    expect(screen.getByText('Create table...')).toBeInTheDocument()
+    expect(screen.getByText('Alter database...')).toBeInTheDocument()
+    expect(screen.getByText('Rename database...')).toBeInTheDocument()
+    expect(screen.getByText('Drop database...')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
   })
 
@@ -324,23 +324,23 @@ describe('ObjectBrowserContextMenu', () => {
     )
 
     // Always-disabled items
-    const selectRows = screen.getByText('Select Top 100 Rows')
+    const selectRows = screen.getByText('Select top 100 rows')
     expect(selectRows.closest('button')).toBeDisabled()
-    expect(screen.getByText('Create Table...').closest('button')).toBeEnabled()
-    const designTable = screen.getByText('Alter Table...')
+    expect(screen.getByText('Create table...').closest('button')).toBeEnabled()
+    const designTable = screen.getByText('Alter table...')
     expect(designTable.closest('button')).toBeEnabled()
 
     // Enabled items
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Table Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy table name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
 
     // Mutating items disabled when callbacks not provided
-    const truncate = screen.getByText('Truncate Table...')
+    const truncate = screen.getByText('Truncate table...')
     expect(truncate.closest('button')).toBeDisabled()
-    const drop = screen.getByText('Drop Table...')
+    const drop = screen.getByText('Drop table...')
     expect(drop.closest('button')).toBeDisabled()
-    const rename = screen.getByText('Rename Table...')
+    const rename = screen.getByText('Rename table...')
     expect(rename.closest('button')).toBeDisabled()
   })
 
@@ -360,9 +360,9 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Copy Column Name')).toBeInTheDocument()
+    expect(screen.getByText('Copy column name')).toBeInTheDocument()
     // Should not show other items
-    expect(screen.queryByText('Schema Info')).not.toBeInTheDocument()
+    expect(screen.queryByText('Schema info')).not.toBeInTheDocument()
     expect(screen.queryByText('Refresh')).not.toBeInTheDocument()
   })
 
@@ -384,9 +384,9 @@ describe('ObjectBrowserContextMenu', () => {
 
     // Only refresh should be visible
     expect(screen.getByText('Refresh')).toBeInTheDocument()
-    expect(screen.queryByText('Create Database...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Drop Database...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create database...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drop database...')).not.toBeInTheDocument()
   })
 
   it('does not show mutating items for read-only connections (table)', () => {
@@ -405,17 +405,17 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Table Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy table name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
-    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Alter Table...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Select Top 100 Rows')).not.toBeInTheDocument()
-    expect(screen.queryByText('Truncate Table...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Drop Table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Alter table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Select top 100 rows')).not.toBeInTheDocument()
+    expect(screen.queryByText('Truncate table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drop table...')).not.toBeInTheDocument()
   })
 
-  it('"Schema Info" click calls openTab with correct args', async () => {
+  it('"Schema info" click calls openTab with correct args', async () => {
     const user = userEvent.setup()
     const { nodes, tableId } = makeNodes()
     setNodes(nodes)
@@ -433,7 +433,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Schema Info'))
+    await user.click(screen.getByText('Schema info'))
 
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection[CONN_ID]
@@ -448,7 +448,7 @@ describe('ObjectBrowserContextMenu', () => {
     })
   })
 
-  it('"Copy Table Name" click writes to clipboard', async () => {
+  it('"Copy table name" click writes to clipboard', async () => {
     const user = userEvent.setup()
     const { nodes, tableId } = makeNodes()
     setNodes(nodes)
@@ -465,7 +465,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Copy Table Name'))
+    await user.click(screen.getByText('Copy table name'))
 
     expect(writeClipboardTextSpy).toHaveBeenCalledWith('users')
   })
@@ -531,10 +531,10 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    const truncateBtn = screen.getByText('Truncate Table...').closest('button')
+    const truncateBtn = screen.getByText('Truncate table...').closest('button')
     expect(truncateBtn?.className).toContain('ui-context-menu__item--destructive')
 
-    const dropBtn = screen.getByText('Drop Table...').closest('button')
+    const dropBtn = screen.getByText('Drop table...').closest('button')
     expect(dropBtn?.className).toContain('ui-context-menu__item--destructive')
   })
 
@@ -558,13 +558,13 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
     // Alter View and Drop View should be enabled when callbacks are provided
-    const alterView = screen.getByText('Alter View...')
+    const alterView = screen.getByText('Alter view...')
     expect(alterView.closest('button')).toBeEnabled()
-    const dropView = screen.getByText('Drop View...')
+    const dropView = screen.getByText('Drop view...')
     expect(dropView.closest('button')).toBeEnabled()
   })
 
@@ -584,11 +584,11 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
-    expect(screen.queryByText('Alter View...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Drop View...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Alter view...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drop view...')).not.toBeInTheDocument()
   })
 
   it('shows correct items for procedure node (writable)', () => {
@@ -613,16 +613,16 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
     // Execute is enabled when onExecuteRoutine is provided
     const execute = screen.getByText('Execute')
     expect(execute.closest('button')).toBeEnabled()
     // Alter and Drop enabled when callbacks provided
-    const alterProc = screen.getByText('Alter Procedure...')
+    const alterProc = screen.getByText('Alter procedure...')
     expect(alterProc.closest('button')).toBeEnabled()
-    const dropProc = screen.getByText('Drop Procedure...')
+    const dropProc = screen.getByText('Drop procedure...')
     expect(dropProc.closest('button')).toBeEnabled()
   })
 
@@ -646,12 +646,12 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
-    const alterTrigger = screen.getByText('Alter Trigger...')
+    const alterTrigger = screen.getByText('Alter trigger...')
     expect(alterTrigger.closest('button')).toBeEnabled()
-    const dropTrigger = screen.getByText('Drop Trigger...')
+    const dropTrigger = screen.getByText('Drop trigger...')
     expect(dropTrigger.closest('button')).toBeEnabled()
   })
 
@@ -673,9 +673,9 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Create Table...')).toBeInTheDocument()
+    expect(screen.getByText('Create table...')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
-    expect(screen.queryByText('Schema Info')).not.toBeInTheDocument()
+    expect(screen.queryByText('Schema info')).not.toBeInTheDocument()
   })
 
   it('shows create object item for non-table category nodes', () => {
@@ -709,9 +709,9 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
-    expect(screen.getByText('Create View...')).toBeInTheDocument()
-    expect(screen.getByText('Create View...').closest('button')).toBeEnabled()
+    expect(screen.queryByText('Create table...')).not.toBeInTheDocument()
+    expect(screen.getByText('Create view...')).toBeInTheDocument()
+    expect(screen.getByText('Create view...').closest('button')).toBeEnabled()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
   })
 
@@ -734,7 +734,7 @@ describe('ObjectBrowserContextMenu', () => {
   // Phase 8.4 — Alter, Create, Drop for all object types
   // ---------------------------------------------------------------------------
 
-  it('"Alter View..." calls onAlterObject with correct args', async () => {
+  it('"Alter view..." calls onAlterObject with correct args', async () => {
     const user = userEvent.setup()
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)
@@ -754,11 +754,11 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Alter View...'))
+    await user.click(screen.getByText('Alter view...'))
     expect(onAlterObject).toHaveBeenCalledWith('testdb', 'user_stats', 'view')
   })
 
-  it('"Drop View..." calls onDropObject with correct args', async () => {
+  it('"Drop view..." calls onDropObject with correct args', async () => {
     const user = userEvent.setup()
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)
@@ -777,7 +777,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Drop View...'))
+    await user.click(screen.getByText('Drop view...'))
     expect(onDropObject).toHaveBeenCalledWith('testdb', 'user_stats', 'view')
   })
 
@@ -800,7 +800,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Alter Procedure...'))
+    await user.click(screen.getByText('Alter procedure...'))
     expect(onAlterObject).toHaveBeenCalledWith('testdb', 'sp_example', 'procedure')
   })
 
@@ -823,7 +823,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Drop Procedure...'))
+    await user.click(screen.getByText('Drop procedure...'))
     expect(onDropObject).toHaveBeenCalledWith('testdb', 'sp_example', 'procedure')
   })
 
@@ -846,7 +846,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Alter Function...'))
+    await user.click(screen.getByText('Alter function...'))
     expect(onAlterObject).toHaveBeenCalledWith('testdb', 'calc_total', 'function')
   })
 
@@ -869,7 +869,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Drop Function...'))
+    await user.click(screen.getByText('Drop function...'))
     expect(onDropObject).toHaveBeenCalledWith('testdb', 'calc_total', 'function')
   })
 
@@ -892,7 +892,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Alter Trigger...'))
+    await user.click(screen.getByText('Alter trigger...'))
     expect(onAlterObject).toHaveBeenCalledWith('testdb', 'before_insert', 'trigger')
   })
 
@@ -915,7 +915,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Drop Trigger...'))
+    await user.click(screen.getByText('Drop trigger...'))
     expect(onDropObject).toHaveBeenCalledWith('testdb', 'before_insert', 'trigger')
   })
 
@@ -938,7 +938,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Alter Event...'))
+    await user.click(screen.getByText('Alter event...'))
     expect(onAlterObject).toHaveBeenCalledWith('testdb', 'cleanup_job', 'event')
   })
 
@@ -961,7 +961,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Drop Event...'))
+    await user.click(screen.getByText('Drop event...'))
     expect(onDropObject).toHaveBeenCalledWith('testdb', 'cleanup_job', 'event')
   })
 
@@ -1025,11 +1025,11 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.getByText('Copy Name')).toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.getByText('Copy name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
-    expect(screen.queryByText('Alter Procedure...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Drop Procedure...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Alter procedure...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drop procedure...')).not.toBeInTheDocument()
     expect(screen.queryByText('Execute')).not.toBeInTheDocument()
   })
 
@@ -1049,9 +1049,9 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.queryByText('Alter Trigger...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Drop Trigger...')).not.toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.queryByText('Alter trigger...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drop trigger...')).not.toBeInTheDocument()
   })
 
   it('read-only event shows no alter/drop items', () => {
@@ -1070,9 +1070,9 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Schema Info')).toBeInTheDocument()
-    expect(screen.queryByText('Alter Event...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Drop Event...')).not.toBeInTheDocument()
+    expect(screen.getByText('Schema info')).toBeInTheDocument()
+    expect(screen.queryByText('Alter event...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Drop event...')).not.toBeInTheDocument()
   })
 
   it('database node shows create items for all 5 object types', () => {
@@ -1093,14 +1093,14 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Create View...')).toBeInTheDocument()
-    expect(screen.getByText('Create Procedure...')).toBeInTheDocument()
-    expect(screen.getByText('Create Function...')).toBeInTheDocument()
-    expect(screen.getByText('Create Trigger...')).toBeInTheDocument()
-    expect(screen.getByText('Create Event...')).toBeInTheDocument()
+    expect(screen.getByText('Create view...')).toBeInTheDocument()
+    expect(screen.getByText('Create procedure...')).toBeInTheDocument()
+    expect(screen.getByText('Create function...')).toBeInTheDocument()
+    expect(screen.getByText('Create trigger...')).toBeInTheDocument()
+    expect(screen.getByText('Create event...')).toBeInTheDocument()
   })
 
-  it('"Create View..." on database node calls onCreateObject', async () => {
+  it('"Create view..." on database node calls onCreateObject', async () => {
     const user = userEvent.setup()
     const { nodes, dbId } = makeNodes()
     setNodes(nodes)
@@ -1119,11 +1119,11 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    await user.click(screen.getByText('Create View...'))
+    await user.click(screen.getByText('Create view...'))
     expect(onCreateObject).toHaveBeenCalledWith('testdb', 'view')
   })
 
-  it('procedure category node shows "Create Procedure..." item', () => {
+  it('procedure category node shows "Create procedure..." item', () => {
     const { nodes } = makeNodes()
     const procCatId = makeNodeId('category', 'testdb', 'procedure')
     setNodes({
@@ -1153,8 +1153,8 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.getByText('Create Procedure...')).toBeInTheDocument()
-    expect(screen.getByText('Create Procedure...').closest('button')).toBeEnabled()
+    expect(screen.getByText('Create procedure...')).toBeInTheDocument()
+    expect(screen.getByText('Create procedure...').closest('button')).toBeEnabled()
   })
 
   it('read-only category shows no create items', () => {
@@ -1186,7 +1186,7 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.queryByText('Create Procedure...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create procedure...')).not.toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
   })
 
@@ -1206,18 +1206,18 @@ describe('ObjectBrowserContextMenu', () => {
       />
     )
 
-    expect(screen.queryByText('Create View...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Create Procedure...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Create Function...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Create Trigger...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Create Event...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create view...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create procedure...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create function...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create trigger...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create event...')).not.toBeInTheDocument()
   })
 
   // ---------------------------------------------------------------------------
   // Phase 3 — View Data context menu item
   // ---------------------------------------------------------------------------
 
-  it('view context menu has "View Data" option', () => {
+  it('view context menu has "View data" option', () => {
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)
 
@@ -1236,7 +1236,7 @@ describe('ObjectBrowserContextMenu', () => {
     expect(screen.getByTestId('ctx-view-data')).toBeInTheDocument()
   })
 
-  it('clicking "View Data" opens table-data tab with objectType view', async () => {
+  it('clicking "View data" opens table-data tab with objectType view', async () => {
     const user = userEvent.setup()
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)
@@ -1269,7 +1269,7 @@ describe('ObjectBrowserContextMenu', () => {
     })
   })
 
-  it('scopes "View Data" opens to the active query tab when the setting is enabled', async () => {
+  it('scopes "View data" opens to the active query tab when the setting is enabled', async () => {
     const user = userEvent.setup()
     const { nodes, viewId } = makeNodes()
     setNodes(nodes)

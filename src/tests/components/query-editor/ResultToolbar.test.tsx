@@ -62,7 +62,7 @@ describe('ResultToolbar', () => {
         onClearFilterClick={() => {}}
       />
     )
-    expect(screen.getByText('42 Rows')).toBeInTheDocument()
+    expect(screen.getByText('42 rows')).toBeInTheDocument()
   })
 
   it('renders error status with error message', () => {
@@ -98,7 +98,7 @@ describe('ResultToolbar', () => {
         onClearFilterClick={() => {}}
       />
     )
-    expect(screen.getByText('(500 row limit applied)')).toBeInTheDocument()
+    expect(screen.getByText('· 500-row limit applied')).toBeInTheDocument()
   })
 
   it('does not show auto-limit text when autoLimitApplied is false', () => {
@@ -117,7 +117,7 @@ describe('ResultToolbar', () => {
         onClearFilterClick={() => {}}
       />
     )
-    expect(screen.queryByText('(1000 row limit applied)')).not.toBeInTheDocument()
+    expect(screen.queryByText('· 1000-row limit applied')).not.toBeInTheDocument()
   })
 
   it('does not render pagination controls', () => {
@@ -237,7 +237,7 @@ describe('ResultToolbar', () => {
         onClearFilterClick={() => {}}
       />
     )
-    expect(screen.getByText('(42ms)')).toBeInTheDocument()
+    expect(screen.getByText('42 ms')).toBeInTheDocument()
   })
 
   it('truncates long error messages to 200 chars', () => {
@@ -276,7 +276,7 @@ describe('ResultToolbar', () => {
       />
     )
     // Shared StatusArea shows "{N} Rows" when totalRows is provided
-    expect(screen.getByText('5 Rows')).toBeInTheDocument()
+    expect(screen.getByText('5 rows')).toBeInTheDocument()
   })
 
   it('shows "Success" for DDL results with no affected rows', () => {

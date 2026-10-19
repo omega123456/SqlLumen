@@ -16,7 +16,7 @@
 .title {
   font-family: var(--font-headline);
   font-size: var(--type-body-lg);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--on-surface);
   margin: 0;
 }
@@ -43,7 +43,7 @@
   width: 100%;
   background: var(--surface-container-highest);
   border: 1px solid var(--outline-variant);
-  border-radius: 6px;
+  border-radius: var(--radius-card);
   padding: 6px 10px 6px 32px;
   font-size: var(--type-size-sm);
   color: var(--on-surface);

@@ -229,7 +229,7 @@ describe('HistoryTab', () => {
     })
   })
 
-  it('"Open in Editor" opens a query tab pre-filled with SQL text', async () => {
+  it('"Open in editor" opens a query tab pre-filled with SQL text', async () => {
     const user = userEvent.setup()
     const conn = makeActiveConnection()
     useConnectionStore.setState({
@@ -253,7 +253,7 @@ describe('HistoryTab', () => {
     // Select the row first
     await user.click(screen.getByTestId('history-table-row-1'))
 
-    // Click "Open in Editor"
+    // Click "Open in editor"
     await waitFor(() => {
       expect(screen.getByTestId('history-open-in-editor')).toBeInTheDocument()
     })
@@ -263,7 +263,7 @@ describe('HistoryTab', () => {
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     expect(tabs).toHaveLength(1)
     expect(tabs[0].type).toBe('query-editor')
-    expect(tabs[0].label).toBe('History Query')
+    expect(tabs[0].label).toBe('History query')
 
     // Should have set content in query store
     const queryTab = useQueryStore.getState().tabs[tabs[0].id]

@@ -1,15 +1,18 @@
-.keyword {
-  color: var(--primary);
+/* DDL highlighting (prototype `.ddl`): keywords and data types in the keyword colour,
+   back-quoted identifiers in the identifier colour, everything else plain code text. */
+.keyword,
+.type {
+  color: var(--token-keyword);
 }
 
 .identifier {
-  color: var(--tertiary);
-}
-
-.type {
-  color: var(--secondary);
+  color: var(--token-identifier);
 }
 
 .string {
-  color: var(--secondary);
+  color: var(--token-string);
+}
+
+.number {
+  color: var(--token-number);
 }

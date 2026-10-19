@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Checkbox } from '../../../components/common/Checkbox'
+import { cssRule } from '../../helpers/css-source'
 
 function ControlledToggle() {
   const [on, setOn] = useState(false)
@@ -49,5 +50,23 @@ describe('Checkbox', () => {
   it('merges className with base styles', () => {
     render(<Checkbox className="extra" aria-label="c" />)
     expect(screen.getByRole('checkbox', { name: 'c' })).toHaveClass('extra')
+  })
+})
+
+describe('Checkbox Fluent styles', () => {
+  const css = 'components/common/Checkbox.module.css'
+
+  it('draws a 20px Fluent box on the native input (prototype `.cb`)', () => {
+    const base = cssRule(css, '.input')
+    expect(base).toContain('width: 20px')
+    expect(base).toContain('height: 20px')
+    expect(base).toContain('appearance: none')
+    expect(base).toContain('border-radius: var(--radius-control)')
+  })
+
+  it('fills checked and mixed states with the accent', () => {
+    expect(cssRule(css, '.input:checked, .input:indeterminate')).toContain(
+      'background: var(--primary)'
+    )
   })
 })

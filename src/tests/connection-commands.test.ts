@@ -204,11 +204,11 @@ describe('listConnectionGroups', () => {
 
 describe('updateConnectionGroup', () => {
   it('calls invoke with correct command and args', async () => {
-    await updateConnectionGroup('grp-1', 'New Name')
+    await updateConnectionGroup('grp-1', 'New name')
     expect(ipc.calls('update_connection_group')).toEqual([
       {
         id: 'grp-1',
-        name: 'New Name',
+        name: 'New name',
       },
     ])
   })

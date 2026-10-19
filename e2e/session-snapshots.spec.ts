@@ -87,7 +87,7 @@ test.describe('session snapshots', () => {
     await expect(confirmDialog).toBeVisible()
     await expect(confirmDialog).toContainText('Create snapshot?')
     // The confirm action label is the non-destructive "Create Snapshot".
-    await expect(page.getByTestId('confirm-confirm-button')).toContainText('Create Snapshot')
+    await expect(page.getByTestId('confirm-confirm-button')).toContainText('Create snapshot')
 
     await page.getByTestId('confirm-cancel-button').click()
     await expect(confirmDialog).toBeHidden()

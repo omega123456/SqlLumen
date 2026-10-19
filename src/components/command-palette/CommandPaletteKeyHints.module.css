@@ -1,0 +1,46 @@
+/* Row hint (prototype `.pi-row .kd`): 12px tertiary text with a raised Tab chip */
+.rowHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--outline);
+  font-size: var(--type-caption-size);
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+/* Prototype `.pi-row .kd kbd`: 11px, 1px stroke with a 2px bottom edge */
+.rowKey {
+  display: block;
+  padding: 0 5px;
+  border: 1px solid var(--stroke-card);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: normal;
+}
+
+/* Footer (prototype `.pal .ft`): base surface, 12px tertiary text */
+.footer {
+  display: flex;
+  flex-shrink: 0;
+  gap: 16px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--stroke-divider);
+  background: var(--surface);
+  color: var(--outline);
+  font-size: var(--type-caption-size);
+  line-height: 20px;
+}
+
+/* Prototype `.pal .ft kbd` */
+.footerKey {
+  margin-right: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--stroke-card);
+  border-radius: 3px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: normal;
+}

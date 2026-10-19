@@ -1,27 +1,28 @@
-/* SettingsSection — heading + description + content wrapper */
+/* SettingsSection — group heading (prototype `.d-settings .pg .gh`) + description + rows */
 
 .section {
-  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
 }
 
 .heading {
-  font-size: var(--type-size-lg);
-  font-weight: 600;
-  font-family: var(--font-headline);
+  margin: 14px 0 0;
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface);
-  margin: 0 0 4px;
 }
 
 .description {
-  font-size: var(--type-size-sm);
-  font-family: var(--font-body);
+  margin: 0 0 6px;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
   color: var(--on-surface-variant);
-  margin: 0 0 20px;
-  line-height: 1.5;
 }
 
 .content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 4px;
 }

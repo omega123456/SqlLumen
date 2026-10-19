@@ -100,9 +100,9 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
       maxWidth={1040}
       fillMaxWidth
       testId="favorite-dialog"
-      ariaLabel={isEditing ? 'Edit Favorite' : 'New Favorite'}
+      ariaLabel={isEditing ? 'Edit favorite' : 'New favorite'}
     >
-      <h2 className={styles.title}>{isEditing ? 'Edit Favorite' : 'New Favorite'}</h2>
+      <h2 className={styles.title}>{isEditing ? 'Edit favorite' : 'New favorite'}</h2>
       <div className={styles.form}>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="favorite-name">
@@ -169,16 +169,16 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
           />
         </div>
         <div className={styles.actions}>
-          <Button variant="secondary" onClick={closeDialog} data-testid="favorite-dialog-cancel">
-            Cancel
-          </Button>
           <Button
-            variant="primary"
+            variant="accent"
             onClick={handleSave}
             disabled={isSaving || !name.trim() || !sqlText.trim()}
             data-testid="favorite-dialog-save"
           >
             {isSaving ? 'Saving...' : isEditing ? 'Update' : 'Save'}
+          </Button>
+          <Button onClick={closeDialog} data-testid="favorite-dialog-cancel">
+            Cancel
           </Button>
         </div>
       </div>

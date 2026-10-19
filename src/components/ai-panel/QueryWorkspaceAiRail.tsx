@@ -19,16 +19,16 @@ export function QueryWorkspaceAiRail({ tab }: QueryWorkspaceAiRailProps) {
     <div className={styles.railHost} data-testid="ai-workspace-sidebar">
       <div className={styles.rail} data-testid="ai-workspace-rail">
         <IconButton
-          size="sm"
-          title="Open AI Assistant"
-          aria-label="Open AI Assistant"
+          size="lg"
+          title="Open AI assistant"
+          aria-label="Open AI assistant"
           disabled={isDisabled}
           data-testid="ai-sidebar-expand"
           onClick={() => {
             openPanel(tab.id)
           }}
         >
-          <Sparkle size={18} weight="regular" />
+          <Sparkle size={16} weight="regular" />
         </IconButton>
       </div>
     </div>

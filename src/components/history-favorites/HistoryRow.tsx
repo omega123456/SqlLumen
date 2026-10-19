@@ -38,7 +38,7 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
   const handleCopyToEditor = useCallback(() => {
-    const tabId = openQueryTab(connectionId, 'History Query')
+    const tabId = openQueryTab(connectionId, 'History query')
     if (tabId) {
       useQueryStore.getState().setContent(tabId, entry.sqlText)
     }

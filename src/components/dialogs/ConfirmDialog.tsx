@@ -1,5 +1,4 @@
 import { useRef } from 'react'
-import { Warning } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { DialogShell } from './DialogShell'
 import styles from './ConfirmDialog.module.css'
@@ -43,18 +42,14 @@ export function ConfirmDialog({
       isOpen={isOpen}
       onClose={onCancel}
       portalRoot={portalRoot}
-      maxWidth={420}
+      maxWidth={440}
+      fillMaxWidth
       testId="confirm-dialog"
       ariaLabel={title}
       nonDismissible={nonDismissible}
       initialFocusRef={confirmButtonRef}
     >
-      <h2 className={styles.title}>
-        <span className={styles.titleIcon}>
-          <Warning size={22} weight="fill" />
-        </span>
-        {title}
-      </h2>
+      <h2 className={styles.title}>{title}</h2>
       <div className={styles.message}>{message}</div>
       {resolvedWarning !== null && <p className={styles.warning}>{resolvedWarning}</p>}
       {error && (
@@ -64,16 +59,8 @@ export function ConfirmDialog({
       )}
       <div className={styles.actions}>
         <Button
-          variant="secondary"
-          onClick={onCancel}
-          disabled={nonDismissible}
-          data-testid="confirm-cancel-button"
-        >
-          Cancel
-        </Button>
-        <Button
           ref={confirmButtonRef}
-          variant={isDestructive ? 'danger' : 'primary'}
+          variant={isDestructive ? 'danger' : 'accent'}
           onClick={onConfirm}
           disabled={isLoading}
           data-testid="confirm-confirm-button"
@@ -86,6 +73,9 @@ export function ConfirmDialog({
           ) : (
             confirmLabel
           )}
+        </Button>
+        <Button onClick={onCancel} disabled={nonDismissible} data-testid="confirm-cancel-button">
+          Cancel
         </Button>
       </div>
     </DialogShell>

@@ -1,7 +1,7 @@
 .dropdown {
   padding: 8px;
   background: var(--ui-dropdown-panel-bg);
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.24);
+  border-top: 1px solid var(--stroke-divider);
   max-height: 280px;
   overflow: auto;
   backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
@@ -10,16 +10,14 @@
 .section + .section {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .sectionLabel {
   padding: 4px 10px 8px;
   color: var(--on-surface-variant);
   font-size: var(--type-size-xs);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 600;
 }
 
 .option {
@@ -29,7 +27,7 @@
   width: 100%;
   padding: 10px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   background: transparent;
   color: var(--on-surface);
   text-align: left;

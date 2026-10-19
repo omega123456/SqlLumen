@@ -321,7 +321,7 @@ describe('ResultPanel actions and states', () => {
   it('shows affected row count for DML success results', () => {
     renderPanel({ columns: [], rows: [], affectedRows: 3 })
 
-    expect(screen.getByTestId('dml-success')).toHaveTextContent('Query executed: 3 rows affected')
+    expect(screen.getByTestId('dml-success')).toHaveTextContent('Query OK3 rows affected')
   })
 
   it('delegates sort changes through navigation guarding and store sortResults', () => {

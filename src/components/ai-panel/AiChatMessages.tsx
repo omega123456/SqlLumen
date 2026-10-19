@@ -100,13 +100,8 @@ export function AiChatMessages({
         const isLastAssistant = idx === lastAssistantIdx
         const isStreamingMessage = isLastAssistant && isGenerating
 
-        // Spacing: 16px between different senders, 8px between same sender
-        const prevMsg = idx > 0 ? visibleMessages[idx - 1] : null
-        const sameSender = prevMsg && prevMsg.role === msg.role
-        const spacingClass = sameSender ? styles.sameSenderGap : styles.differentSenderGap
-
         return (
-          <div key={msg.id} className={idx > 0 ? spacingClass : undefined}>
+          <div key={msg.id} className={styles.message}>
             <AiMessageBubble
               message={msg}
               isStreaming={isStreamingMessage}

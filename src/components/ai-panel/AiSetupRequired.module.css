@@ -15,15 +15,15 @@
 }
 
 .headline {
-  font-family: var(--font-heading, Manrope, sans-serif);
-  font-size: 14px;
+  font-family: var(--font-headline);
+  font-size: var(--type-body-size);
   font-weight: 600;
   color: var(--on-surface);
   margin: 0;
 }
 
 .subtext {
-  font-size: 12px;
+  font-size: var(--type-caption-size);
   color: var(--on-surface-variant);
   opacity: 0.6;
   max-width: 280px;

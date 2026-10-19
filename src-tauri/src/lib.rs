@@ -8,6 +8,7 @@ pub mod logging;
 pub mod mysql;
 pub mod schema_index;
 pub mod state;
+pub mod window_chrome;
 
 pub fn http_client_builder() -> reqwest::ClientBuilder {
     let builder = reqwest::Client::builder();
@@ -235,6 +236,9 @@ pub fn run() {
 
     builder
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                window_chrome::apply_backdrop(&window);
+            }
             let base = app.path().app_data_dir()?;
             let dir = resolved_app_data_dir(&base);
             let log_db_path = dir.join(crate::logging::log_store::LOG_DB_FILE_NAME);
@@ -430,6 +434,8 @@ pub fn run() {
             commands::settings::set_setting,
             commands::settings::get_all_settings,
             commands::app_info::get_app_info,
+            commands::window_chrome::set_window_theme,
+            commands::window_chrome::get_window_backdrop,
             commands::connections::save_connection,
             commands::connections::get_connection,
             commands::connections::list_connections,

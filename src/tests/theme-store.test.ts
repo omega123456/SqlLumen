@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ipc } from './ipc-mock'
 import { useThemeStore } from '../stores/theme-store'
 import { setupMatchMedia } from './helpers/mock-match-media'
@@ -65,6 +65,43 @@ describe('useThemeStore — setTheme', () => {
     // Theme should still be applied
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+  })
+})
+
+describe('useThemeStore — native title bar sync', () => {
+  it('syncs the native title bar on every theme change, with system following the OS', async () => {
+    await useThemeStore.getState().setTheme('dark')
+    await useThemeStore.getState().setTheme('light')
+    await useThemeStore.getState().setTheme('system')
+    expect(ipc.calls('set_window_theme')).toEqual([
+      { theme: 'dark' },
+      { theme: 'light' },
+      { theme: null },
+    ])
+  })
+
+  it('syncs previews and reverts', async () => {
+    useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
+    useThemeStore.getState().previewTheme('dark')
+    useThemeStore.getState().revertPreview()
+    await vi.waitFor(() => {
+      expect(ipc.calls('set_window_theme')).toEqual([{ theme: 'dark' }, { theme: 'light' }])
+    })
+  })
+
+  it('still applies the theme when the native sync fails', async () => {
+    ipc.override('set_window_theme', () => {
+      throw new Error('no window')
+    })
+    await useThemeStore.getState().setTheme('dark')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    await vi.waitFor(() => {
+      expect(
+        ipc
+          .calls('log_frontend')
+          .some((c) => (c as { message: string }).message.includes('set_window_theme failed'))
+      ).toBe(true)
+    })
   })
 })
 
@@ -189,5 +226,40 @@ describe('useThemeStore — getSystemTheme fallback', () => {
       // Restore matchMedia so other tests aren't affected
       Object.defineProperty(window, 'matchMedia', { writable: true, value: original })
     }
+  })
+})
+
+describe('useThemeStore — follows the OS by default (Fluent redesign decision)', () => {
+  it('starts in "system" mode before any saved preference is read', () => {
+    useThemeStore.setState(useThemeStore.getInitialState())
+    expect(useThemeStore.getState().theme).toBe('system')
+  })
+
+  it.each([
+    [true, 'dark'],
+    [false, 'light'],
+  ] as const)(
+    'with no saved theme and OS dark=%s, resolves to %s and keys the token set off data-theme',
+    async (prefersDark, expected) => {
+      setupMatchMedia(prefersDark)
+      ipc.override('get_setting', () => null)
+
+      await useThemeStore.getState().initialize()
+
+      expect(useThemeStore.getState().theme).toBe('system')
+      expect(useThemeStore.getState().resolvedTheme).toBe(expected)
+      // tokens.css: dark primitives live on :root, light primitives on [data-theme='light']
+      expect(document.documentElement.getAttribute('data-theme')).toBe(expected)
+    }
+  )
+
+  it('an explicit saved theme overrides the OS setting', async () => {
+    setupMatchMedia(true)
+    ipc.override('get_setting', () => 'light')
+
+    await useThemeStore.getState().initialize()
+
+    expect(useThemeStore.getState().theme).toBe('light')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 })

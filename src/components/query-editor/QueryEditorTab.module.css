@@ -51,7 +51,7 @@
 
 .resizeHandle:hover,
 .resizeHandle[data-resize-handle-state='drag'] {
-  background-color: rgba(var(--primary-rgb), 0.1);
+  background-color: var(--fill-subtle-hover);
 }
 
 .resizePill {

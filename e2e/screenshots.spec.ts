@@ -1076,7 +1076,7 @@ for (const theme of themes) {
       await selectSampleConnection(page.getByTestId('connection-dialog'))
       await page
         .getByTestId('connection-dialog')
-        .getByRole('button', { name: 'Test Connection' })
+        .getByRole('button', { name: 'Test connection' })
         .click()
       await expect(page.getByTestId('test-connection-result')).toBeVisible()
       await expect(page.getByTestId('test-connection-result')).toHaveScreenshot(
@@ -1153,7 +1153,7 @@ for (const theme of themes) {
       )
     })
 
-    test('ConnectionTabBar — two sessions (inactive vertical accent, active color underline)', async ({
+    test('ConnectionTabBar — two sessions (colour markers, active workspace edge)', async ({
       page,
     }) => {
       await openTwoConnectionSessionsFirstActive(page)
@@ -1204,6 +1204,8 @@ for (const theme of themes) {
       // Switch to DDL sub-tab
       await page.getByRole('button', { name: 'DDL' }).click()
       await expect(page.getByTestId('ddl-panel')).toBeVisible()
+      // Keep the pointer off the sub-tab so the shot shows the selected state, not hover
+      await page.mouse.move(0, 0)
 
       await expect(page.getByTestId('schema-info-tab')).toHaveScreenshot(
         `schema-info-ddl-${theme}.png`,
@@ -1312,6 +1314,19 @@ for (const theme of themes) {
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('app-layout')).toHaveScreenshot(
         `app-full-layout-query-editor-results-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('InfoBar — ResultPanel query error', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockQueryError__ = true
+      })
+      await page.keyboard.press('F9')
+      await expect(page.getByTestId('result-error')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `infobar-result-panel-error-${theme}.png`,
         { animations: 'disabled' }
       )
     })
@@ -1780,7 +1795,7 @@ for (const theme of themes) {
       const panel = page.getByTestId('favorite-dialog-panel')
       await expect(panel).toBeVisible()
       // Title
-      await expect(panel.locator('h2')).toHaveText('New Favorite')
+      await expect(panel.locator('h2')).toHaveText('New favorite')
       // Fields: Name, SQL, Scope, Category, Description
       await expect(panel.getByTestId('favorite-name-input')).toBeVisible()
       await expect(panel.getByTestId('favorite-sql-input')).toBeVisible()

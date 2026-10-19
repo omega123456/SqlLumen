@@ -85,7 +85,7 @@ describe('HistoryRow', () => {
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     expect(tabs).toHaveLength(1)
     expect(tabs[0].type).toBe('query-editor')
-    expect(tabs[0].label).toBe('History Query')
+    expect(tabs[0].label).toBe('History query')
 
     // Should have set content in query store
     const queryTab = useQueryStore.getState().tabs[tabs[0].id]

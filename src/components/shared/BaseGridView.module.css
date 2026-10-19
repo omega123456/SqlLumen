@@ -45,7 +45,7 @@
 }
 
 .calendarBtn:hover {
-  background: rgba(var(--primary-rgb), 0.06);
-  border-color: var(--primary);
-  color: var(--primary);
+  background: var(--fill-subtle-hover);
+  border-color: var(--stroke-control);
+  color: var(--on-surface);
 }

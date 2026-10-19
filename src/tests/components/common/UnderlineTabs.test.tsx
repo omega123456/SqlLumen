@@ -54,17 +54,48 @@ describe('UnderlineTabs', () => {
     expect(screen.getByRole('button', { name: /Label/ })).toBeInTheDocument()
   })
 
-  it('applies custom indicator color as CSS variable on simple tab', () => {
+  it('applies the selector and document variant classes to bars and tabs', () => {
     render(
-      <UnderlineTabBar>
-        <UnderlineTab data-testid="t1" active indicatorColor="#ff00aa" onClick={() => {}}>
-          X
-        </UnderlineTab>
-      </UnderlineTabBar>
+      <>
+        <UnderlineTabBar data-testid="sel-bar" variant="selector">
+          <UnderlineTab data-testid="sel-tab" variant="selector" active onClick={() => {}}>
+            Tables
+          </UnderlineTab>
+        </UnderlineTabBar>
+        <UnderlineTabBar data-testid="doc-bar" variant="document" scrollable>
+          <UnderlineTab
+            data-testid="doc-tab"
+            variant="document"
+            onSelect={() => {}}
+            suffix={<span>x</span>}
+          >
+            Query 1
+          </UnderlineTab>
+        </UnderlineTabBar>
+        <UnderlineTabBar data-testid="default-bar">
+          <UnderlineTab data-testid="default-tab" onClick={() => {}}>
+            Columns
+          </UnderlineTab>
+        </UnderlineTabBar>
+      </>
     )
 
-    const el = screen.getByTestId('t1')
-    expect(el.style.getPropertyValue('--underline-tab-indicator').trim()).toBe('#ff00aa')
+    expect(screen.getByTestId('sel-bar').className).toMatch(/barSelector/)
+    expect(screen.getByTestId('sel-tab').className).toMatch(/tabSelector/)
+    expect(screen.getByTestId('doc-bar').className).toMatch(/barDocument/)
+    expect(screen.getByTestId('doc-tab').className).toMatch(/tabDocument/)
+    expect(screen.getByTestId('default-bar').className).not.toMatch(/barSelector|barDocument/)
+    expect(screen.getByTestId('default-tab').className).not.toMatch(/tabSelector|tabDocument/)
+  })
+
+  it('applies the bar variant class to the suffix wrapper', () => {
+    render(
+      <UnderlineTabBar data-testid="wrap" variant="document" suffix={<span>+</span>}>
+        <UnderlineTab onClick={() => {}}>A</UnderlineTab>
+      </UnderlineTabBar>
+    )
+    expect(screen.getByTestId('wrap').className).toMatch(/barWrapper/)
+    expect(screen.getByTestId('wrap').className).toMatch(/barDocument/)
   })
 
   it('invokes onClick for simple and onSelect for split label', async () => {

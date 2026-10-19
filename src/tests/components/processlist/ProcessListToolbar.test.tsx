@@ -91,7 +91,7 @@ describe('ProcessListToolbar', () => {
   it('shows process count via StatusArea', () => {
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
     expect(screen.getByTestId('status-area')).toBeInTheDocument()
-    expect(screen.getByText('1 Rows')).toBeInTheDocument()
+    expect(screen.getByText('1 row')).toBeInTheDocument()
   })
 
   it('shows read-only badge when connection is read-only', () => {
@@ -226,7 +226,7 @@ describe('ProcessListToolbar', () => {
 
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
 
-    expect(screen.getByText('1 Rows')).toBeInTheDocument()
+    expect(screen.getByText('1 row')).toBeInTheDocument()
   })
 
   it('opens confirm dialog and shows truncated SQL on kill click', async () => {

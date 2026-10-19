@@ -1,8 +1,11 @@
-/* Shared underline tab rail + tabs (schema-style metrics, bottom indicator). */
+/* Shared tab rail + tabs. Three looks (see UnderlineTabVariant):
+   - default:  WinUI SelectorBar (prototype `.sel-bar`)
+   - selector: tab-group row (prototype `.p-groups` / `.p-btabs` overrides)
+   - document: document tabs (prototype `.p-docs` / `.p-doc`) */
 
 /* Outer wrapper when suffix is used: flex row, no overflow */
 .barWrapper {
-  --underline-tab-row-height: 48px;
+  --underline-tab-row-height: var(--doc-tab-strip-height);
   --underline-tab-scrollbar-reserve: 0px;
   display: flex;
   align-items: stretch;
@@ -10,7 +13,7 @@
   width: 100%;
   min-width: 0;
   background-color: transparent;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-bottom: 1px solid var(--stroke-divider);
 }
 
 .barWrapper > .bar {
@@ -29,11 +32,11 @@
 }
 
 .bar {
-  --underline-tab-row-height: 48px;
+  --underline-tab-row-height: var(--doc-tab-strip-height);
   --underline-tab-scrollbar-reserve: 0px;
   display: flex;
   align-items: stretch;
-  gap: 0;
+  gap: 4px;
   flex: 0 0 auto;
   width: 100%;
   height: calc(var(--underline-tab-row-height) + var(--underline-tab-scrollbar-reserve));
@@ -41,7 +44,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   background-color: transparent;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-bottom: 1px solid var(--stroke-divider);
   scrollbar-width: thin;
   scrollbar-color: var(--grid-scrollbar-thumb) transparent;
 }
@@ -57,7 +60,7 @@
 
 .bar::-webkit-scrollbar-thumb {
   background: var(--grid-scrollbar-thumb);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
 }
 
 .bar::-webkit-scrollbar-thumb:hover {
@@ -86,53 +89,89 @@
 .barContent {
   display: flex;
   align-items: stretch;
-  gap: 0;
+  gap: inherit;
   grid-row: 1;
   width: max-content;
   height: var(--underline-tab-row-height);
   min-width: 100%;
 }
-/* -------- Simple tab (single button) -------- */
-.simple {
+
+/* ================= default: SelectorBar ================= */
+
+.simple,
+.cell {
   position: relative;
   flex-shrink: 0;
-  padding: 12px 20px;
-  font-family: var(--font-body);
-  font-size: var(--type-nav-tab);
-  font-weight: var(--type-nav-weight);
-  color: var(--on-surface-variant);
-  background-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border: none;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
+  border-radius: var(--radius-control);
+  background-color: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  font-weight: var(--type-weight-regular);
+  line-height: var(--type-body-line);
+  white-space: nowrap;
+  cursor: default;
 }
 
-.simple:hover {
+.simple {
+  padding: 0 12px;
+}
+
+.cell {
+  align-items: stretch;
+}
+
+.simple:hover,
+.cell:hover {
   color: var(--on-surface);
-  background-color: rgba(var(--on-surface-rgb), 0.03);
+  background-color: var(--fill-subtle-hover);
 }
 
-.simpleActive {
-  color: var(--primary);
-  font-weight: var(--type-nav-weight-active);
-  background-color: var(--underline-tab-active-bg);
+.simpleActive,
+.cellActive {
+  color: var(--on-surface);
+  font-weight: var(--type-weight-semibold);
 }
 
-.simpleActive:hover {
-  background-color: var(--underline-tab-active-bg);
-}
-
-.simpleActive::after {
+.simpleActive::after,
+.cellActive::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--underline-tab-indicator, var(--primary));
-  border-radius: 1px 1px 0 0;
+  left: 50%;
+  bottom: 2px;
+  width: 16px;
+  height: 3px;
+  margin-left: -8px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+.labelButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: default;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.suffixSlot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-right: 6px;
 }
 
 .dragging {
@@ -143,12 +182,13 @@
 .dropAfter::before {
   content: '';
   position: absolute;
-  top: 10px;
-  bottom: 10px;
+  top: 8px;
+  bottom: 8px;
   width: 2px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--primary);
   pointer-events: none;
+  z-index: 1;
 }
 
 .dropBefore::before {
@@ -159,69 +199,121 @@
   right: 0;
 }
 
-/* -------- Split tab (cell + label button + optional suffix) -------- */
-.cell {
-  display: flex;
-  align-items: stretch;
-  flex-shrink: 0;
-  position: relative;
-  cursor: pointer;
-  color: var(--on-surface-variant);
-  font-family: var(--font-body);
-  font-size: var(--type-nav-tab);
-  font-weight: var(--type-nav-weight);
+/* ================= selector: tab-group row ================= */
+
+/* The divider is an inset shadow so the 2px underline can cover it inside the scroll box. */
+.barSelector {
+  gap: 0;
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--stroke-divider);
+}
+
+.barWrapper.barSelector > .bar {
+  box-shadow: none;
+}
+
+.tabSelector {
+  border-radius: 0;
+}
+
+.tabSelector.simple {
+  padding: 0 16px;
+}
+
+.tabSelector .labelButton {
+  padding: 0 16px;
+}
+
+.tabSelector:hover {
   background-color: transparent;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
 }
 
-.cell:hover {
-  color: var(--on-surface);
-  background-color: rgba(var(--on-surface-rgb), 0.03);
-}
-
-.cellActive {
-  color: var(--primary);
-  font-weight: var(--type-nav-weight-active);
-  background-color: var(--underline-tab-active-bg);
-}
-
-.cellActive:hover {
-  background-color: var(--underline-tab-active-bg);
-}
-
-.cellActive::after {
-  content: '';
-  position: absolute;
+.tabSelector.simpleActive::after,
+.tabSelector.cellActive::after {
+  left: 12px;
+  right: 12px;
   bottom: 0;
-  left: 0;
-  right: 0;
+  width: auto;
   height: 2px;
-  background: var(--underline-tab-indicator, var(--primary));
-  border-radius: 1px 1px 0 0;
+  margin: 0;
+  border-radius: 2px 2px 0 0;
 }
 
-.labelButton {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  min-width: 0;
-  flex: 1;
-  padding: 12px 12px 12px 20px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
-  cursor: pointer;
-  text-align: left;
-  white-space: nowrap;
+.tabSelector.simpleActive svg,
+.tabSelector.cellActive svg {
+  color: var(--primary);
 }
 
-.suffixSlot {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  padding-right: 14px;
+/* ================= document: document tabs ================= */
+
+.barDocument {
+  --underline-tab-row-height: var(--doc-tab-strip-height);
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: none;
+  background-color: var(--surface-strip);
+  box-shadow: inset 0 -1px 0 var(--stroke-divider);
+}
+
+.barWrapper.barDocument > .bar {
+  padding: 0;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* No reserved scrollbar row: strips keep their prototype height; tabs scroll with the
+   wheel and into view. */
+.barDocument.barScrollable,
+.barWrapper.barDocument .barScrollable,
+.barSelector.barScrollable,
+.barWrapper.barSelector .barScrollable {
+  --underline-tab-scrollbar-reserve: 0px;
+  scrollbar-width: none;
+}
+
+.barDocument.barScrollable::-webkit-scrollbar,
+.barWrapper.barDocument .barScrollable::-webkit-scrollbar,
+.barSelector.barScrollable::-webkit-scrollbar,
+.barWrapper.barSelector .barScrollable::-webkit-scrollbar {
+  display: none;
+}
+
+.barDocument .barContent {
+  align-items: flex-end;
+}
+
+.tabDocument {
+  box-sizing: border-box;
+  align-self: flex-end;
+  height: var(--doc-tab-height);
+  min-width: 150px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
+  font-size: var(--type-row-size);
+  line-height: var(--type-body-line);
+}
+
+.tabDocument.simple {
+  padding: 0 6px 0 12px;
+}
+
+.tabDocument .labelButton {
+  padding: 0 0 0 12px;
+}
+
+.tabDocument .suffixSlot {
+  padding: 0 6px 0 8px;
+}
+
+.tabDocument.simpleActive,
+.tabDocument.cellActive {
+  background-color: var(--surface-container);
+  border-color: var(--stroke-card);
+}
+
+.tabDocument.simpleActive::after,
+.tabDocument.cellActive::after {
+  content: none;
 }

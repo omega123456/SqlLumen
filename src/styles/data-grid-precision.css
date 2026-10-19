@@ -10,11 +10,6 @@
   min-height: 0;
   background: var(--result-grid-bg);
   color: var(--on-surface);
-  color-scheme: dark;
-}
-
-[data-theme='light'] .glide-grid-host {
-  color-scheme: light;
 }
 
 .glide-grid-host .dvn-scroller::-webkit-scrollbar {
@@ -28,7 +23,7 @@
 
 .glide-grid-host .dvn-scroller::-webkit-scrollbar-thumb {
   background: var(--grid-scrollbar-thumb);
-  border-radius: 4px;
+  border-radius: var(--radius-control);
 }
 
 .glide-grid-host .dvn-scroller::-webkit-scrollbar-thumb:hover {
@@ -56,13 +51,13 @@
 .glide-grid-host .td-cell-body {
   font-family: var(--font-body);
   font-size: var(--type-size-md);
-  font-weight: 500;
+  font-weight: 400;
   color: var(--on-surface);
 }
 
 .glide-grid-host .td-cell-primary {
   color: var(--primary);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .glide-grid-host .td-cell-value {
@@ -124,7 +119,8 @@
 #portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'] {
   justify-content: space-between;
   gap: var(--space-sm);
-  padding: var(--ui-dropdown-trigger-padding-y) var(--ui-dropdown-trigger-padding-x);
+  /* In-cell control is 22px (see --sqllumen-grid-editor-control-height): no block padding */
+  padding: 0 var(--ui-dropdown-trigger-padding-x);
   border: var(--ui-dropdown-trigger-border);
   border-radius: 0;
   background: var(--ui-dropdown-trigger-bg);
@@ -194,13 +190,12 @@
   padding: 0 6px;
   margin-left: 0;
   font-size: var(--type-size-2xs);
-  font-weight: 800;
+  font-weight: 600;
   font-family: var(--font-mono);
-  letter-spacing: 0.04em;
-  border: 1px solid var(--gdg-border-color, rgba(var(--outline-variant-rgb), 0.24));
+  border: 1px solid var(--gdg-border-color, var(--stroke-card));
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--gdg-text-light, rgba(var(--on-surface-rgb), 0.48));
+  color: var(--gdg-text-light, var(--outline));
   cursor: pointer;
   white-space: nowrap;
   line-height: 1;
@@ -208,26 +203,18 @@
   flex-shrink: 0;
 }
 
-[data-theme='dark'] .glide-grid-host .td-null-toggle,
-[data-theme='dark'] #portal .td-null-toggle {
-  font-size: var(--type-size-3xs);
-  font-weight: 700;
-  height: 16px;
-  padding: 0 4px;
-}
-
 .glide-grid-host .td-null-toggle:hover,
 #portal .td-null-toggle:hover {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.06);
+  background: var(--fill-subtle-hover);
 }
 
 .glide-grid-host .td-null-toggle.td-null-active,
 #portal .td-null-toggle.td-null-active {
   border-color: var(--primary);
   color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.1);
+  background: var(--fill-accent-tint);
 }
 
 #portal {
@@ -263,6 +250,71 @@
   white-space: nowrap;
 }
 
+/* Enum DropdownCell editor (react-select): the control fills Glide's overlay (its min-height
+   var, i.e. the active cell) instead of react-select's 38px default. Production emotion
+   classes carry no label on the value/input containers, so target them structurally. */
+#portal .glide-select [class*='-control'] {
+  min-height: var(--d19meir1-3, var(--grid-row-height, 28px));
+}
+
+#portal .glide-select [class*='-control'] > div,
+#portal .glide-select div:has(> input) {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* The overlay's accent edge is the focus indicator; inputs inside any cell editor (text,
+   enum, SET multi-select) must not draw the global :focus-visible ring, which the editor's
+   overflow clip would otherwise cut down to a stray bar or box. */
+#portal .gdg-d19meir1 input:focus-visible {
+  box-shadow: none;
+}
+
+/* Enum DropdownCell menu: same Fluent flyout as the shared Dropdown panel (.ui-dropdown__panel).
+   react-select keeps its own focused-option fill, so keyboard highlight stays visible. */
+#portal .gdg-p13nj8j0 [class*='-menu'] {
+  background: var(--surface-container-high);
+  border: 1px solid var(--stroke-flyout);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-flyout);
+}
+
+#portal .gdg-p13nj8j0 [role='listbox'] {
+  padding: 4px;
+}
+
+#portal .gdg-p13nj8j0 [role='option'] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: var(--menu-item-height);
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+}
+
+#portal .gdg-p13nj8j0 [role='option'][aria-selected='true'] {
+  background: var(--fill-neutral-selected);
+  color: var(--on-surface);
+}
+
+#portal .gdg-p13nj8j0 [role='option'][aria-selected='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
 /* Constrain Glide's editor overlay to the active cell instead of its 400px default.
    JS sets the final width from the editor target rectangle; CSS keeps a stable fallback. */
 #portal .gdg-d19meir1 {
@@ -280,7 +332,7 @@
       0px,
       calc(
         (
-            var(--d19meir1-3, var(--grid-row-height, 32px)) -
+            var(--d19meir1-3, var(--grid-row-height, 28px)) -
               var(--sqllumen-grid-editor-control-height)
           ) /
           2

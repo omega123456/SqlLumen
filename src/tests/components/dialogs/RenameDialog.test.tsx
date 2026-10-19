@@ -10,7 +10,7 @@ beforeEach(() => {
 describe('RenameDialog', () => {
   const defaultProps = {
     isOpen: true,
-    title: 'Rename Table',
+    title: 'Rename table',
     currentName: 'users',
     onConfirm: vi.fn(),
     onCancel: vi.fn(),
@@ -119,8 +119,8 @@ describe('RenameDialog', () => {
   })
 
   it('renders the title', () => {
-    render(<RenameDialog {...defaultProps} title="Rename Database" />)
-    expect(screen.getByText('Rename Database')).toBeInTheDocument()
+    render(<RenameDialog {...defaultProps} title="Rename database" />)
+    expect(screen.getByText('Rename database')).toBeInTheDocument()
   })
 
   it('Enter key submits when name is different', async () => {

@@ -34,14 +34,6 @@ type DropdownFixedLayout = {
   bottom: number | null
 }
 
-type DropdownInstanceStyle = CSSProperties & {
-  '--ui-dropdown-instance-option-font-size'?: string
-  '--ui-dropdown-instance-option-line-height'?: string
-  '--ui-dropdown-instance-option-padding-block'?: string
-  '--ui-dropdown-instance-option-padding-inline'?: string
-  '--ui-dropdown-instance-option-min-height'?: string
-}
-
 type DropdownRenderContext = {
   selected: boolean
   highlighted: boolean
@@ -96,16 +88,9 @@ export type DropdownProps = SingleSelectDropdownProps | MultiSelectDropdownProps
 
 const MAX_DROPDOWN_HEIGHT = 320
 const VIEWPORT_MARGIN = 8
-// Fallback inset for options when the trigger's horizontal padding can't be read. Options
-// sit inside a portaled panel (outside the token scope), so the inline padding must be a
-// concrete px value. We mirror the trigger's own padding so options stay proportional to
-// their trigger — important for compact dropdowns where extra padding would force wrapping.
-const DEFAULT_OPTION_INLINE_PADDING = 16
-
-function resolveOptionInlinePadding(triggerPaddingLeft: string): string {
-  const parsed = Number.parseFloat(triggerPaddingLeft)
-  return Number.isFinite(parsed) ? `${parsed}px` : `${DEFAULT_OPTION_INLINE_PADDING}px`
-}
+/** Fluent flyout: detached 4px from the trigger, at least 140px wide. */
+const FLYOUT_GAP = 4
+const FLYOUT_MIN_WIDTH = 140
 
 function indexOfValue(options: DropdownOption[], value: string): number {
   return options.findIndex((o) => o.value === value)
@@ -220,38 +205,6 @@ function DropdownChrome({
 
     updatePlacement()
 
-    const updateInstanceMetrics = () => {
-      const triggerStyles = window.getComputedStyle(trigger)
-      const triggerRect = trigger.getBoundingClientRect()
-      const measuredTriggerHeight =
-        triggerRect.height ||
-        Number.parseFloat(triggerStyles.height) ||
-        trigger.offsetHeight ||
-        trigger.clientHeight ||
-        0
-
-      panel.style.setProperty('--ui-dropdown-instance-option-font-size', triggerStyles.fontSize)
-      panel.style.setProperty('--ui-dropdown-instance-option-line-height', triggerStyles.lineHeight)
-      // The option's min-height already matches the full trigger height, so vertical
-      // spacing is handled by min-height + centering. Adding the trigger's padding on
-      // top would leave no slack and make rows with bolder (selected) text taller.
-      panel.style.setProperty('--ui-dropdown-instance-option-padding-block', '0px')
-      // The panel is portaled to <body>, outside the --ui-dropdown-* token scope, so the
-      // CSS token fallback can't resolve there — the inline padding must be a concrete px
-      // value. Use a comfortable minimum so option text stays clear of the accent bar even
-      // when the trigger itself uses a compact, narrow horizontal padding.
-      panel.style.setProperty(
-        '--ui-dropdown-instance-option-padding-inline',
-        resolveOptionInlinePadding(triggerStyles.paddingLeft)
-      )
-      panel.style.setProperty(
-        '--ui-dropdown-instance-option-min-height',
-        `${Math.round(measuredTriggerHeight)}px`
-      )
-    }
-
-    updateInstanceMetrics()
-
     if (!scrollParentsRef.current) {
       scrollParentsRef.current = new Set<EventTarget>(getScrollParents(trigger))
     }
@@ -259,18 +212,14 @@ function DropdownChrome({
 
     scrollParents.forEach((target) => {
       target.addEventListener('scroll', updatePlacement, { passive: true })
-      target.addEventListener('scroll', updateInstanceMetrics, { passive: true })
     })
     window.addEventListener('resize', updatePlacement)
-    window.addEventListener('resize', updateInstanceMetrics)
 
     return () => {
       scrollParents.forEach((target) => {
         target.removeEventListener('scroll', updatePlacement)
-        target.removeEventListener('scroll', updateInstanceMetrics)
       })
       window.removeEventListener('resize', updatePlacement)
-      window.removeEventListener('resize', updateInstanceMetrics)
     }
   }, [open, options.length, panelRef, triggerRef, updatePlacement])
 
@@ -316,7 +265,6 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       top: null,
       bottom: null,
     })
-    const [dropdownInstanceStyle, setDropdownInstanceStyle] = useState<DropdownInstanceStyle>({})
     const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
     const [isPortalInDialog, setIsPortalInDialog] = useState(false)
     const openRef = useRef(false)
@@ -427,50 +375,33 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       const vw = window.innerWidth
       const vh = window.innerHeight
       const m = VIEWPORT_MARGIN
-      const triggerStyles = window.getComputedStyle(trigger)
-      const measuredTriggerHeight =
-        triggerRect.height ||
-        Number.parseFloat(triggerStyles.height) ||
-        trigger.offsetHeight ||
-        trigger.clientHeight ||
-        0
 
       let left = triggerRect.left
-      let width = triggerRect.width
+      let width = Math.max(triggerRect.width, FLYOUT_MIN_WIDTH)
       if (left < m) {
         width -= m - left
         left = m
       }
       if (left + width > vw - m) {
-        width = Math.max(80, vw - m - left)
+        left = Math.max(m, vw - m - width)
+        width = Math.min(width, vw - 2 * m)
       }
 
       const desiredHeight = Math.min(panel.scrollHeight || MAX_DROPDOWN_HEIGHT, MAX_DROPDOWN_HEIGHT)
-      const availableBelow = Math.max(0, vh - m - triggerRect.bottom)
-      const availableAbove = Math.max(0, triggerRect.top - m)
+      const availableBelow = Math.max(0, vh - m - FLYOUT_GAP - triggerRect.bottom)
+      const availableAbove = Math.max(0, triggerRect.top - m - FLYOUT_GAP)
       const nextPlacement: DropdownPlacement =
         availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
       const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
 
       setPlacement(nextPlacement)
       setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
-      setDropdownInstanceStyle({
-        '--ui-dropdown-instance-option-font-size': triggerStyles.fontSize,
-        '--ui-dropdown-instance-option-line-height': triggerStyles.lineHeight,
-        '--ui-dropdown-instance-option-padding-block': '0px',
-        '--ui-dropdown-instance-option-padding-inline': resolveOptionInlinePadding(
-          triggerStyles.paddingLeft
-        ),
-        '--ui-dropdown-instance-option-min-height': `${Math.round(measuredTriggerHeight)}px`,
-      })
 
       const dialogRect =
         closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
       const leftValue = dialogRect ? left - dialogRect.left : left
-      const topValue = dialogRect ? triggerRect.bottom - 1 - dialogRect.top : triggerRect.bottom - 1
-      const bottomValue = dialogRect
-        ? dialogRect.bottom - triggerRect.top + 1
-        : vh - triggerRect.top + 1
+      const topValue = triggerRect.bottom + FLYOUT_GAP - (dialogRect ? dialogRect.top : 0)
+      const bottomValue = (dialogRect ? dialogRect.bottom : vh) - triggerRect.top + FLYOUT_GAP
 
       if (nextPlacement === 'bottom') {
         setDropdownLayout({
@@ -511,11 +442,10 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
     ]
       .filter(Boolean)
       .join(' ')
-    const listboxStyle: DropdownInstanceStyle = {
+    const listboxStyle: CSSProperties = {
       maxHeight: `${dropdownMaxHeight}px`,
       left: `${dropdownLayout.left}px`,
       width: `${dropdownLayout.width}px`,
-      ...dropdownInstanceStyle,
       ...(placement === 'bottom'
         ? { top: `${dropdownLayout.top}px`, bottom: 'auto' }
         : { bottom: `${dropdownLayout.bottom}px`, top: 'auto' }),

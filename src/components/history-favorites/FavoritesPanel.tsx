@@ -29,7 +29,7 @@ export function FavoritesPanel({ connectionId }: FavoritesPanelProps) {
   return (
     <div className={styles.container} data-testid="favorites-panel">
       <div className={styles.toolbar}>
-        <Button variant="toolbar" onClick={handleAdd} data-testid="favorites-add">
+        <Button variant="subtle" size="sm" onClick={handleAdd} data-testid="favorites-add">
           <Plus size={14} weight="bold" />
           &nbsp;New Favorite
         </Button>
@@ -40,7 +40,7 @@ export function FavoritesPanel({ connectionId }: FavoritesPanelProps) {
         {error && (
           <div className={styles.errorState} data-testid="favorites-error">
             <span className={styles.errorMessage}>{error}</span>
-            <Button variant="ghost" onClick={handleRetry} data-testid="favorites-retry">
+            <Button variant="subtle" size="sm" onClick={handleRetry} data-testid="favorites-retry">
               <ArrowClockwise size={14} weight="bold" />
               &nbsp;Retry
             </Button>

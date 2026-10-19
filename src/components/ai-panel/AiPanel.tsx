@@ -8,6 +8,7 @@ import { AiPanelHeader } from './AiPanelHeader'
 import { AiChatMessages } from './AiChatMessages'
 import { AiChatInput } from './AiChatInput'
 import { AiSetupRequired } from './AiSetupRequired'
+import { InfoBar } from '../common/InfoBar'
 import styles from './AiPanel.module.css'
 
 export interface AiPanelProps {
@@ -78,7 +79,7 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
           tabId={tabId}
           connectionId={null}
           disabled
-          placeholder="Embedding model required — configure in AI Settings"
+          placeholder="Embedding model required — configure in AI settings"
           workspaceTabId={tabId}
         />
       </div>
@@ -89,14 +90,20 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
     <div className={styles.panel} data-testid="ai-panel">
       <AiPanelHeader tabId={tabId} />
       {isWaitingForIndex && (
-        <div className={styles.indexWaiting} data-testid="ai-index-waiting">
-          Waiting for schema index...
-        </div>
+        <InfoBar
+          severity="info"
+          className={styles.indexWaiting}
+          message="Waiting for schema index..."
+          data-testid="ai-index-waiting"
+        />
       )}
       {isReembedding && reembedStatus && reembedStatus.total > 0 && (
-        <div className={styles.indexWaiting} data-testid="ai-memory-reembed-banner">
-          Re-embedding memories... {reembedStatus.done}/{reembedStatus.total}
-        </div>
+        <InfoBar
+          severity="info"
+          className={styles.indexWaiting}
+          message={`Re-embedding memories... ${reembedStatus.done}/${reembedStatus.total}`}
+          data-testid="ai-memory-reembed-banner"
+        />
       )}
       <AiChatMessages
         tabId={tabId}

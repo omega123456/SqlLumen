@@ -4,21 +4,25 @@
   min-width: 0;
 }
 
+/* Tab-group row (prototype `.p-groups`): 44px, selector tabs 40px tall, 2px accent underline */
 .stackRail {
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: var(--space-sm);
+  height: var(--tab-group-row-height);
   min-width: 0;
-  padding-right: var(--space-xs);
+  padding: 4px 8px 0;
   overflow: hidden;
+  box-shadow: inset 0 -1px 0 var(--stroke-divider);
 }
 
 .stackRailGroups,
 .stackRailPinned {
   display: flex;
-  align-items: center;
-  gap: var(--space-2xs);
+  align-items: stretch;
+  gap: 0;
   min-width: 0;
   flex-wrap: nowrap;
 }
@@ -30,57 +34,64 @@
 
 .stackRailPinned {
   flex: 0 0 auto;
-  position: relative;
-  padding-left: var(--space-sm);
 }
 
-.stackRailPinned::before {
+/* Vertical divider after the new-tab button (prototype `.vdiv`) */
+.stackRailPinned > .newTabButton {
+  align-self: center;
+  margin-right: 4px;
+}
+
+.stackRailPinned > .newTabButton + * {
+  margin-left: 5px;
+}
+
+.stackRailPinned > .newTabButton::after {
   content: '';
   position: absolute;
-  left: 0;
+  right: -5px;
   top: 50%;
   width: 1px;
   height: 20px;
-  transform: translateY(-50%);
-  background-color: var(--outline-variant);
+  margin-top: -10px;
+  background-color: var(--stroke-divider);
 }
 
 .stackChip {
   min-width: 0;
-  max-width: 160px;
+  max-width: 200px;
 }
 
 .stackChipLabel {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 8px;
   min-width: 0;
   white-space: nowrap;
 }
 
 .stackChipIcon {
-  color: var(--on-surface-variant);
   flex-shrink: 0;
 }
 
-.stackChipCaret {
-  color: var(--on-surface-variant);
-  flex-shrink: 0;
-  opacity: 0.75;
-}
-
+/* Count badge (prototype `.badge`) */
 .stackChipCount {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  box-sizing: border-box;
   min-width: 18px;
-  height: 18px;
-  padding: 0 var(--space-2xs);
-  border-radius: 999px;
-  background-color: var(--surface-container);
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background-color: var(--fill-neutral-selected);
   color: var(--on-surface-variant);
-  font-size: var(--type-caption);
-  line-height: 1;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: var(--type-weight-semibold);
+  text-align: center;
+}
+
+[data-active] .stackChipCount {
+  background-color: var(--fill-accent-tint);
+  color: var(--primary);
 }
 
 .stackChipDirty {
@@ -109,23 +120,25 @@
   top: 0;
   bottom: 0;
   width: var(--resize-handle-width);
-  /* Rail is transparent; match workspace panel so the resize gutter doesn’t show a gap */
-  background-color: var(--surface);
+  /* Match the document strip so the resize gutter doesn't show a gap */
+  background-color: var(--surface-container);
   pointer-events: none;
 }
 
-.workspaceTab:hover .tabClose {
-  opacity: 1;
+/* Close button (prototype `.p-doc .b.sub.xs`): only on hover and on the selected tab */
+.tabClose {
+  visibility: hidden;
 }
 
+.workspaceTab:hover .tabClose,
 .workspaceTab[data-active] .tabClose {
-  opacity: 0.6;
+  visibility: visible;
 }
 
 .tabLabel {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 8px;
   min-width: 0;
   white-space: nowrap;
 }
@@ -133,6 +146,7 @@
 .tabLabelRoot {
   display: inline-flex;
   align-items: center;
+  flex: 1;
   min-width: 0;
 }
 
@@ -141,40 +155,11 @@
 }
 
 .tabTypeIcon {
-  color: var(--on-surface-variant);
   flex-shrink: 0;
 }
 
 .dirtyIndicator {
   color: var(--primary);
-}
-
-.tabClose {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin-left: var(--space-xs);
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: var(--type-nav-tab);
-  line-height: 1;
-  color: var(--on-surface-variant);
-  opacity: 0;
-  border-radius: var(--radius-sm);
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    background-color 0.15s ease;
-  cursor: pointer;
-}
-
-.tabClose:hover {
-  opacity: 1;
-  color: var(--error);
-  background-color: rgba(var(--error-rgb), 0.1);
 }
 
 .renameInput {
@@ -196,29 +181,8 @@
   cursor: text;
 }
 
-/* Divider between the scrolling tab rail and the fixed (pinned + new-tab) group */
 .newTabButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  margin: auto 0;
-  border: none;
-  background: transparent;
-  color: var(--on-surface-variant);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.newTabButton:hover {
-  color: var(--primary);
-  background-color: rgba(var(--primary-rgb), 0.08);
+  position: relative;
 }
 
 .stackRail[data-compact-mode='short'] .stackChip {

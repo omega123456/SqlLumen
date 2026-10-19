@@ -55,7 +55,7 @@ export function HistoryTable({
               <tr className={styles.headerRow}>
                 <th className={`${styles.th} ${styles.thTimestamp}`}>Timestamp</th>
                 <th className={`${styles.th} ${styles.thDatabase}`}>Database</th>
-                <th className={`${styles.th} ${styles.thSql}`}>SQL Statement</th>
+                <th className={`${styles.th} ${styles.thSql}`}>SQL statement</th>
                 <th className={`${styles.th} ${styles.thAction}`}>Action</th>
               </tr>
             </thead>

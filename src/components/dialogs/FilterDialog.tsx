@@ -168,13 +168,13 @@ export function FilterDialog({
       panelWidth={PANEL_WIDTH}
       panelHeight={PANEL_HEIGHT}
       testId="filter-dialog"
-      ariaLabel="Filter Conditions"
+      ariaLabel="Filter conditions"
       formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>Filter Conditions</h2>
+          <h2 className={styles.title}>Filter conditions</h2>
           <button
             type="button"
             className={styles.closeButton}
@@ -259,7 +259,7 @@ export function FilterDialog({
                 data-testid="filter-add-button"
               >
                 <Plus size={14} weight="bold" />
-                <span>Add Condition</span>
+                <span>Add condition</span>
               </button>
             </>
           ) : (
@@ -277,7 +277,7 @@ export function FilterDialog({
                 data-testid="filter-add-button"
               >
                 <Plus size={14} weight="bold" />
-                <span>Add Condition</span>
+                <span>Add condition</span>
               </button>
             </div>
           )}
@@ -287,21 +287,17 @@ export function FilterDialog({
         <div className={styles.footer}>
           <div className={styles.footerLeft}>
             {hasConditions && (
-              <Button
-                variant="secondary"
-                onClick={handleClearAll}
-                data-testid="filter-clear-all-button"
-              >
-                Clear All
+              <Button onClick={handleClearAll} data-testid="filter-clear-all-button">
+                Clear all
               </Button>
             )}
           </div>
           <div className={styles.footerRight}>
-            <Button variant="secondary" onClick={onCancel} data-testid="filter-cancel-button">
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit" data-testid="filter-apply-button">
+            <Button variant="accent" type="submit" data-testid="filter-apply-button">
               Apply
+            </Button>
+            <Button onClick={onCancel} data-testid="filter-cancel-button">
+              Cancel
             </Button>
           </div>
         </div>

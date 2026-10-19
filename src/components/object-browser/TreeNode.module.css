@@ -1,26 +1,36 @@
 .nodeRow {
+  position: relative;
   display: flex;
   align-items: center;
-  height: 28px;
+  gap: 6px;
+  height: var(--tree-row-height);
   padding-right: 8px;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
-  transition: background 100ms;
-  border-radius: 3px;
+  border-radius: var(--radius-control);
   margin: 0 4px;
 }
 
 .nodeRow:hover {
-  background: rgba(var(--on-surface-rgb), 0.05);
+  background: var(--fill-subtle-hover);
 }
 
-.nodeRowSelected {
-  background: rgba(var(--on-surface-rgb), 0.08);
-  color: var(--primary);
-}
-
+.nodeRowSelected,
 .nodeRowSelected:hover {
-  background: rgba(var(--on-surface-rgb), 0.1);
+  background: var(--fill-neutral-selected);
+}
+
+/* Selection pill (prototype `.tr.sel::before`) */
+.nodeRowSelected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--primary);
 }
 
 .chevron {
@@ -30,8 +40,8 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  color: var(--on-surface-variant);
-  transition: transform 200ms ease;
+  color: var(--outline);
+  transition: transform 0.12s;
 }
 
 .chevronExpanded {
@@ -70,23 +80,18 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  margin-right: 6px;
 }
 
 .iconDatabase {
-  color: #ff8f00;
-}
-
-[data-theme='dark'] .iconDatabase {
-  color: #ffb74d;
-}
-
-.iconTable {
   color: var(--primary);
 }
 
+.iconTable {
+  color: var(--on-surface-variant);
+}
+
 .iconView {
-  color: var(--secondary);
+  color: var(--view-icon);
 }
 
 .iconProcedure {
@@ -111,12 +116,11 @@
 }
 
 .iconCategory {
-  color: var(--on-surface-variant);
-  opacity: 0.5;
+  color: var(--folder);
 }
 
 .label {
-  font-size: var(--type-body);
+  font-size: var(--type-row-size);
   color: var(--on-surface);
   white-space: nowrap;
   overflow: hidden;
@@ -127,15 +131,13 @@
 }
 
 .labelSelected {
-  color: var(--primary);
-  font-weight: 500;
+  color: var(--on-surface);
 }
 
 .columnType {
-  font-size: var(--type-size-xs);
-  color: var(--on-surface-variant);
-  opacity: 0.5;
-  margin-left: 6px;
+  font-size: var(--type-caption-size);
+  color: var(--outline);
+  margin-left: auto;
   flex-shrink: 0;
   white-space: nowrap;
 }

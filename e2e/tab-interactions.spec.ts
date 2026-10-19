@@ -1,10 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import {
-  activeWorkspaceTabMembers,
-  APP_READY_MS,
-  connectToSample,
-  waitForApp,
-} from './helpers'
+import { activeWorkspaceTabMembers, APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 const SAMPLE_SESSION_ID = 'session-playwright-1'
 
@@ -45,7 +40,7 @@ async function renderedWorkspaceQueryTabOrder(page: Page) {
     .locator('[data-testid^="workspace-tab-"]')
     .evaluateAll((elements) =>
       elements
-        .map((element) => (element.textContent?.replace(/×$/u, '').trim() ?? ''))
+        .map((element) => element.textContent?.replace(/×$/u, '').trim() ?? '')
         .filter((label) => label.length > 0)
     )
 }
@@ -114,7 +109,9 @@ test.describe('Tab interactions', () => {
   test('renames a query tab via context menu action', async ({ page }) => {
     await connectToSample(page)
     const queryTabId = await openQueryTab(page)
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     const tab = activeWorkspaceTabMembers(page).getByTestId(`workspace-tab-${queryTabId}`)
     await expect(tab).toBeVisible({ timeout: APP_READY_MS })
@@ -135,7 +132,9 @@ test.describe('Tab interactions', () => {
     await connectToSample(page)
     const firstQueryTabId = await openQueryTab(page)
     const secondQueryTabId = await openQueryTab(page)
-    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
+      timeout: APP_READY_MS,
+    })
 
     await activeWorkspaceTabMembers(page)
       .getByTestId(`workspace-tab-${firstQueryTabId}`)

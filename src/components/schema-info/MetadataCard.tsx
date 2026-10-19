@@ -35,7 +35,7 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
           <dd className={styles.value}>{metadata.collation}</dd>
         </div>
         <div className={styles.item}>
-          <dt className={styles.label}>Auto Increment</dt>
+          <dt className={styles.label}>Auto increment</dt>
           <dd className={styles.value}>
             {metadata.autoIncrement != null ? metadata.autoIncrement.toLocaleString() : '—'}
           </dd>

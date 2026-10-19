@@ -19,9 +19,9 @@ export function KillSummaryDialog({ results, onClose }: KillSummaryDialogProps) 
       onClose={onClose}
       maxWidth={420}
       testId="kill-summary-dialog"
-      ariaLabel="Kill Results"
+      ariaLabel="Kill results"
     >
-      <h2 style={{ margin: '0 0 12px' }}>Kill Results</h2>
+      <h2 style={{ margin: '0 0 12px' }}>Kill results</h2>
       <p style={{ margin: '0 0 8px' }}>
         {successes.length} {successes.length === 1 ? 'process' : 'processes'} killed successfully
       </p>
@@ -35,7 +35,7 @@ export function KillSummaryDialog({ results, onClose }: KillSummaryDialogProps) 
         </ul>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button variant="primary" onClick={onClose} data-testid="kill-summary-done-button">
+        <Button variant="accent" onClick={onClose} data-testid="kill-summary-done-button">
           Done
         </Button>
       </div>

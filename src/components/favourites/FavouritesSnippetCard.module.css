@@ -31,7 +31,7 @@
   flex: 1;
   min-width: 0;
   font-size: var(--type-body);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--on-surface);
   white-space: nowrap;
   overflow: hidden;
@@ -63,7 +63,7 @@
 }
 
 .actionButton:hover {
-  background: rgba(var(--on-surface-rgb), 0.06);
+  background: var(--fill-subtle-hover);
   color: var(--on-surface);
 }
 
@@ -74,7 +74,7 @@
 
 .insertButton:hover {
   color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.12);
+  background: var(--fill-subtle-hover);
 }
 
 .description {

@@ -19,7 +19,7 @@ describe('createFavorite', () => {
   it('calls invoke with correct input', async () => {
     const input = {
       connectionId: 'conn-1',
-      name: 'My Query',
+      name: 'My query',
       sqlText: 'SELECT 1',
       description: 'test description',
       category: 'test',

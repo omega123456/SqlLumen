@@ -1,5 +1,8 @@
+/* Prototype `.tblcard`: card stroke drawn as a border, not the elevated surface's outer ring */
 .elevatedOuter {
   overflow: hidden;
+  border: 1px solid var(--stroke-card);
+  box-shadow: none;
 }
 
 .scrollInner {

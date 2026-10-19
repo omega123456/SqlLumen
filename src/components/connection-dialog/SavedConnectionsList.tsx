@@ -1,5 +1,4 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import Fuse from 'fuse.js'
 import {
@@ -13,6 +12,8 @@ import {
   X,
 } from '@phosphor-icons/react'
 import { TextInput } from '../common/TextInput'
+import { IconButton } from '../common/IconButton'
+import { InfoBar } from '../common/InfoBar'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
   createConnectionGroup,
@@ -356,14 +357,10 @@ export function SavedConnectionsList({
     const isSelected = conn.id === selectedConnectionId
     const titleText = conn.name.trim() ? conn.name : conn.host
     const showSubtitle = Boolean(conn.name.trim())
-    const selectedStyle: CSSProperties | undefined =
-      isSelected && conn.color ? { borderLeftColor: conn.color } : undefined
-
     return (
       <div
         key={conn.id}
         className={`${styles.connectionItem} ${isSelected ? styles.connectionItemSelected : ''}`}
-        style={selectedStyle}
         onClick={() => onSelectConnection(conn)}
         onContextMenu={(e) => handleConnectionContextMenu(e, conn)}
         role="button"
@@ -376,18 +373,17 @@ export function SavedConnectionsList({
           }
         }}
       >
-        <span
-          className={styles.colorDot}
-          style={{ backgroundColor: conn.color ?? 'var(--on-surface-variant)' }}
-        />
-        <div className={styles.connectionText}>
-          <span className={styles.connectionTitle}>{titleText}</span>
-          {showSubtitle && <span className={styles.connectionHost}>{conn.host}</span>}
-        </div>
+        <span className={styles.connectionTitle}>
+          <span
+            className={styles.colorDot}
+            style={{ backgroundColor: conn.color ?? 'var(--outline)' }}
+          />
+          <span className={styles.connectionName}>{titleText}</span>
+        </span>
+        {showSubtitle && <span className={styles.connectionHost}>{conn.host}</span>}
         <div className={styles.itemActions}>
-          <button
-            type="button"
-            className={styles.iconCircleBtn}
+          <IconButton
+            size="sm"
             title="Duplicate connection"
             aria-label={`Duplicate ${titleText}`}
             onClick={(e) => {
@@ -395,8 +391,8 @@ export function SavedConnectionsList({
               handleDuplicateConnection(conn)
             }}
           >
-            <Copy size={14} weight="regular" />
-          </button>
+            <Copy size={16} weight="regular" />
+          </IconButton>
         </div>
       </div>
     )
@@ -404,55 +400,44 @@ export function SavedConnectionsList({
 
   return (
     <div className={styles.container}>
-      <div className={styles.profilesHeader}>
-        <span className={styles.profilesTitle}>Profiles</span>
-        <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.iconCircleBtn}
-            onClick={onNewConnection}
-            title="New connection"
-            aria-label="New connection"
-          >
-            <Plus size={14} weight="bold" />
-          </button>
-          <button
-            type="button"
-            className={styles.iconCircleBtn}
-            onClick={handleCreateGroup}
-            title="New group"
-            aria-label="New group"
-          >
-            <FolderPlus size={14} weight="bold" />
-          </button>
+      <div className={styles.toolbar}>
+        <div className={styles.searchWrapper}>
+          <span className={styles.searchIcon}>
+            <MagnifyingGlass size={16} weight="regular" />
+          </span>
+          <TextInput
+            type="text"
+            className={styles.searchInput}
+            placeholder="Filter connections"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            data-testid="connection-filter-input"
+            aria-label="Filter connections"
+          />
+          {filterText && (
+            <IconButton
+              size="sm"
+              className={styles.clearButton}
+              onClick={() => setFilterText('')}
+              tabIndex={-1}
+              aria-label="Clear connection filter"
+              data-testid="connection-filter-clear"
+            >
+              <X size={16} weight="regular" />
+            </IconButton>
+          )}
         </div>
-      </div>
-      <div className={styles.searchWrapper}>
-        <span className={styles.searchIcon}>
-          <MagnifyingGlass size={14} weight="regular" />
-        </span>
-        <TextInput
-          variant="bare"
-          type="text"
-          className={styles.searchInput}
-          placeholder="Filter connections..."
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          data-testid="connection-filter-input"
-          aria-label="Filter connections"
-        />
-        {filterText && (
-          <button
-            type="button"
-            className={styles.clearButton}
-            onClick={() => setFilterText('')}
-            tabIndex={-1}
-            aria-label="Clear connection filter"
-            data-testid="connection-filter-clear"
-          >
-            <X size={12} weight="bold" />
-          </button>
-        )}
+        <IconButton
+          size="lg"
+          onClick={onNewConnection}
+          title="New connection"
+          aria-label="New connection"
+        >
+          <Plus size={16} weight="regular" />
+        </IconButton>
+        <IconButton size="lg" onClick={handleCreateGroup} title="New group" aria-label="New group">
+          <FolderPlus size={16} weight="regular" />
+        </IconButton>
       </div>
       <div className={styles.list}>
         {filterText.trim() && !hasMatches && (
@@ -527,22 +512,21 @@ export function SavedConnectionsList({
       </div>
 
       <div className={styles.storageFooter}>
-        <ShieldCheck size={14} weight="duotone" className={styles.storageIcon} aria-hidden />
-        <span>Encrypted Storage Active</span>
+        <ShieldCheck size={16} weight="regular" className={styles.storageIcon} aria-hidden />
+        <span>Encrypted storage active</span>
       </div>
 
       {error && (
-        <div className={styles.errorBanner} role="alert">
-          <span className={styles.errorText}>{error}</span>
-          <button
-            type="button"
-            className={styles.errorDismiss}
-            onClick={() => setError(null)}
-            aria-label="Dismiss error"
-          >
-            ×
-          </button>
-        </div>
+        <InfoBar
+          severity="error"
+          className={styles.errorBanner}
+          message={error}
+          actions={
+            <IconButton size="sm" onClick={() => setError(null)} aria-label="Dismiss error">
+              <X size={16} weight="regular" />
+            </IconButton>
+          }
+        />
       )}
 
       {contextMenu &&

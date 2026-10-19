@@ -9,6 +9,7 @@ import { useZoomStore } from './stores/zoom-store'
 import { useUpdateStore } from './stores/update-store'
 import { useSystemTheme } from './hooks/use-system-theme'
 import { setupSchemaInvalidationListener } from './components/query-editor/schema-metadata-cache'
+import { applyWindowBackdrop } from './lib/window-commands'
 
 // Glide Data Grid base styles + Precision Studio custom theme
 import '@glideapps/glide-data-grid/dist/index.css'
@@ -26,6 +27,7 @@ function App() {
 
   useEffect(() => {
     void initialize()
+    void applyWindowBackdrop()
     void initializeShortcuts()
     void useZoomStore.getState().initialize()
     let cleanup: (() => void) | undefined

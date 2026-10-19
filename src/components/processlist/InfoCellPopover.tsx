@@ -59,7 +59,7 @@ export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCell
       data-testid="info-cell-popover"
     >
       <ElevatedCodePanel
-        label="SQL / Info"
+        label="SQL / info"
         headerActions={
           <IconButton
             aria-label="Copy SQL"

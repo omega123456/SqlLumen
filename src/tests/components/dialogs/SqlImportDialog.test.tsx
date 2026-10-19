@@ -105,7 +105,7 @@ describe('SqlImportDialog', () => {
     render(<SqlImportDialog {...defaultProps} />)
 
     // Title
-    expect(screen.getByRole('heading', { name: /Import SQL Script/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Import SQL script/ })).toBeInTheDocument()
 
     // File path display (file name only)
     expect(screen.getByTestId('import-file-path')).toHaveTextContent('dump.sql')

@@ -13,6 +13,9 @@ import styles from './WorkspaceBody.module.css'
 
 const LazyAiPanel = lazy(() => import('../ai-panel/AiPanel'))
 
+/** Width the AI panel opens at (prototype `.p-ai.open`). */
+const AI_PANEL_OPEN_WIDTH_PX = 340
+
 export interface WorkspaceBodyProps {
   tabs: WorkspaceTab[]
   activeTabId: string | null
@@ -58,7 +61,13 @@ export function WorkspaceBody({
 
   useEffect(() => {
     if (shouldExpandAiPanel) {
-      aiChatPanelRef.current?.expand()
+      const panel = aiChatPanelRef.current
+      panel?.expand()
+      // A panel that starts collapsed expands to its 15% minimum; open it at the
+      // prototype's 340px instead (`.p-ai.open`), within the 48% maximum.
+      if (panel && panel.getSize().inPixels < AI_PANEL_OPEN_WIDTH_PX) {
+        panel.resize(`${AI_PANEL_OPEN_WIDTH_PX}px`)
+      }
     } else {
       aiChatPanelRef.current?.collapse()
     }

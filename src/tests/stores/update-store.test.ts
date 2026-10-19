@@ -61,7 +61,7 @@ function setReadyToFinishState(version: string, platform: 'macos' | 'windows' | 
     status: 'ready-to-finish',
     currentPlatform: platform,
     readyToFinishAction: isLinux ? 'manual-quit' : 'relaunch',
-    readyToFinishCta: isLinux ? 'Got it' : 'Restart App',
+    readyToFinishCta: isLinux ? 'Got it' : 'Restart app',
     readyToFinishMessage: isLinux
       ? `Quit and reopen SqlLumen to finish installing version ${version}.`
       : `Restart SqlLumen to finish installing version ${version}.`,
@@ -88,7 +88,7 @@ function resetStores(): void {
     status: 'idle',
     currentPlatform: 'unknown',
     readyToFinishAction: 'relaunch',
-    readyToFinishCta: 'Restart App',
+    readyToFinishCta: 'Restart app',
     readyToFinishMessage: 'Restart SqlLumen to finish installing version the latest version.',
     availableVersion: null,
     downloadProgress: 0,
@@ -275,7 +275,7 @@ describe('useUpdateStore', () => {
       platform: 'windows',
       version: '4.0.0',
       readyToFinishAction: 'relaunch',
-      readyToFinishCta: 'Restart App',
+      readyToFinishCta: 'Restart app',
       readyToFinishMessage: 'Restart SqlLumen to finish installing version 4.0.0.',
     },
     {
@@ -500,14 +500,14 @@ describe('useUpdateStore', () => {
       platform: 'macos',
       version: '5.0.0',
       readyToFinishAction: 'relaunch',
-      readyToFinishCta: 'Restart App',
+      readyToFinishCta: 'Restart app',
       readyToFinishMessage: 'Restart SqlLumen to finish installing version 5.0.0.',
     },
     {
       platform: 'windows',
       version: '5.1.0',
       readyToFinishAction: 'relaunch',
-      readyToFinishCta: 'Restart App',
+      readyToFinishCta: 'Restart app',
       readyToFinishMessage: 'Restart SqlLumen to finish installing version 5.1.0.',
     },
     {

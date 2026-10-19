@@ -1,54 +1,47 @@
 /* ConfirmDialog — content styles (shell handled by DialogShell) */
 
+/* Confirmation dialog (prototype `.dlg.d-confirm`): 24px content, base footer with equal buttons */
 .title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 16px;
-  font-size: var(--type-size-xl);
-  font-weight: 700;
+  margin: 0 0 12px;
   font-family: var(--font-headline);
+  font-size: var(--type-subtitle-size);
+  line-height: var(--type-subtitle-line);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface);
 }
 
-.titleIcon {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--error);
-}
-
 .message {
-  font-size: var(--type-body-lg);
-  font-family: var(--font-body);
-  color: var(--on-surface-variant);
-  line-height: 1.5;
-  margin: 0 0 8px;
+  margin: 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  color: var(--on-surface);
 }
 
 .warning {
-  font-size: var(--type-size-sm);
-  font-family: var(--font-body);
-  color: var(--error);
-  margin: 0 0 4px;
+  margin: 12px 0 0;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  color: var(--on-surface-variant);
 }
 
 .error {
-  font-size: var(--type-size-sm);
-  font-family: var(--font-body);
-  color: var(--error);
   margin-top: 12px;
   padding: 8px 12px;
-  background: rgba(var(--error-rgb), 0.08);
-  border-radius: 6px;
-  border: 1px solid rgba(var(--error-rgb), 0.2);
+  font-size: var(--type-row-size);
+  color: var(--error);
+  background: var(--error-container);
+  border: 1px solid var(--stroke-card);
+  border-radius: var(--radius-card);
 }
 
 .actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 24px;
+  margin: 24px -24px -24px;
+  padding: 24px;
+  background: var(--surface);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .confirmContent {

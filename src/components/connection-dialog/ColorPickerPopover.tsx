@@ -117,7 +117,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
                 setIsOpen(false)
               }}
             >
-              Clear Color
+              Clear color
             </button>
           </div>,
           portalContainer

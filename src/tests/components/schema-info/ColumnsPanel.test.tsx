@@ -52,7 +52,7 @@ describe('ColumnsPanel', () => {
     expect(badge.className).toContain('keyPri')
   })
 
-  it('shows MUL badge with correct styles', () => {
+  it('shows MUL with the neutral key pill', () => {
     const columns = [makeColumn({ name: 'user_id', columnKey: 'MUL' })]
 
     render(<ColumnsPanel columns={columns} />)
@@ -60,10 +60,10 @@ describe('ColumnsPanel', () => {
     const badge = screen.getByText('MUL')
     expect(badge).toBeInTheDocument()
     expect(badge.className).toContain('keyBadge')
-    expect(badge.className).toContain('keyMul')
+    expect(badge.className).toContain('keyOther')
   })
 
-  it('shows UNI badge with correct styles', () => {
+  it('shows UNI with the neutral key pill', () => {
     const columns = [makeColumn({ name: 'email', columnKey: 'UNI' })]
 
     render(<ColumnsPanel columns={columns} />)
@@ -71,7 +71,7 @@ describe('ColumnsPanel', () => {
     const badge = screen.getByText('UNI')
     expect(badge).toBeInTheDocument()
     expect(badge.className).toContain('keyBadge')
-    expect(badge.className).toContain('keyUni')
+    expect(badge.className).toContain('keyOther')
   })
 
   it('shows null indicator correctly', () => {
@@ -82,8 +82,8 @@ describe('ColumnsPanel', () => {
 
     render(<ColumnsPanel columns={columns} />)
 
-    expect(screen.getByText('NO')).toBeInTheDocument()
-    expect(screen.getByText('YES')).toBeInTheDocument()
+    expect(screen.getByText('No')).toBeInTheDocument()
+    expect(screen.getByText('Yes')).toBeInTheDocument()
   })
 
   it('shows default value when present', () => {

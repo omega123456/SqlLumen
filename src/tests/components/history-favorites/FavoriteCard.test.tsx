@@ -11,7 +11,7 @@ import type { FavoriteEntry } from '../../../types/schema'
 function makeFavoriteEntry(overrides: Partial<FavoriteEntry> = {}): FavoriteEntry {
   return {
     id: 1,
-    name: 'My Query',
+    name: 'My query',
     sqlText: 'SELECT * FROM orders',
     description: 'Gets all orders',
     category: 'shopdb',
@@ -41,7 +41,7 @@ describe('FavoriteCard', () => {
     const entry = makeFavoriteEntry()
     render(<FavoriteCard entry={entry} connectionId="conn-1" />)
 
-    expect(screen.getByText('My Query')).toBeInTheDocument()
+    expect(screen.getByText('My query')).toBeInTheDocument()
     expect(screen.getByText('SELECT * FROM orders')).toBeInTheDocument()
     expect(screen.getByText('shopdb')).toBeInTheDocument()
     expect(screen.getByText('Gets all orders')).toBeInTheDocument()
@@ -51,7 +51,7 @@ describe('FavoriteCard', () => {
     const entry = makeFavoriteEntry({ description: null })
     render(<FavoriteCard entry={entry} connectionId="conn-1" />)
 
-    expect(screen.getByText('My Query')).toBeInTheDocument()
+    expect(screen.getByText('My query')).toBeInTheDocument()
     expect(screen.queryByText('Gets all orders')).not.toBeInTheDocument()
   })
 
@@ -72,7 +72,7 @@ describe('FavoriteCard', () => {
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
     expect(tabs).toHaveLength(1)
     expect(tabs[0].type).toBe('query-editor')
-    expect(tabs[0].label).toBe('My Query')
+    expect(tabs[0].label).toBe('My query')
 
     const queryTab = useQueryStore.getState().tabs[tabs[0].id]
     expect(queryTab?.content).toBe('SELECT * FROM orders')
@@ -99,7 +99,7 @@ describe('FavoriteCard', () => {
     const state = useFavoritesStore.getState()
     expect(state.dialogOpen).toBe(true)
     expect(state.editingFavorite?.id).toBe(1)
-    expect(state.editingFavorite?.name).toBe('My Query')
+    expect(state.editingFavorite?.name).toBe('My query')
     expect(state.editingFavorite?.sqlText).toBe('SELECT * FROM orders')
   })
 
@@ -135,7 +135,7 @@ describe('FavoriteCard', () => {
     expect(tabs[0].label).toBe('Custom Name')
   })
 
-  it('uses "Favorite Query" as fallback label when name is empty', async () => {
+  it('uses "Favorite query" as fallback label when name is empty', async () => {
     const user = userEvent.setup()
     const entry = makeFavoriteEntry({ name: '' })
     render(<FavoriteCard entry={entry} connectionId="conn-1" />)
@@ -143,7 +143,7 @@ describe('FavoriteCard', () => {
     await user.click(screen.getByTestId('favorite-card-1'))
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
-    expect(tabs[0].label).toBe('Favorite Query')
+    expect(tabs[0].label).toBe('Favorite query')
   })
 
   it('shows global badge when connectionId is null', () => {

@@ -43,11 +43,11 @@ const PLACEHOLDER_NAMES: Record<EditableObjectType, string> = {
 }
 
 const CREATE_LABELS: Record<EditableObjectType, string> = {
-  procedure: 'New Procedure',
-  function: 'New Function',
-  trigger: 'New Trigger',
-  event: 'New Event',
-  view: 'New View',
+  procedure: 'New procedure',
+  function: 'New function',
+  trigger: 'New trigger',
+  event: 'New event',
+  view: 'New view',
 }
 
 export interface UseObjectBrowserActionsReturn {
@@ -483,7 +483,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
 
       <RenameDialog
         isOpen={isRenameDbOpen}
-        title="Rename Database"
+        title="Rename database"
         currentName={renameDbTarget ?? ''}
         warning={RENAME_DB_WARNING}
         isLoading={renameLoading}
@@ -497,13 +497,13 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
 
       <ConfirmDialog
         isOpen={isDropDbOpen}
-        title="Drop Database"
+        title="Drop database"
         message={
           <>
             Are you sure you want to drop database <strong>{dropDbConfirm?.name ?? ''}</strong>?
           </>
         }
-        confirmLabel="Drop Database"
+        confirmLabel="Drop database"
         isDestructive
         isLoading={confirmLoading}
         error={confirmError}
@@ -514,7 +514,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       {/* Table dialogs */}
       <ConfirmDialog
         isOpen={isDropTableOpen}
-        title="Drop Table"
+        title="Drop table"
         message={
           <>
             Are you sure you want to drop table{' '}
@@ -524,7 +524,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
             ?
           </>
         }
-        confirmLabel="Drop Table"
+        confirmLabel="Drop table"
         isDestructive
         isLoading={confirmLoading}
         error={confirmError}
@@ -534,7 +534,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
 
       <ConfirmDialog
         isOpen={isTruncateTableOpen}
-        title="Truncate Table"
+        title="Truncate table"
         message={
           <>
             Are you sure you want to truncate table{' '}
@@ -544,7 +544,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
             ? All data will be deleted.
           </>
         }
-        confirmLabel="Truncate Table"
+        confirmLabel="Truncate table"
         isDestructive
         isLoading={confirmLoading}
         error={confirmError}
@@ -554,7 +554,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
 
       <RenameDialog
         isOpen={isRenameTableOpen}
-        title="Rename Table"
+        title="Rename table"
         currentName={renameTableOpen?.table ?? ''}
         isLoading={renameLoading}
         error={renameError}

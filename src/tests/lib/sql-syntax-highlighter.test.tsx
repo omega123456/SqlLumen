@@ -58,6 +58,22 @@ describe('SqlSyntaxHighlighter', () => {
     expect(classNames).toContain('strLocal string')
   })
 
+  it('highlights numbers but not digits inside words', () => {
+    const nodes = SqlSyntaxHighlighter.highlightSql('VARCHAR(255) CHARSET=utf8mb4 DECIMAL(10.5)', {
+      number: 'numLocal',
+    })
+    const numbers = nodes
+      .filter((node) => isValidElement(node))
+      .map((node) => getHighlightProps(node as ReactElement<unknown>))
+      .filter((props) => props.className?.includes('number'))
+      .map((props) => [props.className, props.children])
+
+    expect(numbers).toEqual([
+      ['numLocal number', '255'],
+      ['numLocal number', '10.5'],
+    ])
+  })
+
   it('keeps plain SQL fragments as strings', () => {
     const nodes = SqlSyntaxHighlighter.highlightSql('select count(*) from users')
     expect(nodes.some((node) => typeof node === 'string')).toBe(true)

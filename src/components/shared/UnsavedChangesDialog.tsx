@@ -33,10 +33,10 @@ export function UnsavedChangesDialog({
   onCancel,
   isSaving: externalIsSaving,
   error: externalError,
-  title = 'Unsaved Changes',
+  title = 'Unsaved changes',
   message = 'You have unsaved changes on the current row. What would you like to do?',
-  saveLabel = 'Save Changes',
-  discardLabel = 'Discard Changes',
+  saveLabel = 'Save changes',
+  discardLabel = 'Discard changes',
   cancelLabel = 'Cancel',
 }: UnsavedChangesDialogProps) {
   const [internalSaving, setInternalSaving] = useState(false)
@@ -63,7 +63,7 @@ export function UnsavedChangesDialog({
       onClose={onCancel}
       maxWidth={400}
       testId="unsaved-changes-dialog"
-      ariaLabel="Unsaved Changes"
+      ariaLabel="Unsaved changes"
       disableFocusManagement={isPlaywright}
     >
       <div className={styles.root}>
@@ -82,28 +82,15 @@ export function UnsavedChangesDialog({
         </div>
 
         <div className={styles.actions}>
-          <Button
-            type="button"
-            variant="ghost"
-            className={styles.cancelButton}
-            onClick={onCancel}
-            data-testid="btn-cancel-changes"
-          >
+          <Button type="button" onClick={onCancel} data-testid="btn-cancel-changes">
             {cancelLabel}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className={styles.discardButton}
-            onClick={onDiscard}
-            data-testid="btn-discard-changes"
-          >
+          <Button type="button" dangerText onClick={onDiscard} data-testid="btn-discard-changes">
             {discardLabel}
           </Button>
           <Button
             type="button"
-            variant="primary"
-            className={styles.saveButton}
+            variant="accent"
             onClick={() => void handleSave()}
             disabled={isSaving}
             data-testid="btn-save-changes"

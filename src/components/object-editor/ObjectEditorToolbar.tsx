@@ -54,7 +54,7 @@ export function ObjectEditorToolbar({
       </div>
       <div className={styles.rightSection}>
         <Button
-          variant="primary"
+          variant="accent"
           disabled={!isDirty || isSaving}
           onClick={onSave}
           data-testid="object-editor-save-button"

@@ -71,7 +71,9 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
         </div>
         <div className={styles.spacer} />
         <Button
-          variant="toolbarDanger"
+          variant="subtle"
+          size="sm"
+          dangerText
           onClick={handleClear}
           disabled={total === 0}
           title="Clear all history"
@@ -86,7 +88,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
         {error && (
           <div className={styles.errorState} data-testid="history-error">
             <span className={styles.errorMessage}>{error}</span>
-            <Button variant="ghost" onClick={handleRetry} data-testid="history-retry">
+            <Button variant="subtle" size="sm" onClick={handleRetry} data-testid="history-retry">
               <ArrowClockwise size={14} weight="bold" />
               &nbsp;Retry
             </Button>
@@ -109,7 +111,8 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
       {total > pageSize && (
         <div className={styles.pagination} data-testid="history-pagination">
           <Button
-            variant="ghost"
+            variant="subtle"
+            size="sm"
             onClick={handlePrevPage}
             disabled={page <= 1}
             data-testid="history-prev-page"
@@ -120,7 +123,8 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
             Page {page} of {totalPages}
           </span>
           <Button
-            variant="ghost"
+            variant="subtle"
+            size="sm"
             onClick={handleNextPage}
             disabled={page >= totalPages}
             data-testid="history-next-page"

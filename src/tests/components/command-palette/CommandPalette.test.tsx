@@ -199,8 +199,8 @@ describe('CommandPalette', () => {
       'analytics'
     )
     expect(screen.getByTestId('command-palette-pill-table')).toHaveTextContent('orders')
-    expect(screen.getByRole('listbox', { name: 'Columns' })).toHaveTextContent(
-      'shipping_amount · DECIMAL(12,2)'
+    expect(screen.getByRole('option', { name: /shipping_amount/ })).toHaveTextContent(
+      'DECIMAL(12,2)'
     )
   })
 
@@ -343,14 +343,14 @@ describe('CommandPalette', () => {
     expect(
       screen
         .getAllByRole('option')
-        .some((option) => option.textContent?.includes('users · analytics'))
+        .some((option) => option.textContent?.includes('usersTable · analytics'))
     ).toBe(true)
 
     for (let attempt = 0; attempt < 6; attempt += 1) {
       const activeRow = screen
         .getAllByRole('option')
         .find((option) => option.getAttribute('data-active') === 'true')
-      if (activeRow?.textContent?.trim().startsWith('users · analytics')) {
+      if (activeRow?.textContent?.trim().startsWith('usersTable · analytics')) {
         break
       }
       await user.keyboard('{ArrowDown}')
@@ -421,13 +421,16 @@ describe('CommandPalette', () => {
     await act(async () => {
       vi.advanceTimersByTime(85)
     })
+    const footer = screen.getByTestId('command-palette-footer')
+    expect(footer).toHaveTextContent('↑↓MoveEnterOpenTabColumnsEscClose')
     await user.keyboard('{Tab}')
 
     expect(screen.getByTestId('command-palette-pill-database')).toHaveTextContent('analytics')
     expect(screen.getByTestId('command-palette-pill-table')).toHaveTextContent('orders')
-    expect(screen.getByRole('listbox', { name: 'Columns' })).toHaveTextContent(
-      'shipping_amount · DECIMAL(12,2)'
-    )
+    const columnRow = screen.getByRole('option', { name: /shipping_amount/ })
+    expect(columnRow).toHaveTextContent('DECIMAL(12,2)')
+    // Tab has nothing left to scope into, so its hint leaves the footer
+    expect(footer).toHaveTextContent('↑↓MoveEnterOpenEscClose')
 
     await user.keyboard('{Backspace}')
     expect(screen.queryByTestId('command-palette-pill-table')).not.toBeInTheDocument()
@@ -689,7 +692,7 @@ describe('CommandPalette', () => {
     const results = await screen.findByTestId('command-palette-results')
     expect(results).toBeInTheDocument()
     const optionTexts = screen.getAllByRole('option').map((option) => option.textContent ?? '')
-    expect(optionTexts.some((text) => text.includes('users · analytics'))).toBe(true)
+    expect(optionTexts.some((text) => text.includes('usersTable · analytics'))).toBe(true)
     expect(optionTexts.some((text) => text.includes('app_main'))).toBe(false)
   })
 })
