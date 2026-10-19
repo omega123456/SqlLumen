@@ -210,8 +210,8 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     expect(screen.getByTestId('table-data-form-view')).toBeInTheDocument()
-    expect(screen.getByText('Record 1')).toBeInTheDocument()
-    expect(screen.queryByText('Record 1 of 1')).not.toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1$/)
+    expect(screen.getByTestId('form-record-label')).not.toHaveTextContent('Record 1 of 1')
   })
 
   it('shows all column fields', () => {
@@ -628,7 +628,7 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    expect(screen.getByText('Record 21')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 21$/)
     expect(screen.queryByText(/of 50/)).not.toBeInTheDocument()
   })
 
@@ -674,7 +674,7 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    expect(screen.getByText('Record 1')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1$/)
     fireEvent.click(screen.getByTestId('btn-form-next'))
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -852,7 +852,7 @@ describe('TableDataFormView', () => {
     useTableDataStore.getState().setViewMode('tab-1', 'form')
     renderFormView()
 
-    expect(screen.getByText('Record 2')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 2$/)
     expect(screen.queryByText(/of/)).not.toBeInTheDocument()
   })
 
@@ -1061,7 +1061,7 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    expect(screen.getByText('Record 1')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1$/)
     const nextBtn = screen.getByTestId('btn-form-next')
     expect(nextBtn).not.toBeDisabled()
     fireEvent.click(nextBtn)

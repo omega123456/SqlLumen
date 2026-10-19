@@ -1,54 +1,61 @@
+/* Prototype `.h-nav`: time-range list in the history view's left column */
 .panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-  background: var(--surface-container-low);
+  gap: 2px;
+  padding: 12px 8px;
   height: 100%;
   overflow-y: auto;
 }
 
+/* Prototype `.p-sect` inside `.h-nav` */
 .heading {
+  margin: 0;
+  padding: 4px 8px 6px;
   font-family: var(--font-body);
-  font-size: var(--type-label-caps);
-  font-weight: var(--type-label-caps-weight);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface-variant);
-  margin: 0 0 var(--space-xs);
 }
 
-.buttonList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
+/* Prototype `.navi` */
 .filterButton {
-  display: block;
+  position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  border: none;
-  border-radius: var(--radius-md);
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
+  color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 400;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
   text-align: left;
-  cursor: pointer;
-  transition:
-    background 0.12s,
-    color 0.12s;
+  cursor: default;
 }
 
 .filterButton:hover {
-  background: var(--surface-container);
+  background: var(--fill-subtle-hover);
 }
 
-.filterButtonActive {
-  color: var(--primary);
-  background: var(--surface-container-highest);
-}
-
+.filterButtonActive,
 .filterButtonActive:hover {
-  background: var(--surface-container-highest);
+  background: var(--fill-neutral-selected);
+}
+
+/* 3×16 accent pill on the selected item */
+.filterButtonActive::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 2px;
+  background: var(--primary);
 }

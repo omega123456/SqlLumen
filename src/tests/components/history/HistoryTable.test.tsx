@@ -71,7 +71,7 @@ describe('HistoryTable', () => {
     )
 
     expect(screen.getByTestId('history-table-empty')).toBeInTheDocument()
-    expect(screen.getByText('No query history yet')).toBeInTheDocument()
+    expect(screen.getByText('History is empty. Queries you run appear here.')).toBeInTheDocument()
   })
 
   it('clicking a row calls onSelectEntry', async () => {
@@ -312,5 +312,75 @@ describe('HistoryTable', () => {
     row.focus()
     await user.keyboard('{Enter}')
     expect(onSelectEntry).toHaveBeenCalledWith(5)
+  })
+
+  it('typing in the search box calls setSearch for the connection', async () => {
+    const user = userEvent.setup()
+    const setSearch = vi.fn()
+    useHistoryStore.setState({ setSearch })
+
+    render(
+      <HistoryTable
+        entries={[makeHistoryEntry()]}
+        selectedEntryId={null}
+        onSelectEntry={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        connectionId="conn-1"
+      />
+    )
+
+    await user.type(screen.getByTestId('history-search'), 'x')
+    expect(setSearch).toHaveBeenCalledWith('conn-1', 'x')
+  })
+
+  it('shows a no-match message when a search filters everything out', () => {
+    useHistoryStore.setState({ searchByConnection: { 'conn-1': 'orders' } })
+
+    render(
+      <HistoryTable
+        entries={[]}
+        selectedEntryId={null}
+        onSelectEntry={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        connectionId="conn-1"
+      />
+    )
+
+    expect(screen.getByText('No queries match "orders"')).toBeInTheDocument()
+    expect(screen.getByTestId('history-clear')).toBeDisabled()
+  })
+
+  it('Clear history calls clearAll for the connection', async () => {
+    const user = userEvent.setup()
+    const clearAll = vi.fn().mockResolvedValue(undefined)
+    useHistoryStore.setState({ clearAll })
+
+    render(
+      <HistoryTable
+        entries={[makeHistoryEntry()]}
+        selectedEntryId={null}
+        onSelectEntry={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        connectionId="conn-1"
+      />
+    )
+
+    await user.click(screen.getByTestId('history-clear'))
+    expect(clearAll).toHaveBeenCalledWith('conn-1')
+  })
+
+  it('shows a success or failure status per row', () => {
+    render(
+      <HistoryTable
+        entries={[makeHistoryEntry({ id: 1 }), makeHistoryEntry({ id: 2, success: false })]}
+        selectedEntryId={null}
+        onSelectEntry={vi.fn()}
+        onOpenInEditor={vi.fn()}
+        connectionId="conn-1"
+      />
+    )
+
+    expect(screen.getByTitle('Succeeded')).toHaveTextContent('✓')
+    expect(screen.getByTitle('Failed')).toHaveTextContent('✕')
   })
 })

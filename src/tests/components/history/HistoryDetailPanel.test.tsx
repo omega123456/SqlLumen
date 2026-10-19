@@ -25,7 +25,7 @@ describe('HistoryDetailPanel', () => {
     render(<HistoryDetailPanel entry={null} onOpenInEditor={vi.fn()} />)
 
     expect(screen.getByTestId('history-detail-empty')).toBeInTheDocument()
-    expect(screen.getByText('Select a query to preview')).toBeInTheDocument()
+    expect(screen.getByText('Select a query to see its details')).toBeInTheDocument()
   })
 
   it('renders entry data when entry is provided', () => {
@@ -38,10 +38,12 @@ describe('HistoryDetailPanel', () => {
     render(<HistoryDetailPanel entry={entry} onOpenInEditor={vi.fn()} />)
 
     expect(screen.queryByTestId('history-detail-empty')).not.toBeInTheDocument()
-    expect(screen.getByText('SELECT * FROM orders')).toBeInTheDocument()
-    expect(screen.getByText('125ms')).toBeInTheDocument()
-    expect(screen.getByText('50')).toBeInTheDocument()
-    expect(screen.getByText('Statement preview')).toBeInTheDocument()
+    expect(screen.getByTestId('history-detail-panel').querySelector('pre')).toHaveTextContent(
+      'SELECT * FROM orders'
+    )
+    expect(screen.getByText('125 ms')).toBeInTheDocument()
+    expect(screen.getByText('50 rows')).toBeInTheDocument()
+    expect(screen.getByText('testdb')).toBeInTheDocument()
   })
 
   it('shows correct status icon for success', () => {
@@ -49,7 +51,7 @@ describe('HistoryDetailPanel', () => {
 
     render(<HistoryDetailPanel entry={entry} onOpenInEditor={vi.fn()} />)
 
-    expect(screen.getByText('Success')).toBeInTheDocument()
+    expect(screen.getByText('Succeeded')).toBeInTheDocument()
   })
 
   it('shows correct status icon for failure', () => {
@@ -61,7 +63,8 @@ describe('HistoryDetailPanel', () => {
     render(<HistoryDetailPanel entry={entry} onOpenInEditor={vi.fn()} />)
 
     expect(screen.getByText('Syntax error near SELECT')).toBeInTheDocument()
-    expect(screen.queryByText('Success')).not.toBeInTheDocument()
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+    expect(screen.queryByText('Succeeded')).not.toBeInTheDocument()
   })
 
   it('shows "Error" when errorMessage is null but success is false', () => {
@@ -88,7 +91,26 @@ describe('HistoryDetailPanel', () => {
 
     render(<HistoryDetailPanel entry={entry} onOpenInEditor={vi.fn()} />)
 
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getByText('Duration').nextElementSibling).toHaveTextContent('—')
+  })
+
+  it('shows em-dash rows for a failed query and singular row label', () => {
+    const { rerender } = render(
+      <HistoryDetailPanel
+        entry={makeHistoryEntry({ success: false, errorMessage: 'boom' })}
+        onOpenInEditor={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Rows').nextElementSibling).toHaveTextContent('—')
+
+    rerender(
+      <HistoryDetailPanel
+        entry={makeHistoryEntry({ rowCount: 1, databaseName: null })}
+        onOpenInEditor={vi.fn()}
+      />
+    )
+    expect(screen.getByText('1 row')).toBeInTheDocument()
+    expect(screen.getByText('Database').nextElementSibling).toHaveTextContent('—')
   })
 
   it('shows duration in seconds for >= 1000ms', () => {
@@ -96,7 +118,7 @@ describe('HistoryDetailPanel', () => {
 
     render(<HistoryDetailPanel entry={entry} onOpenInEditor={vi.fn()} />)
 
-    expect(screen.getByText('2.5s')).toBeInTheDocument()
+    expect(screen.getByText('2.5 s')).toBeInTheDocument()
   })
 
   it('Copy SQL button copies the SQL text to clipboard', async () => {

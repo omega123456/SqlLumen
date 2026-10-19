@@ -187,21 +187,21 @@ describe('BaseFormView — basic rendering', () => {
 
   it('shows correct "Record N of M" text', () => {
     renderForm({ currentAbsoluteIndex: 0, totalRows: 1 })
-    expect(screen.getByText('Record 1 of 1')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 1$/)
   })
 
   it('formats record position with toLocaleString for large numbers', () => {
     renderForm({ currentAbsoluteIndex: 999, totalRows: 10000 })
     // toLocaleString() produces locale-dependent separators; just check the text exists
-    const title = screen.getByRole('heading', { level: 2 })
+    const title = screen.getByTestId('form-record-label')
     expect(title.textContent).toContain('1,000')
     expect(title.textContent).toContain('10,000')
   })
 
   it('shows current record without total in unknown-total mode', () => {
     renderForm({ recordCountMode: 'unknown', totalRows: undefined, isLastRecord: undefined })
-    expect(screen.getByText('Record 1')).toBeInTheDocument()
-    expect(screen.queryByText(/Record 1 of/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1$/)
+    expect(screen.getByTestId('form-record-label')).not.toHaveTextContent(/Record 1 of/)
   })
 
   it('shows all column fields with correct test IDs', () => {
@@ -220,7 +220,7 @@ describe('BaseFormView — basic rendering', () => {
     renderForm({ currentRow: null, totalRows: 0 })
     const container = screen.getByTestId('base-form-view')
     expect(container).toBeInTheDocument()
-    expect(screen.queryByText(/Record/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('form-record-label')).not.toBeInTheDocument()
   })
 
   it('PK field label shows "(Primary Key)"', () => {

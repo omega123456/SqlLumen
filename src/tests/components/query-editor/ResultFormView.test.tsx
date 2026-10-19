@@ -77,17 +77,17 @@ describe('ResultFormView', () => {
 
   it('shows "Record 1 of 5" heading when selectedRowIndex is 0', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    expect(screen.getByText('Record 1 of 5')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 5$/)
   })
 
   it('shows "Record 3 of 5" heading when selectedRowIndex is 2', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
-    expect(screen.getByText('Record 3 of 5')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 3 of 5$/)
   })
 
   it('defaults to first record when selectedRowIndex is null', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={null} />)
-    expect(screen.getByText('Record 1 of 5')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 5$/)
   })
 
   it('shows the first row as a fallback when selectedRowIndex is null', () => {
@@ -782,7 +782,7 @@ describe('ResultFormView — Edit Mode', () => {
 
     const result = useQueryStore.getState().tabs['tab-1']?.results[0]
     expect(result?.selectedRowIndex).toBeNull()
-    expect(screen.getByText('Record 1 of 5')).toBeInTheDocument()
+    expect(screen.getByTestId('form-record-label')).toHaveTextContent(/^Record 1 of 5$/)
   })
 
   it('enum select onChange fires onUpdateCell with selected value', async () => {

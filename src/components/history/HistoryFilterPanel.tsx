@@ -9,7 +9,7 @@ export interface HistoryFilterPanelProps {
 
 const FILTERS: { label: string; value: TimeRange }[] = [
   { label: 'All history', value: 'all' },
-  { label: 'Past 24h', value: '24h' },
+  { label: 'Past 24 hours', value: '24h' },
   { label: 'Last 7 days', value: '7d' },
   { label: 'Last 30 days', value: '30d' },
 ]
@@ -18,20 +18,18 @@ export function HistoryFilterPanel({ value, onChange }: HistoryFilterPanelProps)
   return (
     <div className={styles.panel} data-testid="history-filter-panel">
       <h3 className={styles.heading}>Time range</h3>
-      <div className={styles.buttonList}>
-        {FILTERS.map((filter) => (
-          <button
-            key={filter.value}
-            type="button"
-            className={`${styles.filterButton} ${value === filter.value ? styles.filterButtonActive : ''}`}
-            onClick={() => onChange(filter.value)}
-            aria-pressed={value === filter.value}
-            data-testid={`filter-${filter.value}`}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
+      {FILTERS.map((filter) => (
+        <button
+          key={filter.value}
+          type="button"
+          className={`${styles.filterButton} ${value === filter.value ? styles.filterButtonActive : ''}`}
+          onClick={() => onChange(filter.value)}
+          aria-pressed={value === filter.value}
+          data-testid={`filter-${filter.value}`}
+        >
+          {filter.label}
+        </button>
+      ))}
     </div>
   )
 }

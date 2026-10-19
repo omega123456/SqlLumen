@@ -1,188 +1,91 @@
 /* ============================================================
-   BaseFormView — shared editable single-record form
-   Based on TableDataFormView design with lock icon support.
+   BaseFormView — shared single-record form (prototype `.p-form`)
+   Well surface; nav row, then a label | field grid.
    ============================================================ */
 
 .formView {
   display: flex;
   flex-direction: column;
+  gap: 12px;
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
+  padding: 16px 20px;
+  background: var(--surface-container-lowest);
+  border-top: 1px solid var(--stroke-divider);
+  font-family: var(--font-body);
 }
 
-/* Record navigation header + action buttons */
+/* Prototype `.p-form .nav` */
 .recordNav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px;
+  gap: 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--stroke-divider);
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  color: var(--on-surface-variant);
 }
 
-.recordTitle {
-  font-family: var(--font-headline);
-  font-size: var(--type-size-xl);
-  font-weight: 600;
+.recordTitle b {
   color: var(--on-surface);
-  margin: 0;
+  font-weight: var(--type-weight-semibold);
 }
 
-.navGroup {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.navButtonGroup {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--surface-container);
-  padding: 4px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--outline-variant);
-}
-
-.navButton {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--surface-bright);
-  color: var(--on-surface);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--type-caption-size);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-}
-
-.navButton:hover:not(:disabled) {
-  color: var(--primary);
-  background: var(--surface-container-high);
-}
-
-.navButton:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* Form action buttons (Save / Discard) */
+/* Save / Discard (edit mode only) */
 .formButtons {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 
-.discardButton {
-  padding: 6px 16px;
-  background: transparent;
-  color: var(--on-surface-variant);
-  border: 1px solid var(--stroke-card);
-  border-radius: var(--radius-sm);
-  font-size: var(--type-caption-size);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.discardButton:hover:not(:disabled) {
-  color: var(--on-surface);
-  border-color: var(--stroke-card);
-}
-
-.discardButton:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.saveButton {
-  padding: 6px 16px;
-  background: var(--primary);
-  color: var(--on-primary);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--type-caption-size);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    filter 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.saveButton:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.saveButton:disabled {
-  opacity: 0.4;
-  cursor: default;
-  filter: none;
-}
-
-/* Scrollable form content */
-.formContent {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-.formCard {
-  background: var(--surface-container);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-card);
-  padding: 24px;
-}
-
-/* Individual field group */
-.fieldGroup {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--stroke-divider);
-}
-
-.fieldGroup:last-child {
-  border-bottom: none;
-}
-
-/* Field label row (label + suffix + lock + NULL toggle + modified dot) */
-.fieldLabelRow {
-  display: flex;
+/* Prototype `.p-form .rows`: 160px labels, fields up to 420px, then per-field actions */
+.formRows {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 420px) auto;
+  gap: 8px 16px;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  justify-content: start;
+}
+
+/* Each field contributes its cells straight to the grid */
+.fieldGroup {
+  display: contents;
+}
+
+/* Prototype `.p-form label`: right-aligned, secondary text */
+.fieldLabelCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+  text-align: right;
 }
 
 .fieldLabel {
-  font-size: var(--type-caption-size);
-  font-weight: 600;
-  color: var(--on-surface-variant);
-  font-family: var(--font-headline);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  max-width: 100%;
+  font-size: var(--type-row-size);
+  line-height: var(--type-row-line);
+  color: var(--on-surface-variant);
+  overflow-wrap: anywhere;
 }
 
 .fieldLabelSuffix {
   font-size: var(--type-caption-size);
-  font-weight: 600;
+  line-height: var(--type-caption-line);
   color: var(--outline);
-  text-transform: none;
 }
 
 /* Lock icon for non-editable columns in edit mode */
 .lockIcon {
-  opacity: 0.5;
   flex-shrink: 0;
+  color: var(--outline);
 }
 
-/* Modified dot indicator next to label */
+/* Modified dot next to the label */
 .modifiedDot {
   width: 6px;
   height: 6px;
@@ -191,182 +94,113 @@
   flex-shrink: 0;
 }
 
-/* NULL toggle button */
-.fieldNullBtn {
-  margin-left: auto;
-  padding: 2px 8px;
-  background: transparent;
-  color: var(--on-surface-variant);
-  border: 1px solid var(--stroke-card);
-  border-radius: var(--radius-sm);
-  font-size: var(--type-caption-size);
-  font-weight: 600;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
+.fieldValueCell {
+  display: flex;
+  min-width: 0;
 }
 
-.fieldNullBtn:hover {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.4);
+.fieldValueCell > * {
+  flex: 1;
+  min-width: 0;
 }
 
-.fieldNullBtnActive {
-  color: var(--primary);
-  border-color: var(--primary);
-  background: var(--fill-accent-tint);
+/* Calendar / FK buttons sit inside the field (prototype `.fwrap > .b`) */
+.fieldValueCellWithButtons {
+  position: relative;
 }
 
-/* Field value row (input + copy button + calendar button) */
-.fieldValueRow {
+.fieldValueCellWithButtons > :first-child {
+  padding-right: calc(8px + var(--in-field-buttons) * var(--control-height-sm));
+}
+
+.fieldInlineButtons {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  display: flex;
+  transform: translateY(-50%);
+}
+
+.fieldActions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+  min-height: var(--control-height);
 }
 
-.fieldValueRowTall {
-  align-items: flex-start;
-}
-
-/* Select appearance (shared with TextInput formField variant from TextInput.module.css) */
-.fieldSelect {
-  appearance: auto;
-}
-
-/* Read-only display div */
-.fieldInputReadonly {
-  flex: 1;
-  background: var(--background);
-  border: 1px solid var(--stroke-card);
-  color: var(--on-surface-variant);
-  font-size: var(--type-size-md);
-  font-family: var(--font-mono);
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  opacity: 0.6;
-  font-style: italic;
-}
-
-/* BLOB placeholder */
+/* Read-only value: the disabled `.fld.mono` look, but selectable */
+.fieldInputReadonly,
 .fieldBlobReadonly {
+  box-sizing: border-box;
   flex: 1;
-  background: var(--background);
-  border: 1px solid var(--stroke-card);
-  color: var(--on-surface-variant);
-  font-size: var(--type-size-md);
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--stroke-control);
+  border-radius: var(--radius-control);
+  background: var(--fill-subtle-pressed);
+  color: var(--text-disabled);
   font-family: var(--font-mono);
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  opacity: 0.5;
-  font-style: italic;
+  font-size: var(--type-mono-size);
+  line-height: calc(var(--control-height) - 2px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
 }
 
 /* BLOB field row — read-only display + View/Edit affordance */
 .fieldBlobRow {
   display: flex;
   flex: 1;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
 
-.fieldBlobViewBtn {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-/* Per-field copy button */
-.fieldCopyBtn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-}
-
-.fieldCopyBtn:hover {
-  color: var(--primary);
-  background: var(--fill-subtle-hover);
-}
-
-/* Per-field date/time picker button */
-.fieldCalendarBtn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-}
-
-.fieldCalendarBtn:hover {
-  color: var(--primary);
-  background: var(--fill-subtle-hover);
-}
-
-.fieldCalendarBtn:disabled {
-  opacity: 0.35;
-  cursor: default;
-  pointer-events: none;
-}
-
+/* FK lookup trigger (prototype `.b.sub.sm.ic`) */
 .fieldFkButton {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
+  color: var(--on-surface);
+  cursor: default;
 }
 
 .fieldFkButton:hover {
-  color: var(--primary);
   background: var(--fill-subtle-hover);
 }
 
-/* "Unsaved change detected" note */
+.fieldFkButton:active {
+  background: var(--fill-subtle-pressed);
+}
+
+/* NULL toggle */
+.fieldNullBtn:global(.ui-button) {
+  color: var(--on-surface-variant);
+}
+
+.fieldNullBtnActive:global(.ui-button) {
+  color: var(--primary);
+  background: var(--fill-accent-tint);
+}
+
+/* "Unsaved change detected" note under the field */
 .fieldModifiedNote {
+  grid-column: 2 / -1;
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: -4px;
   font-size: var(--type-caption-size);
-  font-weight: 600;
+  line-height: var(--type-caption-line);
   color: var(--primary);
-}
-
-.fieldModifiedNoteIcon {
-  font-size: var(--type-body-size);
-  line-height: 1;
 }
 
 /* Empty state */
@@ -376,5 +210,5 @@
   justify-content: center;
   height: 100%;
   color: var(--on-surface-variant);
-  font-size: var(--type-size-sm);
+  font-size: var(--type-row-size);
 }

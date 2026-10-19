@@ -17,7 +17,7 @@ describe('HistoryFilterPanel', () => {
     render(<HistoryFilterPanel value="all" onChange={vi.fn()} />)
 
     expect(screen.getByText('All history')).toBeInTheDocument()
-    expect(screen.getByText('Past 24h')).toBeInTheDocument()
+    expect(screen.getByText('Past 24 hours')).toBeInTheDocument()
     expect(screen.getByText('Last 7 days')).toBeInTheDocument()
     expect(screen.getByText('Last 30 days')).toBeInTheDocument()
   })

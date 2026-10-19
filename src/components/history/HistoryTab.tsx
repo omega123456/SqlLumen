@@ -3,7 +3,6 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useHistoryStore } from '../../stores/history-store'
 import { insertSqlIntoEditor } from '../../lib/query-tab-utils'
-import { Button } from '../common/Button'
 import { HistoryFilterPanel } from './HistoryFilterPanel'
 import { HistoryTable } from './HistoryTable'
 import { HistoryDetailPanel } from './HistoryDetailPanel'
@@ -106,41 +105,28 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
         <HistoryFilterPanel value={timeRange} onChange={handleTimeRangeChange} />
       </div>
 
-      {error ? (
-        <div className={styles.errorState} data-testid="history-error">
-          <p className={styles.errorMessage}>{error}</p>
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={() => reload(timeRange)}
-            data-testid="history-retry"
-          >
-            Retry
-          </Button>
-        </div>
-      ) : isLoading && entries.length === 0 ? (
-        <div className={styles.loadingState} data-testid="history-loading">
-          Loading history...
-        </div>
-      ) : (
-        <Group orientation="horizontal" className={styles.panelGroup}>
-          <Panel defaultSize="65%" minSize="30%" className={styles.tablePanel}>
-            <HistoryTable
-              entries={entries}
-              selectedEntryId={selectedEntryId}
-              onSelectEntry={setSelectedEntryId}
-              onOpenInEditor={handleOpenInEditor}
-              connectionId={connectionId}
-            />
-          </Panel>
-          <Separator className={styles.resizeHandle}>
-            <div className={styles.resizePill} />
-          </Separator>
-          <Panel defaultSize="35%" minSize="20%" className={styles.detailPanel}>
-            <HistoryDetailPanel entry={selectedEntry} onOpenInEditor={handleOpenInEditor} />
-          </Panel>
-        </Group>
-      )}
+      <Group orientation="horizontal" className={styles.panelGroup}>
+        <Panel minSize="30%" className={styles.tablePanel}>
+          <HistoryTable
+            entries={entries}
+            selectedEntryId={selectedEntryId}
+            onSelectEntry={setSelectedEntryId}
+            onOpenInEditor={handleOpenInEditor}
+            connectionId={connectionId}
+            isLoading={isLoading}
+            error={error}
+            onRetry={() => reload(timeRange)}
+          />
+        </Panel>
+        <Separator className={styles.resizeHandle} />
+        <Panel defaultSize="330px" minSize="240px" className={styles.detailPanel}>
+          <HistoryDetailPanel
+            entry={selectedEntry}
+            onOpenInEditor={handleOpenInEditor}
+            connectionName={activeConnection?.profile.name}
+          />
+        </Panel>
+      </Group>
     </div>
   )
 }

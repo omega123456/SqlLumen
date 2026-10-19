@@ -1,29 +1,54 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
-  ClockCounterClockwise,
-  CheckCircle,
-  XCircle,
-  ArrowSquareOut,
-  CopySimple,
-  Check,
+  CheckIcon,
+  ClockCounterClockwiseIcon,
+  CodeIcon,
+  CopySimpleIcon,
 } from '@phosphor-icons/react'
-import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
+import { formatTableTimestamp } from '../../lib/format-utils'
+import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
+import { Button } from '../common/Button'
 import type { HistoryEntry } from '../../types/schema'
+import dotStyles from '../shared/toolbar/toolbar-items.module.css'
 import styles from './HistoryDetailPanel.module.css'
 
 export interface HistoryDetailPanelProps {
   entry: HistoryEntry | null
   onOpenInEditor: (entry: HistoryEntry) => void
+  /** Display name of the connection the history belongs to. */
+  connectionName?: string
 }
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 1000) return `${ms} ms`
+  return `${(ms / 1000).toFixed(1)} s`
 }
 
-export function HistoryDetailPanel({ entry, onOpenInEditor }: HistoryDetailPanelProps) {
+function formatRows(entry: HistoryEntry): string {
+  if (!entry.success) return '—'
+  const n = entry.rowCount ?? entry.affectedRows ?? 0
+  return `${n.toLocaleString()} ${n === 1 ? 'row' : 'rows'}`
+}
+
+export function HistoryDetailPanel({
+  entry,
+  onOpenInEditor,
+  connectionName,
+}: HistoryDetailPanelProps) {
   const [copied, setCopied] = useState(false)
+  const highlighted = useMemo(
+    () =>
+      entry
+        ? SqlSyntaxHighlighter.highlightSql(entry.sqlText, {
+            keyword: styles.keyword,
+            type: styles.keyword,
+            string: styles.string,
+            number: styles.number,
+          })
+        : null,
+    [entry]
+  )
 
   const handleCopy = useCallback(() => {
     if (!entry) return
@@ -37,8 +62,8 @@ export function HistoryDetailPanel({ entry, onOpenInEditor }: HistoryDetailPanel
     return (
       <div className={styles.panel} data-testid="history-detail-panel">
         <div className={styles.emptyState} data-testid="history-detail-empty">
-          <ClockCounterClockwise size={48} weight="regular" className={styles.emptyIcon} />
-          <span className={styles.emptyText}>Select a query to preview</span>
+          <ClockCounterClockwiseIcon size={40} weight="light" className={styles.emptyIcon} />
+          <span>Select a query to see its details</span>
         </div>
       </div>
     )
@@ -46,64 +71,60 @@ export function HistoryDetailPanel({ entry, onOpenInEditor }: HistoryDetailPanel
 
   return (
     <div className={styles.panel} data-testid="history-detail-panel">
-      <h4 className={styles.sectionHeading}>Statement preview</h4>
-
-      <ElevatedCodePanel
-        label="SQL"
-        className={styles.codeBlock}
-        headerActions={
-          <button
-            type="button"
-            className={styles.copyButton}
-            onClick={handleCopy}
-            aria-label="Copy SQL"
-            title="Copy SQL"
-            data-testid="history-copy-sql"
-          >
-            {copied ? <Check size={14} weight="bold" /> : <CopySimple size={14} weight="regular" />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        }
-      >
-        {entry.sqlText}
-      </ElevatedCodePanel>
-
-      <h4 className={styles.sectionHeading}>Details</h4>
-
-      <div className={styles.metaGrid}>
-        <span className={styles.metaLabel}>Duration</span>
-        <span className={styles.metaValue}>{formatDuration(entry.durationMs)}</span>
-
-        <span className={styles.metaLabel}>Rows affected</span>
-        <span className={styles.metaValue}>{entry.rowCount ?? entry.affectedRows ?? 0}</span>
-
-        <span className={styles.metaLabel}>Status</span>
-        <span className={styles.metaValue}>
-          {entry.success ? (
-            <span className={styles.statusSuccess}>
-              <CheckCircle size={14} weight="fill" />
-              Success
-            </span>
-          ) : (
-            <span className={styles.statusError}>
-              <XCircle size={14} weight="fill" />
-              <span className={styles.errorMessage} title={entry.errorMessage ?? undefined}>
-                {entry.errorMessage ?? 'Error'}
-              </span>
-            </span>
-          )}
+      <div className={styles.header}>
+        <span
+          className={`${dotStyles.statusDot} ${entry.success ? dotStyles.statusDotOk : dotStyles.statusDotError}`}
+          aria-hidden="true"
+        >
+          {entry.success ? '✓' : '✕'}
         </span>
+        <b>{entry.success ? 'Succeeded' : 'Failed'}</b>
+        <span className={styles.time}>{formatTableTimestamp(entry.timestamp)}</span>
       </div>
 
-      <button
-        type="button"
-        className={styles.openButton}
-        onClick={() => onOpenInEditor(entry)}
-        data-testid="history-open-in-editor"
-      >
-        <ArrowSquareOut size={14} weight="regular" />
-        Open in Editor
-      </button>
+      {!entry.success && (
+        <div className={styles.errorBox} role="alert">
+          <b>Error</b>
+          {entry.errorMessage && <span>{entry.errorMessage}</span>}
+        </div>
+      )}
+
+      <div className={styles.code}>
+        <div className={styles.codeHeader}>SQL</div>
+        <pre className={styles.pre}>
+          <code>{highlighted}</code>
+        </pre>
+      </div>
+
+      <div className={styles.kv}>
+        <span>Database</span>
+        <span>{entry.databaseName ?? '—'}</span>
+        <span>Duration</span>
+        <span>{formatDuration(entry.durationMs)}</span>
+        <span>Rows</span>
+        <span>{formatRows(entry)}</span>
+        <span>Connection</span>
+        <span>{connectionName ?? '—'}</span>
+      </div>
+
+      <div className={styles.actions}>
+        <Button
+          variant="accent"
+          onClick={() => onOpenInEditor(entry)}
+          data-testid="history-open-in-editor"
+        >
+          <CodeIcon size={16} weight="regular" />
+          Open in editor
+        </Button>
+        <Button onClick={handleCopy} data-testid="history-copy-sql">
+          {copied ? (
+            <CheckIcon size={16} weight="bold" />
+          ) : (
+            <CopySimpleIcon size={16} weight="regular" />
+          )}
+          {copied ? 'Copied' : 'Copy SQL'}
+        </Button>
+      </div>
     </div>
   )
 }

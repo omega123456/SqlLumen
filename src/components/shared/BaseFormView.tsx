@@ -12,7 +12,7 @@ import { logFrontend } from '../../lib/app-log-commands'
  * Based on the TableDataFormView design.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   CaretLeftIcon,
   CaretRightIcon,
@@ -236,93 +236,86 @@ export function BaseFormView({
 
   return (
     <div className={styles.formView} data-testid={testId}>
-      {/* Record navigation header */}
+      {/* Record navigation (prototype `.p-form .nav`) */}
       <div className={styles.recordNav}>
-        <h2 className={styles.recordTitle}>
-          {recordCountMode === 'known'
-            ? `Record ${(currentAbsoluteIndex + 1).toLocaleString()} of ${knownTotalProps.totalRows.toLocaleString()}`
-            : `Record ${(currentAbsoluteIndex + 1).toLocaleString()}`}
-        </h2>
+        <Button
+          variant="subtle"
+          size="sm"
+          iconOnly
+          disabled={isFirstRecord}
+          onClick={onNavigatePrev}
+          aria-label="Previous record"
+          title="Previous record"
+          data-testid="btn-form-previous"
+        >
+          <CaretLeftIcon size={16} />
+        </Button>
+        <span className={styles.recordTitle} data-testid="form-record-label">
+          Record <b>{(currentAbsoluteIndex + 1).toLocaleString()}</b>
+          {recordCountMode === 'known' && ` of ${knownTotalProps.totalRows.toLocaleString()}`}
+        </span>
+        <Button
+          variant="subtle"
+          size="sm"
+          iconOnly
+          disabled={isLoading || (recordCountMode === 'known' ? isLastRecord : false)}
+          onClick={onNavigateNext}
+          aria-label="Next record"
+          title="Next record"
+          data-testid="btn-form-next"
+        >
+          <CaretRightIcon size={16} />
+        </Button>
 
-        <div className={styles.navGroup}>
-          <div className={styles.navButtonGroup}>
-            <button
-              type="button"
-              className={styles.navButton}
-              disabled={isFirstRecord}
-              onClick={onNavigatePrev}
-              aria-label="Previous record"
-              data-testid="btn-form-previous"
+        {hasEditCapability && (
+          <div className={styles.formButtons}>
+            <Button
+              size="sm"
+              disabled={!hasModifications}
+              onClick={handleDiscard}
+              data-testid="btn-form-discard"
             >
-              <CaretLeftIcon size={14} weight="bold" />
-              <span>Previous</span>
-            </button>
-            <button
-              type="button"
-              className={styles.navButton}
-              disabled={isLoading || (recordCountMode === 'known' ? isLastRecord : false)}
-              onClick={onNavigateNext}
-              aria-label="Next record"
-              data-testid="btn-form-next"
+              Discard
+            </Button>
+            <Button
+              variant="accent"
+              size="sm"
+              disabled={!hasModifications}
+              onClick={handleSave}
+              data-testid="btn-form-save"
             >
-              <span>Next</span>
-              <CaretRightIcon size={14} weight="bold" />
-            </button>
+              Save changes
+            </Button>
           </div>
-
-          {hasEditCapability && (
-            <div className={styles.formButtons}>
-              <button
-                type="button"
-                className={styles.discardButton}
-                disabled={!hasModifications}
-                onClick={handleDiscard}
-                data-testid="btn-form-discard"
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                className={styles.saveButton}
-                disabled={!hasModifications}
-                onClick={handleSave}
-                data-testid="btn-form-save"
-              >
-                Save changes
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Scrollable form fields */}
-      <div className={styles.formContent}>
-        <div className={styles.formCard}>
-          {columns.map((col, colIdx) => (
-            <FormField
-              key={col.key}
-              col={col}
-              colIdx={colIdx}
-              currentRow={currentRow}
-              currentRowData={currentRowData}
-              editState={editState}
-              isModified={modifiedKeys.has(col.key)}
-              hasEditCapability={hasEditCapability}
-              openPickerState={openPickerState}
-              inputFocusedRef={inputFocusedRef}
-              onSetOpenPickerState={setOpenPickerState}
-              onEnsureEditing={ensureEditing}
-              onInputFocus={handleInputFocus}
-              onInputChange={handleInputChange}
-              onNullToggle={handleNullToggle}
-              onCopy={handleCopy}
-              workspaceTabId={workspaceTabId}
-              onBlobView={onBlobView}
-              blobViewDisabled={blobViewDisabled}
-              blobViewDisabledReason={blobViewDisabledReason}
-            />
-          ))}
-        </div>
+      {/* Form fields (prototype `.p-form .rows`) */}
+      <div className={styles.formRows}>
+        {columns.map((col, colIdx) => (
+          <FormField
+            key={col.key}
+            col={col}
+            colIdx={colIdx}
+            currentRow={currentRow}
+            currentRowData={currentRowData}
+            editState={editState}
+            isModified={modifiedKeys.has(col.key)}
+            hasEditCapability={hasEditCapability}
+            openPickerState={openPickerState}
+            inputFocusedRef={inputFocusedRef}
+            onSetOpenPickerState={setOpenPickerState}
+            onEnsureEditing={ensureEditing}
+            onInputFocus={handleInputFocus}
+            onInputChange={handleInputChange}
+            onNullToggle={handleNullToggle}
+            onCopy={handleCopy}
+            workspaceTabId={workspaceTabId}
+            onBlobView={onBlobView}
+            blobViewDisabled={blobViewDisabled}
+            blobViewDisabledReason={blobViewDisabledReason}
+          />
+        ))}
       </div>
     </div>
   )
@@ -381,6 +374,7 @@ function FormField({
       ? editState.currentValues[col.key]
       : currentRow[colIdx]
 
+  const valueCellRef = useRef<HTMLDivElement>(null)
   const isNull = isNullish(rawValue)
   const isBlobField = col.isBinary
   const temporalType = getTemporalColumnType(col.dataType)
@@ -410,16 +404,20 @@ function FormField({
   const showLock =
     !col.editable && !col.blobViewerEditable && hasEditCapability && editState !== null
   const showFkTrigger = !!(col.foreignKey && currentRowData)
+  const inFieldButtonCount = Number(isTemporalEditable) + Number(showFkTrigger)
+  const hasInFieldButtons = inFieldButtonCount > 0
 
   return (
     <div className={styles.fieldGroup} data-testid={`form-field-${col.displayName}`}>
-      {/* Label row */}
-      <div className={styles.fieldLabelRow}>
+      {/* Label cell (prototype `.p-form label`) */}
+      <div className={styles.fieldLabelCell}>
         <span className={styles.fieldLabel}>
+          {isModified && (
+            <span className={styles.modifiedDot} data-testid={`modified-dot-${col.displayName}`} />
+          )}
           {showLock && (
             <LockIcon
-              size={10}
-              weight="bold"
+              size={12}
               className={styles.lockIcon}
               data-testid={`lock-icon-${col.displayName}`}
             />
@@ -427,26 +425,13 @@ function FormField({
           {col.displayName}
         </span>
         {labelSuffix && <span className={styles.fieldLabelSuffix}>{labelSuffix}</span>}
-        {col.isNullable && isEditable && (
-          <button
-            type="button"
-            className={`${styles.fieldNullBtn} ${isNull ? styles.fieldNullBtnActive : ''}`}
-            onClick={() => onNullToggle(col, colIdx)}
-            data-testid={`btn-null-${col.displayName}`}
-          >
-            {isNull ? 'Set value' : 'Set NULL'}
-          </button>
-        )}
-        {isModified && (
-          <span className={styles.modifiedDot} data-testid={`modified-dot-${col.displayName}`} />
-        )}
       </div>
 
-      {/* Value row */}
+      {/* Value cell */}
       <div
-        className={[styles.fieldValueRow, isJsonColumn ? styles.fieldValueRowTall : '']
-          .filter(Boolean)
-          .join(' ')}
+        className={`${styles.fieldValueCell} ${hasInFieldButtons ? styles.fieldValueCellWithButtons : ''}`}
+        style={{ '--in-field-buttons': inFieldButtonCount } as CSSProperties}
+        ref={valueCellRef}
       >
         {isBlobField ? (
           <div className={styles.fieldBlobRow}>
@@ -455,13 +440,13 @@ function FormField({
             </div>
             {onBlobView && (
               <Button
+                size="sm"
                 onClick={() => onBlobView(col, currentRowData)}
-                className={styles.fieldBlobViewBtn}
                 disabled={blobViewDisabled}
                 title={blobViewDisabled ? blobViewDisabledReason : undefined}
                 data-testid={`btn-blob-view-${col.displayName}`}
               >
-                <EyeIcon size={14} />
+                <EyeIcon size={16} />
                 View/Edit
               </Button>
             )}
@@ -496,10 +481,8 @@ function FormField({
             }}
             data-testid={`form-input-${col.displayName}`}
             triggerClassName={[
-              styles.fieldInput,
-              styles.fieldSelect,
-              isModified ? styles.fieldInputModified : '',
-              isNull ? styles.fieldInputNull : '',
+              isModified ? tiStyles.formFieldModified : '',
+              isNull ? tiStyles.formFieldNull : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -538,9 +521,10 @@ function FormField({
                     }
                     // Open picker only on the click that first grants focus
                     if (!inputFocusedRef.current[col.key]) {
-                      const anchorEl = (e.currentTarget.parentElement ??
-                        e.currentTarget) as HTMLElement
-                      onSetOpenPickerState({ field: col.key, anchorEl })
+                      onSetOpenPickerState({
+                        field: col.key,
+                        anchorEl: valueCellRef.current ?? e.currentTarget,
+                      })
                     }
                   }
                 : undefined
@@ -549,44 +533,69 @@ function FormField({
             data-testid={`form-input-${col.displayName}`}
           />
         )}
+        {hasInFieldButtons && (
+          <div className={styles.fieldInlineButtons}>
+            {isTemporalEditable && (
+              <Button
+                variant="subtle"
+                size="sm"
+                iconOnly
+                disabled={isNull}
+                onClick={(e) => {
+                  if (isNull) return
+                  onSetOpenPickerState({
+                    field: col.key,
+                    anchorEl: valueCellRef.current ?? e.currentTarget,
+                  })
+                }}
+                data-testid={`calendar-btn-${col.displayName}`}
+                aria-label={temporalType === 'TIME' ? 'Open time picker' : 'Open date picker'}
+              >
+                {temporalType === 'TIME' ? (
+                  <ClockIcon size={16} />
+                ) : (
+                  <CalendarBlankIcon size={16} />
+                )}
+              </Button>
+            )}
 
-        {isTemporalEditable && (
-          <button
-            type="button"
-            className={styles.fieldCalendarBtn}
-            disabled={isNull}
-            onClick={(e) => {
-              if (isNull) return
-              const anchorEl = (e.currentTarget.parentElement ?? e.currentTarget) as HTMLElement
-              onSetOpenPickerState({ field: col.key, anchorEl })
-            }}
-            data-testid={`calendar-btn-${col.displayName}`}
-            aria-label={temporalType === 'TIME' ? 'Open time picker' : 'Open date picker'}
-          >
-            {temporalType === 'TIME' ? <ClockIcon size={14} /> : <CalendarBlankIcon size={14} />}
-          </button>
+            {showFkTrigger && currentRowData && col.foreignKey && (
+              <FkLookupTriggerButton
+                foreignKey={col.foreignKey}
+                columnKey={col.key}
+                currentValue={rawValue}
+                rowData={currentRowData}
+                className={styles.fieldFkButton}
+              />
+            )}
+          </div>
         )}
+      </div>
 
-        {showFkTrigger && currentRowData && col.foreignKey && (
-          <FkLookupTriggerButton
-            foreignKey={col.foreignKey}
-            columnKey={col.key}
-            currentValue={rawValue}
-            rowData={currentRowData}
-            className={styles.fieldFkButton}
-          />
-        )}
-
-        <button
-          type="button"
-          className={styles.fieldCopyBtn}
+      {/* Trailing actions */}
+      <div className={styles.fieldActions}>
+        <Button
+          variant="subtle"
+          size="sm"
+          iconOnly
           onClick={() => onCopy(rawValue)}
           title={`Copy ${col.displayName}`}
           aria-label={`Copy ${col.displayName}`}
           data-testid={`btn-copy-${col.displayName}`}
         >
-          <CopySimpleIcon size={14} />
-        </button>
+          <CopySimpleIcon size={16} />
+        </Button>
+        {col.isNullable && isEditable && (
+          <Button
+            variant="subtle"
+            size="sm"
+            className={`${styles.fieldNullBtn} ${isNull ? styles.fieldNullBtnActive : ''}`}
+            onClick={() => onNullToggle(col, colIdx)}
+            data-testid={`btn-null-${col.displayName}`}
+          >
+            {isNull ? 'Set value' : 'Set NULL'}
+          </Button>
+        )}
       </div>
 
       {/* Date/time picker popup (rendered via portal) */}
@@ -608,7 +617,7 @@ function FormField({
       {/* Modified indicator note */}
       {isModified && (
         <div className={styles.fieldModifiedNote} data-testid={`modified-note-${col.displayName}`}>
-          <InfoIcon size={14} weight="fill" className={styles.fieldModifiedNoteIcon} />
+          <InfoIcon size={14} weight="fill" />
           <span>Unsaved change detected</span>
         </div>
       )}

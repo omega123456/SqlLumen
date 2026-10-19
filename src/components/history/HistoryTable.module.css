@@ -2,199 +2,181 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
   overflow: hidden;
 }
 
+/* Prototype `.h-bar`: search, entry count and Clear history */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--stroke-divider);
+  gap: 10px;
+  height: 52px;
+  padding: 0 12px;
   flex-shrink: 0;
 }
 
+/* Prototype `.fwrap` (search icon inside the field) */
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 280px;
+  flex-shrink: 1;
+  min-width: 120px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--outline);
+  pointer-events: none;
+}
+
+.searchInput {
+  height: var(--control-height);
+  padding-left: 34px;
+}
+
+/* Prototype `.pill.mute` */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-md);
-  background: var(--surface-container-high);
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--fill-neutral-selected);
   color: var(--on-surface-variant);
-  font-family: var(--font-mono);
-  font-size: var(--type-size-2xs);
-  font-weight: 600;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: var(--type-weight-semibold);
+  white-space: nowrap;
 }
 
+.spacer {
+  flex: 1;
+}
+
+/* Prototype `.p-grid`: well surface under a divider */
 .tableWrapper {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface-container-lowest);
+  border-top: 1px solid var(--stroke-divider);
 }
 
 .table {
   width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--type-row-size);
+  font-variant-numeric: tabular-nums;
 }
 
-.thead {
+.table th {
   position: sticky;
   top: 0;
   z-index: 1;
-}
-
-.headerRow {
-  background: var(--surface-container-high);
-}
-
-.th {
-  padding: var(--space-sm) var(--space-md);
+  height: 32px;
+  padding: 0 10px;
   text-align: left;
-  font-family: var(--type-table-header-font);
-  font-size: var(--type-table-header-size);
-  font-weight: var(--type-table-header-weight);
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-weight-semibold);
   color: var(--on-surface-variant);
-  white-space: nowrap;
-  border-bottom: 1px solid var(--stroke-divider);
-}
-
-.thTimestamp {
-  width: 140px;
-}
-
-.thDatabase {
-  width: 120px;
-}
-
-.thSql {
-  /* fills remaining space */
-}
-
-.thAction {
-  width: 60px;
-  text-align: center;
-}
-
-.row {
-  cursor: pointer;
-  transition: background 0.12s;
-  border-left: 2px solid transparent;
-}
-
-.row:hover {
   background: var(--surface-container);
+  border-right: 1px solid var(--stroke-divider);
+  border-bottom: 1px solid var(--stroke-divider);
+  white-space: nowrap;
 }
 
-.rowEven {
-  background: var(--surface);
+.table th.thSql {
+  width: 100%;
 }
 
-.rowOdd {
-  background: var(--surface-container-low);
+.table td {
+  height: 28px;
+  padding: 0 10px;
+  border-right: 1px solid var(--stroke-divider);
+  border-bottom: 1px solid var(--stroke-divider);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--on-surface);
 }
 
-.rowSelected {
-  border-left: 2px solid var(--primary);
+/* Prototype `.h-list td.ui` */
+.table td.ui {
+  font-family: var(--font-body);
+  font-size: var(--type-row-size);
+}
+
+/* Prototype `.h-list td.sqlc` */
+.table td.sql {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table tbody tr {
+  cursor: default;
+}
+
+.table tbody tr:focus-visible {
+  outline: none;
+}
+
+.table tbody tr:focus-visible td {
+  box-shadow:
+    inset 0 2px 0 var(--focus-outer),
+    inset 0 -2px 0 var(--focus-outer);
+}
+
+.table tbody tr:hover td {
+  background: var(--fill-subtle-hover);
+}
+
+.table tbody tr.rowSelected td {
   background: var(--fill-accent-tint);
 }
 
-.rowSelected:hover {
-  background: var(--fill-subtle-hover);
+.table tbody tr.rowSelected td:first-child {
+  box-shadow: inset 3px 0 0 var(--primary);
 }
 
-.td {
-  padding: var(--space-xs) var(--space-md);
-  vertical-align: top;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tdTimestamp {
-  font-family: var(--font-mono);
-  font-size: var(--type-size-xs);
-  color: var(--on-surface-variant);
-}
-
-.tdDatabase {
-  font-style: italic;
-  font-size: var(--type-size-xs);
-  color: var(--on-surface-variant);
-}
-
-.tdSql {
-  font-family: var(--font-mono);
-  font-size: var(--type-size-xs);
-  color: var(--on-surface-variant);
-}
-
-.tdSqlSelected {
-  color: var(--primary);
-}
-
-.tdAction {
-  text-align: center;
+/* Prototype `.b.sub.xs`: 24px square */
+.openButton:global(.ui-button) {
+  width: 24px;
+  height: 24px;
   vertical-align: middle;
 }
 
-.actionButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition:
-    background 150ms,
-    color 150ms;
-}
-
-.actionButton:hover {
-  background: var(--fill-subtle-hover);
-  color: var(--primary);
-}
-
-.emptyState {
+/* Prototype `.h-none` */
+.message {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
+  gap: 12px;
+  padding: 40px;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
   color: var(--on-surface-variant);
-  font-size: var(--type-body);
+}
+
+.errorMessage {
+  margin: 0;
+  color: var(--error);
 }
 
 .footer {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-sm) var(--space-md);
+  padding: 6px 12px;
   border-top: 1px solid var(--stroke-divider);
+  background: var(--surface-container-lowest);
   flex-shrink: 0;
-}
-
-.loadMoreButton {
-  border: none;
-  background: transparent;
-  color: var(--primary);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 400;
-  cursor: pointer;
-  padding: var(--space-xs) var(--space-md);
-  border-radius: var(--radius-md);
-  transition: background 0.12s;
-}
-
-.loadMoreButton:hover {
-  background: var(--fill-subtle-hover);
-}
-
-.loadMoreButton:disabled {
-  opacity: 0.5;
-  cursor: default;
 }

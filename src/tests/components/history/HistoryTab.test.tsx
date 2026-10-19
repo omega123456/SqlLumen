@@ -222,10 +222,12 @@ describe('HistoryTab', () => {
     // Detail should now show entry data
     await waitFor(() => {
       expect(screen.queryByTestId('history-detail-empty')).not.toBeInTheDocument()
-      // SQL appears in both the table row and the detail panel
-      const sqlMatches = screen.getAllByText('SELECT * FROM users')
-      expect(sqlMatches.length).toBeGreaterThanOrEqual(2) // table row + code panel
-      expect(screen.getByText('42ms')).toBeInTheDocument()
+      expect(screen.getByTestId('history-detail-panel').querySelector('pre')).toHaveTextContent(
+        'SELECT * FROM users'
+      )
+      expect(screen.getByText('42 ms')).toBeInTheDocument()
+      // Connection name comes from the active connection profile
+      expect(screen.getByText('Test DB')).toBeInTheDocument()
     })
   })
 
