@@ -18,7 +18,6 @@ describe('GeneralSettings', () => {
     useThemeStore.setState({ theme: 'system', resolvedTheme: 'light', _previewSnapshot: null })
     useZoomStore.setState({ zoomLevel: 100, previewSnapshot: null })
     document.documentElement.removeAttribute('data-theme')
-    document.documentElement.style.zoom = ''
   })
 
   it('renders the general settings defaults', () => {

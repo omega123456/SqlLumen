@@ -9,6 +9,14 @@ export async function setWindowTheme(theme: 'light' | 'dark' | null): Promise<vo
   await invoke<void>('set_window_theme', { theme })
 }
 
+/**
+ * Zooms the main webview natively (like browser zoom). CSS `zoom` on the root is avoided: it
+ * scales the page's own px but not pointer or rect coordinates, so overlays drift.
+ */
+export async function setWebviewZoom(level: number): Promise<void> {
+  await invoke<void>('plugin:webview|set_webview_zoom', { label: 'main', value: level / 100 })
+}
+
 /** `mica` when the window got the Windows 11 backdrop, `solid` otherwise. */
 export async function getWindowBackdrop(): Promise<WindowBackdrop> {
   return invoke<WindowBackdrop>('get_window_backdrop')

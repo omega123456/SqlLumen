@@ -87,6 +87,7 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
 
   // --- Window chrome ---
   set_window_theme: () => undefined,
+  'plugin:webview|set_webview_zoom': () => undefined,
   get_window_backdrop: () => 'solid',
 
   // --- Connection CRUD ---

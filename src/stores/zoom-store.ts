@@ -1,11 +1,14 @@
 import { create } from 'zustand'
 import { getSetting, setSetting } from '../lib/tauri-commands'
 import { logFrontend } from '../lib/app-log-commands'
+import { setWebviewZoom } from '../lib/window-commands'
 
 export const ZOOM_LEVELS = [70, 80, 90, 100, 110, 125, 150, 175, 200] as const
 
 function applyZoomToDOM(level: number): void {
-  document.documentElement.style.zoom = `${level}%`
+  setWebviewZoom(level).catch((error: unknown) => {
+    logFrontend('warn', `[zoom-store] Failed to apply zoom level ${level}: ${String(error)}`)
+  })
 }
 
 interface ZoomState {

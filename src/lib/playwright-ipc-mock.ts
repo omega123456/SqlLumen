@@ -354,6 +354,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- Window chrome ---
     case 'set_window_theme':
+    case 'plugin:webview|set_webview_zoom':
       return null
     case 'get_window_backdrop':
       return getWindowBackdropFixture()

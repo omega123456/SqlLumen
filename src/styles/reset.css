@@ -11,10 +11,6 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  min-height: 100vh;
-}
-
 img,
 picture,
 video,

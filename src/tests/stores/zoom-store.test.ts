@@ -1,3 +1,4 @@
+import { waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ipc } from '../ipc-mock'
 import { useZoomStore, ZOOM_LEVELS } from '../../stores/zoom-store'
@@ -7,8 +8,9 @@ beforeEach(() => {
     zoomLevel: 100,
     previewSnapshot: null,
   })
-  document.documentElement.style.zoom = ''
 })
+
+const appliedZoom = () => ipc.calls('plugin:webview|set_webview_zoom').slice(-1)[0]
 
 describe('zoom-store', () => {
   describe('initialize', () => {
@@ -16,14 +18,14 @@ describe('zoom-store', () => {
       ipc.override('get_setting', () => '125')
       await useZoomStore.getState().initialize()
       expect(useZoomStore.getState().zoomLevel).toBe(125)
-      expect(document.documentElement.style.zoom).toBe('125%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1.25 })
     })
 
     it('falls back to 100 when setting is null', async () => {
       ipc.override('get_setting', () => null)
       await useZoomStore.getState().initialize()
       expect(useZoomStore.getState().zoomLevel).toBe(100)
-      expect(document.documentElement.style.zoom).toBe('100%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
     })
 
     it('falls back to 100 on IPC error', async () => {
@@ -32,8 +34,23 @@ describe('zoom-store', () => {
       })
       await useZoomStore.getState().initialize()
       expect(useZoomStore.getState().zoomLevel).toBe(100)
-      expect(document.documentElement.style.zoom).toBe('100%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
     })
+  })
+
+  it('logs instead of throwing when the webview zoom cannot be applied', async () => {
+    ipc.override('plugin:webview|set_webview_zoom', () => {
+      throw new Error('denied')
+    })
+    useZoomStore.getState().previewZoom(125)
+    expect(useZoomStore.getState().zoomLevel).toBe(125)
+    await waitFor(() =>
+      expect(
+        ipc
+          .calls('log_frontend')
+          .some((call) => String((call as { message: string }).message).includes('denied'))
+      ).toBe(true)
+    )
   })
 
   describe('setZoom', () => {
@@ -41,7 +58,7 @@ describe('zoom-store', () => {
       ipc.override('set_setting', () => null)
       await useZoomStore.getState().setZoom(125)
       expect(useZoomStore.getState().zoomLevel).toBe(125)
-      expect(document.documentElement.style.zoom).toBe('125%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1.25 })
       const calls = ipc.calls('set_setting')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual({ key: 'appearance.zoom', value: '125' })
@@ -58,7 +75,7 @@ describe('zoom-store', () => {
       useZoomStore.getState().previewZoom(150)
       expect(useZoomStore.getState().zoomLevel).toBe(150)
       expect(useZoomStore.getState().previewSnapshot).toBe(100)
-      expect(document.documentElement.style.zoom).toBe('150%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1.5 })
       // No persistence calls
       expect(ipc.calls('set_setting')).toHaveLength(0)
 
@@ -71,7 +88,7 @@ describe('zoom-store', () => {
       useZoomStore.getState().revertPreview()
       expect(useZoomStore.getState().zoomLevel).toBe(100)
       expect(useZoomStore.getState().previewSnapshot).toBeNull()
-      expect(document.documentElement.style.zoom).toBe('100%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
       expect(ipc.calls('set_setting')).toHaveLength(0)
     })
 
@@ -87,7 +104,7 @@ describe('zoom-store', () => {
       useZoomStore.setState({ zoomLevel: 100 })
       await useZoomStore.getState().zoomIn()
       expect(useZoomStore.getState().zoomLevel).toBe(110)
-      expect(document.documentElement.style.zoom).toBe('110%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1.1 })
     })
 
     it('no-op at max level', async () => {
@@ -106,7 +123,7 @@ describe('zoom-store', () => {
       useZoomStore.setState({ zoomLevel: 100 })
       await useZoomStore.getState().zoomOut()
       expect(useZoomStore.getState().zoomLevel).toBe(90)
-      expect(document.documentElement.style.zoom).toBe('90%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 0.9 })
     })
 
     it('no-op at min level', async () => {
@@ -125,7 +142,7 @@ describe('zoom-store', () => {
       useZoomStore.setState({ zoomLevel: 150 })
       await useZoomStore.getState().resetZoom()
       expect(useZoomStore.getState().zoomLevel).toBe(100)
-      expect(document.documentElement.style.zoom).toBe('100%')
+      expect(appliedZoom()).toEqual({ label: 'main', value: 1 })
       const calls = ipc.calls('set_setting')
       expect(calls).toHaveLength(1)
       expect(calls[0]).toEqual({ key: 'appearance.zoom', value: '100' })
