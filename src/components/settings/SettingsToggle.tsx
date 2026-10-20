@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { Checkbox } from '../common/Checkbox'
+import { Switch } from '../common/Switch'
 import styles from './SettingsToggle.module.css'
 
 export interface SettingsToggleProps {
@@ -29,7 +29,7 @@ export function SettingsToggle({
         </label>
         {description && <span className={styles.description}>{description}</span>}
       </div>
-      <Checkbox
+      <Switch
         id={id}
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}

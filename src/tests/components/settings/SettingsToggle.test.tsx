@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { SettingsToggle } from '../../../components/settings/SettingsToggle'
 
 describe('SettingsToggle', () => {
-  it('renders label and checkbox', () => {
+  it('renders label and switch', () => {
     render(<SettingsToggle label="Auto-save" checked={false} onChange={() => {}} />)
 
     expect(screen.getByText('Auto-save')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByRole('switch')).not.toBeChecked()
   })
 
   it('renders description when provided', () => {
@@ -29,7 +29,7 @@ describe('SettingsToggle', () => {
     const onChangeSpy = vi.fn()
     render(<SettingsToggle label="Auto-save" checked={false} onChange={onChangeSpy} />)
 
-    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('switch'))
     expect(onChangeSpy).toHaveBeenCalledWith(true)
   })
 
@@ -41,9 +41,9 @@ describe('SettingsToggle', () => {
     expect(screen.getByTestId('my-toggle')).toBeInTheDocument()
   })
 
-  it('checkbox is disabled when disabled prop is true', () => {
+  it('switch is disabled when disabled prop is true', () => {
     render(<SettingsToggle label="Disabled toggle" checked={false} onChange={() => {}} disabled />)
 
-    expect(screen.getByRole('checkbox')).toBeDisabled()
+    expect(screen.getByRole('switch')).toBeDisabled()
   })
 })

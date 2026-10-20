@@ -1,0 +1,80 @@
+/* Switch — 40×20 Fluent toggle on the native input (prototype `.sw-t`). */
+
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.caption {
+  min-width: 24px;
+  text-align: right;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line);
+  color: var(--on-surface);
+}
+
+.input {
+  position: relative;
+  box-sizing: border-box;
+  width: 40px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid var(--on-surface-variant);
+  background: var(--fill-control);
+  cursor: default;
+  flex: none;
+  outline: none;
+  transition: background 0.12s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Thumb */
+.input::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--on-surface-variant);
+  transition: left 0.12s;
+}
+
+.input:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.input:checked::after {
+  left: 23px;
+  background: var(--on-primary);
+}
+
+.input:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.input:disabled {
+  border-color: var(--text-disabled);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+.input:disabled::after {
+  background: var(--text-disabled);
+}
+
+.input:checked:disabled {
+  background: var(--text-disabled);
+  border-color: transparent;
+}
+
+.input:checked:disabled::after {
+  background: var(--on-primary);
+}
