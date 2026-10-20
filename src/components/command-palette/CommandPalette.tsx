@@ -229,7 +229,7 @@ export function CommandPalette() {
       isOpen={isOpen}
       onClose={handleClose}
       panelPadding={false}
-      panelWidth="min(640px, 80vw)"
+      panelWidth="min(800px, 80vw)"
       panelClassName={styles.panel}
       backdropClassName={styles.backdrop}
       testId="command-palette"

@@ -1,4 +1,4 @@
-/* Command palette (prototype `.pal`): 640px flyout card 56px below the window top */
+/* Command palette (prototype `.pal`): 800px flyout card 56px below the window top */
 .backdrop {
   background: var(--smoke-palette);
 }
