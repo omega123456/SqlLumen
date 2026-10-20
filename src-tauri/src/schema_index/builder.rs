@@ -320,7 +320,7 @@ pub fn generate_fk_chunk_text(fk: &FkInput) -> String {
 pub fn compute_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Split an identifier into segments by underscore and camelCase boundaries.
@@ -1916,7 +1916,7 @@ async fn fetch_all_table_signatures(
 
     // Columns
     let started = Instant::now();
-    let col_rows = sqlx::query(&cols_sql)
+    let col_rows = sqlx::query(sqlx::AssertSqlSafe(cols_sql.as_str()))
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch column signatures: {e}"))?;
@@ -1973,7 +1973,7 @@ async fn fetch_all_table_signatures(
 
     // Indexes
     let started = Instant::now();
-    let idx_rows = sqlx::query(&idx_sql)
+    let idx_rows = sqlx::query(sqlx::AssertSqlSafe(idx_sql.as_str()))
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch index signatures: {e}"))?;
@@ -2018,7 +2018,7 @@ async fn fetch_all_table_signatures(
 
     // Foreign keys
     let started = Instant::now();
-    let fk_rows = sqlx::query(&fks_sql)
+    let fk_rows = sqlx::query(sqlx::AssertSqlSafe(fks_sql.as_str()))
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch FK signatures: {e}"))?;
@@ -2069,7 +2069,7 @@ async fn fetch_all_table_signatures(
 
     let out = hashers
         .into_iter()
-        .map(|(k, hasher)| (k, format!("{:x}", hasher.finalize())))
+        .map(|(k, hasher)| (k, hex::encode(hasher.finalize())))
         .collect();
     Ok(out)
 }
@@ -2143,7 +2143,10 @@ async fn fetch_all_user_views(
             .map_err(|e| format!("Invalid view name {view_name}: {e}"))?;
         let sql = format!("SHOW CREATE VIEW {safe_db}.{safe_view}");
 
-        match sqlx::query(&sql).fetch_optional(pool).await {
+        match sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_optional(pool)
+            .await
+        {
             Ok(Some(ddl_row)) => {
                 let ddl = decode_string(&ddl_row, 1).unwrap_or_default();
                 out.push((schema, view_name, ddl));
@@ -2208,7 +2211,10 @@ async fn fetch_all_user_routines(
             format!("SHOW CREATE FUNCTION {safe_db}.{safe_name}")
         };
 
-        match sqlx::query(&show_cmd).fetch_optional(pool).await {
+        match sqlx::query(sqlx::AssertSqlSafe(show_cmd.as_str()))
+            .fetch_optional(pool)
+            .await
+        {
             Ok(Some(ddl_row)) => {
                 let ddl = decode_string(&ddl_row, 2).unwrap_or_default();
                 out.push((schema, routine_name, routine_type.to_uppercase(), ddl));
@@ -2245,7 +2251,7 @@ async fn fetch_create_table(
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
     let sql = format!("SHOW CREATE TABLE {safe_db}.{safe_table}");
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .fetch_optional(pool)
         .await
         .map_err(|e| format!("SHOW CREATE TABLE {database}.{table} failed: {e}"))?

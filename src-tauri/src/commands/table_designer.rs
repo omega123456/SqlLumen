@@ -483,7 +483,7 @@ pub async fn apply_table_ddl_impl(
     let pool = get_pool(state, connection_id)?;
 
     query_log::log_outgoing_sql(ddl);
-    let result = sqlx::query(ddl)
+    let result = sqlx::query(sqlx::AssertSqlSafe(ddl))
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;

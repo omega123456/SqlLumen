@@ -81,7 +81,7 @@ async fn execute_simple_sql(
     sql: &str,
 ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
     query_log::log_outgoing_sql(sql);
-    match conn.execute(sql).await {
+    match conn.execute(sqlx::AssertSqlSafe(sql)).await {
         Ok(result) => {
             query_log::log_execute_result(&result);
             Ok(result)

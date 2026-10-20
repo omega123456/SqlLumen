@@ -304,7 +304,7 @@ pub async fn create_database_impl(
     let sql = format!("CREATE DATABASE {safe_name}{encoding_clause}");
 
     query_log::log_outgoing_sql(&sql);
-    let r = sqlx::query(&sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to create database '{name}': {e}"))?;
@@ -340,7 +340,7 @@ pub async fn drop_database_impl(
     let safe_name = schema_queries::safe_identifier(name)?;
     let sql = format!("DROP DATABASE {safe_name}");
     query_log::log_outgoing_sql(&sql);
-    let r = sqlx::query(&sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to drop database '{name}': {e}"))?;
@@ -379,7 +379,7 @@ pub async fn alter_database_impl(
     let sql = format!("ALTER DATABASE {safe_name}{encoding_clause}");
 
     query_log::log_outgoing_sql(&sql);
-    let r = sqlx::query(&sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to alter database '{name}': {e}"))?;
@@ -426,7 +426,7 @@ pub async fn rename_database_impl(
     // 2. Create new database
     let create_sql = format!("CREATE DATABASE {safe_new}");
     query_log::log_outgoing_sql(&create_sql);
-    let r = sqlx::query(&create_sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(create_sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to create target database '{new_name}': {e}"))?;
@@ -443,7 +443,7 @@ pub async fn rename_database_impl(
         }
         let sql = format!("RENAME TABLE {}", rename_pairs.join(", "));
         query_log::log_outgoing_sql(&sql);
-        let r = sqlx::query(&sql)
+        let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .execute(&pool)
             .await
             .map_err(|e| format!("Failed to move tables from '{old_name}' to '{new_name}': {e}"))?;
@@ -453,7 +453,7 @@ pub async fn rename_database_impl(
     // 4. Drop old database
     let drop_sql = format!("DROP DATABASE {safe_old}");
     query_log::log_outgoing_sql(&drop_sql);
-    let r = sqlx::query(&drop_sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(drop_sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to drop source database '{old_name}': {e}"))?;
@@ -490,7 +490,7 @@ pub async fn drop_table_impl(
     let safe_table = schema_queries::safe_identifier(table)?;
     let sql = format!("DROP TABLE {safe_db}.{safe_table}");
     query_log::log_outgoing_sql(&sql);
-    let r = sqlx::query(&sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to drop table '{database}'.'{table}': {e}"))?;
@@ -527,7 +527,7 @@ pub async fn truncate_table_impl(
     let safe_table = schema_queries::safe_identifier(table)?;
     let sql = format!("TRUNCATE TABLE {safe_db}.{safe_table}");
     query_log::log_outgoing_sql(&sql);
-    let r = sqlx::query(&sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to truncate table '{database}'.'{table}': {e}"))?;
@@ -566,7 +566,7 @@ pub async fn rename_table_impl(
     let safe_new = schema_queries::safe_identifier(new_name)?;
     let sql = format!("RENAME TABLE {safe_db}.{safe_old} TO {safe_db}.{safe_new}");
     query_log::log_outgoing_sql(&sql);
-    let r = sqlx::query(&sql)
+    let r = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .execute(&pool)
         .await
         .map_err(|e| format!("Failed to rename table '{old_name}' to '{new_name}': {e}"))?;

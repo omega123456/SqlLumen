@@ -834,6 +834,9 @@ test('query result grid supports keyboard navigation, copy, edit cancel, and tab
   await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
 
   await clickResultGridCell(page, 1, 0)
+  // Glide focuses its canvas one animation frame after the click; keys sent sooner go to whatever
+  // still has focus (the Edit mode dropdown), so wait for the grid to own focus first.
+  await expect.poll(() => grid.evaluate((el) => el.contains(document.activeElement))).toBe(true)
   await page.keyboard.press('ArrowRight')
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')

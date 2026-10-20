@@ -423,7 +423,7 @@ pub async fn query_indexes(
     let safe_table = safe_identifier(table)?;
     let sql = format!("SHOW INDEX FROM {safe_db}.{safe_table}");
     query_log::log_outgoing_sql(&sql);
-    let rows = sqlx::query(&sql)
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to get indexes: {e}"))?;
@@ -581,7 +581,7 @@ pub async fn query_ddl(
     };
 
     query_log::log_outgoing_sql(&sql);
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .fetch_optional(pool)
         .await
         .map_err(|e| format!("Failed to get DDL for {object_type} '{object_name}': {e}"))?
@@ -791,7 +791,7 @@ async fn query_routine_parameters_inner(
             routine_type.to_string(),
         ],
     );
-    let rows = sqlx::query(&sql)
+    let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(database)
         .bind(routine_name)
         .bind(routine_type)
@@ -1058,7 +1058,7 @@ pub async fn query_all_foreign_keys_batch(
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<'_, sqlx::MySql> = sqlx::QueryBuilder::new(
+    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
         "SELECT \
              kcu.TABLE_SCHEMA, \
              kcu.TABLE_NAME, \
@@ -1085,7 +1085,7 @@ pub async fn query_all_foreign_keys_batch(
     );
 
     let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql, databases);
+    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
     let rows = qb
         .build()
         .fetch_all(pool)
@@ -1132,7 +1132,7 @@ pub async fn query_all_views_batch(
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<'_, sqlx::MySql> = sqlx::QueryBuilder::new(
+    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
         "SELECT TABLE_SCHEMA, TABLE_NAME \
          FROM information_schema.VIEWS \
          WHERE TABLE_SCHEMA IN (",
@@ -1147,7 +1147,7 @@ pub async fn query_all_views_batch(
     );
 
     let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql, databases);
+    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
     let rows = qb
         .build()
         .fetch_all(pool)
@@ -1184,7 +1184,7 @@ pub async fn query_all_triggers_batch(
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<'_, sqlx::MySql> = sqlx::QueryBuilder::new(
+    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
         "SELECT TRIGGER_SCHEMA, TRIGGER_NAME \
          FROM information_schema.TRIGGERS \
          WHERE TRIGGER_SCHEMA IN (",
@@ -1199,7 +1199,7 @@ pub async fn query_all_triggers_batch(
     );
 
     let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql, databases);
+    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
     let rows = qb
         .build()
         .fetch_all(pool)
@@ -1236,7 +1236,7 @@ pub async fn query_all_indexes_batch(
         return Ok(HashMap::new());
     }
 
-    let mut qb: sqlx::QueryBuilder<'_, sqlx::MySql> = sqlx::QueryBuilder::new(
+    let mut qb: sqlx::QueryBuilder<sqlx::MySql> = sqlx::QueryBuilder::new(
         "SELECT \
              TABLE_SCHEMA, \
              TABLE_NAME, \
@@ -1255,7 +1255,7 @@ pub async fn query_all_indexes_batch(
     sep.push_unseparated(") ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX");
 
     let sql = qb.sql();
-    query_log::log_outgoing_sql_bound(sql, databases);
+    query_log::log_outgoing_sql_bound(sql.as_str(), databases);
     let rows = qb
         .build()
         .fetch_all(pool)

@@ -29,6 +29,11 @@ const MOCK_COLLATIONS = [
 async function waitForAlterDatabaseDialogIdle() {
   await waitFor(() => {
     expect(screen.queryByText('Loading database details...')).not.toBeInTheDocument()
+    // DialogShell's focus trap moves focus into the dialog one frame after open; interacting
+    // before that lets it steal focus from a just-opened dropdown listbox.
+    expect(screen.getByTestId('alter-database-dialog')).toContainElement(
+      document.activeElement as HTMLElement
+    )
   })
 }
 

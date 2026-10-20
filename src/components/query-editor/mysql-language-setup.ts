@@ -10,7 +10,7 @@
  */
 
 import { setupLanguageFeatures, LanguageIdEnum } from 'monaco-sql-languages'
-import { language as mysqlLanguage } from 'monaco-sql-languages/esm/languages/mysql/mysql'
+import { language as mysqlLanguage } from 'monaco-sql-languages/esm/languages/mysql/mysql.js'
 import { completionService } from './completion-service'
 
 /**

@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 import 'jest-canvas-mock'
 import { act, cleanup } from '@testing-library/react'
 import { useEffect } from 'react'
@@ -116,7 +116,7 @@ vi.mock('monaco-editor', () => ({
 // monaco-sql-languages mocks (contribution is a side-effect import)
 // ---------------------------------------------------------------------------
 
-vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution', () => ({}))
+vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution.js', () => ({}))
 
 vi.mock('monaco-sql-languages', () => ({
   setupLanguageFeatures: vi.fn(),

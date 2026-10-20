@@ -295,9 +295,12 @@ fn execute_dump(
                                 sql_dump::escape_identifier(db_name),
                                 sql_dump::escape_identifier(table_name)
                             );
-                            let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
-                                format!("Failed to get CREATE VIEW for '{table_name}': {e}")
-                            })?;
+                            let row = sqlx::query(sqlx::AssertSqlSafe(q.as_str()))
+                                .fetch_one(pool)
+                                .await
+                                .map_err(|e| {
+                                    format!("Failed to get CREATE VIEW for '{table_name}': {e}")
+                                })?;
                             decode_mysql_text_cell(&row, 1)
                         })?
                     } else {
@@ -307,9 +310,12 @@ fn execute_dump(
                                 sql_dump::escape_identifier(db_name),
                                 sql_dump::escape_identifier(table_name)
                             );
-                            let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
-                                format!("Failed to get CREATE TABLE for '{table_name}': {e}")
-                            })?;
+                            let row = sqlx::query(sqlx::AssertSqlSafe(q.as_str()))
+                                .fetch_one(pool)
+                                .await
+                                .map_err(|e| {
+                                    format!("Failed to get CREATE TABLE for '{table_name}': {e}")
+                                })?;
                             decode_mysql_text_cell(&row, 1)
                         })?
                     };
@@ -358,7 +364,8 @@ fn execute_dump(
                         }
 
                         // Use fetch() for streaming on the dedicated connection
-                        let mut stream = sqlx::query(&data_query).fetch(&mut *conn);
+                        let mut stream =
+                            sqlx::query(sqlx::AssertSqlSafe(data_query.as_str())).fetch(&mut *conn);
 
                         // Extract column names from the first row
                         let first_row = stream.try_next().await.map_err(|e| {
@@ -670,7 +677,10 @@ pub async fn cancel_dump_impl(
             let kill_sql = format!("KILL QUERY {}", tid);
             tracing::debug!(job_id, thread_id = tid, "cancel_dump: issuing KILL QUERY");
             crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-            if let Err(e) = sqlx::query(&kill_sql).execute(&pool).await {
+            if let Err(e) = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
+                .execute(&pool)
+                .await
+            {
                 tracing::warn!(job_id, error = %e, "KILL QUERY failed during dump cancel");
             }
         }

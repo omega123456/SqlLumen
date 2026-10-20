@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { language } from 'monaco-sql-languages/esm/languages/mysql/mysql'
+import { language } from 'monaco-sql-languages/esm/languages/mysql/mysql.js'
 import { STAR_OPERATOR_RULE } from '../../../components/query-editor/mysql-language-setup'
 
 describe('mysql language setup — star operator token', () => {

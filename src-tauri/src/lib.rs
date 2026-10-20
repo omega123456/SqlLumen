@@ -11,6 +11,10 @@ pub mod state;
 pub mod window_chrome;
 
 pub fn http_client_builder() -> reqwest::ClientBuilder {
+    // reqwest uses `rustls-no-provider`; match sqlx/updater on ring instead of pulling in aws-lc-rs.
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
     let builder = reqwest::Client::builder();
     #[cfg(feature = "test-utils")]
     let builder = builder.no_proxy();

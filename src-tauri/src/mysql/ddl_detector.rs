@@ -45,9 +45,9 @@ pub fn detect_ddl_tables(sql: &str) -> DdlDetectionResult {
 
 fn collect_statement_tables(statement: &Statement, affected_tables: &mut Vec<AffectedTable>) {
     match statement {
-        Statement::AlterTable {
-            name, operations, ..
-        } => {
+        Statement::AlterTable(alter_table) => {
+            let name = &alter_table.name;
+            let operations = &alter_table.operations;
             if operations
                 .iter()
                 .any(|operation| matches!(operation, AlterTableOperation::RenameTable { .. }))

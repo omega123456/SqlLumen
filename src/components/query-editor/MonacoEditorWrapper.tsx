@@ -19,7 +19,7 @@ import type { ShortcutBinding, TabType } from '../../types/schema'
 import styles from './MonacoEditorWrapper.module.css'
 
 // Register the 'mysql' language with Monaco (side-effect import)
-import 'monaco-sql-languages/esm/languages/mysql/mysql.contribution'
+import 'monaco-sql-languages/esm/languages/mysql/mysql.contribution.js'
 
 // Setup language features with our custom completionService (side-effect import)
 import './mysql-language-setup'

@@ -969,7 +969,10 @@ mod engine {
         sql: &str,
     ) -> Result<(), String> {
         query_log::log_outgoing_sql(sql);
-        match sqlx::query(sql).execute(&mut *target).await {
+        match sqlx::query(sqlx::AssertSqlSafe(sql))
+            .execute(&mut *target)
+            .await
+        {
             Ok(result) => {
                 query_log::log_execute_result(&result);
                 Ok(())
@@ -1044,10 +1047,13 @@ mod engine {
         let safe_table = safe_identifier(table)?;
         let sql = format!("SELECT COUNT(*) AS row_count FROM {safe_db}.{safe_table}");
         query_log::log_outgoing_sql(&sql);
-        let row = sqlx::query(&sql).fetch_one(source).await.map_err(|e| {
-            query_log::log_execute_error(&e);
-            format!("Failed to count rows in '{table}': {e}")
-        })?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_one(source)
+            .await
+            .map_err(|e| {
+                query_log::log_execute_error(&e);
+                format!("Failed to count rows in '{table}': {e}")
+            })?;
         query_log::log_mysql_row(&row);
 
         let row_count = row
@@ -1095,7 +1101,7 @@ mod engine {
         // otherwise be loaded into RAM in full).
         let select_sql = format!("SELECT * FROM {safe_db}.{safe_table}");
         query_log::log_outgoing_sql(&select_sql);
-        let mut stream = sqlx::query(&select_sql).fetch(source);
+        let mut stream = sqlx::query(sqlx::AssertSqlSafe(select_sql.as_str())).fetch(source);
 
         let budget = byte_budget as usize;
         let cap = COPY_BATCH_ROW_CAP.max(1);

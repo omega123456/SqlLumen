@@ -175,7 +175,6 @@ struct MockMySqlBackend {
 
 const VERSION_STATEMENT_ID: u32 = 1;
 const FIRST_QUERY_STATEMENT_ID: u32 = 2;
-const EMPTY_STATEMENT_ID: u32 = u32::MAX;
 
 impl MockMySqlBackend {
     fn new(response: MockQueryResponse) -> Self {
@@ -211,6 +210,30 @@ impl MockMySqlBackend {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    /// sqlx 0.9 rejects prepare replies whose parameter count differs from the bound arguments,
+    /// so declare one parameter per `?` placeholder outside quoted strings and identifiers.
+    fn placeholder_params(query: &str) -> Vec<Column> {
+        let mut quote: Option<char> = None;
+        let mut count = 0;
+        for ch in query.chars() {
+            match (quote, ch) {
+                (Some(q), c) if c == q => quote = None,
+                (Some(_), _) => {}
+                (None, '\'' | '"' | '`') => quote = Some(ch),
+                (None, '?') => count += 1,
+                _ => {}
+            }
+        }
+        (0..count)
+            .map(|_| Column {
+                table: String::new(),
+                column: "?".to_string(),
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            })
+            .collect()
     }
 
     fn find_step(&self, query: &str) -> Option<MockQueryStep> {
@@ -310,15 +333,19 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
                 .await;
         }
 
+        // Every statement gets its own id: sqlx caches prepared statements per SQL text, and
+        // opensrv parses each execute using the parameter count declared for that id.
+        let statement_id = self.next_statement_id;
+        self.next_statement_id += 1;
+        let params = Self::placeholder_params(query);
+
         if let Some(step) = self.find_step(query) {
-            let statement_id = self.next_statement_id;
-            self.next_statement_id += 1;
             let columns = Self::step_columns(&step);
             self.prepared_steps.insert(statement_id, step);
-            return info.reply(statement_id, &[], &columns).await;
+            return info.reply(statement_id, &params, &columns).await;
         }
 
-        info.reply(EMPTY_STATEMENT_ID, &[], &[]).await
+        info.reply(statement_id, &params, &[]).await
     }
 
     async fn on_execute<'a>(

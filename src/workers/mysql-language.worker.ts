@@ -16,7 +16,7 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — no .d.ts for internal Monaco worker entry point
 import { start } from 'monaco-editor/esm/vs/editor/editor.worker.start.js'
-import { MySQLWorker } from 'monaco-sql-languages/esm/languages/mysql/mysqlWorker'
+import { MySQLWorker } from 'monaco-sql-languages/esm/languages/mysql/mysqlWorker.js'
 
 type ParseErrorListener = (error: unknown) => void
 

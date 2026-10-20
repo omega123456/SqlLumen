@@ -358,7 +358,11 @@ pub fn execute_sql_import(
 
         // Execute the statement
         let stmt_start = std::time::Instant::now();
-        let result = rt.block_on(async { sqlx::query(sql).execute(pool).await });
+        let result = rt.block_on(async {
+            sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+                .execute(pool)
+                .await
+        });
         let stmt_elapsed_ms = stmt_start.elapsed().as_millis() as i64;
 
         // Update progress

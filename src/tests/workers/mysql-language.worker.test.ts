@@ -7,7 +7,7 @@ vi.mock('monaco-editor/esm/vs/editor/editor.worker.start.js', () => ({
   start: mockStart,
 }))
 
-vi.mock('monaco-sql-languages/esm/languages/mysql/mysqlWorker', () => ({
+vi.mock('monaco-sql-languages/esm/languages/mysql/mysqlWorker.js', () => ({
   MySQLWorker: class {
     parser = {
       createParser: mockCreateParser,
@@ -66,7 +66,7 @@ describe('mysql-language.worker', () => {
   })
 
   it('does not throw when parser.createParser is unavailable', async () => {
-    await vi.doMock('monaco-sql-languages/esm/languages/mysql/mysqlWorker', () => ({
+    await vi.doMock('monaco-sql-languages/esm/languages/mysql/mysqlWorker.js', () => ({
       MySQLWorker: class {
         parser = {}
       },

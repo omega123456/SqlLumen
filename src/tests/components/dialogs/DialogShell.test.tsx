@@ -98,25 +98,21 @@ describe('DialogShell', () => {
     render(<DialogShell {...defaultProps} maxWidth={600} />)
     // The dialog content wrapper should have maxWidth style
     const dialogContent = screen.getByText('Dialog content').parentElement
-    expect(dialogContent).toHaveStyle({ maxWidth: 'min(600px, 90vw)' })
+    expect(dialogContent?.style.maxWidth).toBe('min(600px, 90vw)')
   })
 
   it('applies width when fillMaxWidth is true', () => {
     render(<DialogShell {...defaultProps} maxWidth={600} fillMaxWidth />)
     const dialogContent = screen.getByText('Dialog content').parentElement
-    expect(dialogContent).toHaveStyle({
-      width: 'min(600px, 90vw)',
-      maxWidth: 'min(600px, 90vw)',
-    })
+    expect(dialogContent?.style.width).toBe('min(600px, 90vw)')
+    expect(dialogContent?.style.maxWidth).toBe('min(600px, 90vw)')
   })
 
   it('applies panelWidth for width and maxWidth when set', () => {
     render(<DialogShell {...defaultProps} panelWidth="80vw" maxWidth={600} />)
     const dialogContent = screen.getByText('Dialog content').parentElement
-    expect(dialogContent).toHaveStyle({
-      width: '80vw',
-      maxWidth: '80vw',
-    })
+    expect(dialogContent?.style.width).toBe('80vw')
+    expect(dialogContent?.style.maxWidth).toBe('80vw')
   })
 
   it('removes panel padding when panelPadding is false', () => {
@@ -128,13 +124,11 @@ describe('DialogShell', () => {
   it('applies panelHeight and flex layout when set', () => {
     render(<DialogShell {...defaultProps} panelHeight="min(50vh, 560px)" />)
     const panel = screen.getByTestId('test-dialog-panel')
-    expect(panel).toHaveStyle({
-      height: 'min(50vh, 560px)',
-      maxHeight: 'min(50vh, 560px)',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-    })
+    expect(panel.style.height).toBe('min(50vh, 560px)')
+    expect(panel.style.maxHeight).toBe('min(50vh, 560px)')
+    expect(panel.style.display).toBe('flex')
+    expect(panel.style.flexDirection).toBe('column')
+    expect(panel.style.overflow).toBe('hidden')
   })
 
   it('uses elevated surface chrome on the panel', () => {
@@ -145,7 +139,7 @@ describe('DialogShell', () => {
   it('uses default maxWidth of 420 when not specified', () => {
     render(<DialogShell {...defaultProps} />)
     const dialogContent = screen.getByText('Dialog content').parentElement
-    expect(dialogContent).toHaveStyle({ maxWidth: 'min(420px, 90vw)' })
+    expect(dialogContent?.style.maxWidth).toBe('min(420px, 90vw)')
   })
 
   it('renders as a portal (content is in document.body)', () => {

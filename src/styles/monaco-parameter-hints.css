@@ -10,14 +10,14 @@
   font-size: var(--type-mono-size);
   font-weight: var(--type-weight-regular);
   color: var(--token-text);
-  padding: var(--space-xs) var(--space-sm);
+  padding: var(--space-xs) var(--space-sm) !important;
   line-height: var(--type-mono-line);
 }
 
 /* Active parameter: semibold in the accent */
 .monaco-editor .parameter-hints-widget .signature .parameter.active {
-  font-weight: var(--type-weight-semibold);
-  color: var(--primary);
+  font-weight: var(--type-weight-semibold) !important;
+  color: var(--primary) !important;
 }
 
 /* ---------------------------------------------------------------------------
@@ -28,6 +28,6 @@
   color: var(--on-surface-variant);
   font-family: var(--font-body);
   font-size: var(--type-caption-size);
-  padding: var(--space-xs) var(--space-sm);
+  padding: var(--space-xs) var(--space-sm) !important;
   line-height: var(--type-caption-line);
 }

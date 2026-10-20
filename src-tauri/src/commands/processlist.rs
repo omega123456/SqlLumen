@@ -139,7 +139,10 @@ pub async fn kill_queries_impl(
         };
         crate::mysql::query_log::log_outgoing_sql(&sql);
         let start = std::time::Instant::now();
-        let result = match sqlx::query(&sql).execute(&pool).await {
+        let result = match sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .execute(&pool)
+            .await
+        {
             Ok(result) => {
                 crate::mysql::query_log::log_execute_result(&result);
                 KillResult {

@@ -769,7 +769,7 @@ pub async fn cancel_query_impl(
         "cancel_query: issuing KILL QUERY"
     );
     crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-    let result = sqlx::query(&kill_sql)
+    let result = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
         .execute(&mut *conn)
         .await
         .map_err(|e| format!("Failed to cancel query: {e}"))?;
@@ -853,7 +853,7 @@ pub async fn fetch_schema_metadata_impl(
     let (db_rows, table_rows, col_rows, routine_rows) = tokio::try_join!(
         async {
             crate::mysql::query_log::log_outgoing_sql(&db_sql);
-            let rows = sqlx::query(&db_sql)
+            let rows = sqlx::query(sqlx::AssertSqlSafe(db_sql.as_str()))
                 .fetch_all(&pool)
                 .await
                 .map_err(|e| format!("Failed to fetch databases: {e}"))?;
@@ -862,7 +862,7 @@ pub async fn fetch_schema_metadata_impl(
         },
         async {
             crate::mysql::query_log::log_outgoing_sql(&table_sql);
-            let rows = sqlx::query(&table_sql)
+            let rows = sqlx::query(sqlx::AssertSqlSafe(table_sql.as_str()))
                 .fetch_all(&pool)
                 .await
                 .map_err(|e| format!("Failed to fetch tables: {e}"))?;
@@ -871,7 +871,7 @@ pub async fn fetch_schema_metadata_impl(
         },
         async {
             crate::mysql::query_log::log_outgoing_sql(&col_sql);
-            let rows = sqlx::query(&col_sql)
+            let rows = sqlx::query(sqlx::AssertSqlSafe(col_sql.as_str()))
                 .fetch_all(&pool)
                 .await
                 .map_err(|e| format!("Failed to fetch columns: {e}"))?;
@@ -880,7 +880,7 @@ pub async fn fetch_schema_metadata_impl(
         },
         async {
             crate::mysql::query_log::log_outgoing_sql(&routine_sql);
-            let rows = sqlx::query(&routine_sql)
+            let rows = sqlx::query(sqlx::AssertSqlSafe(routine_sql.as_str()))
                 .fetch_all(&pool)
                 .await
                 .map_err(|e| format!("Failed to fetch routines: {e}"))?;

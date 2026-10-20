@@ -7,6 +7,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['src/tests/jest-compat.ts', 'src/tests/setup.ts'],
     globals: true,
+    // Vitest 5 defaults clearMocks to true; tests assert on calls made at module import time.
+    clearMocks: false,
     // With coverage, React still emits RunningIndicator act() warnings to stderr; setup.ts filters
     // console.error, and this avoids Vitest duplicating those lines during `pnpm test:coverage`.
     disableConsoleIntercept: true,

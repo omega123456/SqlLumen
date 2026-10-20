@@ -1464,7 +1464,7 @@ pub async fn fetch_table_data_impl(
             .insert(cancel_key.clone(), tid);
     }
 
-    let mut data_query = sqlx::query(&data_sql);
+    let mut data_query = sqlx::query(sqlx::AssertSqlSafe(data_sql.as_str()));
     for param in &filter_clause.params {
         data_query = bind_json_value(data_query, param);
     }
@@ -1600,7 +1600,7 @@ pub async fn update_table_row_impl(
     all_params.extend(where_params);
 
     log_table_data_sql(&sql, &all_params);
-    let mut query = sqlx::query(&sql);
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
     for param in &all_params {
         query = bind_json_value(query, param);
     }
@@ -1680,7 +1680,7 @@ pub async fn insert_table_row_impl(
     );
 
     log_table_data_sql(&sql, &params);
-    let mut query = sqlx::query(&sql);
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
     for param in &params {
         query = bind_json_value(query, param);
     }
@@ -1719,7 +1719,7 @@ pub async fn insert_table_row_impl(
         );
 
         log_table_data_sql(&refetch_sql, &where_params);
-        let mut refetch_query = sqlx::query(&refetch_sql);
+        let mut refetch_query = sqlx::query(sqlx::AssertSqlSafe(refetch_sql.as_str()));
         for param in &where_params {
             refetch_query = bind_json_value(refetch_query, param);
         }
@@ -1754,7 +1754,7 @@ pub async fn insert_table_row_impl(
         );
 
         log_table_data_sql(&refetch_sql, &where_params);
-        let mut refetch_query = sqlx::query(&refetch_sql);
+        let mut refetch_query = sqlx::query(sqlx::AssertSqlSafe(refetch_sql.as_str()));
         for param in &where_params {
             refetch_query = bind_json_value(refetch_query, param);
         }
@@ -1844,7 +1844,7 @@ pub async fn delete_table_row_impl(
     );
 
     log_table_data_sql(&sql, &params);
-    let mut query = sqlx::query(&sql);
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
     for param in &params {
         query = bind_json_value(query, param);
     }
@@ -1967,7 +1967,7 @@ pub async fn export_table_data_impl(
     // XLSX: rust_xlsxwriter builds the entire workbook in memory before saving,
     // so we must fetch all rows upfront. Other formats stream row-by-row.
     if format == crate::export::ExportFormat::Xlsx {
-        let mut query = sqlx::query(&sql);
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
         for param in &filter_clause.params {
             query = bind_json_value(query, param);
         }
@@ -2018,7 +2018,7 @@ pub async fn export_table_data_impl(
     let temp_path = format!("{}.tmp", &options.file_path);
     let mut guard = TempFileGuard::new(temp_path.clone());
 
-    let mut query = sqlx::query(&sql);
+    let mut query = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()));
     for param in &filter_clause.params {
         query = bind_json_value(query, param);
     }
@@ -2229,7 +2229,7 @@ pub async fn fetch_blob_value_impl(
     let binds: Vec<String> = pk_pairs.iter().map(|(_, v)| v.to_string()).collect();
     crate::mysql::query_log::log_outgoing_sql_bound(&len_sql, &binds);
 
-    let mut len_query = sqlx::query(&len_sql);
+    let mut len_query = sqlx::query(sqlx::AssertSqlSafe(len_sql.as_str()));
     for (_, value) in pk_pairs {
         len_query = bind_json_value(len_query, value);
     }
@@ -2274,7 +2274,7 @@ pub async fn fetch_blob_value_impl(
         format!("SELECT {safe_col} AS `val` FROM {safe_db}.{safe_table} WHERE {where_sql} LIMIT 1");
     crate::mysql::query_log::log_outgoing_sql_bound(&data_sql, &binds);
 
-    let mut data_query = sqlx::query(&data_sql);
+    let mut data_query = sqlx::query(sqlx::AssertSqlSafe(data_sql.as_str()));
     for (_, value) in pk_pairs {
         data_query = bind_json_value(data_query, value);
     }

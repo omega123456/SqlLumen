@@ -575,7 +575,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
          ) ENGINE=InnoDB",
         db_name, table
     );
-    sqlx::query(&create_sql)
+    sqlx::query(sqlx::AssertSqlSafe(create_sql.as_str()))
         .execute(&pool)
         .await
         .expect("CREATE TABLE for unsigned AI insert test");
@@ -600,9 +600,12 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
     )
     .await;
 
-    let _ = sqlx::query(&format!("DROP TABLE `{}`.`{}`", db_name, table))
-        .execute(&pool)
-        .await;
+    let _ = sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP TABLE `{}`.`{}`",
+        db_name, table
+    )))
+    .execute(&pool)
+    .await;
 
     pool.close().await;
 
