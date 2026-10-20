@@ -262,21 +262,15 @@
   box-shadow: none;
 }
 
-/* No reserved scrollbar row: strips keep their prototype height; tabs scroll with the
-   wheel and into view. */
+/* No reserved scrollbar row: strips keep their prototype height until the tabs overflow,
+   then the auto height grows by the scrollbar. */
 .barDocument.barScrollable,
 .barWrapper.barDocument .barScrollable,
 .barSelector.barScrollable,
 .barWrapper.barSelector .barScrollable {
   --underline-tab-scrollbar-reserve: 0px;
-  scrollbar-width: none;
-}
-
-.barDocument.barScrollable::-webkit-scrollbar,
-.barWrapper.barDocument .barScrollable::-webkit-scrollbar,
-.barSelector.barScrollable::-webkit-scrollbar,
-.barWrapper.barSelector .barScrollable::-webkit-scrollbar {
-  display: none;
+  display: flex;
+  height: auto;
 }
 
 .barDocument .barContent {

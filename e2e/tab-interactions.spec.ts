@@ -101,6 +101,9 @@ async function openSecondConnectionSession(page: Page) {
   })
 }
 
+// Headless Chromium hides scrollbars by default, which would mask a hidden-scrollbar regression.
+test.use({ launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'] } })
+
 test.describe('Tab interactions', () => {
   test.beforeEach(async ({ page }) => {
     await waitForApp(page)
@@ -197,5 +200,24 @@ test.describe('Tab interactions', () => {
       .locator('[data-testid="connection-tab-bar"] [data-testid^="connection-session-tab-"]')
       .allTextContents()
     expect(movedStartNames.slice(0, 2)).toEqual(['Staging MySQL', 'Sample MySQL'])
+  })
+
+  test('shows a horizontal scrollbar only when workspace tabs overflow', async ({ page }) => {
+    await connectToSample(page)
+    await openQueryTab(page)
+    const strip = activeWorkspaceTabMembers(page)
+    const scrollbarHeight = () =>
+      strip.evaluate((el: HTMLElement) => el.offsetHeight - el.clientHeight)
+    const overflows = () => strip.evaluate((el) => el.scrollWidth > el.clientWidth)
+
+    expect(await scrollbarHeight()).toBe(0)
+
+    await page.setViewportSize({ width: 900, height: 720 })
+    for (let i = 0; i < 12 && !(await overflows()); i++) {
+      await openQueryTab(page)
+    }
+
+    expect(await overflows()).toBe(true)
+    await expect.poll(scrollbarHeight).toBeGreaterThan(0)
   })
 })
