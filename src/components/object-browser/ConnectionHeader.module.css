@@ -21,7 +21,8 @@
 
 .iconWrapper[style] {
   background: color-mix(in srgb, var(--connection-color) 20%, transparent);
-  color: var(--connection-color);
+  /* Pulled toward on-surface so light (yellow) or dark (navy) colours stay legible on the tint */
+  color: color-mix(in srgb, var(--connection-color) 50%, var(--on-surface));
 }
 
 .info {
