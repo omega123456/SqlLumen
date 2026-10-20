@@ -247,6 +247,22 @@ describe('TableDataToolbar', () => {
     writeText.mockRestore()
   })
 
+  it('copies every checked row from a primary-keyed table', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    setupConnection(true)
+    setupTabState({ checkedRowKeys: [{ id: 1 }, { id: 2 }] })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('btn-copy-selected-rows'))
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('id\r\n1\r\n2\r\n')
+    })
+    await expectToast('success', '2 row(s) copied to clipboard.')
+    writeText.mockRestore()
+  })
+
   it('shows an error toast when copying checked rows fails', async () => {
     const user = userEvent.setup()
     const writeText = vi

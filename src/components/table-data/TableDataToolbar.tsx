@@ -253,7 +253,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       checkedRowKeys.map((rowKey) =>
         typeof rowKey.__rowIndex === 'number'
           ? rowKey.__rowIndex
-          : rowKey.__tempId === editState?.tempId
+          : '__tempId' in rowKey && rowKey.__tempId === editState?.tempId
             ? rows.length - 1
             : findStoreRowIndexByKey(rows, columns, rowKey)
       )
