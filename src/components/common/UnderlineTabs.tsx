@@ -7,6 +7,7 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react'
+import { useElementSize } from '../../hooks/use-element-size'
 import styles from './UnderlineTabs.module.css'
 
 /**
@@ -34,7 +35,8 @@ export interface UnderlineTabBarProps {
   'data-testid'?: string
   /** Content rendered outside the scrollable tab area (e.g. pinned tabs, action buttons). */
   suffix?: ReactNode
-  /** When true, always reserve scrollbar space (overflow-x: scroll). Use for tab bars that can overflow. */
+  /** When true, tabs scroll horizontally. Document and selector bars grow by the scrollbar only while
+   * the tabs overflow (`data-overflowing`); the default bar always reserves it. */
   scrollable?: boolean
   variant?: UnderlineTabVariant
 }
@@ -50,21 +52,36 @@ export function UnderlineTabBar({
   const barClass = [styles.bar, scrollable ? styles.barScrollable : '', BAR_VARIANT_CLASS[variant]]
     .filter(Boolean)
     .join(' ')
-  const barChildren = scrollable ? <div className={styles.barContent}>{children}</div> : children
+  const barRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const barWidth = useElementSize(barRef).width
+  const overflowing = useElementSize(contentRef).width > barWidth
+  const barProps = scrollable
+    ? { ref: barRef, 'data-overflowing': overflowing || undefined }
+    : undefined
+  const barChildren = scrollable ? (
+    <div ref={contentRef} className={styles.barContent}>
+      {children}
+    </div>
+  ) : (
+    children
+  )
   if (suffix) {
     const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
       .filter(Boolean)
       .join(' ')
     return (
       <div className={wrapperClass} data-testid={testId}>
-        <div className={barClass}>{barChildren}</div>
+        <div className={barClass} {...barProps}>
+          {barChildren}
+        </div>
         <div className={styles.barSuffix}>{suffix}</div>
       </div>
     )
   }
   const finalBarClass = className ? `${barClass} ${className}` : barClass
   return (
-    <div className={finalBarClass} data-testid={testId}>
+    <div className={finalBarClass} data-testid={testId} {...barProps}>
       {barChildren}
     </div>
   )

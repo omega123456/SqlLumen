@@ -262,15 +262,21 @@
   box-shadow: none;
 }
 
-/* No reserved scrollbar row: strips keep their prototype height until the tabs overflow,
-   then the auto height grows by the scrollbar. */
+/* No reserved scrollbar row: strips keep their prototype height until the tabs overflow, then
+   grow by the scrollbar. An explicit height, not height: auto: WebKit leaves a late-appearing
+   scrollbar out of auto heights, so the scrollbar would overlap whatever sits below. */
 .barDocument.barScrollable,
 .barWrapper.barDocument .barScrollable,
 .barSelector.barScrollable,
 .barWrapper.barSelector .barScrollable {
   --underline-tab-scrollbar-reserve: 0px;
-  display: flex;
-  height: auto;
+}
+
+.barDocument.barScrollable[data-overflowing],
+.barWrapper.barDocument .barScrollable[data-overflowing],
+.barSelector.barScrollable[data-overflowing],
+.barWrapper.barSelector .barScrollable[data-overflowing] {
+  --underline-tab-scrollbar-reserve: var(--grid-scrollbar-size);
 }
 
 .barDocument .barContent {

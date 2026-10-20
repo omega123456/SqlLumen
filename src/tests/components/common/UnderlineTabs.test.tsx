@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { UnderlineTabBar, UnderlineTab } from '../../../components/common/UnderlineTabs'
@@ -227,5 +227,46 @@ describe('UnderlineTabs', () => {
     const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
     expect(css).toContain('::-webkit-scrollbar-button')
     expect(css).toMatch(/scrollbar-button[^}]*display:\s*none/)
+  })
+
+  it('marks a scrollable bar as overflowing only while its tabs are wider than the bar', () => {
+    const callbacks = new Map<Element, ResizeObserverCallback>()
+    const OriginalResizeObserver = globalThis.ResizeObserver
+    globalThis.ResizeObserver = class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(element: Element) {
+        callbacks.set(element, this.callback)
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+    const resize = (element: Element, width: number) =>
+      act(() => {
+        callbacks.get(element)?.(
+          [{ contentRect: { width, height: 38 } } as ResizeObserverEntry],
+          {} as ResizeObserver
+        )
+      })
+
+    try {
+      render(
+        <UnderlineTabBar data-testid="doc-bar" variant="document" scrollable>
+          <UnderlineTab variant="document" onSelect={() => {}}>
+            Query 1
+          </UnderlineTab>
+        </UnderlineTabBar>
+      )
+      const bar = screen.getByTestId('doc-bar')
+      const content = bar.firstElementChild!
+
+      resize(bar, 300)
+      resize(content, 200)
+      expect(bar).not.toHaveAttribute('data-overflowing')
+
+      resize(content, 400)
+      expect(bar).toHaveAttribute('data-overflowing', 'true')
+    } finally {
+      globalThis.ResizeObserver = OriginalResizeObserver
+    }
   })
 })

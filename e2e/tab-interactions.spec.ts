@@ -1,5 +1,11 @@
 import { expect, test, type Page } from '@playwright/test'
-import { activeWorkspaceTabMembers, APP_READY_MS, connectToSample, waitForApp } from './helpers'
+import {
+  activeConnectionWorkspace,
+  activeWorkspaceTabMembers,
+  APP_READY_MS,
+  connectToSample,
+  waitForApp,
+} from './helpers'
 
 const SAMPLE_SESSION_ID = 'session-playwright-1'
 
@@ -219,5 +225,15 @@ test.describe('Tab interactions', () => {
 
     expect(await overflows()).toBe(true)
     await expect.poll(scrollbarHeight).toBeGreaterThan(0)
+    expect(await strip.getAttribute('data-overflowing')).toBe('true')
+    // The scrollbar grows the strip; it must neither squash the tab-group row above it nor
+    // overlap the content below.
+    const workspace = activeConnectionWorkspace(page)
+    const groupRow = workspace.getByTestId('workspace-tabs')
+    expect(await groupRow.evaluate((el: HTMLElement) => el.offsetHeight)).toBe(44)
+    const stripBox = (await strip.boundingBox())!
+    expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(
+      (await workspace.getByTestId('workspace-body').boundingBox())!.y
+    )
   })
 })
