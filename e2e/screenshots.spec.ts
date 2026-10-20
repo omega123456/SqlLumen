@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
+  activeWorkspaceTabMembers,
   activeWorkspaceTabs,
   connectToSample,
   dismissAllToasts,
@@ -1223,6 +1224,36 @@ for (const theme of themes) {
 
     test('WorkspaceArea — tabs + schema-info header region', async ({ page }) => {
       await openSchemaInfoWithWorkspaceTabStrip(page)
+      // Overflow the member strip so the shot shows its edge count chips beside the group badges.
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => { openTab: (tab: Record<string, unknown>) => void }
+        }
+        const open = (objectName: string) =>
+          store.getState().openTab({
+            type: 'schema-info',
+            label: objectName,
+            connectionId: 'session-playwright-1',
+            databaseName: 'ecommerce_db',
+            objectName,
+            objectType: 'table',
+          })
+        const names = [
+          'categories',
+          'customers',
+          'inventory',
+          'order_items',
+          'payments',
+          'products',
+        ]
+        for (const name of [...names, 'reviews', 'shipments', 'users']) {
+          open(name)
+        }
+      })
+      await expect(
+        activeWorkspaceTabMembers(page).getByTestId('tab-strip-scroll-end')
+      ).toBeEnabled()
+      await expect(page.getByTestId('stats-row')).toBeVisible()
       await expect(page.getByTestId('workspace-area')).toHaveScreenshot(
         `workspace-area-schema-info-with-tabs-${theme}.png`,
         { animations: 'disabled' }

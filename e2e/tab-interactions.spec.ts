@@ -208,26 +208,25 @@ test.describe('Tab interactions', () => {
     expect(movedStartNames.slice(0, 2)).toEqual(['Staging MySQL', 'Sample MySQL'])
   })
 
-  test('shows a horizontal scrollbar only when workspace tabs overflow', async ({ page }) => {
+  test('shows edge count chips only when workspace tabs overflow', async ({ page }) => {
     await connectToSample(page)
     await openQueryTab(page)
     const strip = activeWorkspaceTabMembers(page)
-    const scrollbarHeight = () =>
-      strip.evaluate((el: HTMLElement) => el.offsetHeight - el.clientHeight)
-    const overflows = () => strip.evaluate((el) => el.scrollWidth > el.clientWidth)
+    const stripHeight = () => strip.evaluate((el: HTMLElement) => el.offsetHeight)
+    const startChip = strip.getByTestId('tab-strip-scroll-start')
+    const endChip = strip.getByTestId('tab-strip-scroll-end')
 
-    expect(await scrollbarHeight()).toBe(0)
+    expect(await stripHeight()).toBe(38)
+    await expect(endChip).toHaveCount(0)
 
     await page.setViewportSize({ width: 900, height: 720 })
-    for (let i = 0; i < 12 && !(await overflows()); i++) {
+    for (let i = 0; i < 12 && (await strip.getAttribute('data-overflowing')) !== 'true'; i++) {
       await openQueryTab(page)
     }
 
-    expect(await overflows()).toBe(true)
-    await expect.poll(scrollbarHeight).toBeGreaterThan(0)
-    expect(await strip.getAttribute('data-overflowing')).toBe('true')
-    // The scrollbar grows the strip; it must neither squash the tab-group row above it nor
-    // overlap the content below.
+    await expect(strip).toHaveAttribute('data-overflowing', 'true')
+    // The strip keeps its height: no scrollbar row squashing the group row or covering the body.
+    expect(await stripHeight()).toBe(38)
     const workspace = activeConnectionWorkspace(page)
     const groupRow = workspace.getByTestId('workspace-tabs')
     expect(await groupRow.evaluate((el: HTMLElement) => el.offsetHeight)).toBe(44)
@@ -235,5 +234,14 @@ test.describe('Tab interactions', () => {
     expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(
       (await workspace.getByTestId('workspace-body').boundingBox())!.y
     )
+
+    // The newest tab is active, so the strip sits at the end with tabs hidden on the left.
+    await expect(endChip).toBeDisabled()
+    await expect(endChip).toHaveAccessibleName('Scroll tabs right, no more tabs')
+    await expect(startChip).toHaveAccessibleName(/^Scroll tabs left, \d+ hidden$/)
+
+    await startChip.click()
+    await expect(endChip).toBeEnabled()
+    await expect(endChip).toHaveAccessibleName(/^Scroll tabs right, \d+ hidden$/)
   })
 })

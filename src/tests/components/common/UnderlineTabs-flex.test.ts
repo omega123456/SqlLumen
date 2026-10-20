@@ -15,7 +15,7 @@ import { resolve } from 'path'
 const cssPath = resolve(__dirname, '../../../components/common/UnderlineTabs.module.css')
 const css = readFileSync(cssPath, 'utf8')
 
-// Extract the standalone .bar { ... } block (not .barWrapper > .bar)
+// Extract the standalone .bar { ... } block (not .barWrapper .bar)
 function getBarBlock(): string {
   const lines = css.split('\n')
   let inside = false
@@ -36,14 +36,14 @@ function getBarBlock(): string {
   return block
 }
 
-// Extract the .barWrapper > .bar { ... } block
+// Extract the .barWrapper .bar { ... } block
 function getBarWrapperBarBlock(): string {
   const lines = css.split('\n')
   let inside = false
   let braceDepth = 0
   let block = ''
   for (const line of lines) {
-    if (!inside && /\.barWrapper\s*>\s*\.bar\s*\{/.test(line.trim())) {
+    if (!inside && /^\.barWrapper\s+\.bar\s*\{/.test(line.trim())) {
       inside = true
       braceDepth = 0
     }
@@ -72,17 +72,17 @@ describe('UnderlineTabs .bar flex properties', () => {
   })
 })
 
-describe('UnderlineTabs .barWrapper > .bar flex properties', () => {
-  it('.barWrapper > .bar should use flex: 1 1 0', () => {
+describe('UnderlineTabs .barWrapper .bar flex properties', () => {
+  it('.barWrapper .bar should use flex: 1 1 0', () => {
     const block = getBarWrapperBarBlock()
     expect(block).toBeTruthy()
-    expect(block, '.barWrapper > .bar must use flex: 1 1 0').toMatch(/flex:\s*1\s+1\s+0/)
+    expect(block, '.barWrapper .bar must use flex: 1 1 0').toMatch(/flex:\s*1\s+1\s+0/)
   })
 
-  it('.barWrapper > .bar should set width: auto', () => {
+  it('.barWrapper .bar should set width: auto', () => {
     const block = getBarWrapperBarBlock()
     expect(block).toBeTruthy()
-    expect(block, '.barWrapper > .bar must have width: auto').toMatch(/width:\s*auto/)
+    expect(block, '.barWrapper .bar must have width: auto').toMatch(/width:\s*auto/)
   })
 })
 
@@ -105,13 +105,12 @@ describe('UnderlineTabs .bar overflow / scrollbar-gutter', () => {
     expect(match![1], '.bar overflow-x must be auto').toBe('auto')
   })
 
-  it('.barScrollable should use overflow-x: auto with a reserved scrollbar lane', () => {
+  it('.barScrollable should scroll with the native scrollbar hidden', () => {
     const barScrollableMatch = css.match(/\.barScrollable\s*\{[^}]*\}/)
     expect(barScrollableMatch, '.barScrollable block must exist').toBeTruthy()
     const block = barScrollableMatch![0]
     expect(block).toMatch(/overflow-x:\s*auto/)
-    expect(block).toMatch(/--underline-tab-scrollbar-reserve:\s*var\(--grid-scrollbar-size\)/)
-    expect(block).toMatch(/grid-template-rows:[^;]*var\(--underline-tab-scrollbar-reserve\)/)
+    expect(block).toMatch(/scrollbar-width:\s*none/)
   })
 
   it('should not have scrollbar-gutter (does not work for horizontal overflow)', () => {
