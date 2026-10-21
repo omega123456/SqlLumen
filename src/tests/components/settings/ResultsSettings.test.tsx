@@ -81,6 +81,20 @@ describe('ResultsSettings', () => {
     expect(screen.getByTestId('settings-cache-ttl')).toHaveTextContent('4 hours')
   })
 
+  it('defaults max open tabs per group to Unlimited and updates the pending change', async () => {
+    const user = userEvent.setup()
+    render(<ResultsSettings />)
+
+    expect(screen.getByTestId('settings-max-tabs-per-group')).toHaveTextContent('Unlimited')
+
+    await user.click(screen.getByTestId('settings-max-tabs-per-group'))
+    const options = screen.getAllByRole('option')
+    expect(options[0]).toHaveTextContent('Unlimited')
+    await user.click(screen.getByRole('option', { name: '10' }))
+
+    expect(useSettingsStore.getState().pendingChanges['results.maxTabsPerGroup']).toBe('10')
+  })
+
   describe('tableTabsInBottomPanel toggle', () => {
     it('renders as unchecked by default when no persisted value', () => {
       useSettingsStore.setState({

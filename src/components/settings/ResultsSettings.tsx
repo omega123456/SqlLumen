@@ -12,6 +12,15 @@ const CACHE_TTL_OPTIONS = [
   { label: '4 hours', value: '14400' },
 ]
 
+const MAX_TABS_PER_GROUP_OPTIONS = [
+  { label: 'Unlimited', value: '0' },
+  { label: '3', value: '3' },
+  { label: '5', value: '5' },
+  { label: '10', value: '10' },
+  { label: '15', value: '15' },
+  { label: '20', value: '20' },
+]
+
 export function ResultsSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
 
@@ -19,6 +28,7 @@ export function ResultsSettings() {
   const nullDisplay = useSettingValue('results.nullDisplay')
   const tableTabsInBottomPanel = useSettingValue('results.tableTabsInBottomPanel')
   const cacheTTL = useSettingValue('results.cacheTTL')
+  const maxTabsPerGroup = useSettingValue('results.maxTabsPerGroup')
 
   return (
     <div data-testid="settings-results">
@@ -82,7 +92,7 @@ export function ResultsSettings() {
       </SettingsSection>
       <SettingsSection
         title="Workspace layout"
-        description="Configure where table browsing tabs appear."
+        description="Configure where table browsing tabs appear and how many tabs each group keeps open."
       >
         <SettingsToggle
           label="Show table data tabs in bottom panel"
@@ -93,6 +103,35 @@ export function ResultsSettings() {
           }
           data-testid="settings-table-tabs-bottom"
         />
+        <div>
+          <label
+            id="max-tabs-per-group-label"
+            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
+          >
+            Max open tabs per group
+          </label>
+          <div style={{ width: 200 }}>
+            <Dropdown
+              id="settings-max-tabs-per-group"
+              labelledBy="max-tabs-per-group-label"
+              options={MAX_TABS_PER_GROUP_OPTIONS}
+              value={maxTabsPerGroup}
+              onChange={(value) => setPendingChange('results.maxTabsPerGroup', value)}
+              data-testid="settings-max-tabs-per-group"
+            />
+          </div>
+          <p
+            style={{
+              margin: '6px 0 0',
+              fontSize: 'var(--type-caption-size)',
+              lineHeight: 'var(--type-caption-line)',
+              color: 'var(--on-surface-variant)',
+            }}
+          >
+            Opening a tab past the limit closes the least recently used tab in its group. Query tabs
+            and tabs with unsaved changes are never closed automatically.
+          </p>
+        </div>
       </SettingsSection>
     </div>
   )

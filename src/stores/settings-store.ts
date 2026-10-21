@@ -23,6 +23,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'results.nullDisplay': 'NULL',
   'results.cacheTTL': '1800',
   'results.tableTabsInBottomPanel': 'false',
+  'results.maxTabsPerGroup': '0',
   'connection.defaultTimeout': '10',
   'appearance.zoom': '100',
   'connection.defaultKeepalive': '60',

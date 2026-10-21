@@ -31,6 +31,7 @@ export type WorkspaceFocusSurface = 'editor' | 'ai-input'
 
 let tabIdCounter = 0
 let queryTabCounter = 0
+let tabUseCounter = 0
 
 /** Reset the counter — for testing only. */
 export function _resetTabIdCounter() {
@@ -67,6 +68,8 @@ interface WorkspaceState {
    */
   visibleConnectionSessionId: string
   stackRecencyByConnection: Record<string, Partial<Record<WorkspaceTabStackKey, string>>>
+  /** Monotonic activation stamp per tab, used to find the least recently used tab. */
+  tabLastUsedAt: Record<string, number>
 
   lastFocusedSurfaceByTab: Record<string, WorkspaceFocusSurface>
   blockingNavigationByTab: Record<string, boolean>
@@ -635,6 +638,7 @@ function activateWorkspaceTab(connectionId: string, tabId: string): void {
       ...state.activeTabByConnection,
       [connectionId]: tabId,
     },
+    tabLastUsedAt: { ...state.tabLastUsedAt, [tabId]: ++tabUseCounter },
     stackRecencyByConnection: {
       ...state.stackRecencyByConnection,
       [connectionId]: getNextStackRecency(
@@ -648,6 +652,46 @@ function activateWorkspaceTab(connectionId: string, tabId: string): void {
   finalizeWorkspaceActivation(connectionId, previousSurface, tabId)
 }
 
+function hasUnsavedChanges(tab: WorkspaceTab): boolean {
+  switch (tab.type) {
+    case 'table-data':
+      return (useTableDataStore.getState().tabs[tab.id]?.editState?.modifiedColumns.size ?? 0) > 0
+    case 'table-designer':
+      return useTableDesignerStore.getState().tabs[tab.id]?.isDirty ?? false
+    case 'object-editor':
+      return useObjectEditorStore.getState().isDirty(tab.id)
+    default:
+      return false
+  }
+}
+
+/**
+ * Closes the least recently used clean tabs in the new tab's group until the
+ * group fits the `results.maxTabsPerGroup` limit. Query tabs and bottom-panel
+ * scoped table-data tabs are never limited; dirty tabs are never closed.
+ */
+function enforceTabLimit(connectionId: string, newTabId: string): void {
+  const limit = Number(useSettingsStore.getState().getSetting('results.maxTabsPerGroup'))
+  if (!limit) return
+
+  const { tabsByConnection, tabLastUsedAt, forceCloseTab } = useWorkspaceStore.getState()
+  const tabs = tabsByConnection[connectionId] ?? []
+  const options = { hideScopedTableDataTabs: true }
+  const newTab = tabs.find((tab) => tab.id === newTabId)
+  const stackKey = newTab ? getWorkspaceStackKeyForTab(newTab, options) : null
+  if (!stackKey || stackKey === 'queries') return
+
+  const group = tabs.filter((tab) => getWorkspaceStackKeyForTab(tab, options) === stackKey)
+  const overflow = group.length - limit
+  if (overflow <= 0) return
+
+  group
+    .filter((tab) => tab.id !== newTabId && !hasUnsavedChanges(tab))
+    .sort((a, b) => (tabLastUsedAt[a.id] ?? 0) - (tabLastUsedAt[b.id] ?? 0))
+    .slice(0, overflow)
+    .forEach((tab) => forceCloseTab(connectionId, tab.id))
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -657,6 +701,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   activeTabByConnection: {},
   visibleConnectionSessionId: '',
   stackRecencyByConnection: {},
+  tabLastUsedAt: {},
   lastFocusedSurfaceByTab: {},
   blockingNavigationByTab: {},
   pendingCascadeClose: null,
@@ -771,6 +816,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       connectionId,
       newTab.type === 'table-data' && newTab.parentQueryTabId ? newTab.parentQueryTabId : newTab.id
     )
+    enforceTabLimit(connectionId, newTab.id)
     if (newTab.type === 'table-data' && newTab.parentQueryTabId) {
       useQueryStore
         .getState()

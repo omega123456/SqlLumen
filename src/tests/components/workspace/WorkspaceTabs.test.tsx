@@ -429,10 +429,9 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection[
-          'conn-1'
-        ].find((tab) => tab.id === useWorkspaceStore.getState().activeTabByConnection['conn-1'])
-        ?.type
+        .tabsByConnection['conn-1'].find(
+          (tab) => tab.id === useWorkspaceStore.getState().activeTabByConnection['conn-1']
+        )?.type
     ).toBe('history')
 
     const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')
@@ -1048,6 +1047,38 @@ describe('WorkspaceTabs', () => {
         .tabsByConnection['conn-1'].filter((tab) => tab.type === 'query-editor')
         .map((tab) => tab.id)
     ).toEqual([q1, q2, q3])
+  })
+
+  it('closes tabs to the left and right within the visible group via context menu', async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.getState().openTab({
+      type: 'schema-info',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const schemaTabId = useWorkspaceStore.getState().activeTabByConnection['conn-1']!
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Q3')
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Q4')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+    const openTabIds = () =>
+      useWorkspaceStore.getState().tabsByConnection['conn-1'].map((t) => t.id)
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q2}`), { clientX: 120, clientY: 120 })
+    await user.click(screen.getByTestId('tab-context-menu-item-close-right'))
+    expect(openTabIds()).toEqual([schemaTabId, q1, q2])
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q2}`), { clientX: 120, clientY: 120 })
+    await user.click(screen.getByTestId('tab-context-menu-item-close-left'))
+    expect(openTabIds()).toEqual([schemaTabId, q2])
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q2}`), { clientX: 120, clientY: 120 })
+    expect(screen.getByTestId('tab-context-menu-item-close-left')).toBeDisabled()
+    expect(screen.getByTestId('tab-context-menu-item-close-right')).toBeDisabled()
   })
 
   it('reorders movable tabs via drag and drop and keeps pinned tabs fixed', () => {

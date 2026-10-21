@@ -13,7 +13,7 @@
  *   - Tab activation on click
  *   - Middle-click close
  *   - Pointer-based drag-to-reorder (with safe subset reorder translation)
- *   - Context menu per tab (rename, move left/right/start/end)
+ *   - Context menu per tab (rename, move left/right/start/end, close to the left/right)
  *   - Keyboard: Enter/Space activation, F2 rename, Shift+F10/ContextMenu key
  */
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
@@ -27,6 +27,8 @@ import { IconButton } from '../common/IconButton'
 import { TabContextMenu } from '../shared/TabContextMenu'
 import { computeHorizontalTabReorderTarget } from '../shared/use-tab-reorder'
 import {
+  ArrowLineLeftIcon,
+  ArrowLineRightIcon,
   PencilSimpleIcon,
   CaretLineLeftIcon,
   CaretLeftIcon,
@@ -547,6 +549,29 @@ export function WorkspaceTabRail({
               return
             }
             reorderWorkspaceTab(connectionId, contextMenu.tabId, fullInsert)
+          },
+        },
+        {
+          key: 'close-left',
+          label: 'Close tabs to the left',
+          icon: <ArrowLineLeftIcon size={14} weight="regular" />,
+          disabled: contextMenuVisibleIndex <= 0,
+          onSelect: () => {
+            for (const id of visibleTabIds.slice(0, contextMenuVisibleIndex)) {
+              closeTab(connectionId, id)
+            }
+          },
+        },
+        {
+          key: 'close-right',
+          label: 'Close tabs to the right',
+          icon: <ArrowLineRightIcon size={14} weight="regular" />,
+          disabled:
+            contextMenuVisibleIndex < 0 || contextMenuVisibleIndex >= visibleTabIds.length - 1,
+          onSelect: () => {
+            for (const id of visibleTabIds.slice(contextMenuVisibleIndex + 1)) {
+              closeTab(connectionId, id)
+            }
           },
         },
       ]

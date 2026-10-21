@@ -241,9 +241,9 @@ describe('useWorkspaceStore — openTab', () => {
       type: 'table-data',
       tabId: useWorkspaceStore
         .getState()
-        .tabsByConnection[
-          'conn-1'
-        ].find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId)!.id,
+        .tabsByConnection['conn-1'].find(
+          (tab) => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId
+        )!.id,
     })
 
     useWorkspaceStore.getState().normalizeTableDataTabScopes()
@@ -957,15 +957,15 @@ describe('useWorkspaceStore — reorderWorkspaceTab', () => {
       q2,
       useWorkspaceStore
         .getState()
-        .tabsByConnection[
-          'conn-1'
-        ].find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q2)!.id,
+        .tabsByConnection['conn-1'].find(
+          (tab) => tab.type === 'table-data' && tab.parentQueryTabId === q2
+        )!.id,
       q1,
       useWorkspaceStore
         .getState()
-        .tabsByConnection[
-          'conn-1'
-        ].find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q1)!.id,
+        .tabsByConnection['conn-1'].find(
+          (tab) => tab.type === 'table-data' && tab.parentQueryTabId === q1
+        )!.id,
     ])
   })
 })
@@ -1418,9 +1418,10 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
 
     const tableTabId = useWorkspaceStore
       .getState()
-      .tabsByConnection[
-        'conn-1'
-      ].find((tab): tab is TableDataTab => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId)?.id
+      .tabsByConnection['conn-1'].find(
+        (tab): tab is TableDataTab =>
+          tab.type === 'table-data' && tab.parentQueryTabId === queryTabId
+      )?.id
 
     expect(tableTabId).toBeTruthy()
     expect(useQueryStore.getState().getTabState(queryTabId).activeBottomPanelItem).toEqual({
@@ -2088,5 +2089,145 @@ describe('useWorkspaceStore — AI store cleanup', () => {
     expect(useWorkspaceStore.getState().stackRecencyByConnection['conn-1']).toMatchObject({
       tables: standaloneTabId,
     })
+  })
+})
+
+describe('useWorkspaceStore — max tabs per group', () => {
+  function setMaxTabsPerGroup(limit: number) {
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, 'results.maxTabsPerGroup': String(limit) },
+    }))
+  }
+
+  function tabIds(): string[] {
+    return useWorkspaceStore.getState().tabsByConnection['conn-1'].map((tab) => tab.id)
+  }
+
+  function openSchemaTabs(...names: string[]): string[] {
+    return names.map((objectName) => {
+      useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName, label: objectName }))
+      return useWorkspaceStore.getState().activeTabByConnection['conn-1']!
+    })
+  }
+
+  it('keeps every tab when the limit is unlimited', () => {
+    openSchemaTabs('a', 'b', 'c', 'd')
+
+    expect(tabIds()).toHaveLength(4)
+  })
+
+  it('closes the least recently used tab of the group when the limit is exceeded', () => {
+    setMaxTabsPerGroup(2)
+    const [a, b] = openSchemaTabs('a', 'b')
+    useWorkspaceStore.getState().setActiveTab('conn-1', a)
+
+    const [c] = openSchemaTabs('c')
+
+    expect(tabIds()).toEqual([a, c])
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(c)
+    expect(tabIds()).not.toContain(b)
+  })
+
+  it('only counts tabs in the same group', () => {
+    setMaxTabsPerGroup(1)
+    const [schemaTab] = openSchemaTabs('a')
+    useWorkspaceStore.getState().openTab(makeDesignerTab())
+
+    expect(tabIds()).toContain(schemaTab)
+    expect(tabIds()).toHaveLength(2)
+  })
+
+  it('does not close a tab when re-activating an existing one', () => {
+    setMaxTabsPerGroup(2)
+    const [a, b] = openSchemaTabs('a', 'b')
+    openSchemaTabs('a')
+
+    expect(tabIds()).toEqual([a, b])
+  })
+
+  it('never limits query tabs', () => {
+    setMaxTabsPerGroup(1)
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    expect(tabIds()).toHaveLength(3)
+  })
+
+  it('skips designer tabs with unsaved changes', () => {
+    setMaxTabsPerGroup(2)
+    useWorkspaceStore.getState().openTab(makeDesignerTab({ objectName: 'a' }))
+    const dirty = tabIds()[0]
+    useWorkspaceStore.getState().openTab(makeDesignerTab({ objectName: 'b' }))
+    const clean = tabIds()[1]
+    useTableDesignerStore.getState().initTab(dirty, 'alter', 'conn-1', 'mydb', 'a')
+    useTableDesignerStore.setState((state) => ({
+      tabs: { ...state.tabs, [dirty]: { ...state.tabs[dirty], isDirty: true } },
+    }))
+
+    useWorkspaceStore.getState().openTab(makeDesignerTab({ objectName: 'c' }))
+
+    expect(tabIds()).toContain(dirty)
+    expect(tabIds()).not.toContain(clean)
+    expect(tabIds()).toHaveLength(2)
+  })
+
+  it('skips object-editor tabs with unsaved changes and stays over the limit when all are dirty', () => {
+    setMaxTabsPerGroup(1)
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab({ objectName: 'p1' }))
+    const dirty = tabIds()[0]
+    useObjectEditorStore.setState({
+      tabs: {
+        [dirty]: {
+          connectionId: 'conn-1',
+          database: 'mydb',
+          objectName: 'p1',
+          objectType: 'procedure',
+          mode: 'alter',
+          content: 'modified',
+          originalContent: 'original',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab({ objectName: 'p2' }))
+
+    expect(tabIds()).toContain(dirty)
+    expect(tabIds()).toHaveLength(2)
+  })
+
+  it('skips table-data tabs with unsaved edits', () => {
+    setMaxTabsPerGroup(1)
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users' }))
+    const dirty = tabIds()[0]
+    useTableDataStore.setState({
+      tabs: {
+        [dirty]: makeTableDataTabState({
+          editState: { modifiedColumns: new Set(['name']) } as never,
+        }),
+      },
+    })
+
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
+
+    expect(tabIds()).toContain(dirty)
+    expect(tabIds()).toHaveLength(2)
+  })
+
+  it('does not limit table-data tabs scoped to a query tab in bottom-panel mode', () => {
+    setBottomPanelEnabled(true)
+    setMaxTabsPerGroup(1)
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users' }))
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
+
+    const tableTabs = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].filter((tab) => tab.type === 'table-data')
+    expect(tableTabs).toHaveLength(2)
   })
 })
