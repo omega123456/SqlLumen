@@ -712,6 +712,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         (event.localEventX ?? 0) >= event.bounds.width - INFO_AFFORDANCE_GUTTER_PX
 
       if (isFkAffordanceClick) {
+        // Clicking the ellipsis on the already-selected cell is Glide's "second click"; without
+        // this the overlay editor opens too and floats above the lookup dialog.
+        event.preventDefault()
         const runFkLookup = async () => {
           const ok = await changeSelectedCell(rowIndex, colIndex)
           if (ok) {

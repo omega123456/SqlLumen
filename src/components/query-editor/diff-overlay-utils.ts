@@ -146,11 +146,14 @@ export function buildDiffState(
     range.endColumn
   )
   const originalSql = model.getValueInRange(monacoRange)
+  // Code blocks end with a newline, and a statement range excludes its delimiter (which stays
+  // in the editor), so drop both from the proposal to avoid a stray `;` line after accepting.
+  const trimmedSql = proposedSql.trimEnd()
 
   return {
     visible: true,
     originalSql,
-    proposedSql,
+    proposedSql: originalSql.trimEnd().endsWith(';') ? trimmedSql : trimmedSql.replace(/;$/, ''),
     originalRange: range,
   }
 }

@@ -692,6 +692,7 @@ describe('CanvasBaseGridView', () => {
         event: {
           bounds?: { x: number; y: number; width: number; height: number }
           localEventX?: number
+          preventDefault?: () => void
         }
       ) => void
       onSelectionChange: (selection: { rows: Iterable<number> }) => void
@@ -740,12 +741,16 @@ describe('CanvasBaseGridView', () => {
     })
     expect(onScrollCellChange).toHaveBeenCalledWith(4, 3)
 
+    const preventDefault = vi.fn()
     act(() =>
       props.onCellClicked([0, 0], {
         bounds: { x: 0, y: 0, width: 100, height: 20 },
         localEventX: 90,
+        preventDefault,
       })
     )
+    // Suppresses Glide's second-click activation so the overlay editor stays closed.
+    expect(preventDefault).toHaveBeenCalled()
     await waitFor(() =>
       expect(onFkCellAction).toHaveBeenCalledWith({
         rowIdx: 0,
@@ -2824,6 +2829,7 @@ describe('CanvasBaseGridView', () => {
         event: {
           bounds?: { x: number; y: number; width: number; height: number }
           localEventX?: number
+          preventDefault: () => void
         }
       ) => void
     }
@@ -2832,6 +2838,7 @@ describe('CanvasBaseGridView', () => {
       props.onCellClicked([0, 0], {
         bounds: { x: 0, y: 0, width: 100, height: 20 },
         localEventX: 90,
+        preventDefault: vi.fn(),
       })
     )
 

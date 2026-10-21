@@ -266,9 +266,14 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     [onCellActivated]
   )
 
+  const lastClickedCellRef = useRef<Item | null>(null)
   const handleCellClickedWithDoubleClick = useCallback(
     (cell: Item, event: CellClickedEventArgs) => {
-      if (event.isDoubleClick === true) {
+      // Glide flags any two mouse-ups within 500ms as a double-click, even across cells.
+      const previous = lastClickedCellRef.current
+      lastClickedCellRef.current = cell
+      const sameCell = previous?.[0] === cell[0] && previous?.[1] === cell[1]
+      if (event.isDoubleClick === true && sameCell) {
         onCellDoubleClicked?.(cell, event)
         return
       }

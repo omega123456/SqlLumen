@@ -907,6 +907,43 @@ test('table data FK lookup opens from ellipsis click and F4 shortcut', async ({ 
   await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
 })
 
+test('table data FK ellipsis on the selected cell does not open the inline editor', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+  })
+
+  const grid = await waitForTableDataGrid(page)
+  const userIdColumn = await getColumnIndexByName(grid, 'user_id')
+  // Select user_id via the keyboard so the ellipsis click is Glide's "second click" on the
+  // selected cell, without two quick pointer clicks counting as a double-click.
+  await clickCellByColumnName(grid, 0, 'id')
+  await page.keyboard.press('ArrowRight')
+  await expectSelectedTableDataColumn(page, 'user_id')
+  await clickFkEllipsis(page, userIdColumn, 0)
+  await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
+  // The buggy overlay editor rendered a couple of frames after the dialog; let several frames
+  // pass, then check once. Its trigger only exists while the overlay editor is open.
+  await page.evaluate(async () => {
+    for (let i = 0; i < 10; i++) await new Promise(requestAnimationFrame)
+  })
+  expect(await page.getByTestId('fk-lookup-trigger').count()).toBe(0)
+})
+
 test('table data FK lookup opens from inline editor trigger', async ({ page }) => {
   await waitForApp(page)
   await connectToSample(page)

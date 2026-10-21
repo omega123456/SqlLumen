@@ -89,6 +89,18 @@ describe('buildDiffState', () => {
     expect(result!.originalRange).toEqual(DEFAULT_RANGE)
   })
 
+  it('drops the trailing newline and delimiter when the range excludes the delimiter', () => {
+    const editor = makeMockEditor(() => 'SELECT * FROM users')
+    const result = buildDiffState(editor, 'SELECT id FROM users;\n', DEFAULT_RANGE)
+    expect(result!.proposedSql).toBe('SELECT id FROM users')
+  })
+
+  it('keeps the delimiter when the original range includes one', () => {
+    const editor = makeMockEditor(() => 'SELECT * FROM users;')
+    const result = buildDiffState(editor, 'SELECT id FROM users;\n', DEFAULT_RANGE)
+    expect(result!.proposedSql).toBe('SELECT id FROM users;')
+  })
+
   it('calls getModel on the editor', () => {
     const editor = makeMockEditor()
     buildDiffState(editor, 'SELECT 1', DEFAULT_RANGE)
