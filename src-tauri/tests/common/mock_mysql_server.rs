@@ -381,10 +381,14 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
         writer: InitWriter<'a, BufWriter<OwnedWriteHalf>>,
     ) -> Result<(), Self::Error> {
         // opensrv routes both COM_INIT_DB and `USE db` queries here.
+        let query = format!("USE {db}");
         self.text_queries
             .lock()
             .expect("text queries lock poisoned")
-            .push(format!("USE {db}"));
+            .push(query.clone());
+        if let Some((kind, message)) = self.find_step(&query).and_then(|step| step.error) {
+            return writer.error(kind, message).await;
+        }
         writer.ok().await
     }
 
@@ -423,6 +427,7 @@ pub struct MockMySqlServer {
     pub port: u16,
     accept_task: tokio::task::JoinHandle<()>,
     connections: Arc<AtomicUsize>,
+    connection_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
     text_queries: Arc<Mutex<Vec<String>>>,
 }
 
@@ -457,6 +462,8 @@ impl MockMySqlServer {
         let connections = Arc::new(AtomicUsize::new(0));
         let text_queries = Arc::clone(&backend.text_queries);
         let accepted = Arc::clone(&connections);
+        let connection_tasks = Arc::new(Mutex::new(Vec::new()));
+        let tasks = Arc::clone(&connection_tasks);
         let accept_task = tokio::spawn(async move {
             loop {
                 let (stream, _) = match listener.accept().await {
@@ -467,7 +474,7 @@ impl MockMySqlServer {
                 };
                 accepted.fetch_add(1, Ordering::SeqCst);
                 let backend = backend.clone();
-                tokio::spawn(async move {
+                let task = tokio::spawn(async move {
                     let (reader, writer) = stream.into_split();
                     let writer = BufWriter::new(writer);
                     if let Err(error) =
@@ -476,6 +483,10 @@ impl MockMySqlServer {
                         eprintln!("mock mysql server error: {error}");
                     }
                 });
+                tasks
+                    .lock()
+                    .expect("connection tasks lock poisoned")
+                    .push(task);
             }
         });
 
@@ -483,6 +494,7 @@ impl MockMySqlServer {
             port,
             accept_task,
             connections,
+            connection_tasks,
             text_queries,
         }
     }
@@ -490,6 +502,17 @@ impl MockMySqlServer {
     /// Number of client connections accepted so far.
     pub fn connection_count(&self) -> usize {
         self.connections.load(Ordering::SeqCst)
+    }
+
+    /// Close the `index`-th accepted connection (0-based, in accept order) from
+    /// the server side, as if the server had killed an idle session.
+    pub fn drop_connection(&self, index: usize) {
+        self.connection_tasks
+            .lock()
+            .expect("connection tasks lock poisoned")
+            .get(index)
+            .expect("connection index should exist")
+            .abort();
     }
 
     /// Text-protocol statements received so far (whitespace-normalized).

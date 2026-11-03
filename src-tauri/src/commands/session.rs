@@ -43,23 +43,27 @@ pub async fn select_database_impl(
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(hook) = hook {
         hook(connection_id, database_name)?;
+        crate::mysql::session::use_database(state, connection_id, database_name).await?;
         state
             .registry
             .set_default_database(connection_id, Some(database_name.to_string()));
-        return crate::mysql::session::use_database(state, connection_id, database_name).await;
+        return Ok(());
     }
 
     let new_pool = pool::create_pool(&stored_params.to_connection_params(password))
         .await
         .map_err(|e| format!("Failed to select database '{database_name}': {e}"))?;
 
+    // Keep the query editor's session (and its variables) — just switch database.
+    // Commit the pool and default database only once the session has switched, so
+    // a failed switch leaves the connection on its previous database.
+    crate::mysql::session::use_database(state, connection_id, database_name).await?;
+
     state.registry.replace_pool(connection_id, new_pool);
     state
         .registry
         .set_default_database(connection_id, Some(database_name.to_string()));
-
-    // Keep the query editor's session (and its variables) — just switch database.
-    crate::mysql::session::use_database(state, connection_id, database_name).await
+    Ok(())
 }
 
 #[cfg(not(coverage))]

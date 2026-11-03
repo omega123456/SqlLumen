@@ -10,7 +10,7 @@ use crate::common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockQueryStep, MockTimeValue,
 };
 use chrono::NaiveDate;
-use opensrv_mysql::{ColumnFlags, ColumnType};
+use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -1063,4 +1063,77 @@ async fn select_database_switches_the_existing_editor_session() {
         "session should switch database, got {queries:?}"
     );
     assert_eq!(session_setup_count(&server), 1);
+}
+
+fn registry_default_database(app: &tauri::App<tauri::test::MockRuntime>, conn_id: &str) -> String {
+    app.state::<AppState>()
+        .registry
+        .get_connection_params(conn_id)
+        .expect("connection should be registered")
+        .default_database
+        .unwrap_or_default()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn select_database_recovers_when_the_editor_session_died() {
+    set_test_select_database_hook(Some(|_, _| Ok(())));
+    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let (app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+    let session_index = server.connection_count();
+
+    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
+    server.drop_connection(session_index);
+
+    let result: Result<(), _> = invoke_tauri_command(
+        &webview,
+        "select_database",
+        json!({ "connectionId": conn_id, "databaseName": "web_content" }),
+    );
+    set_test_select_database_hook(None);
+    result.expect("select_database should succeed on a dead session");
+
+    assert_eq!(registry_default_database(&app, conn_id), "web_content");
+    run_single(&webview, conn_id, "tab-1", "SET @y = 1");
+    assert_eq!(session_setup_count(&server), 2, "session should reconnect");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn select_database_surfaces_server_errors_and_keeps_the_previous_database() {
+    set_test_select_database_hook(Some(|_, _| Ok(())));
+    let server = MockMySqlServer::start_script(vec![
+        connection_id_step(),
+        MockQueryStep {
+            query: "USE web_content",
+            columns: vec![],
+            rows: vec![],
+            error: Some((ErrorKind::ER_DBACCESS_DENIED_ERROR, b"Access denied")),
+            affected_rows: None,
+        },
+    ])
+    .await;
+    let (app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+    let previous_database = registry_default_database(&app, conn_id);
+
+    run_single(&webview, conn_id, "tab-1", "SET @x = 1");
+    let result: Result<(), serde_json::Value> = invoke_tauri_command(
+        &webview,
+        "select_database",
+        json!({ "connectionId": conn_id, "databaseName": "web_content" }),
+    );
+    set_test_select_database_hook(None);
+    let error = result.expect_err("server errors should surface");
+
+    assert!(
+        error
+            .as_str()
+            .is_some_and(|e| e.contains("Failed to switch session to 'web_content'")),
+        "unexpected error: {error}"
+    );
+    assert_eq!(registry_default_database(&app, conn_id), previous_database);
+    run_single(&webview, conn_id, "tab-1", "SET @y = 1");
+    assert_eq!(session_setup_count(&server), 1, "session should be kept");
 }

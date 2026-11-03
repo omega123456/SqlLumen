@@ -84,7 +84,9 @@ pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGua
 
 /// Switch an existing editor session to `database` so session state survives a
 /// database change. No-op when the connection has no session yet (a new one
-/// picks up the registry's default database).
+/// picks up the registry's default database). A session that turns out to be
+/// dead is discarded instead, so the next `acquire` reconnects on the registry's
+/// default database; only server errors (e.g. access denied) are returned.
 #[cfg(not(coverage))]
 pub async fn use_database(
     state: &AppState,
@@ -107,6 +109,18 @@ pub async fn use_database(
     );
     crate::mysql::query_log::log_outgoing_sql(&sql);
     if let Err(error) = session.conn.query_drop(&sql).await {
+        crate::mysql::query_log::log_mysql_async_error(&error);
+        if error.is_fatal() {
+            tracing::warn!(
+                connection_id,
+                thread_id = session.thread_id,
+                database,
+                ?error,
+                "editor session lost on database switch; session state discarded"
+            );
+            *guard = None;
+            return Ok(());
+        }
         tracing::warn!(connection_id, database, ?error, "editor session USE failed");
         return Err(format!("Failed to switch session to '{database}': {error}"));
     }
