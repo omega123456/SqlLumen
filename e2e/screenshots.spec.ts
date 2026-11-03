@@ -1225,7 +1225,7 @@ for (const theme of themes) {
 
     test('WorkspaceArea — tabs + schema-info header region', async ({ page }) => {
       await openSchemaInfoWithWorkspaceTabStrip(page)
-      // Overflow the member strip so the shot shows its edge count chips beside the group badges.
+      // Overflow the member strip so the shot shows its edge count chips beside the group rail.
       await page.evaluate(() => {
         const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
           getState: () => { openTab: (tab: Record<string, unknown>) => void }

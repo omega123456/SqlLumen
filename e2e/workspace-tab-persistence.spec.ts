@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
+  activeGroupRailItem,
   activeConnectionWorkspace,
   activeWorkspaceTabMembers,
   activeWorkspaceTabs,
@@ -137,14 +138,13 @@ async function activateWorkspaceTab(page: Page, tabId: string): Promise<void> {
     }
   }, tabId)
 
-  if (stackKey) {
-    const stackChip = activeWorkspaceTabs(page).getByTestId(`workspace-stack-chip-${stackKey}`)
-    if (await stackChip.isVisible()) {
-      await stackChip.click()
-    }
+  // Only the shown group's tabs are rendered; switch groups through the rail first.
+  const memberTab = activeWorkspaceTabMembers(page).getByTestId(`workspace-tab-${tabId}`)
+  if (stackKey && (await memberTab.count()) === 0) {
+    await activeGroupRailItem(page, stackKey).click()
   }
 
-  await activeWorkspaceTabMembers(page).getByTestId(`workspace-tab-${tabId}`).click()
+  await memberTab.click()
   await expect(
     page.locator(`[data-testid="workspace-panel"][data-tab-id="${tabId}"]`)
   ).toHaveAttribute('data-active', 'true', { timeout: APP_READY_MS })

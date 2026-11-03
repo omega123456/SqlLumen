@@ -1,0 +1,170 @@
+/* Group rail (proposal round 3, "Take group switching out of the tab row"; prototype
+   "Group Rail Prototype", narrow variant): a 44px column at the workspace's left edge. */
+.rail {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 44px;
+  min-height: 0;
+  padding-top: 6px;
+  background-color: var(--surface-strip);
+  box-shadow: inset -1px 0 0 var(--stroke-divider);
+}
+
+/* 36×44: the 18px group icon over its tab count */
+.item {
+  all: unset;
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 36px;
+  height: 44px;
+  border-radius: var(--radius-control);
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.item:hover {
+  background-color: var(--fill-subtle-hover);
+  color: var(--on-surface);
+}
+
+.item:active {
+  background-color: var(--fill-subtle-pressed);
+}
+
+.item:active .icon {
+  opacity: 0.8;
+}
+
+.item[data-selected] {
+  color: var(--on-surface);
+}
+
+.item[data-selected] .count {
+  font-weight: var(--type-weight-semibold);
+}
+
+.item:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.iconWrap {
+  position: relative;
+  display: flex;
+}
+
+/* The icon stays muted in every state; the count carries hover and selection */
+.icon {
+  flex-shrink: 0;
+  color: var(--on-surface-variant);
+}
+
+/* Unsaved changes in the group (same accent dot the tabs use) */
+.dirty {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--primary);
+}
+
+/* Groups that open or close grow and fade instead of making the rail jump */
+.item[data-phase='entering'] {
+  animation: railItemEnter 150ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.item[data-phase='leaving'] {
+  animation: railItemLeave 150ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes railItemEnter {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes railItemLeave {
+  to {
+    height: 0;
+    margin-top: -4px;
+    opacity: 0;
+  }
+}
+
+/* The shown group's marker: neutral, so the selected tab's label stays the only accent */
+.marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background-color: var(--on-surface);
+  pointer-events: none;
+}
+
+.marker[data-animate='true'] {
+  transition: transform 170ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.tooltip {
+  position: absolute;
+  left: calc(100% + 2px);
+  z-index: 20;
+  padding: 5px 8px;
+  border: var(--ui-popover-border);
+  border-radius: var(--radius-control);
+  background-color: var(--ui-popover-bg);
+  box-shadow: var(--shadow-flyout);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: railTooltipIn 90ms ease;
+}
+
+.tooltipCount {
+  margin-left: 6px;
+  color: var(--on-surface-variant);
+}
+
+@keyframes railTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateX(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item[data-phase],
+  .tooltip {
+    animation: none;
+  }
+
+  .item[data-phase='leaving'] {
+    display: none;
+  }
+
+  .marker[data-animate='true'] {
+    transition: none;
+  }
+}

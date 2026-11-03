@@ -75,6 +75,11 @@ export function activeWorkspaceTabs(page: Page): Locator {
   return activeConnectionWorkspace(page).getByTestId('workspace-tabs')
 }
 
+/** Locator for one item of the active connection's tab-group rail, scoped to the visible root. */
+export function activeGroupRailItem(page: Page, stackKey: string): Locator {
+  return activeConnectionWorkspace(page).getByTestId(`workspace-group-rail-item-${stackKey}`)
+}
+
 /** Locator for the active connection's workspace member-tab rail, scoped to the visible root. */
 export function activeWorkspaceTabMembers(page: Page): Locator {
   return activeConnectionWorkspace(page).getByTestId('workspace-tab-members')

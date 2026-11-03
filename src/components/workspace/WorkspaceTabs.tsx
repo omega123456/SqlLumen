@@ -1,20 +1,23 @@
 /**
- * WorkspaceTabs — top-rail placement wrapper.
+ * WorkspaceTabs — the group rail at the workspace's left edge, the document strip with the shown
+ * group's tabs and the actions, and (as children) the workspace body under the strip.
  *
  * Owns:
  *   - Filtering tabs into pinned (history / processlist) vs. scrollable groups
- *   - Pinned tab rendering in the non-scrollable suffix area
- *   - The "new query tab" (+) button
+ *   - The group rail beside the strip and the body
+ *   - The "new query tab" (+) button and pinned tabs in the non-scrollable suffix
  *   - Scroll-into-view when the active tab changes (only while its connection
  *     workspace is the globally visible one)
  *
  * Delegates per-tab rendering, drag-reorder, context menu, rename, and
  * keyboard behavior to WorkspaceTabRail.
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { PlusIcon } from '@phosphor-icons/react'
 import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { UnderlineTabBar } from '../common/UnderlineTabs'
+import { IconButton } from '../common/IconButton'
+import { UnderlineTab, UnderlineTabBar } from '../common/UnderlineTabs'
 import { WorkspaceTabRail } from './WorkspaceTabRail'
 import {
   getWorkspaceStackActivationTarget,
@@ -23,7 +26,8 @@ import {
   isPinnedWorkspaceTab,
   type WorkspaceTabStackKey,
 } from '../../lib/workspace-tab-stacks'
-import { WorkspaceStackRail } from './WorkspaceStackRail'
+import { WorkspaceGroupRail } from './WorkspaceGroupRail'
+import { getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
@@ -46,6 +50,8 @@ export interface WorkspaceTabsProps {
   onRequestRenameTab?: (tabId: string) => void
   onRequestMoveTab?: (tabId: string, direction: 'left' | 'right') => void
   onRequestReorderTab?: (tabId: string, insertIndex: number) => void
+  /** The workspace body, laid out under the strip and beside the rail. */
+  children?: ReactNode
 }
 
 export function WorkspaceTabs({
@@ -55,7 +61,9 @@ export function WorkspaceTabs({
   onRequestRenameTab,
   onRequestMoveTab,
   onRequestReorderTab,
+  children,
 }: WorkspaceTabsProps) {
+  const layoutRef = useRef<HTMLDivElement | null>(null)
   const workspaceRootRef = useRef<HTMLDivElement | null>(null)
   const tabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? EMPTY_TABS)
   const activeTabId = useWorkspaceStore(
@@ -87,8 +95,18 @@ export function WorkspaceTabs({
           hideScopedTableDataTabs: hideTableDataTabs,
         })
       : null
-  const activeStackTabs =
-    stackGroups.find((group) => group.key === activeStackKey)?.tabs ?? EMPTY_TABS
+  // While a pinned tab is selected, keep showing the last group's tabs so the row stays put.
+  const [lastStackKey, setLastStackKey] = useState(activeStackKey)
+  if (activeStackKey && activeStackKey !== lastStackKey) {
+    setLastStackKey(activeStackKey)
+  }
+  const shownStackKey =
+    activeStackKey ??
+    (stackGroups.some((group) => group.key === lastStackKey) ? lastStackKey : null) ??
+    stackGroups[0]?.key ??
+    null
+  const shownStackTabs =
+    stackGroups.find((group) => group.key === shownStackKey)?.tabs ?? EMPTY_TABS
 
   const allMovableTabIds = useMemo(
     () => tabs.filter((t) => t.type !== 'history' && t.type !== 'processlist').map((t) => t.id),
@@ -116,7 +134,7 @@ export function WorkspaceTabs({
       `[data-testid="workspace-tab-${activeTabId}"]`
     )
     tabEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [activeTabId, connectionActive, activeStackKey])
+  }, [activeTabId, connectionActive, shownStackKey])
 
   const activateStack = (stackKey: ReturnType<typeof getWorkspaceStackKeyForTab>) => {
     if (!stackKey) {
@@ -166,53 +184,84 @@ export function WorkspaceTabs({
     })
   }
 
-  const focusOwningStackChip = () => {
-    if (!activeStackKey) {
-      return
-    }
-
-    const stackChip = workspaceRootRef.current?.querySelector<HTMLElement>(
-      `[data-testid="workspace-stack-chip-${activeStackKey}"]`
-    )
-    const labelButton = stackChip?.querySelector<HTMLElement>('[role="button"],button')
-    ;(labelButton ?? stackChip)?.focus()
+  const focusGroupRail = () => {
+    layoutRef.current
+      ?.querySelector<HTMLElement>('[data-testid="workspace-group-rail"] [tabindex="0"]')
+      ?.focus()
   }
 
   return (
-    <div ref={workspaceRootRef} className={styles.workspaceTabs} data-testid="workspace-tabs-root">
-      <WorkspaceStackRail
+    <div ref={layoutRef} className={styles.workspaceLayout}>
+      <WorkspaceGroupRail
+        className={styles.groupRail}
         stackGroups={stackGroups}
-        activeStackKey={activeStackKey}
-        pinnedTabs={pinnedTabs}
-        activeTabId={activeTabId}
-        connectionActive={connectionActive}
-        onActivateStack={activateStack}
-        onActivatePinnedTab={requestActivateTab}
-        onOpenQueryTab={() => openQueryTab(connectionId)}
-        onFocusStackMembers={focusStackMembers}
+        value={shownStackKey}
+        onSelect={activateStack}
+        onFocusMembers={focusStackMembers}
       />
-      {activeStackKey ? (
+      <div ref={workspaceRootRef} className={styles.workspaceTabs} data-testid="workspace-tabs">
         <UnderlineTabBar
           variant="document"
           className={styles.workspaceTabRailBleed}
           data-testid="workspace-tab-members"
           scrollable
+          suffix={
+            <div className={styles.rowActions}>
+              <IconButton
+                size="lg"
+                title="New query tab"
+                aria-label="New query tab"
+                onClick={() => openQueryTab(connectionId)}
+                data-testid="new-query-tab-button"
+              >
+                <PlusIcon size={16} weight="regular" />
+              </IconButton>
+              {pinnedTabs.map((tab) => {
+                const { IconComponent, testId } = getWorkspaceTabIconDescriptor(tab)
+                return (
+                  <UnderlineTab
+                    key={tab.id}
+                    variant="selector"
+                    active={tab.id === activeTabId}
+                    className={styles.pinnedTab}
+                    data-testid={`workspace-pinned-tab-${tab.type}`}
+                    aria-label={tab.label}
+                    title={tab.label}
+                    autoScrollOnActive={connectionActive}
+                    onClick={() => requestActivateTab(tab.id)}
+                  >
+                    <span className={styles.pinnedTabLabel}>
+                      <IconComponent
+                        size={16}
+                        weight="regular"
+                        aria-hidden={true}
+                        data-testid={testId}
+                        className={styles.pinnedTabIcon}
+                      />
+                      <span>{tab.label}</span>
+                    </span>
+                  </UnderlineTab>
+                )
+              })}
+            </div>
+          }
         >
           <div ref={memberRowRef} className={styles.memberRow}>
             <WorkspaceTabRail
               connectionId={connectionId}
-              tabs={activeStackTabs}
+              tabs={shownStackTabs}
               allMovableTabIds={allMovableTabIds}
               activeTabId={activeTabId}
               autoScrollOnActive={connectionActive}
               onRequestRenameTab={onRequestRenameTab}
               onRequestMoveTab={onRequestMoveTab}
               onRequestReorderTab={onRequestReorderTab}
-              onFocusOwningStackChip={focusOwningStackChip}
+              onFocusGroupRail={focusGroupRail}
             />
           </div>
         </UnderlineTabBar>
-      ) : null}
+      </div>
+      {children ? <div className={styles.workspaceMain}>{children}</div> : null}
     </div>
   )
 }

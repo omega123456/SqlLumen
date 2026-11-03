@@ -37,6 +37,8 @@ export interface UnderlineTabBarProps {
   children: ReactNode
   className?: string
   'data-testid'?: string
+  /** Content rendered before the tab area, outside its scroll box (e.g. a group picker). */
+  prefix?: ReactNode
   /** Content rendered outside the scrollable tab area (e.g. pinned tabs, action buttons). */
   suffix?: ReactNode
   /** When true, tabs scroll horizontally with a hidden scrollbar. While they overflow
@@ -49,16 +51,17 @@ export function UnderlineTabBar(props: UnderlineTabBarProps) {
   if (props.scrollable) {
     return <ScrollableTabBar {...props} />
   }
-  const { children, className, 'data-testid': testId, suffix, variant = 'default' } = props
+  const { children, className, 'data-testid': testId, prefix, suffix, variant = 'default' } = props
   const barClass = [styles.bar, BAR_VARIANT_CLASS[variant]].filter(Boolean).join(' ')
-  if (suffix) {
+  if (prefix || suffix) {
     const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
       .filter(Boolean)
       .join(' ')
     return (
       <div className={wrapperClass} data-testid={testId}>
+        {prefix}
         <div className={barClass}>{children}</div>
-        <div className={styles.barSuffix}>{suffix}</div>
+        {suffix ? <div className={styles.barSuffix}>{suffix}</div> : null}
       </div>
     )
   }
@@ -80,19 +83,23 @@ function tabItems(element: Element): Element[] {
   )
 }
 
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+}
+
 function revealTab(tab: Element | undefined) {
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  tab?.scrollIntoView({
-    block: 'nearest',
-    inline: 'nearest',
-    behavior: reduceMotion ? 'auto' : 'smooth',
-  })
+  tab?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: scrollBehavior() })
+}
+
+function scrollViewportBy(viewport: HTMLElement, delta: number) {
+  viewport.scrollBy({ left: delta, behavior: scrollBehavior() })
 }
 
 function ScrollableTabBar({
   children,
   className,
   'data-testid': testId,
+  prefix,
   suffix,
   variant = 'default',
 }: UnderlineTabBarProps) {
@@ -147,24 +154,40 @@ function ScrollableTabBar({
     return () => viewport.removeEventListener('wheel', onWheel)
   }, [])
 
+  // scrollIntoView('nearest') leaves a tab where it is when it is wider than the visible strip and
+  // already lines up with, or overhangs, the edge it would align to. The chips skip such a tab to
+  // the next one, or scroll by its hidden part when it is the last one on that side.
   const scrollToStart = () => {
     const viewport = viewportRef.current
     const content = contentRef.current
     if (!viewport || !content) return
-    const edge = viewport.getBoundingClientRect().left + START_CHIP_CLEARANCE
-    revealTab(
-      tabItems(content)
-        .filter((tab) => tab.getBoundingClientRect().left < edge - 1)
-        .pop()
-    )
+    const { left, right } = viewport.getBoundingClientRect()
+    const edge = left + START_CHIP_CLEARANCE
+    const hidden = tabItems(content).filter((tab) => tab.getBoundingClientRect().left < edge - 1)
+    const target = hidden.filter((tab) => tab.getBoundingClientRect().right < right - 1).pop()
+    if (target) {
+      revealTab(target)
+      return
+    }
+    const overhanging = hidden.pop()
+    if (overhanging) scrollViewportBy(viewport, overhanging.getBoundingClientRect().left - edge)
   }
 
   const scrollToEnd = () => {
     const viewport = viewportRef.current
     const content = contentRef.current
     if (!viewport || !content) return
-    const edge = viewport.getBoundingClientRect().right
-    revealTab(tabItems(content).find((tab) => tab.getBoundingClientRect().right > edge + 1))
+    const { left, right } = viewport.getBoundingClientRect()
+    const hidden = tabItems(content).filter((tab) => tab.getBoundingClientRect().right > right + 1)
+    const target = hidden.find(
+      (tab) => tab.getBoundingClientRect().left > left + START_CHIP_CLEARANCE + 1
+    )
+    if (target) {
+      revealTab(target)
+      return
+    }
+    const overhanging = hidden[0]
+    if (overhanging) scrollViewportBy(viewport, overhanging.getBoundingClientRect().right - right)
   }
 
   const wrapperClass = [styles.barWrapper, BAR_VARIANT_CLASS[variant], className]
@@ -176,6 +199,7 @@ function ScrollableTabBar({
 
   return (
     <div className={wrapperClass} data-testid={testId} data-overflowing={overflowing || undefined}>
+      {prefix}
       <div ref={areaRef} className={styles.scrollArea}>
         {overflowing && hiddenStart > 0 ? (
           <div className={styles.edgeZoneStart}>
@@ -377,6 +401,7 @@ export function UnderlineTab({
           role="button"
           tabIndex={0}
           aria-label={ariaLabel}
+          aria-selected={active}
           className={styles.labelButton}
           onClick={handleSelect}
           onKeyDown={onLabelKeyDown}
@@ -427,6 +452,7 @@ export function UnderlineTab({
       data-active={active ? true : undefined}
       data-testid={testId}
       aria-label={ariaLabel}
+      aria-selected={active}
       title={title}
       onClick={handleSelect}
       onAuxClick={onAuxClick}

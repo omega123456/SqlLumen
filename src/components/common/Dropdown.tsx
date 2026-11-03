@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { CaretDown, Check } from '@phosphor-icons/react'
+import { CaretDown, Check, type IconWeight } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 
@@ -40,8 +40,7 @@ type DropdownRenderContext = {
 }
 
 type DropdownLabelProps =
-  | { labelledBy: string; ariaLabel?: undefined }
-  | { ariaLabel: string; labelledBy?: undefined }
+  { labelledBy: string; ariaLabel?: undefined } | { ariaLabel: string; labelledBy?: undefined }
 
 type DropdownTriggerProps = Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
@@ -70,6 +69,11 @@ type CommonDropdownProps = DropdownLabelProps & {
   renderTriggerValue?: (selectedOptions: DropdownOption[]) => ReactNode
   renderOptionLabel?: (option: DropdownOption, context: DropdownRenderContext) => ReactNode
   workspaceTabId?: string
+  /** Trigger chevron size and weight; defaults to 16px bold. */
+  chevronSize?: number
+  chevronWeight?: IconWeight
+  /** Minimum flyout width in px; defaults to the Fluent 140px. */
+  minPanelWidth?: number
 }
 
 type SingleSelectDropdownProps = CommonDropdownProps & {
@@ -250,6 +254,9 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       focusListOnOpen = true,
       listAriaLabel,
       workspaceTabId,
+      chevronSize = 16,
+      chevronWeight = 'bold',
+      minPanelWidth = FLYOUT_MIN_WIDTH,
     } = props
 
     const { onClick: triggerOnClick, ...triggerRest } = triggerProps ?? {}
@@ -377,7 +384,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       const m = VIEWPORT_MARGIN
 
       let left = triggerRect.left
-      let width = Math.max(triggerRect.width, FLYOUT_MIN_WIDTH)
+      let width = Math.max(triggerRect.width, minPanelWidth)
       if (left < m) {
         width -= m - left
         left = m
@@ -418,7 +425,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           bottom: bottomValue,
         })
       }
-    }, [])
+    }, [minPanelWidth])
 
     const setPanelRef = useCallback(
       (node: HTMLUListElement | null) => {
@@ -614,7 +621,12 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                   onKeyDown={onTriggerKeyDown}
                 >
                   <span className="ui-dropdown__value">{selectedLabel}</span>
-                  <CaretDown className="ui-dropdown__chevron" size={16} weight="bold" aria-hidden />
+                  <CaretDown
+                    className="ui-dropdown__chevron"
+                    size={chevronSize}
+                    weight={chevronWeight}
+                    aria-hidden
+                  />
                 </ListboxButton>
                 {renderOptions(open)}
               </div>
@@ -672,7 +684,12 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                 onKeyDown={onTriggerKeyDown}
               >
                 <span className="ui-dropdown__value">{selectedLabel}</span>
-                <CaretDown className="ui-dropdown__chevron" size={16} weight="bold" aria-hidden />
+                <CaretDown
+                  className="ui-dropdown__chevron"
+                  size={chevronSize}
+                  weight={chevronWeight}
+                  aria-hidden
+                />
               </ListboxButton>
               {renderOptions(open)}
             </div>

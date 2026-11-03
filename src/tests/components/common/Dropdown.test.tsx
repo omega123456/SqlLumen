@@ -371,6 +371,48 @@ describe('Dropdown', () => {
     }
   })
 
+  it('honours minPanelWidth and the chevron size and weight props', async () => {
+    const user = userEvent.setup()
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const isTrigger = this.getAttribute('role') === 'combobox'
+        const rect = isTrigger
+          ? { left: 100, top: 22, width: 60, height: 28, right: 160, bottom: 50 }
+          : { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 }
+        return { ...rect, x: rect.left, y: rect.top, toJSON: () => rect } as DOMRect
+      })
+
+    try {
+      render(
+        <Dropdown
+          id="d-min-width"
+          ariaLabel="Pick"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+          chevronSize={12}
+          chevronWeight="regular"
+          minPanelWidth={220}
+        />
+      )
+
+      const trigger = screen.getByRole('combobox', { name: 'Pick' })
+      const chevron = trigger.querySelector('.ui-dropdown__chevron')
+      expect(chevron).toHaveAttribute('width', '12')
+      expect(chevron).toHaveAttribute('height', '12')
+
+      await user.click(trigger)
+
+      const listbox = screen.getByRole('listbox')
+      await waitFor(() => {
+        expect(listbox.style.width).toBe('220px')
+      })
+    } finally {
+      rectSpy.mockRestore()
+    }
+  })
+
   it('supports typeahead letter navigation while the listbox is open', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

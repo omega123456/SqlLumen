@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
+  activeGroupRailItem,
   activeWorkspaceTabMembers,
-  activeWorkspaceTabs,
   APP_READY_MS,
   connectToSample,
   dismissAllToasts,
@@ -158,11 +158,9 @@ test.describe('Object Editor', () => {
     })
 
     // Verify the workspace tab label contains "Execute:"
-    await expect(activeWorkspaceTabs(page).getByTestId('workspace-stack-chip-queries')).toBeVisible(
-      {
-        timeout: APP_READY_MS,
-      }
-    )
+    await expect(activeGroupRailItem(page, 'queries')).toHaveAttribute('aria-selected', 'true', {
+      timeout: APP_READY_MS,
+    })
     await expect(activeWorkspaceTabMembers(page)).toContainText('Execute:', {
       timeout: APP_READY_MS,
     })

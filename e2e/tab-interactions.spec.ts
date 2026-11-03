@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
+  activeGroupRailItem,
   activeConnectionWorkspace,
   activeWorkspaceTabMembers,
   APP_READY_MS,
@@ -208,6 +209,96 @@ test.describe('Tab interactions', () => {
     expect(movedStartNames.slice(0, 2)).toEqual(['Staging MySQL', 'Sample MySQL'])
   })
 
+  test('switches tab groups from the picker and marks the selected tab with accent text', async ({
+    page,
+  }) => {
+    await connectToSample(page)
+    const queryTabId = await openQueryTab(page)
+    await openSecondConnectionSession(page)
+    await page.evaluate((sessionId) => {
+      const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        getState: () => { openTab: (tab: Record<string, unknown>) => void }
+      }
+      store.getState().openTab({
+        type: 'schema-info',
+        label: 'users',
+        connectionId: sessionId,
+        databaseName: 'ecommerce_db',
+        objectName: 'users',
+        objectType: 'table',
+      })
+    }, SAMPLE_SESSION_ID)
+
+    const members = activeWorkspaceTabMembers(page)
+    await expect(activeGroupRailItem(page, 'schema')).toHaveAttribute('aria-selected', 'true')
+    await expect(members.getByText('users')).toBeVisible()
+
+    // The selected document's label is the only accent: --primary, semibold.
+    const selectedLabel = members
+      .locator('[data-active] [aria-selected="true"]')
+      .getByText('users', { exact: true })
+    const primary = await page.evaluate(() => {
+      const probe = document.createElement('span')
+      probe.style.color = 'var(--primary)'
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    })
+    await expect(selectedLabel).toHaveCSS('color', primary)
+    await expect(selectedLabel).toHaveCSS('font-weight', '600')
+
+    await activeGroupRailItem(page, 'queries').click()
+    await expect(activeGroupRailItem(page, 'queries')).toHaveAttribute('aria-selected', 'true')
+    await expect(members.getByTestId(`workspace-tab-${queryTabId}`)).toHaveAttribute(
+      'data-active',
+      'true'
+    )
+    await expect(members.getByText('users')).toHaveCount(0)
+
+    // The selected connection tab covers the coloured edge, so the line breaks under it.
+    const bar = page.getByTestId('connection-tab-bar')
+    const activeConnection = page.getByTestId(`connection-session-tab-${SAMPLE_SESSION_ID}`)
+    const barBox = (await bar.boundingBox())!
+    const tabBox = (await activeConnection.boundingBox())!
+    expect(tabBox.y + tabBox.height).toBe(barBox.y + barBox.height)
+  })
+
+  test('end chip scrolls past a selected tab wider than the strip minus the start chip', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 840, height: 600 })
+    await connectToSample(page)
+    // The long tab fits the strip but not the strip minus the 52px start chip, so
+    // scrollIntoView('nearest') alone would leave it in place. 840px leaves the strip about 360px
+    // beside the sidebar and the group rail.
+    await page.evaluate((sessionId) => {
+      const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        getState: () => { openTab: (tab: Record<string, unknown>) => void }
+      }
+      for (const name of ['a1', 'a2', 'a3', 'forest_finance_import_results', 'b1', 'b2']) {
+        store.getState().openTab({
+          type: 'schema-info',
+          label: name,
+          connectionId: sessionId,
+          databaseName: 'ecommerce_db',
+          objectName: name,
+          objectType: 'table',
+        })
+      }
+    }, SAMPLE_SESSION_ID)
+
+    const members = activeWorkspaceTabMembers(page)
+    await members.getByText('forest_finance_import_results').click()
+    const endChip = members.getByTestId('tab-strip-scroll-end')
+    await expect(endChip).toHaveAccessibleName('Scroll tabs right, 3 hidden')
+
+    await endChip.click()
+    await expect(endChip).toHaveAccessibleName('Scroll tabs right, 1 hidden')
+    await endChip.click()
+    await expect(endChip).toBeDisabled()
+  })
+
   test('shows edge count chips only when workspace tabs overflow', async ({ page }) => {
     await connectToSample(page)
     await openQueryTab(page)
@@ -225,11 +316,11 @@ test.describe('Tab interactions', () => {
     }
 
     await expect(strip).toHaveAttribute('data-overflowing', 'true')
-    // The strip keeps its height: no scrollbar row squashing the group row or covering the body.
+    // The strip keeps its height: no scrollbar row growing the one-row tab area or covering the body.
     expect(await stripHeight()).toBe(38)
     const workspace = activeConnectionWorkspace(page)
-    const groupRow = workspace.getByTestId('workspace-tabs')
-    expect(await groupRow.evaluate((el: HTMLElement) => el.offsetHeight)).toBe(44)
+    const tabRow = workspace.getByTestId('workspace-tabs')
+    expect(await tabRow.evaluate((el: HTMLElement) => el.offsetHeight)).toBe(38)
     const stripBox = (await strip.boundingBox())!
     expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(
       (await workspace.getByTestId('workspace-body').boundingBox())!.y

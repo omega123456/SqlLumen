@@ -74,12 +74,14 @@ In the query editor, `Ctrl+H` or `Ctrl+Shift+R` (or `Cmd` on macOS) opens Find a
 
 ## Workspace tabs
 
-SqlLumen groups non-pinned workspace tabs by tab type so the top rail stays usable as a session grows.
+SqlLumen groups non-pinned workspace tabs by tab type so the tab strip stays usable as a session grows. You switch groups in a narrow rail at the workspace's left edge, and the row below the connection tabs shows the current group's tabs.
 
-- The top row is a stable stack picker with type-based groups: `Queries`, `Tables`, `Designers`, `Schema`, and `Objects`.
-- `History` and `Process List` stay pinned on the top row as always-available singleton tabs for the active connection.
-- The top-row `+` button always opens a new query tab and returns focus to the `Queries` stack.
-- The second row shows only the member tabs for the currently active non-pinned stack, so rename, drag/reorder, close, dirty markers, and existing per-tab actions still happen on concrete tabs instead of on stack chips.
+- The group rail lists every group with open tabs (`Queries`, `Tables`, `Designers`, `Schema`, `Objects`) as its icon over its tab count. Click a group to switch to its most recently used tab. The current group has a marker on the left edge, and hovering a group shows its name and tab count. A dot marks a group with unsaved designer or editor changes. Groups fade in and out as their first tab opens or their last tab closes, and the rail stays visible even when only one group is open.
+- The rail is a single tab stop. `ArrowUp` / `ArrowDown` (and `Home` / `End`) switch groups, `ArrowRight` moves focus into the group's tabs, and `ArrowUp` on a tab moves focus back to the rail.
+- With **Show table data tabs in bottom panel** on, table data tabs live in their query tab's result panel and belong to no group, so the rail has no `Tables` group and the `Queries` count covers query tabs only.
+- The row shows only the tabs of the current group, so rename, drag/reorder, close, dirty markers, and existing per-tab actions still happen on concrete tabs.
+- The selected tab is marked by its label and icon in the accent colour.
+- The `+` button and the pinned `History` and `Process List` tabs sit at the end of the row. `+` always opens a new query tab. While `History` or `Process List` is selected, the row keeps showing the last group's tabs.
 - Session restore does not save extra stack UI state. Restored tabs regroup naturally from their tab types, and per-stack recency starts fresh after relaunch.
 - Right-click a member tab (or press Shift+F10 / the Menu key) for **Close tabs to the left** / **Close tabs to the right**. These close only tabs in the same group, and tabs with unsaved changes still ask before closing.
 - On a table, view, routine, trigger, or event tab, the same menu offers **Reveal in object browser** (`Shift+F1`). It selects and focuses the object in the tree, switches the sidebar back from favorites, clears a filter that hides the object, and makes its database the active one. It is disabled for objects that are still being created, and query, history, and process list tabs do not show it.

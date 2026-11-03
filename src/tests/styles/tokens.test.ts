@@ -126,7 +126,6 @@ describe('tokens.css — shape, elevation and heights', () => {
   it.each([
     ['--title-strip-height', '40px'],
     ['--command-bar-height', '44px'],
-    ['--tab-group-row-height', '44px'],
     ['--doc-tab-height', '32px'],
     ['--doc-tab-strip-height', '38px'],
     ['--control-height', '32px'],

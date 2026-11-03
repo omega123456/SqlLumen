@@ -365,10 +365,15 @@
   padding: 0 6px 0 8px;
 }
 
+/* The selected tab keeps its joined fill without an outline; its label colour carries the state. */
 .tabDocument.simpleActive,
 .tabDocument.cellActive {
   background-color: var(--surface-container);
-  border-color: var(--stroke-card);
+}
+
+/* Hover only brightens the label: the fill is reserved for the joined selected tab. */
+.tabDocument:hover:not([data-active]) {
+  background-color: transparent;
 }
 
 .tabDocument.simpleActive::after,

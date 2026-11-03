@@ -4,76 +4,82 @@
   min-width: 0;
 }
 
-/* Tab-group row (prototype `.p-groups`): 44px, selector tabs 40px tall, centred accent pill */
-.stackRail {
-  box-sizing: border-box;
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  height: var(--tab-group-row-height);
+/* Rail beside the strip and the body (proposal round 3, "Take group switching out of the tab
+   row"): the rail spans both rows, the strip and the body share the second column. */
+.workspaceLayout {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1;
   min-width: 0;
-  padding: 4px 8px 0;
-  overflow: hidden;
-  box-shadow: inset 0 -1px 0 var(--stroke-divider);
+  min-height: 0;
 }
 
-.stackRailGroups,
-.stackRailPinned {
+.groupRail {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
+.workspaceLayout > .workspaceTabs {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.workspaceMain {
   display: flex;
-  align-items: stretch;
-  gap: 0;
+  flex-direction: column;
+  grid-column: 2;
+  grid-row: 2;
   min-width: 0;
-  flex-wrap: nowrap;
+  min-height: 0;
 }
 
-.stackRailGroups {
-  flex: 1 1 auto;
-  overflow: hidden;
+/* Row actions after the tabs: a 1×20 divider, then +, History and Process list */
+.rowActions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  align-self: flex-end;
+  gap: 2px;
+  flex: none;
+  padding: 0 8px 0 9px;
 }
 
-.stackRailPinned {
-  flex: 0 0 auto;
-}
-
-/* Vertical divider after the new-tab button (prototype `.vdiv`) */
-.stackRailPinned > .newTabButton {
-  align-self: center;
-  margin-right: 4px;
-}
-
-.stackRailPinned > .newTabButton + * {
-  margin-left: 5px;
-}
-
-.stackRailPinned > .newTabButton::after {
+.rowActions::before {
   content: '';
   position: absolute;
-  right: -5px;
+  left: 0;
   top: 50%;
   width: 1px;
   height: 20px;
   margin-top: -10px;
-  background-color: var(--stroke-divider);
+  background: var(--stroke-divider);
 }
 
-.stackChip {
+/* Pinned tabs as subtle labelled buttons. The selected one uses the document accent text. */
+.workspaceTabs .rowActions .pinnedTab {
   min-width: 0;
   max-width: 200px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--on-surface-variant);
 }
 
-/* Same centred 16×3 accent pill as the default (table designer) tabs */
-.stackRail .stackChip[data-active]::after {
-  left: 50%;
-  right: auto;
-  bottom: 2px;
-  width: 16px;
-  height: 3px;
-  margin-left: -8px;
-  border-radius: 2px;
+.workspaceTabs .rowActions .pinnedTab:hover {
+  background-color: var(--fill-subtle-hover);
+  color: var(--on-surface);
 }
 
-.stackChipLabel {
+.workspaceTabs .rowActions .pinnedTab[data-active] {
+  color: var(--primary);
+}
+
+.workspaceTabs .rowActions .pinnedTab[data-active]::after {
+  content: none;
+}
+
+.pinnedTabLabel {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -81,32 +87,8 @@
   white-space: nowrap;
 }
 
-.stackChipIcon {
+.pinnedTabIcon {
   flex-shrink: 0;
-}
-
-/* Count badge (prototype `.badge`) */
-.stackChipCount {
-  box-sizing: border-box;
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  background-color: var(--fill-neutral-selected);
-  color: var(--on-surface-variant);
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: var(--type-weight-semibold);
-  text-align: center;
-}
-
-[data-active] .stackChipCount {
-  background-color: var(--fill-accent-tint);
-  color: var(--primary);
-}
-
-.stackChipDirty {
-  color: var(--primary);
 }
 
 .memberRow,
@@ -139,6 +121,12 @@
 /* Close button (prototype `.p-doc .b.sub.xs`): only on hover and on the selected tab */
 .tabClose {
   visibility: hidden;
+}
+
+/* The selected document is the only accent in the tab chrome: label and icon in --primary */
+.workspaceTab[data-active] .tabLabel,
+.workspaceTab[data-active] .tabTypeIcon {
+  color: var(--primary);
 }
 
 .workspaceTab:hover .tabClose,
@@ -190,21 +178,4 @@
 
 .workspaceTab:has(.renameInput) {
   cursor: text;
-}
-
-.newTabButton {
-  position: relative;
-}
-
-.stackRail[data-compact-mode='short'] .stackChip {
-  max-width: 108px;
-}
-
-.stackRail[data-compact-mode='icon-count'] .stackChip,
-.stackRail[data-compact-mode='icon'] .stackChip {
-  max-width: 64px;
-}
-
-.stackRail[data-compact-mode='icon'] .stackChipLabel {
-  gap: 0;
 }

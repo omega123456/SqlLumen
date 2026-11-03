@@ -24,26 +24,8 @@ beforeEach(() => {
   useObjectEditorStore.setState({ tabs: {} })
 })
 
-function setCompactWorkspaceTabsWidth(width: number) {
-  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
-  Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
-    configurable: true,
-    get() {
-      const testId = this.getAttribute?.('data-testid')
-      if (testId === 'workspace-tabs') {
-        return width
-      }
-      return original?.get ? original.get.call(this) : 1024
-    },
-  })
-
-  return () => {
-    if (original) {
-      Object.defineProperty(HTMLElement.prototype, 'clientWidth', original)
-      return
-    }
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
-  }
+async function chooseGroup(user: ReturnType<typeof userEvent.setup>, stackKey: string) {
+  await user.click(screen.getByTestId(`workspace-group-rail-item-${stackKey}`))
 }
 
 describe('WorkspaceTabs', () => {
@@ -74,10 +56,42 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
-    expect(screen.getByTestId('workspace-stack-chip-tables')).toBeInTheDocument()
-    expect(screen.getByTestId('workspace-stack-chip-schema')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-group-rail-item-schema')).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
     expect(screen.queryByText('users')).not.toBeInTheDocument()
     expect(screen.getByText('orders')).toBeInTheDocument()
+  })
+
+  it('lists every group with its tab count in the rail', () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query B')
+    useWorkspaceStore.getState().openTab({
+      type: 'schema-info',
+      label: 'orders',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const rail = screen.getByTestId('workspace-group-rail')
+    expect(rail).toHaveAccessibleName('Tab groups')
+    expect(rail).toHaveAttribute('aria-orientation', 'vertical')
+
+    const queries = screen.getByTestId('workspace-group-rail-item-queries')
+    const schema = screen.getByTestId('workspace-group-rail-item-schema')
+    expect(queries).toHaveAccessibleName('Queries, 2 tabs')
+    expect(queries).toHaveTextContent('2')
+    expect(schema).toHaveAccessibleName('Schema, 1 tab')
+    expect(schema).toHaveTextContent('1')
+    expect(schema).toHaveAttribute('aria-selected', 'true')
+    expect(queries).toHaveAttribute('aria-selected', 'false')
+    expect(within(rail).getAllByRole('tab')).toEqual([queries, schema])
+    expect(screen.queryByTestId('workspace-group-rail-item-tables')).not.toBeInTheDocument()
   })
 
   it('clicking a tab activates it', async () => {
@@ -252,25 +266,25 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    expect(screen.getByTestId('workspace-stack-icon-schema')).toBeInTheDocument()
-    expect(screen.getByTestId('workspace-stack-icon-tables')).toBeInTheDocument()
-    expect(screen.getByTestId('workspace-stack-icon-queries')).toBeInTheDocument()
-    expect(screen.getByTestId('workspace-stack-icon-designers')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-stack-icon-objects')).toBeInTheDocument()
 
-    await user.click(screen.getByTestId('workspace-stack-chip-schema'))
+    await chooseGroup(user, 'schema')
     expect(screen.getByTestId('workspace-tab-icon-schema-info')).toBeInTheDocument()
 
-    await user.click(screen.getByTestId('workspace-stack-chip-tables'))
+    await chooseGroup(user, 'tables')
+    expect(screen.getByTestId('workspace-stack-icon-tables')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-tab-icon-table-data')).toBeInTheDocument()
 
-    await user.click(screen.getByTestId('workspace-stack-chip-queries'))
+    await chooseGroup(user, 'queries')
+    expect(screen.getByTestId('workspace-stack-icon-queries')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-tab-icon-query-editor')).toBeInTheDocument()
 
-    await user.click(screen.getByTestId('workspace-stack-chip-designers'))
+    await chooseGroup(user, 'designers')
+    expect(screen.getByTestId('workspace-stack-icon-designers')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-tab-icon-table-designer')).toBeInTheDocument()
 
-    await user.click(screen.getByTestId('workspace-stack-chip-objects'))
+    await chooseGroup(user, 'objects')
+    expect(screen.getByTestId('workspace-stack-icon-objects')).toBeInTheDocument()
     expect(screen.getByTestId('workspace-tab-icon-object-editor-procedure')).toBeInTheDocument()
   })
 
@@ -335,9 +349,8 @@ describe('WorkspaceTabs', () => {
     expect(tabs[1].label).toBe('Query 2')
   })
 
-  it('supports horizontal top-row keyboard navigation from the "+" button', async () => {
+  it('shows the last group while a pinned tab is selected', async () => {
     const user = userEvent.setup()
-
     act(() => {
       useWorkspaceStore.getState().openTab({
         type: 'table-data',
@@ -347,50 +360,46 @@ describe('WorkspaceTabs', () => {
         objectName: 'users',
         objectType: 'table',
       })
-      useWorkspaceStore.getState().openHistoryTab('conn-1')
-      useWorkspaceStore.getState().openProcessListTab('conn-1')
+      useWorkspaceStore.getState().openHistoryTab('conn-1', false)
     })
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    const plusButton = screen.getByTestId('new-query-tab-button')
-    const tablesChip = screen.getByTestId('workspace-stack-chip-tables')
     const historyTab = screen.getByTestId('workspace-pinned-tab-history')
-    const processListTab = screen.getByTestId('workspace-pinned-tab-processlist')
+    expect(historyTab).toHaveAttribute('aria-selected', 'false')
+    expect(historyTab).toHaveTextContent('History')
 
-    plusButton.focus()
-    expect(plusButton).toHaveFocus()
+    await user.click(historyTab)
 
-    await user.keyboard('{ArrowLeft}')
-    expect(tablesChip).toHaveFocus()
-
-    await user.keyboard('{ArrowRight}')
-    expect(plusButton).toHaveFocus()
-
-    await user.keyboard('{ArrowRight}')
-    expect(historyTab).toHaveFocus()
-
-    await user.keyboard('{Home}')
-    expect(tablesChip).toHaveFocus()
-
-    await user.keyboard('{End}')
-    expect(processListTab).toHaveFocus()
+    expect(historyTab).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('workspace-group-rail-item-tables')).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(screen.getByText('users')).toBeInTheDocument()
   })
 
-  it('hands focus down from the active stack chip into the visible member row and back up', async () => {
-    const user = userEvent.setup()
-    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
-    const queryTab = useWorkspaceStore
-      .getState()
-      .tabsByConnection['conn-1'].find((tab) => tab.id === queryTabId)
-
-    if (!queryTab) {
-      throw new Error('Expected query tab to exist')
-    }
+  it('renders an empty rail when only pinned tabs are open', () => {
+    act(() => {
+      useWorkspaceStore.getState().openHistoryTab('conn-1')
+    })
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')
+    const rail = screen.getByTestId('workspace-group-rail')
+    expect(within(rail).queryAllByRole('tab')).toHaveLength(0)
+    expect(screen.getByTestId('workspace-group-rail-marker')).not.toBeVisible()
+    expect(screen.getByTestId('workspace-pinned-tab-history')).toBeInTheDocument()
+    expect(screen.getByTestId('new-query-tab-button')).toBeInTheDocument()
+  })
+
+  it('moves focus from the group rail into the shown tabs with ArrowRight and back with ArrowUp', async () => {
+    const user = userEvent.setup()
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const railItem = screen.getByTestId('workspace-group-rail-item-queries')
     const memberTab = screen
       .getByTestId(`workspace-tab-${queryTabId}`)
       .querySelector('[role="button"]')
@@ -399,60 +408,35 @@ describe('WorkspaceTabs', () => {
       throw new Error('Expected workspace member tab label button to exist')
     }
 
-    queryStackChip.focus()
-    expect(queryStackChip).toHaveFocus()
+    act(() => railItem.focus())
+    await user.keyboard('{ArrowLeft}')
+    expect(railItem).toHaveFocus()
 
-    await user.keyboard('{ArrowDown}')
-
+    await user.keyboard('{ArrowRight}')
     await waitFor(() => {
       expect(memberTab).toHaveFocus()
     })
 
     await user.keyboard('{ArrowUp}')
-    expect(queryStackChip).toHaveFocus()
-    expect(screen.getByTestId(`workspace-tab-${queryTabId}`)).toHaveTextContent(queryTab.label)
+    expect(railItem).toHaveFocus()
   })
 
-  it('ArrowDown uses the focused stack chip even when another stack or pinned tab is active', async () => {
+  it('ArrowRight on the rail activates the shown group while a pinned tab is selected', async () => {
     const user = userEvent.setup()
     const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
-    useWorkspaceStore.getState().openTab({
-      type: 'table-data',
-      label: 'users',
-      connectionId: 'conn-1',
-      databaseName: 'mydb',
-      objectName: 'users',
-      objectType: 'table',
-    })
     useWorkspaceStore.getState().openHistoryTab('conn-1', false)
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     await user.click(screen.getByTestId('workspace-pinned-tab-history'))
-    expect(
-      useWorkspaceStore
-        .getState()
-        .tabsByConnection['conn-1'].find(
-          (tab) => tab.id === useWorkspaceStore.getState().activeTabByConnection['conn-1']
-        )?.type
-    ).toBe('history')
 
-    const queryStackChip = screen.getByTestId('workspace-stack-chip-queries')
-
-    queryStackChip.focus()
-    expect(queryStackChip).toHaveFocus()
-
-    await user.keyboard('{ArrowDown}')
+    act(() => screen.getByTestId('workspace-group-rail-item-queries').focus())
+    await user.keyboard('{ArrowRight}')
 
     await waitFor(() => {
       const memberTab = screen
         .getByTestId(`workspace-tab-${queryTabId}`)
         .querySelector('[role="button"]')
-
-      if (!memberTab) {
-        throw new Error('Expected workspace member tab label button to exist')
-      }
-
       expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
       expect(memberTab).toHaveFocus()
     })
@@ -732,69 +716,75 @@ describe('WorkspaceTabs', () => {
     expect(preventDefaultSpy).toHaveBeenCalled()
   })
 
-  it('renders the "+" button outside the scrollable tab area', () => {
-    render(<WorkspaceTabs connectionId="conn-1" />)
-    const memberRow = screen.queryByTestId('workspace-tab-members')
-    const plusButton = screen.getByTestId('new-query-tab-button')
-
-    expect(memberRow?.contains(plusButton) ?? false).toBe(false)
-  })
-
-  it('renders history and processlist tabs outside the scrollable tab area', () => {
+  it('renders the "+" button and pinned tabs after the scrollable tab area', () => {
     act(() => {
-      useWorkspaceStore.getState().openHistoryTab('conn-1')
+      useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+      useWorkspaceStore.getState().openHistoryTab('conn-1', false)
       useWorkspaceStore.getState().openProcessListTab('conn-1')
     })
 
     render(<WorkspaceTabs connectionId="conn-1" />)
-    const memberRow = screen.queryByTestId('workspace-tab-members')
-    const historyTab = screen.getByTestId('workspace-pinned-tab-history')
-    const processlistTab = screen.getByTestId('workspace-pinned-tab-processlist')
+    const members = screen.getByTestId('workspace-tab-members')
+    const memberTab = within(members).getByText('Query A')
+    const scrollArea = Array.from(members.children).find((child) => child.contains(memberTab))
+    const actions = [
+      screen.getByTestId('new-query-tab-button'),
+      screen.getByTestId('workspace-pinned-tab-history'),
+      screen.getByTestId('workspace-pinned-tab-processlist'),
+    ]
 
-    expect(memberRow?.contains(historyTab) ?? false).toBe(false)
-    expect(memberRow?.contains(processlistTab) ?? false).toBe(false)
+    expect(scrollArea).toBeDefined()
+    for (const action of actions) {
+      expect(members.contains(action)).toBe(true)
+      expect(scrollArea?.contains(action)).toBe(false)
+      expect(
+        scrollArea!.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    }
   })
 
-  it('gives compact stack chips a real accessible name on the focusable control', () => {
-    const restoreWidth = setCompactWorkspaceTabsWidth(230)
+  it('renders the group rail outside the tab strip, before it', () => {
+    act(() => {
+      useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    })
 
-    try {
+    render(<WorkspaceTabs connectionId="conn-1" />)
+    const strip = screen.getByTestId('workspace-tabs')
+    const rail = screen.getByTestId('workspace-group-rail')
+
+    expect(strip.contains(rail)).toBe(false)
+    expect(strip.compareDocumentPosition(rail) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+  })
+
+  it('lays the body out beside the rail and under the strip', () => {
+    act(() => {
+      useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    })
+
+    render(
+      <WorkspaceTabs connectionId="conn-1">
+        <div data-testid="workspace-body-probe" />
+      </WorkspaceTabs>
+    )
+
+    const strip = screen.getByTestId('workspace-tabs')
+    const body = screen.getByTestId('workspace-body-probe')
+    expect(strip.contains(body)).toBe(false)
+    expect(strip.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(body.parentElement?.parentElement).toBe(strip.parentElement)
+  })
+
+  it('keeps full labels on pinned tabs', () => {
+    act(() => {
+      useWorkspaceStore.getState().openHistoryTab('conn-1')
+      useWorkspaceStore.getState().openProcessListTab('conn-1')
       useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
-      useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
+    })
 
-      render(<WorkspaceTabs connectionId="conn-1" />)
+    render(<WorkspaceTabs connectionId="conn-1" />)
 
-      expect(screen.getByLabelText('Queries stack, 2 tabs')).toHaveAttribute(
-        'data-testid',
-        'workspace-stack-chip-queries'
-      )
-    } finally {
-      restoreWidth()
-    }
-  })
-
-  it('abbreviates pinned tabs in compact modes while preserving full accessible labels', () => {
-    const restoreWidth = setCompactWorkspaceTabsWidth(230)
-
-    try {
-      act(() => {
-        useWorkspaceStore.getState().openHistoryTab('conn-1')
-        useWorkspaceStore.getState().openProcessListTab('conn-1')
-        useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
-        useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
-      })
-
-      render(<WorkspaceTabs connectionId="conn-1" />)
-
-      const historyTab = screen.getByLabelText('History')
-      const processListTab = screen.getByLabelText('Process list')
-      expect(historyTab).toHaveTextContent('Hist')
-      expect(historyTab).not.toHaveTextContent('History')
-      expect(processListTab).toHaveTextContent('Proc')
-      expect(processListTab).not.toHaveTextContent('Process list')
-    } finally {
-      restoreWidth()
-    }
+    expect(screen.getByLabelText('History')).toHaveTextContent('History')
+    expect(screen.getByLabelText('Process list')).toHaveTextContent('Process list')
   })
 
   it('activates the most recent tab in a stack when clicking its stack chip', async () => {
@@ -819,7 +809,8 @@ describe('WorkspaceTabs', () => {
       useWorkspaceStore.getState().setActiveTab('conn-1', queryA)
     })
 
-    await user.click(screen.getByTestId('workspace-stack-chip-queries'))
+    await chooseGroup(user, 'tables')
+    await chooseGroup(user, 'queries')
 
     expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryA)
   })
@@ -843,7 +834,7 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    await user.click(screen.getByTestId('workspace-stack-chip-queries'))
+    await chooseGroup(user, 'queries')
 
     expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryA)
   })
@@ -871,7 +862,7 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    await user.click(screen.getByTestId('workspace-stack-chip-tables'))
+    await chooseGroup(user, 'tables')
 
     expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(activeQueryId)
     expect(screen.queryByText('users')).not.toBeInTheDocument()
@@ -1217,13 +1208,18 @@ describe('WorkspaceTabs', () => {
     }))
 
     render(<WorkspaceTabs connectionId="conn-1" hideTableDataTabs={true} />)
-    const stackRail = screen.getByTestId('workspace-tabs')
+    const row = screen.getByTestId('workspace-tabs')
 
-    expect(within(stackRail).getByText('Queries')).toBeInTheDocument()
-    expect(within(stackRail).getByText('Tables')).toBeInTheDocument()
-    expect(within(stackRail).queryByText('users')).not.toBeInTheDocument()
-    expect(within(stackRail).queryByText('orders')).not.toBeInTheDocument()
+    expect(within(row).queryByText('users')).not.toBeInTheDocument()
+    expect(within(row).queryByText('orders')).not.toBeInTheDocument()
     expect(screen.queryByText('products')).not.toBeInTheDocument()
+
+    expect(screen.getByTestId('workspace-group-rail-item-queries')).toHaveAccessibleName(
+      'Queries, 1 tab'
+    )
+    expect(screen.getByTestId('workspace-group-rail-item-tables')).toHaveAccessibleName(
+      'Tables, 1 tab'
+    )
   })
 
   it('does not start pointer reorder for pinned tabs', () => {

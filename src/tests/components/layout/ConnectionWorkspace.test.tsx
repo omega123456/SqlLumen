@@ -167,7 +167,7 @@ describe('ConnectionWorkspace', () => {
     expect(scrollIntoViewMock).not.toHaveBeenCalled()
   })
 
-  it('scopes duplicate stack chip interactions to the active workspace root', async () => {
+  it('scopes duplicate group picker interactions to the active workspace root', async () => {
     const user = userEvent.setup()
 
     useConnectionStore.setState({
@@ -210,10 +210,15 @@ describe('ConnectionWorkspace', () => {
     const activeRoot = screen.getByTestId('active-connection-workspace')
     const inactiveRoot = screen.getByTestId('inactive-connection-workspace')
 
-    expect(within(activeRoot).getByTestId('workspace-stack-chip-tables')).toBeInTheDocument()
-    expect(within(inactiveRoot).getByTestId('workspace-stack-chip-tables')).toBeInTheDocument()
+    expect(within(activeRoot).getByTestId('workspace-group-rail-item-tables')).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(within(inactiveRoot).getByTestId('workspace-group-rail-item-tables')).toHaveAttribute(
+      'data-selected'
+    )
 
-    await user.click(within(activeRoot).getByTestId('workspace-stack-chip-queries'))
+    await user.click(within(activeRoot).getByTestId('workspace-group-rail-item-queries'))
 
     expect(within(activeRoot).getByText('A Query')).toBeInTheDocument()
     expect(within(activeRoot).queryByText('users')).not.toBeInTheDocument()

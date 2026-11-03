@@ -112,41 +112,42 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
         connectionId={sessionId}
         hideTableDataTabs={bottomTableTabsEnabled}
         connectionActive={isActive}
-      />
-      <AiDiffBridgeProvider>
-        <WorkspaceBody
-          tabs={tabs}
-          activeTabId={visibleActiveWorkspaceTabId}
-          connectionId={sessionId}
-          sessionId={sessionId}
-          renderTabStack={() => (
-            <div className={styles.panelStack}>
-              {tabs.length === 0 && (
-                <div className={styles.connectedPlaceholder}>
-                  <p className={styles.connectedText}>
-                    Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
-                    {activeConnection.profile.port})
-                  </p>
-                </div>
-              )}
-              {panelTabs.map((tab) => (
-                <WorkspaceTabPanel
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === visibleActiveWorkspaceTabId}
-                  connectionId={sessionId}
-                  sessionId={sessionId}
-                />
-              ))}
-              {tabs.length > 0 && !activeTab && (
-                <div className={styles.connectedPlaceholder}>
-                  <p className={styles.connectedText}>Select a tab to view content</p>
-                </div>
-              )}
-            </div>
-          )}
-        />
-      </AiDiffBridgeProvider>
+      >
+        <AiDiffBridgeProvider>
+          <WorkspaceBody
+            tabs={tabs}
+            activeTabId={visibleActiveWorkspaceTabId}
+            connectionId={sessionId}
+            sessionId={sessionId}
+            renderTabStack={() => (
+              <div className={styles.panelStack}>
+                {tabs.length === 0 && (
+                  <div className={styles.connectedPlaceholder}>
+                    <p className={styles.connectedText}>
+                      Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
+                      {activeConnection.profile.port})
+                    </p>
+                  </div>
+                )}
+                {panelTabs.map((tab) => (
+                  <WorkspaceTabPanel
+                    key={tab.id}
+                    tab={tab}
+                    isActive={tab.id === visibleActiveWorkspaceTabId}
+                    connectionId={sessionId}
+                    sessionId={sessionId}
+                  />
+                ))}
+                {tabs.length > 0 && !activeTab && (
+                  <div className={styles.connectedPlaceholder}>
+                    <p className={styles.connectedText}>Select a tab to view content</p>
+                  </div>
+                )}
+              </div>
+            )}
+          />
+        </AiDiffBridgeProvider>
+      </WorkspaceTabs>
       {isActive && favoriteDialogOpen && <FavoriteDialog connectionId={sessionId} />}
     </div>
   )

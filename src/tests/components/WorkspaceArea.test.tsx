@@ -633,10 +633,19 @@ describe('WorkspaceArea', () => {
       render(<WorkspaceArea />)
 
       const topRail = screen.getByTestId('workspace-tabs')
-      const queryStackChip = within(topRail).getByTestId('workspace-stack-chip-queries')
+      const groupRail = within(screen.getByTestId('active-connection-workspace')).getByTestId(
+        'workspace-group-rail'
+      )
       const memberRow = screen.getByTestId('workspace-tab-members')
 
-      expect(queryStackChip).toHaveTextContent('Queries')
+      // Scoped table tabs belong to no group, so the rail has no Tables item.
+      expect(within(groupRail).getByTestId('workspace-group-rail-item-queries')).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      expect(
+        within(groupRail).queryByTestId('workspace-group-rail-item-tables')
+      ).not.toBeInTheDocument()
       expect(topRail).not.toHaveTextContent('users')
       expect(within(memberRow).getByText('Query 1')).toBeInTheDocument()
       expect(memberRow).not.toHaveTextContent('users')

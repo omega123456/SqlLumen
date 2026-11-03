@@ -98,6 +98,90 @@ describe('UnderlineTabs', () => {
     expect(screen.getByTestId('wrap').className).toMatch(/barDocument/)
   })
 
+  it('renders a prefix before the tabs and the suffix after them', () => {
+    const { rerender } = render(
+      <UnderlineTabBar
+        data-testid="wrap"
+        variant="document"
+        prefix={<span data-testid="pre">P</span>}
+        suffix={<span data-testid="suf">S</span>}
+      >
+        <UnderlineTab data-testid="tab" onClick={() => {}}>
+          A
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+    const wrap = screen.getByTestId('wrap')
+    const tab = screen.getByTestId('tab')
+    expect(wrap.firstElementChild).toBe(screen.getByTestId('pre'))
+    expect(screen.getByTestId('pre').compareDocumentPosition(tab)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(tab.compareDocumentPosition(screen.getByTestId('suf'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+
+    rerender(
+      <UnderlineTabBar data-testid="wrap" prefix={<span data-testid="pre">P</span>}>
+        <UnderlineTab data-testid="tab" onClick={() => {}}>
+          A
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+    expect(screen.getByTestId('wrap').className).toMatch(/barWrapper/)
+    expect(screen.getByTestId('wrap').firstElementChild).toBe(screen.getByTestId('pre'))
+  })
+
+  it('renders a prefix before the scroll area of scrollable bars', () => {
+    render(
+      <UnderlineTabBar data-testid="wrap" scrollable prefix={<span data-testid="pre">P</span>}>
+        <UnderlineTab onClick={() => {}}>A</UnderlineTab>
+      </UnderlineTabBar>
+    )
+    expect(screen.getByTestId('wrap').firstElementChild).toBe(screen.getByTestId('pre'))
+  })
+
+  it('marks the selected tab with aria-selected on its focusable control', () => {
+    render(
+      <UnderlineTabBar>
+        <UnderlineTab data-testid="simple-on" active onClick={() => {}}>
+          On
+        </UnderlineTab>
+        <UnderlineTab data-testid="simple-off" onClick={() => {}}>
+          Off
+        </UnderlineTab>
+        <UnderlineTab active onSelect={() => {}} suffix={<span>x</span>}>
+          Split on
+        </UnderlineTab>
+        <UnderlineTab onSelect={() => {}} suffix={<span>x</span>}>
+          Split off
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+    expect(screen.getByTestId('simple-on')).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByTestId('simple-off')).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('button', { name: 'Split on' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Split off' })).toHaveAttribute(
+      'aria-selected',
+      'false'
+    )
+  })
+
+  it('drops the selected document tab outline and the document hover fill', () => {
+    const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    const active = css.match(
+      /\.tabDocument\.simpleActive,\s*\.tabDocument\.cellActive\s*\{([^}]*)\}/
+    )
+    expect(active?.[1]).toContain('background-color: var(--surface-container)')
+    expect(active?.[1]).not.toContain('border-color')
+    expect(css).toMatch(
+      /\.tabDocument:hover:not\(\[data-active\]\)\s*\{[^}]*background-color:\s*transparent/
+    )
+  })
+
   it('invokes onClick for simple and onSelect for split label', async () => {
     const user = userEvent.setup()
     const onSimple = vi.fn()
@@ -252,7 +336,9 @@ describe('UnderlineTabs', () => {
     const rect = (left: number, width: number) =>
       ({ left, right: left + width, width, top: 0, bottom: 32, height: 32 }) as DOMRect
 
-    function renderBar(count: number, wrapTabs = false) {
+    function renderBar(count: number, wrapTabs = false, widths?: number[]) {
+      const tabWidths = widths ?? Array.from({ length: count }, () => TAB_WIDTH)
+      const starts = tabWidths.map((_, i) => tabWidths.slice(0, i).reduce((a, b) => a + b, 0))
       const tabs = Array.from({ length: count }, (_, i) => (
         <button key={i} type="button">
           Tab {i + 1}
@@ -271,13 +357,13 @@ describe('UnderlineTabs', () => {
       Object.defineProperty(viewport, 'clientWidth', { configurable: true, value: VIEWPORT_WIDTH })
       Object.defineProperty(viewport, 'scrollWidth', {
         configurable: true,
-        value: count * TAB_WIDTH,
+        value: tabWidths.reduce((a, b) => a + b, 0),
       })
       Array.from({ length: count }, (_, i) =>
         screen.getByRole('button', { name: `Tab ${i + 1}` })
       ).forEach((tab, i) => {
         vi.spyOn(tab, 'getBoundingClientRect').mockImplementation(() =>
-          rect(i * TAB_WIDTH - scroll, TAB_WIDTH)
+          rect(starts[i]! - scroll, tabWidths[i]!)
         )
       })
       return { area, content, viewport }
@@ -379,6 +465,69 @@ describe('UnderlineTabs', () => {
       await user.click(screen.getByTestId('tab-strip-scroll-start'))
       expect(scrollIntoView.mock.contexts.slice(-1)[0]).toBe(
         screen.getByRole('button', { name: 'Tab 3' })
+      )
+    })
+
+    it('skips a tab wider than the strip so the chips keep scrolling', async () => {
+      const user = userEvent.setup()
+      const { area, content, viewport } = renderBar(6, false, [150, 150, 150, 500, 150, 150])
+      resize(area, 345)
+      resize(content, 1250)
+      // Tab 4 (450–950) sits at the start chip's edge and overhangs the strip's end.
+      scrollTo(viewport, 398)
+      const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView')
+
+      await user.click(screen.getByTestId('tab-strip-scroll-end'))
+      expect(scrollIntoView.mock.contexts.slice(-1)[0]).toBe(
+        screen.getByRole('button', { name: 'Tab 5' })
+      )
+
+      await user.click(screen.getByTestId('tab-strip-scroll-start'))
+      expect(scrollIntoView.mock.contexts.slice(-1)[0]).toBe(
+        screen.getByRole('button', { name: 'Tab 3' })
+      )
+    })
+
+    it('scrolls by the hidden part of an overhanging tab when no other tab follows', async () => {
+      const user = userEvent.setup()
+      const { area, content, viewport } = renderBar(2, false, [150, 600])
+      resize(area, 345)
+      resize(content, 750)
+      const scrollBy = vi.fn()
+      viewport.scrollBy = scrollBy
+      // Tab 2 (150–750) runs from behind the start chip past the strip's end.
+      scrollTo(viewport, 130)
+      const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView')
+
+      await user.click(screen.getByTestId('tab-strip-scroll-end'))
+      expect(scrollIntoView).not.toHaveBeenCalled()
+      expect(scrollBy).toHaveBeenLastCalledWith({ left: 320, behavior: 'smooth' })
+
+      // Tab 1 ends inside the strip, so the start chip reveals it.
+      await user.click(screen.getByTestId('tab-strip-scroll-start'))
+      expect(scrollIntoView.mock.contexts.slice(-1)[0]).toBe(
+        screen.getByRole('button', { name: 'Tab 1' })
+      )
+    })
+
+    it('scrolls back by the hidden start of an overhanging first tab', async () => {
+      const user = userEvent.setup()
+      const { area, content, viewport } = renderBar(2, false, [600, 150])
+      resize(area, 345)
+      resize(content, 750)
+      const scrollBy = vi.fn()
+      viewport.scrollBy = scrollBy
+      // Tab 1 (0–600) runs from behind the start chip past the strip's end.
+      scrollTo(viewport, 100)
+      const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView')
+
+      await user.click(screen.getByTestId('tab-strip-scroll-start'))
+      expect(scrollIntoView).not.toHaveBeenCalled()
+      expect(scrollBy).toHaveBeenLastCalledWith({ left: -152, behavior: 'smooth' })
+
+      await user.click(screen.getByTestId('tab-strip-scroll-end'))
+      expect(scrollIntoView.mock.contexts.slice(-1)[0]).toBe(
+        screen.getByRole('button', { name: 'Tab 2' })
       )
     })
 

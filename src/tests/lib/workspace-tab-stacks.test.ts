@@ -126,37 +126,27 @@ describe('workspace-tab-stacks', () => {
     expect(getWorkspaceStackActivationTarget('tables', tabs, 't1')?.id).toBe('t1')
   })
 
-  it('defines full, compact, and icon-only labels for every stack chip', () => {
+  it('defines a label for every tab group', () => {
     expect(WORKSPACE_TAB_STACK_META).toEqual({
       queries: {
         key: 'queries',
         label: 'Queries',
-        shortLabel: 'Qry',
-        iconOnlyLabel: 'Queries',
       },
       tables: {
         key: 'tables',
         label: 'Tables',
-        shortLabel: 'Tbl',
-        iconOnlyLabel: 'Tables',
       },
       designers: {
         key: 'designers',
         label: 'Designers',
-        shortLabel: 'Dsgn',
-        iconOnlyLabel: 'Designers',
       },
       schema: {
         key: 'schema',
         label: 'Schema',
-        shortLabel: 'Sch',
-        iconOnlyLabel: 'Schema',
       },
       objects: {
         key: 'objects',
         label: 'Objects',
-        shortLabel: 'Obj',
-        iconOnlyLabel: 'Objects',
       },
     })
   })

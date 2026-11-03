@@ -108,7 +108,7 @@ export interface WorkspaceTabRailProps {
    * When provided this overrides the default workspace store reorder action.
    */
   onRequestReorderTab?: (tabId: string, insertIndex: number) => void
-  onFocusOwningStackChip?: () => void
+  onFocusGroupRail?: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ export function WorkspaceTabRail({
   onRequestRenameTab,
   onRequestMoveTab,
   onRequestReorderTab,
-  onFocusOwningStackChip,
+  onFocusGroupRail,
 }: WorkspaceTabRailProps) {
   const requestActivateTab = useWorkspaceStore((state) => state.requestActivateTab)
   const closeTab = useWorkspaceStore((state) => state.closeTab)
@@ -640,7 +640,7 @@ export function WorkspaceTabRail({
         onKeyDown={(e) => {
           if (e.key === 'ArrowUp') {
             e.preventDefault()
-            onFocusOwningStackChip?.()
+            onFocusGroupRail?.()
             return
           }
           if (e.key === 'F2') {

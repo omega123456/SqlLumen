@@ -66,10 +66,10 @@
   cursor: grabbing;
 }
 
-/* With a 1px stroke edge the selected tab covers it, so it reads as joined to the workspace.
-   A coloured 2px edge stays visible under the tab (prototype `.has-acc .p-ctab.on`). */
-.tabBar[data-edge-color='none'] .connectionTab[data-active] {
-  height: calc(var(--doc-tab-height) + 1px);
+/* The selected tab covers the edge, 1px stroke or 2px connection colour, so the line breaks
+   under it and the tab opens into the workspace. */
+.tabBar .connectionTab[data-active] {
+  height: calc(var(--doc-tab-height) + var(--connection-edge-width));
   margin-bottom: 0;
 }
 

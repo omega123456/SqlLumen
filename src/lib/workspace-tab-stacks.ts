@@ -5,8 +5,6 @@ export type WorkspaceTabStackKey = 'queries' | 'tables' | 'designers' | 'schema'
 export interface WorkspaceTabStackMeta {
   key: WorkspaceTabStackKey
   label: string
-  shortLabel: string
-  iconOnlyLabel: string
 }
 
 export interface WorkspaceTabStackGroup {
@@ -27,16 +25,11 @@ export const WORKSPACE_TAB_STACK_ORDER: WorkspaceTabStackKey[] = [
 ]
 
 export const WORKSPACE_TAB_STACK_META: Record<WorkspaceTabStackKey, WorkspaceTabStackMeta> = {
-  queries: { key: 'queries', label: 'Queries', shortLabel: 'Qry', iconOnlyLabel: 'Queries' },
-  tables: { key: 'tables', label: 'Tables', shortLabel: 'Tbl', iconOnlyLabel: 'Tables' },
-  designers: {
-    key: 'designers',
-    label: 'Designers',
-    shortLabel: 'Dsgn',
-    iconOnlyLabel: 'Designers',
-  },
-  schema: { key: 'schema', label: 'Schema', shortLabel: 'Sch', iconOnlyLabel: 'Schema' },
-  objects: { key: 'objects', label: 'Objects', shortLabel: 'Obj', iconOnlyLabel: 'Objects' },
+  queries: { key: 'queries', label: 'Queries' },
+  tables: { key: 'tables', label: 'Tables' },
+  designers: { key: 'designers', label: 'Designers' },
+  schema: { key: 'schema', label: 'Schema' },
+  objects: { key: 'objects', label: 'Objects' },
 }
 
 export function isPinnedWorkspaceTab(tab: WorkspaceTab): boolean {
