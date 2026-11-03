@@ -35,6 +35,7 @@ import {
   SCROLL_TEST_QUERY_RESULT,
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
+import { DEFAULT_SCHEMA_OBJECTS_BY_TYPE } from './schema-objects'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
 import {
   DEFAULT_CREATED_SNAPSHOT_ID,
@@ -80,6 +81,7 @@ type FixtureOverrideDomain =
   | 'columns'
   | 'foreignKeys'
   | 'schemaInfo'
+  | 'schemaObjects'
   | 'queryResult'
   | 'cachedRows'
   | 'analyzeQueryForEdit'
@@ -109,6 +111,7 @@ type FixtureOverrides = {
   columns: Record<string, PlaywrightListColumn[]>
   foreignKeys: Record<string, PlaywrightForeignKey[]>
   schemaInfo: Record<string, PlaywrightSchemaInfo>
+  schemaObjects: Record<string, string[]>
   queryResult: Record<string, QueryResultFixtureFactory>
   cachedRows: Record<string, PlaywrightCachedRowsResult>
   analyzeQueryForEdit: Record<string, PlaywrightAnalyzeQueryResult>
@@ -137,6 +140,7 @@ type FixtureOverrideValueMap = {
   columns: PlaywrightListColumn[]
   foreignKeys: PlaywrightForeignKey[]
   schemaInfo: PlaywrightSchemaInfo
+  schemaObjects: string[]
   queryResult: PlaywrightQueryResult
   cachedRows: PlaywrightCachedRowsResult
   analyzeQueryForEdit: PlaywrightAnalyzeQueryResult
@@ -165,6 +169,7 @@ type FixtureRegistryApi = {
   getColumnsFixture: (table: string | null | undefined) => PlaywrightListColumn[]
   getForeignKeysFixture: (table: string | null | undefined) => PlaywrightForeignKey[]
   getSchemaInfoFixture: (objectType: string | null | undefined) => PlaywrightSchemaInfo
+  getSchemaObjectsFixture: (objectType: string | null | undefined) => string[]
   getQueryResultFixture: (
     sql: string | null | undefined,
     activeMockDb: string | null
@@ -287,6 +292,7 @@ const overrides: FixtureOverrides = {
   columns: {},
   foreignKeys: {},
   schemaInfo: {},
+  schemaObjects: {},
   queryResult: {},
   cachedRows: {},
   analyzeQueryForEdit: {},
@@ -399,6 +405,17 @@ export function getSchemaInfoFixture(objectType: string | null | undefined): Pla
     SCHEMA_INFO_BY_OBJECT_TYPE,
     objectTypeKey,
     DEFAULT_SCHEMA_INFO
+  )
+}
+
+export function getSchemaObjectsFixture(objectType: string | null | undefined): string[] {
+  const objectTypeKey = normalizeLookupKey(objectType)
+
+  return getOverrideOrDefault(
+    overrides.schemaObjects,
+    DEFAULT_SCHEMA_OBJECTS_BY_TYPE,
+    objectTypeKey,
+    []
   )
 }
 
@@ -619,6 +636,7 @@ export function resetFixtureOverrides(): void {
   overrides.columns = {}
   overrides.foreignKeys = {}
   overrides.schemaInfo = {}
+  overrides.schemaObjects = {}
   overrides.queryResult = {}
   overrides.cachedRows = {}
   overrides.analyzeQueryForEdit = {}
@@ -647,6 +665,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getColumnsFixture,
   getForeignKeysFixture,
   getSchemaInfoFixture,
+  getSchemaObjectsFixture,
   getQueryResultFixture,
   getCachedRowsFixture,
   getAnalyzeQueryForEditFixture,

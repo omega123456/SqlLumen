@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
@@ -14,6 +14,10 @@ export interface TabContextMenuItem {
   icon?: ReactNode
   disabled?: boolean
   destructive?: boolean
+  /** Keyboard shortcut hint shown right-aligned (e.g. `⇧ F1`). */
+  shortcut?: string
+  /** Draw a separator below this item. */
+  separatorAfter?: boolean
   onSelect: () => void
 }
 
@@ -76,7 +80,7 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
         ]
           .filter(Boolean)
           .join(' ')
-        return (
+        const button = (
           <button
             key={item.key}
             type="button"
@@ -94,7 +98,21 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
           >
             {item.icon ? <span aria-hidden>{item.icon}</span> : null}
             <span>{item.label}</span>
+            {item.shortcut ? (
+              <span className="ui-context-menu__shortcut" aria-hidden>
+                {item.shortcut}
+              </span>
+            ) : null}
           </button>
+        )
+        if (!item.separatorAfter) {
+          return button
+        }
+        return (
+          <Fragment key={item.key}>
+            {button}
+            <hr className="ui-context-menu__separator" />
+          </Fragment>
         )
       })}
     </div>,

@@ -11,6 +11,7 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { openObjectDefaultTab } from '../../lib/object-activation'
 import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
+import { usePinnedDatabase } from '../../hooks/usePinnedDatabase'
 import type { CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { TextInput } from '../common/TextInput'
 import { IconButton } from '../common/IconButton'
@@ -111,6 +112,10 @@ export function ObjectBrowser({
         ?.childIdsByParentId ?? null
   )
   const openTab = useWorkspaceStore((state) => state.openTab)
+  const revealRequest = useSchemaStore((state) => state.revealRequest)
+
+  const [treeScrollEl, setTreeScrollEl] = useState<HTMLDivElement | null>(null)
+  const pinnedDatabaseId = usePinnedDatabase(treeScrollEl)
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(CLOSED_MENU)
   const [dumpDialog, setDumpDialog] = useState<SqlDumpDialogState>(CLOSED_DUMP_DIALOG)
@@ -282,6 +287,64 @@ export function ObjectBrowser({
   )
 
   // ---------------------------------------------------------------------------
+  // Pinned database row and reveal requests
+  // ---------------------------------------------------------------------------
+
+  /** Scroll a pinned database row back to its real position at the top of its section. */
+  const handleRevealPinned = useCallback(
+    (nodeId: string) => {
+      if (!treeScrollEl) return
+      const section = Array.from(
+        treeScrollEl.querySelectorAll<HTMLElement>('[data-database-section]')
+      ).find((el) => el.dataset.databaseSection === nodeId)
+      if (!section) return
+
+      const delta = section.getBoundingClientRect().top - treeScrollEl.getBoundingClientRect().top
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      treeScrollEl.scrollTo({
+        top: treeScrollEl.scrollTop + delta,
+        behavior: reduceMotion ? 'auto' : 'smooth',
+      })
+    },
+    [treeScrollEl]
+  )
+
+  // Scroll to and focus the node named by the latest reveal request for this
+  // connection. Clears the filter first when it hides the node.
+  // Start from the current seq so a freshly mounted browser does not replay an old request.
+  const handledRevealSeqRef = useRef(useSchemaStore.getState().revealRequest?.seq ?? 0)
+  useEffect(() => {
+    if (!revealRequest || revealRequest.connectionId !== connectionId || !treeScrollEl) return
+    if (revealRequest.seq <= handledRevealSeqRef.current) return
+
+    const row = Array.from(treeScrollEl.querySelectorAll<HTMLElement>('[role="treeitem"]')).find(
+      (el) => el.dataset.testid === `tree-node-${revealRequest.nodeId}`
+    )
+    if (!row) {
+      if (filterText) {
+        setFilter('', connectionId)
+      }
+      return
+    }
+
+    handledRevealSeqRef.current = revealRequest.seq
+    row.scrollIntoView({ block: 'nearest' })
+
+    // Focus the row so arrow keys work straight away, but hide the focus ring
+    // that the keyboard shortcut would otherwise trigger. It comes back on the
+    // next key press in the tree, or once the row loses focus.
+    row.dataset.suppressFocusRing = 'true'
+    const restoreFocusRing = () => {
+      delete row.dataset.suppressFocusRing
+      row.removeEventListener('keydown', restoreFocusRing)
+      row.removeEventListener('blur', restoreFocusRing)
+    }
+    row.addEventListener('keydown', restoreFocusRing)
+    row.addEventListener('blur', restoreFocusRing)
+    row.focus({ preventScroll: true })
+  }, [revealRequest, connectionId, treeScrollEl, filterText, setFilter, nodes, selectedNodeId])
+
+  // ---------------------------------------------------------------------------
   // Context menu handlers
   // ---------------------------------------------------------------------------
 
@@ -420,6 +483,7 @@ export function ObjectBrowser({
           </div>
 
           <div
+            ref={setTreeScrollEl}
             className={styles.treeContainer}
             data-testid="object-browser-scroll"
             onKeyDownCapture={handleTreeKeyDownCapture}
@@ -445,6 +509,8 @@ export function ObjectBrowser({
                     filterScopeRootId={effectiveScopeRoot}
                     onClearFilter={handleClearFilter}
                     isFirstVisible={index === 0}
+                    isPinned={nodeId === pinnedDatabaseId}
+                    onRevealPinned={handleRevealPinned}
                   />
                 ))}
               </div>

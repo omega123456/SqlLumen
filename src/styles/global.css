@@ -578,6 +578,18 @@ button {
   color: inherit;
 }
 
+.ui-context-menu__shortcut {
+  margin-left: auto;
+  padding-left: 24px;
+  color: var(--on-surface-variant);
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line);
+}
+
+.ui-context-menu__item:disabled .ui-context-menu__shortcut {
+  color: inherit;
+}
+
 .ui-context-menu__item--destructive {
   color: var(--error);
 }

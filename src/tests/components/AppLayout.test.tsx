@@ -9,6 +9,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { useCommandPaletteRecentsStore } from '../../stores/command-palette-recents-store'
+import { makeNodeId, useSchemaStore } from '../../stores/schema-store'
 
 beforeEach(() => {
   useConnectionStore.setState({
@@ -91,6 +92,7 @@ describe('AppLayout', () => {
       expect(actions['new-query-tab']).toBeTypeOf('function')
       expect(actions['close-tab']).toBeTypeOf('function')
       expect(actions['settings']).toBeTypeOf('function')
+      expect(actions['reveal-in-object-browser']).toBeTypeOf('function')
     })
 
     it('unregisters all actions on unmount', () => {
@@ -106,6 +108,7 @@ describe('AppLayout', () => {
       expect(actions['new-query-tab']).toBeUndefined()
       expect(actions['close-tab']).toBeUndefined()
       expect(actions['settings']).toBeUndefined()
+      expect(actions['reveal-in-object-browser']).toBeUndefined()
     })
 
     it('initializes command palette recents on mount', async () => {
@@ -117,6 +120,95 @@ describe('AppLayout', () => {
       await waitFor(() => {
         expect(initializeFromBackend).toHaveBeenCalledTimes(1)
       })
+    })
+  })
+
+  describe('reveal-in-object-browser action', () => {
+    function seedTree() {
+      const dbId = makeNodeId('database', 'mydb', 'mydb')
+      const catId = makeNodeId('category', 'mydb', 'view')
+      const viewId = makeNodeId('view', 'mydb', 'v_orders')
+      useSchemaStore.setState({
+        revealRequest: null,
+        connectionStates: {
+          'conn-1': {
+            nodes: {
+              [dbId]: {
+                id: dbId,
+                label: 'mydb',
+                type: 'database',
+                parentId: null,
+                hasChildren: true,
+                isLoaded: true,
+              },
+              [catId]: {
+                id: catId,
+                label: 'Views',
+                type: 'category',
+                parentId: dbId,
+                hasChildren: true,
+                isLoaded: true,
+              },
+              [viewId]: {
+                id: viewId,
+                label: 'v_orders',
+                type: 'view',
+                parentId: catId,
+                hasChildren: false,
+                isLoaded: true,
+              },
+            },
+            childIdsByParentId: { __root__: [dbId], [dbId]: [catId], [catId]: [viewId] },
+            expandedNodes: new Set(),
+            loadingNodes: new Set(),
+            selectedNodeId: null,
+            filterText: '',
+            loadGeneration: 0,
+          },
+        },
+      })
+      return viewId
+    }
+
+    it("reveals the active tab's object", async () => {
+      const viewId = seedTree()
+      useConnectionStore.setState({ activeTabId: 'conn-1' })
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            {
+              id: 'tab-1',
+              type: 'object-editor',
+              mode: 'alter',
+              connectionId: 'conn-1',
+              label: 'v_orders',
+              databaseName: 'mydb',
+              objectName: 'v_orders',
+              objectType: 'view',
+            },
+          ],
+        },
+        activeTabByConnection: { 'conn-1': 'tab-1' },
+      })
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('reveal-in-object-browser')
+      })
+
+      await waitFor(() => expect(useSchemaStore.getState().revealRequest?.nodeId).toBe(viewId))
+    })
+
+    it('does nothing on a query editor tab', async () => {
+      seedTree()
+      setActiveQueryEditorTab()
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('reveal-in-object-browser')
+      })
+
+      await waitFor(() => expect(useSchemaStore.getState().revealRequest).toBeNull())
     })
   })
 

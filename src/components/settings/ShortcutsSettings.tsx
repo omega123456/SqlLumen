@@ -34,6 +34,11 @@ const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
   { id: 'zoom-in', label: 'Zoom in', description: 'Increase application zoom level' },
   { id: 'zoom-out', label: 'Zoom out', description: 'Decrease application zoom level' },
   { id: 'zoom-reset', label: 'Reset zoom', description: 'Reset application zoom to 100%' },
+  {
+    id: 'reveal-in-object-browser',
+    label: 'Reveal in object browser',
+    description: "Select the active tab's table, view or routine in the object browser",
+  },
 ]
 
 /** Check if two bindings are the same key combo. */

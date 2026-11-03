@@ -118,9 +118,19 @@ function buildChildIndex(nodes: Record<string, TreeNode>): Record<string, string
 // Store interface
 // ---------------------------------------------------------------------------
 
+/** A request for the object browser to scroll to and focus a node. */
+export interface TreeRevealRequest {
+  connectionId: string
+  nodeId: string
+  /** Increments on every request so repeated reveals of the same node still fire. */
+  seq: number
+}
+
 interface SchemaState {
   /** Per-connection tree data. */
   connectionStates: Record<string, ConnectionTreeState>
+  /** Latest "reveal in object browser" request (null until the first one). */
+  revealRequest: TreeRevealRequest | null
 
   // Actions
   loadDatabases: (connectionId: string) => Promise<void>
@@ -128,6 +138,8 @@ interface SchemaState {
   toggleExpand: (nodeId: string, connectionId: string) => void
   ensurePathExpanded: (connectionId: string, nodeId: string) => void
   selectNode: (nodeId: string, connectionId: string) => void
+  /** Ask the object browser to show its tree, scroll to `nodeId` and focus it. */
+  requestReveal: (connectionId: string, nodeId: string) => void
   setFilter: (text: string, connectionId: string) => void
   refreshDatabase: (connectionId: string, databaseName: string) => Promise<void>
   refreshCategory: (
@@ -232,6 +244,7 @@ async function fetchChildren(
 
 export const useSchemaStore = create<SchemaState>()((set, get) => ({
   connectionStates: {},
+  revealRequest: null,
 
   // ------ loadDatabases ------
 
@@ -435,6 +448,14 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
   selectNode: (nodeId: string, connectionId: string) => {
     set((s) => setConnState(s, connectionId, { selectedNodeId: nodeId }))
+  },
+
+  // ------ requestReveal ------
+
+  requestReveal: (connectionId: string, nodeId: string) => {
+    set((s) => ({
+      revealRequest: { connectionId, nodeId, seq: (s.revealRequest?.seq ?? 0) + 1 },
+    }))
   },
 
   // ------ setFilter ------

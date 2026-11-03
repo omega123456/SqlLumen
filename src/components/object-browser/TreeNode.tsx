@@ -165,6 +165,10 @@ export interface TreeNodeProps {
   onClearFilter?: () => void
   /** True if this is the first visible node in the tree (for roving tabindex) */
   isFirstVisible?: boolean
+  /** Top-level database rows only: true while the row is stuck to the top of the tree */
+  isPinned?: boolean
+  /** Top-level database rows only: called when a pinned row is clicked */
+  onRevealPinned?: (nodeId: string) => void
 }
 
 function getNodeIcon(
@@ -213,6 +217,8 @@ export function TreeNode({
   filterScopeRootId = null,
   onClearFilter,
   isFirstVisible,
+  isPinned = false,
+  onRevealPinned,
 }: TreeNodeProps) {
   const rowRef = useRef<HTMLDivElement | null>(null)
   const node = useSchemaStore(
@@ -342,6 +348,12 @@ export function TreeNode({
   }
 
   const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // A pinned database row scrolls back to its real position instead of toggling
+    if (isPinned) {
+      onRevealPinned?.(nodeId)
+      return
+    }
+
     selectCurrentNode()
 
     if (isSingleClickActivatableNodeType(node.type)) {
@@ -358,6 +370,10 @@ export function TreeNode({
 
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    if (isPinned) {
+      onRevealPinned?.(nodeId)
+      return
+    }
     selectCurrentNode()
     collapseOrClearFilter()
   }
@@ -367,7 +383,7 @@ export function TreeNode({
   }
 
   const handleDoubleClick = () => {
-    if (isDoubleClickActivatableNodeType(node.type)) {
+    if (!isPinned && isDoubleClickActivatableNodeType(node.type)) {
       activateNode()
     }
   }
@@ -436,75 +452,99 @@ export function TreeNode({
     (isExpanded || (filterDrivesExpand && childIds.length > 0)) &&
     childIds.length > 0
 
+  const row = (
+    <div
+      ref={rowRef}
+      className={rowClassName}
+      role="treeitem"
+      aria-expanded={hasChildren ? showChildren : undefined}
+      aria-level={level + 1}
+      aria-selected={isSelected}
+      tabIndex={isSelected || (isFirstVisible && !selectedNodeIsVisible) ? 0 : -1}
+      style={{ paddingLeft: `${indentPx}px` }}
+      onClick={handleRowClick}
+      onContextMenu={handleContextMenu}
+      onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
+      data-testid={`tree-node-${nodeId}`}
+    >
+      {/* Chevron / spinner / placeholder */}
+      {hasChildren ? (
+        isLoading ? (
+          <span className={styles.spinner} data-testid="tree-node-spinner">
+            <CircleNotch size={12} weight="regular" />
+          </span>
+        ) : (
+          <span
+            className={`${styles.chevron} ${showExpandedChrome ? styles.chevronExpanded : ''}`}
+            onClick={handleChevronClick}
+            role="presentation"
+            data-testid="tree-node-chevron"
+          >
+            <CaretRight size={12} weight="bold" />
+          </span>
+        )
+      ) : (
+        <span className={styles.chevronPlaceholder} />
+      )}
+
+      {/* Icon */}
+      <span className={`${styles.icon} ${iconClassName}`}>{icon}</span>
+
+      {/* Label */}
+      <span className={labelClassName} title={node.type === 'database' ? node.label : undefined}>
+        {node.label}
+      </span>
+
+      {/* Column type annotation */}
+      {node.type === 'column' && node.metadata?.columnType && (
+        <span className={styles.columnType}>{node.metadata.columnType}</span>
+      )}
+    </div>
+  )
+
+  const children = showChildren && (
+    <div className={styles.childrenContainer} role="group">
+      <div className={styles.guideLine} style={{ left: `${indentPx + 12}px` }} />
+      {childIds.map((childId) => (
+        <TreeNode
+          key={childId}
+          nodeId={childId}
+          connectionId={connectionId}
+          level={level + 1}
+          onSelect={onSelect}
+          onContextMenu={onContextMenu}
+          onActivate={onActivate}
+          filterMatchIds={filterMatchIds}
+          filterScopeRootId={filterScopeRootId}
+          onClearFilter={onClearFilter}
+        />
+      ))}
+    </div>
+  )
+
+  // Top-level database rows sit in their own section so the sticky row releases
+  // at the end of that database's children instead of overlapping the next one.
+  if (level === 0) {
+    return (
+      <div role="none" className={styles.databaseSection} data-database-section={nodeId}>
+        <div
+          role="none"
+          className={styles.stickyRow}
+          data-pinned={isPinned ? 'true' : undefined}
+          data-testid={`tree-node-sticky-${nodeId}`}
+        >
+          {row}
+        </div>
+        {children}
+      </div>
+    )
+  }
+
   return (
     <>
-      <div
-        ref={rowRef}
-        className={rowClassName}
-        role="treeitem"
-        aria-expanded={hasChildren ? showChildren : undefined}
-        aria-level={level + 1}
-        aria-selected={isSelected}
-        tabIndex={isSelected || (isFirstVisible && !selectedNodeIsVisible) ? 0 : -1}
-        style={{ paddingLeft: `${indentPx}px` }}
-        onClick={handleRowClick}
-        onContextMenu={handleContextMenu}
-        onDoubleClick={handleDoubleClick}
-        onKeyDown={handleKeyDown}
-        data-testid={`tree-node-${nodeId}`}
-      >
-        {/* Chevron / spinner / placeholder */}
-        {hasChildren ? (
-          isLoading ? (
-            <span className={styles.spinner} data-testid="tree-node-spinner">
-              <CircleNotch size={12} weight="regular" />
-            </span>
-          ) : (
-            <span
-              className={`${styles.chevron} ${showExpandedChrome ? styles.chevronExpanded : ''}`}
-              onClick={handleChevronClick}
-              role="presentation"
-              data-testid="tree-node-chevron"
-            >
-              <CaretRight size={12} weight="bold" />
-            </span>
-          )
-        ) : (
-          <span className={styles.chevronPlaceholder} />
-        )}
-
-        {/* Icon */}
-        <span className={`${styles.icon} ${iconClassName}`}>{icon}</span>
-
-        {/* Label */}
-        <span className={labelClassName}>{node.label}</span>
-
-        {/* Column type annotation */}
-        {node.type === 'column' && node.metadata?.columnType && (
-          <span className={styles.columnType}>{node.metadata.columnType}</span>
-        )}
-      </div>
-
-      {/* Children */}
-      {showChildren && (
-        <div className={styles.childrenContainer} role="group">
-          <div className={styles.guideLine} style={{ left: `${indentPx + 12}px` }} />
-          {childIds.map((childId) => (
-            <TreeNode
-              key={childId}
-              nodeId={childId}
-              connectionId={connectionId}
-              level={level + 1}
-              onSelect={onSelect}
-              onContextMenu={onContextMenu}
-              onActivate={onActivate}
-              filterMatchIds={filterMatchIds}
-              filterScopeRootId={filterScopeRootId}
-              onClearFilter={onClearFilter}
-            />
-          ))}
-        </div>
-      )}
+      {row}
+      {children}
     </>
   )
 }

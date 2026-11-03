@@ -367,6 +367,7 @@ beforeEach(() => {
     // Mock loadDatabases to prevent real IPC calls in tests
     useSchemaStore.setState({
       connectionStates: {},
+      revealRequest: null,
       loadDatabases: vi.fn().mockResolvedValue(undefined),
       refreshDatabase: vi.fn().mockResolvedValue(undefined),
       refreshAll: vi.fn().mockResolvedValue(undefined),
@@ -2073,5 +2074,157 @@ describe('ObjectBrowser', () => {
       expect(screen.getByTestId('filter-input')).toHaveValue('users')
     })
     expect(useSchemaStore.getState().connectionStates[CONN_A].filterText).toBe('users')
+  })
+})
+
+describe('ObjectBrowser pinned database row and reveal requests', () => {
+  const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+  const catId = makeNodeId('category', 'ecommerce_db', 'table')
+  const tableId = makeNodeId('table', 'ecommerce_db', 'users')
+
+  function expandEcommerce() {
+    act(() => {
+      useSchemaStore.setState((state) => ({
+        connectionStates: {
+          ...state.connectionStates,
+          [CONN_ID]: {
+            ...state.connectionStates[CONN_ID],
+            expandedNodes: new Set([db1Id, catId]),
+          },
+        },
+      }))
+    })
+  }
+
+  function renderBrowser() {
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+  }
+
+  it('scrolls to and focuses the requested node', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView')
+    renderBrowser()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal(CONN_ID, tableId)
+    })
+
+    const row = screen.getByTestId(`tree-node-${tableId}`)
+    await waitFor(() => expect(row).toHaveFocus())
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' })
+    scrollSpy.mockRestore()
+  })
+
+  it('hides the focus ring on the revealed row until a key is pressed', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    renderBrowser()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal(CONN_ID, tableId)
+    })
+
+    const row = screen.getByTestId(`tree-node-${tableId}`)
+    await waitFor(() => expect(row).toHaveFocus())
+    expect(row).toHaveAttribute('data-suppress-focus-ring', 'true')
+
+    fireEvent.keyDown(row, { key: 'Shift' })
+    expect(row).not.toHaveAttribute('data-suppress-focus-ring')
+  })
+
+  it('restores the focus ring when the revealed row loses focus', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    renderBrowser()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal(CONN_ID, tableId)
+    })
+
+    const row = screen.getByTestId(`tree-node-${tableId}`)
+    await waitFor(() => expect(row).toHaveAttribute('data-suppress-focus-ring', 'true'))
+
+    act(() => {
+      row.blur()
+    })
+    expect(row).not.toHaveAttribute('data-suppress-focus-ring')
+  })
+
+  it('does not replay a reveal request made before it mounted', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    act(() => {
+      useSchemaStore.getState().requestReveal(CONN_ID, tableId)
+    })
+    renderBrowser()
+
+    await waitFor(() => expect(screen.getByTestId(`tree-node-${tableId}`)).not.toHaveFocus())
+  })
+
+  it('ignores reveal requests for another connection', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    renderBrowser()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal('other-conn', tableId)
+    })
+
+    await waitFor(() => expect(screen.getByTestId(`tree-node-${tableId}`)).not.toHaveFocus())
+  })
+
+  it('clears the filter when it hides the requested node', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    act(() => {
+      useSchemaStore.getState().setFilter('analytics', CONN_ID)
+    })
+    renderBrowser()
+    expect(screen.queryByTestId(`tree-node-${tableId}`)).not.toBeInTheDocument()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal(CONN_ID, tableId)
+    })
+
+    await waitFor(() => expect(screen.getByTestId(`tree-node-${tableId}`)).toHaveFocus())
+    expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('')
+  })
+
+  it('pins the scrolled-past database and scrolls back to it on click', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandEcommerce()
+    renderBrowser()
+
+    const scroller = screen.getByTestId('object-browser-scroll')
+    const section = screen.getByTestId(`tree-node-sticky-${db1Id}`).parentElement as HTMLElement
+    scroller.getBoundingClientRect = () => ({ top: 100, bottom: 400, height: 300 }) as DOMRect
+    section.getBoundingClientRect = () => ({ top: 40, bottom: 300, height: 260 }) as DOMRect
+    const scrollTo = vi.fn()
+    scroller.scrollTo = scrollTo as unknown as typeof scroller.scrollTo
+    scroller.scrollTop = 200
+
+    act(() => {
+      scroller.dispatchEvent(new Event('scroll'))
+    })
+
+    const sticky = screen.getByTestId(`tree-node-sticky-${db1Id}`)
+    await waitFor(() => expect(sticky).toHaveAttribute('data-pinned', 'true'))
+
+    await user.click(screen.getByTestId(`tree-node-${db1Id}`))
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 140, behavior: 'smooth' })
+    // Clicking the pinned row must not collapse the database
+    expect(useSchemaStore.getState().connectionStates[CONN_ID].expandedNodes.has(db1Id)).toBe(true)
   })
 })

@@ -154,3 +154,30 @@
   background: var(--outline-variant);
   opacity: 0.2;
 }
+
+/* Top-level database section: bounds the sticky row so it releases at the
+   end of the database's children (approved "pinned database row" proposal). */
+.databaseSection {
+  position: relative;
+}
+
+.stickyRow {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-container-low);
+}
+
+.stickyRow[data-pinned='true'] {
+  box-shadow: inset 0 -1px 0 var(--stroke-divider);
+}
+
+.stickyRow[data-pinned='true'] .nodeRow {
+  cursor: pointer;
+}
+
+/* A row focused by "Reveal in object browser" shows selection only, not the
+   keyboard focus ring, until the user presses a key (ObjectBrowser.tsx). */
+.nodeRow[data-suppress-focus-ring='true']:focus-visible {
+  box-shadow: none;
+}

@@ -375,7 +375,9 @@ export async function connectToSample(
   await expect(page.getByTestId('status-bar')).toContainText('Connected', { timeout: APP_READY_MS })
 
   if (waitForDatabaseNode) {
-    await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible({
+    await expect(
+      page.getByTestId('object-browser').getByRole('tree').getByText('ecommerce_db')
+    ).toBeVisible({
       timeout: APP_READY_MS,
     })
   }

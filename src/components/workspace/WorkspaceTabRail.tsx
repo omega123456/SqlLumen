@@ -21,6 +21,7 @@ import type { WorkspaceTab } from '../../types/schema'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useShortcutStore } from '../../stores/shortcut-store'
 import { UnderlineTab } from '../common/UnderlineTabs'
 import { TextInput } from '../common/TextInput'
 import { IconButton } from '../common/IconButton'
@@ -34,9 +35,16 @@ import {
   CaretLeftIcon,
   CaretRightIcon,
   CaretLineRightIcon,
+  CrosshairIcon,
   XIcon,
 } from '@phosphor-icons/react'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
+import {
+  getTabRevealTarget,
+  isObjectTab,
+  revealTabInObjectBrowser,
+} from '../../lib/object-activation'
+import { shortcutLabelParts } from '../../lib/shortcut-labels'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
 import { getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
@@ -216,6 +224,9 @@ export function WorkspaceTabRail({
     ? visibleTabIds.findIndex((id) => id === contextMenu.tabId)
     : -1
   const contextMenuTab = contextMenu ? (tabs.find((t) => t.id === contextMenu.tabId) ?? null) : null
+  const revealBinding = useShortcutStore(
+    (state) => state.shortcuts['reveal-in-object-browser'] ?? null
+  )
 
   useEffect(() => {
     activeTabIdRef.current = activeTabId
@@ -481,9 +492,29 @@ export function WorkspaceTabRail({
     })
   }
 
+  // "Reveal in object browser" applies to tabs that show a database object;
+  // it is disabled for create-mode tabs whose object does not exist yet.
+  const revealItems =
+    contextMenuTab && isObjectTab(contextMenuTab)
+      ? [
+          {
+            key: 'reveal-in-object-browser',
+            label: 'Reveal in object browser',
+            icon: <CrosshairIcon size={14} weight="regular" />,
+            shortcut: revealBinding?.key ? shortcutLabelParts(revealBinding).join(' ') : undefined,
+            disabled: getTabRevealTarget(contextMenuTab) === null,
+            separatorAfter: true,
+            onSelect: () => {
+              void revealTabInObjectBrowser(contextMenuTab)
+            },
+          },
+        ]
+      : []
+
   // Build context menu items when a menu is open
   const contextMenuItems = contextMenu
     ? [
+        ...revealItems,
         {
           key: 'rename',
           label: 'Rename',

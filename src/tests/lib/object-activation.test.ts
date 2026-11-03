@@ -2,15 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   activateColumnFromPalette,
   activateObjectFromPalette,
+  getTabRevealTarget,
+  isObjectTab,
   openObjectDefaultTab,
   revealObjectInTree,
+  revealTabInObjectBrowser,
 } from '../../lib/object-activation'
+import { useConnectionStore } from '../../stores/connection-store'
 import { makeNodeId, useSchemaStore } from '../../stores/schema-store'
 import { useTableDataStore } from '../../stores/table-data-store'
+import { useToastStore } from '../../stores/toast-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import type { ActiveConnection } from '../../types/connection'
+import type { WorkspaceTab } from '../../types/schema'
+import { expectToast, ipc } from '../ipc-mock'
 
 const CONNECTION_ID = 'conn-1'
 const DATABASE = 'app_db'
+
+/** Real store actions, captured before any test swaps them for mocks. */
+const INITIAL_SCHEMA_STATE = useSchemaStore.getState()
 
 describe('object-activation', () => {
   beforeEach(() => {
@@ -298,6 +309,210 @@ describe('object-activation', () => {
     })
     expect(useTableDataStore.getState().columnJumpRequests).toEqual({
       'orders-tab': { columnKey: 'shipping_amount', nonce: 1 },
+    })
+  })
+
+  describe('reveal from a workspace tab', () => {
+    const base = { id: 'tab-1', label: 'x', connectionId: CONNECTION_ID }
+    const tabs: Record<string, WorkspaceTab> = {
+      tableData: {
+        ...base,
+        type: 'table-data',
+        databaseName: DATABASE,
+        objectName: 'orders',
+        objectType: 'table',
+      },
+      schemaInfo: {
+        ...base,
+        type: 'schema-info',
+        databaseName: DATABASE,
+        objectName: 'sp_refund',
+        objectType: 'procedure',
+      },
+      designerAlter: {
+        ...base,
+        type: 'table-designer',
+        mode: 'alter',
+        databaseName: DATABASE,
+        objectName: 'orders',
+      },
+      designerCreate: {
+        ...base,
+        type: 'table-designer',
+        mode: 'create',
+        databaseName: DATABASE,
+        objectName: '__new_table__',
+      },
+      editorAlter: {
+        ...base,
+        type: 'object-editor',
+        mode: 'alter',
+        databaseName: DATABASE,
+        objectName: 'v_revenue',
+        objectType: 'view',
+      },
+      editorCreate: {
+        ...base,
+        type: 'object-editor',
+        mode: 'create',
+        databaseName: DATABASE,
+        objectName: 'new_view',
+        objectType: 'view',
+      },
+      query: { ...base, type: 'query-editor' },
+      history: { ...base, type: 'history' },
+      processlist: { ...base, type: 'processlist' },
+    }
+
+    it('resolves the object behind each tab type', () => {
+      expect(getTabRevealTarget(tabs.tableData)).toEqual({
+        database: DATABASE,
+        objectType: 'table',
+        name: 'orders',
+      })
+      expect(getTabRevealTarget(tabs.schemaInfo)).toEqual({
+        database: DATABASE,
+        objectType: 'procedure',
+        name: 'sp_refund',
+      })
+      expect(getTabRevealTarget(tabs.designerAlter)).toEqual({
+        database: DATABASE,
+        objectType: 'table',
+        name: 'orders',
+      })
+      expect(getTabRevealTarget(tabs.editorAlter)).toEqual({
+        database: DATABASE,
+        objectType: 'view',
+        name: 'v_revenue',
+      })
+      expect(getTabRevealTarget(tabs.designerCreate)).toBeNull()
+      expect(getTabRevealTarget(tabs.editorCreate)).toBeNull()
+      expect(getTabRevealTarget(tabs.query)).toBeNull()
+      expect(getTabRevealTarget(tabs.history)).toBeNull()
+      expect(getTabRevealTarget(tabs.processlist)).toBeNull()
+    })
+
+    it('classifies object tabs, including create-mode ones', () => {
+      expect(isObjectTab(tabs.tableData)).toBe(true)
+      expect(isObjectTab(tabs.schemaInfo)).toBe(true)
+      expect(isObjectTab(tabs.designerCreate)).toBe(true)
+      expect(isObjectTab(tabs.editorCreate)).toBe(true)
+      expect(isObjectTab(tabs.query)).toBe(false)
+      expect(isObjectTab(tabs.history)).toBe(false)
+      expect(isObjectTab(tabs.processlist)).toBe(false)
+    })
+
+    function seedTree(withObject: boolean) {
+      const databaseNodeId = makeNodeId('database', DATABASE, DATABASE)
+      const categoryNodeId = makeNodeId('category', DATABASE, 'table')
+      const objectNodeId = makeNodeId('table', DATABASE, 'orders')
+      useSchemaStore.setState({
+        ...INITIAL_SCHEMA_STATE,
+        revealRequest: null,
+        connectionStates: {
+          [CONNECTION_ID]: {
+            nodes: {
+              [databaseNodeId]: {
+                id: databaseNodeId,
+                label: DATABASE,
+                type: 'database',
+                parentId: null,
+                hasChildren: true,
+                isLoaded: true,
+                databaseName: DATABASE,
+              },
+              [categoryNodeId]: {
+                id: categoryNodeId,
+                label: 'Tables',
+                type: 'category',
+                parentId: databaseNodeId,
+                hasChildren: true,
+                isLoaded: true,
+                databaseName: DATABASE,
+              },
+              ...(withObject
+                ? {
+                    [objectNodeId]: {
+                      id: objectNodeId,
+                      label: 'orders',
+                      type: 'table' as const,
+                      parentId: categoryNodeId,
+                      hasChildren: true,
+                      isLoaded: false,
+                      databaseName: DATABASE,
+                    },
+                  }
+                : {}),
+            },
+            childIdsByParentId: {
+              __root__: [databaseNodeId],
+              [databaseNodeId]: [categoryNodeId],
+              [categoryNodeId]: withObject ? [objectNodeId] : [],
+            },
+            expandedNodes: new Set(),
+            loadingNodes: new Set(),
+            selectedNodeId: null,
+            filterText: '',
+            loadGeneration: 0,
+          },
+        },
+      })
+      useConnectionStore.setState({
+        activeConnections: {
+          [CONNECTION_ID]: {
+            id: CONNECTION_ID,
+            profile: { id: 'profile-1', name: 'Local', defaultDatabase: null },
+            status: 'connected',
+            serverVersion: '8.0.35',
+            sessionDatabase: 'other_db',
+          } as unknown as ActiveConnection,
+        },
+      })
+      useToastStore.setState({ toasts: [] })
+      return objectNodeId
+    }
+
+    it('selects the object, sets the active database and requests the reveal', async () => {
+      const objectNodeId = seedTree(true)
+
+      await revealTabInObjectBrowser(tabs.tableData)
+
+      const connState = useSchemaStore.getState().connectionStates[CONNECTION_ID]
+      expect(connState.selectedNodeId).toBe(objectNodeId)
+      expect(connState.expandedNodes.has(makeNodeId('category', DATABASE, 'table'))).toBe(true)
+      expect(useSchemaStore.getState().revealRequest).toEqual({
+        connectionId: CONNECTION_ID,
+        nodeId: objectNodeId,
+        seq: 1,
+      })
+      expect(useConnectionStore.getState().activeConnections[CONNECTION_ID].sessionDatabase).toBe(
+        DATABASE
+      )
+      expect(ipc.calls('select_database')).toEqual([
+        { connectionId: CONNECTION_ID, databaseName: DATABASE },
+      ])
+    })
+
+    it('warns and leaves the active database alone when the object is missing', async () => {
+      seedTree(false)
+
+      await revealTabInObjectBrowser(tabs.tableData)
+
+      await expectToast('warning', "Couldn't find orders in the object browser")
+      expect(useSchemaStore.getState().revealRequest).toBeNull()
+      expect(ipc.calls('select_database')).toEqual([])
+      expect(useConnectionStore.getState().activeConnections[CONNECTION_ID].sessionDatabase).toBe(
+        'other_db'
+      )
+    })
+
+    it('does nothing for tabs without an object', async () => {
+      seedTree(true)
+
+      await revealTabInObjectBrowser(tabs.query)
+
+      expect(useSchemaStore.getState().revealRequest).toBeNull()
+      expect(useSchemaStore.getState().connectionStates[CONNECTION_ID].selectedNodeId).toBeNull()
     })
   })
 })

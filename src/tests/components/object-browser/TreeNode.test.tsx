@@ -610,4 +610,125 @@ describe('TreeNode', () => {
 
     expect(firstTreeItem).toHaveFocus()
   })
+
+  describe('pinned database row', () => {
+    const dbId = makeNodeId('database', 'testdb', 'testdb')
+    const dbNode: TreeNodeType = {
+      id: dbId,
+      label: 'testdb',
+      type: 'database',
+      parentId: null,
+      hasChildren: true,
+      isLoaded: true,
+    }
+
+    it('wraps a top-level row in a section and sticky wrapper', () => {
+      setNodes({ [dbId]: dbNode })
+
+      render(
+        <div role="tree">
+          <TreeNode nodeId={dbId} connectionId={CONN_ID} level={0} />
+        </div>
+      )
+
+      const sticky = screen.getByTestId(`tree-node-sticky-${dbId}`)
+      expect(sticky).toHaveAttribute('role', 'none')
+      expect(sticky).not.toHaveAttribute('data-pinned')
+      expect(sticky).toContainElement(screen.getByRole('treeitem'))
+      const section = sticky.parentElement
+      expect(section).toHaveAttribute('data-database-section', dbId)
+      expect(section).toHaveAttribute('role', 'none')
+      expect(screen.getByText('testdb')).toHaveAttribute('title', 'testdb')
+    })
+
+    it('does not wrap nested rows', () => {
+      const tableId = makeNodeId('table', 'testdb', 'users')
+      setNodes({ [tableId]: makeTreeNode({ id: tableId, parentId: dbId }) })
+
+      render(
+        <div role="tree">
+          <TreeNode nodeId={tableId} connectionId={CONN_ID} level={1} />
+        </div>
+      )
+
+      expect(screen.queryByTestId(`tree-node-sticky-${tableId}`)).not.toBeInTheDocument()
+      expect(document.querySelector('[data-database-section]')).toBeNull()
+    })
+
+    it('marks the sticky wrapper while pinned', () => {
+      setNodes({ [dbId]: dbNode })
+
+      render(
+        <div role="tree">
+          <TreeNode nodeId={dbId} connectionId={CONN_ID} level={0} isPinned />
+        </div>
+      )
+
+      expect(screen.getByTestId(`tree-node-sticky-${dbId}`)).toHaveAttribute('data-pinned', 'true')
+    })
+
+    it('reveals instead of selecting or toggling when a pinned row is clicked', async () => {
+      const user = userEvent.setup()
+      setNodes({ [dbId]: dbNode })
+      const toggleExpand = vi.fn()
+      const selectNode = vi.fn()
+      useSchemaStore.setState({ toggleExpand, selectNode })
+      const onRevealPinned = vi.fn()
+      const onSelect = vi.fn()
+
+      render(
+        <div role="tree">
+          <TreeNode
+            nodeId={dbId}
+            connectionId={CONN_ID}
+            level={0}
+            isPinned
+            onRevealPinned={onRevealPinned}
+            onSelect={onSelect}
+          />
+        </div>
+      )
+
+      await user.click(screen.getByRole('treeitem'))
+      await user.click(screen.getByTestId('tree-node-chevron'))
+
+      expect(onRevealPinned).toHaveBeenCalledTimes(2)
+      expect(onRevealPinned).toHaveBeenCalledWith(dbId)
+      expect(selectNode).not.toHaveBeenCalled()
+      expect(toggleExpand).not.toHaveBeenCalled()
+      expect(onSelect).not.toHaveBeenCalled()
+    })
+
+    it('ignores double-click activation while pinned', async () => {
+      const user = userEvent.setup()
+      const triggerId = makeNodeId('trigger', 'testdb', 'trg_audit')
+      setNodes({
+        [triggerId]: {
+          id: triggerId,
+          label: 'trg_audit',
+          type: 'trigger',
+          parentId: null,
+          hasChildren: false,
+          isLoaded: true,
+        },
+      })
+      const onActivate = vi.fn()
+
+      render(
+        <div role="tree">
+          <TreeNode
+            nodeId={triggerId}
+            connectionId={CONN_ID}
+            level={0}
+            isPinned
+            onRevealPinned={vi.fn()}
+            onActivate={onActivate}
+          />
+        </div>
+      )
+
+      await user.dblClick(screen.getByRole('treeitem'))
+      expect(onActivate).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -34,6 +34,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 4px 8px;
+  /* Keep scrolled-to and focused rows clear of the pinned database row */
+  scroll-padding-top: var(--tree-row-height);
 }
 
 .clearButton {

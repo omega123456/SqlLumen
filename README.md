@@ -35,7 +35,7 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 ## Features
 
 - **Connections** — save and open connections; test connectivity from the connection dialog
-- **Object browser** — navigate databases, tables, views, routines, triggers, events, and favorites from the tree
+- **Object browser** — navigate databases, tables, views, routines, triggers, events, and favorites from the tree. While you scroll through a large database, its row stays pinned to the top of the tree (click it to scroll back), and the connection header shows the active database
 - **Command palette and shortcuts** — search objects, jump to recents, and filter by database or object type from the keyboard; shortcuts are customizable in Settings
 - **Copy to Another Host** — copy selected tables, routines, triggers, and events from one database to a different saved host with progress tracking and cancel support
 - **Query editor** — Monaco-based SQL editing with formatting, completion-oriented tooling, multi-statement execution, and AI diff/review integration
@@ -68,6 +68,7 @@ The default shortcuts are editable in **Settings > Shortcuts**. The current defa
 - `F12` to format the current selection or statement
 - `Ctrl+S` to save the current file or DDL tab
 - `Ctrl+,` to open Settings
+- `Shift+F1` to reveal the active tab's table, view, or routine in the object browser
 
 In the query editor, `Ctrl+H` or `Ctrl+Shift+R` (or `Cmd` on macOS) opens Find and Replace.
 
@@ -81,6 +82,7 @@ SqlLumen groups non-pinned workspace tabs by tab type so the top rail stays usab
 - The second row shows only the member tabs for the currently active non-pinned stack, so rename, drag/reorder, close, dirty markers, and existing per-tab actions still happen on concrete tabs instead of on stack chips.
 - Session restore does not save extra stack UI state. Restored tabs regroup naturally from their tab types, and per-stack recency starts fresh after relaunch.
 - Right-click a member tab (or press Shift+F10 / the Menu key) for **Close tabs to the left** / **Close tabs to the right**. These close only tabs in the same group, and tabs with unsaved changes still ask before closing.
+- On a table, view, routine, trigger, or event tab, the same menu offers **Reveal in object browser** (`Shift+F1`). It selects and focuses the object in the tree, switches the sidebar back from favorites, clears a filter that hides the object, and makes its database the active one. It is disabled for objects that are still being created, and query, history, and process list tabs do not show it.
 - **Settings → Results → Max open tabs per group** (default `Unlimited`) caps how many tabs each group keeps open. Opening a tab past the limit closes the least recently used tab in that group. `Queries` tabs are never limited, and table data, table designer, and object editor tabs with unsaved changes are never closed automatically.
 
 ## Object editor

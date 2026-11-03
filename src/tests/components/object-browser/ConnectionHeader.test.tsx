@@ -193,4 +193,61 @@ describe('ConnectionHeader', () => {
     const indicator = screen.getByTestId('connection-status-indicator')
     expect(indicator).toHaveAttribute('title', 'Disconnected')
   })
+
+  describe('active database line', () => {
+    function renderHeader() {
+      render(
+        <ConnectionHeader
+          connectionId="conn-1"
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
+    }
+
+    it('shows the session database', async () => {
+      useConnectionStore.setState({
+        activeConnections: {
+          'conn-1': makeActiveConnection({
+            sessionDatabase: 'ecommerce_db',
+            profile: makeSavedConnection({ defaultDatabase: 'analytics_db' }),
+          }),
+        },
+      })
+
+      renderHeader()
+
+      const line = await screen.findByTestId('connection-active-database')
+      expect(line).toHaveTextContent('Active database: ecommerce_db')
+      expect(line).toHaveAttribute('title', 'Active database: ecommerce_db')
+    })
+
+    it('falls back to the profile default database', async () => {
+      useConnectionStore.setState({
+        activeConnections: {
+          'conn-1': makeActiveConnection({
+            profile: makeSavedConnection({ defaultDatabase: 'analytics_db' }),
+          }),
+        },
+      })
+
+      renderHeader()
+
+      expect(await screen.findByTestId('connection-active-database')).toHaveTextContent(
+        'analytics_db'
+      )
+    })
+
+    it('says no database is selected when there is none', async () => {
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': makeActiveConnection({ sessionDatabase: null }) },
+      })
+
+      renderHeader()
+
+      const line = await screen.findByTestId('connection-active-database')
+      expect(line).toHaveTextContent('No database selected')
+      expect(line).toHaveAttribute('title', 'No active database')
+    })
+  })
 })

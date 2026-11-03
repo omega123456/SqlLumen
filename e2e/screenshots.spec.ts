@@ -371,15 +371,16 @@ async function openCopyToHostDialog(
   await configureCopyToHostFixtures(page, fixtureMode)
 
   const objectBrowser = page.getByTestId('object-browser')
-  await expect(objectBrowser.getByText('ecommerce_db')).toBeVisible()
-  await objectBrowser.getByText('ecommerce_db').click()
+  const objectTree = objectBrowser.getByRole('tree')
+  await expect(objectTree.getByText('ecommerce_db')).toBeVisible()
+  await objectTree.getByText('ecommerce_db').click()
 
   if (source === 'table') {
     await objectBrowser.getByText('Tables').click()
     await expect(objectBrowser.getByText('users')).toBeVisible()
     await objectBrowser.getByText('users').click({ button: 'right' })
   } else {
-    await objectBrowser.getByText('ecommerce_db').click({ button: 'right' })
+    await objectTree.getByText('ecommerce_db').click({ button: 'right' })
   }
 
   await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
@@ -1264,7 +1265,12 @@ for (const theme of themes) {
       await connectToSample(page)
 
       // Expand database and Tables category to reach table nodes
-      await page.getByText('ecommerce_db').first().click()
+      await page
+        .getByTestId('object-browser')
+        .getByRole('tree')
+        .getByText('ecommerce_db')
+        .first()
+        .click()
       await expect(page.getByTestId('object-browser').getByText('Tables')).toBeVisible()
       await page.getByTestId('object-browser').getByText('Tables').click()
       await expect(page.getByTestId('object-browser').getByText('users')).toBeVisible()
@@ -1283,7 +1289,11 @@ for (const theme of themes) {
       await connectToSample(page)
 
       // Right-click on a database node to show context menu
-      const dbNode = page.getByText('ecommerce_db').first()
+      const dbNode = page
+        .getByTestId('object-browser')
+        .getByRole('tree')
+        .getByText('ecommerce_db')
+        .first()
       await dbNode.click({ button: 'right' })
       await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
 
@@ -1300,7 +1310,11 @@ for (const theme of themes) {
       await connectToSample(page)
 
       // Right-click on a database node to show context menu
-      const dbNode = page.getByText('ecommerce_db').first()
+      const dbNode = page
+        .getByTestId('object-browser')
+        .getByRole('tree')
+        .getByText('ecommerce_db')
+        .first()
       await dbNode.click({ button: 'right' })
       await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
 
@@ -1430,11 +1444,17 @@ for (const theme of themes) {
     test('SqlDumpDialog — open via context menu', async ({ page }) => {
       await connectToSample(page)
       // Wait for the object browser to be fully loaded
-      await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible({
+      await expect(
+        page.getByTestId('object-browser').getByRole('tree').getByText('ecommerce_db')
+      ).toBeVisible({
         timeout: APP_READY_MS,
       })
       // Right-click on the ecommerce_db database node to open context menu
-      await page.getByTestId('object-browser').getByText('ecommerce_db').click({ button: 'right' })
+      await page
+        .getByTestId('object-browser')
+        .getByRole('tree')
+        .getByText('ecommerce_db')
+        .click({ button: 'right' })
       await expect(page.getByTestId('object-browser-context-menu')).toBeVisible({
         timeout: APP_READY_MS,
       })

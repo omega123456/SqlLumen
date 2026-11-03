@@ -21,6 +21,7 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
   'zoom-in': { key: '=', modifiers: ['ctrl'] },
   'zoom-out': { key: '-', modifiers: ['ctrl'] },
   'zoom-reset': { key: '0', modifiers: ['ctrl'] },
+  'reveal-in-object-browser': { key: 'F1', modifiers: ['shift'] },
 }
 
 /** Action IDs that should fire even when the Monaco editor is focused. */
@@ -34,6 +35,7 @@ export const EDITOR_CONTEXT_ACTIONS = new Set([
   'zoom-in',
   'zoom-out',
   'zoom-reset',
+  'reveal-in-object-browser',
 ])
 
 /** Action IDs that should fire even when focus is on INPUT/TEXTAREA/SELECT elements. */
@@ -43,6 +45,7 @@ export const GLOBAL_ACTIONS = new Set([
   'zoom-in',
   'zoom-out',
   'zoom-reset',
+  'reveal-in-object-browser',
 ])
 
 // ---------------------------------------------------------------------------

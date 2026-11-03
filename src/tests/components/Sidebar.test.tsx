@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Sidebar } from '../../components/layout/Sidebar'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSchemaStore } from '../../stores/schema-store'
@@ -50,6 +51,7 @@ beforeEach(() => {
   // Mock loadDatabases to prevent real IPC calls in tests
   useSchemaStore.setState({
     connectionStates: {},
+    revealRequest: null,
     loadDatabases: vi.fn().mockResolvedValue(undefined),
   })
 })
@@ -85,5 +87,46 @@ describe('Sidebar', () => {
 
     render(<Sidebar />)
     expect(screen.getByTestId('object-browser')).toBeInTheDocument()
+  })
+
+  it('switches from favourites back to the tree when a reveal is requested', async () => {
+    const user = userEvent.setup()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': makeActiveConnection() },
+      activeTabId: 'conn-1',
+    })
+
+    render(<Sidebar />)
+    await user.click(screen.getByTestId('favourites-toggle'))
+    expect(await screen.findByTestId('favourites-empty')).toBeInTheDocument()
+    expect(screen.queryByTestId('filter-input')).not.toBeInTheDocument()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal('conn-1', 'table:x:y')
+    })
+
+    expect(await screen.findByTestId('filter-input')).toBeInTheDocument()
+
+    // Favourites can still be reopened after a reveal
+    await user.click(screen.getByTestId('favourites-toggle'))
+    expect(await screen.findByTestId('favourites-empty')).toBeInTheDocument()
+  })
+
+  it('keeps favourites open when a reveal is requested for another connection', async () => {
+    const user = userEvent.setup()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': makeActiveConnection() },
+      activeTabId: 'conn-1',
+    })
+
+    render(<Sidebar />)
+    await user.click(screen.getByTestId('favourites-toggle'))
+    expect(await screen.findByTestId('favourites-empty')).toBeInTheDocument()
+
+    act(() => {
+      useSchemaStore.getState().requestReveal('conn-2', 'table:x:y')
+    })
+
+    expect(screen.getByTestId('favourites-empty')).toBeInTheDocument()
   })
 })

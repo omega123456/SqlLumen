@@ -140,6 +140,24 @@ describe('playwrightIpcMockHandler', () => {
     expect(result.base64).toBeNull()
   })
 
+  it('serves list_schema_objects from the fixture registry by object type', () => {
+    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'table' })).toEqual([
+      'users',
+      'orders',
+      'products',
+      'bit_test',
+    ])
+    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'event' })).toEqual([])
+    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'unknown' })).toEqual([])
+    expect(playwrightIpcMockHandler('list_schema_objects', {})).toEqual([])
+
+    overrideFixture('schemaObjects', 'table', ['t1', 't2'])
+    expect(playwrightIpcMockHandler('list_schema_objects', { objectType: 'table' })).toEqual([
+      't1',
+      't2',
+    ])
+  })
+
   it('serves read_file_bytes as base64 and write_file_bytes as null', () => {
     expect(typeof playwrightIpcMockHandler('read_file_bytes', { path: '/tmp/x' })).toBe('string')
     expect(

@@ -107,4 +107,36 @@ describe('TabContextMenu', () => {
       dialog.remove()
     }
   })
+
+  it('renders a shortcut hint and a separator after an item', () => {
+    render(
+      <TabContextMenu
+        visible
+        x={40}
+        y={60}
+        portalRoot={document.body}
+        onClose={vi.fn()}
+        items={[
+          {
+            key: 'reveal',
+            label: 'Reveal in object browser',
+            shortcut: 'Shift F1',
+            separatorAfter: true,
+            onSelect: vi.fn(),
+          },
+          { key: 'rename', label: 'Rename', onSelect: vi.fn() },
+        ]}
+      />
+    )
+
+    const reveal = screen.getByTestId('tab-context-menu-item-reveal')
+    expect(reveal.querySelector('.ui-context-menu__shortcut')).toHaveTextContent('Shift F1')
+    expect(reveal.nextElementSibling).toHaveClass('ui-context-menu__separator')
+    expect(reveal.nextElementSibling?.nextElementSibling).toBe(
+      screen.getByTestId('tab-context-menu-item-rename')
+    )
+    expect(
+      screen.getByTestId('tab-context-menu-item-rename').querySelector('.ui-context-menu__shortcut')
+    ).toBeNull()
+  })
 })

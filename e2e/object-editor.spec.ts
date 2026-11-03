@@ -18,7 +18,12 @@ function activePanel(page: Page) {
  */
 async function expandCategory(page: Page, categoryLabel: string) {
   // Expand database
-  await page.getByText('ecommerce_db').first().click()
+  await page
+    .getByTestId('object-browser')
+    .getByRole('tree')
+    .getByText('ecommerce_db')
+    .first()
+    .click()
   await expect(page.getByTestId('object-browser').getByText('Tables')).toBeVisible({
     timeout: APP_READY_MS,
   })
@@ -281,7 +286,12 @@ test.describe('Object Editor', () => {
     await connectToSample(page)
 
     // Expand database to see categories
-    await page.getByText('ecommerce_db').first().click()
+    await page
+      .getByTestId('object-browser')
+      .getByRole('tree')
+      .getByText('ecommerce_db')
+      .first()
+      .click()
     await expect(page.getByText('Procedures')).toBeVisible({ timeout: APP_READY_MS })
 
     // Right-click on "Procedures" category
@@ -311,7 +321,11 @@ test.describe('Object Editor', () => {
     await connectToSample(page)
 
     // Right-click on database node
-    const dbNode = page.getByText('ecommerce_db').first()
+    const dbNode = page
+      .getByTestId('object-browser')
+      .getByRole('tree')
+      .getByText('ecommerce_db')
+      .first()
     await dbNode.click({ button: 'right' })
     await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
 

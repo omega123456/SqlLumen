@@ -26,6 +26,8 @@ export function ConnectionHeader({
   const connectionName = activeConnection.profile.name
   const serverVersion = activeConnection.serverVersion || 'MySQL server'
   const connectionStatus = activeConnection.status
+  const activeDatabase =
+    activeConnection.sessionDatabase ?? activeConnection.profile.defaultDatabase ?? null
 
   const statusClass =
     connectionStatus === 'connected'
@@ -67,6 +69,38 @@ export function ConnectionHeader({
           />
           <span className={styles.serverVersion}>{serverVersion}</span>
         </span>
+        {activeDatabase ? (
+          <span
+            className={styles.activeDatabase}
+            title={`Active database: ${activeDatabase}`}
+            data-testid="connection-active-database"
+          >
+            <Database
+              size={12}
+              weight="regular"
+              className={styles.activeDatabaseIcon}
+              aria-hidden
+            />
+            <span className={styles.activeDatabaseName}>
+              <span className={styles.srOnly}>Active database: </span>
+              {activeDatabase}
+            </span>
+          </span>
+        ) : (
+          <span
+            className={`${styles.activeDatabase} ${styles.activeDatabaseEmpty}`}
+            title="No active database"
+            data-testid="connection-active-database"
+          >
+            <Database
+              size={12}
+              weight="regular"
+              className={styles.activeDatabaseIcon}
+              aria-hidden
+            />
+            <span className={styles.activeDatabaseName}>No database selected</span>
+          </span>
+        )}
       </div>
       <IconButton
         onClick={onToggleFavourites}

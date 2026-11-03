@@ -8,6 +8,9 @@ import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
+import { makeNodeId, useSchemaStore } from '../../../stores/schema-store'
+import { DEFAULT_SHORTCUTS, useShortcutStore } from '../../../stores/shortcut-store'
+import type { TreeNode as TreeNodeType } from '../../../types/schema'
 
 beforeEach(() => {
   resetWorkspaceStore()
@@ -1462,5 +1465,156 @@ describe('WorkspaceTabRail — safe subset reorder', () => {
     fireEvent.pointerUp(window, { clientX: 130, clientY: 15 })
 
     expect(onRequestReorderTab).toHaveBeenCalledWith(c, 0)
+  })
+
+  describe('Reveal in object browser', () => {
+    function seedUsersTree() {
+      const dbId = makeNodeId('database', 'mydb', 'mydb')
+      const catId = makeNodeId('category', 'mydb', 'table')
+      const usersId = makeNodeId('table', 'mydb', 'users')
+      const nodes: Record<string, TreeNodeType> = {
+        [dbId]: {
+          id: dbId,
+          label: 'mydb',
+          type: 'database',
+          parentId: null,
+          hasChildren: true,
+          isLoaded: true,
+        },
+        [catId]: {
+          id: catId,
+          label: 'Tables',
+          type: 'category',
+          parentId: dbId,
+          hasChildren: true,
+          isLoaded: true,
+        },
+        [usersId]: {
+          id: usersId,
+          label: 'users',
+          type: 'table',
+          parentId: catId,
+          hasChildren: true,
+          isLoaded: false,
+        },
+      }
+      useSchemaStore.setState({
+        revealRequest: null,
+        connectionStates: {
+          'conn-1': {
+            nodes,
+            childIdsByParentId: { __root__: [dbId], [dbId]: [catId], [catId]: [usersId] },
+            expandedNodes: new Set(),
+            loadingNodes: new Set(),
+            selectedNodeId: null,
+            filterText: '',
+            loadGeneration: 0,
+          },
+        },
+      })
+      return usersId
+    }
+
+    beforeEach(() => {
+      useShortcutStore.setState({ shortcuts: { ...DEFAULT_SHORTCUTS } })
+    })
+
+    it('reveals a table tab object and shows the shortcut', async () => {
+      const user = userEvent.setup()
+      const usersId = seedUsersTree()
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+      const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+      render(<WorkspaceTabs connectionId="conn-1" />)
+      fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${tabId}`), {
+        clientX: 100,
+        clientY: 120,
+      })
+
+      const item = screen.getByTestId('tab-context-menu-item-reveal-in-object-browser')
+      expect(item).toBeEnabled()
+      expect(item).toHaveTextContent('Reveal in object browser')
+      expect(item).toHaveTextContent('Shift F1')
+      // The reveal item is first and followed by a separator
+      const menu = screen.getByTestId('tab-context-menu')
+      expect(menu.firstElementChild).toBe(item)
+      expect(item.nextElementSibling?.tagName).toBe('HR')
+
+      await user.click(item)
+
+      await waitFor(() =>
+        expect(useSchemaStore.getState().revealRequest).toEqual({
+          connectionId: 'conn-1',
+          nodeId: usersId,
+          seq: 1,
+        })
+      )
+    })
+
+    it('follows a rebound shortcut and omits the hint when unbound', () => {
+      useShortcutStore.setState({
+        shortcuts: { ...DEFAULT_SHORTCUTS, 'reveal-in-object-browser': { key: '', modifiers: [] } },
+      })
+      useWorkspaceStore.getState().openTab({
+        type: 'schema-info',
+        label: 'orders',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'orders',
+        objectType: 'table',
+      })
+      const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+      render(<WorkspaceTabs connectionId="conn-1" />)
+      fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${tabId}`), {
+        clientX: 100,
+        clientY: 120,
+      })
+
+      const item = screen.getByTestId('tab-context-menu-item-reveal-in-object-browser')
+      expect(item.querySelector('.ui-context-menu__shortcut')).toBeNull()
+    })
+
+    it('is disabled for a table being created', () => {
+      useWorkspaceStore.getState().openTab({
+        type: 'table-designer',
+        mode: 'create',
+        label: 'New table',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: '__new_table__',
+      })
+      const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+      render(<WorkspaceTabs connectionId="conn-1" />)
+      fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${tabId}`), {
+        clientX: 100,
+        clientY: 120,
+      })
+
+      expect(screen.getByTestId('tab-context-menu-item-reveal-in-object-browser')).toBeDisabled()
+    })
+
+    it('is not offered on query tabs', () => {
+      const tabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+
+      render(<WorkspaceTabs connectionId="conn-1" />)
+      fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${tabId}`), {
+        clientX: 100,
+        clientY: 120,
+      })
+
+      expect(screen.getByTestId('tab-context-menu')).toBeInTheDocument()
+      expect(
+        screen.queryByTestId('tab-context-menu-item-reveal-in-object-browser')
+      ).not.toBeInTheDocument()
+    })
   })
 })

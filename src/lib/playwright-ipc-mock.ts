@@ -31,6 +31,7 @@ import {
   getSnapshotStateFixture,
   getTableDataFixture,
   getTargetDatabasesFixture,
+  getSchemaObjectsFixture,
   getWindowBackdropFixture,
 } from '../tests/playwright-fixtures'
 
@@ -414,22 +415,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     }
     case 'list_schema_objects': {
       const objectType = (args as Record<string, unknown>)?.objectType
-      switch (objectType) {
-        case 'table':
-          return ['users', 'orders', 'products', 'bit_test']
-        case 'view':
-          return ['user_stats_view']
-        case 'procedure':
-          return ['sp_get_orders']
-        case 'function':
-          return ['fn_calculate_total']
-        case 'trigger':
-          return ['trg_before_insert']
-        case 'event':
-          return []
-        default:
-          return []
-      }
+      return getSchemaObjectsFixture(typeof objectType === 'string' ? objectType : undefined)
     }
     case 'list_columns': {
       const table = (args as Record<string, unknown>)?.table

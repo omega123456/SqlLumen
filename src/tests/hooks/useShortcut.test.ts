@@ -355,4 +355,44 @@ describe('useShortcut', () => {
 
     unmount()
   })
+
+  it('fires reveal-in-object-browser (Shift+F1) from Monaco and from an input', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('reveal-in-object-browser', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    fireKeydown('F1', { shiftKey: true })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    fireKeydown('F1', { shiftKey: true }, input)
+    expect(callback).toHaveBeenCalledTimes(2)
+    document.body.removeChild(input)
+
+    const monacoContainer = document.createElement('div')
+    monacoContainer.classList.add('monaco-editor')
+    const innerElement = document.createElement('div')
+    monacoContainer.appendChild(innerElement)
+    document.body.appendChild(monacoContainer)
+    Object.defineProperty(document, 'activeElement', {
+      value: innerElement,
+      configurable: true,
+    })
+
+    fireKeydown('F1', { shiftKey: true })
+    expect(callback).toHaveBeenCalledTimes(3)
+
+    Object.defineProperty(document, 'activeElement', {
+      value: document.body,
+      configurable: true,
+    })
+    document.body.removeChild(monacoContainer)
+
+    // Plain F1 is not bound
+    fireKeydown('F1')
+    expect(callback).toHaveBeenCalledTimes(3)
+    unmount()
+  })
 })

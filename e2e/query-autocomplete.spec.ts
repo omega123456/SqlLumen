@@ -200,7 +200,7 @@ async function openAutocomplete(
 }
 
 async function selectDatabaseInObjectBrowser(page: Page, databaseName: string) {
-  await page.getByText(databaseName).first().click()
+  await page.getByTestId('object-browser').getByRole('tree').getByText(databaseName).first().click()
 }
 
 async function injectMalformedSchemaMetadata(page: Page) {

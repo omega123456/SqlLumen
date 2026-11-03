@@ -33,6 +33,9 @@ describe('ShortcutsSettings', () => {
     expect(screen.getByTestId('shortcut-row-new-query-tab')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-close-tab')).toBeInTheDocument()
     expect(screen.getByTestId('shortcut-row-settings')).toBeInTheDocument()
+    expect(screen.getByTestId('shortcut-row-reveal-in-object-browser')).toHaveTextContent(
+      'Reveal in object browser'
+    )
   })
 
   it('displays default key bindings as KeyCapBadges', () => {

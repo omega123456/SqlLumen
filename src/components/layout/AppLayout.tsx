@@ -24,6 +24,7 @@ import { useZoomStore } from '../../stores/zoom-store'
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { useCommandPaletteRecentsStore } from '../../stores/command-palette-recents-store'
 import { readFile } from '../../lib/query-commands'
+import { revealTabInObjectBrowser } from '../../lib/object-activation'
 import {
   splitStatements,
   findStatementAtCursor,
@@ -320,6 +321,17 @@ export function AppLayout() {
       useCommandPaletteStore.getState().toggle(true)
     })
 
+    store.registerAction('reveal-in-object-browser', () => {
+      const { connectionId, tabId } = getActiveContext()
+      if (!connectionId || !tabId) return
+      const tab = (useWorkspaceStore.getState().tabsByConnection[connectionId] ?? []).find(
+        (t) => t.id === tabId
+      )
+      if (tab) {
+        void revealTabInObjectBrowser(tab)
+      }
+    })
+
     return () => {
       store.unregisterAction('execute-query')
       store.unregisterAction('execute-all')
@@ -334,6 +346,7 @@ export function AppLayout() {
       store.unregisterAction('zoom-reset')
       store.unregisterAction('command-palette')
       store.unregisterAction('command-palette-table')
+      store.unregisterAction('reveal-in-object-browser')
     }
   }, [])
 
