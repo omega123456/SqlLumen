@@ -349,7 +349,7 @@ describe('WorkspaceTabs', () => {
     expect(tabs[1].label).toBe('Query 2')
   })
 
-  it('shows the last group while a pinned tab is selected', async () => {
+  it('hides the tab strip while a pinned tab in the rail is selected', async () => {
     const user = userEvent.setup()
     act(() => {
       useWorkspaceStore.getState().openTab({
@@ -367,29 +367,35 @@ describe('WorkspaceTabs', () => {
 
     const historyTab = screen.getByTestId('workspace-pinned-tab-history')
     expect(historyTab).toHaveAttribute('aria-selected', 'false')
-    expect(historyTab).toHaveTextContent('History')
+    expect(screen.getByTestId('workspace-group-rail')).toContainElement(historyTab)
 
     await user.click(historyTab)
 
     expect(historyTab).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('workspace-group-rail-item-tables')).toHaveAttribute(
       'aria-selected',
-      'true'
+      'false'
     )
-    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-tabs')).not.toBeVisible()
+
+    await user.click(screen.getByTestId('workspace-group-rail-item-tables'))
+
+    expect(screen.getByTestId('workspace-tabs')).toBeVisible()
+    expect(screen.getByText('users')).toBeVisible()
   })
 
-  it('renders an empty rail when only pinned tabs are open', () => {
+  it('renders only the pinned tabs in the rail when no group is open', () => {
     act(() => {
-      useWorkspaceStore.getState().openHistoryTab('conn-1')
+      useWorkspaceStore.getState().openHistoryTab('conn-1', false)
     })
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     const rail = screen.getByTestId('workspace-group-rail')
-    expect(within(rail).queryAllByRole('tab')).toHaveLength(0)
+    expect(within(rail).getAllByRole('tab')).toEqual([
+      screen.getByTestId('workspace-pinned-tab-history'),
+    ])
     expect(screen.getByTestId('workspace-group-rail-marker')).not.toBeVisible()
-    expect(screen.getByTestId('workspace-pinned-tab-history')).toBeInTheDocument()
     expect(screen.getByTestId('new-query-tab-button')).toBeInTheDocument()
   })
 
@@ -716,7 +722,7 @@ describe('WorkspaceTabs', () => {
     expect(preventDefaultSpy).toHaveBeenCalled()
   })
 
-  it('renders the "+" button and pinned tabs after the scrollable tab area', () => {
+  it('renders the "+" button after the scrollable tab area and the pinned tabs in the rail', () => {
     act(() => {
       useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
       useWorkspaceStore.getState().openHistoryTab('conn-1', false)
@@ -727,20 +733,19 @@ describe('WorkspaceTabs', () => {
     const members = screen.getByTestId('workspace-tab-members')
     const memberTab = within(members).getByText('Query A')
     const scrollArea = Array.from(members.children).find((child) => child.contains(memberTab))
-    const actions = [
-      screen.getByTestId('new-query-tab-button'),
-      screen.getByTestId('workspace-pinned-tab-history'),
-      screen.getByTestId('workspace-pinned-tab-processlist'),
-    ]
+    const newTabButton = screen.getByTestId('new-query-tab-button')
 
     expect(scrollArea).toBeDefined()
-    for (const action of actions) {
-      expect(members.contains(action)).toBe(true)
-      expect(scrollArea?.contains(action)).toBe(false)
-      expect(
-        scrollArea!.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING
-      ).toBeTruthy()
-    }
+    expect(members.contains(newTabButton)).toBe(true)
+    expect(scrollArea?.contains(newTabButton)).toBe(false)
+    expect(
+      scrollArea!.compareDocumentPosition(newTabButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+
+    const rail = screen.getByTestId('workspace-group-rail')
+    expect(rail).toContainElement(screen.getByTestId('workspace-pinned-tab-history'))
+    expect(rail).toContainElement(screen.getByTestId('workspace-pinned-tab-processlist'))
+    expect(members.contains(screen.getByTestId('workspace-pinned-tab-history'))).toBe(false)
   })
 
   it('renders the group rail outside the tab strip, before it', () => {
@@ -774,7 +779,8 @@ describe('WorkspaceTabs', () => {
     expect(body.parentElement?.parentElement).toBe(strip.parentElement)
   })
 
-  it('keeps full labels on pinned tabs', () => {
+  it('names the icon-only pinned tabs and activates them from the rail', async () => {
+    const user = userEvent.setup()
     act(() => {
       useWorkspaceStore.getState().openHistoryTab('conn-1')
       useWorkspaceStore.getState().openProcessListTab('conn-1')
@@ -783,8 +789,10 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    expect(screen.getByLabelText('History')).toHaveTextContent('History')
-    expect(screen.getByLabelText('Process list')).toHaveTextContent('Process list')
+    expect(screen.getByRole('tab', { name: 'History' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'Process list' }))
+
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe('processlist-conn-1')
   })
 
   it('activates the most recent tab in a stack when clicking its stack chip', async () => {

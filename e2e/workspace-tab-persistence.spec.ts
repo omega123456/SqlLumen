@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import {
   activeGroupRailItem,
+  activePinnedTab,
   activeConnectionWorkspace,
   activeWorkspaceTabMembers,
   activeWorkspaceTabs,
@@ -219,11 +220,12 @@ test.describe('Workspace tab persistence', () => {
     await openScrollTableDataTab(page)
     await openQueryEditorTab(page)
 
+    // History, Process list, the connection's blank query tab, the table and the new query tab
     const panels = page.getByTestId('workspace-panel')
-    await expect(panels).toHaveCount(4, { timeout: APP_READY_MS })
+    await expect(panels).toHaveCount(5, { timeout: APP_READY_MS })
     await expect(page.locator('[data-testid="workspace-panel"][data-active="true"]')).toHaveCount(1)
     await expect(page.locator('[data-testid="workspace-panel"][data-active="false"]')).toHaveCount(
-      3
+      4
     )
   })
 
@@ -257,7 +259,7 @@ test.describe('Workspace tab persistence', () => {
   })
 
   test('does not leak an open dropdown overlay after switching away', async ({ page }) => {
-    await activeWorkspaceTabs(page).getByTestId('workspace-pinned-tab-processlist').click()
+    await activePinnedTab(page, 'processlist').click()
     const processListTabId = await page.evaluate(() => {
       const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
         getState: () => { activeTabByConnection: Record<string, string | null> }
@@ -274,8 +276,11 @@ test.describe('Workspace tab persistence', () => {
     })
     await activePanel(page).getByTestId('processlist-filter-dropdown').click()
     await expect(page.getByTestId('processlist-filter-dropdown-option-show-all')).toBeVisible()
+    // The tab strip (and its + button) is hidden on Process list, so switch away from the rail
+    await expect(activeWorkspaceTabs(page)).toBeHidden()
 
-    await openQueryEditorTab(page)
+    await activeGroupRailItem(page, 'queries').click()
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible()
 
     await expect(page.getByTestId('processlist-filter-dropdown-option-show-all')).toBeHidden()
     await expect(page.getByRole('listbox')).toBeHidden()

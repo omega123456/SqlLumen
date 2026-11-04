@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
+  activePinnedTab,
   activeWorkspaceTabMembers,
   activeWorkspaceTabs,
   connectToSample,
@@ -398,8 +399,8 @@ async function chooseCopyToHostTarget(page: Page) {
 
 /** Open a query editor tab via the "+" button after connecting. */
 async function openQueryEditorTab(page: Page) {
+  // A new connection opens with one blank, active query tab
   await connectToSample(page)
-  await page.getByTestId('new-query-tab-button').click()
   await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
   // Wait for the editor toolbar to settle
   await expect(page.getByTestId('editor-toolbar')).toBeVisible()
@@ -930,9 +931,7 @@ async function openBlobViewerFromTableData(page: Page, state?: 'null' | 'empty' 
 /** Connect and activate the Process List tab. */
 async function openProcessListTab(page: Page) {
   await connectToSample(page, { dismissToasts: true })
-  const tabStrip = activeWorkspaceTabs(page)
-  await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
-  await tabStrip.getByTestId('workspace-pinned-tab-processlist').click()
+  await activePinnedTab(page, 'processlist').click()
   await waitForGlideGrid(page, 'processlist-grid-view')
 
   await page.evaluate(() => {
@@ -1801,10 +1800,8 @@ for (const theme of themes) {
 
     test('HistoryFavoritesTab — split-panel layout', async ({ page }) => {
       await connectToSample(page)
-      // The history tab is now auto-created when a connection opens.
-      // Click the History tab in the workspace tab bar to make it active.
-      const workspaceTabs = activeWorkspaceTabs(page)
-      const historyTab = workspaceTabs.getByTestId('workspace-pinned-tab-history')
+      // The history tab is auto-created when a connection opens; activate it from the rail.
+      const historyTab = activePinnedTab(page, 'history')
       await expect(historyTab).toBeVisible({ timeout: APP_READY_MS })
       await historyTab.click()
       await expect(page.getByTestId('history-tab')).toBeVisible({ timeout: APP_READY_MS })

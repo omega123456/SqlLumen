@@ -43,7 +43,21 @@ const QUERIES: WorkspaceTabStackGroup = { key: 'queries', tabs: [queryTab('q1'),
 const TABLES: WorkspaceTabStackGroup = { key: 'tables', tabs: [tableTab('t1')] }
 const SCHEMA: WorkspaceTabStackGroup = { key: 'schema', tabs: [schemaTab('s1')] }
 
+const HISTORY = {
+  id: 'h1',
+  type: 'history',
+  label: 'History',
+  connectionId: 'conn-1',
+} as WorkspaceTab
+const PROCESSLIST = {
+  id: 'p1',
+  type: 'processlist',
+  label: 'Process list',
+  connectionId: 'conn-1',
+} as WorkspaceTab
+
 const item = (key: string) => screen.getByTestId(`workspace-group-rail-item-${key}`)
+const pinned = (type: string) => screen.getByTestId(`workspace-pinned-tab-${type}`)
 
 beforeEach(() => {
   useTableDesignerStore.setState({ tabs: {} })
@@ -370,5 +384,119 @@ describe('WorkspaceGroupRail', () => {
     act(() => vi.advanceTimersByTime(RAIL_ITEM_TRANSITION_MS))
     expect(item('tables')).not.toHaveAttribute('data-phase')
     expect(item('schema')).not.toHaveAttribute('data-phase')
+  })
+
+  describe('pinned tabs', () => {
+    it('renders History and Process list as icon-only tabs after the groups', () => {
+      render(
+        <WorkspaceGroupRail
+          stackGroups={[QUERIES]}
+          value="queries"
+          onSelect={vi.fn()}
+          pinnedTabs={[HISTORY, PROCESSLIST]}
+        />
+      )
+
+      const rail = screen.getByTestId('workspace-group-rail')
+      expect(within(rail).getAllByRole('tab')).toHaveLength(3)
+      expect(pinned('history')).toHaveAccessibleName('History')
+      expect(pinned('history')).toHaveTextContent('')
+      expect(pinned('processlist')).toHaveAccessibleName('Process list')
+      expect(screen.getByTestId('workspace-group-rail-pinned')).toContainElement(pinned('history'))
+      expect(
+        item('queries').compareDocumentPosition(pinned('history')) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    })
+
+    it('takes the selection and tab stop from the shown group while selected', () => {
+      render(
+        <WorkspaceGroupRail
+          stackGroups={[QUERIES]}
+          value="queries"
+          onSelect={vi.fn()}
+          pinnedTabs={[HISTORY, PROCESSLIST]}
+          activePinnedTabId="p1"
+        />
+      )
+
+      expect(pinned('processlist')).toHaveAttribute('aria-selected', 'true')
+      expect(pinned('processlist')).toHaveAttribute('tabindex', '0')
+      expect(pinned('history')).toHaveAttribute('aria-selected', 'false')
+      expect(item('queries')).toHaveAttribute('aria-selected', 'false')
+      expect(item('queries')).toHaveAttribute('tabindex', '-1')
+      expect(screen.getByTestId('workspace-group-rail-marker')).toBeVisible()
+    })
+
+    it('marks a pinned tab selected when no group is open', () => {
+      render(
+        <WorkspaceGroupRail
+          stackGroups={[]}
+          value={null}
+          onSelect={vi.fn()}
+          pinnedTabs={[HISTORY]}
+          activePinnedTabId="h1"
+        />
+      )
+
+      expect(pinned('history')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByTestId('workspace-group-rail-marker')).toBeVisible()
+    })
+
+    it('selects a pinned tab on click and shows its name in a tooltip', () => {
+      vi.useFakeTimers()
+      const onSelectPinned = vi.fn()
+      render(
+        <WorkspaceGroupRail
+          stackGroups={[QUERIES]}
+          value="queries"
+          onSelect={vi.fn()}
+          pinnedTabs={[HISTORY]}
+          onSelectPinned={onSelectPinned}
+        />
+      )
+
+      fireEvent.mouseEnter(pinned('history'))
+      act(() => vi.advanceTimersByTime(RAIL_TOOLTIP_DELAY_MS))
+      expect(screen.getByTestId('workspace-group-rail-tooltip')).toHaveTextContent(/^History$/)
+
+      fireEvent.click(pinned('history'))
+      expect(onSelectPinned).toHaveBeenCalledWith('h1')
+      expect(screen.queryByTestId('workspace-group-rail-tooltip')).not.toBeInTheDocument()
+    })
+
+    it('moves through groups and pinned tabs with the arrow keys', async () => {
+      const user = userEvent.setup()
+      const onSelect = vi.fn()
+      const onSelectPinned = vi.fn()
+      const onFocusMembers = vi.fn()
+      render(
+        <WorkspaceGroupRail
+          stackGroups={[QUERIES]}
+          value="queries"
+          onSelect={onSelect}
+          onFocusMembers={onFocusMembers}
+          pinnedTabs={[HISTORY, PROCESSLIST]}
+          onSelectPinned={onSelectPinned}
+        />
+      )
+
+      act(() => item('queries').focus())
+      await user.keyboard('{ArrowDown}')
+      expect(onSelectPinned).toHaveBeenLastCalledWith('h1')
+      expect(pinned('history')).toHaveFocus()
+
+      await user.keyboard('{End}')
+      expect(onSelectPinned).toHaveBeenLastCalledWith('p1')
+      expect(pinned('processlist')).toHaveFocus()
+
+      await user.keyboard('{ArrowRight}')
+      expect(onFocusMembers).not.toHaveBeenCalled()
+      expect(pinned('processlist')).toHaveFocus()
+
+      await user.keyboard('{ArrowDown}')
+      expect(onSelect).toHaveBeenLastCalledWith('queries')
+      expect(item('queries')).toHaveFocus()
+    })
   })
 })

@@ -31,8 +31,8 @@ async function enableAiViaStore(page: Page) {
 
 /** Open a query editor tab and wait for it to be ready. */
 async function openQueryEditorTab(page: Page) {
+  // A new connection opens with one blank, active query tab
   await connectToSample(page)
-  await page.getByTestId('new-query-tab-button').click()
   await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
     timeout: APP_READY_MS,
   })

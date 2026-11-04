@@ -484,7 +484,7 @@ describe('useConnectionStore — Process List integration', () => {
 })
 
 describe('useConnectionStore — openConnection creates default workspace tabs', () => {
-  it('opens History tab at index 0 and Process List tab at index 1', async () => {
+  it('opens History, Process list and one blank, active query tab', async () => {
     // Set up a saved connection profile
     useConnectionStore.setState({
       savedConnections: [
@@ -518,9 +518,20 @@ describe('useConnectionStore — openConnection creates default workspace tabs',
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['session-1']
     expect(tabs).toBeDefined()
-    expect(tabs!.length).toBeGreaterThanOrEqual(2)
-    expect(tabs![0].type).toBe('history')
-    expect(tabs![1].type).toBe('processlist')
+    expect(tabs!.map((tab) => tab.type)).toEqual(['history', 'processlist', 'query-editor'])
+    expect(useWorkspaceStore.getState().activeTabByConnection['session-1']).toBe(tabs![2].id)
+  })
+
+  it('skips the blank query tab when asked not to open one', async () => {
+    useConnectionStore.setState({
+      savedConnections: [makeActiveConnection('session-1', 'profile-1', 'Test connection').profile],
+    })
+    ipc.override('open_connection', () => ({ sessionId: 'session-1', serverVersion: '8.0.0' }))
+
+    await useConnectionStore.getState().openConnection('profile-1', { openQueryTab: false })
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-1']
+    expect(tabs!.map((tab) => tab.type)).toEqual(['history', 'processlist'])
   })
 })
 

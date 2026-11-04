@@ -16,7 +16,10 @@ function activePanel(page: Page) {
 
 async function openQueryTab(page: Page) {
   await page.getByTestId('new-query-tab-button').click()
+  return activeTabId(page)
+}
 
+async function activeTabId(page: Page) {
   return page.evaluate((sessionId) => {
     const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
       getState: () => {
@@ -140,7 +143,8 @@ test.describe('Tab interactions', () => {
 
   test('moves workspace query tabs with context menu actions', async ({ page }) => {
     await connectToSample(page)
-    const firstQueryTabId = await openQueryTab(page)
+    // A new connection starts with one blank, active query tab
+    const firstQueryTabId = await activeTabId(page)
     const secondQueryTabId = await openQueryTab(page)
     await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
       timeout: APP_READY_MS,
@@ -267,11 +271,11 @@ test.describe('Tab interactions', () => {
   test('end chip scrolls past a selected tab wider than the strip minus the start chip', async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 840, height: 600 })
+    await page.setViewportSize({ width: 585, height: 600 })
     await connectToSample(page)
     // The long tab fits the strip but not the strip minus the 52px start chip, so
-    // scrollIntoView('nearest') alone would leave it in place. 840px leaves the strip about 360px
-    // beside the sidebar and the group rail.
+    // scrollIntoView('nearest') alone would leave it in place. 585px leaves the strip about 370px
+    // beside the sidebar, the group rail and the + button.
     await page.evaluate((sessionId) => {
       const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
         getState: () => { openTab: (tab: Record<string, unknown>) => void }

@@ -12,8 +12,8 @@ function activePanel(page: Page) {
 }
 
 async function openQueryEditorWithResults(page: Page) {
+  // A new connection opens with one blank, active query tab
   await connectToSample(page)
-  await page.getByTestId('new-query-tab-button').click()
   await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({
     timeout: APP_READY_MS,
   })

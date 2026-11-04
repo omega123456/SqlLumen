@@ -168,3 +168,32 @@
     transition: none;
   }
 }
+
+/* History and Process list: icon-only items at the bottom of the rail, under a divider. The
+   section must stay unpositioned so the items' offsetTop (marker, tooltip) is relative to the rail. */
+.pinnedSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: auto;
+  padding-bottom: 6px;
+}
+
+.pinnedSection::before {
+  content: '';
+  flex: none;
+  width: 20px;
+  height: 1px;
+  margin-bottom: 4px;
+  background: var(--stroke-divider);
+}
+
+.pinnedItem {
+  height: 36px;
+}
+
+.pinnedItem:hover .icon,
+.pinnedItem[data-selected] .icon {
+  color: var(--on-surface);
+}

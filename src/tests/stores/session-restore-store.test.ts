@@ -1190,7 +1190,6 @@ describe('useSessionRestoreStore — restoreSession', () => {
     await useSessionRestoreStore.getState().restoreSession()
 
     // The second query-editor tab (index 1) should be active.
-    // openConnection now auto-creates a history tab, so there are 3 tabs total.
     const workspaceTabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
     const queryTabs = workspaceTabs.filter((t) => t.type === 'query-editor')
     expect(queryTabs).toHaveLength(2)
@@ -1266,7 +1265,6 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     await useSessionRestoreStore.getState().restoreSession()
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
-    // openConnection creates a default query tab, plus the restored table-data tab
     const tableDataTab = tabs.find((t) => t.type === 'table-data')
     expect(tableDataTab).toBeDefined()
     expect(tableDataTab!.databaseName).toBe('testdb')
@@ -1660,12 +1658,12 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     await useSessionRestoreStore.getState().restoreSession()
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
-    // Should have at least the 4 restored tabs (openConnection may also add a default query tab)
+    // The 4 restored tabs; restore doesn't add a blank query tab
     const queryTabs = tabs.filter((t) => t.type === 'query-editor')
     const tableDataTabs = tabs.filter((t) => t.type === 'table-data')
     const schemaInfoTabs = tabs.filter((t) => t.type === 'schema-info')
     const historyTabs = tabs.filter((t) => t.type === 'history')
-    expect(queryTabs.length).toBeGreaterThanOrEqual(1)
+    expect(queryTabs).toHaveLength(1)
     expect(tableDataTabs).toHaveLength(1)
     expect(schemaInfoTabs).toHaveLength(1)
     expect(historyTabs).toHaveLength(1)

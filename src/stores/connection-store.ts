@@ -54,7 +54,11 @@ interface ConnectionState {
 
   // Actions
   fetchSavedConnections: () => Promise<void>
-  openConnection: (id: string) => Promise<void>
+  /**
+   * Connect with a saved profile. A new connection starts with one blank query tab unless
+   * `openQueryTab` is false (session restore brings back the saved tabs instead).
+   */
+  openConnection: (id: string, options?: { openQueryTab?: boolean }) => Promise<void>
   attachExistingConnection: (session: OpenConnectionSession) => boolean
   closeConnection: (id: string, options?: { force?: boolean }) => Promise<boolean>
   closeAllConnections: (options?: { force?: boolean }) => Promise<boolean>
@@ -92,7 +96,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     }
   },
 
-  openConnection: async (id: string) => {
+  openConnection: async (id: string, options) => {
     const profile = get().savedConnections.find((c) => c.id === id)
     if (!profile) {
       const errorMsg = `Connection profile '${id}' not found`
@@ -110,6 +114,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         serverVersion: result.serverVersion,
         sessionDatabase: profile.defaultDatabase,
       })
+      if (options?.openQueryTab !== false) {
+        useWorkspaceStore.getState().openQueryTab(result.sessionId)
+      }
       showSuccessToast('Connected', profile.name)
 
       // Register session for schema index and trigger initial build (fire-and-forget)

@@ -75,6 +75,11 @@ export function activeWorkspaceTabs(page: Page): Locator {
   return activeConnectionWorkspace(page).getByTestId('workspace-tabs')
 }
 
+/** Locator for a pinned tab (History, Process list) at the bottom of the active connection's rail. */
+export function activePinnedTab(page: Page, type: 'history' | 'processlist'): Locator {
+  return activeConnectionWorkspace(page).getByTestId(`workspace-pinned-tab-${type}`)
+}
+
 /** Locator for one item of the active connection's tab-group rail, scoped to the visible root. */
 export function activeGroupRailItem(page: Page, stackKey: string): Locator {
   return activeConnectionWorkspace(page).getByTestId(`workspace-group-rail-item-${stackKey}`)

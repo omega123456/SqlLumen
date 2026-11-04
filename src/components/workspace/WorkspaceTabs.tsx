@@ -1,11 +1,12 @@
 /**
  * WorkspaceTabs — the group rail at the workspace's left edge, the document strip with the shown
- * group's tabs and the actions, and (as children) the workspace body under the strip.
+ * group's tabs and the "new query tab" button, and (as children) the workspace body under the strip.
  *
  * Owns:
  *   - Filtering tabs into pinned (history / processlist) vs. scrollable groups
- *   - The group rail beside the strip and the body
- *   - The "new query tab" (+) button and pinned tabs in the non-scrollable suffix
+ *   - The group rail beside the strip and the body, with the pinned tabs at its bottom
+ *   - The "new query tab" (+) button in the non-scrollable suffix
+ *   - Hiding the strip while a pinned tab is selected, so its body gets the full height
  *   - Scroll-into-view when the active tab changes (only while its connection
  *     workspace is the globally visible one)
  *
@@ -17,7 +18,7 @@ import { PlusIcon } from '@phosphor-icons/react'
 import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { IconButton } from '../common/IconButton'
-import { UnderlineTab, UnderlineTabBar } from '../common/UnderlineTabs'
+import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { WorkspaceTabRail } from './WorkspaceTabRail'
 import {
   getWorkspaceStackActivationTarget,
@@ -27,7 +28,6 @@ import {
   type WorkspaceTabStackKey,
 } from '../../lib/workspace-tab-stacks'
 import { WorkspaceGroupRail } from './WorkspaceGroupRail'
-import { getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
@@ -89,13 +89,14 @@ export function WorkspaceTabs({
     [hideTableDataTabs, visibleNonPinnedTabs]
   )
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
+  const activePinnedTabId = activeTab && isPinnedWorkspaceTab(activeTab) ? activeTab.id : null
   const activeStackKey =
-    activeTab && !isPinnedWorkspaceTab(activeTab)
+    activeTab && !activePinnedTabId
       ? getWorkspaceStackKeyForTab(activeTab, {
           hideScopedTableDataTabs: hideTableDataTabs,
         })
       : null
-  // While a pinned tab is selected, keep showing the last group's tabs so the row stays put.
+  // While a pinned tab is selected, remember the last group so the rail can hand focus back to it.
   const [lastStackKey, setLastStackKey] = useState(activeStackKey)
   if (activeStackKey && activeStackKey !== lastStackKey) {
     setLastStackKey(activeStackKey)
@@ -198,8 +199,16 @@ export function WorkspaceTabs({
         value={shownStackKey}
         onSelect={activateStack}
         onFocusMembers={focusStackMembers}
+        pinnedTabs={pinnedTabs}
+        activePinnedTabId={activePinnedTabId}
+        onSelectPinned={requestActivateTab}
       />
-      <div ref={workspaceRootRef} className={styles.workspaceTabs} data-testid="workspace-tabs">
+      <div
+        ref={workspaceRootRef}
+        className={styles.workspaceTabs}
+        hidden={activePinnedTabId !== null}
+        data-testid="workspace-tabs"
+      >
         <UnderlineTabBar
           variant="document"
           className={styles.workspaceTabRailBleed}
@@ -216,33 +225,6 @@ export function WorkspaceTabs({
               >
                 <PlusIcon size={16} weight="regular" />
               </IconButton>
-              {pinnedTabs.map((tab) => {
-                const { IconComponent, testId } = getWorkspaceTabIconDescriptor(tab)
-                return (
-                  <UnderlineTab
-                    key={tab.id}
-                    variant="selector"
-                    active={tab.id === activeTabId}
-                    className={styles.pinnedTab}
-                    data-testid={`workspace-pinned-tab-${tab.type}`}
-                    aria-label={tab.label}
-                    title={tab.label}
-                    autoScrollOnActive={connectionActive}
-                    onClick={() => requestActivateTab(tab.id)}
-                  >
-                    <span className={styles.pinnedTabLabel}>
-                      <IconComponent
-                        size={16}
-                        weight="regular"
-                        aria-hidden={true}
-                        data-testid={testId}
-                        className={styles.pinnedTabIcon}
-                      />
-                      <span>{tab.label}</span>
-                    </span>
-                  </UnderlineTab>
-                )
-              })}
             </div>
           }
         >

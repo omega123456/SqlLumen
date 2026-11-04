@@ -75,8 +75,8 @@ const MALFORMED_SCHEMA_METADATA = {
 }
 
 async function openQueryEditorTab(page: Page) {
+  // A new connection opens with one blank, active query tab
   await connectToSample(page)
-  await page.getByTestId('new-query-tab-button').click()
   await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({
     timeout: APP_READY_MS,
   })

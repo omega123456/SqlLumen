@@ -429,7 +429,7 @@ async function connectByProfileId(profileId: string): Promise<string | null> {
   const existingSessionIds = new Set(Object.keys(store.activeConnections))
 
   try {
-    await store.openConnection(profileId)
+    await store.openConnection(profileId, { openQueryTab: false })
   } catch {
     // openConnection already shows error toast
     return null
