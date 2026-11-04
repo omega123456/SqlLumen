@@ -27,14 +27,13 @@ export default function ProcessListTab({
   const isSummaryDialogOpen = useProcessListStore(
     (s) => s.isSummaryDialogOpenByConnection[connectionId] ?? false
   )
-  const hasFetched = useProcessListStore((s) => s.hasFetchedByConnection[connectionId] ?? false)
-
-  // Initial fetch on first activation
+  // Refresh immediately whenever the tab is opened or brought into focus, instead of
+  // waiting for the next auto-refresh tick
   useEffect(() => {
-    if (isActive && !hasFetched) {
+    if (isActive) {
       fetchProcessList(connectionId, sessionId, false)
     }
-  }, [isActive, hasFetched, connectionId, sessionId, fetchProcessList])
+  }, [isActive, connectionId, sessionId, fetchProcessList])
 
   const handleRefresh = useCallback(
     (isManual: boolean) => {

@@ -95,6 +95,43 @@ describe('ProcessListTab', () => {
     expect(screen.getByTestId('processlist-tab')).toBeInTheDocument()
     expect(screen.getByTestId('processlist-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('processlist-grid')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(useProcessListStore.getState().rowsByConnection['conn-1']).toHaveLength(2)
+    })
+  })
+
+  it('fetches on open even when the connection was fetched before', async () => {
+    render(<ProcessListTab connectionId="conn-1" sessionId="conn-1" isActive={true} />)
+    await waitFor(() => {
+      expect(useProcessListStore.getState().rowsByConnection['conn-1']).toHaveLength(2)
+    })
+  })
+
+  it('refreshes immediately when the tab is brought back into focus', () => {
+    const originalFetch = useProcessListStore.getState().fetchProcessList
+    const fetchSpy = vi.fn()
+    useProcessListStore.setState({
+      refreshIntervalMsByConnection: { 'conn-1': 60_000 },
+      rowsByConnection: { 'conn-1': MOCK_ROWS },
+      fetchProcessList: fetchSpy,
+    })
+
+    const { rerender, unmount } = render(
+      <ProcessListTab connectionId="conn-1" sessionId="conn-1" isActive={true} />
+    )
+    try {
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+      rerender(<ProcessListTab connectionId="conn-1" sessionId="conn-1" isActive={false} />)
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+      rerender(<ProcessListTab connectionId="conn-1" sessionId="conn-1" isActive={true} />)
+      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect(fetchSpy).toHaveBeenLastCalledWith('conn-1', 'conn-1', false)
+    } finally {
+      unmount()
+      useProcessListStore.setState({ fetchProcessList: originalFetch })
+    }
   })
 
   it('fetches process list on first activation', async () => {
