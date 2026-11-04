@@ -688,9 +688,9 @@ describe('TableDataToolbar', () => {
     setupTabState({
       editState: {
         rowKey: { id: 1 },
-        originalValues: { id: 1 },
-        currentValues: { id: 1 },
-        modifiedColumns: new Set(),
+        originalValues: { id: 1, name: 'Alice' },
+        currentValues: { id: 1, name: 'Bob' },
+        modifiedColumns: new Set(['name']),
         isNewRow: false,
       },
     })
@@ -844,7 +844,7 @@ describe('TableDataToolbar', () => {
     expect(cancelButton).toHaveTextContent('Cancelling...')
   })
 
-  it('Discard button is enabled when editState exists', () => {
+  it('Discard button is disabled when editState has no modifications', () => {
     setupConnection()
     setupTabState({
       editState: {
@@ -853,6 +853,36 @@ describe('TableDataToolbar', () => {
         currentValues: { id: 1 },
         modifiedColumns: new Set(),
         isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-discard')).toBeDisabled()
+  })
+
+  it('Discard button is enabled when editState has modifications', () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice' },
+        currentValues: { id: 1, name: 'Bob' },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-discard')).not.toBeDisabled()
+  })
+
+  it('Discard button is enabled for an unsaved new row', () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { __tempId: 'temp-1' },
+        originalValues: {},
+        currentValues: {},
+        modifiedColumns: new Set(),
+        isNewRow: true,
       },
     })
     render(<TableDataToolbar tabId="tab-1" />)

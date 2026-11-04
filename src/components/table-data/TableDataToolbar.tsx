@@ -416,7 +416,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             <button
               type="button"
               className={styles.toolbarButton}
-              disabled={editState === null || isBusy}
+              disabled={!hasModifications || isBusy}
               onClick={handleDiscard}
               title="Discard changes"
               data-testid="btn-discard"
