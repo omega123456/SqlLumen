@@ -420,18 +420,17 @@ async fn execute_single_select_statement(
         .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
         .collect();
 
-    let rows: Vec<mysql_async::Row> = result.collect().await.map_err(|e| map_mysql_error(&e))?;
-    crate::mysql::query_log::log_mysql_async_rows(&rows);
+    let capacity_hint = if auto_limit_applied {
+        row_limit_used.min(ROW_CAPACITY_HINT_MAX)
+    } else {
+        0
+    };
+    let serialized_rows = stream_serialized_rows(&mut result, &col_types, capacity_hint).await?;
 
     // Drop remaining result sets (if any unexpected ones)
     drop(result);
 
-    let serialized_rows: Vec<Vec<serde_json::Value>> = rows
-        .iter()
-        .map(|row| serialize_row(row, &col_types))
-        .collect();
-
-    // All rows collected and serialized — record total time.
+    // All rows streamed and serialized — record total time.
     let total_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = serialized_rows.len();
     let query_id = uuid::Uuid::new_v4().to_string();
@@ -496,7 +495,7 @@ async fn execute_single_dml_statement(
     let affected = result.affected_rows();
     crate::mysql::query_log::log_mysql_async_result(affected, result.last_insert_id());
     // Drain remaining result
-    let _: Vec<mysql_async::Row> = result.collect().await.unwrap_or_default();
+    drain_result_set(&mut result).await;
 
     // No row-transfer phase for DML; total time is measured after draining.
     let total_time_ms = start.elapsed().as_millis() as u64;
@@ -570,7 +569,7 @@ async fn execute_call_statement(
         if columns_ref.is_empty() {
             // No columns — DML-like result or trailing OK packet.
             call_last_affected = result.affected_rows();
-            let _: Vec<mysql_async::Row> = result.collect().await.unwrap_or_default();
+            drain_result_set(&mut result).await;
             if result.is_empty() {
                 break;
             }
@@ -595,16 +594,9 @@ async fn execute_call_statement(
             .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
             .collect();
 
-        let rows: Vec<mysql_async::Row> =
-            result.collect().await.map_err(|e| map_mysql_error(&e))?;
-        crate::mysql::query_log::log_mysql_async_rows(&rows);
+        let serialized_rows = stream_serialized_rows(&mut result, &col_types, 0).await?;
 
-        let serialized_rows: Vec<Vec<serde_json::Value>> = rows
-            .iter()
-            .map(|row| serialize_row(row, &col_types))
-            .collect();
-
-        // This result set's rows are collected and serialized — record its total
+        // This result set's rows are streamed and serialized — record its total
         // time. Execution time is the shared header time captured above.
         let total_time_ms = start.elapsed().as_millis() as u64;
         let total_rows = serialized_rows.len();
@@ -868,7 +860,54 @@ async fn execute_statement(
     }
 }
 
-/// Serialize a single `mysql_async::Row` to a `Vec<serde_json::Value>`.
+/// Upper bound for the up-front row `Vec` reservation when an auto-LIMIT tells
+/// us roughly how many rows to expect. Larger results grow normally.
+#[cfg(not(coverage))]
+const ROW_CAPACITY_HINT_MAX: usize = 10_000;
+
+/// Stream the current result set, serializing each row as it arrives.
+///
+/// Each driver row is logged, converted to a `SharedRow` and dropped before the
+/// next one is read, so driver rows and JSON rows are never all alive at once.
+/// On error (including a `KILL`), the partial rows are dropped.
+#[cfg(not(coverage))]
+async fn stream_serialized_rows<P>(
+    result: &mut mysql_async::QueryResult<'_, '_, P>,
+    col_types: &[(
+        mysql_async::consts::ColumnType,
+        mysql_async::consts::ColumnFlags,
+    )],
+    capacity_hint: usize,
+) -> Result<Vec<crate::mysql::query_executor::SharedRow>, String>
+where
+    P: mysql_async::prelude::Protocol,
+{
+    let mut serialized_rows = Vec::with_capacity(capacity_hint);
+    result
+        .for_each(|row| {
+            crate::mysql::query_log::log_mysql_async_row(serialized_rows.len(), &row);
+            serialized_rows.push(serialize_row(&row, col_types));
+        })
+        .await
+        .map_err(|e| map_mysql_error(&e))?;
+    crate::mysql::query_log::log_mysql_async_row_count(serialized_rows.len());
+    Ok(serialized_rows)
+}
+
+/// Read and discard the rest of the current result set (DML responses and
+/// column-less CALL result sets). Errors are tolerated, matching the previous
+/// best-effort drain.
+#[cfg(not(coverage))]
+async fn drain_result_set<P>(result: &mut mysql_async::QueryResult<'_, '_, P>)
+where
+    P: mysql_async::prelude::Protocol,
+{
+    if let Err(e) = result.for_each(|_| {}).await {
+        tracing::debug!(error = %e, "ignoring error while draining result set");
+    }
+}
+
+/// Serialize a single `mysql_async::Row` to a `SharedRow`, borrowing each cell.
 #[cfg(not(coverage))]
 fn serialize_row(
     row: &mysql_async::Row,
@@ -876,14 +915,13 @@ fn serialize_row(
         mysql_async::consts::ColumnType,
         mysql_async::consts::ColumnFlags,
     )],
-) -> Vec<serde_json::Value> {
-    (0..col_types.len())
-        .map(|i| {
-            let (col_type, flags) = col_types[i];
-            match row.get::<mysql_async::Value, _>(i) {
-                Some(value) => serialize_mysql_value(&value, col_type, flags),
-                None => serde_json::Value::Null,
-            }
+) -> crate::mysql::query_executor::SharedRow {
+    col_types
+        .iter()
+        .enumerate()
+        .map(|(i, &(col_type, flags))| match row.as_ref(i) {
+            Some(value) => serialize_mysql_value(value, col_type, flags),
+            None => serde_json::Value::Null,
         })
         .collect()
 }

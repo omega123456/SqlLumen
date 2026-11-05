@@ -48,10 +48,10 @@ fn sample_response(id: i64) -> TableDataResponse {
                 is_auto_increment: false,
             },
         ],
-        rows: vec![vec![
+        rows: std::sync::Arc::new(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(id)),
             serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
-        ]],
+        ]]),
         current_page: 1,
         page_size: 50,
         primary_key: Some(PrimaryKeyInfo {
@@ -119,7 +119,7 @@ fn insert_and_get_round_trips_table_data_response() {
         .into_entry()
         .expect("cache entry should be present");
     assert_eq!(
-        entry.value.rows,
+        *entry.value.rows,
         vec![vec![
             serde_json::json!(42),
             serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
@@ -175,7 +175,7 @@ fn touch_rewarms_spilled_entry_from_disk() {
         .into_entry()
         .expect("re-warmed entry should be available");
     assert_eq!(
-        entry.value.rows,
+        *entry.value.rows,
         vec![vec![
             serde_json::json!(99),
             serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
@@ -311,7 +311,7 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
         "app_db",
         "users",
         response.columns.clone(),
-        response.rows.clone(),
+        (*response.rows).clone(),
         response.current_page,
         response.page_size,
         response.primary_key.clone(),
@@ -458,7 +458,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         .data
         .expect("delete sync should keep data available");
     assert_eq!(
-        after_delete.rows,
+        *after_delete.rows,
         vec![vec![serde_json::json!(2), serde_json::json!(9.5)]]
     );
     assert_eq!(after_delete.execution_time_ms, 30);

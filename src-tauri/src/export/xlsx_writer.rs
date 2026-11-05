@@ -4,16 +4,16 @@ use rust_xlsxwriter::{Format, Workbook};
 ///
 /// - `file_path`: destination path for the .xlsx file
 /// - `columns`: column names for the optional header row
-/// - `rows`: data rows (each row is a `Vec<serde_json::Value>`)
+/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
 /// - `include_headers`: whether to write a bold header row and freeze the top row
 ///
 /// Returns the file size in bytes after writing.
 /// NULL values produce empty cells.
 /// Column widths are auto-sized based on header + data content (capped at 50 chars).
-pub fn write_xlsx(
+pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
     file_path: &str,
     columns: &[String],
-    rows: &[Vec<serde_json::Value>],
+    rows: &[R],
     include_headers: bool,
 ) -> Result<u64, String> {
     let mut workbook = Workbook::new();
@@ -37,7 +37,7 @@ pub fn write_xlsx(
         current_row += 1;
     }
 
-    for row in rows {
+    for row in rows.iter().map(AsRef::as_ref) {
         for (col_idx, val) in row.iter().enumerate() {
             let col = col_idx as u16;
             match val {
@@ -80,7 +80,7 @@ pub fn write_xlsx(
         .map(|(col_idx, col_name)| {
             let header_len = col_name.len();
             let max_data_len = rows.iter().fold(0usize, |acc, row| {
-                let cell_len = match row.get(col_idx) {
+                let cell_len = match row.as_ref().get(col_idx) {
                     Some(serde_json::Value::Null) | None => 0,
                     Some(serde_json::Value::String(s)) => s.len(),
                     Some(val) => val.to_string().len(),

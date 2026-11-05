@@ -66,7 +66,7 @@ fn insert_result(
         vec![StoredResult {
             query_id: "q-sort-test".to_string(),
             columns,
-            rows: Arc::new(rows),
+            rows: crate::common::shared_rows(rows),
             execution_time_ms: 1,
             total_time_ms: 1,
             affected_rows: 0,
@@ -482,4 +482,48 @@ async fn sort_numeric_not_lexicographic() {
     assert_eq!(result.rows[1][0], serde_json::json!(9));
     assert_eq!(result.rows[2][0], serde_json::json!(10));
     assert_eq!(result.rows[3][0], serde_json::json!(100));
+}
+
+#[tokio::test]
+async fn sort_reorders_row_pointers_without_copying_rows() {
+    let state = test_state();
+    insert_result(
+        &state,
+        "c1",
+        "t1",
+        name_col(),
+        vec![
+            vec![serde_json::json!("Charlie")],
+            vec![serde_json::json!("Alice")],
+            vec![serde_json::json!("Bob")],
+        ],
+        1000,
+    );
+    let original = Arc::clone(
+        &state
+            .result_cache
+            .get("c1", "t1")
+            .into_entry()
+            .expect("entry")
+            .value[0]
+            .rows,
+    );
+
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None)
+        .await
+        .expect("sort ok");
+
+    // Sorted rows are the original row allocations in a new order.
+    assert!(Arc::ptr_eq(&result.rows[0], &original[1]));
+    assert!(Arc::ptr_eq(&result.rows[1], &original[2]));
+    assert!(Arc::ptr_eq(&result.rows[2], &original[0]));
+    // The original pointer list is not reordered in place.
+    assert_eq!(original[0][0], serde_json::json!("Charlie"));
+
+    let cached = state
+        .result_cache
+        .get("c1", "t1")
+        .into_entry()
+        .expect("entry after sort");
+    assert!(Arc::ptr_eq(&cached.value[0].rows, &result.rows));
 }

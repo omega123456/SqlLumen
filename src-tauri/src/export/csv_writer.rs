@@ -4,15 +4,15 @@ use std::io::{self, Write};
 /// Write query results as CSV to the given writer.
 ///
 /// - `columns`: column names for the header row
-/// - `rows`: data rows (each row is a `Vec<serde_json::Value>`)
+/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
 /// - `include_headers`: whether to emit a header row
 ///
 /// NULL values are written as empty fields (no content between commas).
 /// Quoting and escaping are handled automatically by the `csv` crate.
-pub fn write_csv<W: Write>(
+pub fn write_csv<W: Write, R: AsRef<[serde_json::Value]>>(
     writer: &mut W,
     columns: &[String],
-    rows: &[Vec<serde_json::Value>],
+    rows: &[R],
     include_headers: bool,
 ) -> io::Result<()> {
     let mut wtr = WriterBuilder::new()
@@ -23,7 +23,7 @@ pub fn write_csv<W: Write>(
         wtr.write_record(columns)?;
     }
 
-    for row in rows {
+    for row in rows.iter().map(AsRef::as_ref) {
         let record: Vec<String> = row
             .iter()
             .map(|v| match v {

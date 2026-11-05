@@ -38,7 +38,7 @@ fn stub_result_with_numbers(query_id: &str) -> StoredResult {
                 data_type: "DOUBLE".to_string(),
             },
         ],
-        rows: std::sync::Arc::new(vec![vec![
+        rows: crate::common::shared_rows(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(42u64)),
             serde_json::Value::Number(serde_json::Number::from(-99i64)),
             serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),

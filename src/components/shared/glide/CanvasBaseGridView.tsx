@@ -876,7 +876,8 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const clearCellsInRange = useCallback(
     (range: Rectangle) => {
-      const nextRows = rows.map((row) => ({ ...row }))
+      // Changed rows are copied below; untouched rows keep their identity.
+      const nextRows = rows.slice()
       const changedIndexes = new Set<number>()
       for (let rowIndex = range.y; rowIndex < range.y + range.height; rowIndex += 1) {
         const row = rows[rowIndex]

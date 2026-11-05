@@ -368,7 +368,7 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(response.rows, vec![vec![json!(7), json!("[BLOB - 4 KB]")]]);
+        assert_eq!(*response.rows, vec![vec![json!(7), json!("[BLOB - 4 KB]")]]);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -423,7 +423,7 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            response.rows,
+            *response.rows,
             vec![vec![
                 json!("0x1234567890ABCDEFFEDCBA0987654321"),
                 json!("binary key row")
@@ -476,7 +476,10 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(response.rows, vec![vec![json!(8), serde_json::Value::Null]]);
+        assert_eq!(
+            *response.rows,
+            vec![vec![json!(8), serde_json::Value::Null]]
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -524,7 +527,7 @@ mod binary_projection_integration {
         ])
         .await;
 
-        assert_eq!(response.rows, vec![vec![json!(9), json!("[BLOB - 14 B]")]]);
+        assert_eq!(*response.rows, vec![vec![json!(9), json!("[BLOB - 14 B]")]]);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -606,7 +609,7 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            response.rows,
+            *response.rows,
             vec![vec![
                 json!(3),
                 json!("Ada"),
@@ -740,7 +743,7 @@ mod binary_projection_integration {
         .await;
 
         assert_eq!(
-            response.rows,
+            *response.rows,
             vec![vec![
                 json!(5),
                 json!("[BLOB - 1 B]"),

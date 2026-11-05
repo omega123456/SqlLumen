@@ -20,7 +20,7 @@ fn escape_string_value(s: &str) -> String {
 /// ```
 ///
 /// - `columns`: column names for the INSERT column list
-/// - `rows`: data rows (each row is a `Vec<serde_json::Value>`)
+/// - `rows`: data rows (each row is a slice of `serde_json::Value`)
 /// - `_include_headers`: ignored for SQL (column names always appear in INSERT)
 /// - `table_name`: the table name used in the INSERT statement (must not be empty)
 ///
@@ -32,10 +32,10 @@ fn escape_string_value(s: &str) -> String {
 ///
 /// Identifier escaping:
 /// - Table name and column names have backtick characters doubled inside `` `…` `` delimiters
-pub fn write_sql<W: Write>(
+pub fn write_sql<W: Write, R: AsRef<[serde_json::Value]>>(
     writer: &mut W,
     columns: &[String],
-    rows: &[Vec<serde_json::Value>],
+    rows: &[R],
     _include_headers: bool,
     table_name: &str,
 ) -> io::Result<()> {
@@ -53,7 +53,7 @@ pub fn write_sql<W: Write>(
         .collect::<Vec<_>>()
         .join(", ");
 
-    for row in rows {
+    for row in rows.iter().map(AsRef::as_ref) {
         write!(
             writer,
             "INSERT INTO `{escaped_table}` ({col_list}) VALUES ("

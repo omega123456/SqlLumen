@@ -2,9 +2,11 @@
 
 use crate::common::test_app_state;
 use sqllumen_lib::mysql::query_executor::{
-    analyze_query_for_edit_impl, update_result_cell_impl, ColumnMeta, StoredResult,
+    analyze_query_for_edit_impl, fetch_cached_rows_impl, update_result_cell_impl, ColumnMeta,
+    StoredResult,
 };
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // ── update_result_cell_impl tests ──────────────────────────────────────────────
 
@@ -32,7 +34,7 @@ fn update_result_cell_successful() {
                     data_type: "VARCHAR".to_string(),
                 },
             ],
-            rows: std::sync::Arc::new(vec![
+            rows: crate::common::shared_rows(vec![
                 vec![
                     serde_json::json!(1),
                     serde_json::json!("Alice"),
@@ -99,7 +101,7 @@ fn update_result_cell_row_index_out_of_bounds() {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: std::sync::Arc::new(vec![vec![serde_json::json!(1)]]),
+            rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
             execution_time_ms: 5,
             total_time_ms: 5,
             affected_rows: 0,
@@ -137,7 +139,7 @@ fn update_result_cell_multiple_columns() {
                     data_type: "VARCHAR".to_string(),
                 },
             ],
-            rows: std::sync::Arc::new(vec![vec![
+            rows: crate::common::shared_rows(vec![vec![
                 serde_json::json!(1),
                 serde_json::json!("Alice"),
                 serde_json::json!("alice@example.com"),
@@ -204,4 +206,108 @@ async fn analyze_query_for_edit_empty_sql() {
     let result = analyze_query_for_edit_impl(&state, "conn-1", "").await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
+}
+
+// ── update_result_cell_impl row sharing ────────────────────────────────────────
+
+fn insert_three_row_result(state: &sqllumen_lib::state::AppState) {
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![
+                ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                },
+                ColumnMeta {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                },
+            ],
+            rows: crate::common::shared_rows(vec![
+                vec![serde_json::json!(1), serde_json::json!("Alice")],
+                vec![serde_json::json!(2), serde_json::json!("Bob")],
+                vec![serde_json::json!(3), serde_json::json!("Cara")],
+            ]),
+            execution_time_ms: 1,
+            total_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+        }],
+    );
+}
+
+#[test]
+fn update_result_cell_leaves_previously_fetched_rows_untouched_and_shares_other_rows() {
+    let state = test_app_state();
+    insert_three_row_result(&state);
+
+    let before = fetch_cached_rows_impl(&state, "conn-1", "tab-1", "q1", None)
+        .expect("fetch before edit")
+        .rows;
+
+    let mut updates = HashMap::new();
+    updates.insert(1, serde_json::json!("Bobby"));
+    update_result_cell_impl(&state, "conn-1", "tab-1", 1, updates, None).expect("edit succeeds");
+
+    // The Arc handed out before the edit still holds the old value.
+    assert_eq!(before[1][1], serde_json::json!("Bob"));
+
+    let after = fetch_cached_rows_impl(&state, "conn-1", "tab-1", "q1", None)
+        .expect("fetch after edit")
+        .rows;
+    assert_eq!(after[1][1], serde_json::json!("Bobby"));
+    assert!(!Arc::ptr_eq(&before, &after), "row list must be replaced");
+    assert!(!Arc::ptr_eq(&before[1], &after[1]), "edited row is new");
+    assert!(
+        Arc::ptr_eq(&before[0], &after[0]),
+        "unedited rows are shared"
+    );
+    assert!(
+        Arc::ptr_eq(&before[2], &after[2]),
+        "unedited rows are shared"
+    );
+}
+
+#[test]
+fn update_result_cell_result_index_out_of_range_error_unchanged() {
+    let state = test_app_state();
+    insert_three_row_result(&state);
+
+    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 0, HashMap::new(), Some(3))
+        .expect_err("result index 3 does not exist");
+    assert_eq!(err, "Result index 3 out of range (total: 1)");
+}
+
+#[test]
+fn update_result_cell_row_index_out_of_bounds_leaves_cache_unchanged() {
+    let state = test_app_state();
+    insert_three_row_result(&state);
+    let before = fetch_cached_rows_impl(&state, "conn-1", "tab-1", "q1", None)
+        .expect("fetch before edit")
+        .rows;
+
+    let mut updates = HashMap::new();
+    updates.insert(1, serde_json::json!("ignored"));
+    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 3, updates, None)
+        .expect_err("row 3 does not exist");
+    assert_eq!(err, "Row index 3 out of bounds (total rows: 3)");
+
+    let after = fetch_cached_rows_impl(&state, "conn-1", "tab-1", "q1", None)
+        .expect("fetch after failed edit")
+        .rows;
+    assert!(Arc::ptr_eq(&before, &after), "failed edit must not write");
+}
+
+#[test]
+fn update_result_cell_expired_results_error_unchanged() {
+    let state = test_app_state();
+    insert_three_row_result(&state);
+    state.result_cache.remove("conn-1", "tab-1");
+
+    let err = update_result_cell_impl(&state, "conn-1", "tab-1", 0, HashMap::new(), None)
+        .expect_err("removed results are expired");
+    assert!(err.starts_with("results_expired:"), "{err}");
 }

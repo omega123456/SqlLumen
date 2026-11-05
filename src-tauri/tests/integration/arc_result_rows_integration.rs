@@ -133,3 +133,38 @@ fn wire_cross_compatibility_both_directions() {
         "MessagePack Arc -> plain must match"
     );
 }
+
+/// The cached row representation: one shared allocation per row.
+fn sample_shared_rows() -> sqllumen_lib::mysql::query_executor::SharedRows {
+    crate::common::shared_rows(sample_rows())
+}
+
+#[test]
+fn shared_row_json_and_msgpack_bytes_match_plain_vec() {
+    // Per-row sharing must not change the IPC (JSON) or spill (MessagePack) bytes.
+    let rows = sample_rows();
+    let shared = sample_shared_rows();
+
+    assert_eq!(
+        serde_json::to_vec(&shared).expect("json serialize shared rows"),
+        serde_json::to_vec(&rows).expect("json serialize plain Vec"),
+        "SharedRows JSON bytes must equal plain Vec JSON bytes"
+    );
+    assert_eq!(
+        rmp_serde::to_vec_named(&shared).expect("msgpack serialize shared rows"),
+        rmp_serde::to_vec_named(&rows).expect("msgpack serialize plain Vec"),
+        "SharedRows MessagePack bytes must equal plain Vec bytes"
+    );
+}
+
+#[test]
+fn shared_row_msgpack_roundtrip_reproduces_rows() {
+    let rows = sample_rows();
+    let bytes = rmp_serde::to_vec_named(&rows).expect("msgpack serialize plain Vec");
+
+    let decoded: sqllumen_lib::mysql::query_executor::SharedRows =
+        rmp_serde::from_slice(&bytes).expect("msgpack deserialize into SharedRows");
+
+    let decoded_plain: Vec<Vec<Value>> = decoded.iter().map(|row| row.to_vec()).collect();
+    assert_eq!(decoded_plain, rows);
+}

@@ -55,9 +55,9 @@ pub struct ExportResult {
 /// This is the shared export dispatcher used by both the query-result export
 /// path (`commands::export`) and the table-data export path
 /// (`mysql::table_data::export_table_data_impl`).
-pub fn export_with_data(
+pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
     columns: &[String],
-    rows: &[Vec<serde_json::Value>],
+    rows: &[R],
     options: ExportOptions,
 ) -> Result<ExportResult, String> {
     let rows_exported = rows.len();

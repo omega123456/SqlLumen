@@ -2852,4 +2852,48 @@ describe('CanvasBaseGridView', () => {
     )
     expect(onCellClickGuard).not.toHaveBeenCalled()
   })
+
+  it('clearing a range copies only the changed rows', () => {
+    const onRowsChange = vi.fn()
+    const threeRows = [
+      { id: 1, name: 'alpha', info: 'SELECT 1' },
+      { id: 2, name: 'beta', info: 'SELECT 2' },
+      { id: 3, name: 'gamma', info: 'SELECT 3' },
+    ]
+    render(
+      <CanvasBaseGridView
+        rows={threeRows}
+        columns={columns}
+        editState={null}
+        onCellValueChange={vi.fn()}
+        onRowsChange={onRowsChange}
+      />
+    )
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onDelete: (selection: {
+        current?: { range: { x: number; y: number; width: number; height: number }; rangeStack: [] }
+        rows: Iterable<number>
+        columns: Iterable<number>
+      }) => boolean
+    }
+
+    act(() => {
+      props.onDelete({
+        current: { range: { x: 0, y: 1, width: 1, height: 1 }, rangeStack: [] },
+        rows: [],
+        columns: [],
+      })
+    })
+
+    const [nextRows, data] = onRowsChange.mock.lastCall as [
+      Array<Record<string, unknown>>,
+      { indexes: number[] },
+    ]
+    expect(data.indexes).toEqual([1])
+    expect(nextRows).toEqual([threeRows[0], { ...threeRows[1], name: '' }, threeRows[2]])
+    expect(nextRows[0]).toBe(threeRows[0])
+    expect(nextRows[2]).toBe(threeRows[2])
+    expect(nextRows[1]).not.toBe(threeRows[1])
+    expect(threeRows[1].name).toBe('beta')
+  })
 })

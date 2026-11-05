@@ -21,9 +21,10 @@ import {
   type EditorCallbacksContextType,
 } from '../shared/editor-callbacks-context'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
-import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import { isJsonSqlType } from '../../lib/grid-column-style'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
+import { createRowObjectCache, type ResultRow } from '../../lib/result-row-materializer'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
 import type {
@@ -39,9 +40,6 @@ import type { GridCellPosition, GridRowsChangeData } from '../shared/glide/glide
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-/** Row data shape: col_0, col_1, ... plus __rowIdx for stable identification. */
-type ResultRow = Record<string, unknown>
 
 // ---------------------------------------------------------------------------
 // ResultGridView
@@ -359,31 +357,28 @@ export function ResultGridView({
 
   // ---------------------------------------------------------------------------
   // Row data: transform array-of-arrays to array-of-objects with col_N keys.
-  // Overlays editState current values on the editing row.
+  // Objects are reused for row arrays that did not change, and only the editing
+  // row is copied to overlay editState current values.
   // ---------------------------------------------------------------------------
-  const rowDataBuild = useMemo(() => {
-    const materializedRows = rows.map((row, rowIdx) => {
-      const obj: ResultRow = { __rowIdx: rowIdx }
-      columns.forEach((_, i) => {
-        obj[colKey(i)] = row[i] ?? null
-      })
+  const [rowCache] = useState(createRowObjectCache)
+  const columnCount = columns.length
+  const baseRows = useMemo(() => rowCache.build(rows, columnCount), [rowCache, rows, columnCount])
+  const rowData: ResultRow[] = useMemo(() => {
+    if (!editState || editingRowIndex === null) return baseRows
+    const editingRow = baseRows[editingRowIndex]
+    if (!editingRow) return baseRows
 
-      if (editState && editingRowIndex !== null && rowIdx === editingRowIndex) {
-        for (const [colName, value] of Object.entries(editState.currentValues)) {
-          const colIdx = boundColumnIndexLookup.get(colName) ?? -1
-          if (colIdx !== -1) {
-            obj[colKey(colIdx)] = value
-          }
-        }
+    const overlaid: ResultRow = { ...editingRow }
+    for (const [colName, value] of Object.entries(editState.currentValues)) {
+      const colIdx = boundColumnIndexLookup.get(colName) ?? -1
+      if (colIdx !== -1) {
+        overlaid[colKey(colIdx)] = value
       }
-
-      return obj
-    })
-    return {
-      rows: materializedRows,
     }
-  }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
-  const rowData: ResultRow[] = rowDataBuild.rows
+    const withOverlay = baseRows.slice()
+    withOverlay[editingRowIndex] = overlaid
+    return withOverlay
+  }, [baseRows, editState, editingRowIndex, boundColumnIndexLookup])
 
   // Keep rowDataRef in sync for stable callbacks
   useEffect(() => {
@@ -714,10 +709,10 @@ export function ResultGridView({
         const tableMeta = resolvedColumns[index]?.effectiveTableMeta
         if (!tableMeta) return 150
         // Build a lightweight proxy array that extracts only the target column
-        // from each row, avoiding the full row-to-array transformation that
-        // previously created N temporary arrays per column.
-        const columnRows: unknown[][] = new Array(gridRows.length)
-        for (let i = 0; i < gridRows.length; i++) {
+        // from the sampled rows; getAutoSizedColumnWidth reads no further.
+        const sampleCount = Math.min(gridRows.length, AUTO_SIZE_SAMPLE_LIMIT)
+        const columnRows: unknown[][] = new Array(sampleCount)
+        for (let i = 0; i < sampleCount; i++) {
           columnRows[i] = [gridRows[i][colKey(index)]]
         }
         // Read-only headers show a lock icon except for BLOB columns that

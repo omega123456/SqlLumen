@@ -10,6 +10,7 @@ use crate::mysql::schema_queries::safe_identifier;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock as TokioRwLock;
 
 #[cfg(not(coverage))]
@@ -80,7 +81,8 @@ pub struct BlobValueResponse {
 #[serde(rename_all = "camelCase")]
 pub struct TableDataResponse {
     pub columns: Vec<TableDataColumnMeta>,
-    pub rows: Vec<Vec<serde_json::Value>>,
+    /// Shared so caching or restoring a page clones a pointer, not the rows.
+    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
     pub current_page: u32,
     pub page_size: u32,
     pub primary_key: Option<PrimaryKeyInfo>,
@@ -278,7 +280,7 @@ pub fn sync_table_data_cache_after_insert_impl(
         table,
         TableDataResponse {
             columns,
-            rows,
+            rows: Arc::new(rows),
             current_page,
             page_size,
             primary_key,
@@ -1505,7 +1507,7 @@ pub async fn fetch_table_data_impl(
 
     Ok(TableDataResponse {
         columns,
-        rows: serialized_rows,
+        rows: Arc::new(serialized_rows),
         current_page: page,
         page_size,
         primary_key: pk_info,
@@ -1531,7 +1533,7 @@ pub async fn fetch_table_data_impl(
 ) -> Result<TableDataResponse, String> {
     Ok(TableDataResponse {
         columns: vec![],
-        rows: vec![],
+        rows: Arc::new(vec![]),
         current_page: page,
         page_size,
         primary_key: None,

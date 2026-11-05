@@ -9,6 +9,19 @@ import { showErrorToast, showSuccessToast } from './toast-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 const DEFAULT_PAGE_SIZE = 50
+/** Delay between the last search keystroke and the `list_history` request. */
+export const HISTORY_SEARCH_DEBOUNCE_MS = 250
+
+/** Pending debounced search loads, keyed by connection ID. */
+const searchDebounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+/** Latest `loadHistory` request number per connection; older responses are dropped. */
+const latestRequestSeq: Record<string, number> = {}
+
+function nextRequestSeq(connectionId: string): number {
+  const seq = (latestRequestSeq[connectionId] ?? 0) + 1
+  latestRequestSeq[connectionId] = seq
+  return seq
+}
 
 /** Options for {@link HistoryState.loadHistory}. */
 interface LoadHistoryOptions {
@@ -85,6 +98,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       opts.search !== undefined ? opts.search : (state.searchByConnection[connectionId] ?? '')
     const since =
       opts.since !== undefined ? opts.since : (state.sinceByConnection[connectionId] ?? null)
+    const requestSeq = nextRequestSeq(connectionId)
+    const isStale = () => latestRequestSeq[connectionId] !== requestSeq
 
     if (append) {
       set({
@@ -108,6 +123,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
         search || null,
         since
       )
+      // A newer load (or search) for this connection superseded this one.
+      if (isStale()) return
 
       const previous = get().entriesByConnection[connectionId] ?? []
       const entries = append ? [...previous, ...result.entries] : result.entries
@@ -127,6 +144,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logFrontend('error', ['[history-store] loadHistory failed:', err].map(String).join(' '))
+      if (isStale()) return
       if (append) {
         // Keep the already-loaded rows visible; surface the failure as a toast.
         set({
@@ -181,8 +199,16 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
   },
 
   setSearch: (connectionId: string, search: string) => {
-    // A new search resets the load-more window back to the first page.
-    void get().loadHistory(connectionId, { page: 1, search })
+    // Show the new term right away; the request waits for a typing pause.
+    set({ searchByConnection: { ...get().searchByConnection, [connectionId]: search } })
+    // Drop any in-flight load so it cannot restore the previous term.
+    nextRequestSeq(connectionId)
+    clearTimeout(searchDebounceTimers[connectionId])
+    searchDebounceTimers[connectionId] = setTimeout(() => {
+      delete searchDebounceTimers[connectionId]
+      // A new search resets the load-more window back to the first page.
+      void get().loadHistory(connectionId, { page: 1, search })
+    }, HISTORY_SEARCH_DEBOUNCE_MS)
   },
 
   setPage: (connectionId: string, page: number) => {
@@ -190,6 +216,14 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
   },
 
   reset: () => {
+    for (const connectionId of Object.keys(searchDebounceTimers)) {
+      clearTimeout(searchDebounceTimers[connectionId])
+      delete searchDebounceTimers[connectionId]
+    }
+    // Responses still in flight belong to the state being discarded.
+    for (const connectionId of Object.keys(latestRequestSeq)) {
+      nextRequestSeq(connectionId)
+    }
     set(INITIAL_STATE)
   },
 

@@ -1,11 +1,12 @@
 use crate::export::{ExportOptions, ExportResult};
+use crate::mysql::query_executor::SharedRow;
 use crate::state::AppState;
 
 // Re-export so existing test imports continue to work.
 pub use crate::export::export_with_data;
 
-/// Look up stored results by (connection_id, tab_id) and clone the export data
-/// under a brief read lock.
+/// Look up stored results by (connection_id, tab_id) and copy the row pointers
+/// to export (row data is shared, not cloned).
 ///
 /// Returns the resolved `(columns, rows)` to be written. When `row_indices` is
 /// provided, only those rows (by position) are included. This supports exporting
@@ -16,7 +17,7 @@ fn resolve_export_data(
     tab_id: &str,
     result_index: Option<usize>,
     row_indices: Option<&[usize]>,
-) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+) -> Result<(Vec<String>, Vec<SharedRow>), String> {
     let cache_result = state.result_cache.get(connection_id, tab_id);
     if cache_result.is_expired() {
         return Err(

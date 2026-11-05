@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use opensrv_mysql::{
     AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind, InitWriter,
-    OkResponse, ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
+    OkResponse, ParamParser, QueryResultWriter, RowWriter, StatementMetaWriter, StatusFlags,
+    ToMysqlValue,
 };
 use std::collections::HashMap;
 use std::io;
@@ -163,9 +164,27 @@ impl MockQueryStep {
     }
 }
 
+/// A text-protocol query answered like a stored procedure `CALL`: column-less
+/// OK packets flagged "more results exist", then one row-bearing result set.
+///
+/// opensrv 0.7 always negotiates `CLIENT_DEPRECATE_EOF` and never sets
+/// `SERVER_MORE_RESULTS_EXISTS` on a row set's terminating OK packet, so a row
+/// set can only be the last one in a reply.
+#[derive(Debug, Clone)]
+pub struct MockMultiResultStep {
+    pub query: &'static str,
+    /// Affected-row counts of the OK packets sent before the result set.
+    pub leading_ok_affected: Vec<u64>,
+    pub columns: Vec<MockColumnDef>,
+    pub rows: Vec<Vec<MockCell>>,
+}
+
 #[derive(Clone)]
 struct MockMySqlBackend {
     steps: Arc<Vec<MockQueryStep>>,
+    /// Multi-result steps paired with their opensrv column definitions, built
+    /// up front because the result writer borrows columns for the whole reply.
+    multi_result_steps: Arc<Vec<(MockMultiResultStep, Vec<Column>)>>,
     unsupported_prepared_prefixes: Arc<Vec<String>>,
     prepared_steps: HashMap<u32, MockQueryStep>,
     next_statement_id: u32,
@@ -191,6 +210,7 @@ impl MockMySqlBackend {
     ) -> Self {
         Self {
             steps: Arc::new(steps),
+            multi_result_steps: Arc::default(),
             unsupported_prepared_prefixes: Arc::new(
                 unsupported_prepared_prefixes
                     .into_iter()
@@ -244,6 +264,13 @@ impl MockMySqlBackend {
             .cloned()
     }
 
+    fn find_multi_result_step(&self, query: &str) -> Option<&(MockMultiResultStep, Vec<Column>)> {
+        let normalized = Self::normalize_query(query);
+        self.multi_result_steps
+            .iter()
+            .find(|(step, _)| Self::normalize_query(step.query).eq_ignore_ascii_case(&normalized))
+    }
+
     fn rejects_prepared_statement(&self, query: &str) -> bool {
         let normalized = Self::normalize_query(query).to_ascii_uppercase();
         self.unsupported_prepared_prefixes
@@ -252,7 +279,11 @@ impl MockMySqlBackend {
     }
 
     fn step_columns(step: &MockQueryStep) -> Vec<Column> {
-        step.columns
+        Self::mock_columns(&step.columns)
+    }
+
+    fn mock_columns(columns: &[MockColumnDef]) -> Vec<Column> {
+        columns
             .iter()
             .map(|col| Column {
                 table: String::new(),
@@ -283,7 +314,15 @@ impl MockMySqlBackend {
         let columns = Self::step_columns(step);
 
         let mut writer = results.start(&columns).await?;
-        for row in &step.rows {
+        Self::write_rows(&mut writer, &step.rows).await?;
+        writer.finish().await
+    }
+
+    async fn write_rows(
+        writer: &mut RowWriter<'_, BufWriter<OwnedWriteHalf>>,
+        rows: &[Vec<MockCell>],
+    ) -> io::Result<()> {
+        for row in rows {
             for cell in row {
                 match cell {
                     MockCell::Null => writer.write_col(Option::<u8>::None)?,
@@ -299,6 +338,25 @@ impl MockMySqlBackend {
             }
             writer.end_row().await?;
         }
+        Ok(())
+    }
+
+    async fn write_multi_result_step<'a>(
+        step: &'a MockMultiResultStep,
+        columns: &'a [Column],
+        mut results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
+    ) -> io::Result<()> {
+        for &affected_rows in &step.leading_ok_affected {
+            results = results
+                .complete_one(OkResponse {
+                    affected_rows,
+                    status_flags: StatusFlags::SERVER_MORE_RESULTS_EXISTS,
+                    ..Default::default()
+                })
+                .await?;
+        }
+        let mut writer = results.start(columns).await?;
+        Self::write_rows(&mut writer, &step.rows).await?;
         writer.finish().await
     }
 }
@@ -415,6 +473,10 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return writer.finish().await;
         }
 
+        if let Some((step, columns)) = self.find_multi_result_step(query) {
+            return Self::write_multi_result_step(step, columns, results).await;
+        }
+
         if let Some(step) = self.find_step(query) {
             return Self::write_step(&step, results).await;
         }
@@ -440,10 +502,42 @@ impl MockMySqlServer {
         Self::start_script_with_unsupported_prepared_prefixes(steps, vec![]).await
     }
 
+    /// Like [`Self::start_script`], plus text queries answered with several
+    /// result sets (see [`MockMultiResultStep`]).
+    pub async fn start_script_with_multi_results(
+        steps: Vec<MockQueryStep>,
+        multi_result_steps: Vec<MockMultiResultStep>,
+    ) -> Self {
+        let mut backend = MockMySqlBackend::with_steps(steps);
+        backend.multi_result_steps = Arc::new(
+            multi_result_steps
+                .into_iter()
+                .map(|step| {
+                    let columns = MockMySqlBackend::mock_columns(&step.columns);
+                    (step, columns)
+                })
+                .collect(),
+        );
+        Self::start_backend(backend).await
+    }
+
     pub async fn start_script_with_unsupported_prepared_prefixes(
         steps: Vec<MockQueryStep>,
         unsupported_prepared_prefixes: Vec<&'static str>,
     ) -> Self {
+        Self::start_backend(
+            MockMySqlBackend::with_steps_and_unsupported_prepared_prefixes(
+                steps,
+                unsupported_prepared_prefixes
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            ),
+        )
+        .await
+    }
+
+    async fn start_backend(backend: MockMySqlBackend) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("should bind mock mysql server");
@@ -451,13 +545,6 @@ impl MockMySqlServer {
             .local_addr()
             .expect("should read local addr")
             .port();
-        let backend = MockMySqlBackend::with_steps_and_unsupported_prepared_prefixes(
-            steps,
-            unsupported_prepared_prefixes
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        );
 
         let connections = Arc::new(AtomicUsize::new(0));
         let text_queries = Arc::clone(&backend.text_queries);

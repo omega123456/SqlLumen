@@ -20,7 +20,7 @@ import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
 import { evictTableData, fetchTableData } from '../../lib/table-data-commands'
 import { buildColumnDescriptors } from './table-data-grid-columns'
-import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import type { GridColumnDescriptor, AutoSizeConfig } from '../../types/shared-data-view'
 import type { TableDataColumnMeta, PrimaryKeyInfo, FilterCondition } from '../../types/schema'
 import { logFrontend } from '../../lib/app-log-commands'
@@ -261,8 +261,9 @@ export function FkLookupDialog({
       computeWidth: (col: GridColumnDescriptor) => {
         const meta = colMetaByName.get(col.key)
         if (!meta) return 150
-        const columnRows: unknown[][] = new Array(rows.length)
-        for (let i = 0; i < rows.length; i++) {
+        const sampleCount = Math.min(rows.length, AUTO_SIZE_SAMPLE_LIMIT)
+        const columnRows: unknown[][] = new Array(sampleCount)
+        for (let i = 0; i < sampleCount; i++) {
           columnRows[i] = [rows[i][col.key]]
         }
         const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0

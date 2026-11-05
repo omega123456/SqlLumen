@@ -12,6 +12,13 @@ use uuid::Uuid;
 
 // ── Data structures ────────────────────────────────────────────────────────────
 
+/// One cached result row. Rows are shared by pointer between the cache, IPC
+/// payloads, sort output and exports, so editing one row never copies the rest.
+pub type SharedRow = Arc<[serde_json::Value]>;
+
+/// A full cached row set (serializes identically to `Vec<Vec<Value>>`).
+pub type SharedRows = Arc<Vec<SharedRow>>;
+
 /// Column metadata returned from a query result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +32,7 @@ pub struct ColumnMeta {
 pub struct StoredResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
-    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    pub rows: SharedRows,
     /// Server-execution-only time (narrow): up to first row / header availability.
     pub execution_time_ms: u64,
     /// Combined time (execution + row transfer + serialization). Equals the
@@ -47,7 +54,7 @@ pub struct ExecuteQueryResult {
     /// Combined time (execution + transfer + serialization).
     pub total_time_ms: u64,
     pub affected_rows: u64,
-    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    pub rows: SharedRows,
     pub auto_limit_applied: bool,
 }
 
@@ -55,7 +62,7 @@ pub struct ExecuteQueryResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SortedRowsResult {
-    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    pub rows: SharedRows,
 }
 
 /// Table metadata for the autocomplete schema cache.
@@ -678,7 +685,7 @@ pub async fn execute_query_impl(
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchCachedRowsResult {
-    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    pub rows: SharedRows,
     pub columns: Vec<ColumnMeta>,
 }
 
@@ -1184,9 +1191,9 @@ pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std:
 
 /// Sort a stored result set by a named column and return all sorted rows.
 ///
-/// Uses clone-on-write with `spawn_blocking`: clones the result vec from the
-/// cache, offloads the O(n log n) sort to the blocking thread pool, performs a
-/// staleness check, and re-inserts the updated vec.
+/// Copies the row pointers (not the row contents) out of the cache, offloads
+/// the O(n log n) sort to the blocking thread pool, performs a staleness check,
+/// and swaps the sorted pointer list back in place.
 pub async fn sort_results_impl(
     state: &AppState,
     connection_id: &str,
@@ -1236,12 +1243,12 @@ pub async fn sort_results_impl(
     // Capture query_id for staleness guard
     let query_id = stored.query_id.clone();
 
-    // Clone the slot's rows Arc to move into the blocking closure as an owned
-    // Vec. We cannot hold a borrow across the `.await`, so unwrap the Arc to an
-    // owned buffer (cloning only if the cache still shares it).
+    // Copy the row pointers into an owned Vec to move into the blocking
+    // closure. Each element is a `SharedRow`, so this never copies cell data.
     let taken = Arc::clone(&stored.rows);
     drop(entry);
-    let mut rows = Arc::try_unwrap(taken).unwrap_or_else(|a| (*a).clone());
+    let mut rows: Vec<SharedRow> = (*taken).clone();
+    drop(taken);
 
     // Offload the sort to the blocking thread pool
     rows = tokio::task::spawn_blocking(move || {
@@ -1289,14 +1296,13 @@ pub async fn sort_results_impl(
 
     // Wrap the sorted buffer in ONE fresh Arc, shared between the cache
     // write-back and the IPC return value (no extra deep copy).
-    let sorted_rows = Arc::new(rows);
+    let sorted_rows: SharedRows = Arc::new(rows);
 
     // Apply the sorted rows in place under the captured invalidation version.
     // This swaps only `value[idx].rows` (no sibling-`columns` clone) and is
     // skipped if a new query bumped the invalidation version before the write.
-    // Note: the version check and the cache write are not a single atomic step,
-    // so a very narrow race remains (same as `insert_if_current`); the
-    // `query_id` re-check above is the defense-in-depth guard.
+    // The write is serialized with cell edits, so neither can lose the other's
+    // update; the `query_id` re-check above is the defense-in-depth guard.
     let applied = state.result_cache.update_rows_in_place_if_current(
         connection_id,
         tab_id,
@@ -1482,8 +1488,11 @@ pub async fn analyze_query_for_edit_impl(
 
 /// Update specific cells in a cached result set after a save operation.
 ///
-/// Uses clone-on-write: clones the result vec from the cache, applies
-/// updates, and re-inserts.
+/// Builds a fresh `SharedRow` for `row_index` and a new pointer list that shares
+/// every other row with the previous one, then swaps it in through a
+/// version-checked in-place cache update. Rows already returned over IPC are
+/// never mutated, and an edit that races a re-run is refused instead of
+/// resurrecting the old result.
 pub fn update_result_cell_impl(
     state: &AppState,
     connection_id: &str,
@@ -1492,6 +1501,10 @@ pub fn update_result_cell_impl(
     updates: HashMap<usize, serde_json::Value>,
     result_index: Option<usize>,
 ) -> Result<(), String> {
+    let expected_invalidation_version = state
+        .result_cache
+        .current_invalidation_version(connection_id, tab_id);
+
     let cache_result = state.result_cache.get(connection_id, tab_id);
     if cache_result.is_expired() {
         return Err(
@@ -1503,35 +1516,47 @@ pub fn update_result_cell_impl(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
-    let mut result_vec = entry.value.clone();
-
     let idx = result_index.unwrap_or(0);
-    if idx >= result_vec.len() {
+    if idx >= entry.value.len() {
         return Err(format!(
             "Result index {idx} out of range (total: {})",
-            result_vec.len()
+            entry.value.len()
         ));
     }
-    let stored = &mut result_vec[idx];
+    drop(entry);
 
-    if row_index >= stored.rows.len() {
-        return Err(format!(
-            "Row index {row_index} out of bounds (total rows: {})",
-            stored.rows.len()
-        ));
+    let applied = state.result_cache.modify_rows_in_place_if_current(
+        connection_id,
+        tab_id,
+        expected_invalidation_version,
+        idx,
+        |rows| {
+            let current = rows.get(row_index).ok_or_else(|| {
+                format!(
+                    "Row index {row_index} out of bounds (total rows: {})",
+                    rows.len()
+                )
+            })?;
+            let mut edited: Vec<serde_json::Value> = current.to_vec();
+            for (col_index, new_value) in updates {
+                if col_index < edited.len() {
+                    edited[col_index] = new_value;
+                }
+            }
+            let mut next: Vec<SharedRow> = (**rows).clone();
+            next[row_index] = SharedRow::from(edited);
+            Ok(Arc::new(next))
+        },
+    )?;
+
+    if !applied {
+        tracing::info!(
+            connection_id = %connection_id,
+            tab_id = %tab_id,
+            "result cell update skipped: results invalidated during edit"
+        );
+        return Err("Results were refreshed during edit".to_string());
     }
-
-    // Copy-on-write: `make_mut` clones the inner buffer only if it is still
-    // shared with another holder (e.g. a previously returned IPC payload),
-    // so an already-returned buffer is never mutated in place.
-    let rows_mut = Arc::make_mut(&mut stored.rows);
-    for (col_index, new_value) in updates {
-        if col_index < rows_mut[row_index].len() {
-            rows_mut[row_index][col_index] = new_value;
-        }
-    }
-
-    state.result_cache.insert(connection_id, tab_id, result_vec);
 
     Ok(())
 }
@@ -1551,7 +1576,7 @@ pub struct MultiQueryResultItem {
     /// Combined time (execution + transfer + serialization).
     pub total_time_ms: u64,
     pub affected_rows: u64,
-    pub rows: Arc<Vec<Vec<serde_json::Value>>>,
+    pub rows: SharedRows,
     pub auto_limit_applied: bool,
     pub error: Option<String>,
     pub re_executable: bool,

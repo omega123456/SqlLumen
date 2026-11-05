@@ -17,7 +17,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use super::query_executor::StoredResult;
+use super::query_executor::{SharedRows, StoredResult};
 
 /// Wrapper stored in the moka cache. Holds the cached value plus a
 /// monotonically increasing generation token used for stale-listener
@@ -260,6 +260,9 @@ where
     cleaned_keys: Arc<RwLock<HashSet<(String, String)>>>,
     spill_worker_tx: Sender<SpillWorkerMessage<V>>,
     spill_worker_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// Serializes in-place read-modify-write updates (cell edits, sort
+    /// write-backs) so concurrent callers cannot lose each other's changes.
+    in_place_write_lock: Mutex<()>,
 }
 
 impl<V> GenericCache<V>
@@ -497,6 +500,7 @@ where
             cleaned_keys,
             spill_worker_tx,
             spill_worker_handle: Mutex::new(Some(spill_worker_handle)),
+            in_place_write_lock: Mutex::new(()),
         }
     }
 
@@ -925,18 +929,10 @@ where
 /// into an opaque `V`).
 impl GenericCache<Vec<StoredResult>> {
     /// Swap the `rows` Arc of a single result slot in place, only when the
-    /// invalidation version still matches `expected_invalidation_version`. The
-    /// version check is best-effort: it is not atomic with the moka mutation, so
-    /// a narrow race remains (same shape as
-    /// [`GenericCache::insert_if_current`]).
+    /// invalidation version still matches `expected_invalidation_version`.
     ///
-    /// Unlike [`GenericCache::insert_if_current`], this updates in place: it does
-    /// **not** bump the generation, remove spill files, or churn LRU
-    /// bookkeeping. Only `value[idx].rows` changes. `Arc::make_mut` avoids
-    /// cloning the underlying `Vec<StoredResult>` only when the entry Arc is
-    /// uniquely held (best-effort); if another reader still holds it, the vec is
-    /// cloned. In the common case it mutates the cached entry directly with no
-    /// sibling-`columns` clone.
+    /// Equivalent to [`Self::modify_rows_in_place_if_current`] with a closure
+    /// that ignores the current rows.
     ///
     /// Returns `true` if the swap was applied, `false` if the version no longer
     /// matched (a query was re-run / invalidated during the sort) or the entry /
@@ -947,9 +943,54 @@ impl GenericCache<Vec<StoredResult>> {
         tab_id: &str,
         expected_invalidation_version: u64,
         idx: usize,
-        new_rows: Arc<Vec<Vec<serde_json::Value>>>,
+        new_rows: SharedRows,
     ) -> bool {
+        self.modify_rows_in_place_if_current(
+            connection_id,
+            tab_id,
+            expected_invalidation_version,
+            idx,
+            |_| Ok(new_rows),
+        )
+        .unwrap_or(false)
+    }
+
+    /// Replace the `rows` Arc of a single result slot with `f(current_rows)`,
+    /// only when the invalidation version still matches
+    /// `expected_invalidation_version`.
+    ///
+    /// The version check, read, `f` and write-back run under one mutex shared
+    /// by every in-place update, so two concurrent edits (or an edit and a sort
+    /// write-back) cannot lose each other's change. A concurrent
+    /// [`GenericCache::insert_if_current`] does not take this lock, so a narrow
+    /// race with a re-run remains; the version check makes it best-effort.
+    ///
+    /// Unlike [`GenericCache::insert_if_current`], this updates in place: it does
+    /// **not** bump the generation, remove spill files, or churn LRU
+    /// bookkeeping. Only `value[idx].rows` changes. `Arc::make_mut` avoids
+    /// cloning the underlying `Vec<StoredResult>` only when the entry Arc is
+    /// uniquely held (best-effort); if another reader still holds it, the vec is
+    /// cloned (row data itself is shared by pointer either way).
+    ///
+    /// Returns `Ok(true)` if the update was applied, `Ok(false)` if the version
+    /// no longer matched or the entry / slot was gone, and `Err` (leaving the
+    /// cache unchanged) if `f` failed.
+    pub fn modify_rows_in_place_if_current<F>(
+        &self,
+        connection_id: &str,
+        tab_id: &str,
+        expected_invalidation_version: u64,
+        idx: usize,
+        f: F,
+    ) -> Result<bool, String>
+    where
+        F: FnOnce(&SharedRows) -> Result<SharedRows, String>,
+    {
         let key = (connection_id.to_string(), tab_id.to_string());
+        let _write_guard = self
+            .in_place_write_lock
+            .lock()
+            .expect("in_place_write_lock poisoned");
 
         if self.current_invalidation_version(connection_id, tab_id) != expected_invalidation_version
         {
@@ -959,7 +1000,7 @@ impl GenericCache<Vec<StoredResult>> {
                 expected_invalidation_version,
                 "in-place rows update skipped: invalidation version changed"
             );
-            return false;
+            return Ok(false);
         }
 
         let Some(mut entry) = self.cache.get(&key) else {
@@ -968,23 +1009,23 @@ impl GenericCache<Vec<StoredResult>> {
                 tab_id = %tab_id,
                 "in-place rows update skipped: entry no longer cached"
             );
-            return false;
+            return Ok(false);
         };
 
-        let cached = Arc::make_mut(&mut entry);
-        let Some(slot) = cached.value.get_mut(idx) else {
+        let Some(current_rows) = entry.value.get(idx).map(|slot| &slot.rows) else {
             tracing::warn!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,
                 idx,
                 "in-place rows update skipped: result slot index out of range"
             );
-            return false;
+            return Ok(false);
         };
+        let new_rows = f(current_rows)?;
 
-        slot.rows = new_rows;
+        Arc::make_mut(&mut entry).value[idx].rows = new_rows;
         self.cache.insert(key, entry);
-        true
+        Ok(true)
     }
 }
 

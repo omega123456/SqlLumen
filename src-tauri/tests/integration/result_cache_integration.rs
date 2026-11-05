@@ -225,7 +225,7 @@ fn generation_increments_on_insert() {
 fn stub_result_with_rows(query_id: &str, rows: Vec<Vec<serde_json::Value>>) -> StoredResult {
     StoredResult {
         query_id: query_id.to_string(),
-        rows: std::sync::Arc::new(rows),
+        rows: crate::common::shared_rows(rows),
         ..stub_result(query_id)
     }
 }
@@ -246,7 +246,7 @@ fn update_rows_in_place_matching_version_swaps_rows() {
 
     let version = cache.current_invalidation_version("conn1", "tab1");
     let new_rows =
-        std::sync::Arc::new(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
+        crate::common::shared_rows(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
 
     let applied = cache.update_rows_in_place_if_current(
         "conn1",
@@ -294,7 +294,7 @@ fn update_rows_in_place_mismatched_version_is_noop() {
         )],
     );
 
-    let new_rows = std::sync::Arc::new(vec![vec![serde_json::json!(1)]]);
+    let new_rows = crate::common::shared_rows(vec![vec![serde_json::json!(1)]]);
     let applied =
         cache.update_rows_in_place_if_current("conn1", "tab1", stale_version, 0, new_rows);
     assert!(!applied, "stale version should be a no-op");
@@ -302,10 +302,8 @@ fn update_rows_in_place_mismatched_version_is_noop() {
     // The fresh results must be untouched.
     let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
     assert_eq!(entry.value[0].query_id, "q2");
-    assert_eq!(
-        entry.value[0].rows.as_ref(),
-        &vec![vec![serde_json::json!(99)]]
-    );
+    assert_eq!(entry.value[0].rows.len(), 1);
+    assert_eq!(&*entry.value[0].rows[0], &[serde_json::json!(99)]);
 }
 
 #[test]
@@ -339,4 +337,127 @@ fn update_rows_in_place_missing_entry_returns_false() {
         std::sync::Arc::new(vec![]),
     );
     assert!(!applied, "missing entry should be a no-op");
+}
+
+#[test]
+fn modify_rows_in_place_closure_error_leaves_cache_unchanged() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows(
+            "q1",
+            vec![vec![serde_json::json!(1)]],
+        )],
+    );
+    let version = cache.current_invalidation_version("conn1", "tab1");
+    let before =
+        std::sync::Arc::clone(&cache.get("conn1", "tab1").into_entry().unwrap().value[0].rows);
+
+    let outcome = cache.modify_rows_in_place_if_current("conn1", "tab1", version, 0, |_| {
+        Err("closure failed".to_string())
+    });
+    assert_eq!(outcome, Err("closure failed".to_string()));
+
+    let after = cache.get("conn1", "tab1").into_entry().unwrap();
+    assert!(std::sync::Arc::ptr_eq(&after.value[0].rows, &before));
+}
+
+#[test]
+fn modify_rows_in_place_version_mismatch_returns_false_and_keeps_new_result() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows(
+            "q1",
+            vec![vec![serde_json::json!(1)]],
+        )],
+    );
+    let stale_version = cache.current_invalidation_version("conn1", "tab1");
+
+    // A re-run lands between the edit's version read and its write-back.
+    cache.remove_with_spill_cleanup("conn1", "tab1");
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows(
+            "q2",
+            vec![vec![serde_json::json!(2)]],
+        )],
+    );
+
+    let mut called = false;
+    let outcome =
+        cache.modify_rows_in_place_if_current("conn1", "tab1", stale_version, 0, |rows| {
+            called = true;
+            Ok(std::sync::Arc::clone(rows))
+        });
+    assert_eq!(outcome, Ok(false));
+    assert!(!called, "closure must not run on a stale version");
+
+    let entry = cache.get("conn1", "tab1").into_entry().unwrap();
+    assert_eq!(entry.value[0].query_id, "q2");
+    assert_eq!(&*entry.value[0].rows[0], &[serde_json::json!(2)]);
+}
+
+#[test]
+fn modify_rows_in_place_missing_entry_or_slot_returns_false() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    assert_eq!(
+        cache.modify_rows_in_place_if_current("conn1", "tab1", 0, 0, |rows| Ok(rows.clone())),
+        Ok(false),
+        "missing entry"
+    );
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    let version = cache.current_invalidation_version("conn1", "tab1");
+    assert_eq!(
+        cache.modify_rows_in_place_if_current("conn1", "tab1", version, 1, |rows| Ok(rows.clone())),
+        Ok(false),
+        "missing slot"
+    );
+}
+
+#[test]
+fn modify_rows_in_place_concurrent_edits_do_not_lose_updates() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = std::sync::Arc::new(ResultCache::new_for_test(1800, tmp.path().to_path_buf()));
+    let row_count = 8;
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows(
+            "q1",
+            (0..row_count).map(|_| vec![serde_json::json!(0)]).collect(),
+        )],
+    );
+    let version = cache.current_invalidation_version("conn1", "tab1");
+
+    let handles: Vec<_> = (0..row_count)
+        .map(|row| {
+            let cache = std::sync::Arc::clone(&cache);
+            thread::spawn(move || {
+                cache
+                    .modify_rows_in_place_if_current("conn1", "tab1", version, 0, |rows| {
+                        let mut next = (**rows).clone();
+                        next[row] = vec![serde_json::json!(row + 1)].into();
+                        Ok(std::sync::Arc::new(next))
+                    })
+                    .expect("edit closure succeeds")
+            })
+        })
+        .collect();
+    for handle in handles {
+        assert!(handle.join().expect("thread"), "every edit applies");
+    }
+
+    let entry = cache.get("conn1", "tab1").into_entry().unwrap();
+    for row in 0..row_count {
+        assert_eq!(entry.value[0].rows[row][0], serde_json::json!(row + 1));
+    }
 }

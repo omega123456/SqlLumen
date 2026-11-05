@@ -36,22 +36,25 @@ pub fn list_history_impl(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn list_history(
+pub async fn list_history(
     connection_id: String,
     page: i64,
     page_size: i64,
     search: Option<String>,
     since: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<HistoryPage, String> {
-    list_history_impl(
-        &state,
-        &connection_id,
-        page,
-        page_size,
-        search.as_deref(),
-        since.as_deref(),
-    )
+    crate::commands::run_blocking_with_state(app, move |state| {
+        list_history_impl(
+            state,
+            &connection_id,
+            page,
+            page_size,
+            search.as_deref(),
+            since.as_deref(),
+        )
+    })
+    .await?
 }
 
 // ── delete_history_entry ─────────────────────────────────────────────────────

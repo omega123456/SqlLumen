@@ -10,6 +10,8 @@ use crate::commands::query_history_bridge::{
     resolve_connection_context,
 };
 #[cfg(not(coverage))]
+use crate::commands::run_blocking_with_state;
+#[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
@@ -49,14 +51,17 @@ pub async fn execute_query(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn fetch_cached_rows(
+pub async fn fetch_cached_rows(
     connection_id: String,
     tab_id: String,
     query_id: String,
     result_index: Option<usize>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<FetchCachedRowsResult, String> {
-    fetch_cached_rows_impl(&state, &connection_id, &tab_id, &query_id, result_index)
+    run_blocking_with_state(app, move |state| {
+        fetch_cached_rows_impl(state, &connection_id, &tab_id, &query_id, result_index)
+    })
+    .await?
 }
 
 // ── evict_results ─────────────────────────────────────────────────────────────
@@ -150,22 +155,25 @@ pub async fn analyze_query_for_edit(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn update_result_cell(
+pub async fn update_result_cell(
     connection_id: String,
     tab_id: String,
     row_index: usize,
     updates: HashMap<usize, serde_json::Value>,
     result_index: Option<usize>,
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    update_result_cell_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        row_index,
-        updates,
-        result_index,
-    )
+    run_blocking_with_state(app, move |state| {
+        update_result_cell_impl(
+            state,
+            &connection_id,
+            &tab_id,
+            row_index,
+            updates,
+            result_index,
+        )
+    })
+    .await?
 }
 
 // ── cancel_query ──────────────────────────────────────────────────────────────
@@ -294,10 +302,13 @@ pub async fn execute_call_query(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn touch_results(
+pub async fn touch_results(
     connection_id: String,
     tab_id: String,
-    state: tauri::State<'_, AppState>,
-) -> serde_json::Value {
-    touch_results_impl(&state, &connection_id, &tab_id)
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    run_blocking_with_state(app, move |state| {
+        touch_results_impl(state, &connection_id, &tab_id)
+    })
+    .await
 }

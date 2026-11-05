@@ -1125,19 +1125,20 @@ mod command_wrapper_coverage {
     }
 
     #[tauri::command]
-    fn restore_table_data_cache(
-        state: tauri::State<'_, AppState>,
+    async fn restore_table_data_cache(
+        app: tauri::AppHandle<tauri::test::MockRuntime>,
         connection_id: String,
         tab_id: String,
         database: String,
         table: String,
-    ) -> sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse {
-        table_data_commands::restore_table_data_cache(state, connection_id, tab_id, database, table)
+    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse, String> {
+        table_data_commands::restore_table_data_cache(app, connection_id, tab_id, database, table)
+            .await
     }
 
     #[tauri::command]
-    fn sync_table_data_cache_after_insert(
-        state: tauri::State<'_, AppState>,
+    async fn sync_table_data_cache_after_insert(
+        app: tauri::AppHandle<tauri::test::MockRuntime>,
         connection_id: String,
         tab_id: String,
         database: String,
@@ -1148,9 +1149,9 @@ mod command_wrapper_coverage {
         page_size: u32,
         primary_key: Option<PrimaryKeyInfo>,
         execution_time_ms: u64,
-    ) -> sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse {
+    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
         table_data_commands::sync_table_data_cache_after_insert(
-            state,
+            app,
             connection_id,
             tab_id,
             database,
@@ -1162,11 +1163,12 @@ mod command_wrapper_coverage {
             primary_key,
             execution_time_ms,
         )
+        .await
     }
 
     #[tauri::command]
-    fn sync_table_data_cache_after_update(
-        state: tauri::State<'_, AppState>,
+    async fn sync_table_data_cache_after_update(
+        app: tauri::AppHandle<tauri::test::MockRuntime>,
         connection_id: String,
         tab_id: String,
         database: String,
@@ -1177,9 +1179,9 @@ mod command_wrapper_coverage {
         page_size: u32,
         primary_key: Option<PrimaryKeyInfo>,
         execution_time_ms: u64,
-    ) -> sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse {
+    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
         table_data_commands::sync_table_data_cache_after_update(
-            state,
+            app,
             connection_id,
             tab_id,
             database,
@@ -1191,11 +1193,12 @@ mod command_wrapper_coverage {
             primary_key,
             execution_time_ms,
         )
+        .await
     }
 
     #[tauri::command]
-    fn sync_table_data_cache_after_delete(
-        state: tauri::State<'_, AppState>,
+    async fn sync_table_data_cache_after_delete(
+        app: tauri::AppHandle<tauri::test::MockRuntime>,
         connection_id: String,
         tab_id: String,
         database: String,
@@ -1206,9 +1209,9 @@ mod command_wrapper_coverage {
         page_size: u32,
         primary_key: Option<PrimaryKeyInfo>,
         execution_time_ms: u64,
-    ) -> sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse {
+    ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
         table_data_commands::sync_table_data_cache_after_delete(
-            state,
+            app,
             connection_id,
             tab_id,
             database,
@@ -1220,6 +1223,7 @@ mod command_wrapper_coverage {
             primary_key,
             execution_time_ms,
         )
+        .await
     }
 
     #[tauri::command]
@@ -1539,7 +1543,10 @@ mod command_wrapper_coverage {
                     is_auto_increment: false,
                 },
             ],
-            rows: vec![vec![serde_json::json!(id), serde_json::json!("Alice")]],
+            rows: std::sync::Arc::new(vec![vec![
+                serde_json::json!(id),
+                serde_json::json!("Alice"),
+            ]]),
             current_page: 1,
             page_size: 50,
             primary_key: Some(PrimaryKeyInfo {
@@ -1635,7 +1642,7 @@ mod command_wrapper_coverage {
             .expect("restore after update should succeed");
         let after_update_data = after_update.data.expect("updated cache should exist");
         assert_eq!(
-            after_update_data.rows,
+            *after_update_data.rows,
             vec![
                 vec![serde_json::json!(1), serde_json::json!("Alicia")],
                 vec![serde_json::json!(2), serde_json::json!("Bob")]
@@ -1681,7 +1688,7 @@ mod command_wrapper_coverage {
             .expect("deleted cache should still exist");
         assert_eq!(final_restore.status, "available");
         assert_eq!(
-            final_data.rows,
+            *final_data.rows,
             vec![vec![serde_json::json!(2), serde_json::json!("Bob")]]
         );
 

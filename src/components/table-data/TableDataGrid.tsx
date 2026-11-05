@@ -30,7 +30,7 @@ import {
 } from '../../stores/table-data-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
-import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
@@ -411,10 +411,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // destabilise editor references during editing.
   //
   // Precomputed: column lookup map is built once in the surrounding useMemo.
-  // computeWidth builds a lightweight single-column proxy array (N×1) instead
-  // of the full N×M row-to-array transformation, matching the optimisation
-  // applied to ResultGridView. getAutoSizedColumnWidth then samples only the
-  // first AUTO_SIZE_SAMPLE_LIMIT rows, keeping the total work O(100) per col.
+  // computeWidth builds a lightweight single-column proxy array from only the
+  // first AUTO_SIZE_SAMPLE_LIMIT rows (the rows getAutoSizedColumnWidth reads),
+  // matching ResultGridView and keeping the total work O(100) per col.
   // ---------------------------------------------------------------------------
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
     // Precompute: name → column meta lookup
@@ -435,8 +434,10 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         // Build a lightweight proxy array that extracts only the target column
         // from the committed table rows, so in-progress edit-state overlays do
         // not cause the visible column to resize under the floating editor.
-        const columnRows: unknown[][] = new Array(rows.length)
-        for (let i = 0; i < rows.length; i++) {
+        // Only the sampled rows are read by getAutoSizedColumnWidth.
+        const sampleCount = Math.min(rows.length, AUTO_SIZE_SAMPLE_LIMIT)
+        const columnRows: unknown[][] = new Array(sampleCount)
+        for (let i = 0; i < sampleCount; i++) {
           columnRows[i] = [rows[i][columnIndex]]
         }
         // FK icon (Link, 10px) or read-only lock icon (Lock, 10px) + 4px gap.

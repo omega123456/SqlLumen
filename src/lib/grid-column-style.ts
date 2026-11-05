@@ -84,7 +84,7 @@ const AUTO_WIDTH_MAX = 560
  * for large result sets. 100 rows provides a good approximation of the longest
  * value while keeping computation fast.
  */
-const AUTO_SIZE_SAMPLE_LIMIT = 100
+export const AUTO_SIZE_SAMPLE_LIMIT = 100
 
 interface ColumnWidthSizing {
   defaultWidth: number

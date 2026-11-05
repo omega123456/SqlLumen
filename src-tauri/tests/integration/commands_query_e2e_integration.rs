@@ -1137,3 +1137,147 @@ async fn select_database_surfaces_server_errors_and_keeps_the_previous_database(
     run_single(&webview, conn_id, "tab-1", "SET @y = 1");
     assert_eq!(session_setup_count(&server), 1, "session should be kept");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_multi_query_ipc_streams_nulls_blobs_and_non_utf8_bytes_row_by_row() {
+    let sql = "SELECT id, payload, label FROM blobs LIMIT 10";
+    let steps = vec![
+        connection_id_step(),
+        MockQueryStep {
+            query: sql,
+            columns: vec![
+                MockColumnDef {
+                    name: "id",
+                    coltype: ColumnType::MYSQL_TYPE_LONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "payload",
+                    coltype: ColumnType::MYSQL_TYPE_BLOB,
+                    colflags: ColumnFlags::BINARY_FLAG,
+                },
+                MockColumnDef {
+                    name: "label",
+                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                    colflags: ColumnFlags::empty(),
+                },
+            ],
+            rows: vec![
+                vec![
+                    MockCell::U32(1),
+                    MockCell::Bytes(b"\x00\x01\xff"),
+                    MockCell::Bytes(b"plain"),
+                ],
+                vec![MockCell::U32(2), MockCell::Null, MockCell::Null],
+                vec![
+                    MockCell::U32(3),
+                    MockCell::Bytes(b""),
+                    MockCell::Bytes(b"bad\xff\xfeutf8"),
+                ],
+            ],
+            error: None,
+            affected_rows: None,
+        },
+    ];
+
+    let (result, _) = execute_multi_query_via_mock(steps, vec![sql], 1000).await;
+
+    assert_eq!(result.results.len(), 1);
+    let item = &result.results[0];
+    assert_eq!(item.error, None);
+    assert_eq!(item.total_rows, 3);
+    assert_eq!(
+        item.rows,
+        vec![
+            vec![json!(1), json!("AAH/"), json!("plain")],
+            vec![json!(2), serde_json::Value::Null, serde_json::Value::Null],
+            vec![json!(3), json!(""), json!("bad\u{FFFD}\u{FFFD}utf8")],
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_call_query_ipc_drains_column_less_sets_and_streams_row_set() {
+    use crate::common::mock_mysql_server::MockMultiResultStep;
+
+    let sql = "CALL sp_touch_then_list()";
+    let server = MockMySqlServer::start_script_with_multi_results(
+        vec![connection_id_step()],
+        vec![MockMultiResultStep {
+            query: sql,
+            leading_ok_affected: vec![2, 5],
+            columns: vec![MockColumnDef {
+                name: "name",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            }],
+            rows: vec![
+                vec![MockCell::Bytes(b"Alice")],
+                vec![MockCell::Null],
+                vec![MockCell::Bytes(b"Bob")],
+            ],
+        }],
+    )
+    .await;
+    let (_app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+
+    let result: MultiQueryResultDto = invoke_tauri_command(
+        &webview,
+        "execute_call_query",
+        json!({
+            "connectionId": open_result.session_id,
+            "tabId": "tab-1",
+            "sql": sql,
+            "rowLimit": 1000,
+        }),
+    )
+    .expect("execute_call_query IPC should succeed");
+
+    assert_eq!(
+        result.results.len(),
+        1,
+        "column-less sets must be drained, not returned: {result:?}"
+    );
+    let users = &result.results[0];
+    assert_eq!(users.error, None);
+    assert_eq!(users.columns[0].name, "name");
+    assert_eq!(users.total_rows, 3);
+    assert_eq!(
+        users.rows,
+        vec![
+            vec![json!("Alice")],
+            vec![serde_json::Value::Null],
+            vec![json!("Bob")],
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_multi_query_ipc_drains_dml_response_before_next_statement() {
+    let update_sql = "UPDATE users SET active = 1";
+    let select_sql = "SELECT 7 LIMIT 1";
+    let steps = vec![
+        connection_id_step(),
+        MockQueryStep::ok_affected(update_sql, 4),
+        MockQueryStep {
+            query: select_sql,
+            columns: vec![MockColumnDef {
+                name: "7",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::empty(),
+            }],
+            rows: vec![vec![MockCell::I64(7)]],
+            error: None,
+            affected_rows: None,
+        },
+    ];
+
+    let (result, _) = execute_multi_query_via_mock(steps, vec![update_sql, select_sql], 1000).await;
+
+    assert_eq!(result.results.len(), 2);
+    assert_eq!(result.results[0].affected_rows, 4);
+    assert!(result.results[0].rows.is_empty());
+    assert_eq!(result.results[1].error, None);
+    assert_eq!(result.results[1].rows, vec![vec![json!(7)]]);
+}

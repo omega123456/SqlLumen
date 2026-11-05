@@ -5,6 +5,7 @@ import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
+import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
 
 // CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
 // Use Object.defineProperty to replace it per-test (same pattern as TableDataFormView.test.tsx).
@@ -284,6 +285,63 @@ describe('ResultGridView editing', () => {
     render(<ResultGridView {...props} editState={editedState} />)
 
     expect(getGridProps().rows[0]).toMatchObject({ col_0: 'Grace', __rowIdx: 0 })
+  })
+
+  it('keeps non-editing row objects stable when edit state changes', () => {
+    const rows = [['Ada'], ['Bob'], ['Cy']]
+    const { rerender } = render(
+      <ResultGridView {...props} rows={rows} editState={null} editingRowIndex={null} />
+    )
+    const before = getGridProps().rows
+
+    rerender(
+      <ResultGridView
+        {...props}
+        rows={rows}
+        editingRowIndex={1}
+        editState={{ ...editState, currentValues: { name: 'Bobby' } }}
+      />
+    )
+    const editing = getGridProps().rows
+    expect(editing[0]).toBe(before[0])
+    expect(editing[2]).toBe(before[2])
+    expect(editing[1]).toEqual({ __rowIdx: 1, col_0: 'Bobby' })
+    expect(before[1]).toEqual({ __rowIdx: 1, col_0: 'Bob' })
+
+    rerender(
+      <ResultGridView
+        {...props}
+        rows={rows}
+        editingRowIndex={1}
+        editState={{ ...editState, currentValues: { name: 'Robert' } }}
+      />
+    )
+    const retyped = getGridProps().rows
+    expect(retyped[0]).toBe(before[0])
+    expect(retyped[2]).toBe(before[2])
+    expect(retyped[1]).toMatchObject({ col_0: 'Robert' })
+  })
+
+  it('auto-sizes columns from the sampled rows only', () => {
+    const rows = Array.from({ length: 150 }, (_, i) => [i === 120 ? 'x'.repeat(200) : 'ab'])
+    render(<ResultGridView {...props} rows={rows} editState={null} editingRowIndex={null} />)
+
+    const gridProps = getGridProps() as unknown as {
+      rows: Array<Record<string, unknown>>
+      autoSizeConfig: {
+        computeWidth: (
+          col: { key: string; displayName: string },
+          rows: Array<Record<string, unknown>>
+        ) => number
+      }
+    }
+    const width = gridProps.autoSizeConfig.computeWidth(
+      { key: 'col_0', displayName: 'name' },
+      gridProps.rows
+    )
+
+    const sampled = rows.slice(0, AUTO_SIZE_SAMPLE_LIMIT).map((row) => [row[0]])
+    expect(width).toBe(getAutoSizedColumnWidth(tableColumns[0], 0, sampled, 'name', 0))
   })
 
   it('marks modified cells only for the active editing row and bound column', () => {

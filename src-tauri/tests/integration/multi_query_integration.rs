@@ -32,7 +32,7 @@ fn two_results() -> Vec<StoredResult> {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: std::sync::Arc::new(vec![
+            rows: crate::common::shared_rows(vec![
                 vec![serde_json::json!(10)],
                 vec![serde_json::json!(20)],
                 vec![serde_json::json!(30)],
@@ -54,7 +54,7 @@ fn two_results() -> Vec<StoredResult> {
                     data_type: "INT".to_string(),
                 },
             ],
-            rows: std::sync::Arc::new(vec![
+            rows: crate::common::shared_rows(vec![
                 vec![serde_json::json!("Alice"), serde_json::json!(30)],
                 vec![serde_json::json!("Bob"), serde_json::json!(25)],
             ]),

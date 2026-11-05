@@ -10,12 +10,18 @@ pub mod mock_mysql_server;
 use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;
 use sqllumen_lib::db::migrations;
+use sqllumen_lib::mysql::query_executor::{SharedRow, SharedRows};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::result_cache::ResultCache;
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+/// Builds a cached `SharedRows` value from plain row vectors.
+pub fn shared_rows(rows: Vec<Vec<serde_json::Value>>) -> SharedRows {
+    Arc::new(rows.into_iter().map(SharedRow::from).collect())
+}
 
 /// Creates a fresh in-memory SQLite database with all migrations applied.
 pub fn test_db() -> Connection {
