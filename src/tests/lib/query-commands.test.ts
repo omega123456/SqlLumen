@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ipc } from '../ipc-mock'
 import {
   executeQuery,
-  fetchCachedRows,
   evictResults,
   fetchSchemaMetadata,
   readFile,
   writeFile,
-  sortResults,
   selectDatabase,
+  setResultView,
+  fetchResultWindow,
+  removeResultRows,
   analyzeQueryForEdit,
   updateResultCell,
   executeMultiQuery,
@@ -23,13 +24,14 @@ const mockExecuteQueryFn = vi.fn(() => ({
   totalRows: 1,
   executionTimeMs: 5,
   affectedRows: 0,
-  rows: [[1]],
-
   autoLimitApplied: false,
-}))
-const mockFetchCachedRowsFn = vi.fn(() => ({
-  rows: [[1]],
-  columns: [{ name: 'id', dataType: 'INT' }],
+  viewRowCount: 1,
+  viewVersion: 1,
+  truncated: false,
+  rowCeiling: 100_000,
+  appliedRowLimit: null,
+  fullExportBlockedReason: null,
+  firstWindow: { offset: 0, rows: [[1]], baseIndices: [0] },
 }))
 const mockEvictResultsFn = vi.fn(() => null)
 const mockFetchSchemaMetadataFn = vi.fn(() => ({
@@ -42,7 +44,6 @@ const mockFetchSchemaMetadataFn = vi.fn(() => ({
 }))
 const mockReadFileFn = vi.fn(() => 'SELECT 1;')
 const mockWriteFileFn = vi.fn(() => null)
-const mockSortResultsFn = vi.fn(() => ({ rows: [[1], [2], [3]] }))
 const mockSelectDatabaseFn = vi.fn(() => null)
 const mockAnalyzeQueryForEditFn = vi.fn(() => [
   {
@@ -77,8 +78,7 @@ const mockExecuteMultiQueryFn = vi.fn(() => ({
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
-
+      firstWindow: { offset: 0, rows: [[1]], baseIndices: [0] },
       autoLimitApplied: false,
       error: null,
       reExecutable: true,
@@ -94,8 +94,7 @@ const mockExecuteCallQueryFn = vi.fn(() => ({
       totalRows: 1,
       executionTimeMs: 10,
       affectedRows: 0,
-      rows: [[1]],
-
+      firstWindow: { offset: 0, rows: [[1]], baseIndices: [0] },
       autoLimitApplied: false,
       error: null,
       reExecutable: false,
@@ -109,8 +108,7 @@ const mockReexecuteSingleResultFn = vi.fn(() => ({
   totalRows: 1,
   executionTimeMs: 3,
   affectedRows: 0,
-  rows: [[1]],
-
+  firstWindow: { offset: 0, rows: [[1]], baseIndices: [0] },
   autoLimitApplied: false,
   error: null,
   reExecutable: true,
@@ -119,12 +117,10 @@ const mockTouchResultsFn = vi.fn(() => ({ status: 'available' as const }))
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
-  mockFetchCachedRowsFn.mockClear()
   mockEvictResultsFn.mockClear()
   mockFetchSchemaMetadataFn.mockClear()
   mockReadFileFn.mockClear()
   mockWriteFileFn.mockClear()
-  mockSortResultsFn.mockClear()
   mockSelectDatabaseFn.mockClear()
   mockAnalyzeQueryForEditFn.mockClear()
   mockUpdateResultCellFn.mockClear()
@@ -133,12 +129,10 @@ beforeEach(() => {
   mockReexecuteSingleResultFn.mockClear()
   mockTouchResultsFn.mockClear()
   ipc.override('execute_query', () => mockExecuteQueryFn())
-  ipc.override('fetch_cached_rows', () => mockFetchCachedRowsFn())
   ipc.override('evict_results', () => mockEvictResultsFn())
   ipc.override('fetch_schema_metadata', () => mockFetchSchemaMetadataFn())
   ipc.override('read_file', () => mockReadFileFn())
   ipc.override('write_file', () => mockWriteFileFn())
-  ipc.override('sort_results', () => mockSortResultsFn())
   ipc.override('select_database', () => mockSelectDatabaseFn())
   ipc.override('analyze_query_for_edit', () => mockAnalyzeQueryForEditFn())
   ipc.override('update_result_cell', () => mockUpdateResultCellFn())
@@ -153,13 +147,18 @@ describe('query-commands', () => {
     const result = await executeQuery('conn-1', 'tab-1', 'SELECT 1')
     expect(result.queryId).toBe('q1')
     expect(result.columns).toHaveLength(1)
-    expect(result.rows).toEqual([[1]])
+    expect(result.firstWindow.rows).toEqual([[1]])
+    expect(result.firstWindow.baseIndices).toEqual([0])
+    expect('rows' in result).toBe(false)
   })
 
-  it('fetchCachedRows invokes fetch_cached_rows command', async () => {
-    const result = await fetchCachedRows('conn-1', 'tab-1', 'q1')
-    expect(result.rows).toEqual([[1]])
-    expect(result.columns).toHaveLength(1)
+  it('executeQuery omits viewSpec by default and sends it when given', async () => {
+    await executeQuery('conn-1', 'tab-1', 'SELECT 1')
+    expect('viewSpec' in (ipc.calls('execute_query')[0] as Record<string, unknown>)).toBe(false)
+
+    const spec = { sort: { column: 'id', direction: 'desc' as const }, filters: [] }
+    await executeQuery('conn-1', 'tab-1', 'SELECT 1', 500, spec)
+    expect(ipc.calls('execute_query')[1]).toMatchObject({ rowLimit: 500, viewSpec: spec })
   })
 
   it('evictResults invokes evict_results command', async () => {
@@ -183,10 +182,38 @@ describe('query-commands', () => {
     expect(mockWriteFileFn).toHaveBeenCalled()
   })
 
-  it('sortResults invokes sort_results command', async () => {
-    const result = await sortResults('conn-1', 'tab-1', 'id', 'asc')
-    expect(result.rows).toEqual([[1], [2], [3]])
-    expect(mockSortResultsFn).toHaveBeenCalled()
+  const slot = { connectionId: 'conn-1', tabId: 'tab-1', resultIndex: 1, queryId: 'q1' }
+
+  it('setResultView sends the slot, base view version and spec', async () => {
+    const response = {
+      viewVersion: 4,
+      viewRowCount: 2,
+      totalRows: 3,
+      firstWindow: { offset: 0, rows: [[2], [1]], baseIndices: [1, 0] },
+    }
+    ipc.override('set_result_view', () => response)
+    const spec = { sort: { column: 'id', direction: 'desc' as const }, filters: [] }
+    await expect(setResultView(slot, 3, spec)).resolves.toEqual(response)
+    expect(ipc.calls('set_result_view')[0]).toEqual({ ...slot, baseViewVersion: 3, viewSpec: spec })
+  })
+
+  it('fetchResultWindow sends the slot, view version, offset and limit', async () => {
+    await fetchResultWindow(slot, 2, 500, 500)
+    expect(ipc.calls('fetch_result_window')[0]).toEqual({
+      ...slot,
+      viewVersion: 2,
+      offset: 500,
+      limit: 500,
+    })
+  })
+
+  it('removeResultRows sends the base view version and base indices', async () => {
+    await removeResultRows(slot, 5, [1, 2])
+    expect(ipc.calls('remove_result_rows')[0]).toEqual({
+      ...slot,
+      baseViewVersion: 5,
+      baseIndices: [1, 2],
+    })
   })
 
   it('selectDatabase invokes select_database command', async () => {
@@ -204,8 +231,9 @@ describe('query-commands', () => {
   })
 
   it('updateResultCell invokes update_result_cell command', async () => {
-    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'updated value' })
+    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'updated value' }, 'q-1')
     expect(mockUpdateResultCellFn).toHaveBeenCalled()
+    expect(ipc.calls('update_result_cell')[0]).toMatchObject({ rowIndex: 0, queryId: 'q-1' })
   })
 
   // --- New multi-query wrappers ---
@@ -274,36 +302,20 @@ describe('query-commands', () => {
 
   // --- resultIndex optional parameter tests ---
 
-  it('fetchCachedRows does not include resultIndex when omitted', async () => {
-    await fetchCachedRows('conn-1', 'tab-1', 'q1')
-    const args = ipc.calls('fetch_cached_rows')[0] as Record<string, unknown>
-    expect('resultIndex' in args).toBe(false)
-  })
-
-  it('fetchCachedRows includes resultIndex when provided', async () => {
-    await fetchCachedRows('conn-1', 'tab-1', 'q1', 2)
-    expect((ipc.calls('fetch_cached_rows')[0] as Record<string, unknown>).resultIndex).toBe(2)
-  })
-
-  it('sortResults does not include resultIndex when omitted', async () => {
-    await sortResults('conn-1', 'tab-1', 'id', 'asc')
-    const args = ipc.calls('sort_results')[0] as Record<string, unknown>
-    expect('resultIndex' in args).toBe(false)
-  })
-
-  it('sortResults includes resultIndex when provided', async () => {
-    await sortResults('conn-1', 'tab-1', 'id', 'asc', 1)
-    expect((ipc.calls('sort_results')[0] as Record<string, unknown>).resultIndex).toBe(1)
+  it('reexecuteSingleResult sends a view spec when given', async () => {
+    const spec = { sort: null, filters: [{ column: 'id', operator: '==' as const, value: '1' }] }
+    await reexecuteSingleResult('conn-1', 'tab-1', 0, 'SELECT 1', 1000, spec)
+    expect(ipc.calls('reexecute_single_result')[0]).toMatchObject({ viewSpec: spec })
   })
 
   it('updateResultCell does not include resultIndex when omitted', async () => {
-    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' })
+    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 'q-1')
     const args = ipc.calls('update_result_cell')[0] as Record<string, unknown>
     expect('resultIndex' in args).toBe(false)
   })
 
   it('updateResultCell includes resultIndex when provided', async () => {
-    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 3)
+    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 'q-1', 3)
     expect((ipc.calls('update_result_cell')[0] as Record<string, unknown>).resultIndex).toBe(3)
   })
 })

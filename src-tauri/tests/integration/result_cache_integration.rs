@@ -2,21 +2,23 @@
 //! insert/get/remove, TTL, LRU tracking, multiple entries.
 
 use sqllumen_lib::mysql::query_executor::StoredResult;
-use sqllumen_lib::mysql::result_cache::{MemorySnapshot, ResultCache, SysinfoMemorySnapshot};
+use sqllumen_lib::mysql::result_cache::{
+    MemorySnapshot, ResultCache, SlotWrite, SysinfoMemorySnapshot,
+};
 use std::thread;
 use std::time::Duration;
 
 /// Helper: build a minimal `StoredResult` for testing.
 fn stub_result(query_id: &str) -> StoredResult {
-    StoredResult {
-        query_id: query_id.to_string(),
-        columns: vec![],
-        rows: std::sync::Arc::new(vec![]),
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        auto_limit_applied: false,
-    }
+    StoredResult::new(
+        query_id.to_string(),
+        vec![],
+        std::sync::Arc::new(vec![]),
+        0,
+        0,
+        0,
+        false,
+    )
 }
 
 #[test]
@@ -230,8 +232,23 @@ fn stub_result_with_rows(query_id: &str, rows: Vec<Vec<serde_json::Value>>) -> S
     }
 }
 
+/// Swap the rows of one slot through the slot-level, version-checked modifier.
+fn swap_rows(
+    cache: &ResultCache,
+    version: u64,
+    idx: usize,
+    rows: sqllumen_lib::mysql::query_executor::SharedRows,
+) -> SlotWrite<()> {
+    cache
+        .modify_slot_in_place_if_current("conn1", "tab1", version, idx, None, None, |slot| {
+            slot.rows = rows;
+            Ok(())
+        })
+        .expect("closure succeeds")
+}
+
 #[test]
-fn update_rows_in_place_matching_version_swaps_rows() {
+fn slot_write_matching_version_swaps_rows_in_place() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
@@ -248,14 +265,8 @@ fn update_rows_in_place_matching_version_swaps_rows() {
     let new_rows =
         crate::common::shared_rows(vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]]);
 
-    let applied = cache.update_rows_in_place_if_current(
-        "conn1",
-        "tab1",
-        version,
-        0,
-        std::sync::Arc::clone(&new_rows),
-    );
-    assert!(applied, "matching version should apply the swap");
+    let outcome = swap_rows(&cache, version, 0, std::sync::Arc::clone(&new_rows));
+    assert_eq!(outcome, SlotWrite::Applied(()), "matching version applies");
 
     let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
     // Target slot rows were swapped.
@@ -268,104 +279,7 @@ fn update_rows_in_place_matching_version_swaps_rows() {
 }
 
 #[test]
-fn update_rows_in_place_mismatched_version_is_noop() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
-
-    cache.insert(
-        "conn1",
-        "tab1",
-        vec![stub_result_with_rows(
-            "q1",
-            vec![vec![serde_json::json!(2)]],
-        )],
-    );
-    let stale_version = cache.current_invalidation_version("conn1", "tab1");
-
-    // Simulate a query re-run / invalidation during the sort: bump the version
-    // and re-insert fresh results.
-    cache.remove_with_spill_cleanup("conn1", "tab1");
-    cache.insert(
-        "conn1",
-        "tab1",
-        vec![stub_result_with_rows(
-            "q2",
-            vec![vec![serde_json::json!(99)]],
-        )],
-    );
-
-    let new_rows = crate::common::shared_rows(vec![vec![serde_json::json!(1)]]);
-    let applied =
-        cache.update_rows_in_place_if_current("conn1", "tab1", stale_version, 0, new_rows);
-    assert!(!applied, "stale version should be a no-op");
-
-    // The fresh results must be untouched.
-    let entry = cache.get("conn1", "tab1").into_entry().expect("entry");
-    assert_eq!(entry.value[0].query_id, "q2");
-    assert_eq!(entry.value[0].rows.len(), 1);
-    assert_eq!(&*entry.value[0].rows[0], &[serde_json::json!(99)]);
-}
-
-#[test]
-fn update_rows_in_place_out_of_range_idx_returns_false() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
-
-    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
-    let version = cache.current_invalidation_version("conn1", "tab1");
-
-    let applied = cache.update_rows_in_place_if_current(
-        "conn1",
-        "tab1",
-        version,
-        5,
-        std::sync::Arc::new(vec![]),
-    );
-    assert!(!applied, "out-of-range slot index should be a no-op");
-}
-
-#[test]
-fn update_rows_in_place_missing_entry_returns_false() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
-
-    let applied = cache.update_rows_in_place_if_current(
-        "conn-missing",
-        "tab-missing",
-        0,
-        0,
-        std::sync::Arc::new(vec![]),
-    );
-    assert!(!applied, "missing entry should be a no-op");
-}
-
-#[test]
-fn modify_rows_in_place_closure_error_leaves_cache_unchanged() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
-    cache.insert(
-        "conn1",
-        "tab1",
-        vec![stub_result_with_rows(
-            "q1",
-            vec![vec![serde_json::json!(1)]],
-        )],
-    );
-    let version = cache.current_invalidation_version("conn1", "tab1");
-    let before =
-        std::sync::Arc::clone(&cache.get("conn1", "tab1").into_entry().unwrap().value[0].rows);
-
-    let outcome = cache.modify_rows_in_place_if_current("conn1", "tab1", version, 0, |_| {
-        Err("closure failed".to_string())
-    });
-    assert_eq!(outcome, Err("closure failed".to_string()));
-
-    let after = cache.get("conn1", "tab1").into_entry().unwrap();
-    assert!(std::sync::Arc::ptr_eq(&after.value[0].rows, &before));
-}
-
-#[test]
-fn modify_rows_in_place_version_mismatch_returns_false_and_keeps_new_result() {
+fn slot_write_on_a_stale_version_is_refused_and_keeps_the_new_result() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
     cache.insert(
@@ -390,12 +304,19 @@ fn modify_rows_in_place_version_mismatch_returns_false_and_keeps_new_result() {
     );
 
     let mut called = false;
-    let outcome =
-        cache.modify_rows_in_place_if_current("conn1", "tab1", stale_version, 0, |rows| {
+    let outcome = cache.modify_slot_in_place_if_current(
+        "conn1",
+        "tab1",
+        stale_version,
+        0,
+        None,
+        None,
+        |_| {
             called = true;
-            Ok(std::sync::Arc::clone(rows))
-        });
-    assert_eq!(outcome, Ok(false));
+            Ok(())
+        },
+    );
+    assert_eq!(outcome, Ok(SlotWrite::Invalidated));
     assert!(!called, "closure must not run on a stale version");
 
     let entry = cache.get("conn1", "tab1").into_entry().unwrap();
@@ -404,27 +325,61 @@ fn modify_rows_in_place_version_mismatch_returns_false_and_keeps_new_result() {
 }
 
 #[test]
-fn modify_rows_in_place_missing_entry_or_slot_returns_false() {
+fn slot_write_closure_error_leaves_cache_unchanged() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+    cache.insert(
+        "conn1",
+        "tab1",
+        vec![stub_result_with_rows(
+            "q1",
+            vec![vec![serde_json::json!(1)]],
+        )],
+    );
+    let version = cache.current_invalidation_version("conn1", "tab1");
+    let before =
+        std::sync::Arc::clone(&cache.get("conn1", "tab1").into_entry().unwrap().value[0].rows);
+
+    let outcome = cache.modify_slot_in_place_if_current(
+        "conn1",
+        "tab1",
+        version,
+        0,
+        None,
+        None,
+        |slot| -> Result<(), String> {
+            slot.rows = std::sync::Arc::new(vec![]);
+            Err("closure failed".to_string())
+        },
+    );
+    assert_eq!(outcome, Err("closure failed".to_string()));
+
+    let after = cache.get("conn1", "tab1").into_entry().unwrap();
+    assert!(std::sync::Arc::ptr_eq(&after.value[0].rows, &before));
+}
+
+#[test]
+fn slot_write_missing_entry_or_slot_is_refused() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
 
     assert_eq!(
-        cache.modify_rows_in_place_if_current("conn1", "tab1", 0, 0, |rows| Ok(rows.clone())),
-        Ok(false),
+        swap_rows(&cache, 0, 0, std::sync::Arc::new(vec![])),
+        SlotWrite::Invalidated,
         "missing entry"
     );
 
     cache.insert("conn1", "tab1", vec![stub_result("q1")]);
     let version = cache.current_invalidation_version("conn1", "tab1");
     assert_eq!(
-        cache.modify_rows_in_place_if_current("conn1", "tab1", version, 1, |rows| Ok(rows.clone())),
-        Ok(false),
+        swap_rows(&cache, version, 5, std::sync::Arc::new(vec![])),
+        SlotWrite::Invalidated,
         "missing slot"
     );
 }
 
 #[test]
-fn modify_rows_in_place_concurrent_edits_do_not_lose_updates() {
+fn slot_write_concurrent_edits_do_not_lose_updates() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = std::sync::Arc::new(ResultCache::new_for_test(1800, tmp.path().to_path_buf()));
     let row_count = 8;
@@ -443,17 +398,30 @@ fn modify_rows_in_place_concurrent_edits_do_not_lose_updates() {
             let cache = std::sync::Arc::clone(&cache);
             thread::spawn(move || {
                 cache
-                    .modify_rows_in_place_if_current("conn1", "tab1", version, 0, |rows| {
-                        let mut next = (**rows).clone();
-                        next[row] = vec![serde_json::json!(row + 1)].into();
-                        Ok(std::sync::Arc::new(next))
-                    })
+                    .modify_slot_in_place_if_current(
+                        "conn1",
+                        "tab1",
+                        version,
+                        0,
+                        None,
+                        None,
+                        |slot| {
+                            let mut next = (*slot.rows).clone();
+                            next[row] = vec![serde_json::json!(row + 1)].into();
+                            slot.rows = std::sync::Arc::new(next);
+                            Ok(())
+                        },
+                    )
                     .expect("edit closure succeeds")
             })
         })
         .collect();
     for handle in handles {
-        assert!(handle.join().expect("thread"), "every edit applies");
+        assert_eq!(
+            handle.join().expect("thread"),
+            SlotWrite::Applied(()),
+            "every edit applies"
+        );
     }
 
     let entry = cache.get("conn1", "tab1").into_entry().unwrap();

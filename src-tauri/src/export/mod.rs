@@ -1,9 +1,11 @@
 pub mod copy_to_host;
 pub mod csv_writer;
 pub mod json_writer;
+pub mod result_export;
 pub mod sql_dump;
 pub mod sql_import;
 pub mod sql_writer;
+pub mod stream_writer;
 pub mod xlsx_writer;
 
 use serde::{Deserialize, Serialize};

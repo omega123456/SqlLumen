@@ -1,15 +1,16 @@
 //! Integration tests for multi-query result storage and result_index handling.
 //!
 //! Tests verify:
-//! - `result_index` handling on fetch_cached_rows, sort_results, update_result_cell
+//! - `result_index` handling on fetch_result_window, set_result_view, update_result_cell
 //! - `reexecute_single_result_impl` replaces only the targeted index
 //! - Export with `result_index=Some(1)` exports the second result
 
 use crate::common::test_app_state;
 use sqllumen_lib::commands::export::export_results_impl;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
-use sqllumen_lib::mysql::query_executor::{
-    fetch_cached_rows_impl, sort_results_impl, update_result_cell_impl, ColumnMeta, StoredResult,
+use sqllumen_lib::mysql::query_executor::{update_result_cell_impl, ColumnMeta, StoredResult};
+use sqllumen_lib::mysql::result_view::{
+    fetch_result_window_impl, set_result_view_impl, ResultViewSpec,
 };
 use std::collections::HashMap;
 
@@ -26,25 +27,25 @@ fn insert_multi_results(
 /// Create two sample StoredResults with distinguishable data.
 fn two_results() -> Vec<StoredResult> {
     vec![
-        StoredResult {
-            query_id: "q-first".to_string(),
-            columns: vec![ColumnMeta {
+        StoredResult::new(
+            "q-first".to_string(),
+            vec![ColumnMeta {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: crate::common::shared_rows(vec![
+            crate::common::shared_rows(vec![
                 vec![serde_json::json!(10)],
                 vec![serde_json::json!(20)],
                 vec![serde_json::json!(30)],
             ]),
-            execution_time_ms: 5,
-            total_time_ms: 5,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        },
-        StoredResult {
-            query_id: "q-second".to_string(),
-            columns: vec![
+            5,
+            5,
+            0,
+            false,
+        ),
+        StoredResult::new(
+            "q-second".to_string(),
+            vec![
                 ColumnMeta {
                     name: "name".to_string(),
                     data_type: "VARCHAR".to_string(),
@@ -54,95 +55,94 @@ fn two_results() -> Vec<StoredResult> {
                     data_type: "INT".to_string(),
                 },
             ],
-            rows: crate::common::shared_rows(vec![
+            crate::common::shared_rows(vec![
                 vec![serde_json::json!("Alice"), serde_json::json!(30)],
                 vec![serde_json::json!("Bob"), serde_json::json!(25)],
             ]),
-            execution_time_ms: 3,
-            total_time_ms: 3,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        },
+            3,
+            3,
+            0,
+            false,
+        ),
     ]
 }
 
-// ── fetch_cached_rows with result_index ──────────────────────────────────────
+// ── fetch_result_window with result_index ───────────────────────────────────
 
 #[test]
-fn fetch_cached_rows_with_explicit_index_zero() {
+fn fetch_result_window_at_index_zero() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q-first", Some(0))
+    let result = fetch_result_window_impl(&state, "c1", "t1", 0, "q-first", 1, 0, 100)
         .expect("fetch at index 0 should succeed");
     assert_eq!(result.rows.len(), 3);
     assert_eq!(result.rows[0][0], serde_json::json!(10));
-    assert_eq!(result.columns.len(), 1);
 }
 
 #[test]
-fn fetch_cached_rows_with_result_index_one() {
+fn fetch_result_window_at_result_index_one() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q-second", Some(1))
+    let result = fetch_result_window_impl(&state, "c1", "t1", 1, "q-second", 1, 0, 100)
         .expect("fetch at index 1 should succeed");
     assert_eq!(result.rows.len(), 2);
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
-    assert_eq!(result.columns.len(), 2);
 }
 
 #[test]
-fn fetch_cached_rows_with_none_defaults_to_first() {
+fn fetch_result_window_with_out_of_range_index_errors() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q-first", None)
-        .expect("fetch with None should default to index 0");
-    assert_eq!(result.rows.len(), 3);
-}
-
-#[test]
-fn fetch_cached_rows_with_out_of_range_index_errors() {
-    let state = test_app_state();
-    insert_multi_results(&state, "c1", "t1", two_results());
-
-    let err = fetch_cached_rows_impl(&state, "c1", "t1", "q-first", Some(5))
+    let err = fetch_result_window_impl(&state, "c1", "t1", 5, "q-first", 1, 0, 100)
         .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 5 out of range"));
 }
 
-// ── sort_results with result_index ───────────────────────────────────────────
+// ── set_result_view with result_index ────────────────────────────────────────
 
-#[tokio::test]
-async fn sort_results_with_result_index_one() {
+#[test]
+fn set_result_view_sorts_only_the_targeted_result() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    // Sort the second result by "name" descending
-    let page = sort_results_impl(&state, "c1", "t1", "name", "desc", Some(1))
-        .await
+    let spec: ResultViewSpec = serde_json::from_value(serde_json::json!({
+        "sort": { "column": "name", "direction": "desc" }
+    }))
+    .expect("spec");
+    let page = set_result_view_impl(&state, "c1", "t1", 1, "q-second", 1, &spec)
         .expect("sort at index 1 should succeed");
-    assert_eq!(page.rows.len(), 2);
-    assert_eq!(page.rows[0][0], serde_json::json!("Bob"));
-    assert_eq!(page.rows[1][0], serde_json::json!("Alice"));
+    assert_eq!(page.first_window.rows.len(), 2);
+    assert_eq!(page.first_window.rows[0][0], serde_json::json!("Bob"));
+    assert_eq!(page.first_window.rows[1][0], serde_json::json!("Alice"));
+    assert_eq!(page.first_window.base_indices, vec![1, 0]);
 
-    // Verify the first result is untouched
+    // Base rows never move, and the first result is untouched.
     let entry = state.result_cache.get("c1", "t1").into_entry().unwrap();
     let result_vec = &entry.value;
+    assert_eq!(result_vec[1].rows[0][0], serde_json::json!("Alice"));
+    assert!(result_vec[0].view.is_none());
     assert_eq!(result_vec[0].rows[0][0], serde_json::json!(10));
-    assert_eq!(result_vec[0].rows[1][0], serde_json::json!(20));
     assert_eq!(result_vec[0].rows[2][0], serde_json::json!(30));
 }
 
-#[tokio::test]
-async fn sort_results_with_out_of_range_index_errors() {
+#[test]
+fn set_result_view_with_out_of_range_index_errors() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
-    let err = sort_results_impl(&state, "c1", "t1", "id", "asc", Some(99))
-        .await
-        .expect_err("out-of-range result_index should error");
+    let err = set_result_view_impl(
+        &state,
+        "c1",
+        "t1",
+        99,
+        "q-first",
+        1,
+        &ResultViewSpec::default(),
+    )
+    .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 99 out of range"));
 }
 
@@ -156,7 +156,7 @@ fn update_result_cell_with_result_index_one() {
     let mut updates = HashMap::new();
     updates.insert(0, serde_json::json!("Charlie"));
 
-    let result = update_result_cell_impl(&state, "c1", "t1", 0, updates, Some(1));
+    let result = update_result_cell_impl(&state, "c1", "t1", 0, updates, Some(1), "q-second");
     assert!(result.is_ok());
 
     // Verify the second result was updated
@@ -174,7 +174,7 @@ fn update_result_cell_with_out_of_range_index_errors() {
     insert_multi_results(&state, "c1", "t1", two_results());
 
     let updates = HashMap::new();
-    let result = update_result_cell_impl(&state, "c1", "t1", 0, updates, Some(10));
+    let result = update_result_cell_impl(&state, "c1", "t1", 0, updates, Some(10), "q-first");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Result index 10 out of range"));
 }
@@ -197,7 +197,7 @@ fn export_with_result_index_one_exports_second_result() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, Some(1), None)
+    let result = export_results_impl(&state, "c1", "t1", options, Some(1))
         .expect("export at index 1 should succeed");
     assert_eq!(result.rows_exported, 2); // second result has 2 rows
 
@@ -221,7 +221,7 @@ fn export_with_result_index_out_of_range_errors() {
         table_name: None,
     };
 
-    let err = export_results_impl(&state, "c1", "t1", options, Some(5), None)
+    let err = export_results_impl(&state, "c1", "t1", options, Some(5))
         .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 5 out of range"));
 }
@@ -245,7 +245,7 @@ fn export_with_none_defaults_to_first_result() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, None, None)
+    let result = export_results_impl(&state, "c1", "t1", options, None)
         .expect("export with None should default to index 0");
     assert_eq!(result.rows_exported, 3); // first result has 3 rows
 
@@ -334,6 +334,7 @@ mod coverage_reexecute {
             1,
             "SELECT name FROM users",
             100,
+            None,
         )
         .await
         .expect("reexecute should succeed");
@@ -371,9 +372,10 @@ mod coverage_reexecute {
         let state = test_app_state();
         insert_multi_results(&state, "conn-missing", "tab-1", two_results());
 
-        let err = reexecute_single_result_impl(&state, "conn-missing", "tab-1", 0, "SELECT 1", 100)
-            .await
-            .expect_err("missing connection should error");
+        let err =
+            reexecute_single_result_impl(&state, "conn-missing", "tab-1", 0, "SELECT 1", 100, None)
+                .await
+                .expect_err("missing connection should error");
         assert!(err.contains("not found"));
     }
 
@@ -390,6 +392,7 @@ mod coverage_reexecute {
             0,
             "INSERT INTO t VALUES (1)",
             100,
+            None,
         )
         .await
         .expect_err("read-only should block DML");
@@ -402,9 +405,10 @@ mod coverage_reexecute {
         register_lazy_pool(&state, "conn-re2", false);
         insert_multi_results(&state, "conn-re2", "tab-1", two_results());
 
-        let err = reexecute_single_result_impl(&state, "conn-re2", "tab-1", 5, "SELECT 1", 100)
-            .await
-            .expect_err("out-of-range index should error");
+        let err =
+            reexecute_single_result_impl(&state, "conn-re2", "tab-1", 5, "SELECT 1", 100, None)
+                .await
+                .expect_err("out-of-range index should error");
         assert!(err.contains("Result index 5 out of range"));
     }
 
@@ -413,10 +417,17 @@ mod coverage_reexecute {
         let state = test_app_state();
         register_lazy_pool(&state, "conn-re3", false);
 
-        let err =
-            reexecute_single_result_impl(&state, "conn-re3", "tab-missing", 0, "SELECT 1", 100)
-                .await
-                .expect_err("missing results should error");
+        let err = reexecute_single_result_impl(
+            &state,
+            "conn-re3",
+            "tab-missing",
+            0,
+            "SELECT 1",
+            100,
+            None,
+        )
+        .await
+        .expect_err("missing results should error");
         assert!(err.contains("No results found"));
     }
 }
@@ -774,61 +785,21 @@ mod coverage_multi_query {
         // Simulate the expected output structure for a CALL returning 2 result sets
         let expected_items: Vec<MultiQueryResultItem> = vec![
             // Entry 0: SELECT 1
-            MultiQueryResultItem {
-                query_id: "q-0".to_string(),
-                source_sql: "SELECT 1".to_string(),
-                columns: vec![],
-                total_rows: 1,
-                execution_time_ms: 1,
-                total_time_ms: 1,
-                affected_rows: 0,
-                rows: std::sync::Arc::new(vec![]),
-                auto_limit_applied: false,
-                error: None,
-                re_executable: true,
-            },
+            coverage_item("q-0".to_string(), "SELECT 1".to_string(), true),
             // Entry 1: CALL result set 1
-            MultiQueryResultItem {
-                query_id: "q-1".to_string(),
-                source_sql: "CALL proc_with_2_selects()".to_string(),
-                columns: vec![],
-                total_rows: 5,
-                execution_time_ms: 2,
-                total_time_ms: 2,
-                affected_rows: 0,
-                rows: std::sync::Arc::new(vec![]),
-                auto_limit_applied: false,
-                error: None,
-                re_executable: false,
-            },
+            coverage_item(
+                "q-1".to_string(),
+                "CALL proc_with_2_selects()".to_string(),
+                false,
+            ),
             // Entry 2: CALL result set 2
-            MultiQueryResultItem {
-                query_id: "q-2".to_string(),
-                source_sql: "CALL proc_with_2_selects()".to_string(),
-                columns: vec![],
-                total_rows: 3,
-                execution_time_ms: 2,
-                total_time_ms: 2,
-                affected_rows: 0,
-                rows: std::sync::Arc::new(vec![]),
-                auto_limit_applied: false,
-                error: None,
-                re_executable: false,
-            },
+            coverage_item(
+                "q-2".to_string(),
+                "CALL proc_with_2_selects()".to_string(),
+                false,
+            ),
             // Entry 3: SELECT 2
-            MultiQueryResultItem {
-                query_id: "q-3".to_string(),
-                source_sql: "SELECT 2".to_string(),
-                columns: vec![],
-                total_rows: 1,
-                execution_time_ms: 1,
-                total_time_ms: 1,
-                affected_rows: 0,
-                rows: std::sync::Arc::new(vec![]),
-                auto_limit_applied: false,
-                error: None,
-                re_executable: true,
-            },
+            coverage_item("q-3".to_string(), "SELECT 2".to_string(), true),
         ];
 
         // Verify structural properties
@@ -881,34 +852,18 @@ mod coverage_multi_query {
             if is_call_statement(sql) {
                 // CALL produces multiple result sets — simulate 2
                 for _ in 0..2 {
-                    result_items.push(MultiQueryResultItem {
-                        query_id: uuid::Uuid::new_v4().to_string(),
-                        source_sql: sql.to_string(),
-                        columns: vec![],
-                        total_rows: 0,
-                        execution_time_ms: 0,
-                        total_time_ms: 0,
-                        affected_rows: 0,
-                        rows: std::sync::Arc::new(vec![]),
-                        auto_limit_applied: false,
-                        error: None,
-                        re_executable: false,
-                    });
+                    result_items.push(coverage_item(
+                        uuid::Uuid::new_v4().to_string(),
+                        sql.to_string(),
+                        false,
+                    ));
                 }
             } else {
-                result_items.push(MultiQueryResultItem {
-                    query_id: uuid::Uuid::new_v4().to_string(),
-                    source_sql: sql.to_string(),
-                    columns: vec![],
-                    total_rows: 0,
-                    execution_time_ms: 0,
-                    total_time_ms: 0,
-                    affected_rows: 0,
-                    rows: std::sync::Arc::new(vec![]),
-                    auto_limit_applied: false,
-                    error: None,
-                    re_executable: true,
-                });
+                result_items.push(coverage_item(
+                    uuid::Uuid::new_v4().to_string(),
+                    sql.to_string(),
+                    true,
+                ));
             }
         }
 
@@ -1725,4 +1680,20 @@ mod serialization_parity {
         let result = serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_LONG, ColumnFlags::empty());
         assert_eq!(result, serde_json::json!(-100));
     }
+}
+
+/// Build a result item the way the executors do (empty first window).
+#[cfg(coverage)]
+fn coverage_item(
+    query_id: String,
+    source_sql: String,
+    re_executable: bool,
+) -> sqllumen_lib::mysql::query_executor::MultiQueryResultItem {
+    let mut stored = StoredResult::empty(query_id);
+    stored.source_sql = source_sql;
+    sqllumen_lib::mysql::query_executor::MultiQueryResultItem::from_stored(
+        &stored,
+        None,
+        re_executable,
+    )
 }

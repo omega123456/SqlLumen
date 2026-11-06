@@ -108,6 +108,7 @@ describe('playwrightIpcMockHandler', () => {
 
     expect(result.currentPage).toBe(1)
     expect(result.pageSize).toBe(100)
+    // Table data stays array-based (not windowed).
     expect(result.rows).toEqual([
       [1, 'Alice', 'alice@example.com'],
       [2, 'Bob', 'bob@example.com'],
@@ -210,6 +211,46 @@ describe('playwrightIpcMockHandler', () => {
       objectsTotal: 2,
     })
     expect(playwrightIpcMockHandler('cancel_copy', { jobId: 'copy-job-custom' })).toBeNull()
+  })
+
+  it('serves the result export job from the fixture registry', () => {
+    expect(playwrightIpcMockHandler('start_result_export', {})).toBe('result-export-job-1')
+    expect(
+      playwrightIpcMockHandler('get_result_export_progress', { jobId: 'result-export-job-1' })
+    ).toMatchObject({ status: 'completed', rowsWritten: 250_000, error: null })
+    expect(playwrightIpcMockHandler('cancel_result_export', { jobId: 'result-export-job-1' })).toBe(
+      null
+    )
+  })
+
+  it('serves overridden result export fixtures', () => {
+    overrideFixture('resultExportStart', 'default', 'job-custom')
+    overrideFixture('resultExportProgress', 'job-custom', {
+      status: 'running',
+      rowsWritten: 7,
+      bytesWritten: 70,
+      elapsedMs: 700,
+      stoppedAtSheetLimit: false,
+      error: null,
+    })
+    overrideFixture('resultExportProgress', 'default', {
+      status: 'failed',
+      rowsWritten: 0,
+      bytesWritten: 0,
+      elapsedMs: 0,
+      stoppedAtSheetLimit: false,
+      error: 'boom',
+    })
+    overrideFixture('resultExportCancel', 'default', null)
+
+    expect(playwrightIpcMockHandler('start_result_export', {})).toBe('job-custom')
+    expect(
+      playwrightIpcMockHandler('get_result_export_progress', { jobId: 'job-custom' })
+    ).toMatchObject({ status: 'running', rowsWritten: 7 })
+    expect(
+      playwrightIpcMockHandler('get_result_export_progress', { jobId: 'other-job' })
+    ).toMatchObject({ status: 'failed', error: 'boom' })
+    expect(playwrightIpcMockHandler('cancel_result_export', { jobId: 'job-custom' })).toBeNull()
   })
 
   it('returns completed copy progress by default', () => {
@@ -376,7 +417,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r1.columns[0]).toEqual({ name: 'id', dataType: 'BIGINT' })
     expect(r1.columns[1]).toEqual({ name: 'name', dataType: 'VARCHAR' })
     expect(r1.totalRows).toBe(2)
-    expect(r1.rows).toEqual([
+    expect(r1.firstWindow.rows).toEqual([
       [1, 'Alice'],
       [2, 'Bob'],
     ])
@@ -390,7 +431,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r2.sourceSql).toBe('SELECT product_id, price FROM products')
     expect(r2.columns).toHaveLength(2)
     expect(r2.totalRows).toBe(2)
-    expect(r2.rows).toEqual([
+    expect(r2.firstWindow.rows).toEqual([
       [101, '29.99'],
       [102, '49.99'],
     ])
@@ -402,7 +443,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r3.columns).toHaveLength(0)
     expect(r3.totalRows).toBe(0)
     expect(r3.affectedRows).toBe(1)
-    expect(r3.rows).toEqual([])
+    expect(r3.firstWindow.rows).toEqual([])
     expect(r3.reExecutable).toBe(true)
   })
 
@@ -422,7 +463,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r1.sourceSql).toBe('CALL sp_get_orders()')
     expect(r1.columns).toHaveLength(2)
     expect(r1.totalRows).toBe(2)
-    expect(r1.rows).toEqual([
+    expect(r1.firstWindow.rows).toEqual([
       [1, '150.00'],
       [2, '230.50'],
     ])
@@ -434,7 +475,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(r2.sourceSql).toBe('CALL sp_get_orders()')
     expect(r2.columns).toHaveLength(2)
     expect(r2.totalRows).toBe(1)
-    expect(r2.rows).toEqual([['total_orders', 42]])
+    expect(r2.firstWindow.rows).toEqual([['total_orders', 42]])
     expect(r2.reExecutable).toBe(false)
   })
 
@@ -451,7 +492,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(result.sourceSql).toBe('SELECT id, name FROM users')
     expect(result.columns).toHaveLength(2)
     expect(result.totalRows).toBe(2)
-    expect(result.rows).toEqual([
+    expect(result.firstWindow.rows).toEqual([
       [1, 'Alice'],
       [2, 'Bob'],
     ])
@@ -471,65 +512,144 @@ describe('playwrightIpcMockHandler', () => {
     expect(result.sourceSql).toBe('SELECT product_id FROM products')
   })
 
-  it('fetch_cached_rows returns the default restore fixture when no query-specific match exists', () => {
-    const result = playwrightIpcMockHandler('fetch_cached_rows', {
+  it('execute_query returns a windowed response (first window, never the full result)', () => {
+    const result = playwrightIpcMockHandler('execute_query', {
       connectionId: 'conn-1',
-      tabId: 'tab-1',
-      queryId: 'unknown-query-id',
-    }) as Record<string, unknown>
+      tabId: 'tab-w',
+      sql: 'SELECT * FROM large_result',
+      rowLimit: 1000,
+    }) as Record<string, unknown> & { firstWindow: { rows: unknown[][]; baseIndices: number[] } }
 
-    expect(result.columns).toEqual([
-      { name: 'id', dataType: 'BIGINT' },
-      { name: 'name', dataType: 'VARCHAR' },
-      { name: 'email', dataType: 'VARCHAR' },
-      { name: 'status', dataType: 'VARCHAR' },
-      { name: 'created_at', dataType: 'DATETIME' },
-    ])
-    expect(result.rows).toEqual([
-      [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
-      [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
-      [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
-      [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
-      [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
-    ])
+    expect('rows' in result).toBe(false)
+    expect(result.totalRows).toBe(12340)
+    expect(result.viewRowCount).toBe(12340)
+    expect(result.viewVersion).toBe(1)
+    expect(result.truncated).toBe(false)
+    expect(result.firstWindow.rows).toHaveLength(1000)
+    expect(result.firstWindow.baseIndices.slice(0, 3)).toEqual([0, 1, 2])
   })
 
-  it('fetch_cached_rows resolves indexed restore fixtures by queryId and resultIndex', () => {
-    const result = playwrightIpcMockHandler('fetch_cached_rows', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      queryId: 'mock-query-id-1',
-      resultIndex: 1,
-    }) as Record<string, unknown>
+  it('serves windows, applies view specs with compare-and-swap and refuses stale windows', () => {
+    const slot = { connectionId: 'conn-1', tabId: 'tab-v', resultIndex: 0 }
+    const executed = playwrightIpcMockHandler('execute_query', {
+      ...slot,
+      sql: 'SELECT * FROM users',
+    }) as { queryId: string }
+    const queryId = executed.queryId
 
-    expect(result.columns).toEqual([
-      { name: 'order_id', dataType: 'INT' },
-      { name: 'total', dataType: 'DECIMAL' },
+    const window = playwrightIpcMockHandler('fetch_result_window', {
+      ...slot,
+      queryId,
+      viewVersion: 1,
+      offset: 3,
+      limit: 5000,
+    }) as { offset: number; rows: unknown[][]; baseIndices: number[] }
+    expect(window.offset).toBe(3)
+    expect(window.baseIndices).toEqual([3, 4])
+
+    const sorted = playwrightIpcMockHandler('set_result_view', {
+      ...slot,
+      queryId,
+      baseViewVersion: 1,
+      viewSpec: { sort: { column: 'name', direction: 'asc' }, filters: [] },
+    }) as { viewVersion: number; firstWindow: { rows: unknown[][] } }
+    expect(sorted.viewVersion).toBe(2)
+    expect(sorted.firstWindow.rows.map((row) => row[1])).toEqual([
+      'Alex Chen',
+      'Elena Vance',
+      'Julian Thorne',
+      'Marcus Reed',
+      'Sarah Kim',
     ])
-    expect(result.rows).toEqual([
-      [1, '150.00'],
-      [2, '230.50'],
-    ])
+
+    expect(() =>
+      playwrightIpcMockHandler('set_result_view', {
+        ...slot,
+        queryId,
+        baseViewVersion: 1,
+        viewSpec: { sort: null, filters: [] },
+      })
+    ).toThrow('view_superseded: current=2')
+    expect(() =>
+      playwrightIpcMockHandler('fetch_result_window', {
+        ...slot,
+        queryId,
+        viewVersion: 1,
+        offset: 0,
+        limit: 10,
+      })
+    ).toThrow(/^view_stale:/)
+    expect(() =>
+      playwrightIpcMockHandler('set_result_view', {
+        ...slot,
+        queryId,
+        baseViewVersion: 2,
+        viewSpec: { sort: { column: 'missing', direction: 'asc' }, filters: [] },
+      })
+    ).toThrow(/missing/)
+
+    const filtered = playwrightIpcMockHandler('set_result_view', {
+      ...slot,
+      queryId,
+      baseViewVersion: 2,
+      viewSpec: {
+        sort: null,
+        filters: [
+          { column: 'status', operator: '==', value: 'active' },
+          { column: 'gone', operator: '==', value: 'x' },
+        ],
+      },
+    }) as { viewRowCount: number; totalRows: number }
+    expect(filtered).toMatchObject({ viewRowCount: 3, totalRows: 5 })
   })
 
-  it('fetch_cached_rows honors query-specific fixture overrides from the registry', () => {
-    overrideFixture('cachedRows', 'custom-query__2', {
-      queryId: 'custom-query',
-      resultIndex: 2,
-      columns: [{ name: 'payload', dataType: 'JSON' }],
-      rows: [['{"ok":true}']],
+  it('tombstones removed rows and serves rows by base index', () => {
+    const slot = { connectionId: 'conn-1', tabId: 'tab-d', resultIndex: 0 }
+    const { queryId } = playwrightIpcMockHandler('execute_query', {
+      ...slot,
+      sql: 'SELECT * FROM users',
+    }) as { queryId: string }
+
+    const removed = playwrightIpcMockHandler('remove_result_rows', {
+      ...slot,
+      queryId,
+      baseViewVersion: 1,
+      baseIndices: [1, 3],
     })
+    expect(removed).toEqual({ viewVersion: 2, viewRowCount: 3, totalRows: 3 })
 
-    const result = playwrightIpcMockHandler('fetch_cached_rows', {
+    expect(() =>
+      playwrightIpcMockHandler('fetch_result_window', {
+        ...slot,
+        queryId: 'other-query',
+        viewVersion: 2,
+        offset: 0,
+        limit: 10,
+      })
+    ).toThrow(/Results were refreshed/)
+    expect(() =>
+      playwrightIpcMockHandler('fetch_result_window', {
+        ...slot,
+        tabId: 'no-such-tab',
+        queryId,
+        viewVersion: 1,
+        offset: 0,
+        limit: 1,
+      })
+    ).toThrow(/^results_expired/)
+  })
+
+  it('serves a truncated CALL fixture with the call blocked reason', () => {
+    const result = playwrightIpcMockHandler('execute_call_query', {
       connectionId: 'conn-1',
-      tabId: 'tab-1',
-      queryId: 'custom-query',
-      resultIndex: 2,
-    }) as Record<string, unknown>
-
-    expect(result).toEqual({
-      columns: [{ name: 'payload', dataType: 'JSON' }],
-      rows: [['{"ok":true}']],
+      tabId: 'tab-c',
+      sql: 'CALL sp_truncated_call()',
+    }) as { results: Array<Record<string, unknown>> }
+    expect(result.results[0]).toMatchObject({
+      truncated: true,
+      rowCeiling: 100000,
+      fullExportBlockedReason: 'call',
+      reExecutable: false,
     })
   })
 

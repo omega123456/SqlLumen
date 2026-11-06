@@ -239,6 +239,7 @@ describe('StatusBar', () => {
       content: 'SELECT * FROM users',
       status: 'success',
       totalRows: 42,
+      viewRowCount: 42,
       executionTimeMs: 12,
       totalTimeMs: 150,
       queryId: 'q1',
@@ -274,7 +275,8 @@ describe('StatusBar', () => {
       render(<StatusBar />)
 
       expect(screen.getByTestId('query-info')).toBeInTheDocument()
-      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows 42')
+      // The query row count drops its "Rows" label and shows the unified string.
+      expect(screen.getByTestId('query-rows')).toHaveTextContent(/^42 rows$/)
       expect(screen.getByTestId('query-time')).toHaveTextContent('Exec 12 ms')
       expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total 150 ms')
     })
@@ -293,9 +295,75 @@ describe('StatusBar', () => {
       const lightInfo = screen.getByTestId('query-info').textContent
 
       expect(lightInfo).toBe(darkInfo)
-      expect(screen.getByTestId('query-rows')).toHaveTextContent('Rows 42')
+      expect(screen.getByTestId('query-rows')).toHaveTextContent(/^42 rows$/)
       expect(screen.getByTestId('query-time')).toHaveTextContent('Exec 12 ms')
       expect(screen.getByTestId('query-total-time')).toHaveTextContent('Total 150 ms')
+    })
+
+    it('shows the truncated string with a warning icon, outside the polite live region', () => {
+      setupQueryEditorTab()
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': makeTabState({
+            status: 'success',
+            totalRows: 100000,
+            viewRowCount: 100000,
+            truncated: true,
+            executionTimeMs: 42,
+            totalTimeMs: 51,
+            queryId: 'q1',
+          }),
+        },
+      })
+      render(<StatusBar />)
+      const rows = screen.getByTestId('query-rows')
+      expect(rows).toHaveTextContent(/^100,000\+ rows · truncated$/)
+      expect(screen.getByTestId('query-rows-truncated-icon')).toBeInTheDocument()
+      expect(screen.getByTestId('query-info').closest('[aria-live]')).toBeNull()
+      // Exec and Total keep their labels and their order after the row count.
+      const items = Array.from(screen.getByTestId('query-info').children).map((child) =>
+        child.getAttribute('data-testid')
+      )
+      expect(items).toEqual(['query-rows', 'query-time', 'query-total-time'])
+      expect(screen.getByTestId('query-time')).toHaveTextContent('Exec 42 ms')
+    })
+
+    it('shows the filtered and auto-limit strings from the shared formatter', () => {
+      setupQueryEditorTab()
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': makeTabState({
+            status: 'success',
+            totalRows: 12340,
+            viewRowCount: 2340,
+            filterModel: [{ column: 'id', operator: '>', value: '1' }],
+            queryId: 'q1',
+          }),
+        },
+      })
+      const { unmount } = render(<StatusBar />)
+      expect(screen.getByTestId('query-rows')).toHaveTextContent('2,340 of 12,340 rows')
+      expect(screen.queryByTestId('query-rows-truncated-icon')).not.toBeInTheDocument()
+      unmount()
+
+      act(() => {
+        useQueryStore.setState({
+          tabs: {
+            'tab-1': makeTabState({
+              status: 'success',
+              totalRows: 1000,
+              viewRowCount: 1000,
+              autoLimitApplied: true,
+              appliedRowLimit: 1000,
+              queryId: 'q1',
+            }),
+          },
+        })
+      })
+      render(<StatusBar />)
+      expect(screen.getByTestId('query-rows')).toHaveTextContent(
+        '1,000 rows · 1,000-row limit applied'
+      )
     })
 
     it('does not show query info when active tab is not query-editor', () => {

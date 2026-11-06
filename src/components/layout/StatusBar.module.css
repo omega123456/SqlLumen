@@ -219,3 +219,15 @@
 .updateButton:focus-visible .updateButtonText {
   text-decoration: underline;
 }
+
+/* Query row count (wireframe 3): label-less unified string, WarningCircle when truncated */
+.queryRowCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.queryRowCountWarning {
+  flex: none;
+  color: var(--warning);
+}

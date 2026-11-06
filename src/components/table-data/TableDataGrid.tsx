@@ -715,9 +715,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   )
 
   const handleCellClipboardEdit = useCallback(
-    async (args: CellClipboardEditArgs) => {
+    async (args: CellClipboardEditArgs): Promise<boolean> => {
       const target = resolveTargetColumn(args.columnKey)
-      if (!target?.editable) return
+      if (!target?.editable) return false
 
       const targetRowKey = getRowKey(args.rowData, pkColumns)
 
@@ -727,7 +727,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         target.targetColIdx,
         { enableEditorOnRestore: true }
       )
-      if (!guardResult.passed) return
+      if (!guardResult.passed) return false
 
       setSelectedRow(tabId, targetRowKey)
 
@@ -738,6 +738,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       useTableDataStore
         .getState()
         .syncCellValue(tabId, args.rowData, args.columnKey, nextValue, targetRowKey)
+      return true
     },
     [
       resolveTargetColumn,

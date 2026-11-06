@@ -360,15 +360,13 @@ describe('GlideDataGrid', () => {
   })
 
   it('passes getCellContent through to be callable', () => {
-    const getCellContent = vi.fn(
-      (): GridCell => ({
-        kind: GridCellKind.Text,
-        data: 'x',
-        displayData: 'x',
-        allowOverlay: false,
-        readonly: true,
-      })
-    )
+    const getCellContent = vi.fn((): GridCell => ({
+      kind: GridCellKind.Text,
+      data: 'x',
+      displayData: 'x',
+      allowOverlay: false,
+      readonly: true,
+    }))
     render(
       <GlideDataGrid
         columns={[{ title: 'Id', width: 80 }]}

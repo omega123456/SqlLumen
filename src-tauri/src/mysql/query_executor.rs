@@ -27,7 +27,37 @@ pub struct ColumnMeta {
     pub data_type: String,
 }
 
+/// Why a truncated result cannot be exported in full by re-running its SQL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FullExportBlockedReason {
+    /// A `CALL`: re-running would repeat the procedure's writes.
+    Call,
+    /// A locking `SELECT` (`FOR UPDATE`, `FOR SHARE`, `LOCK IN SHARE MODE`).
+    Locking,
+    /// The database the query ran in could not be read back after truncation.
+    UnknownDatabase,
+}
+
+/// The session database a result's SQL ran in (re-run context).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RunDatabase {
+    /// Not captured: only truncated, re-runnable results read `SELECT DATABASE()`.
+    #[default]
+    NotCaptured,
+    /// `SELECT DATABASE()` returned NULL (no default database).
+    NoDatabase,
+    /// The session's current database when the query ran.
+    Named(String),
+}
+
 /// A stored result set in memory, keyed by (connection_id, tab_id).
+///
+/// `rows` are the base rows in their original order. `view` (when present) is a
+/// permutation of base-row indices encoding the current sort, filter and
+/// tombstone exclusion; `None` means the identity view (no sort, filter or
+/// tombstones). All view fields are written only through
+/// `ResultCache::modify_slot_in_place_if_current`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredResult {
     pub query_id: String,
@@ -40,6 +70,69 @@ pub struct StoredResult {
     pub total_time_ms: u64,
     pub affected_rows: u64,
     pub auto_limit_applied: bool,
+    /// Current view over `rows` (`None` = identity).
+    pub view: Option<Arc<Vec<u32>>>,
+    /// Sort and filters the current view was built from.
+    pub view_spec: crate::mysql::result_view::ResultViewSpec,
+    /// Monotonic view version, bumped on every view or tombstone change.
+    pub view_version: u64,
+    /// Base indices of deleted rows (excluded from every view).
+    pub tombstones: Arc<std::collections::BTreeSet<u32>>,
+    /// True when at least one row beyond the ceiling was seen.
+    pub truncated: bool,
+    /// Row ceiling in force when this result ran.
+    pub row_ceiling: usize,
+    /// The LIMIT injected by auto-LIMIT (after clamping), if any.
+    pub applied_row_limit: Option<usize>,
+    /// Re-run context: the SQL that produced this result.
+    pub source_sql: String,
+    /// Re-run context: the session database when the query ran.
+    pub run_database: RunDatabase,
+    /// Re-run context: why a full re-run export is not allowed, if it is not.
+    pub full_export_blocked_reason: Option<FullExportBlockedReason>,
+}
+
+impl StoredResult {
+    /// Build a result with default view, truncation and re-run fields.
+    pub fn new(
+        query_id: String,
+        columns: Vec<ColumnMeta>,
+        rows: SharedRows,
+        execution_time_ms: u64,
+        total_time_ms: u64,
+        affected_rows: u64,
+        auto_limit_applied: bool,
+    ) -> Self {
+        Self {
+            query_id,
+            columns,
+            rows,
+            execution_time_ms,
+            total_time_ms,
+            affected_rows,
+            auto_limit_applied,
+            view: None,
+            view_spec: crate::mysql::result_view::ResultViewSpec::default(),
+            view_version: crate::mysql::result_view::INITIAL_VIEW_VERSION,
+            tombstones: Arc::new(std::collections::BTreeSet::new()),
+            truncated: false,
+            row_ceiling: crate::mysql::result_cache::DEFAULT_ROW_CEILING,
+            applied_row_limit: None,
+            source_sql: String::new(),
+            run_database: RunDatabase::NotCaptured,
+            full_export_blocked_reason: None,
+        }
+    }
+
+    /// An empty result (no columns, no rows) for DML, errors and stubs.
+    pub fn empty(query_id: String) -> Self {
+        Self::new(query_id, vec![], Arc::new(vec![]), 0, 0, 0, false)
+    }
+
+    /// Live base rows: all rows minus tombstones.
+    pub fn live_row_count(&self) -> usize {
+        self.rows.len().saturating_sub(self.tombstones.len())
+    }
 }
 
 /// Response for `execute_query`.
@@ -48,21 +141,42 @@ pub struct StoredResult {
 pub struct ExecuteQueryResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
+    /// Live base rows (tombstones excluded).
     pub total_rows: usize,
     /// Server-execution-only time (narrow).
     pub execution_time_ms: u64,
     /// Combined time (execution + transfer + serialization).
     pub total_time_ms: u64,
     pub affected_rows: u64,
-    pub rows: SharedRows,
     pub auto_limit_applied: bool,
+    pub view_row_count: usize,
+    pub view_version: u64,
+    pub truncated: bool,
+    pub row_ceiling: usize,
+    pub applied_row_limit: Option<usize>,
+    pub full_export_blocked_reason: Option<FullExportBlockedReason>,
+    pub first_window: crate::mysql::result_view::ResultWindow,
 }
 
-/// Response for `sort_results`: returns the full sorted cached row set.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SortedRowsResult {
-    pub rows: SharedRows,
+impl From<MultiQueryResultItem> for ExecuteQueryResult {
+    fn from(item: MultiQueryResultItem) -> Self {
+        Self {
+            query_id: item.query_id,
+            columns: item.columns,
+            total_rows: item.total_rows.max(0) as usize,
+            execution_time_ms: item.execution_time_ms,
+            total_time_ms: item.total_time_ms,
+            affected_rows: item.affected_rows,
+            auto_limit_applied: item.auto_limit_applied,
+            view_row_count: item.view_row_count,
+            view_version: item.view_version,
+            truncated: item.truncated,
+            row_ceiling: item.row_ceiling,
+            applied_row_limit: item.applied_row_limit,
+            full_export_blocked_reason: item.full_export_blocked_reason,
+            first_window: item.first_window,
+        }
+    }
 }
 
 /// Table metadata for the autocomplete schema cache.
@@ -432,6 +546,123 @@ fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
     None
 }
 
+/// Returns true if `sql` contains a row-locking clause anywhere outside string
+/// literals and comments: `FOR UPDATE`, `FOR SHARE` or `LOCK IN SHARE MODE`.
+///
+/// Deliberately conservative (it also matches inside subqueries and CTEs, and
+/// covers `NOWAIT`, `SKIP LOCKED`, `OF tbl` and trailing `;` variants), because a
+/// re-run of a locking query would take its locks again. Unlike
+/// [`find_trailing_lock_clause`], which only positions an injected LIMIT, this
+/// decides whether a truncated result may be re-run for a full export.
+pub fn has_locking_clause(sql: &str) -> bool {
+    // One pass over the raw SQL that skips strings and comments with MySQL's
+    // rules, so the two can never fall out of step: `--` only starts a comment
+    // when followed by whitespace, a control character or the end of input, and
+    // backticks have no backslash escapes. The contents of executable comments
+    // (`/*! */`) and optimizer hints (`/*+ */`) are scanned like normal SQL.
+    // Uppercased words; `None` marks punctuation that breaks a keyword sequence.
+    let mut tokens: Vec<Option<String>> = Vec::new();
+    let mut word = String::new();
+    let mut chars = sql.chars().peekable();
+    let flush = |word: &mut String, tokens: &mut Vec<Option<String>>| {
+        if !word.is_empty() {
+            tokens.push(Some(word.to_ascii_uppercase()));
+            word.clear();
+        }
+    };
+    let skip_line = |chars: &mut std::iter::Peekable<std::str::Chars<'_>>| {
+        while chars.peek().is_some_and(|&c| c != '\n') {
+            chars.next();
+        }
+    };
+    while let Some(ch) = chars.next() {
+        if matches!(ch, '\'' | '"' | '`') {
+            flush(&mut word, &mut tokens);
+            tokens.push(None);
+            while let Some(c) = chars.next() {
+                if c == '\\' && ch != '`' {
+                    chars.next();
+                } else if c == ch {
+                    if chars.peek() == Some(&ch) {
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        } else if ch == '#' {
+            flush(&mut word, &mut tokens);
+            tokens.push(None);
+            skip_line(&mut chars);
+        } else if ch == '-' && chars.peek() == Some(&'-') {
+            let mut ahead = chars.clone();
+            ahead.next();
+            if ahead
+                .peek()
+                .is_none_or(|c| c.is_whitespace() || c.is_control())
+            {
+                flush(&mut word, &mut tokens);
+                tokens.push(None);
+                skip_line(&mut chars);
+            } else {
+                // `a--1` is `a - -1`, not a comment.
+                flush(&mut word, &mut tokens);
+                tokens.push(None);
+            }
+        } else if ch == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            flush(&mut word, &mut tokens);
+            tokens.push(None);
+            if chars.peek().is_some_and(|&c| c == '!' || c == '+') {
+                // Executable comment or hint: scan its contents; the closing
+                // `*/` is ordinary punctuation.
+                chars.next();
+                continue;
+            }
+            let mut previous = '\0';
+            for c in chars.by_ref() {
+                if previous == '*' && c == '/' {
+                    break;
+                }
+                previous = c;
+            }
+        } else if ch.is_alphanumeric() || ch == '_' || ch == '$' {
+            word.push(ch);
+        } else {
+            flush(&mut word, &mut tokens);
+            if !ch.is_whitespace() {
+                tokens.push(None);
+            }
+        }
+    }
+    flush(&mut word, &mut tokens);
+
+    let is = |i: usize, kw: &str| tokens.get(i).and_then(|t| t.as_deref()) == Some(kw);
+    (0..tokens.len()).any(|i| {
+        (is(i, "FOR") && (is(i + 1, "UPDATE") || is(i + 1, "SHARE")))
+            || (is(i, "LOCK") && is(i + 1, "IN") && is(i + 2, "SHARE") && is(i + 3, "MODE"))
+    })
+}
+
+/// The auto-LIMIT actually injected for a requested `row_limit`: `0` falls back
+/// to 1,000 (as before), and the result is clamped to the hard row ceiling.
+/// Only the injected LIMIT uses this; decoding is capped by the ceiling itself.
+pub fn effective_row_limit(row_limit: usize, ceiling: usize) -> usize {
+    let requested = if row_limit == 0 { 1000 } else { row_limit };
+    requested.min(ceiling.max(1))
+}
+
+/// The blocked reason implied by a statement alone (before truncation is known).
+pub fn statement_blocked_reason(sql: &str, is_call: bool) -> Option<FullExportBlockedReason> {
+    if is_call {
+        Some(FullExportBlockedReason::Call)
+    } else if has_locking_clause(sql) {
+        Some(FullExportBlockedReason::Locking)
+    } else {
+        None
+    }
+}
+
 /// Returns true if the statement is SELECT-like (returns rows).
 /// Note: CALL is intentionally excluded — it is handled via a dedicated
 /// `execute_call_query` path that supports multiple result sets.
@@ -570,6 +801,7 @@ pub async fn execute_query_impl(
     tab_id: &str,
     sql: &str,
     row_limit: usize,
+    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
 ) -> Result<ExecuteQueryResult, String> {
     if !state.registry.contains(connection_id) {
         return Err(format!("Connection '{connection_id}' not found"));
@@ -580,7 +812,8 @@ pub async fn execute_query_impl(
         return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
     }
 
-    let (stored, item) = crate::mysql::multi_result::execute_single_on_session(
+    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
+    let (stored, _item) = crate::mysql::multi_result::execute_single_on_session(
         state,
         connection_id,
         tab_id,
@@ -589,32 +822,28 @@ pub async fn execute_query_impl(
     )
     .await?;
 
+    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let item = MultiQueryResultItem::from_stored(&stored, None, true);
+
     // Store result set in state — execute_query replaces the WHOLE tab result vector
     state
         .result_cache
         .insert(connection_id, tab_id, vec![stored]);
 
-    Ok(ExecuteQueryResult {
-        query_id: item.query_id,
-        columns: item.columns,
-        total_rows: item.total_rows as usize,
-        execution_time_ms: item.execution_time_ms,
-        total_time_ms: item.total_time_ms,
-        affected_rows: item.affected_rows,
-        rows: item.rows,
-        auto_limit_applied: item.auto_limit_applied,
-    })
+    Ok(ExecuteQueryResult::from(item))
 }
 
-/// Coverage stub: exercises connection validation, read-only enforcement, and
-/// auto-limit detection without requiring a live MySQL pool.
+/// Coverage stub: exercises connection validation, read-only enforcement, the
+/// row-limit clamp, auto-limit detection, the view-spec path and the first
+/// window builder without requiring a live MySQL pool.
 #[cfg(coverage)]
 pub async fn execute_query_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
     sql: &str,
-    _row_limit: usize,
+    row_limit: usize,
+    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
 ) -> Result<ExecuteQueryResult, String> {
     // Validate connection exists
     state
@@ -627,6 +856,8 @@ pub async fn execute_query_impl(
         return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
     }
 
+    let ceiling = state.result_cache.row_ceiling();
+    let row_limit = effective_row_limit(row_limit, ceiling);
     let auto_limit_applied = needs_auto_limit(sql);
     let query_id = Uuid::new_v4().to_string();
     // Exercise the same pure-function paths as the real impl so they are
@@ -640,7 +871,7 @@ pub async fn execute_query_impl(
         is_select_like(&keyword)
     };
     if auto_limit_applied {
-        let _sql_to_execute = inject_limit_into_select(sql, 1000);
+        let _sql_to_execute = inject_limit_into_select(sql, row_limit);
     }
 
     // Track a dummy thread ID to exercise the running_queries path
@@ -651,81 +882,24 @@ pub async fn execute_query_impl(
         .await
         .insert(key.clone(), 42u64);
 
+    let mut stored = StoredResult::empty(query_id);
+    stored.auto_limit_applied = auto_limit_applied;
+    stored.applied_row_limit = auto_limit_applied.then_some(row_limit);
+    stored.row_ceiling = ceiling;
+    stored.source_sql = sql.to_string();
+    stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
+    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let item = MultiQueryResultItem::from_stored(&stored, None, true);
+
     // Store empty result in state (exercises the result_cache path)
-    state.result_cache.insert(
-        connection_id,
-        tab_id,
-        vec![StoredResult {
-            query_id: query_id.clone(),
-            columns: vec![],
-            rows: Arc::new(vec![]),
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            auto_limit_applied,
-        }],
-    );
+    state
+        .result_cache
+        .insert(connection_id, tab_id, vec![stored]);
 
     // Remove dummy thread ID
     state.running_queries.write().await.remove(&key);
 
-    Ok(ExecuteQueryResult {
-        query_id,
-        columns: vec![],
-        total_rows: 0,
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        rows: Arc::new(vec![]),
-        auto_limit_applied,
-    })
-}
-
-/// Response for `fetch_cached_rows`.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchCachedRowsResult {
-    pub rows: SharedRows,
-    pub columns: Vec<ColumnMeta>,
-}
-
-pub fn fetch_cached_rows_impl(
-    state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    query_id: &str,
-    result_index: Option<usize>,
-) -> Result<FetchCachedRowsResult, String> {
-    let cache_result = state.result_cache.get(connection_id, tab_id);
-    if cache_result.is_expired() {
-        return Err(
-            "results_expired: Results for this tab have expired. Re-run the query to see results."
-                .to_string(),
-        );
-    }
-    let entry = cache_result
-        .into_entry()
-        .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-    let result_vec = &entry.value;
-
-    let idx = result_index.unwrap_or(0);
-    let stored = result_vec.get(idx).ok_or_else(|| {
-        format!(
-            "Result index {idx} out of range (total: {})",
-            result_vec.len()
-        )
-    })?;
-
-    if stored.query_id != query_id {
-        return Err(
-            "Query ID mismatch — results may have been replaced by a newer query".to_string(),
-        );
-    }
-
-    Ok(FetchCachedRowsResult {
-        rows: stored.rows.clone(),
-        columns: stored.columns.clone(),
-    })
+    Ok(ExecuteQueryResult::from(item))
 }
 
 pub fn evict_results_impl(state: &AppState, connection_id: &str, tab_id: &str) {
@@ -1189,139 +1363,6 @@ pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std:
     }
 }
 
-/// Sort a stored result set by a named column and return all sorted rows.
-///
-/// Copies the row pointers (not the row contents) out of the cache, offloads
-/// the O(n log n) sort to the blocking thread pool, performs a staleness check,
-/// and swaps the sorted pointer list back in place.
-pub async fn sort_results_impl(
-    state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    column_name: &str,
-    direction: &str, // "asc" or "desc"
-    result_index: Option<usize>,
-) -> Result<SortedRowsResult, String> {
-    let cache_result = state.result_cache.get(connection_id, tab_id);
-    if cache_result.is_expired() {
-        return Err(
-            "results_expired: Results for this tab have expired. Re-run the query to see results."
-                .to_string(),
-        );
-    }
-    let entry = cache_result
-        .into_entry()
-        .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-
-    // Capture the invalidation version up front so the post-sort write-back can
-    // skip its update if a new query bumped the version during sorting.
-    let expected_invalidation_version = state
-        .result_cache
-        .current_invalidation_version(connection_id, tab_id);
-
-    let idx = result_index.unwrap_or(0);
-
-    // Borrow the target slot instead of cloning the whole `Vec<StoredResult>`.
-    // We only need `col_idx` (a usize), the small `query_id` String, and the
-    // slot's rows Arc — cloning every sibling result's `columns` would be waste.
-    let stored = entry.value.get(idx).ok_or_else(|| {
-        format!(
-            "Result index {idx} out of range (total: {})",
-            entry.value.len()
-        )
-    })?;
-
-    // Find column index (validation before spawn_blocking for fast error returns)
-    let col_idx = stored
-        .columns
-        .iter()
-        .position(|c| c.name == column_name)
-        .ok_or_else(|| format!("Column '{column_name}' not found in result set"))?;
-
-    let is_asc = direction == "asc";
-
-    // Capture query_id for staleness guard
-    let query_id = stored.query_id.clone();
-
-    // Copy the row pointers into an owned Vec to move into the blocking
-    // closure. Each element is a `SharedRow`, so this never copies cell data.
-    let taken = Arc::clone(&stored.rows);
-    drop(entry);
-    let mut rows: Vec<SharedRow> = (*taken).clone();
-    drop(taken);
-
-    // Offload the sort to the blocking thread pool
-    rows = tokio::task::spawn_blocking(move || {
-        rows.sort_by(|a, b| {
-            let va = a.get(col_idx).unwrap_or(&serde_json::Value::Null);
-            let vb = b.get(col_idx).unwrap_or(&serde_json::Value::Null);
-            let cmp = compare_json_values(va, vb);
-            if is_asc {
-                cmp
-            } else {
-                cmp.reverse()
-            }
-        });
-        rows
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "sort spawn_blocking task failed");
-        format!("Sort task failed: {e}")
-    })?;
-
-    // Staleness and eviction guards: re-read the cache after the sort
-    let expired_during_sort_msg =
-        "results_expired: Results for this tab expired during sort. Re-run the query.";
-    let post_sort_result = state.result_cache.get(connection_id, tab_id);
-    if post_sort_result.is_expired() {
-        return Err(expired_during_sort_msg.to_string());
-    }
-    let post_entry = post_sort_result
-        .into_entry()
-        .ok_or_else(|| expired_during_sort_msg.to_string())?;
-
-    // Check if query_id changed (another query was executed during the sort)
-    let post_stored = post_entry
-        .value
-        .get(idx)
-        .ok_or_else(|| "Results were replaced during sort".to_string())?;
-    if post_stored.query_id != query_id {
-        return Err("Results were refreshed during sort".to_string());
-    }
-
-    // Drop the post-sort read borrow before the in-place write so `make_mut`
-    // can mutate the cached entry directly instead of cloning it.
-    drop(post_entry);
-
-    // Wrap the sorted buffer in ONE fresh Arc, shared between the cache
-    // write-back and the IPC return value (no extra deep copy).
-    let sorted_rows: SharedRows = Arc::new(rows);
-
-    // Apply the sorted rows in place under the captured invalidation version.
-    // This swaps only `value[idx].rows` (no sibling-`columns` clone) and is
-    // skipped if a new query bumped the invalidation version before the write.
-    // The write is serialized with cell edits, so neither can lose the other's
-    // update; the `query_id` re-check above is the defense-in-depth guard.
-    let applied = state.result_cache.update_rows_in_place_if_current(
-        connection_id,
-        tab_id,
-        expected_invalidation_version,
-        idx,
-        Arc::clone(&sorted_rows),
-    );
-    if !applied {
-        tracing::info!(
-            connection_id = %connection_id,
-            tab_id = %tab_id,
-            "sort write-back skipped: results invalidated during sort"
-        );
-        return Err("Results were refreshed during sort".to_string());
-    }
-
-    Ok(SortedRowsResult { rows: sorted_rows })
-}
-
 // ── Analyze query for edit ─────────────────────────────────────────────────────
 
 /// Analyze a SQL query and return table metadata for inline editing.
@@ -1488,11 +1529,17 @@ pub async fn analyze_query_for_edit_impl(
 
 /// Update specific cells in a cached result set after a save operation.
 ///
-/// Builds a fresh `SharedRow` for `row_index` and a new pointer list that shares
-/// every other row with the previous one, then swaps it in through a
-/// version-checked in-place cache update. Rows already returned over IPC are
-/// never mutated, and an edit that races a re-run is refused instead of
-/// resurrecting the old result.
+/// `row_index` is a **base** row index (the index into the result's original
+/// rows), never a view position, so a save under any sort or filter targets the
+/// right row. A tombstoned (deleted) row is refused.
+///
+/// Builds a fresh `SharedRow` for the edited row and a new pointer list that
+/// shares every other row with the previous one, then swaps it in through the
+/// version-checked, lock-serialized slot modifier. Rows already returned over
+/// IPC are never mutated, and an edit that races a re-run is refused instead of
+/// resurrecting the old result: the slot must still hold `query_id`, so a save
+/// that lands after a re-run replaced the slot never edits the new result at
+/// the old base index. The view (and its version) is unchanged.
 pub fn update_result_cell_impl(
     state: &AppState,
     connection_id: &str,
@@ -1500,6 +1547,7 @@ pub fn update_result_cell_impl(
     row_index: usize,
     updates: HashMap<usize, serde_json::Value>,
     result_index: Option<usize>,
+    query_id: &str,
 ) -> Result<(), String> {
     let expected_invalidation_version = state
         .result_cache
@@ -1507,10 +1555,7 @@ pub fn update_result_cell_impl(
 
     let cache_result = state.result_cache.get(connection_id, tab_id);
     if cache_result.is_expired() {
-        return Err(
-            "results_expired: Results for this tab have expired. Re-run the query to see results."
-                .to_string(),
-        );
+        return Err(crate::mysql::result_view::RESULTS_EXPIRED_MESSAGE.to_string());
     }
     let entry = cache_result
         .into_entry()
@@ -1525,61 +1570,105 @@ pub fn update_result_cell_impl(
     }
     drop(entry);
 
-    let applied = state.result_cache.modify_rows_in_place_if_current(
+    let outcome = state.result_cache.modify_slot_in_place_if_current(
         connection_id,
         tab_id,
         expected_invalidation_version,
         idx,
-        |rows| {
-            let current = rows.get(row_index).ok_or_else(|| {
+        Some(query_id),
+        None,
+        |slot| {
+            let current = slot.rows.get(row_index).ok_or_else(|| {
                 format!(
                     "Row index {row_index} out of bounds (total rows: {})",
-                    rows.len()
+                    slot.rows.len()
                 )
             })?;
+            if u32::try_from(row_index).is_ok_and(|i| slot.tombstones.contains(&i)) {
+                return Err(format!(
+                    "Row {row_index} was deleted from this result and can't be updated"
+                ));
+            }
             let mut edited: Vec<serde_json::Value> = current.to_vec();
             for (col_index, new_value) in updates {
                 if col_index < edited.len() {
                     edited[col_index] = new_value;
                 }
             }
-            let mut next: Vec<SharedRow> = (**rows).clone();
+            let mut next: Vec<SharedRow> = (*slot.rows).clone();
             next[row_index] = SharedRow::from(edited);
-            Ok(Arc::new(next))
+            slot.rows = Arc::new(next);
+            Ok(())
         },
     )?;
 
-    if !applied {
-        tracing::info!(
-            connection_id = %connection_id,
-            tab_id = %tab_id,
-            "result cell update skipped: results invalidated during edit"
-        );
-        return Err("Results were refreshed during edit".to_string());
+    match outcome {
+        crate::mysql::result_cache::SlotWrite::Applied(()) => Ok(()),
+        _ => {
+            tracing::info!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                "result cell update skipped: results invalidated during edit"
+            );
+            Err("Results were refreshed during edit".to_string())
+        }
     }
-
-    Ok(())
 }
 
 // ── Multi-query result types ───────────────────────────────────────────────────
 
 /// A single result item from a multi-query or CALL execution.
+///
+/// Carries metadata plus the **first window** of the result's view; the full
+/// result stays in the Rust cache and is read with `fetch_result_window`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MultiQueryResultItem {
     pub query_id: String,
     pub source_sql: String,
     pub columns: Vec<ColumnMeta>,
+    /// Live base rows (tombstones excluded).
     pub total_rows: i64,
     /// Server-execution-only time (narrow).
     pub execution_time_ms: u64,
     /// Combined time (execution + transfer + serialization).
     pub total_time_ms: u64,
     pub affected_rows: u64,
-    pub rows: SharedRows,
     pub auto_limit_applied: bool,
     pub error: Option<String>,
     pub re_executable: bool,
+    pub view_row_count: usize,
+    pub view_version: u64,
+    pub truncated: bool,
+    pub row_ceiling: usize,
+    pub applied_row_limit: Option<usize>,
+    pub full_export_blocked_reason: Option<FullExportBlockedReason>,
+    pub first_window: crate::mysql::result_view::ResultWindow,
+}
+
+impl MultiQueryResultItem {
+    /// Build the IPC item for a stored result: metadata plus its first window.
+    pub fn from_stored(stored: &StoredResult, error: Option<String>, re_executable: bool) -> Self {
+        Self {
+            query_id: stored.query_id.clone(),
+            source_sql: stored.source_sql.clone(),
+            columns: stored.columns.clone(),
+            total_rows: stored.live_row_count() as i64,
+            execution_time_ms: stored.execution_time_ms,
+            total_time_ms: stored.total_time_ms,
+            affected_rows: stored.affected_rows,
+            auto_limit_applied: stored.auto_limit_applied,
+            error,
+            re_executable,
+            view_row_count: crate::mysql::result_view::view_len(stored),
+            view_version: stored.view_version,
+            truncated: stored.truncated,
+            row_ceiling: stored.row_ceiling,
+            applied_row_limit: stored.applied_row_limit,
+            full_export_blocked_reason: stored.full_export_blocked_reason,
+            first_window: crate::mysql::result_view::first_window(stored),
+        }
+    }
 }
 
 /// Wrapper for multiple result items returned from batch execution.
@@ -1591,9 +1680,88 @@ pub struct MultiQueryResult {
 
 // ── Re-execute single result ───────────────────────────────────────────────────
 
+/// Verify a re-execute target slot exists and return its current query id.
+fn capture_reexecute_target(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    result_index: usize,
+) -> Result<String, String> {
+    let cache_result = state.result_cache.get(connection_id, tab_id);
+    if cache_result.is_expired() {
+        return Err(crate::mysql::result_view::RESULTS_EXPIRED_MESSAGE.to_string());
+    }
+    let entry = cache_result
+        .into_entry()
+        .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+    let result_vec = &entry.value;
+    if result_index >= result_vec.len() {
+        return Err(format!(
+            "Result index {result_index} out of range (total: {})",
+            result_vec.len()
+        ));
+    }
+    Ok(result_vec[result_index].query_id.clone())
+}
+
+/// Replace only the targeted result slot after a re-execution, re-validating
+/// that the tab, the index and the captured query id are all still current so
+/// a newer query's results are never overwritten.
+fn replace_reexecuted_slot(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    result_index: usize,
+    expected_query_id: &str,
+    stored: StoredResult,
+) -> Result<(), String> {
+    let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
+        Some(e) => e,
+        None => {
+            tracing::warn!(
+                tab_id,
+                result_index,
+                "reexecute_single_result: tab results disappeared after await — discarding stale result"
+            );
+            return Err(
+                "Tab results no longer exist — a newer query may have replaced them".to_string(),
+            );
+        }
+    };
+    let mut result_vec = entry.value.clone();
+    if result_index >= result_vec.len() {
+        tracing::warn!(
+            tab_id,
+            result_index,
+            result_vec_len = result_vec.len(),
+            "reexecute_single_result: result_index out of range after await — discarding stale result"
+        );
+        return Err(format!(
+            "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
+            result_vec.len()
+        ));
+    }
+    if result_vec[result_index].query_id != expected_query_id {
+        tracing::warn!(
+            tab_id,
+            result_index,
+            expected_query_id = %expected_query_id,
+            actual_query_id = %result_vec[result_index].query_id,
+            "reexecute_single_result: query_id mismatch after await — discarding stale result"
+        );
+        return Err("Result was replaced by a newer query during re-execution".to_string());
+    }
+    result_vec[result_index] = stored;
+    state.result_cache.insert(connection_id, tab_id, result_vec);
+    Ok(())
+}
+
 /// Re-execute a single SQL statement and replace only the targeted entry in the
-/// `Vec<StoredResult>` for a given tab. Uses the existing sqlx pool.
-/// Returns a `MultiQueryResultItem` with the fresh result data.
+/// `Vec<StoredResult>` for a given tab. Runs on the shared editor session.
+///
+/// When `view_spec` is given, the fresh result is stored with that sort and
+/// filter and its first window comes back already sorted and filtered.
+/// Conditions or a sort on columns the new result lacks are dropped.
 #[cfg(not(coverage))]
 pub async fn reexecute_single_result_impl(
     state: &AppState,
@@ -1602,6 +1770,7 @@ pub async fn reexecute_single_result_impl(
     result_index: usize,
     sql: &str,
     row_limit: usize,
+    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
 ) -> Result<MultiQueryResultItem, String> {
     if !state.registry.contains(connection_id) {
         return Err(format!("Connection '{connection_id}' not found"));
@@ -1614,29 +1783,10 @@ pub async fn reexecute_single_result_impl(
 
     // Verify the result index exists and capture the current query_id for
     // post-await staleness detection.
-    let expected_query_id: Option<String>;
-    {
-        let cache_result = state.result_cache.get(connection_id, tab_id);
-        if cache_result.is_expired() {
-            return Err(
-                "results_expired: Results for this tab have expired. Re-run the query to see results."
-                    .to_string(),
-            );
-        }
-        let entry = cache_result
-            .into_entry()
-            .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-        let result_vec = &entry.value;
-        if result_index >= result_vec.len() {
-            return Err(format!(
-                "Result index {result_index} out of range (total: {})",
-                result_vec.len()
-            ));
-        }
-        expected_query_id = Some(result_vec[result_index].query_id.clone());
-    }
+    let expected_query_id = capture_reexecute_target(state, connection_id, tab_id, result_index)?;
 
-    let (stored, item) = crate::mysql::multi_result::execute_single_on_session(
+    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
+    let (stored, _item) = crate::mysql::multi_result::execute_single_on_session(
         state,
         connection_id,
         tab_id,
@@ -1644,63 +1794,24 @@ pub async fn reexecute_single_result_impl(
         row_limit,
     )
     .await?;
+    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let item = MultiQueryResultItem::from_stored(&stored, None, true);
 
-    // Replace only the targeted result entry — re-validate after the await to
-    // prevent out-of-bounds panics or stale overwrites if the tab's results
-    // were replaced by a newer query while this re-execution was in flight.
-    {
-        let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
-            Some(e) => e,
-            None => {
-                tracing::warn!(
-                    tab_id,
-                    result_index,
-                    "reexecute_single_result: tab results disappeared after await — discarding stale result"
-                );
-                return Err(
-                    "Tab results no longer exist — a newer query may have replaced them"
-                        .to_string(),
-                );
-            }
-        };
-        let mut result_vec = entry.value.clone();
-        if result_index >= result_vec.len() {
-            tracing::warn!(
-                tab_id,
-                result_index,
-                result_vec_len = result_vec.len(),
-                "reexecute_single_result: result_index out of range after await — discarding stale result"
-            );
-            return Err(format!(
-                "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
-                result_vec.len()
-            ));
-        }
-        // Check that the entry at result_index still has the same query_id
-        // that was captured before the await — prevents overwriting results
-        // from a newer query execution.
-        if let Some(ref expected_qid) = expected_query_id {
-            if result_vec[result_index].query_id != *expected_qid {
-                tracing::warn!(
-                    tab_id,
-                    result_index,
-                    expected_query_id = %expected_qid,
-                    actual_query_id = %result_vec[result_index].query_id,
-                    "reexecute_single_result: query_id mismatch after await — discarding stale result"
-                );
-                return Err("Result was replaced by a newer query during re-execution".to_string());
-            }
-        }
-        result_vec[result_index] = stored;
-        state.result_cache.insert(connection_id, tab_id, result_vec);
-    }
+    replace_reexecuted_slot(
+        state,
+        connection_id,
+        tab_id,
+        result_index,
+        &expected_query_id,
+        stored,
+    )?;
 
     Ok(item)
 }
 
 /// Coverage stub for `reexecute_single_result_impl`: exercises connection validation,
-/// read-only enforcement, result index validation, and result replacement without
-/// requiring a live MySQL pool.
+/// read-only enforcement, the row-limit clamp, result index validation, the
+/// view-spec path and result replacement without requiring a live MySQL pool.
 #[cfg(coverage)]
 pub async fn reexecute_single_result_impl(
     state: &AppState,
@@ -1708,7 +1819,8 @@ pub async fn reexecute_single_result_impl(
     tab_id: &str,
     result_index: usize,
     sql: &str,
-    _row_limit: usize,
+    row_limit: usize,
+    view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
 ) -> Result<MultiQueryResultItem, String> {
     // Validate connection exists
     state
@@ -1722,6 +1834,8 @@ pub async fn reexecute_single_result_impl(
     }
 
     // Exercise pure-function paths
+    let ceiling = state.result_cache.row_ceiling();
+    let row_limit = effective_row_limit(row_limit, ceiling);
     let auto_limit_applied = needs_auto_limit(sql);
     let stripped = strip_non_executable_comments(sql);
     let keyword = get_first_keyword(&stripped);
@@ -1732,87 +1846,47 @@ pub async fn reexecute_single_result_impl(
         is_select_like(&keyword)
     };
     if auto_limit_applied {
-        let _sql_to_execute = inject_limit_into_select(sql, 1000);
+        let _sql_to_execute = inject_limit_into_select(sql, row_limit);
     }
 
-    let query_id = Uuid::new_v4().to_string();
-    // Verify result index exists and capture expected_query_id for staleness detection
-    let expected_query_id: Option<String>;
-    {
-        let cache_result = state.result_cache.get(connection_id, tab_id);
-        if cache_result.is_expired() {
-            return Err(
-                "results_expired: Results for this tab have expired. Re-run the query to see results."
-                    .to_string(),
-            );
-        }
-        let entry = cache_result
-            .into_entry()
-            .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-        let result_vec = &entry.value;
-        if result_index >= result_vec.len() {
-            return Err(format!(
-                "Result index {result_index} out of range (total: {})",
-                result_vec.len()
-            ));
-        }
-        expected_query_id = Some(result_vec[result_index].query_id.clone());
-    }
+    let expected_query_id = capture_reexecute_target(state, connection_id, tab_id, result_index)?;
 
-    // Re-validate after (simulated) await — check tab still exists, index in range,
-    // and query_id hasn't changed (prevents overwriting newer results).
-    {
-        let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
-            Some(e) => e,
-            None => {
-                return Err(
-                    "Tab results no longer exist — a newer query may have replaced them"
-                        .to_string(),
-                );
-            }
-        };
-        let mut result_vec = entry.value.clone();
-        if result_index >= result_vec.len() {
-            return Err(format!(
-                "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
-                result_vec.len()
-            ));
-        }
-        if let Some(ref expected_qid) = expected_query_id {
-            if result_vec[result_index].query_id != *expected_qid {
-                return Err("Result was replaced by a newer query during re-execution".to_string());
-            }
-        }
-        result_vec[result_index] = StoredResult {
-            query_id: query_id.clone(),
-            columns: vec![],
-            rows: Arc::new(vec![]),
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            auto_limit_applied,
-        };
-        state.result_cache.insert(connection_id, tab_id, result_vec);
+    // Re-validate after the (simulated) execution and replace the slot. The
+    // previous slot's rows stand in for the fresh result so the view-spec
+    // path is exercised against real data.
+    let previous = state
+        .result_cache
+        .get(connection_id, tab_id)
+        .into_entry()
+        .and_then(|entry| entry.value.get(result_index).cloned());
+    let mut stored = StoredResult::empty(Uuid::new_v4().to_string());
+    if let Some(previous) = previous {
+        stored.columns = previous.columns;
+        stored.rows = previous.rows;
     }
+    stored.auto_limit_applied = auto_limit_applied;
+    stored.applied_row_limit = auto_limit_applied.then_some(row_limit);
+    stored.row_ceiling = ceiling;
+    stored.source_sql = sql.to_string();
+    stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
+    let stored = crate::mysql::result_view::apply_initial_view(stored, view_spec).await?;
+    let item = MultiQueryResultItem::from_stored(&stored, None, true);
 
-    Ok(MultiQueryResultItem {
-        query_id,
-        source_sql: sql.to_string(),
-        columns: vec![],
-        total_rows: 0,
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        rows: Arc::new(vec![]),
-        auto_limit_applied,
-        error: None,
-        re_executable: true,
-    })
+    replace_reexecuted_slot(
+        state,
+        connection_id,
+        tab_id,
+        result_index,
+        &expected_query_id,
+        stored,
+    )?;
+
+    Ok(item)
 }
 
 // ── Multi-query execution ──────────────────────────────────────────────────────
 
-/// Execute multiple SQL statements sequentially on a single `mysql_async` connection.
+/// Execute multiple SQL statements sequentially on the shared editor session.
 ///
 /// Stores all results in `state.results` under `(connection_id, tab_id)` and
 /// returns a `MultiQueryResult` with one entry per statement (plus extra entries
@@ -1832,6 +1906,7 @@ pub async fn execute_multi_query_impl(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     let is_read_only = state.registry.is_read_only(connection_id);
+    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
 
     let (stored_results, result_items) = crate::mysql::multi_result::execute_multi_query_internal(
         state,
@@ -1854,15 +1929,15 @@ pub async fn execute_multi_query_impl(
 }
 
 /// Coverage stub for `execute_multi_query_impl`: exercises connection validation,
-/// read-only enforcement, statement classification, and result storage without
-/// requiring a live MySQL connection.
+/// read-only enforcement, statement classification, the row-limit clamp, the
+/// first-window builder and result storage without a live MySQL connection.
 #[cfg(coverage)]
 pub async fn execute_multi_query_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
     statements: Vec<String>,
-    _row_limit: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
     // Validate connection exists
     state
@@ -1871,6 +1946,8 @@ pub async fn execute_multi_query_impl(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     let is_read_only = state.registry.is_read_only(connection_id);
+    let ceiling = state.result_cache.row_ceiling();
+    let row_limit = effective_row_limit(row_limit, ceiling);
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
@@ -1883,29 +1960,14 @@ pub async fn execute_multi_query_impl(
 
         // Exercise read-only enforcement
         if is_read_only && !is_read_only_allowed(sql) {
-            let query_id = uuid::Uuid::new_v4().to_string();
-            stored_results.push(StoredResult {
-                query_id: query_id.clone(),
-                columns: vec![],
-                rows: Arc::new(vec![]),
-                execution_time_ms: 0,
-                total_time_ms: 0,
-                affected_rows: 0,
-                auto_limit_applied: false,
-            });
-            result_items.push(MultiQueryResultItem {
-                query_id,
-                source_sql: sql.to_string(),
-                columns: vec![],
-                total_rows: 0,
-                execution_time_ms: 0,
-                total_time_ms: 0,
-                affected_rows: 0,
-                rows: Arc::new(vec![]),
-                auto_limit_applied: false,
-                error: Some("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string()),
-                re_executable: false,
-            });
+            let mut stored = StoredResult::empty(uuid::Uuid::new_v4().to_string());
+            stored.source_sql = sql.to_string();
+            result_items.push(MultiQueryResultItem::from_stored(
+                &stored,
+                Some("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string()),
+                false,
+            ));
+            stored_results.push(stored);
             break;
         }
 
@@ -1921,32 +1983,17 @@ pub async fn execute_multi_query_impl(
         };
         let auto_limit_applied = needs_auto_limit(sql);
         if auto_limit_applied {
-            let _sql_to_execute = inject_limit_into_select(sql, 1000);
+            let _sql_to_execute = inject_limit_into_select(sql, row_limit);
         }
 
-        let query_id = uuid::Uuid::new_v4().to_string();
-        stored_results.push(StoredResult {
-            query_id: query_id.clone(),
-            columns: vec![],
-            rows: Arc::new(vec![]),
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            auto_limit_applied,
-        });
-        result_items.push(MultiQueryResultItem {
-            query_id,
-            source_sql: sql.to_string(),
-            columns: vec![],
-            total_rows: 0,
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            rows: Arc::new(vec![]),
-            auto_limit_applied,
-            error: None,
-            re_executable: !is_call,
-        });
+        let mut stored = StoredResult::empty(uuid::Uuid::new_v4().to_string());
+        stored.auto_limit_applied = auto_limit_applied;
+        stored.applied_row_limit = auto_limit_applied.then_some(row_limit);
+        stored.row_ceiling = ceiling;
+        stored.source_sql = sql.to_string();
+        stored.full_export_blocked_reason = statement_blocked_reason(sql, is_call);
+        result_items.push(MultiQueryResultItem::from_stored(&stored, None, !is_call));
+        stored_results.push(stored);
     }
 
     // Track a dummy thread ID to exercise the running_queries path
@@ -1993,6 +2040,7 @@ pub async fn execute_call_query_impl(
         return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
     }
 
+    let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
     let statements = vec![sql.to_string()];
     let (stored_results, result_items) = crate::mysql::multi_result::execute_multi_query_internal(
         state,
@@ -2015,14 +2063,15 @@ pub async fn execute_call_query_impl(
 }
 
 /// Coverage stub for `execute_call_query_impl`: exercises connection validation,
-/// read-only enforcement, and CALL detection without requiring a live MySQL connection.
+/// read-only enforcement, CALL detection, the row-limit clamp and the
+/// first-window builder without requiring a live MySQL connection.
 #[cfg(coverage)]
 pub async fn execute_call_query_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
     sql: &str,
-    _row_limit: usize,
+    row_limit: usize,
 ) -> Result<MultiQueryResult, String> {
     // Validate connection exists
     state
@@ -2037,10 +2086,10 @@ pub async fn execute_call_query_impl(
         return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
     }
 
-    // Exercise CALL detection
-    let _is_call = crate::mysql::multi_result::is_call_statement(sql);
-
-    let query_id = uuid::Uuid::new_v4().to_string();
+    // Exercise CALL detection and the row-limit clamp
+    let is_call = crate::mysql::multi_result::is_call_statement(sql);
+    let ceiling = state.result_cache.row_ceiling();
+    let _row_limit = effective_row_limit(row_limit, ceiling);
 
     // Track a dummy thread ID to exercise the running_queries path
     let key = (connection_id.to_string(), tab_id.to_string());
@@ -2051,15 +2100,11 @@ pub async fn execute_call_query_impl(
         .insert(key.clone(), 42u64);
     state.running_queries.write().await.remove(&key);
 
-    let stored = StoredResult {
-        query_id: query_id.clone(),
-        columns: vec![],
-        rows: Arc::new(vec![]),
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        auto_limit_applied: false,
-    };
+    let mut stored = StoredResult::empty(uuid::Uuid::new_v4().to_string());
+    stored.row_ceiling = ceiling;
+    stored.source_sql = sql.to_string();
+    stored.full_export_blocked_reason = statement_blocked_reason(sql, is_call);
+    let item = MultiQueryResultItem::from_stored(&stored, None, false);
 
     // Store result in state
     state
@@ -2067,19 +2112,7 @@ pub async fn execute_call_query_impl(
         .insert(connection_id, tab_id, vec![stored]);
 
     Ok(MultiQueryResult {
-        results: vec![MultiQueryResultItem {
-            query_id,
-            source_sql: sql.to_string(),
-            columns: vec![],
-            total_rows: 0,
-            execution_time_ms: 0,
-            total_time_ms: 0,
-            affected_rows: 0,
-            rows: Arc::new(vec![]),
-            auto_limit_applied: false,
-            error: None,
-            re_executable: false,
-        }],
+        results: vec![item],
     })
 }
 

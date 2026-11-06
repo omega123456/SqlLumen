@@ -9,6 +9,7 @@ describe('ResultsSettings', () => {
     useSettingsStore.setState({
       settings: { ...SETTINGS_DEFAULTS },
       pendingChanges: {},
+      validationErrors: {},
       isDirty: false,
       isLoading: false,
       activeSection: 'results',
@@ -55,6 +56,63 @@ describe('ResultsSettings', () => {
 
     expect(useSettingsStore.getState().pendingChanges['results.pageSize']).toBe('750')
     expect(useSettingsStore.getState().pendingChanges['results.nullDisplay']).toBe('(null)')
+  })
+
+  it('renders the maximum rows field with helper text for both fields', () => {
+    render(<ResultsSettings />)
+    const maxRows = screen.getByTestId('settings-max-rows')
+    expect(screen.getByLabelText('Maximum rows kept per result')).toBe(maxRows)
+    expect(maxRows).toHaveValue(100000)
+    expect(maxRows).toHaveAttribute('aria-describedby', 'settings-max-rows-help')
+    expect(maxRows).toHaveAttribute('aria-invalid', 'false')
+    expect(
+      screen.getByText(
+        "Adds a LIMIT to SELECT queries that don't have one. Capped by the maximum below."
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Upper bound for any result, including queries with their own LIMIT or CALL. Results that reach it are marked truncated. Applies to queries run after you save.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-page-size-capped')).not.toBeInTheDocument()
+  })
+
+  it('validates on blur only and shows the inline error with aria-invalid and aria-describedby', async () => {
+    const user = userEvent.setup()
+    render(<ResultsSettings />)
+    const maxRows = screen.getByTestId('settings-max-rows')
+
+    await user.clear(maxRows)
+    await user.type(maxRows, '500')
+    expect(screen.queryByTestId('settings-max-rows-error')).not.toBeInTheDocument()
+
+    await user.tab()
+    const error = screen.getByTestId('settings-max-rows-error')
+    expect(error).toHaveTextContent('Enter a whole number from 1,000 to 1,000,000.')
+    expect(maxRows).toHaveAttribute('aria-invalid', 'true')
+    expect(maxRows).toHaveAttribute(
+      'aria-describedby',
+      'settings-max-rows-help settings-max-rows-error'
+    )
+    // Never silently clamped.
+    expect(useSettingsStore.getState().pendingChanges['results.maxRows']).toBe('500')
+
+    await user.clear(maxRows)
+    await user.type(maxRows, '2000')
+    await user.tab()
+    expect(screen.queryByTestId('settings-max-rows-error')).not.toBeInTheDocument()
+  })
+
+  it('notes when the row limit exceeds the maximum rows kept per result', () => {
+    useSettingsStore.setState({
+      pendingChanges: { 'results.pageSize': '5000', 'results.maxRows': '1000' },
+      isDirty: true,
+    })
+    render(<ResultsSettings />)
+    expect(screen.getByTestId('settings-page-size-capped')).toHaveTextContent(
+      'Limited to the maximum rows kept per result (1,000).'
+    )
   })
 
   it('renders the result cache section with the default cache duration', () => {

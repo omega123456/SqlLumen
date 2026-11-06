@@ -111,8 +111,7 @@ function createRichMonacoEditorMock() {
     function MockEditor() {
       React.useEffect(() => {
         const onMount = props.onMount as
-          | ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void)
-          | undefined
+          ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void) | undefined
         onMount?.(mockEditorInstance, {
           editor: {
             defineTheme: mockDefineTheme,

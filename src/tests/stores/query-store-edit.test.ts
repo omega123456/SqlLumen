@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { overrideNamedIpcCommands } from '../ipc-mock'
+import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import { useQueryStore, isEditableSelectSql, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type {
@@ -8,7 +8,7 @@ import type {
   QueryTableEditInfo,
   TableDataColumnMeta,
 } from '../../types/schema'
-import { flat } from '../helpers/query-test-utils'
+import { flat, firstWindowFor } from '../helpers/query-test-utils'
 
 const overrideNamedCommands = overrideNamedIpcCommands
 
@@ -17,7 +17,7 @@ const QUERY_STORE_EDIT_COMMANDS = [
   'evict_results',
   'execute_query',
   'insert_table_row',
-  'sort_results',
+  'set_result_view',
   'update_result_cell',
   'update_table_row',
 ] as const
@@ -234,10 +234,10 @@ beforeEach(() => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [
+          firstWindow: firstWindowFor([
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
-          ],
+          ]),
 
           autoLimitApplied: false,
         }
@@ -249,6 +249,16 @@ beforeEach(() => {
         return null
       case 'evict_results':
         return null
+      case 'set_result_view':
+        return {
+          viewVersion: 2,
+          viewRowCount: 2,
+          totalRows: 2,
+          firstWindow: firstWindowFor([
+            [1, 'Alice', 'alice@test.com'],
+            [2, 'Bob', 'bob@test.com'],
+          ]),
+        }
       default:
         return null
     }
@@ -314,10 +324,10 @@ describe('useQueryStore — setEditMode', () => {
             totalRows: 2,
             executionTimeMs: 10,
             affectedRows: 0,
-            rows: [
+            firstWindow: firstWindowFor([
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
-            ],
+            ]),
 
             autoLimitApplied: false,
           }
@@ -369,7 +379,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -402,7 +412,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [['Alice']],
+          firstWindow: firstWindowFor([['Alice']]),
 
           autoLimitApplied: false,
         }
@@ -439,7 +449,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 2]],
+          firstWindow: firstWindowFor([[1, 'Alice', 2]]),
 
           autoLimitApplied: false,
         }
@@ -478,7 +488,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'Bob']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'Bob']]),
 
           autoLimitApplied: false,
         }
@@ -517,7 +527,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'alice@test.com', 101, 1, '99.95']]),
 
           autoLimitApplied: false,
         }
@@ -565,7 +575,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'alice@test.com', 101, '99.95']]),
 
           autoLimitApplied: false,
         }
@@ -660,7 +670,9 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', '2025-01-01 12:00:00', 101, '2025-01-02 09:30:00']],
+          firstWindow: firstWindowFor([
+            [1, 'Alice', '2025-01-01 12:00:00', 101, '2025-01-02 09:30:00'],
+          ]),
 
           autoLimitApplied: false,
         }
@@ -701,7 +713,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[101]],
+          firstWindow: firstWindowFor([[101]]),
 
           autoLimitApplied: false,
         }
@@ -738,7 +750,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[5, 'Alice']],
+          firstWindow: firstWindowFor([[5, 'Alice']]),
 
           autoLimitApplied: false,
         }
@@ -771,7 +783,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[5]],
+          firstWindow: firstWindowFor([[5]]),
 
           autoLimitApplied: false,
         }
@@ -801,7 +813,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[5]],
+          firstWindow: firstWindowFor([[5]]),
 
           autoLimitApplied: false,
         }
@@ -832,7 +844,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[5, 'Alice']],
+          firstWindow: firstWindowFor([[5, 'Alice']]),
 
           autoLimitApplied: false,
         }
@@ -870,7 +882,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice']],
+          firstWindow: firstWindowFor([[1, 'Alice']]),
 
           autoLimitApplied: false,
         }
@@ -926,7 +938,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'alice@test.com', 101, 1, '99.95']]),
 
           autoLimitApplied: false,
         }
@@ -969,7 +981,7 @@ describe('useQueryStore — setEditMode', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -1033,10 +1045,12 @@ describe('useQueryStore — cloneSelectedRow', () => {
     useQueryStore.getState().cloneSelectedRow('tab-1')
 
     const tab = flat('tab-1')
-    expect(tab.rows).toHaveLength(3)
+    // The draft is a virtual row right after the last view row; cached rows are untouched.
+    expect(tab.rows).toHaveLength(2)
     expect(tab.selectedRowIndex).toBe(2)
     expect(tab.editingRowIndex).toBe(2)
-    expect(tab.rows[2]).toEqual([null, 'Alice', 'alice@test.com'])
+    expect(tab.editingBaseIndex).toBeNull()
+    expect(tab.draftRow).toEqual([null, 'Alice', 'alice@test.com'])
     expect(tab.editState?.isNewRow).toBe(true)
     expect(tab.editState?.rowKey).toEqual({ id: null })
     expect(tab.editState?.originalValues).toEqual({
@@ -1066,7 +1080,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [['p-001', 'Alpha']],
+          firstWindow: firstWindowFor([['p-001', 'Alpha']]),
 
           autoLimitApplied: false,
         }
@@ -1116,7 +1130,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'alice@test.com']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'alice@test.com']]),
 
           autoLimitApplied: false,
         }
@@ -1175,7 +1189,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -1279,7 +1293,7 @@ describe('useQueryStore — updateCellValue', () => {
 // ---------------------------------------------------------------------------
 
 describe('useQueryStore — syncCellValue', () => {
-  it('updates editState and local row data', async () => {
+  it('updates editState and leaves the cached row untouched (the grid overlays edits)', async () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
@@ -1288,8 +1302,9 @@ describe('useQueryStore — syncCellValue', () => {
     const tab = flat('tab-1')
     expect(tab.editState!.currentValues.name).toBe('Dave')
     expect(tab.editState!.modifiedColumns.has('name')).toBe(true)
-    // Local row data should also be updated
-    expect(tab.rows[0][1]).toBe('Dave') // name is column index 1
+    // Handed-out cached rows are never mutated while editing.
+    expect(tab.rows[0][1]).toBe('Alice')
+    expect(tab.editingBaseIndex).toBe(0)
   })
 
   it('removes from modifiedColumns when value reverts to original', async () => {
@@ -1353,10 +1368,10 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [
+          firstWindow: firstWindowFor([
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
-          ],
+          ]),
 
           autoLimitApplied: false,
         }
@@ -1448,7 +1463,7 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'alice@test.com', 101, '99.95']]),
 
           autoLimitApplied: false,
         }
@@ -1514,7 +1529,7 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'SGVsbG8=']],
+          firstWindow: firstWindowFor([[1, 'SGVsbG8=']]),
           autoLimitApplied: false,
         }
       }
@@ -1565,7 +1580,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(staged.editingRowIndex).toBe(0)
     expect(staged.editState?.originalValues.photo).toBe('SGVsbG8=')
     expect(staged.editState?.currentValues.photo).toEqual(mockBlobEnvelope)
-    expect(staged.rows[0][1]).toEqual(mockBlobEnvelope)
+    expect(staged.rows[0][1]).toBe('SGVsbG8=')
 
     const result = await useQueryStore.getState().saveCurrentRow('tab-1')
 
@@ -1576,10 +1591,13 @@ describe('useQueryStore — saveCurrentRow', () => {
         updatedValues: { photo: mockBlobEnvelope },
       })
     )
+    // The Rust cache gets the displayed value, never the blob envelope, so a
+    // refetch, sort, filter or export reads what the grid shows.
     expect(updateResultCellSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         rowIndex: 0,
-        updates: { 1: mockBlobEnvelope },
+        queryId: 'q-blob-save',
+        updates: { 1: 'U1FMLUx1bWVu' },
       })
     )
 
@@ -1587,6 +1605,56 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(saved.editState).toBeNull()
     expect(saved.editingRowIndex).toBeNull()
     expect(saved.rows[0][1]).toBe('U1FMLUx1bWVu')
+  })
+
+  it('does not paint a saved row into a result a re-run replaced while the save ran', async () => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-race',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstWindow: firstWindowFor([[1, 'Alice']]),
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') {
+        return [
+          {
+            database: 'testdb',
+            table: 'users',
+            columns: mockTableColumns.slice(0, 2),
+            primaryKey: mockPrimaryKey,
+            foreignKeys: [],
+          },
+        ]
+      }
+      if (cmd === 'update_result_cell') {
+        throw new Error('Results were refreshed during edit')
+      }
+      return null
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Alicia')
+
+    await expect(useQueryStore.getState().saveCurrentRow('tab-1')).resolves.toBe(true)
+
+    expect(flat('tab-1').rows[0][1]).toBe('Alice')
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'info',
+      message: expect.stringContaining('saved row not synced into a replaced result'),
+    })
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((toast) => toast.title === 'Cache sync warning')).toBe(false)
+    expect(toasts.some((toast) => toast.title === 'Row saved')).toBe(true)
   })
 
   it('inserts a cloned draft through the typed IPC boundary and re-executes the active result', async () => {
@@ -1607,10 +1675,10 @@ describe('useQueryStore — saveCurrentRow', () => {
             totalRows: 2,
             executionTimeMs: 10,
             affectedRows: 0,
-            rows: [
+            firstWindow: firstWindowFor([
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
-            ],
+            ]),
 
             autoLimitApplied: false,
           }
@@ -1625,11 +1693,11 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 3,
           executionTimeMs: 12,
           affectedRows: 0,
-          rows: [
+          firstWindow: firstWindowFor([
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
             [3, 'Alice', 'alice@test.com'],
-          ],
+          ]),
 
           autoLimitApplied: false,
         }
@@ -1691,7 +1759,7 @@ describe('useQueryStore — saveCurrentRow', () => {
             totalRows: 1,
             executionTimeMs: 10,
             affectedRows: 0,
-            rows: [['p-001', 'Alpha']],
+            firstWindow: firstWindowFor([['p-001', 'Alpha']]),
 
             autoLimitApplied: false,
           }
@@ -1705,10 +1773,10 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [
+          firstWindow: firstWindowFor([
             ['p-001', 'Alpha'],
             ['p-002', 'Alpha'],
-          ],
+          ]),
 
           autoLimitApplied: false,
         }
@@ -1758,7 +1826,7 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', '0xABCD']],
+          firstWindow: firstWindowFor([[1, 'Alice', '0xABCD']]),
 
           autoLimitApplied: false,
         }
@@ -1804,7 +1872,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     useQueryStore.getState().cloneSelectedRow('tab-1')
 
     const cloned = flat('tab-1')
-    expect(cloned.rows[1]).toEqual([null, 'Alice', '0xABCD'])
+    expect(cloned.draftRow).toEqual([null, 'Alice', '0xABCD'])
 
     await useQueryStore.getState().saveCurrentRow('tab-1')
 
@@ -1837,10 +1905,10 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [
+          firstWindow: firstWindowFor([
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
-          ],
+          ]),
 
           autoLimitApplied: false,
         }
@@ -1900,10 +1968,10 @@ describe('useQueryStore — saveCurrentRow', () => {
             totalRows: 2,
             executionTimeMs: 10,
             affectedRows: 0,
-            rows: [
+            firstWindow: firstWindowFor([
               [1, 'Alice', 'alice@test.com'],
               [2, 'Bob', 'bob@test.com'],
-            ],
+            ]),
 
             autoLimitApplied: false,
           }
@@ -1925,7 +1993,7 @@ describe('useQueryStore — saveCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 8,
           affectedRows: 0,
-          rows: [[9, 'Latest', 'latest@test.com']],
+          firstWindow: firstWindowFor([[9, 'Latest', 'latest@test.com']]),
 
           autoLimitApplied: false,
         }
@@ -1957,11 +2025,11 @@ describe('useQueryStore — saveCurrentRow', () => {
       totalRows: 3,
       executionTimeMs: 15,
       affectedRows: 0,
-      rows: [
+      firstWindow: firstWindowFor([
         [1, 'Alice', 'alice@test.com'],
         [2, 'Bob', 'bob@test.com'],
         [3, 'Cloned', 'alice@test.com'],
-      ],
+      ]),
       autoLimitApplied: false,
     })
     await savePromise
@@ -1986,8 +2054,9 @@ describe('useQueryStore — discardCurrentRow', () => {
     useQueryStore.getState().startEditingRow('tab-1', 0)
     useQueryStore.getState().syncCellValue('tab-1', 1, 'Modified')
 
-    // Verify the row was modified
-    expect(flat('tab-1').rows[0][1]).toBe('Modified')
+    // The edit lives in editState only; the cached row is untouched.
+    expect(flat('tab-1').editState?.currentValues.name).toBe('Modified')
+    expect(flat('tab-1').rows[0][1]).toBe('Alice')
 
     useQueryStore.getState().discardCurrentRow('tab-1')
 
@@ -2012,7 +2081,7 @@ describe('useQueryStore — discardCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+          firstWindow: firstWindowFor([[1, 'Alice', 'alice@test.com', 101, '99.95']]),
 
           autoLimitApplied: false,
         }
@@ -2034,7 +2103,8 @@ describe('useQueryStore — discardCurrentRow', () => {
     useQueryStore.getState().startEditingRow('tab-1', 0)
     useQueryStore.getState().syncCellValue('tab-1', 0, 5)
 
-    expect(flat('tab-1').rows[0][0]).toBe(5)
+    expect(flat('tab-1').editState?.modifiedColumns.size).toBe(1)
+    expect(flat('tab-1').rows[0][0]).toBe(1)
 
     useQueryStore.getState().discardCurrentRow('tab-1')
 
@@ -2055,7 +2125,7 @@ describe('useQueryStore — discardCurrentRow', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1, 'SGVsbG8=']],
+          firstWindow: firstWindowFor([[1, 'SGVsbG8=']]),
           autoLimitApplied: false,
         }
       }
@@ -2093,7 +2163,7 @@ describe('useQueryStore — discardCurrentRow', () => {
     useQueryStore.getState().setSelectedRow('tab-1', 0)
 
     useQueryStore.getState().syncCellValue('tab-1', 1, mockBlobEnvelope)
-    expect(flat('tab-1').rows[0][1]).toEqual(mockBlobEnvelope)
+    expect(flat('tab-1').editState?.currentValues.photo).toEqual(mockBlobEnvelope)
 
     useQueryStore.getState().discardCurrentRow('tab-1')
 
@@ -2116,8 +2186,8 @@ describe('useQueryStore — discardCurrentRow', () => {
     useQueryStore.getState().cloneSelectedRow('tab-1')
     useQueryStore.getState().syncCellValue('tab-1', 1, 'Clone Only')
 
-    expect(flat('tab-1').rows).toHaveLength(3)
-    expect(flat('tab-1').rows[2][1]).toBe('Clone Only')
+    expect(flat('tab-1').rows).toHaveLength(2)
+    expect(flat('tab-1').draftRow?.[1]).toBe('Clone Only')
 
     useQueryStore.getState().discardCurrentRow('tab-1')
 
@@ -2318,7 +2388,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 0,
           executionTimeMs: 5,
           affectedRows: 3,
-          rows: [],
+          firstWindow: firstWindowFor([]),
           autoLimitApplied: false,
         }
       }
@@ -2346,7 +2416,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -2378,7 +2448,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 3,
           executionTimeMs: 5,
           affectedRows: 0,
-          rows: [['users'], ['orders'], ['products']],
+          firstWindow: firstWindowFor([['users'], ['orders'], ['products']]),
 
           autoLimitApplied: false,
         }
@@ -2409,7 +2479,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -2591,7 +2661,7 @@ describe('useQueryStore — changeRowLimit clears edit state', () => {
 // ---------------------------------------------------------------------------
 
 describe('useQueryStore — sortResults sort-clear clears edit state', () => {
-  it('clears edit state when sort direction is null (sort-clear)', async () => {
+  it('clearing a sort keeps edit mode but drops the editing row (no re-run)', async () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
@@ -2606,13 +2676,13 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     await flushMicrotasks()
 
     const after = flat('tab-1')
-    expect(after.editMode).toBeNull()
+    expect(after.editMode).toBe('testdb.users')
+    expect(after.editableColumnMap.size).toBeGreaterThan(0)
     expect(after.editState).toBeNull()
-    expect(after.editableColumnMap.size).toBe(0)
-    expect(after.editColumnBindings.size).toBe(0)
-    expect(after.editBoundColumnIndexMap.size).toBe(0)
     expect(after.editingRowIndex).toBeNull()
+    expect(after.editingBaseIndex).toBeNull()
     expect(after.resultStatus).toBe('success')
+    expect(ipc.calls('execute_query')).toHaveLength(1)
   })
 
   it('does not clear edit state for normal sort (asc/desc)', async () => {
@@ -2628,22 +2698,24 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
           totalRows: 2,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [
+          firstWindow: firstWindowFor([
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
-          ],
+          ]),
 
           autoLimitApplied: false,
         }
       }
       if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
-      if (cmd === 'sort_results') {
+      if (cmd === 'set_result_view') {
         return {
-          rows: [
+          viewVersion: 2,
+          viewRowCount: 2,
+          totalRows: 2,
+          firstWindow: firstWindowFor([
             [1, 'Alice', 'alice@test.com'],
             [2, 'Bob', 'bob@test.com'],
-          ],
-          page: 1,
+          ]),
         }
       }
       if (cmd === 'evict_results') return null

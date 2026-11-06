@@ -6,12 +6,12 @@ use rusqlite::Connection;
 use sqllumen_lib::mysql::query_executor::ColumnMeta;
 use sqllumen_lib::mysql::query_executor::StoredResult;
 use sqllumen_lib::mysql::query_executor::{
-    evict_results_impl, fetch_cached_rows_impl, find_with_main_keyword, get_first_keyword,
-    has_top_level_limit, inject_limit_into_select, is_read_only_allowed, is_select_like,
-    needs_auto_limit, read_file_impl, strip_non_executable_comments, touch_results_impl,
-    write_file_impl,
+    evict_results_impl, find_with_main_keyword, get_first_keyword, has_top_level_limit,
+    inject_limit_into_select, is_read_only_allowed, is_select_like, needs_auto_limit,
+    read_file_impl, strip_non_executable_comments, touch_results_impl, write_file_impl,
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::mysql::result_view::fetch_result_window_impl;
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::{Arc, Mutex};
@@ -45,6 +45,9 @@ fn test_state() -> AppState {
         editor_sessions: Default::default(),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -82,6 +85,9 @@ fn test_state_with_zero_ttl() -> AppState {
         editor_sessions: Default::default(),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -526,18 +532,18 @@ fn evict_results_removes_stored_result() {
     state.result_cache.insert(
         "conn-1",
         "tab-1",
-        vec![StoredResult {
-            query_id: "qid-1".to_string(),
-            columns: vec![ColumnMeta {
+        vec![StoredResult::new(
+            "qid-1".to_string(),
+            vec![ColumnMeta {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            execution_time_ms: 5,
-            total_time_ms: 5,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+            5,
+            5,
+            0,
+            false,
+        )],
     );
 
     // Verify it exists
@@ -564,18 +570,18 @@ fn touch_results_reports_available_for_cached_entry() {
     state.result_cache.insert(
         "conn-1",
         "tab-1",
-        vec![StoredResult {
-            query_id: "qid-1".to_string(),
-            columns: vec![ColumnMeta {
+        vec![StoredResult::new(
+            "qid-1".to_string(),
+            vec![ColumnMeta {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            execution_time_ms: 5,
-            total_time_ms: 5,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+            5,
+            5,
+            0,
+            false,
+        )],
     );
 
     let status = touch_results_impl(&state, "conn-1", "tab-1");
@@ -599,15 +605,15 @@ fn touch_results_reports_expired_for_removed_entry() {
     state.result_cache.insert(
         "conn-1",
         "tab-1",
-        vec![StoredResult {
-            query_id: "qid-1".to_string(),
-            columns: vec![],
-            rows: std::sync::Arc::new(vec![]),
-            execution_time_ms: 5,
-            total_time_ms: 5,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+        vec![StoredResult::new(
+            "qid-1".to_string(),
+            vec![],
+            std::sync::Arc::new(vec![]),
+            5,
+            5,
+            0,
+            false,
+        )],
     );
     state.result_cache.remove("conn-1", "tab-1");
     state.result_cache.run_pending_tasks();
@@ -627,15 +633,15 @@ fn touch_results_reports_available_after_spill_rewarm() {
     cache.insert(
         "conn-1",
         "tab-1",
-        vec![StoredResult {
-            query_id: "qid-1".to_string(),
-            columns: vec![],
-            rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            execution_time_ms: 5,
-            total_time_ms: 5,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+        vec![StoredResult::new(
+            "qid-1".to_string(),
+            vec![],
+            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+            5,
+            5,
+            0,
+            false,
+        )],
     );
 
     std::thread::sleep(std::time::Duration::from_millis(1500));
@@ -656,10 +662,10 @@ fn touch_results_reports_available_after_spill_rewarm() {
     assert_eq!(status, serde_json::json!({ "status": "available" }));
 }
 
-// ── Fetch cached rows ───────────────────────────────────────────────────────
+// ── Fetch result window ───────────────────────────────────────────────────────
 
 #[test]
-fn fetch_cached_rows_happy_path() {
+fn fetch_result_window_happy_path() {
     let state = test_state();
 
     let rows: Vec<Vec<serde_json::Value>> =
@@ -668,79 +674,80 @@ fn fetch_cached_rows_happy_path() {
     state.result_cache.insert(
         "c1",
         "t1",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![ColumnMeta {
+        vec![StoredResult::new(
+            "q1".to_string(),
+            vec![ColumnMeta {
                 name: "n".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: crate::common::shared_rows(rows.clone()),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+            crate::common::shared_rows(rows.clone()),
+            1,
+            1,
+            0,
+            false,
+        )],
     );
 
-    let result = fetch_cached_rows_impl(&state, "c1", "t1", "q1", None).expect("should succeed");
+    let result =
+        fetch_result_window_impl(&state, "c1", "t1", 0, "q1", 1, 0, 2000).expect("should succeed");
     assert_eq!(result.rows.len(), 5);
-    assert_eq!(result.columns.len(), 1);
-    assert_eq!(result.columns[0].name, "n");
+    assert_eq!(result.base_indices, vec![0, 1, 2, 3, 4]);
+    assert_eq!(result.view_row_count, 5);
 }
 
 #[test]
-fn fetch_cached_rows_errors_on_expired() {
+fn fetch_result_window_errors_on_expired() {
     let state = test_state_with_zero_ttl();
 
     state.result_cache.insert(
         "c1",
         "t1",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![],
-            rows: std::sync::Arc::new(vec![]),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+        vec![StoredResult::new(
+            "q1".to_string(),
+            vec![],
+            std::sync::Arc::new(vec![]),
+            1,
+            1,
+            0,
+            false,
+        )],
     );
 
     // With zero TTL the entry expires immediately
-    let err = fetch_cached_rows_impl(&state, "c1", "t1", "q1", None)
+    let err = fetch_result_window_impl(&state, "c1", "t1", 0, "q1", 1, 0, 100)
         .expect_err("expired cache should error");
     assert!(err.contains("results_expired"));
 }
 
 #[test]
-fn fetch_cached_rows_errors_when_missing() {
+fn fetch_result_window_errors_when_missing() {
     let state = test_state();
-    let err = fetch_cached_rows_impl(&state, "conn-missing", "tab-missing", "q1", None)
+    let err = fetch_result_window_impl(&state, "conn-missing", "tab-missing", 0, "q1", 1, 0, 100)
         .expect_err("missing result should error");
     assert!(err.contains("No results found") || err.contains("not found"));
 }
 
 #[test]
-fn fetch_cached_rows_errors_on_query_id_mismatch() {
+fn fetch_result_window_errors_on_query_id_mismatch() {
     let state = test_state();
 
     state.result_cache.insert(
         "c1",
         "t1",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![],
-            rows: std::sync::Arc::new(vec![]),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+        vec![StoredResult::new(
+            "q1".to_string(),
+            vec![],
+            std::sync::Arc::new(vec![]),
+            1,
+            1,
+            0,
+            false,
+        )],
     );
 
-    let err = fetch_cached_rows_impl(&state, "c1", "t1", "wrong-id", None)
+    let err = fetch_result_window_impl(&state, "c1", "t1", 0, "wrong-id", 1, 0, 100)
         .expect_err("wrong query_id should error");
-    assert!(err.contains("Query ID mismatch") || err.contains("mismatch"));
+    assert!(err.starts_with("Results were refreshed"));
 }
 
 // ── File I/O ──────────────────────────────────────────────────────────────────
@@ -855,7 +862,7 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100)
+        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100, None)
             .await
             .expect("coverage stub should succeed");
 
@@ -868,7 +875,7 @@ mod coverage_stubs {
     async fn execute_query_impl_coverage_missing_connection() {
         let state = test_state();
 
-        let err = execute_query_impl(&state, "missing", "tab-1", "SELECT 1", 100)
+        let err = execute_query_impl(&state, "missing", "tab-1", "SELECT 1", 100, None)
             .await
             .expect_err("missing connection should error");
         assert!(err.contains("not found"));
@@ -879,9 +886,16 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "ro-conn", true);
 
-        let err = execute_query_impl(&state, "ro-conn", "tab-1", "INSERT INTO t VALUES (1)", 100)
-            .await
-            .expect_err("read-only should block DML");
+        let err = execute_query_impl(
+            &state,
+            "ro-conn",
+            "tab-1",
+            "INSERT INTO t VALUES (1)",
+            100,
+            None,
+        )
+        .await
+        .expect_err("read-only should block DML");
         assert!(err.contains("read-only"));
     }
 
@@ -890,7 +904,7 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "ro-conn", true);
 
-        let result = execute_query_impl(&state, "ro-conn", "tab-1", "SELECT 1", 100)
+        let result = execute_query_impl(&state, "ro-conn", "tab-1", "SELECT 1", 100, None)
             .await
             .expect("read-only should allow SELECT");
         assert!(!result.query_id.is_empty());
@@ -901,10 +915,10 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SHOW TABLES", 0)
+        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SHOW TABLES", 0, None)
             .await
             .expect("row_limit 0 should fallback to 1000");
-        assert!(result.rows.is_empty());
+        assert!(result.first_window.rows.is_empty());
     }
 
     #[tokio::test]
@@ -913,10 +927,16 @@ mod coverage_stubs {
         register_lazy_pool(&state, "conn-cov", false);
 
         // INSERT doesn't get auto-limit
-        let result =
-            execute_query_impl(&state, "conn-cov", "tab-1", "INSERT INTO t VALUES (1)", 100)
-                .await
-                .expect("stub should succeed");
+        let result = execute_query_impl(
+            &state,
+            "conn-cov",
+            "tab-1",
+            "INSERT INTO t VALUES (1)",
+            100,
+            None,
+        )
+        .await
+        .expect("stub should succeed");
         assert!(!result.auto_limit_applied);
     }
 
@@ -925,13 +945,22 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100)
+        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100, None)
             .await
             .expect("stub should succeed");
 
         // Verify result is stored and can be fetched
-        let cached = fetch_cached_rows_impl(&state, "conn-cov", "tab-1", &result.query_id, None)
-            .expect("cached rows fetch should succeed");
+        let cached = fetch_result_window_impl(
+            &state,
+            "conn-cov",
+            "tab-1",
+            0,
+            &result.query_id,
+            result.view_version,
+            0,
+            100,
+        )
+        .expect("window fetch should succeed");
         assert_eq!(cached.rows.len(), 0);
     }
 

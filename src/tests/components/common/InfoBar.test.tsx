@@ -20,6 +20,21 @@ describe('InfoBar', () => {
     expect(glyphEl).toHaveTextContent(glyph)
   })
 
+  it.each<InfoBarSeverity>(['warning', 'error'])(
+    'announces a %s politely in the opt-in polite mode',
+    (severity) => {
+      render(<InfoBar severity={severity} polite message="Truncated" data-testid="bar" />)
+      const bar = screen.getByTestId('bar')
+      expect(bar).toHaveAttribute('role', 'status')
+      expect(bar).toHaveAttribute('aria-live', 'polite')
+    }
+  )
+
+  it('keeps the alert default when polite is not set', () => {
+    render(<InfoBar severity="warning" message="Careful" data-testid="bar" />)
+    expect(screen.getByTestId('bar')).not.toHaveAttribute('aria-live')
+  })
+
   it('renders title, message, detail and actions', () => {
     render(
       <InfoBar

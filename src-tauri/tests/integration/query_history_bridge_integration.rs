@@ -276,9 +276,10 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         register_lazy_pool(&state, "sess-1", "profile-1");
 
-        let result = execute_query_bridge(&state, "sess-1", "tab-1", "SELECT * FROM users", 100)
-            .await
-            .expect("bridge should succeed");
+        let result =
+            execute_query_bridge(&state, "sess-1", "tab-1", "SELECT * FROM users", 100, None)
+                .await
+                .expect("bridge should succeed");
 
         assert!(!result.query_id.is_empty());
 
@@ -300,7 +301,7 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         // Don't register any connection — this will cause an error
 
-        let err = execute_query_bridge(&state, "missing-sess", "tab-1", "SELECT 1", 100)
+        let err = execute_query_bridge(&state, "missing-sess", "tab-1", "SELECT 1", 100, None)
             .await
             .expect_err("should fail for missing connection");
 
@@ -363,6 +364,7 @@ mod coverage_bridge_tests {
             "tab-ddl",
             "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
             100,
+            None,
         )
         .await
         .expect("bridge should succeed");
@@ -487,7 +489,7 @@ mod coverage_bridge_tests {
         // Register with a different profile_id than session_id
         register_lazy_pool(&state, "session-abc", "profile-xyz");
 
-        let _result = execute_query_bridge(&state, "session-abc", "tab-1", "SELECT 42", 100)
+        let _result = execute_query_bridge(&state, "session-abc", "tab-1", "SELECT 42", 100, None)
             .await
             .expect("bridge should succeed");
 
@@ -512,7 +514,7 @@ mod coverage_bridge_tests {
         let state = common::test_app_state();
         // No registration — get_profile_id returns None for this session.
 
-        let _err = execute_query_bridge(&state, "session-unknown", "tab-1", "SELECT 42", 100)
+        let _err = execute_query_bridge(&state, "session-unknown", "tab-1", "SELECT 42", 100, None)
             .await
             .expect_err("should fail for missing connection");
 

@@ -5,6 +5,7 @@ import { BottomPanelTabs } from '../../../components/query-editor/BottomPanelTab
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
+import { withRows } from '../../helpers/query-test-utils'
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
@@ -30,7 +31,7 @@ describe('BottomPanelTabs', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             },
             {

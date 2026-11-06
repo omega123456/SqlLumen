@@ -83,4 +83,9 @@ export interface GridHandle {
     options?: boolean | { enableEditor?: boolean | null; shouldFocusCell?: boolean | null }
   ) => void
   element: HTMLDivElement | null
+  /**
+   * Repaint only the given cells (`[col, row]`), without a React re-render.
+   * Windowed grids use it when a page of rows finishes loading.
+   */
+  updateCells?: (cells: ReadonlyArray<readonly [number, number]>) => void
 }

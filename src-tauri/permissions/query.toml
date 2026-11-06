@@ -5,9 +5,21 @@ commands.allow = ["execute_query"]
 commands.deny = []
 
 [[permission]]
-identifier = "allow-fetch-cached-rows"
-description = "Enables the fetch_cached_rows command without any pre-configured scope."
-commands.allow = ["fetch_cached_rows"]
+identifier = "allow-set-result-view"
+description = "Enables the set_result_view command without any pre-configured scope."
+commands.allow = ["set_result_view"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-fetch-result-window"
+description = "Enables the fetch_result_window command without any pre-configured scope."
+commands.allow = ["fetch_result_window"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-remove-result-rows"
+description = "Enables the remove_result_rows command without any pre-configured scope."
+commands.allow = ["remove_result_rows"]
 commands.deny = []
 
 [[permission]]
@@ -38,12 +50,6 @@ commands.deny = []
 identifier = "allow-write-file"
 description = "Enables the write_file command without any pre-configured scope."
 commands.allow = ["write_file"]
-commands.deny = []
-
-[[permission]]
-identifier = "allow-sort-results"
-description = "Enables the sort_results command without any pre-configured scope."
-commands.allow = ["sort_results"]
 commands.deny = []
 
 [[permission]]

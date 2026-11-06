@@ -96,14 +96,12 @@ describe('DataGrid', () => {
   })
 
   it('uses custom cell content and maps resize callbacks', () => {
-    const getCellContent = vi.fn(
-      (): GridCell => ({
-        kind: GridCellKind.Text,
-        data: 'custom',
-        displayData: 'custom',
-        allowOverlay: true,
-      })
-    )
+    const getCellContent = vi.fn((): GridCell => ({
+      kind: GridCellKind.Text,
+      data: 'custom',
+      displayData: 'custom',
+      allowOverlay: true,
+    }))
     const onColumnResize = vi.fn()
 
     render(

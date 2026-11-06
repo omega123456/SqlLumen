@@ -8,13 +8,7 @@ import { useSettingsStore } from './settings-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 type UpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'up-to-date'
-  | 'available'
-  | 'installing'
-  | 'ready-to-finish'
-  | 'error'
+  'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'ready-to-finish' | 'error'
 
 type UpdateProgressEvent =
   | { event: 'Started'; data?: { contentLength?: number } }

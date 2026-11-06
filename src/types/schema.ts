@@ -271,11 +271,80 @@ export interface BlobEnvelope {
 export interface QueryResultMeta {
   queryId: string
   columns: ColumnMeta[]
+  /** Live base rows in the Rust cache (deleted rows excluded). */
   totalRows: number
   executionTimeMs: number
   totalTimeMs: number
   affectedRows: number
   autoLimitApplied: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Windowed result delivery (rows live in the Rust cache; the webview sees windows)
+// ---------------------------------------------------------------------------
+
+/** A slice of a cached result's current view. */
+export interface ResultWindow {
+  /** View position of the first row. */
+  offset: number
+  /** Row arrays, in view order. */
+  rows: unknown[][]
+  /** Base-row index of each row (parallel to `rows`); stable under sort/filter/delete. */
+  baseIndices: number[]
+}
+
+/** Sort part of a view spec. */
+export interface ResultViewSort {
+  column: string
+  direction: 'asc' | 'desc'
+}
+
+/** A complete view spec: optional sort plus filter conditions (sent to Rust). */
+export interface ResultViewSpec {
+  sort: ResultViewSort | null
+  filters: FilterCondition[]
+}
+
+/** Why a truncated result can't be exported in full by re-running its SQL. */
+export type FullExportBlockedReason = 'call' | 'locking' | 'unknownDatabase'
+
+/** Window and ceiling metadata carried by every execute response. */
+export interface ResultWindowMeta {
+  /** Rows in the current view (after filter and deletes). */
+  viewRowCount: number
+  /** Monotonic view version of the cached result. */
+  viewVersion: number
+  /** True when at least one row beyond the row ceiling was seen. */
+  truncated: boolean
+  /** Row ceiling (`results.maxRows`) in force for this run. */
+  rowCeiling: number
+  /** LIMIT actually injected by auto-LIMIT (after clamping), or null. */
+  appliedRowLimit: number | null
+  /** Why a truncated result can't be re-run for a full export, or null. */
+  fullExportBlockedReason: FullExportBlockedReason | null
+  /** First window of the view (offset 0, at most 1,000 rows). */
+  firstWindow: ResultWindow
+}
+
+/** Response of `set_result_view`. */
+export interface SetResultViewResult {
+  viewVersion: number
+  viewRowCount: number
+  totalRows: number
+  firstWindow: ResultWindow
+}
+
+/** Response of `fetch_result_window`. */
+export interface FetchResultWindowResult extends ResultWindow {
+  viewRowCount: number
+  viewVersion: number
+}
+
+/** Response of `remove_result_rows`. */
+export interface RemoveResultRowsResult {
+  viewVersion: number
+  viewRowCount: number
+  totalRows: number
 }
 
 export type FrontendRowResidencyStatus = 'resident' | 'evicted' | 'restoring'
@@ -488,16 +557,7 @@ export interface SelectedCellInfo {
 
 /** Supported filter operators for the table data filter dialog. */
 export type FilterOperator =
-  | '>'
-  | '>='
-  | '<'
-  | '<='
-  | '=='
-  | '!='
-  | 'LIKE'
-  | 'NOT LIKE'
-  | 'IS NULL'
-  | 'IS NOT NULL'
+  '>' | '>=' | '<' | '<=' | '==' | '!=' | 'LIKE' | 'NOT LIKE' | 'IS NULL' | 'IS NOT NULL'
 
 /** A single filter condition applied to a column. */
 export interface FilterCondition {
@@ -588,15 +648,15 @@ export interface TableDataTabState {
 // ---------------------------------------------------------------------------
 
 /** A single result item from a multi-query or CALL execution. */
-export interface MultiQueryResultItem {
+export interface MultiQueryResultItem extends ResultWindowMeta {
   queryId: string
   sourceSql: string
   columns: ColumnMeta[]
+  /** Live base rows in the Rust cache (deleted rows excluded). */
   totalRows: number
   executionTimeMs: number
   totalTimeMs: number
   affectedRows: number
-  rows: unknown[][]
   autoLimitApplied: boolean
   error: string | null
   reExecutable: boolean
@@ -648,13 +708,7 @@ export interface SaveObjectResponse {
 // ---------------------------------------------------------------------------
 
 export type SettingsSection =
-  | 'general'
-  | 'editor'
-  | 'results'
-  | 'logging'
-  | 'shortcuts'
-  | 'ai'
-  | 'updates'
+  'general' | 'editor' | 'results' | 'logging' | 'shortcuts' | 'ai' | 'updates'
 
 export interface ShortcutBinding {
   key: string

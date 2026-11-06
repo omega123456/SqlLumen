@@ -291,6 +291,8 @@ pub fn run() {
                 Arc::clone(&shared_cache_ttl),
                 spill_dir.clone(),
             ));
+            // Seed the hard row ceiling (`results.maxRows`) before any query runs.
+            result_cache.set_row_ceiling(commands::settings::load_results_max_rows(&conn));
             let table_data_cache = Arc::new(TableDataCache::new_with_shared_ttl(
                 Arc::clone(&shared_cache_ttl),
                 spill_dir.clone(),
@@ -342,6 +344,9 @@ pub fn run() {
                 editor_sessions: Default::default(),
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+                result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+                    std::collections::HashMap::new(),
+                )),
                 copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -477,13 +482,14 @@ pub fn run() {
             commands::table_designer::apply_table_ddl,
             commands::session::select_database,
             commands::query::execute_query,
-            commands::query::fetch_cached_rows,
+            commands::query::set_result_view,
+            commands::query::fetch_result_window,
+            commands::query::remove_result_rows,
             commands::query::evict_results,
             commands::query::fetch_schema_metadata,
             commands::query::fetch_schema_metadata_full,
             commands::query::read_file,
             commands::query::write_file,
-            commands::query::sort_results,
             commands::query::analyze_query_for_edit,
             commands::query::update_result_cell,
             commands::query::cancel_query,
@@ -492,6 +498,9 @@ pub fn run() {
             commands::query::execute_call_query,
             commands::query::touch_results,
             commands::export::export_results,
+            commands::export::start_result_export,
+            commands::export::get_result_export_progress,
+            commands::export::cancel_result_export,
             commands::table_data::fetch_table_data,
             commands::table_data::touch_table_data,
             commands::table_data::evict_table_data,

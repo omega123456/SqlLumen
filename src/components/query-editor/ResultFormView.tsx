@@ -5,16 +5,28 @@
  * positional row arrays) into BaseFormView's normalised props (GridColumnDescriptor,
  * shared RowEditState with col_N keys, navigation callbacks with auto-save).
  *
- * The external prop interface is unchanged — ResultPanel passes exactly the
- * same props as before; all adaptation lives inside this wrapper.
+ * Rows are windowed: the form shows the row at the selected **view position**,
+ * read from the page cache and fetched by view range when it isn't loaded, so
+ * navigation covers the whole view. The clone draft is a virtual row after the
+ * last view row.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BaseFormView } from '../shared/BaseFormView'
 import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import { isBinaryDataType } from '../../lib/blob-utils'
+import { logFrontend } from '../../lib/app-log-commands'
+import {
+  getLoadedRow,
+  isResultsExpiredError,
+  readViewRange,
+  subscribeToResultWindow,
+  subscribeToRowPatches,
+  type CachedRow,
+} from '../../lib/result-window-cache'
+import { useQueryStore } from '../../stores/query-store'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
@@ -33,11 +45,18 @@ import type {
 
 export interface ResultFormViewProps {
   columns: ColumnMeta[]
-  /** Current page rows — array of arrays, indexed by column position. */
-  rows: Array<Array<unknown>>
-  /** Index within the result set (0-based), or null for first row. */
+  /** Result index within the tab (page-cache surface). */
+  resultIndex: number
+  /** Query id of the cached result. */
+  queryId: string | null
+  /** View version of the current view. */
+  viewVersion: number
+  /** Rows in the current view. */
+  viewRowCount: number
+  /** Clone draft row (a virtual row at `viewRowCount`), or null. */
+  draftRow?: unknown[] | null
+  /** View position (0-based), or null for the first row. */
   selectedRowIndex: number | null
-  totalRows: number
   /** Called with 'prev' or 'next' — parent handles setSelectedRow. */
   onNavigate: (direction: 'prev' | 'next') => void
   tabId: string
@@ -50,7 +69,7 @@ export interface ResultFormViewProps {
   editableColumnMap?: Map<number, boolean>
   /** Current row edit state. */
   editState?: RowEditState | null
-  /** Page-local row index of the editing row. */
+  /** View position of the editing row. */
   editingRowIndex?: number | null
   /** Column metadata from the edit table (for cell editor selection). */
   editTableColumns?: TableDataColumnMeta[]
@@ -58,8 +77,8 @@ export interface ResultFormViewProps {
   editForeignKeys?: ForeignKeyColumnInfo[]
   /** Result column index → bound source-table column name. */
   editColumnBindings?: Map<number, string>
-  /** Start editing a row by its page-local index. */
-  onStartEdit?: (rowIndex: number) => void
+  /** Start editing a row by its view position (`row` when it isn't in the page cache). */
+  onStartEdit?: (rowIndex: number, row?: CachedRow) => void
   /** Update a cell value in the edit state. */
   onUpdateCell?: (columnIndex: number, value: unknown) => void
   /** Save current row. */
@@ -79,9 +98,12 @@ const EMPTY_BINDINGS = new Map<number, string>()
 
 export function ResultFormView({
   columns,
-  rows,
+  resultIndex,
+  queryId,
+  viewVersion,
+  viewRowCount,
+  draftRow = null,
   selectedRowIndex,
-  totalRows,
   onNavigate,
   tabId,
   editMode = null,
@@ -98,13 +120,83 @@ export function ResultFormView({
 }: ResultFormViewProps) {
   // Form view can render the first row as a visual fallback before store selection exists.
   // Clone enablement is handled upstream by checking whether selectedRowIndex is committed.
+  const totalRows = viewRowCount + (draftRow ? 1 : 0)
   const currentIndex = selectedRowIndex ?? 0
-  const clampedIndex = Math.max(0, Math.min(currentIndex, rows.length - 1))
-  const currentRow = rows.length > 0 ? ((rows[clampedIndex] as unknown[]) ?? null) : null
+  const clampedIndex = Math.max(0, Math.min(currentIndex, totalRows - 1))
+  const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
+
+  // Re-render when the page holding the current row loads or is patched.
+  const [windowTick, setWindowTick] = useState(0)
+  useEffect(
+    () =>
+      subscribeToResultWindow(tabId, resultIndex, ([start, end]) => {
+        if (clampedIndex >= start && clampedIndex < end) setWindowTick((tick) => tick + 1)
+      }),
+    [clampedIndex, resultIndex, tabId]
+  )
+
+  // A row outside the loaded pages is fetched by view range.
+  const fetchKey = `${queryId ?? ''}:${viewVersion}:${clampedIndex}`
+  const [fetched, setFetched] = useState<{ key: string; row: CachedRow } | null>(null)
+  // A saved edit of the fetched row (which isn't in the page cache) patches it here.
+  useEffect(
+    () =>
+      subscribeToRowPatches(tabId, resultIndex, (baseIndex, apply) => {
+        setFetched((current) =>
+          current && current.row.baseIndex === baseIndex
+            ? { ...current, row: { baseIndex, row: apply(current.row.row) } }
+            : current
+        )
+      }),
+    [resultIndex, tabId]
+  )
+  const isDraftPosition = draftRow !== null && clampedIndex === viewRowCount
+  const loadedRow = useMemo(() => {
+    void windowTick
+    if (isDraftPosition || totalRows === 0) return null
+    return getLoadedRow(tabId, resultIndex, clampedIndex) ?? null
+  }, [clampedIndex, isDraftPosition, resultIndex, tabId, totalRows, windowTick])
+  const needsFetch = !isDraftPosition && totalRows > 0 && loadedRow === null
+  useEffect(() => {
+    if (!needsFetch || fetched?.key === fetchKey) return
+    let cancelled = false
+    readViewRange(tabId, resultIndex, [clampedIndex, clampedIndex + 1])
+      .then((rows) => {
+        if (!cancelled && rows[0]) setFetched({ key: fetchKey, row: rows[0] })
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        if (isResultsExpiredError(error)) {
+          markResultsExpired(tabId)
+          return
+        }
+        logFrontend(
+          'warn',
+          `[result-form-view] could not load row ${clampedIndex + 1}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clampedIndex, fetchKey, fetched, markResultsExpired, needsFetch, resultIndex, tabId])
+
+  const currentCached = useMemo<CachedRow | null>(
+    () =>
+      isDraftPosition
+        ? { row: draftRow, baseIndex: -1 }
+        : (loadedRow ?? (fetched?.key === fetchKey ? fetched.row : null)),
+    [draftRow, fetchKey, fetched, isDraftPosition, loadedRow]
+  )
+  const currentRow = currentCached?.row ?? null
   const currentRowData = useMemo(() => {
     if (currentRow === null) return null
 
-    const rowData: Record<string, unknown> = { __rowIdx: clampedIndex }
+    const rowData: Record<string, unknown> = {
+      __rowIdx: clampedIndex,
+      __baseIdx: currentCached?.baseIndex ?? -1,
+    }
     for (let i = 0; i < columns.length; i++) {
       rowData[colKey(i)] = currentRow[i] ?? null
     }
@@ -119,7 +211,15 @@ export function ResultFormView({
     }
 
     return rowData
-  }, [columns, currentRow, editState, editingRowIndex, clampedIndex, editColumnBindings])
+  }, [
+    columns,
+    currentCached?.baseIndex,
+    currentRow,
+    editState,
+    editingRowIndex,
+    clampedIndex,
+    editColumnBindings,
+  ])
 
   const isInEditMode = editMode !== null
   const isEditingCurrentRow = editState !== null && editingRowIndex === clampedIndex
@@ -211,9 +311,9 @@ export function ResultFormView({
   const handleEnsureEditing = useCallback(() => {
     if (!isInEditMode || !onStartEdit) return
     if (editingRowIndex !== clampedIndex) {
-      onStartEdit(clampedIndex)
+      onStartEdit(clampedIndex, currentCached ?? undefined)
     }
-  }, [isInEditMode, onStartEdit, editingRowIndex, clampedIndex])
+  }, [isInEditMode, onStartEdit, editingRowIndex, clampedIndex, currentCached])
 
   const handleSave = useCallback(async () => {
     if (onSaveRow) {
@@ -249,11 +349,11 @@ export function ResultFormView({
     (envelope: BlobEnvelope) => {
       if (!blobContext?.editable) return
       if (editingRowIndex !== clampedIndex) {
-        onStartEdit?.(clampedIndex)
+        onStartEdit?.(clampedIndex, currentCached ?? undefined)
       }
       onUpdateCell?.(blobContext.columnIndex, envelope)
     },
-    [blobContext, clampedIndex, editingRowIndex, onStartEdit, onUpdateCell]
+    [blobContext, clampedIndex, currentCached, editingRowIndex, onStartEdit, onUpdateCell]
   )
 
   // --- Navigation with auto-save-before-navigate ---

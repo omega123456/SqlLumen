@@ -10,8 +10,8 @@ function readPxVar(name: string, fallback: number): number {
   return parseFloat(readCssVar(name)) || fallback
 }
 
-export function useGlideGridTheme(): Partial<Theme> {
-  const { rowHeight, headerHeight } = useGridDimensions()
+/** Re-renders when `data-theme` changes on the document element. */
+function useThemeVersion(): number {
   const [themeVersion, setThemeVersion] = useState(0)
 
   useEffect(() => {
@@ -22,6 +22,25 @@ export function useGlideGridTheme(): Partial<Theme> {
     })
     return () => observer.disconnect()
   }, [])
+
+  return themeVersion
+}
+
+/**
+ * Colour of the skeleton bar painted for rows that aren't loaded yet: the
+ * resolved `--skeleton-base` token (Glide's theme has no skeleton colour).
+ */
+export function useGlideSkeletonColor(): string {
+  const themeVersion = useThemeVersion()
+  return useMemo(() => {
+    void themeVersion
+    return readCssVar('--skeleton-base')
+  }, [themeVersion])
+}
+
+export function useGlideGridTheme(): Partial<Theme> {
+  const { rowHeight, headerHeight } = useGridDimensions()
+  const themeVersion = useThemeVersion()
 
   return useMemo(() => {
     void themeVersion

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { overrideIpcCommands } from '../ipc-mock'
 import { useQueryStore } from '../../stores/query-store'
-import { flat } from '../helpers/query-test-utils'
+import { flat, firstWindowFor } from '../helpers/query-test-utils'
 
 /**
  * Regression test: When the user provides an explicit LIMIT (autoLimitApplied=false),
@@ -28,7 +28,7 @@ describe('query result view should show all returned rows regardless of row limi
         totalRows,
         executionTimeMs: 10,
         affectedRows: 0,
-        rows: allRows,
+        firstWindow: firstWindowFor(allRows),
         autoLimitApplied: false,
       }),
       evict_results: () => null,

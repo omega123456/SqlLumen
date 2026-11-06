@@ -257,6 +257,12 @@
   --ui-subsection-border: 1px solid var(--stroke-card);
   --ui-subsection-radius: var(--radius-card);
   --ui-subsection-elevation-shadow: none;
+
+  /* Long-running job progress panel (SQL dump, full result export) */
+  --ui-progress-panel-gap: 10px;
+  --ui-progress-panel-padding: 12px 14px;
+  --ui-progress-bar-height: 4px;
+  --ui-progress-bar-radius: 2px;
   --ui-collapsible-content-border-top: 1px solid var(--stroke-divider);
 
   /* Filled raised panels (workspace schema cards / tables) — card fill + stroke, no shadow */

@@ -6,6 +6,7 @@ import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { ipc } from '../ipc-mock'
 import { useSettingsStore } from '../../stores/settings-store'
 import type { FilterCondition, QueryTableEditInfo, TableDataColumnMeta } from '../../types/schema'
+import { firstWindowFor, hasNoLoadedRows, rowsOf, withRows } from '../helpers/query-test-utils'
 
 const TAB_ID = 'tab-expired-test'
 const CONN_ID = 'conn-expired-test'
@@ -55,7 +56,7 @@ function setupTabWithResult() {
               queryId: 'q-test-1',
               lastExecutedSql: 'SELECT * FROM users',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             },
           ],
@@ -90,7 +91,7 @@ function setupMultiResultTab() {
               queryId: 'q-test-1',
               lastExecutedSql: 'SELECT * FROM users',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             },
             {
@@ -99,7 +100,7 @@ function setupMultiResultTab() {
               queryId: 'q-test-2',
               lastExecutedSql: 'SELECT * FROM orders',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[2]],
+              ...withRows([[2]]),
               totalRows: 1,
             },
           ],
@@ -189,13 +190,16 @@ describe('query-store expired result handling', () => {
     })
 
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-    expect(result?.rows).toEqual([])
+    // Only the page cache is dropped; counts and view metadata stay.
+    expect(rowsOf(TAB_ID)).toEqual([])
+    expect(hasNoLoadedRows(TAB_ID, 0)).toBe(true)
+    expect(result?.viewRowCount).toBe(1)
     expect(result?.rowResidency.status).toBe('evicted')
     expect(result?.rowsEvictedAt).toBeTypeOf('number')
     expect(result?.isExpired).toBe(false)
   })
 
-  it('still evicts filtered results when visible rows are empty but unfiltered rows remain', async () => {
+  it('evicts a filtered result like any other, keeping its view spec', async () => {
     setupTabWithResult()
 
     act(() => {
@@ -204,8 +208,7 @@ describe('query-store expired result handling', () => {
         if (!tab) return state
         const result = {
           ...tab.results[0],
-          rows: [],
-          unfilteredRows: [[1], [2]],
+          filterModel: FILTER_EQ_ID_2,
         }
         return {
           tabs: {
@@ -229,11 +232,12 @@ describe('query-store expired result handling', () => {
 
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
     expect(result?.rowResidency.status).toBe('evicted')
-    expect(result?.unfilteredRows).toBeNull()
+    expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
+    expect(hasNoLoadedRows(TAB_ID, 0)).toBe(true)
     expect(result?.rowsEvictedAt).toBeTypeOf('number')
   })
 
-  it('restores evicted rows for an active result and reapplies client-side filters', async () => {
+  it('restores an evicted result by refetching its visible window (no re-run, view kept)', async () => {
     setupTabWithResult()
 
     act(() => {
@@ -242,9 +246,9 @@ describe('query-store expired result handling', () => {
         if (!tab) return state
         const result = {
           ...tab.results[0],
-          rows: [],
           rowsEvictedAt: 1234,
           filterModel: FILTER_EQ_ID_2,
+          viewVersion: 3,
           rowResidency: {
             status: 'evicted' as const,
             isActive: false,
@@ -264,9 +268,13 @@ describe('query-store expired result handling', () => {
     })
 
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => ({
-      rows: [[1], [2]],
-      columns: [{ name: 'id', dataType: 'INT' }],
+    // The Rust view still applies the filter: the refetched window is filtered.
+    ipc.override('fetch_result_window', () => ({
+      offset: 0,
+      rows: [[2]],
+      baseIndices: [1],
+      viewRowCount: 1,
+      viewVersion: 3,
     }))
 
     await act(async () => {
@@ -277,15 +285,20 @@ describe('query-store expired result handling', () => {
     expect(result?.rowResidency.status).toBe('resident')
     expect(result?.rowResidency.isActive).toBe(true)
     expect(result?.rowsEvictedAt).toBeNull()
-    expect(result?.rows).toEqual([[2]])
-    expect(result?.unfilteredRows).toEqual([[1], [2]])
+    expect(rowsOf(TAB_ID)).toEqual([[2]])
+    expect(result?.filterModel).toEqual(FILTER_EQ_ID_2)
     expect(ipc.calls('touch_results')).toHaveLength(1)
-    expect(ipc.calls('fetch_cached_rows')[0]).toMatchObject({
+    expect(ipc.calls('fetch_result_window')[0]).toMatchObject({
       connectionId: CONN_ID,
       tabId: TAB_ID,
       queryId: 'q-test-1',
       resultIndex: 0,
+      viewVersion: 3,
+      offset: 0,
+      limit: 1000,
     })
+    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.calls('set_result_view')).toHaveLength(0)
   })
 
   it('preserves the latest inactive visibility state when restore finishes after switching away', async () => {
@@ -298,7 +311,6 @@ describe('query-store expired result handling', () => {
         const results = [...tab.results]
         results[1] = {
           ...results[1],
-          rows: [],
           rowResidency: {
             status: 'evicted',
             isActive: false,
@@ -314,15 +326,10 @@ describe('query-store expired result handling', () => {
       })
     })
 
-    const deferred: {
-      resolve?: (value: {
-        rows: unknown[][]
-        columns: Array<{ name: string; dataType: string }>
-      }) => void
-    } = {}
+    const deferred: { resolve?: (value: Record<string, unknown>) => void } = {}
     ipc.override('touch_results', () => ({ status: 'available' }))
     ipc.override(
-      'fetch_cached_rows',
+      'fetch_result_window',
       () =>
         new Promise((resolve) => {
           deferred.resolve = resolve
@@ -331,19 +338,25 @@ describe('query-store expired result handling', () => {
 
     const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
     await waitFor(() => {
-      expect(ipc.calls('fetch_cached_rows')).toHaveLength(1)
+      expect(ipc.calls('fetch_result_window')).toHaveLength(1)
     })
     act(() => {
       useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 1)
     })
     if (!deferred.resolve) {
-      throw new Error('Expected fetch_cached_rows resolver')
+      throw new Error('Expected fetch_result_window resolver')
     }
-    deferred.resolve({ rows: [[22]], columns: [{ name: 'id', dataType: 'INT' }] })
+    deferred.resolve({
+      offset: 0,
+      rows: [[22]],
+      baseIndices: [0],
+      viewRowCount: 1,
+      viewVersion: 0,
+    })
     await restorePromise
 
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
-    expect(result?.rows).toEqual([[22]])
+    expect(rowsOf(TAB_ID, 1)).toEqual([[22]])
     expect(result?.rowResidency).toEqual({
       status: 'resident',
       isActive: false,
@@ -361,7 +374,6 @@ describe('query-store expired result handling', () => {
         const results = [...tab.results]
         results[1] = {
           ...results[1],
-          rows: [],
           rowResidency: {
             status: 'evicted',
             isActive: false,
@@ -377,15 +389,10 @@ describe('query-store expired result handling', () => {
       })
     })
 
-    const deferred: {
-      resolve?: (value: {
-        rows: unknown[][]
-        columns: Array<{ name: string; dataType: string }>
-      }) => void
-    } = {}
+    const deferred: { resolve?: (value: Record<string, unknown>) => void } = {}
     ipc.override('touch_results', () => ({ status: 'available' }))
     ipc.override(
-      'fetch_cached_rows',
+      'fetch_result_window',
       () =>
         new Promise((resolve) => {
           deferred.resolve = resolve
@@ -394,7 +401,7 @@ describe('query-store expired result handling', () => {
 
     const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
     await waitFor(() => {
-      expect(ipc.calls('fetch_cached_rows')).toHaveLength(1)
+      expect(ipc.calls('fetch_result_window')).toHaveLength(1)
     })
 
     act(() => {
@@ -406,9 +413,15 @@ describe('query-store expired result handling', () => {
     expect(useQueryStore.getState().tabs[TAB_ID]?.tabStatus).toBe('restoring')
 
     if (!deferred.resolve) {
-      throw new Error('Expected fetch_cached_rows resolver')
+      throw new Error('Expected fetch_result_window resolver')
     }
-    deferred.resolve({ rows: [[22]], columns: [{ name: 'id', dataType: 'INT' }] })
+    deferred.resolve({
+      offset: 0,
+      rows: [[22]],
+      baseIndices: [0],
+      viewRowCount: 1,
+      viewVersion: 0,
+    })
     await restorePromise
   })
 
@@ -421,7 +434,6 @@ describe('query-store expired result handling', () => {
         if (!tab) return state
         const result = {
           ...tab.results[0],
-          rows: [],
           rowResidency: {
             status: 'evicted' as const,
             isActive: false,
@@ -449,7 +461,7 @@ describe('query-store expired result handling', () => {
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
     expect(result?.isExpired).toBe(true)
     expect(result?.rowResidency.status).toBe('evicted')
-    expect(ipc.calls('fetch_cached_rows')).toHaveLength(0)
+    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
   })
 
   it('resets restoring status back to evicted when restore fetch throws', async () => {
@@ -467,7 +479,6 @@ describe('query-store expired result handling', () => {
               results: [
                 {
                   ...tab.results[0],
-                  rows: [],
                   rowResidency: {
                     status: 'evicted',
                     isActive: false,
@@ -482,7 +493,7 @@ describe('query-store expired result handling', () => {
     })
 
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => {
+    ipc.override('fetch_result_window', () => {
       throw new Error('restore failed')
     })
 
@@ -537,7 +548,7 @@ describe('query-store expired result handling', () => {
     })
 
     const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-    expect(result?.rows).toEqual([[1]])
+    expect(rowsOf(TAB_ID)).toEqual([[1]])
     expect(result?.rowResidency.status).toBe('resident')
   })
 
@@ -551,7 +562,6 @@ describe('query-store expired result handling', () => {
         const results = [...tab.results]
         results[1] = {
           ...results[1],
-          rows: [],
           rowResidency: {
             status: 'evicted',
             isActive: false,
@@ -568,9 +578,12 @@ describe('query-store expired result handling', () => {
     })
 
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => ({
+    ipc.override('fetch_result_window', () => ({
+      offset: 0,
       rows: [[22]],
-      columns: [{ name: 'id', dataType: 'INT' }],
+      baseIndices: [0],
+      viewRowCount: 1,
+      viewVersion: 0,
     }))
 
     await act(async () => {
@@ -583,7 +596,7 @@ describe('query-store expired result handling', () => {
 
     const tab = useQueryStore.getState().tabs[TAB_ID]
     expect(tab?.activeResultIndex).toBe(1)
-    expect(tab?.results[1]?.rows).toEqual([[22]])
+    expect(rowsOf(TAB_ID, 1)).toEqual([[22]])
     expect(tab?.results[0]?.rowResidency.isActive).toBe(false)
     expect(tab?.results[1]?.rowResidency.isActive).toBe(true)
   })
@@ -622,7 +635,7 @@ describe('query-store expired result handling', () => {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
     }))
@@ -700,7 +713,7 @@ describe('query-store expired result handling', () => {
           sourceSql: string
           reExecutable: boolean
           columns: { name: string; dataType: string }[]
-          rows: unknown[][]
+          firstWindow: { offset: number; rows: unknown[][]; baseIndices: number[] }
           totalRows: number
           executionTimeMs: number
           affectedRows: number
@@ -735,7 +748,7 @@ describe('query-store expired result handling', () => {
         sourceSql: 'SELECT * FROM users',
         reExecutable: true,
         columns: [{ name: 'id', dataType: 'INT' }],
-        rows: [[5]],
+        firstWindow: firstWindowFor([[5]]),
         totalRows: 1,
         executionTimeMs: 3,
         affectedRows: 0,
@@ -757,7 +770,7 @@ describe('query-store expired result handling', () => {
   it('sortResults sets isExpired when error contains results_expired', async () => {
     setupMultiResultTab()
 
-    ipc.override('sort_results', () => {
+    ipc.override('set_result_view', () => {
       throw new Error('results_expired: Results expired.')
     })
 
@@ -797,6 +810,7 @@ describe('query-store expired result handling', () => {
           editMode: 'db.users',
           editConnectionId: CONN_ID,
           editingRowIndex: 0,
+          editingBaseIndex: 0,
           editBoundColumnIndexMap: new Map([['id', 0]]),
           editColumnBindings: new Map([[0, 'id']]),
           editState: {
@@ -855,7 +869,7 @@ describe('query-store expired result handling', () => {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
     }))
@@ -914,7 +928,7 @@ describe('query-store expired result handling', () => {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
       autoLimitApplied: false,
     }))
 
@@ -926,7 +940,7 @@ describe('query-store expired result handling', () => {
     expect(completed?.rowResidency.status).toBe('resident')
     expect(completed?.rowResidency.isActive).toBe(false)
     expect(completed?.rowResidency.inactiveSince).toBeTypeOf('number')
-    expect(completed?.rows).toEqual([[1]])
+    expect(rowsOf(TAB_ID)).toEqual([[1]])
 
     // The background completion is on the normal inactive TTL lifecycle.
     await act(async () => {
@@ -934,7 +948,7 @@ describe('query-store expired result handling', () => {
     })
 
     const evicted = useQueryStore.getState().tabs[TAB_ID]?.results[0]
-    expect(evicted?.rows).toEqual([])
+    expect(rowsOf(TAB_ID)).toEqual([])
     expect(evicted?.rowResidency.status).toBe('evicted')
   })
 })

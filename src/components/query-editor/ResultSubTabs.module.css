@@ -69,3 +69,10 @@
 .errorIcon {
   color: var(--error);
 }
+
+/* Truncated indicator (wireframe 1): 12px WarningCircle in --warning */
+.truncatedIndicator {
+  display: inline-flex;
+  align-items: center;
+  color: var(--warning);
+}

@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { useGlideGridTheme } from '../../hooks/use-glide-grid-theme'
+import { useGlideGridTheme, useGlideSkeletonColor } from '../../hooks/use-glide-grid-theme'
 
 const TOKEN_NAMES = [
   '--primary',
@@ -28,6 +28,7 @@ const TOKEN_NAMES = [
   '--grid-row-height',
   '--grid-header-height',
   '--radius-control',
+  '--skeleton-base',
 ]
 
 function setVars(values: Record<string, string>) {
@@ -126,5 +127,18 @@ describe('useGlideGridTheme', () => {
     document.documentElement.dataset.theme = 'dark'
     await waitFor(() => expect(result.current.accentColor).toBe('#4cc2ff'))
     expect(result.current.bgCell).toBe('#1c1c1c')
+  })
+})
+
+describe('useGlideSkeletonColor', () => {
+  it('reads the resolved --skeleton-base token and re-reads on theme change', async () => {
+    document.documentElement.dataset.theme = 'light'
+    setVars({ '--skeleton-base': 'rgba(0, 0, 0, 0.06)' })
+    const { result } = renderHook(() => useGlideSkeletonColor())
+    expect(result.current).toBe('rgba(0, 0, 0, 0.06)')
+
+    setVars({ '--skeleton-base': 'rgba(255, 255, 255, 0.08)' })
+    document.documentElement.dataset.theme = 'dark'
+    await waitFor(() => expect(result.current).toBe('rgba(255, 255, 255, 0.08)'))
   })
 })

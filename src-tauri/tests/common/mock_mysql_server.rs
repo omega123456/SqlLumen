@@ -6,11 +6,12 @@ use opensrv_mysql::{
     OkResponse, ParamParser, QueryResultWriter, RowWriter, StatementMetaWriter, StatusFlags,
     ToMysqlValue,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::io::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::io::BufWriter;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::TcpListener;
@@ -179,6 +180,76 @@ pub struct MockMultiResultStep {
     pub rows: Vec<Vec<MockCell>>,
 }
 
+/// A text-protocol query answered with a generated row stream. Covers the
+/// step kinds the result-ceiling and export tests need:
+/// - **rows then an error** (`end_error`): ERR is sent in place of EOF;
+/// - **throttled rows** (`throttle`): the server pauses between ticks, and
+///   because the accepted socket is unbuffered the client sees a real partial
+///   stream;
+/// - **kill-aware streams** (`stops_on_kill`): a `KILL QUERY` received on any
+///   connection ends the stream with error 1317.
+///
+/// Optional leading OK packets give it the shape of a `CALL` whose **last**
+/// result set is the stream (opensrv can't flag more results after a row set).
+#[derive(Debug, Clone)]
+pub struct MockStreamStep {
+    pub query: &'static str,
+    pub leading_ok_affected: Vec<u64>,
+    pub columns: Vec<MockColumnDef>,
+    pub row_count: usize,
+    pub make_row: fn(usize) -> Vec<MockCell>,
+    /// `(rows per tick, pause)`; `None` streams without pauses.
+    pub throttle: Option<(usize, Duration)>,
+    /// Error sent instead of the end-of-rows packet after every row was written.
+    pub end_error: Option<(ErrorKind, &'static [u8])>,
+    pub stops_on_kill: bool,
+}
+
+impl MockStreamStep {
+    /// A plain stream of `row_count` rows with no pauses, error or kill hook.
+    pub fn new(
+        query: &'static str,
+        columns: Vec<MockColumnDef>,
+        row_count: usize,
+        make_row: fn(usize) -> Vec<MockCell>,
+    ) -> Self {
+        Self {
+            query,
+            leading_ok_affected: Vec::new(),
+            columns,
+            row_count,
+            make_row,
+            throttle: None,
+            end_error: None,
+            stops_on_kill: false,
+        }
+    }
+}
+
+/// Everything a scripted mock server answers.
+#[derive(Debug, Clone, Default)]
+pub struct MockScript {
+    pub steps: Vec<MockQueryStep>,
+    pub multi_result_steps: Vec<MockMultiResultStep>,
+    pub stream_steps: Vec<MockStreamStep>,
+    /// When true, a `KILL QUERY` that arrives after a stream finished stays
+    /// pending and makes the **next** text query on any connection fail with
+    /// 1317 (reproduces a late ceiling KILL landing on the next statement).
+    pub kill_hits_next_statement: bool,
+}
+
+/// Kill-hook state shared by every connection of one mock server. Every mock
+/// connection reports the same `CONNECTION_ID()`, so the hook does not match
+/// on thread id.
+#[derive(Debug, Default)]
+struct MockKillState {
+    pending: AtomicBool,
+    hits_next_statement: AtomicBool,
+    received: AtomicUsize,
+}
+
+const QUERY_INTERRUPTED_MESSAGE: &[u8] = b"Query execution was interrupted";
+
 #[derive(Clone)]
 struct MockMySqlBackend {
     steps: Arc<Vec<MockQueryStep>>,
@@ -190,6 +261,11 @@ struct MockMySqlBackend {
     next_statement_id: u32,
     /// Text-protocol (COM_QUERY) statements received across all connections.
     text_queries: Arc<Mutex<Vec<String>>>,
+    /// Generated row streams paired with their opensrv column definitions.
+    stream_steps: Arc<Vec<(MockStreamStep, Vec<Column>)>>,
+    kill: Arc<MockKillState>,
+    /// Prepared statement ids (this connection) that are `KILL QUERY`s.
+    kill_statement_ids: HashSet<u32>,
 }
 
 const VERSION_STATEMENT_ID: u32 = 1;
@@ -220,7 +296,56 @@ impl MockMySqlBackend {
             prepared_steps: HashMap::new(),
             next_statement_id: FIRST_QUERY_STATEMENT_ID,
             text_queries: Arc::default(),
+            stream_steps: Arc::default(),
+            kill: Arc::default(),
+            kill_statement_ids: HashSet::new(),
         }
+    }
+
+    fn find_stream_step(&self, query: &str) -> Option<&(MockStreamStep, Vec<Column>)> {
+        let normalized = Self::normalize_query(query);
+        self.stream_steps
+            .iter()
+            .find(|(step, _)| Self::normalize_query(step.query).eq_ignore_ascii_case(&normalized))
+    }
+
+    async fn write_stream_step<'a>(
+        step: &'a MockStreamStep,
+        columns: &'a [Column],
+        kill: &MockKillState,
+        mut results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
+    ) -> io::Result<()> {
+        for &affected_rows in &step.leading_ok_affected {
+            results = results
+                .complete_one(OkResponse {
+                    affected_rows,
+                    status_flags: StatusFlags::SERVER_MORE_RESULTS_EXISTS,
+                    ..Default::default()
+                })
+                .await?;
+        }
+        if step.stops_on_kill {
+            // A KILL left over from an earlier statement must not end this one.
+            kill.pending.store(false, Ordering::SeqCst);
+        }
+        let mut writer = results.start(columns).await?;
+        for index in 0..step.row_count {
+            if step.stops_on_kill && kill.pending.swap(false, Ordering::SeqCst) {
+                return writer
+                    .finish_error(ErrorKind::ER_QUERY_INTERRUPTED, &QUERY_INTERRUPTED_MESSAGE)
+                    .await;
+            }
+            Self::write_rows(&mut writer, &[(step.make_row)(index)]).await?;
+            if let Some((rows_per_tick, pause)) = step.throttle {
+                if (index + 1) % rows_per_tick.max(1) == 0 {
+                    tokio::time::sleep(pause).await;
+                }
+            }
+        }
+        if let Some((kind, message)) = step.end_error {
+            return writer.finish_error(kind, &message).await;
+        }
+        writer.finish().await
     }
 
     fn normalize_query(query: &str) -> String {
@@ -403,6 +528,13 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return info.reply(statement_id, &params, &columns).await;
         }
 
+        // KILL arrives through sqlx's prepare/execute, and execute only sees the
+        // statement id, so remember which ids are KILLs. A scripted step for the
+        // KILL (e.g. an error) takes precedence above.
+        if normalized.to_ascii_uppercase().starts_with("KILL QUERY") {
+            self.kill_statement_ids.insert(statement_id);
+        }
+
         info.reply(statement_id, &params, &[]).await
     }
 
@@ -426,6 +558,11 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
 
         if let Some(step) = self.prepared_steps.get(&id) {
             return Self::write_step(step, results).await;
+        }
+
+        if self.kill_statement_ids.contains(&id) {
+            self.kill.received.fetch_add(1, Ordering::SeqCst);
+            self.kill.pending.store(true, Ordering::SeqCst);
         }
 
         results.completed(OkResponse::default()).await
@@ -473,8 +610,20 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return writer.finish().await;
         }
 
+        if self.kill.hits_next_statement.load(Ordering::SeqCst)
+            && self.kill.pending.swap(false, Ordering::SeqCst)
+        {
+            return results
+                .error(ErrorKind::ER_QUERY_INTERRUPTED, QUERY_INTERRUPTED_MESSAGE)
+                .await;
+        }
+
         if let Some((step, columns)) = self.find_multi_result_step(query) {
             return Self::write_multi_result_step(step, columns, results).await;
+        }
+
+        if let Some((step, columns)) = self.find_stream_step(query) {
+            return Self::write_stream_step(step, columns, &self.kill, results).await;
         }
 
         if let Some(step) = self.find_step(query) {
@@ -491,6 +640,7 @@ pub struct MockMySqlServer {
     connections: Arc<AtomicUsize>,
     connection_tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
     text_queries: Arc<Mutex<Vec<String>>>,
+    kill: Arc<MockKillState>,
 }
 
 impl MockMySqlServer {
@@ -521,6 +671,36 @@ impl MockMySqlServer {
         Self::start_backend(backend).await
     }
 
+    /// Start a server from a full [`MockScript`] (row streams, kill hook, …).
+    pub async fn start_with(script: MockScript) -> Self {
+        let mut backend = MockMySqlBackend::with_steps(script.steps);
+        backend.multi_result_steps = Arc::new(
+            script
+                .multi_result_steps
+                .into_iter()
+                .map(|step| {
+                    let columns = MockMySqlBackend::mock_columns(&step.columns);
+                    (step, columns)
+                })
+                .collect(),
+        );
+        backend.stream_steps = Arc::new(
+            script
+                .stream_steps
+                .into_iter()
+                .map(|step| {
+                    let columns = MockMySqlBackend::mock_columns(&step.columns);
+                    (step, columns)
+                })
+                .collect(),
+        );
+        backend
+            .kill
+            .hits_next_statement
+            .store(script.kill_hits_next_statement, Ordering::SeqCst);
+        Self::start_backend(backend).await
+    }
+
     pub async fn start_script_with_unsupported_prepared_prefixes(
         steps: Vec<MockQueryStep>,
         unsupported_prepared_prefixes: Vec<&'static str>,
@@ -548,6 +728,7 @@ impl MockMySqlServer {
 
         let connections = Arc::new(AtomicUsize::new(0));
         let text_queries = Arc::clone(&backend.text_queries);
+        let kill = Arc::clone(&backend.kill);
         let accepted = Arc::clone(&connections);
         let connection_tasks = Arc::new(Mutex::new(Vec::new()));
         let tasks = Arc::clone(&connection_tasks);
@@ -563,7 +744,11 @@ impl MockMySqlServer {
                 let backend = backend.clone();
                 let task = tokio::spawn(async move {
                     let (reader, writer) = stream.into_split();
-                    let writer = BufWriter::new(writer);
+                    // Zero capacity keeps the shim's `BufWriter<OwnedWriteHalf>`
+                    // type while every packet goes straight to the socket, so a
+                    // throttled stream reaches the client row by row (opensrv
+                    // itself only flushes at the end of a command).
+                    let writer = BufWriter::with_capacity(0, writer);
                     if let Err(error) =
                         AsyncMysqlIntermediary::run_on(backend, reader, writer).await
                     {
@@ -583,7 +768,13 @@ impl MockMySqlServer {
             connections,
             connection_tasks,
             text_queries,
+            kill,
         }
+    }
+
+    /// Number of `KILL QUERY` statements executed against this server.
+    pub fn kill_count(&self) -> usize {
+        self.kill.received.load(Ordering::SeqCst)
     }
 
     /// Number of client connections accepted so far.

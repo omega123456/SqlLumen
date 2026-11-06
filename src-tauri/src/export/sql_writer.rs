@@ -46,41 +46,53 @@ pub fn write_sql<W: Write, R: AsRef<[serde_json::Value]>>(
         ));
     }
 
+    let prefix = sql_insert_prefix(table_name, columns);
+    for row in rows.iter().map(AsRef::as_ref) {
+        write_sql_row(writer, &prefix, row)?;
+    }
+
+    Ok(())
+}
+
+/// The shared `INSERT INTO … VALUES (` prefix of every row, with escaped identifiers.
+pub fn sql_insert_prefix(table_name: &str, columns: &[String]) -> String {
     let escaped_table = escape_identifier(table_name);
     let col_list: String = columns
         .iter()
         .map(|c| format!("`{}`", escape_identifier(c)))
         .collect::<Vec<_>>()
         .join(", ");
+    format!("INSERT INTO `{escaped_table}` ({col_list}) VALUES (")
+}
 
-    for row in rows.iter().map(AsRef::as_ref) {
-        write!(
-            writer,
-            "INSERT INTO `{escaped_table}` ({col_list}) VALUES ("
-        )?;
-        for (i, val) in row.iter().enumerate() {
-            if i > 0 {
-                write!(writer, ", ")?;
+/// Write one `INSERT` statement (see [`write_sql`] for the value escaping).
+/// Shared by the slice writer and the streaming writer.
+pub fn write_sql_row<W: Write>(
+    writer: &mut W,
+    prefix: &str,
+    row: &[serde_json::Value],
+) -> io::Result<()> {
+    writer.write_all(prefix.as_bytes())?;
+    for (i, val) in row.iter().enumerate() {
+        if i > 0 {
+            write!(writer, ", ")?;
+        }
+        match val {
+            serde_json::Value::Null => write!(writer, "NULL")?,
+            serde_json::Value::String(s) => {
+                let escaped = escape_string_value(s);
+                write!(writer, "'{escaped}'")?;
             }
-            match val {
-                serde_json::Value::Null => write!(writer, "NULL")?,
-                serde_json::Value::String(s) => {
-                    let escaped = escape_string_value(s);
-                    write!(writer, "'{escaped}'")?;
-                }
-                serde_json::Value::Number(n) => write!(writer, "{n}")?,
-                serde_json::Value::Bool(b) => {
-                    write!(writer, "{}", if *b { 1 } else { 0 })?;
-                }
-                _ => {
-                    let s = val.to_string();
-                    let escaped = escape_string_value(&s);
-                    write!(writer, "'{escaped}'")?;
-                }
+            serde_json::Value::Number(n) => write!(writer, "{n}")?,
+            serde_json::Value::Bool(b) => {
+                write!(writer, "{}", if *b { 1 } else { 0 })?;
+            }
+            _ => {
+                let s = val.to_string();
+                let escaped = escape_string_value(&s);
+                write!(writer, "'{escaped}'")?;
             }
         }
-        writeln!(writer, ");")?;
     }
-
-    Ok(())
+    writeln!(writer, ");")
 }

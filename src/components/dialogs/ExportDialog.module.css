@@ -264,3 +264,70 @@
 }
 
 /* ── Footer (info bar) ──────────────────────────────────────────────────── */
+
+/* ── Full export progress (All rows) ────────────────────────────────────── */
+
+.progressSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-progress-panel-gap);
+  padding: var(--ui-progress-panel-padding);
+  background: var(--fill-control);
+  border-radius: var(--radius-card);
+  border: var(--ui-subsection-border);
+}
+
+.progressTitle {
+  font-family: var(--font-body);
+  font-size: var(--type-body-size);
+  color: var(--on-surface);
+}
+
+/* Indeterminate 4px bar (SqlDumpDialog progress pattern). */
+.progressBar {
+  position: relative;
+  height: var(--ui-progress-bar-height);
+  border-radius: var(--ui-progress-bar-radius);
+  background: var(--fill-neutral-selected);
+  overflow: hidden;
+}
+
+.progressIndicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: var(--ui-progress-bar-radius);
+  background: var(--primary);
+  animation: export-progress-indeterminate 1.6s ease-in-out infinite;
+}
+
+@keyframes export-progress-indeterminate {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressIndicator {
+    animation: none;
+    left: 0;
+    width: 100%;
+  }
+}
+
+.progressStats {
+  font-family: var(--font-body);
+  font-size: var(--type-caption-size);
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.progressActions {
+  display: flex;
+  justify-content: flex-end;
+}

@@ -27,6 +27,7 @@ beforeEach(() => {
   useSettingsStore.setState({
     settings: {},
     pendingChanges: {},
+    validationErrors: {},
     isDirty: false,
     isLoading: false,
     activeSection: 'general',
@@ -104,6 +105,34 @@ describe('SettingsDialog', () => {
       expect(screen.getByTestId('settings-save')).toBeInTheDocument()
     })
     expect(screen.getByTestId('settings-save')).toBeDisabled()
+  })
+
+  it('disables Save while a settings validation error exists, and save keeps the dialog open', async () => {
+    const onClose = vi.fn()
+    render(<SettingsDialog isOpen={true} onClose={onClose} />)
+    await waitForSettingsHydrated()
+
+    act(() => {
+      useSettingsStore.setState({
+        isDirty: true,
+        pendingChanges: { 'results.maxRows': '5' },
+        validationErrors: { 'results.maxRows': 'Enter a whole number from 1,000 to 1,000,000.' },
+      })
+    })
+    expect(screen.getByTestId('settings-save')).toBeDisabled()
+
+    // Saving validates first: an invalid value blocks the save (and the close).
+    act(() => {
+      useSettingsStore.setState({ validationErrors: {} })
+    })
+    expect(screen.getByTestId('settings-save')).toBeEnabled()
+    const user = userEvent.setup()
+    await user.click(screen.getByTestId('settings-save'))
+    await waitFor(() =>
+      expect(useSettingsStore.getState().validationErrors['results.maxRows']).toBeDefined()
+    )
+    expect(onClose).not.toHaveBeenCalled()
+    expect(ipc.calls('set_setting')).toHaveLength(0)
   })
 
   it('Cancel calls onClose when not dirty', async () => {

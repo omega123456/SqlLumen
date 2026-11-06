@@ -1,8 +1,14 @@
 /**
  * ResultGridView — thin wrapper around the shared BaseGridView for query results.
  *
+ * Rows are **windowed**: the Rust result cache owns them and the grid reads a
+ * windowed row source backed by the non-reactive page cache
+ * (`result-window-cache`). Unloaded rows render as skeleton cells, the visible
+ * range drives page loads, and Copy/Cut/Clear/Paste fetch unloaded rows first.
+ *
  * Responsibilities:
- * - Transforms array-of-arrays rows into keyed Record<string, unknown>[] with col_N keys
+ * - Serves page-cache rows as keyed `{ __rowIdx, __baseIdx, col_N }` objects
+ *   (`__rowIdx` = view position, `__baseIdx` = stable base index)
  * - Builds GridColumnDescriptor[] from ColumnMeta[] + editableColumnMap
  * - Translates col_N ↔ real column names in sort, cell click guard, and onRowsChange
  * - Adapts the rich RowEditState (schema.ts) to the simple RowEditState (shared-data-view.ts)
@@ -24,9 +30,23 @@ import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import { isJsonSqlType } from '../../lib/grid-column-style'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
-import { createRowObjectCache, type ResultRow } from '../../lib/result-row-materializer'
+import {
+  createWindowRowMaterializer,
+  materializeRow,
+  toCachedRow,
+  type ResultRow,
+} from '../../lib/result-row-materializer'
+import {
+  getLoadedRow,
+  readViewRange,
+  requestVisibleRange,
+  subscribeToResultWindow,
+  type CachedRow,
+} from '../../lib/result-window-cache'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
-import { useQueryStore } from '../../stores/query-store'
+import { countRanges, useQueryStore } from '../../stores/query-store'
+import type { GridRowSource, RowRange } from '../shared/glide/grid-row-source'
+import type { GridRowActions } from '../shared/glide/CanvasBaseGridView'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
@@ -35,7 +55,7 @@ import type {
   CellClipboardEditArgs,
   AutoSizeConfig,
 } from '../../types/shared-data-view'
-import type { GridCellPosition, GridRowsChangeData } from '../shared/glide/glide-grid-types'
+import type { GridCellPosition } from '../shared/glide/glide-grid-types'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,7 +67,16 @@ import type { GridCellPosition, GridRowsChangeData } from '../shared/glide/glide
 
 interface ResultGridViewProps {
   columns: ColumnMeta[]
-  rows: unknown[][]
+  /** Result index within the tab (page-cache surface). */
+  resultIndex: number
+  /** Query id of the cached result (changes on every re-run). */
+  queryId: string | null
+  /** Rows in the current view. */
+  viewRowCount: number
+  /** View version of the current view (changes on sort, filter and deletes). */
+  viewVersion: number
+  /** Clone draft row shown as a virtual row after the last view row, or null. */
+  draftRow: unknown[] | null
   sortColumn: string | null
   sortDirection: 'asc' | 'desc' | null
   onSortChanged: (column: string, direction: 'asc' | 'desc' | null) => void
@@ -61,22 +90,26 @@ interface ResultGridViewProps {
   editableColumnMap: Map<number, boolean>
   /** Current row edit state. */
   editState: RowEditState | null
-  /** Page-local row index of the editing row. */
+  /** View position of the editing row. */
   editingRowIndex: number | null
+  /** Base index of the editing row (null for the clone draft). */
+  editingBaseIndex: number | null
   /** Column metadata from the edit table (for cell editor selection). */
   editTableColumns: TableDataColumnMeta[]
   /** FK metadata from the edit table (single-column constraints only). */
   editForeignKeys?: import('../../types/schema').ForeignKeyColumnInfo[]
   /** Result column index → bound source-table column name. */
   editColumnBindings: Map<number, string>
-  /** Start editing a row by its page-local index. */
-  onStartEditing: (rowIndex: number) => void
+  /** Start editing a row by its view position (`row` when it isn't in the page cache). */
+  onStartEditing: (rowIndex: number, row?: CachedRow) => void
   /** Update a cell value in the edit state (result column index). */
   onUpdateCellValue: (columnIndex: number, value: unknown) => void
   /** Sync a cell value to both edit state and local rows. */
   onSyncCellValue: (columnIndex: number, value: unknown) => void
   /** Auto-save the current editing row (called on row transition). */
   onAutoSave: () => Promise<boolean>
+  /** Progress and expiry hooks for grid actions that fetch unloaded rows first. */
+  rowActions?: GridRowActions
   isActive?: boolean
 }
 
@@ -84,11 +117,28 @@ const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: import('../../types/schema').ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
+const EMPTY_ROWS: ResultRow[] = []
+
+/** True when `row` is the editing row: by base index, or by position for the clone draft. */
+function isEditingRowData(
+  row: Record<string, unknown>,
+  editingRowIndex: number | null,
+  editingBaseIndex: number | null
+): boolean {
+  if (editingRowIndex === null) return false
+  const baseIndex = typeof row.__baseIdx === 'number' ? row.__baseIdx : -1
+  if (baseIndex >= 0) return editingBaseIndex !== null && baseIndex === editingBaseIndex
+  return row.__rowIdx === editingRowIndex
+}
 const READ_ONLY_SELECTION_SYNC_DELAY_MS = 75
 
 export function ResultGridView({
   columns,
-  rows,
+  resultIndex,
+  queryId,
+  viewRowCount,
+  viewVersion,
+  draftRow,
   sortColumn,
   sortDirection,
   onSortChanged,
@@ -99,6 +149,7 @@ export function ResultGridView({
   editableColumnMap = EMPTY_EDITABLE_MAP,
   editState = null,
   editingRowIndex = null,
+  editingBaseIndex = null,
   editTableColumns = EMPTY_TABLE_COLUMNS,
   editForeignKeys = EMPTY_FOREIGN_KEYS,
   editColumnBindings = EMPTY_BINDINGS,
@@ -106,11 +157,12 @@ export function ResultGridView({
   onUpdateCellValue,
   onSyncCellValue,
   onAutoSave,
+  rowActions,
   isActive = true,
 }: ResultGridViewProps) {
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
   const storeSetResultScrollCell = useQueryStore((state) => state.setResultScrollCell)
-  const storeSetCheckedRowIndices = useQueryStore((state) => state.setCheckedRowIndices)
+  const storeSetCheckedRanges = useQueryStore((state) => state.setCheckedRanges)
   const selectedCell = useQueryStore((state) => {
     const tab = state.tabs[tabId]
     const activeResultIndex = tab?.activeResultIndex ?? 0
@@ -119,7 +171,7 @@ export function ResultGridView({
   const checkedRowCount = useQueryStore((state) => {
     const tab = state.tabs[tabId]
     const activeResultIndex = tab?.activeResultIndex ?? 0
-    return tab?.results[activeResultIndex]?.checkedRowIndices?.length ?? 0
+    return countRanges(tab?.results[activeResultIndex]?.checkedRanges ?? [])
   })
   const storeScrollRow = useQueryStore((state) => {
     const tab = state.tabs[tabId]
@@ -143,24 +195,25 @@ export function ResultGridView({
     [storeSetResultScrollCell, tabId]
   )
 
-  // Multi-select checkbox column — track checked rows by their page-local index
-  // so toolbar actions can target them.
-  const handleRowMarkersChange = useCallback(
-    (selectedRows: Record<string, unknown>[]) => {
-      const indices = selectedRows
-        .map((row) => row.__rowIdx)
-        .filter((index): index is number => typeof index === 'number')
-      storeSetCheckedRowIndices(tabId, indices)
+  // Multi-select checkbox column — checked rows are view-position ranges tagged
+  // with the view version (D17); header select-all never loads every row.
+  const handleRowMarkerRangesChange = useCallback(
+    (ranges: RowRange[]) => {
+      // The virtual clone-draft row can't be checked.
+      const clamped = ranges
+        .map(([start, end]) => [start, Math.min(end, viewRowCount)] as const)
+        .filter(([start, end]) => end > start)
+      storeSetCheckedRanges(tabId, clamped)
     },
-    [storeSetCheckedRowIndices, tabId]
+    [storeSetCheckedRanges, tabId, viewRowCount]
   )
 
   // The grid always mounts with no checked rows (e.g. after switching result
-  // sub-tabs or view modes), so drop any stale checked indices from the store
+  // sub-tabs or view modes), so drop any stale checked ranges from the store
   // to keep the toolbar's copy/delete state in sync with what's visible.
   useEffect(() => {
-    storeSetCheckedRowIndices(tabId, [])
-  }, [storeSetCheckedRowIndices, tabId])
+    storeSetCheckedRanges(tabId, [])
+  }, [storeSetCheckedRanges, tabId])
 
   // When the store's checked set transitions from non-empty to empty (e.g. the
   // toolbar cleared it after a bulk delete), push a reset signal down to the
@@ -186,6 +239,7 @@ export function ResultGridView({
   const [blobDialogOpen, setBlobDialogOpen] = useState(false)
   const [blobContext, setBlobContext] = useState<{
     rowIndex: number
+    row: CachedRow
     columnIndex: number
     columnLabel: string
     base64: string | null
@@ -200,7 +254,6 @@ export function ResultGridView({
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
   const editingRowIndexRef = useRef(editingRowIndex)
-  const rowDataRef = useRef<ResultRow[]>([])
   const columnsRef = useRef(columns)
   const onSyncCellValueRef = useRef(onSyncCellValue)
   const onRowSelectedRef = useRef(onRowSelected)
@@ -225,6 +278,11 @@ export function ResultGridView({
     editingRowIndexRef.current = editingRowIndex
   }, [editingRowIndex])
 
+  const editingBaseIndexRef = useRef(editingBaseIndex)
+  useEffect(() => {
+    editingBaseIndexRef.current = editingBaseIndex
+  }, [editingBaseIndex])
+
   useEffect(() => {
     columnsRef.current = columns
   }, [columns])
@@ -248,7 +306,7 @@ export function ResultGridView({
       clearTimeout(readOnlySelectionSyncTimerRef.current)
       readOnlySelectionSyncTimerRef.current = null
     }
-  }, [rows, columns, tabId])
+  }, [queryId, viewVersion, columns, tabId])
 
   useEffect(() => {
     return () => {
@@ -356,34 +414,83 @@ export function ResultGridView({
   }, [editColumnBindings])
 
   // ---------------------------------------------------------------------------
-  // Row data: transform array-of-arrays to array-of-objects with col_N keys.
-  // Objects are reused for row arrays that did not change, and only the editing
-  // row is copied to overlay editState current values.
+  // Windowed row source: page-cache rows materialized on demand (objects reused
+  // by base index). The editing row overlays editState values, and the clone
+  // draft is a virtual row right after the last view row.
   // ---------------------------------------------------------------------------
-  const [rowCache] = useState(createRowObjectCache)
   const columnCount = columns.length
-  const baseRows = useMemo(() => rowCache.build(rows, columnCount), [rowCache, rows, columnCount])
-  const rowData: ResultRow[] = useMemo(() => {
-    if (!editState || editingRowIndex === null) return baseRows
-    const editingRow = baseRows[editingRowIndex]
-    if (!editingRow) return baseRows
+  const [materializer] = useState(() => createWindowRowMaterializer(columnCount))
+  const materializerKey = `${queryId ?? ''}:${viewVersion}:${columnCount}`
+  const [lastMaterializerKey, setLastMaterializerKey] = useState(materializerKey)
+  if (lastMaterializerKey !== materializerKey) {
+    setLastMaterializerKey(materializerKey)
+    materializer.reset(columnCount)
+  }
 
-    const overlaid: ResultRow = { ...editingRow }
-    for (const [colName, value] of Object.entries(editState.currentValues)) {
-      const colIdx = boundColumnIndexLookup.get(colName) ?? -1
-      if (colIdx !== -1) {
-        overlaid[colKey(colIdx)] = value
+  const rowSource = useMemo<GridRowSource<ResultRow>>(() => {
+    void materializerKey
+    const isEditingRow = (position: number, baseIndex: number): boolean =>
+      editState !== null &&
+      (baseIndex >= 0 ? baseIndex === editingBaseIndex : position === editingRowIndex)
+    const overlay = (row: ResultRow): ResultRow => {
+      if (!editState) return row
+      const overlaid: ResultRow = { ...row }
+      for (const [colName, value] of Object.entries(editState.currentValues)) {
+        const colIdx = boundColumnIndexLookup.get(colName) ?? -1
+        if (colIdx !== -1) overlaid[colKey(colIdx)] = value
       }
+      return overlaid
     }
-    const withOverlay = baseRows.slice()
-    withOverlay[editingRowIndex] = overlaid
-    return withOverlay
-  }, [baseRows, editState, editingRowIndex, boundColumnIndexLookup])
-
-  // Keep rowDataRef in sync for stable callbacks
+    const getRow = (position: number): ResultRow | undefined => {
+      if (draftRow && position === viewRowCount) {
+        const draft = materializeRow(position, -1, draftRow, columnCount)
+        return isEditingRow(position, -1) ? overlay(draft) : draft
+      }
+      const cached = getLoadedRow(tabId, resultIndex, position)
+      if (!cached) return undefined
+      const row = materializer.get(position, cached.baseIndex, cached.row)
+      return isEditingRow(position, cached.baseIndex) ? overlay(row) : row
+    }
+    return {
+      kind: 'windowed',
+      rowCount: viewRowCount + (draftRow ? 1 : 0),
+      getRow,
+      isLoaded: (position) => getRow(position) !== undefined,
+      onVisibleRangeChange: (range) => requestVisibleRange(tabId, resultIndex, range),
+      subscribe: (listener) => subscribeToResultWindow(tabId, resultIndex, listener),
+      readRange: async ([start, end], options) => {
+        const viewEnd = Math.min(end, viewRowCount)
+        const fetched =
+          viewEnd > start ? await readViewRange(tabId, resultIndex, [start, viewEnd], options) : []
+        const rows = fetched.map((cached, offset) => {
+          const position = start + offset
+          const row = materializeRow(position, cached.baseIndex, cached.row, columnCount)
+          return isEditingRow(position, cached.baseIndex) ? overlay(row) : row
+        })
+        if (draftRow && end > viewRowCount) {
+          const draft = getRow(viewRowCount)
+          if (draft) rows.push(draft)
+        }
+        return rows
+      },
+    }
+  }, [
+    boundColumnIndexLookup,
+    columnCount,
+    draftRow,
+    editState,
+    editingBaseIndex,
+    editingRowIndex,
+    materializer,
+    materializerKey,
+    resultIndex,
+    tabId,
+    viewRowCount,
+  ])
+  const rowSourceRef = useRef(rowSource)
   useEffect(() => {
-    rowDataRef.current = rowData
-  }, [rowData])
+    rowSourceRef.current = rowSource
+  }, [rowSource])
 
   const resolvedColumnsBuild = useMemo(() => {
     const resolved = resolveQueryResultColumns({
@@ -444,6 +551,7 @@ export function ResultGridView({
       const cellValue = row[columnKey]
       setBlobContext({
         rowIndex: typeof row.__rowIdx === 'number' ? row.__rowIdx : -1,
+        row: toCachedRow(row, columns.length),
         columnIndex,
         columnLabel: column.name,
         base64: typeof cellValue === 'string' ? cellValue : null,
@@ -458,7 +566,7 @@ export function ResultGridView({
     (envelope: BlobEnvelope) => {
       if (!blobContext?.editable) return
       if (blobContext.rowIndex >= 0 && editingRowIndex !== blobContext.rowIndex) {
-        onStartEditing(blobContext.rowIndex)
+        onStartEditing(blobContext.rowIndex, blobContext.row)
       }
       onSyncCellValue(blobContext.columnIndex, envelope)
     },
@@ -483,7 +591,7 @@ export function ResultGridView({
 
   const handleSelectedCellChange = useCallback(
     (pos: GridCellPosition) => {
-      const row = rowDataRef.current[pos.rowIdx]
+      const row = rowSourceRef.current.getRow(pos.rowIdx)
       const column = columnsRef.current[pos.idx]
       if (!row || !column) return
       syncSelection(pos.rowIdx, colKey(pos.idx), row)
@@ -568,8 +676,9 @@ export function ResultGridView({
       const currentEditingRowIndex = editingRowIndexRef.current
       if (!currentEditState || currentEditingRowIndex === null) return false
 
-      const rowIdx = rowData.__rowIdx as number
-      if (rowIdx !== currentEditingRowIndex) return false
+      if (!isEditingRowData(rowData, currentEditingRowIndex, editingBaseIndexRef.current)) {
+        return false
+      }
 
       // Only bound source columns can be considered modified query-edit fields.
       const colIndex = colIndexFromKey(columnKey)
@@ -629,7 +738,7 @@ export function ResultGridView({
       // Editable cells should start row editing; pointer single-click still keeps the editor closed.
       if (isEditable) {
         if (currentEditingRow !== rowIdx) {
-          onStartEditing(rowIdx)
+          onStartEditing(rowIdx, toCachedRow(args.rowData, columnsRef.current.length))
         }
         return {
           proceed: true,
@@ -668,39 +777,6 @@ export function ResultGridView({
     [syncSelection]
   )
 
-  // ---------------------------------------------------------------------------
-  // onRowsChange: handle cell editor updates from the shared grid protocol.
-  // When a cell editor changes a value, the grid fires onRowsChange. We detect
-  // which col_N changed and call onSyncCellValue with the real column name.
-  // ---------------------------------------------------------------------------
-  const handleRowsChange = useCallback(
-    (newRows: Record<string, unknown>[], data: GridRowsChangeData<Record<string, unknown>>) => {
-      // data.indexes contains the indices of changed rows
-      if (!data.indexes || data.indexes.length === 0) return
-
-      const currentColumns = columnsRef.current
-      const currentRowData = rowDataRef.current
-      const syncCellValue = onSyncCellValueRef.current
-
-      for (const changedIdx of data.indexes) {
-        const newRow = newRows[changedIdx]
-        const oldRow = currentRowData[changedIdx]
-        if (!newRow || !oldRow) continue
-
-        // Find which col_N value changed
-        for (let i = 0; i < currentColumns.length; i++) {
-          const key = colKey(i)
-          if (newRow[key] !== oldRow[key]) {
-            if (currentColumns[i]) {
-              syncCellValue(i, newRow[key])
-            }
-          }
-        }
-      }
-    },
-    []
-  )
-
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
     return {
       enabled: true,
@@ -735,21 +811,21 @@ export function ResultGridView({
   }, [editColumnBindings, editMode, editableColumnMap, resolvedColumns])
 
   const handleCellClipboardEdit = useCallback(
-    async (args: CellClipboardEditArgs) => {
-      if (!editMode) return
+    async (args: CellClipboardEditArgs): Promise<boolean> => {
+      if (!editMode) return false
 
       const colIndex = colIndexFromKey(args.columnKey)
       const isEditable = editableColumnMap.get(colIndex) ?? false
-      if (!columns[colIndex] || !isEditable) return
+      if (!columns[colIndex] || !isEditable) return false
 
       const currentEditingRow = editingRowIndexRef.current
       const saveSucceeded = await autoSaveBeforeLeavingEditedRow(args.rowIdx)
-      if (!saveSucceeded) return
+      if (!saveSucceeded) return false
 
       syncSelection(args.rowIdx, args.columnKey, args.rowData)
 
       if (currentEditingRow !== args.rowIdx) {
-        onStartEditing(args.rowIdx)
+        onStartEditing(args.rowIdx, toCachedRow(args.rowData, columns.length))
       }
 
       const nextValue =
@@ -757,6 +833,7 @@ export function ResultGridView({
           ? null
           : (args.text ?? (args.rowData[args.columnKey] as string | null))
       onSyncCellValue(colIndex, nextValue)
+      return true
     },
     [
       editMode,
@@ -782,8 +859,8 @@ export function ResultGridView({
       const rowIdx = row.__rowIdx as number
       const classes: string[] = []
 
-      // Editing row highlight
-      if (editingRowIndex !== null && rowIdx === editingRowIndex) {
+      // Editing row highlight (by base index: a sort or filter may move the row)
+      if (isEditingRowData(row, editingRowIndex, editingBaseIndex)) {
         classes.push('grid-editing-row')
       }
 
@@ -794,13 +871,15 @@ export function ResultGridView({
 
       return classes.length > 0 ? classes.join(' ') : undefined
     },
-    [selectedRowIndex, editingRowIndex]
+    [selectedRowIndex, editingRowIndex, editingBaseIndex]
   )
 
   return (
     <EditorCallbacksContext.Provider value={editorCallbacksCtx}>
       <CanvasBaseGridView
-        rows={rowData}
+        rows={EMPTY_ROWS}
+        rowSource={rowSource}
+        rowActions={rowActions}
         columns={gridColumns}
         editState={sharedEditState}
         sortColumn={sortColumnKey}
@@ -809,7 +888,6 @@ export function ResultGridView({
         onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
         onCellSelectionChange={!editMode ? handleCellSelectionChange : undefined}
         runCellClickGuardOnKeyboardSelection={!!editMode}
-        onRowsChange={handleRowsChange}
         onCellClipboardEdit={handleCellClipboardEdit}
         onCellDoubleClick={handleCellDoubleClick}
         selectedCellPosition={selectedCellPosition}
@@ -835,7 +913,7 @@ export function ResultGridView({
         onScrollCellChange={handleScrollCellChange}
         initialScrollCell={initialScrollCell}
         rowMarkers="checkbox"
-        onRowMarkersChange={handleRowMarkersChange}
+        onRowMarkerRangesChange={handleRowMarkerRangesChange}
         resetSelectionKey={resetSelectionKey}
         testId="result-grid"
       />

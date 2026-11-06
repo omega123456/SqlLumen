@@ -115,13 +115,11 @@ describe('BlobViewerDialog', () => {
   })
 
   it('shows the warning-tinted size chip and in-panel warning when tooLarge', async () => {
-    const loader = vi.fn(
-      async (): Promise<BlobValueResponse> => ({
-        base64: null,
-        byteLength: 12 * 1024 * 1024,
-        tooLarge: true,
-      })
-    )
+    const loader = vi.fn(async (): Promise<BlobValueResponse> => ({
+      base64: null,
+      byteLength: 12 * 1024 * 1024,
+      tooLarge: true,
+    }))
     render(<BlobViewerDialog {...baseProps} loader={loader} />)
     // The byte-size chip carries the warning tint and an alert role.
     const sizeChip = await screen.findByTestId('blob-chip-size')
@@ -407,13 +405,11 @@ describe('BlobViewerDialog', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     const onApply = vi.fn()
-    const loader = vi.fn(
-      async (): Promise<BlobValueResponse> => ({
-        base64: null,
-        byteLength: 12 * 1024 * 1024,
-        tooLarge: true,
-      })
-    )
+    const loader = vi.fn(async (): Promise<BlobValueResponse> => ({
+      base64: null,
+      byteLength: 12 * 1024 * 1024,
+      tooLarge: true,
+    }))
     render(<BlobViewerDialog {...baseProps} onClose={onClose} onApply={onApply} loader={loader} />)
 
     await screen.findByTestId('blob-too-large-content')

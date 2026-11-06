@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilterCondition, ForeignKeyColumnInfo } from '../../../types/schema'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
-import { makeTabState } from '../../helpers/query-test-utils'
+import { makeTabState, withRows } from '../../helpers/query-test-utils'
 import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
 import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
 import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
@@ -128,8 +128,8 @@ beforeEach(() => {
   })
 
   vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
-    ({ rows }: { rows: unknown[][] }) =>
-      (<div data-testid="result-text-view">{rows.length}</div>) as unknown as React.ReactElement
+    ({ viewRowCount }: { viewRowCount: number }) =>
+      (<div data-testid="result-text-view">{viewRowCount}</div>) as unknown as React.ReactElement
   )
 
   vi.spyOn(ExportDialogModule, 'default').mockImplementation((props) => {
@@ -268,7 +268,7 @@ describe('ResultPanel actions and states', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             },
             {
@@ -299,7 +299,7 @@ describe('ResultPanel actions and states', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             },
             {
@@ -508,7 +508,11 @@ describe('ResultPanel actions and states', () => {
     expect(screen.getByTestId('fk-lookup-dialog-mock')).toBeInTheDocument()
     expect(screen.getByTestId('fk-lookup-database')).toHaveTextContent('appdb')
     expect(screen.getByTestId('fk-lookup-source-column')).toHaveTextContent('role_id')
-    expect(startEditingRowSpy).toHaveBeenCalledWith('tab-1', 0)
+    // The lookup row carries no base index here, so it is resolved by view position.
+    expect(startEditingRowSpy).toHaveBeenCalledWith('tab-1', 0, {
+      row: [1, 5, 'Alice'],
+      baseIndex: 0,
+    })
     expect(setSelectedRowSpy).toHaveBeenCalledWith('tab-1', 0)
 
     await user.click(screen.getByTestId('fk-lookup-apply-new'))

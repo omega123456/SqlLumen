@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ipc } from '../ipc-mock'
 import { renderHook, act } from '@testing-library/react'
-import { useSettingsStore, SETTINGS_DEFAULTS, useSettingValue } from '../../stores/settings-store'
+import {
+  useSettingsStore,
+  SETTINGS_DEFAULTS,
+  SETTINGS_VALIDATORS,
+  RESULTS_MAX_ROWS_ERROR,
+  useSettingValue,
+} from '../../stores/settings-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore } from '../../stores/query-store'
@@ -15,6 +21,7 @@ beforeEach(() => {
   useSettingsStore.setState({
     settings: {},
     pendingChanges: {},
+    validationErrors: {},
     isLoading: false,
     isDirty: false,
     activeSection: 'general',
@@ -487,5 +494,89 @@ describe('useSettingsStore', () => {
       // resetSection overwrites pending with defaults for all ai.* keys
       expect(useSettingsStore.getState().pendingChanges['ai.retrieval.topN']).toBe('20')
     })
+  })
+})
+
+describe('results.maxRows (row ceiling) validation', () => {
+  it('defaults to 100000 and keeps the 500-row page size default', () => {
+    expect(SETTINGS_DEFAULTS['results.maxRows']).toBe('100000')
+    expect(SETTINGS_DEFAULTS['results.pageSize']).toBe('500')
+  })
+
+  it.each([
+    ['1000', null],
+    ['1000000', null],
+    [' 250000 ', null],
+    ['999', RESULTS_MAX_ROWS_ERROR],
+    ['1000001', RESULTS_MAX_ROWS_ERROR],
+    ['12.5', RESULTS_MAX_ROWS_ERROR],
+    ['', RESULTS_MAX_ROWS_ERROR],
+    ['abc', RESULTS_MAX_ROWS_ERROR],
+  ])('validates %j', (value, expected) => {
+    expect(SETTINGS_VALIDATORS['results.maxRows'](value)).toBe(expected)
+  })
+
+  it('validateSetting records and clears the error without clamping the value', () => {
+    act(() => useSettingsStore.getState().setPendingChange('results.maxRows', '50'))
+    // Typing never validates.
+    expect(useSettingsStore.getState().validationErrors).toEqual({})
+
+    let valid = true
+    act(() => {
+      valid = useSettingsStore.getState().validateSetting('results.maxRows')
+    })
+    expect(valid).toBe(false)
+    expect(useSettingsStore.getState().validationErrors['results.maxRows']).toBe(
+      RESULTS_MAX_ROWS_ERROR
+    )
+    expect(useSettingsStore.getState().pendingChanges['results.maxRows']).toBe('50')
+
+    act(() => useSettingsStore.getState().setPendingChange('results.maxRows', '5000'))
+    act(() => {
+      valid = useSettingsStore.getState().validateSetting('results.maxRows')
+    })
+    expect(valid).toBe(true)
+    expect(useSettingsStore.getState().validationErrors).toEqual({})
+    // Keys without a validator are always valid.
+    expect(useSettingsStore.getState().validateSetting('results.pageSize')).toBe(true)
+  })
+
+  it('save validates pending values and saves nothing while an error exists', async () => {
+    act(() => {
+      useSettingsStore.getState().setPendingChange('results.maxRows', '10')
+      useSettingsStore.getState().setPendingChange('results.nullDisplay', '(null)')
+    })
+    await act(async () => {
+      await useSettingsStore.getState().save()
+    })
+    expect(mockSetSetting).not.toHaveBeenCalled()
+    expect(useSettingsStore.getState().validationErrors['results.maxRows']).toBe(
+      RESULTS_MAX_ROWS_ERROR
+    )
+    expect(useSettingsStore.getState().isDirty).toBe(true)
+
+    act(() => useSettingsStore.getState().setPendingChange('results.maxRows', '20000'))
+    await act(async () => {
+      await useSettingsStore.getState().save()
+    })
+    expect(mockSetSetting).toHaveBeenCalledWith('results.maxRows', '20000')
+    expect(useSettingsStore.getState().validationErrors).toEqual({})
+  })
+
+  it('discard and resetSection clear validation errors', () => {
+    act(() => {
+      useSettingsStore.getState().setPendingChange('results.maxRows', '1')
+      useSettingsStore.getState().validateSetting('results.maxRows')
+    })
+    act(() => useSettingsStore.getState().resetSection('results'))
+    expect(useSettingsStore.getState().validationErrors).toEqual({})
+    expect(useSettingsStore.getState().pendingChanges['results.maxRows']).toBe('100000')
+
+    act(() => {
+      useSettingsStore.getState().setPendingChange('results.maxRows', '1')
+      useSettingsStore.getState().validateSetting('results.maxRows')
+      useSettingsStore.getState().discard()
+    })
+    expect(useSettingsStore.getState().validationErrors).toEqual({})
   })
 })

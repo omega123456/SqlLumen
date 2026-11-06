@@ -10,7 +10,9 @@ import {
   getCopyableObjectsFixture,
   getCopyProgressFixture,
   getCopyToHostStartFixture,
-  getCachedRowsFixture,
+  getCancelResultExportFixture,
+  getResultExportProgressFixture,
+  getResultExportStartFixture,
   getColumnsFixture,
   getConnectionMemoriesFixture,
   getOpenConnectionSessionsFixture,
@@ -22,7 +24,13 @@ import {
   getMovedMemoryFixture,
   getSavedMemoryFixture,
   getObjectBodyFixture,
-  getQueryResultFixture,
+  executeCallQueryFixture,
+  executeMultiQueryFixture,
+  executeQueryFixture,
+  fetchResultWindowFixture,
+  reexecuteSingleResultFixture,
+  removeResultRowsFixture,
+  setResultViewFixture,
   getRoutineParamsFixture,
   getSchemaMetadataFullFixture,
   getSchemaInfoFixture,
@@ -599,8 +607,13 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         throw new Error("Table 'app_db.nonexistent' doesn't exist")
       }
 
-      // Build the result for this request (used for both immediate and delayed paths)
-      const result = getQueryResultFixture(String(args?.sql ?? ''), activeMockDatabase)
+      // Build the windowed result for this request (used for both immediate and delayed paths)
+      const result = executeQueryFixture({
+        tabId: String(args?.tabId ?? ''),
+        sql: String(args?.sql ?? ''),
+        activeMockDb: activeMockDatabase,
+        viewSpec: (args?.viewSpec as Parameters<typeof executeQueryFixture>[0]['viewSpec']) ?? null,
+      })
 
       // Support configurable delay for Playwright E2E tests (running indicator + cancel flow)
       if (typeof window !== 'undefined') {
@@ -619,140 +632,38 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return result
     }
 
+    // Windowed results: fixture data and view/window logic live in the registry.
     case 'execute_multi_query':
-      return {
-        results: [
-          {
-            queryId: 'mock-multi-q1',
-            sourceSql: 'SELECT id, name FROM users',
-            columns: [
-              { name: 'id', dataType: 'BIGINT' },
-              { name: 'name', dataType: 'VARCHAR' },
-            ],
-            totalRows: 2,
-            executionTimeMs: 15,
-            totalTimeMs: 19,
-            affectedRows: 0,
-            rows: [
-              [1, 'Alice'],
-              [2, 'Bob'],
-            ],
-
-            autoLimitApplied: false,
-            error: null,
-            reExecutable: true,
-          },
-          {
-            queryId: 'mock-multi-q2',
-            sourceSql: 'SELECT product_id, price FROM products',
-            columns: [
-              { name: 'product_id', dataType: 'INT' },
-              { name: 'price', dataType: 'DECIMAL' },
-            ],
-            totalRows: 2,
-            executionTimeMs: 8,
-            totalTimeMs: 11,
-            affectedRows: 0,
-            rows: [
-              [101, '29.99'],
-              [102, '49.99'],
-            ],
-
-            autoLimitApplied: false,
-            error: null,
-            reExecutable: true,
-          },
-          {
-            queryId: 'mock-multi-q3',
-            sourceSql: "UPDATE users SET status = 'active' WHERE id = 1",
-            columns: [],
-            totalRows: 0,
-            executionTimeMs: 3,
-            totalTimeMs: 3,
-            affectedRows: 1,
-            rows: [],
-
-            autoLimitApplied: false,
-            error: null,
-            reExecutable: true,
-          },
-        ],
-      }
+      return executeMultiQueryFixture({ tabId: String(args?.tabId ?? '') })
 
     case 'execute_call_query':
-      return {
-        results: [
-          {
-            queryId: 'mock-call-q1',
-            sourceSql: 'CALL sp_get_orders()',
-            columns: [
-              { name: 'order_id', dataType: 'INT' },
-              { name: 'total', dataType: 'DECIMAL' },
-            ],
-            totalRows: 2,
-            executionTimeMs: 20,
-            totalTimeMs: 26,
-            affectedRows: 0,
-            rows: [
-              [1, '150.00'],
-              [2, '230.50'],
-            ],
-
-            autoLimitApplied: false,
-            error: null,
-            reExecutable: false,
-          },
-          {
-            queryId: 'mock-call-q2',
-            sourceSql: 'CALL sp_get_orders()',
-            columns: [
-              { name: 'summary_key', dataType: 'VARCHAR' },
-              { name: 'summary_value', dataType: 'INT' },
-            ],
-            totalRows: 1,
-            executionTimeMs: 5,
-            totalTimeMs: 7,
-            affectedRows: 0,
-            rows: [['total_orders', 42]],
-
-            autoLimitApplied: false,
-            error: null,
-            reExecutable: false,
-          },
-        ],
-      }
+      return executeCallQueryFixture({
+        tabId: String(args?.tabId ?? ''),
+        sql: String(args?.sql ?? ''),
+      })
 
     case 'reexecute_single_result':
-      return {
-        queryId: 'mock-reexec-q1',
-        sourceSql: String(args?.sql ?? 'SELECT 1'),
-        columns: [
-          { name: 'id', dataType: 'BIGINT' },
-          { name: 'name', dataType: 'VARCHAR' },
-        ],
-        totalRows: 2,
-        executionTimeMs: 10,
-        totalTimeMs: 13,
-        affectedRows: 0,
-        rows: [
-          [1, 'Alice'],
-          [2, 'Bob'],
-        ],
-        autoLimitApplied: false,
-        error: null,
-        reExecutable: true,
-      }
+      return reexecuteSingleResultFixture({
+        tabId: String(args?.tabId ?? ''),
+        resultIndex: Number(args?.resultIndex ?? 0),
+        sql: String(args?.sql ?? 'SELECT 1'),
+        viewSpec:
+          (args?.viewSpec as Parameters<typeof reexecuteSingleResultFixture>[0]['viewSpec']) ??
+          null,
+      })
 
-    case 'fetch_cached_rows': {
-      const cachedRows = getCachedRowsFixture(
-        typeof args?.queryId === 'string' ? args.queryId : null,
-        typeof args?.resultIndex === 'number' ? args.resultIndex : null
+    case 'set_result_view':
+      return setResultViewFixture(args as unknown as Parameters<typeof setResultViewFixture>[0])
+
+    case 'fetch_result_window':
+      return fetchResultWindowFixture(
+        args as unknown as Parameters<typeof fetchResultWindowFixture>[0]
       )
-      return {
-        rows: cachedRows.rows,
-        columns: cachedRows.columns,
-      }
-    }
+
+    case 'remove_result_rows':
+      return removeResultRowsFixture(
+        args as unknown as Parameters<typeof removeResultRowsFixture>[0]
+      )
 
     case 'evict_results':
       return null
@@ -770,18 +681,6 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return true
     }
 
-    case 'sort_results':
-      // Returns SortedRowsResult shape (rows only)
-      return {
-        rows: [
-          [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
-          [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
-          [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
-          [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
-          [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
-        ],
-      }
-
     case 'analyze_query_for_edit':
       return getAnalyzeQueryForEditFixture(args?.sql as string | null | undefined)
 
@@ -793,6 +692,15 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'export_results':
       return { bytesWritten: 1024, rowsExported: 5 }
+
+    case 'start_result_export':
+      return getResultExportStartFixture()
+
+    case 'get_result_export_progress':
+      return getResultExportProgressFixture(args?.jobId as string | null | undefined)
+
+    case 'cancel_result_export':
+      return getCancelResultExportFixture(args?.jobId as string | null | undefined)
 
     case 'fetch_schema_metadata':
       return (
@@ -878,18 +786,16 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'fetch_schema_metadata_full': {
       const fixtureMetadata = getSchemaMetadataFullFixture()
       const baseMetadata = getSchemaMetadataOverride()
-      return maybeDelaySchemaMetadata().then(
-        (): SchemaMetadataFull => ({
-          databases: baseMetadata?.databases ?? fixtureMetadata.databases,
-          tables: baseMetadata?.tables ?? fixtureMetadata.tables,
-          views: fixtureMetadata.views,
-          columns: baseMetadata?.columns ?? fixtureMetadata.columns,
-          routines: baseMetadata?.routines ?? fixtureMetadata.routines,
-          triggers: fixtureMetadata.triggers,
-          foreignKeys: fixtureMetadata.foreignKeys,
-          indexes: fixtureMetadata.indexes,
-        })
-      )
+      return maybeDelaySchemaMetadata().then((): SchemaMetadataFull => ({
+        databases: baseMetadata?.databases ?? fixtureMetadata.databases,
+        tables: baseMetadata?.tables ?? fixtureMetadata.tables,
+        views: fixtureMetadata.views,
+        columns: baseMetadata?.columns ?? fixtureMetadata.columns,
+        routines: baseMetadata?.routines ?? fixtureMetadata.routines,
+        triggers: fixtureMetadata.triggers,
+        foreignKeys: fixtureMetadata.foreignKeys,
+        indexes: fixtureMetadata.indexes,
+      }))
     }
 
     // --- Table data browser/editor ---

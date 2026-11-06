@@ -119,37 +119,20 @@ async function waitForQueryContent(page: Page, expectedContent: string) {
     .toBe(true)
 }
 
-async function waitForActiveResultValue(page: Page, expectedValue: unknown) {
+/**
+ * Wait until the active result's first cell shows `expectedValue`. Result rows
+ * are windowed (not kept in the query store), so read the cell through the
+ * text view's DOM.
+ */
+async function waitForActiveResultValue(page: Page, expectedValue: string) {
+  await activePanel(page).getByTestId('view-mode-text').click()
+  const pre = activePanel(page).getByTestId('result-text-view').locator('pre')
   await expect
-    .poll(
-      async () =>
-        page.evaluate((expected) => {
-          const queryStore = (
-            window as unknown as {
-              __queryStore__?: {
-                getState?: () => {
-                  tabs?: Record<
-                    string,
-                    {
-                      activeResultIndex?: number
-                      results?: Array<{ rows?: unknown[][]; resultStatus?: string }>
-                    }
-                  >
-                }
-              }
-            }
-          ).__queryStore__
-
-          return Object.values(queryStore?.getState?.().tabs ?? {}).some((tab) => {
-            const resultIndex = tab?.activeResultIndex ?? 0
-            const activeResult = tab?.results?.[resultIndex]
-            const value = activeResult?.rows?.[0]?.[0]
-            return activeResult?.resultStatus === 'success' && value === expected
-          })
-        }, expectedValue),
-      { timeout: 5_000, intervals: [100, 200, 300] }
-    )
-    .toBe(true)
+    .poll(async () => ((await pre.textContent()) ?? '').split('\n')[2]?.trim(), {
+      timeout: 5_000,
+      intervals: [100, 200, 300],
+    })
+    .toBe(expectedValue)
 }
 
 async function typeQuery(page: Page, sql: string) {

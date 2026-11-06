@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore, seedVisibleConnection } from '../helpers/workspace-test-utils'
+import { rowsOf, withRows } from '../helpers/query-test-utils'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
@@ -291,7 +292,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-1',
-              rows: [[1, 'alice']],
+              ...withRows([[1, 'alice']]),
               rowResidency: {
                 status: 'resident',
                 isActive: true,
@@ -368,7 +369,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-1',
-              rows: [[1, 'alice']],
+              ...withRows([[1, 'alice']]),
               rowResidency: {
                 status: 'resident',
                 isActive: true,
@@ -466,7 +467,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-1',
-              rows: [[1, 'alice']],
+              ...withRows([[1, 'alice']]),
               rowResidency: {
                 status: 'resident',
                 isActive: true,
@@ -535,7 +536,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-1',
-              rows: [[1, 'alice']],
+              ...withRows([[1, 'alice']]),
               rowResidency: {
                 status: 'resident',
                 isActive: true,
@@ -546,7 +547,7 @@ describe('useWorkspaceStore — visible surface activation lifecycle', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-2',
-              rows: [[2, 'bob']],
+              ...withRows([[2, 'bob']]),
               rowResidency: {
                 status: 'resident',
                 isActive: false,
@@ -597,7 +598,7 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId,
-              rows: [[1, 'alice']],
+              ...withRows([[1, 'alice']]),
               rowResidency: {
                 status: 'resident',
                 isActive: true,
@@ -637,7 +638,7 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-2',
-              rows: [[2, 'bob']],
+              ...withRows([[2, 'bob']]),
               rowResidency: {
                 status: 'resident',
                 isActive: false,
@@ -695,7 +696,7 @@ describe('useWorkspaceStore — setVisibleConnectionSession', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'bg-query',
-              rows: [[9, 'ghost']],
+              ...withRows([[9, 'ghost']]),
               rowResidency: {
                 status: 'resident',
                 isActive: false,
@@ -1016,7 +1017,7 @@ describe('useWorkspaceStore — closeTab', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-restore-on-close',
-              rows: [],
+              viewRowCount: 1,
               rowResidency: {
                 status: 'evicted',
                 isActive: false,
@@ -1028,9 +1029,12 @@ describe('useWorkspaceStore — closeTab', () => {
       },
     })
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => ({
+    ipc.override('fetch_result_window', () => ({
+      offset: 0,
       rows: [[77]],
-      columns: [{ name: 'id', dataType: 'INT' }],
+      baseIndices: [0],
+      viewRowCount: 1,
+      viewVersion: 0,
     }))
 
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
@@ -1052,7 +1056,7 @@ describe('useWorkspaceStore — closeTab', () => {
         isActive: true,
         inactiveSince: null,
       })
-      expect(useQueryStore.getState().tabs[queryTabId].results[0].rows).toEqual([[77]])
+      expect(rowsOf(queryTabId)).toEqual([[77]])
     })
   })
 
@@ -1596,7 +1600,7 @@ describe('useWorkspaceStore — forceCloseTab', () => {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'query-restore-on-force-close',
-              rows: [],
+              viewRowCount: 1,
               rowResidency: {
                 status: 'evicted',
                 isActive: false,
@@ -1608,9 +1612,12 @@ describe('useWorkspaceStore — forceCloseTab', () => {
       },
     })
     ipc.override('touch_results', () => ({ status: 'available' }))
-    ipc.override('fetch_cached_rows', () => ({
+    ipc.override('fetch_result_window', () => ({
+      offset: 0,
       rows: [[88]],
-      columns: [{ name: 'id', dataType: 'INT' }],
+      baseIndices: [0],
+      viewRowCount: 1,
+      viewVersion: 0,
     }))
 
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
@@ -1632,7 +1639,7 @@ describe('useWorkspaceStore — forceCloseTab', () => {
         isActive: true,
         inactiveSince: null,
       })
-      expect(useQueryStore.getState().tabs[queryTabId].results[0].rows).toEqual([[88]])
+      expect(rowsOf(queryTabId)).toEqual([[88]])
     })
   })
 

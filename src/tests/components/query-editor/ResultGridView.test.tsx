@@ -1,9 +1,16 @@
 import React from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ResultGridView } from '../../../components/query-editor/ResultGridView'
+import {
+  LegacyResultGridView as ResultGridView,
+  rowsFromSource,
+} from '../../helpers/result-grid-test-utils'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
+import type { GridRowSource } from '../../../components/shared/glide/grid-row-source'
+import { ipc } from '../../ipc-mock'
+
+type Row = Record<string, unknown>
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
 import * as blobViewerDialogModule from '../../../components/dialogs/BlobViewerDialog'
 
@@ -45,7 +52,11 @@ const baseProps = {
 }
 
 function getGridProps() {
-  return mockCanvasBaseGridView.mock.lastCall?.[0] as {
+  const captured = mockCanvasBaseGridView.mock.lastCall?.[0] as Record<string, unknown> | undefined
+  return {
+    ...captured,
+    rows: rowsFromSource(captured?.rowSource as Parameters<typeof rowsFromSource>[0]),
+  } as unknown as {
     rows: Array<Record<string, unknown>>
     columns: Array<{ key: string; displayName: string; editable: boolean }>
     onSortChange: (column: string | null, direction: 'ASC' | 'DESC' | null) => void
@@ -77,7 +88,7 @@ beforeEach(() => {
       (
         <div
           data-testid="mock-result-grid"
-          data-row-count={(props.rows as unknown[])?.length ?? 0}
+          data-row-count={(props.rowSource as { rowCount?: number })?.rowCount ?? 0}
         />
       ) as unknown as React.ReactElement
   )
@@ -119,12 +130,60 @@ describe('ResultGridView', () => {
   it('renders column headers and rows from query results', () => {
     render(<ResultGridView {...baseProps} />)
     expect(screen.getByTestId('mock-result-grid')).toHaveAttribute('data-row-count', '2')
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
-      columns: Array<{ key: string; displayName: string }>
-      rows: Array<Record<string, unknown>>
-    }
+    const props = getGridProps()
     expect(props.columns.map((column) => column.displayName)).toEqual(['id', 'name'])
-    expect(props.rows[0]).toMatchObject({ col_0: 1, col_1: 'Ada', __rowIdx: 0 })
+    expect(props.rows[0]).toMatchObject({ col_0: 1, col_1: 'Ada', __rowIdx: 0, __baseIdx: 0 })
+  })
+
+  it('serves rows through a windowed row source backed by the page cache', async () => {
+    render(<ResultGridView {...baseProps} />)
+    const source = (mockCanvasBaseGridView.mock.lastCall?.[0] as { rowSource: GridRowSource<Row> })
+      .rowSource
+    expect(source.kind).toBe('windowed')
+    expect(source.isLoaded(0)).toBe(true)
+    expect(source.isLoaded(5)).toBe(false)
+    // Objects are reused for unchanged cached rows.
+    expect(source.getRow(1)).toBe(source.getRow(1))
+    // The visible range drives page loads (all rows are already loaded here).
+    source.onVisibleRangeChange?.([0, 2])
+    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+    // Off-window reads resolve through the page cache.
+    await expect(source.readRange?.([0, 2])).resolves.toEqual([
+      expect.objectContaining({ __rowIdx: 0, col_1: 'Ada' }),
+      expect.objectContaining({ __rowIdx: 1, col_1: 'Bob' }),
+    ])
+    const listener = vi.fn()
+    const unsubscribe = source.subscribe?.(listener)
+    unsubscribe?.()
+  })
+
+  it('serves the clone draft as a virtual row after the last view row', async () => {
+    render(
+      <ResultGridView
+        {...baseProps}
+        draftRow={[null, 'Draft']}
+        editState={{
+          rowKey: { id: null },
+          originalValues: { name: 'Draft' },
+          currentValues: { name: 'Edited draft' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: true,
+        }}
+        editingRowIndex={2}
+        editColumnBindings={
+          new Map([
+            [0, 'id'],
+            [1, 'name'],
+          ])
+        }
+      />
+    )
+    const source = (mockCanvasBaseGridView.mock.lastCall?.[0] as { rowSource: GridRowSource<Row> })
+      .rowSource
+    expect(source.rowCount).toBe(3)
+    expect(source.getRow(2)).toMatchObject({ __rowIdx: 2, __baseIdx: -1, col_1: 'Edited draft' })
+    const rows = await source.readRange?.([1, 3])
+    expect(rows?.map((row) => row.col_1)).toEqual(['Bob', 'Edited draft'])
   })
 
   it('enables the checkbox row marker in edit mode', () => {
@@ -139,19 +198,23 @@ describe('ResultGridView', () => {
     expect(props.rowMarkers).toBe('checkbox')
   })
 
-  it('forwards checked rows to the store as page-local row indices', () => {
-    const setCheckedRowIndices = vi.spyOn(useQueryStore.getState(), 'setCheckedRowIndices')
+  it('forwards checked rows to the store as view ranges (the draft row excluded)', () => {
+    const setCheckedRanges = vi.spyOn(useQueryStore.getState(), 'setCheckedRanges')
     render(<ResultGridView {...baseProps} />)
     const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
-      onRowMarkersChange: (rows: Record<string, unknown>[]) => void
+      onRowMarkerRangesChange: (ranges: Array<readonly [number, number]>) => void
     }
     act(() => {
-      props.onRowMarkersChange([
-        { __rowIdx: 0, col_0: 1 },
-        { __rowIdx: 1, col_0: 2 },
+      props.onRowMarkerRangesChange([
+        [0, 1],
+        [1, 5],
+        [7, 9],
       ])
     })
-    expect(setCheckedRowIndices).toHaveBeenCalledWith('tab-1', [0, 1])
+    expect(setCheckedRanges).toHaveBeenCalledWith('tab-1', [
+      [0, 1],
+      [1, 2],
+    ])
   })
 
   it('clears stale checked rows from the active result on mount', () => {
@@ -159,14 +222,14 @@ describe('ResultGridView', () => {
       useQueryStore.setState({
         tabs: {
           'tab-1': {
-            results: [{ ...DEFAULT_RESULT_STATE, checkedRowIndices: [0, 1] }],
+            results: [{ ...DEFAULT_RESULT_STATE, checkedRanges: [[0, 2]] }],
             activeResultIndex: 0,
           },
         },
       } as unknown as Parameters<typeof useQueryStore.setState>[0])
     })
     render(<ResultGridView {...baseProps} />)
-    expect(useQueryStore.getState().tabs['tab-1'].results[0].checkedRowIndices).toEqual([])
+    expect(useQueryStore.getState().tabs['tab-1'].results[0].checkedRanges).toEqual([])
   })
 
   it('bumps resetSelectionKey when the store checked set clears after a delete', () => {
@@ -175,7 +238,12 @@ describe('ResultGridView', () => {
         useQueryStore.setState({
           tabs: {
             'tab-1': {
-              results: [{ ...DEFAULT_RESULT_STATE, checkedRowIndices: indices }],
+              results: [
+                {
+                  ...DEFAULT_RESULT_STATE,
+                  checkedRanges: indices.map((index) => [index, index + 1] as const),
+                },
+              ],
               activeResultIndex: 0,
             },
           },
@@ -416,7 +484,8 @@ describe('ResultGridView', () => {
       )
       const props = getGridProps()
       act(() => {
-        props.onCellDoubleClick?.({ col_0: 1, col_1: 'SGVsbG8=', __rowIdx: 0 }, 'col_1')
+        // The grid hands over the materialized row (with its base index).
+        props.onCellDoubleClick?.(props.rows[0], 'col_1')
       })
       expect(capturedBlobDialogProps).toMatchObject({
         mode: 'edit',
@@ -433,7 +502,10 @@ describe('ResultGridView', () => {
         })
       })
 
-      expect(onStartEditing).toHaveBeenCalledWith(0)
+      expect(onStartEditing).toHaveBeenCalledWith(0, {
+        row: [1, 'SGVsbG8='],
+        baseIndex: 0,
+      })
       expect(onSyncCellValue).toHaveBeenCalledWith(1, {
         __sqllumen_blob__: true,
         kind: 'bytes',

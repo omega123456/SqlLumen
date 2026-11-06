@@ -227,17 +227,17 @@
 .progressSection {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--ui-progress-panel-gap);
+  padding: var(--ui-progress-panel-padding);
   background: var(--fill-control);
   border-radius: var(--radius-card);
-  border: 1px solid var(--stroke-card);
+  border: var(--ui-subsection-border);
 }
 
 .progressRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--ui-progress-panel-gap);
 }
 
 .progressLabel {
@@ -251,15 +251,15 @@
 
 .progressBar {
   flex: 1;
-  height: 4px;
-  border-radius: 2px;
+  height: var(--ui-progress-bar-height);
+  border-radius: var(--ui-progress-bar-radius);
   background: var(--fill-neutral-selected);
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: var(--ui-progress-bar-radius);
   background: var(--primary);
   transition: width 0.3s ease;
 }

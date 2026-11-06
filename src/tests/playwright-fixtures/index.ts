@@ -23,16 +23,23 @@ import {
   OBJECT_BODY_BY_TYPE,
 } from './object-editor'
 import { ORDERS_FOREIGN_KEYS, ORDERS_LIST_COLUMNS, ORDERS_TABLE_DATA } from './orders'
+import { RESULT_EXPORT_JOB_ID, RESULT_EXPORT_PROGRESS_COMPLETED } from './result-export'
 import {
-  BLOB_CACHED_ROWS_RESULT,
   BLOB_QUERY_RESULT,
+  buildResultView,
   createCurrentDatabaseQueryResult,
-  DEFAULT_CACHED_ROWS_RESULT,
-  DEFAULT_SECOND_RESULT_CACHED_ROWS_RESULT,
+  createLargeQueryResult,
+  createReexecuteResultFixture,
+  createTruncatedCallQueryResults,
+  createTruncatedQueryResult,
+  DEFAULT_CALL_QUERY_RESULTS,
   DEFAULT_EXECUTE_QUERY_RESULT,
-  JSON_CACHED_ROWS_RESULT,
+  DEFAULT_MULTI_QUERY_RESULTS,
+  FIRST_WINDOW_ROWS,
   JSON_QUERY_RESULT,
   SCROLL_TEST_QUERY_RESULT,
+  sliceResultWindow,
+  toWindowedQueryResult,
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { DEFAULT_SCHEMA_OBJECTS_BY_TYPE } from './schema-objects'
@@ -48,12 +55,15 @@ import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
 import type { OpenConnectionSession } from '../../types/connection'
 import type { BlobValueResponse, SchemaMetadataFull } from '../../types/schema'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
+import type { ResultExportProgress } from '../../lib/export-commands'
 import type {
   PlaywrightAnalyzeQueryResult,
-  PlaywrightCachedRowsResult,
   PlaywrightForeignKey,
   PlaywrightListColumn,
   PlaywrightQueryResult,
+  PlaywrightQueryResultFixture,
+  PlaywrightResultWindow,
+  PlaywrightViewSpec,
   PlaywrightRoutineParametersResponse,
   PlaywrightSchemaInfo,
   PlaywrightTableDataResult,
@@ -83,7 +93,6 @@ type FixtureOverrideDomain =
   | 'schemaInfo'
   | 'schemaObjects'
   | 'queryResult'
-  | 'cachedRows'
   | 'analyzeQueryForEdit'
   | 'objectBody'
   | 'routineParams'
@@ -92,6 +101,9 @@ type FixtureOverrideDomain =
   | 'copyToHostStart'
   | 'copyProgress'
   | 'copyCancel'
+  | 'resultExportStart'
+  | 'resultExportProgress'
+  | 'resultExportCancel'
   | 'blobValue'
   | 'aiModels'
   | 'logsPage'
@@ -104,7 +116,7 @@ type FixtureOverrideDomain =
   | 'openConnectionSessions'
   | 'windowBackdrop'
 
-type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResult
+type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResultFixture
 
 type FixtureOverrides = {
   tableData: Record<string, PlaywrightTableDataResult>
@@ -113,7 +125,6 @@ type FixtureOverrides = {
   schemaInfo: Record<string, PlaywrightSchemaInfo>
   schemaObjects: Record<string, string[]>
   queryResult: Record<string, QueryResultFixtureFactory>
-  cachedRows: Record<string, PlaywrightCachedRowsResult>
   analyzeQueryForEdit: Record<string, PlaywrightAnalyzeQueryResult>
   objectBody: Record<string, string>
   routineParams: Record<string, PlaywrightRoutineParametersResponse>
@@ -122,6 +133,9 @@ type FixtureOverrides = {
   copyToHostStart: Record<string, string>
   copyProgress: Record<string, CopyProgress>
   copyCancel: Record<string, null>
+  resultExportStart: Record<string, string>
+  resultExportProgress: Record<string, ResultExportProgress>
+  resultExportCancel: Record<string, null>
   blobValue: Record<string, BlobValueResponse>
   aiModels: Record<string, AiModelInfo[]>
   logsPage: Record<string, LogPage>
@@ -141,8 +155,7 @@ type FixtureOverrideValueMap = {
   foreignKeys: PlaywrightForeignKey[]
   schemaInfo: PlaywrightSchemaInfo
   schemaObjects: string[]
-  queryResult: PlaywrightQueryResult
-  cachedRows: PlaywrightCachedRowsResult
+  queryResult: PlaywrightQueryResultFixture
   analyzeQueryForEdit: PlaywrightAnalyzeQueryResult
   objectBody: string
   routineParams: PlaywrightRoutineParametersResponse
@@ -151,6 +164,9 @@ type FixtureOverrideValueMap = {
   copyToHostStart: string
   copyProgress: CopyProgress
   copyCancel: null
+  resultExportStart: string
+  resultExportProgress: ResultExportProgress
+  resultExportCancel: null
   blobValue: BlobValueResponse
   aiModels: AiModelInfo[]
   logsPage: LogPage
@@ -173,11 +189,17 @@ type FixtureRegistryApi = {
   getQueryResultFixture: (
     sql: string | null | undefined,
     activeMockDb: string | null
-  ) => PlaywrightQueryResult
-  getCachedRowsFixture: (
-    queryId: string | null | undefined,
-    resultIndex: number | null | undefined
-  ) => PlaywrightCachedRowsResult
+  ) => PlaywrightQueryResultFixture
+  executeQueryFixture: (args: ExecuteQueryFixtureArgs) => PlaywrightQueryResult
+  executeMultiQueryFixture: (args: { tabId: string }) => { results: PlaywrightQueryResult[] }
+  executeCallQueryFixture: (args: { tabId: string; sql: string }) => {
+    results: PlaywrightQueryResult[]
+  }
+  reexecuteSingleResultFixture: (args: ReexecuteFixtureArgs) => PlaywrightQueryResult
+  setResultViewFixture: (args: SetResultViewFixtureArgs) => SetResultViewFixtureResult
+  fetchResultWindowFixture: (args: FetchResultWindowFixtureArgs) => FetchResultWindowFixtureResult
+  removeResultRowsFixture: (args: RemoveResultRowsFixtureArgs) => RemoveResultRowsFixtureResult
+  getResultWindowRequests: () => ResultWindowRequest[]
   getAnalyzeQueryForEditFixture: (sql: string | null | undefined) => PlaywrightAnalyzeQueryResult
   getObjectBodyFixture: (objectType: string | null | undefined) => string
   getRoutineParamsFixture: (
@@ -188,6 +210,9 @@ type FixtureRegistryApi = {
   getCopyToHostStartFixture: () => string
   getCopyProgressFixture: (jobId: string | null | undefined) => CopyProgress
   getCancelCopyFixture: (jobId: string | null | undefined) => null
+  getResultExportStartFixture: () => string
+  getResultExportProgressFixture: (jobId: string | null | undefined) => ResultExportProgress
+  getCancelResultExportFixture: (jobId: string | null | undefined) => null
   getBlobValueFixture: (column: string | null | undefined) => BlobValueResponse
   getAiModelsFixture: (endpoint: string | null | undefined) => AiModelInfo[]
   getLogsPageFixture: (
@@ -239,17 +264,11 @@ const DEFAULT_FOREIGN_KEYS_BY_TABLE: Record<string, PlaywrightForeignKey[]> = {
 const DEFAULT_QUERY_RESULT_BY_KEY: Record<string, QueryResultFixtureFactory> = {
   current_database: (activeMockDb) => createCurrentDatabaseQueryResult(activeMockDb),
   scroll_test: () => SCROLL_TEST_QUERY_RESULT,
+  large_result: () => createLargeQueryResult(),
+  truncated_result: () => createTruncatedQueryResult(),
   json_sample: () => JSON_QUERY_RESULT,
   blob_sample: () => BLOB_QUERY_RESULT,
   default: () => DEFAULT_EXECUTE_QUERY_RESULT,
-}
-
-const DEFAULT_CACHED_ROWS_BY_KEY: Record<string, PlaywrightCachedRowsResult> = {
-  'mock-query-id-1__0': DEFAULT_CACHED_ROWS_RESULT,
-  'mock-query-id-1__1': DEFAULT_SECOND_RESULT_CACHED_ROWS_RESULT,
-  'mock-query-json__0': JSON_CACHED_ROWS_RESULT,
-  'mock-query-blob__0': BLOB_CACHED_ROWS_RESULT,
-  default: DEFAULT_CACHED_ROWS_RESULT,
 }
 
 const DEFAULT_ANALYZE_QUERY_FOR_EDIT_BY_KEY: Record<string, PlaywrightAnalyzeQueryResult> = {
@@ -279,6 +298,14 @@ const DEFAULT_COPY_CANCEL_BY_KEY: Record<string, null> = {
   default: null,
 }
 
+const DEFAULT_RESULT_EXPORT_START_BY_KEY: Record<string, string> = {
+  default: RESULT_EXPORT_JOB_ID,
+}
+
+const DEFAULT_RESULT_EXPORT_PROGRESS_BY_KEY: Record<string, ResultExportProgress> = {
+  [RESULT_EXPORT_JOB_ID]: RESULT_EXPORT_PROGRESS_COMPLETED,
+}
+
 const DEFAULT_BLOB_VALUE_LOOKUP: Record<string, BlobValueResponse> = DEFAULT_BLOB_VALUE_BY_KEY
 const DEFAULT_SCHEMA_METADATA_FULL_BY_KEY: Record<string, SchemaMetadataFull> = {
   default: COMMAND_PALETTE_SCHEMA_FIXTURE,
@@ -294,7 +321,6 @@ const overrides: FixtureOverrides = {
   schemaInfo: {},
   schemaObjects: {},
   queryResult: {},
-  cachedRows: {},
   analyzeQueryForEdit: {},
   objectBody: {},
   routineParams: {},
@@ -303,6 +329,9 @@ const overrides: FixtureOverrides = {
   copyToHostStart: {},
   copyProgress: {},
   copyCancel: {},
+  resultExportStart: {},
+  resultExportProgress: {},
+  resultExportCancel: {},
   blobValue: {},
   aiModels: {},
   logsPage: {},
@@ -347,6 +376,14 @@ function getQueryResultLookupKey(sql: string | null | undefined): string {
 
   if (/scroll_test/i.test(normalizedSql)) {
     return 'scroll_test'
+  }
+
+  if (/large_result/i.test(normalizedSql)) {
+    return 'large_result'
+  }
+
+  if (/truncated_result/i.test(normalizedSql)) {
+    return 'truncated_result'
   }
 
   if (/json_sample/i.test(normalizedSql)) {
@@ -422,7 +459,7 @@ export function getSchemaObjectsFixture(objectType: string | null | undefined): 
 export function getQueryResultFixture(
   sql: string | null | undefined,
   activeMockDb: string | null
-): PlaywrightQueryResult {
+): PlaywrightQueryResultFixture {
   const queryKey = getQueryResultLookupKey(sql)
   const overrideFactory = overrides.queryResult[queryKey]
   const defaultFactory =
@@ -431,27 +468,218 @@ export function getQueryResultFixture(
   return (overrideFactory ?? defaultFactory)(activeMockDb)
 }
 
-function getCachedRowsLookupKey(
-  queryId: string | null | undefined,
-  resultIndex: number | null | undefined
-): string {
-  const normalizedQueryId = normalizeLookupKey(queryId)
-  const normalizedResultIndex = typeof resultIndex === 'number' ? resultIndex : 0
-  return `${normalizedQueryId}__${normalizedResultIndex}`
+// ---------------------------------------------------------------------------
+// Windowed query results: per-tab result state served like the Rust cache
+// ---------------------------------------------------------------------------
+
+interface ResultSlotArgs {
+  tabId: string
+  resultIndex: number
+  queryId: string
 }
 
-export function getCachedRowsFixture(
-  queryId: string | null | undefined,
-  resultIndex: number | null | undefined
-): PlaywrightCachedRowsResult {
-  const lookupKey = getCachedRowsLookupKey(queryId, resultIndex)
+interface ExecuteQueryFixtureArgs {
+  tabId: string
+  sql: string
+  activeMockDb: string | null
+  viewSpec?: PlaywrightViewSpec | null
+}
 
-  return (
-    overrides.cachedRows[lookupKey] ??
-    DEFAULT_CACHED_ROWS_BY_KEY[lookupKey] ??
-    overrides.cachedRows.default ??
-    DEFAULT_CACHED_ROWS_BY_KEY.default
+interface ReexecuteFixtureArgs {
+  tabId: string
+  resultIndex: number
+  sql: string
+  viewSpec?: PlaywrightViewSpec | null
+}
+
+interface SetResultViewFixtureArgs extends ResultSlotArgs {
+  baseViewVersion: number
+  viewSpec: PlaywrightViewSpec
+}
+
+interface SetResultViewFixtureResult {
+  viewVersion: number
+  viewRowCount: number
+  totalRows: number
+  firstWindow: PlaywrightResultWindow
+}
+
+interface FetchResultWindowFixtureArgs extends ResultSlotArgs {
+  viewVersion: number
+  offset: number
+  limit: number
+}
+
+type FetchResultWindowFixtureResult = PlaywrightResultWindow & {
+  viewRowCount: number
+  viewVersion: number
+}
+
+interface RemoveResultRowsFixtureArgs extends ResultSlotArgs {
+  baseViewVersion: number
+  baseIndices: number[]
+}
+
+interface RemoveResultRowsFixtureResult {
+  viewVersion: number
+  viewRowCount: number
+  totalRows: number
+}
+
+/** A `fetch_result_window` request, recorded so E2E specs can assert on paging. */
+interface ResultWindowRequest {
+  tabId: string
+  resultIndex: number
+  offset: number
+  limit: number
+}
+
+interface ResultSlotState {
+  fixture: PlaywrightQueryResultFixture
+  viewVersion: number
+  view: number[]
+  tombstones: Set<number>
+  spec: PlaywrightViewSpec | null
+}
+
+const resultSlots = new Map<string, ResultSlotState>()
+let resultWindowRequests: ResultWindowRequest[] = []
+
+function slotKey(tabId: string, resultIndex: number): string {
+  return `${tabId}:${resultIndex}`
+}
+
+function liveRowCount(state: ResultSlotState): number {
+  return state.fixture.rows.length - state.tombstones.size
+}
+
+function storeResult(
+  tabId: string,
+  resultIndex: number,
+  fixture: PlaywrightQueryResultFixture,
+  spec: PlaywrightViewSpec | null
+): PlaywrightQueryResult {
+  const state: ResultSlotState = {
+    fixture,
+    viewVersion: 1,
+    view: buildResultView(fixture, spec),
+    tombstones: new Set(),
+    spec,
+  }
+  resultSlots.set(slotKey(tabId, resultIndex), state)
+  return toWindowedQueryResult(fixture, state.view, state.viewVersion, liveRowCount(state))
+}
+
+/** The slot for a request; a replaced query or a missing slot is refused like Rust does. */
+function requireSlot({ tabId, resultIndex, queryId }: ResultSlotArgs): ResultSlotState {
+  const state = resultSlots.get(slotKey(tabId, resultIndex))
+  if (!state) {
+    throw new Error('results_expired: Results expired. Re-run the query.')
+  }
+  if (state.fixture.queryId !== queryId) {
+    throw new Error('Results were refreshed. Re-run the query to see the latest rows.')
+  }
+  return state
+}
+
+export function executeQueryFixture(args: ExecuteQueryFixtureArgs): PlaywrightQueryResult {
+  const fixture = getQueryResultFixture(args.sql, args.activeMockDb)
+  // A single statement replaces every result of the tab.
+  for (const key of [...resultSlots.keys()]) {
+    if (key.startsWith(`${args.tabId}:`)) resultSlots.delete(key)
+  }
+  return storeResult(args.tabId, 0, fixture, args.viewSpec ?? null)
+}
+
+function storeAll(tabId: string, fixtures: PlaywrightQueryResultFixture[]) {
+  for (const key of [...resultSlots.keys()]) {
+    if (key.startsWith(`${tabId}:`)) resultSlots.delete(key)
+  }
+  return { results: fixtures.map((fixture, index) => storeResult(tabId, index, fixture, null)) }
+}
+
+export function executeMultiQueryFixture(args: { tabId: string }) {
+  return storeAll(args.tabId, DEFAULT_MULTI_QUERY_RESULTS)
+}
+
+export function executeCallQueryFixture(args: { tabId: string; sql: string }) {
+  return storeAll(
+    args.tabId,
+    /truncated_call/i.test(args.sql)
+      ? createTruncatedCallQueryResults()
+      : DEFAULT_CALL_QUERY_RESULTS
   )
+}
+
+export function reexecuteSingleResultFixture(args: ReexecuteFixtureArgs): PlaywrightQueryResult {
+  return storeResult(
+    args.tabId,
+    args.resultIndex,
+    createReexecuteResultFixture(args.sql),
+    args.viewSpec ?? null
+  )
+}
+
+export function setResultViewFixture(args: SetResultViewFixtureArgs): SetResultViewFixtureResult {
+  const state = requireSlot(args)
+  // Compare-and-swap, as in Rust (D15).
+  if (args.baseViewVersion !== state.viewVersion) {
+    throw new Error(`view_superseded: current=${state.viewVersion}`)
+  }
+  const sortColumn = args.viewSpec.sort?.column
+  if (sortColumn && !state.fixture.columns.some((column) => column.name === sortColumn)) {
+    throw new Error(`Column '${sortColumn}' not found in result`)
+  }
+  state.spec = args.viewSpec
+  state.view = buildResultView(state.fixture, args.viewSpec, state.tombstones)
+  state.viewVersion += 1
+  return {
+    viewVersion: state.viewVersion,
+    viewRowCount: state.view.length,
+    totalRows: liveRowCount(state),
+    firstWindow: sliceResultWindow(state.fixture, state.view, 0, FIRST_WINDOW_ROWS),
+  }
+}
+
+export function fetchResultWindowFixture(
+  args: FetchResultWindowFixtureArgs
+): FetchResultWindowFixtureResult {
+  const state = requireSlot(args)
+  if (args.viewVersion !== state.viewVersion) {
+    throw new Error(`view_stale: requested ${args.viewVersion}, current ${state.viewVersion}`)
+  }
+  resultWindowRequests.push({
+    tabId: args.tabId,
+    resultIndex: args.resultIndex,
+    offset: args.offset,
+    limit: args.limit,
+  })
+  return {
+    ...sliceResultWindow(state.fixture, state.view, args.offset, args.limit),
+    viewRowCount: state.view.length,
+    viewVersion: state.viewVersion,
+  }
+}
+
+export function removeResultRowsFixture(
+  args: RemoveResultRowsFixtureArgs
+): RemoveResultRowsFixtureResult {
+  const state = requireSlot(args)
+  if (args.baseViewVersion !== state.viewVersion) {
+    throw new Error(`view_superseded: current=${state.viewVersion}`)
+  }
+  args.baseIndices.forEach((base) => state.tombstones.add(base))
+  state.view = buildResultView(state.fixture, state.spec, state.tombstones)
+  state.viewVersion += 1
+  return {
+    viewVersion: state.viewVersion,
+    viewRowCount: state.view.length,
+    totalRows: liveRowCount(state),
+  }
+}
+
+export function getResultWindowRequests(): ResultWindowRequest[] {
+  return resultWindowRequests.slice()
 }
 
 export function getAnalyzeQueryForEditFixture(
@@ -530,6 +758,29 @@ export function getCancelCopyFixture(jobId: string | null | undefined): null {
     overrides.copyCancel.default ??
     DEFAULT_COPY_CANCEL_BY_KEY.default
   )
+}
+
+export function getResultExportStartFixture(): string {
+  return overrides.resultExportStart.default ?? DEFAULT_RESULT_EXPORT_START_BY_KEY.default
+}
+
+export function getResultExportProgressFixture(
+  jobId: string | null | undefined
+): ResultExportProgress {
+  const jobKey = normalizeLookupKey(jobId)
+
+  return (
+    overrides.resultExportProgress[jobKey] ??
+    DEFAULT_RESULT_EXPORT_PROGRESS_BY_KEY[jobKey] ??
+    overrides.resultExportProgress.default ??
+    RESULT_EXPORT_PROGRESS_COMPLETED
+  )
+}
+
+export function getCancelResultExportFixture(jobId: string | null | undefined): null {
+  const jobKey = normalizeLookupKey(jobId)
+
+  return overrides.resultExportCancel[jobKey] ?? overrides.resultExportCancel.default ?? null
 }
 
 export function getBlobValueFixture(column: string | null | undefined): BlobValueResponse {
@@ -624,7 +875,7 @@ export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   }
 
   if (domain === 'queryResult') {
-    overrides.queryResult[normalizedKey] = () => data as PlaywrightQueryResult
+    overrides.queryResult[normalizedKey] = () => data as PlaywrightQueryResultFixture
     return
   }
 
@@ -638,8 +889,9 @@ export function resetFixtureOverrides(): void {
   overrides.schemaInfo = {}
   overrides.schemaObjects = {}
   overrides.queryResult = {}
-  overrides.cachedRows = {}
   overrides.analyzeQueryForEdit = {}
+  resultSlots.clear()
+  resultWindowRequests = []
   overrides.objectBody = {}
   overrides.routineParams = {}
   overrides.copyableObjects = {}
@@ -647,6 +899,9 @@ export function resetFixtureOverrides(): void {
   overrides.copyToHostStart = {}
   overrides.copyProgress = {}
   overrides.copyCancel = {}
+  overrides.resultExportStart = {}
+  overrides.resultExportProgress = {}
+  overrides.resultExportCancel = {}
   overrides.blobValue = {}
   overrides.aiModels = {}
   overrides.logsPage = {}
@@ -667,7 +922,14 @@ const fixtureRegistry: FixtureRegistryApi = {
   getSchemaInfoFixture,
   getSchemaObjectsFixture,
   getQueryResultFixture,
-  getCachedRowsFixture,
+  executeQueryFixture,
+  executeMultiQueryFixture,
+  executeCallQueryFixture,
+  reexecuteSingleResultFixture,
+  setResultViewFixture,
+  fetchResultWindowFixture,
+  removeResultRowsFixture,
+  getResultWindowRequests,
   getAnalyzeQueryForEditFixture,
   getObjectBodyFixture,
   getRoutineParamsFixture,
@@ -676,6 +938,9 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCopyToHostStartFixture,
   getCopyProgressFixture,
   getCancelCopyFixture,
+  getResultExportStartFixture,
+  getResultExportProgressFixture,
+  getCancelResultExportFixture,
   getBlobValueFixture,
   getAiModelsFixture,
   getLogsPageFixture,

@@ -1,7 +1,10 @@
 import React from 'react'
 import { act, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
-import { ResultGridView } from '../../../components/query-editor/ResultGridView'
+import {
+  LegacyResultGridView as ResultGridView,
+  rowsFromSource,
+} from '../../helpers/result-grid-test-utils'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
@@ -58,7 +61,13 @@ const props = {
 }
 
 function getGridProps() {
-  return mockCanvasBaseGridView.mock.calls[mockCanvasBaseGridView.mock.calls.length - 1]?.[0] as {
+  const captured = mockCanvasBaseGridView.mock.calls[
+    mockCanvasBaseGridView.mock.calls.length - 1
+  ]?.[0] as Record<string, unknown> | undefined
+  return {
+    ...captured,
+    rows: rowsFromSource(captured?.rowSource as Parameters<typeof rowsFromSource>[0]),
+  } as unknown as {
     rows: Array<Record<string, unknown>>
     columns: Array<{
       editable: boolean
@@ -110,7 +119,7 @@ beforeEach(() => {
       (
         <div
           data-testid="mock-result-grid"
-          data-row-count={(gridProps.rows as unknown[])?.length ?? 0}
+          data-row-count={(gridProps.rowSource as { rowCount?: number })?.rowCount ?? 0}
         />
       ) as unknown as React.ReactElement
   )
@@ -142,33 +151,23 @@ describe('ResultGridView editing', () => {
     const gridProps = getGridProps()
     act(() => {
       gridProps.onCellValueChange(0, 'col_0', 'Grace')
-      gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
     })
+    expect(onSyncCellValue).toHaveBeenCalledTimes(1)
     expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
   })
 
-  it('cleanup-only no-op row changes do not reach the query sync path', () => {
+  it('windowed grids report edits per cell only (no full-row onRowsChange)', () => {
+    render(<ResultGridView {...props} />)
+    expect(getGridProps().onRowsChange).toBeUndefined()
+  })
+
+  it('ignores cell value changes for unknown column keys', () => {
     const onSyncCellValue = vi.fn()
     render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
-    const gridProps = getGridProps()
-
     act(() => {
-      gridProps.onRowsChange([{ col_0: 'Ada', __rowIdx: 0 }], { indexes: [0] })
+      getGridProps().onCellValueChange(0, 'info', 'x')
     })
-
     expect(onSyncCellValue).not.toHaveBeenCalled()
-  })
-
-  it('genuine row changes still reach the query sync path', () => {
-    const onSyncCellValue = vi.fn()
-    render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
-    const gridProps = getGridProps()
-
-    act(() => {
-      gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
-    })
-
-    expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
   })
 
   it('read-only mode prevents edit mode', () => {
@@ -305,8 +304,8 @@ describe('ResultGridView editing', () => {
     const editing = getGridProps().rows
     expect(editing[0]).toBe(before[0])
     expect(editing[2]).toBe(before[2])
-    expect(editing[1]).toEqual({ __rowIdx: 1, col_0: 'Bobby' })
-    expect(before[1]).toEqual({ __rowIdx: 1, col_0: 'Bob' })
+    expect(editing[1]).toEqual({ __rowIdx: 1, __baseIdx: 1, col_0: 'Bobby' })
+    expect(before[1]).toEqual({ __rowIdx: 1, __baseIdx: 1, col_0: 'Bob' })
 
     rerender(
       <ResultGridView
@@ -389,7 +388,7 @@ describe('ResultGridView editing', () => {
       targetColIdx: 0,
       enableEditor: false,
     })
-    expect(onStartEditing).toHaveBeenCalledWith(0)
+    expect(onStartEditing).toHaveBeenCalledWith(0, { row: ['Ada'], baseIndex: 0 })
     expect(onRowSelected).toHaveBeenCalledWith(0)
   })
 
@@ -425,7 +424,7 @@ describe('ResultGridView editing', () => {
       targetColIdx: 0,
       enableEditor: false,
     })
-    expect(onStartEditing).toHaveBeenCalledWith(1)
+    expect(onStartEditing).toHaveBeenCalledWith(1, { row: ['Bob'], baseIndex: 1 })
     expect(onRowSelected).toHaveBeenCalledWith(1)
   })
 
@@ -549,7 +548,7 @@ describe('ResultGridView editing', () => {
     })
   })
 
-  it('scans changed rows and only syncs modified cells', () => {
+  it('syncs only the changed cell', () => {
     const onSyncCellValue = vi.fn()
 
     render(
@@ -604,7 +603,7 @@ describe('ResultGridView editing', () => {
 
     const gridProps = getGridProps()
     act(() => {
-      gridProps.onRowsChange([{ col_0: 1, col_1: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+      gridProps.onCellValueChange(0, 'col_1', 'Grace')
     })
 
     expect(onSyncCellValue).toHaveBeenCalledTimes(1)
@@ -681,7 +680,7 @@ describe('ResultGridView editing', () => {
       })
     })
 
-    expect(onStartEditing).toHaveBeenCalledWith(1)
+    expect(onStartEditing).toHaveBeenCalledWith(1, { row: ['Bob'], baseIndex: 1 })
     expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Charlie')
   })
 

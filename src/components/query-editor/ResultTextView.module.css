@@ -10,35 +10,42 @@
   background: var(--surface-container-low);
 }
 
-/* Copy All button — positioned at top-right */
-.copyAllButton {
+/* Copy control (shared Button) — top-right when the view isn't capped */
+.copyAllSlot {
   position: absolute;
   top: 8px;
   right: 8px;
   z-index: 1;
+}
+
+/* Non-scrolling caption strip shown when the view has more than 5,000 rows */
+.capStrip {
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--stroke-card);
-  background: var(--surface-container);
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 16px;
   font-size: var(--type-caption-size);
-  font-weight: 400;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
+  line-height: var(--type-caption-line);
+  color: var(--on-surface-variant);
+  background: var(--surface-container);
+  border-bottom: 1px solid var(--stroke-divider);
+}
+
+.capText {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.copyAllButton:hover {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-  background: var(--fill-subtle-hover);
+.capWarning {
+  flex: none;
+  color: var(--warning);
 }
 
 /* Pre-formatted text — scrollable in both axes */
@@ -46,7 +53,7 @@
   flex: 1;
   overflow: auto;
   padding: 16px;
-  padding-top: 44px; /* leave room for the Copy All button */
+  padding-top: 44px; /* leave room for the copy button */
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--type-row-size);
@@ -54,4 +61,9 @@
   color: var(--on-surface);
   white-space: pre;
   tab-size: 4;
+}
+
+/* Below the caption strip the copy button no longer overlaps the text */
+.preBelowStrip {
+  padding-top: 16px;
 }

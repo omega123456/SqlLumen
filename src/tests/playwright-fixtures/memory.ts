@@ -35,8 +35,7 @@ interface MemoryOverrideStore {
 function getOverrideStore(): MemoryOverrideStore | undefined {
   if (typeof window === 'undefined') return undefined
   return (window as unknown as Record<string, unknown>).__mockMemoriesData__ as
-    | MemoryOverrideStore
-    | undefined
+    MemoryOverrideStore | undefined
 }
 
 export function getGlobalMemoriesFixture(): AiMemory[] {

@@ -75,7 +75,7 @@ describe('ResultPanel edit mode callbacks', () => {
     expect(onStartEditing).toBeDefined()
     onStartEditing(0)
 
-    expect(startEditingRowSpy).toHaveBeenCalledWith('tab-1', 0)
+    expect(startEditingRowSpy).toHaveBeenCalledWith('tab-1', 0, undefined)
     startEditingRowSpy.mockRestore()
   })
 

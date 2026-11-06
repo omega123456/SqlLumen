@@ -8,7 +8,7 @@ import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
-import { flat } from '../helpers/query-test-utils'
+import { flat, firstWindowFor, withRows, rowsOf } from '../helpers/query-test-utils'
 
 const overrideCommands = overrideIpcCommands
 const overrideNamedCommands = overrideNamedIpcCommands
@@ -34,7 +34,7 @@ const multiQueryResult = {
       totalRows: 1,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
       error: null,
@@ -47,7 +47,7 @@ const multiQueryResult = {
       totalRows: 0,
       executionTimeMs: 3,
       affectedRows: 1,
-      rows: [],
+      firstWindow: firstWindowFor([]),
 
       autoLimitApplied: false,
       error: null,
@@ -60,7 +60,7 @@ const multiQueryResult = {
       totalRows: 2,
       executionTimeMs: 10,
       affectedRows: 0,
-      rows: [['Alice'], ['Bob']],
+      firstWindow: firstWindowFor([['Alice'], ['Bob']]),
 
       autoLimitApplied: false,
       error: null,
@@ -114,7 +114,7 @@ describe('useQueryStore — executeMultiQuery', () => {
     const r0 = tab.results[0]
     expect(r0.resultStatus).toBe('success')
     expect(r0.columns).toEqual([{ name: 'id', dataType: 'INT' }])
-    expect(r0.rows).toEqual([[1]])
+    expect(rowsOf('tab-1', 0)).toEqual([[1]])
     expect(r0.queryId).toBe('mq1')
     expect(r0.lastExecutedSql).toBe('SELECT 1')
     expect(r0.reExecutable).toBe(true)
@@ -135,7 +135,7 @@ describe('useQueryStore — executeMultiQuery', () => {
     const r1 = tab.results[1]
     expect(r1.resultStatus).toBe('success')
     expect(r1.columns).toEqual([])
-    expect(r1.rows).toEqual([])
+    expect(rowsOf('tab-1', 1)).toEqual([])
     expect(r1.affectedRows).toBe(1)
   })
 
@@ -154,7 +154,7 @@ describe('useQueryStore — executeMultiQuery', () => {
     const r2 = tab.results[2]
     expect(r2.resultStatus).toBe('success')
     expect(r2.columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
-    expect(r2.rows).toEqual([['Alice'], ['Bob']])
+    expect(rowsOf('tab-1', 2)).toEqual([['Alice'], ['Bob']])
     expect(r2.totalRows).toBe(2)
   })
 
@@ -243,7 +243,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             },
             {
@@ -251,7 +251,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
             },
           ],
@@ -344,7 +344,7 @@ describe('useQueryStore — per-result isolation', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1], [2]],
+              ...withRows([[1], [2]]),
               totalRows: 2,
               viewMode: 'grid',
             },
@@ -353,7 +353,7 @@ describe('useQueryStore — per-result isolation', () => {
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
               viewMode: 'grid',
             },
@@ -395,7 +395,7 @@ describe('useQueryStore — per-result isolation', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               viewMode: 'grid',
             },
@@ -404,7 +404,7 @@ describe('useQueryStore — per-result isolation', () => {
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
               viewMode: 'grid',
             },
@@ -538,7 +538,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               isAnalyzed: true,
               lastExecutedSql: 'SELECT 1',
@@ -549,7 +549,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
               isAnalyzed: false,
               lastExecutedSql: 'SELECT name FROM users',
@@ -636,7 +636,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               // editState with NO modified columns (clean)
               editState: {
@@ -653,7 +653,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
             },
           ],
@@ -782,7 +782,7 @@ describe('useQueryStore — changeRowLimit', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               reExecutable: false,
               lastExecutedSql: 'CALL proc()',
@@ -866,7 +866,7 @@ describe('useQueryStore — setViewMode edge cases', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               viewMode: 'grid',
             },
@@ -909,7 +909,7 @@ describe('useQueryStore — sortResults', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[3], [1], [2]],
+              ...withRows([[3], [1], [2]]),
               totalRows: 3,
               lastExecutedSql: 'SELECT id FROM t',
               sortColumn: 'id',
@@ -928,53 +928,54 @@ describe('useQueryStore — sortResults', () => {
     })
   }
 
-  it('shows warning toast and preserves sort for non-reExecutable result when direction is null', async () => {
+  it('clears the sort of a non-re-executable (CALL) result in Rust without a re-run', async () => {
     setupSortableTab({ reExecutable: false })
+    ipc.override('set_result_view', () => ({
+      viewVersion: 2,
+      viewRowCount: 3,
+      totalRows: 3,
+      firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
+    }))
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
 
-    // Sort state should NOT be cleared for cache-only results
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].sortColumn).toBe('id')
-    expect(tab.results[0].sortDirection).toBe('asc')
-
-    // A warning toast should have been shown
-    const { useToastStore } = await import('../../stores/toast-store')
-    const toasts = useToastStore.getState().toasts
-    expect(toasts.some((t) => t.variant === 'warning')).toBe(true)
+    expect(tab.results[0].sortColumn).toBeNull()
+    expect(tab.results[0].sortDirection).toBeNull()
+    expect(rowsOf('tab-1', 0)).toEqual([[3], [1], [2]])
+    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
+    expect(ipc.calls('execute_call_query')).toHaveLength(0)
   })
 
-  it('applies sort via IPC for reExecutable result', async () => {
+  it('applies a sort through set_result_view for the active result', async () => {
     setupSortableTab({ reExecutable: true })
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
-      if (cmd === 'sort_results')
-        return {
-          rows: [[1], [2], [3]],
-          page: 1,
-        }
-      return null
-    })
+    ipc.override('set_result_view', () => ({
+      viewVersion: 2,
+      viewRowCount: 3,
+      totalRows: 3,
+      firstWindow: { offset: 0, rows: [[1], [2], [3]], baseIndices: [1, 2, 0] },
+    }))
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
 
     const tab = useQueryStore.getState().tabs['tab-1']!
+    expect(ipc.calls('set_result_view')[0]).toMatchObject({ resultIndex: 0, queryId: 'q1' })
     expect(tab.results[0].sortColumn).toBe('id')
     expect(tab.results[0].sortDirection).toBe('asc')
-    expect(tab.results[0].rows).toEqual([[1], [2], [3]])
+    expect(rowsOf('tab-1', 0)).toEqual([[1], [2], [3]])
   })
 
-  it('handles sort IPC error gracefully', async () => {
+  it('handles a sort IPC error by keeping the previous view and showing the band', async () => {
     setupSortableTab({ reExecutable: true })
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
-      if (cmd === 'sort_results') throw new Error('Sort failed')
-      return null
+    ipc.override('set_result_view', () => {
+      throw new Error('Sort failed')
     })
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'desc')
 
-    // Sort state should remain unchanged on error
-    consoleSpy.mockRestore()
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(result.sortDirection).toBe('asc')
+    expect(result.viewError).toBe('Sort failed')
   })
 })
 
@@ -982,8 +983,8 @@ describe('useQueryStore — sortResults', () => {
 // Stale re-execution discard: sortResults (sort-clear) on multi-result tabs
 // ---------------------------------------------------------------------------
 
-describe('useQueryStore — sortResults stale re-execution discard', () => {
-  function setupMultiResultForSort() {
+describe('useQueryStore — sortResults on a later result of a multi-result tab', () => {
+  it('targets the active result index and leaves the other results untouched', async () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': {
@@ -1000,25 +1001,19 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
-              lastExecutedSql: 'SELECT 1',
-              reExecutable: true,
-              sortColumn: 'id',
-              sortDirection: 'asc' as const,
             },
             {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
-              totalRows: 1,
-              lastExecutedSql: 'SELECT 2',
-              reExecutable: true,
+              ...withRows([['Bob'], ['Alice']]),
+              totalRows: 2,
             },
           ],
-          activeResultIndex: 0,
+          activeResultIndex: 1,
           pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
@@ -1027,56 +1022,19 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
         },
       },
     })
-  }
+    ipc.override('set_result_view', () => ({
+      viewVersion: 2,
+      viewRowCount: 2,
+      totalRows: 2,
+      firstWindow: { offset: 0, rows: [['Alice'], ['Bob']], baseIndices: [1, 0] },
+    }))
 
-  it('discards stale sort re-execution when queryId changes during await', async () => {
-    setupMultiResultForSort()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'name', 'asc')
 
-    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
-      if (cmd === 'reexecute_single_result') {
-        // Simulate a newer query replacing the results while re-exec is in flight
-        useQueryStore.setState((prev) => {
-          const tab = prev.tabs['tab-1']
-          if (!tab) return prev
-          const newResults = [...tab.results]
-          newResults[0] = {
-            ...newResults[0],
-            queryId: 'q1-replaced-by-newer-query',
-            rows: [[999]],
-          }
-          return {
-            tabs: {
-              ...prev.tabs,
-              'tab-1': { ...tab, results: newResults },
-            },
-          }
-        })
-        return {
-          queryId: 'reexec-result',
-          sourceSql: 'SELECT 1',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          totalRows: 1,
-          executionTimeMs: 5,
-          affectedRows: 0,
-          rows: [[42]],
-
-          autoLimitApplied: false,
-          error: null,
-          reExecutable: true,
-        }
-      }
-      return null
-    })
-
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
-
-    // The stale result should have been discarded — rows should still be from the newer query
-    const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].rows).toEqual([[999]])
-    expect(tab.results[0].queryId).toBe('q1-replaced-by-newer-query')
-    expect(warnSpy).not.toHaveBeenCalled()
-    warnSpy.mockRestore()
+    expect(ipc.calls('set_result_view')[0]).toMatchObject({ resultIndex: 1, queryId: 'q2' })
+    expect(rowsOf('tab-1', 1)).toEqual([['Alice'], ['Bob']])
+    expect(rowsOf('tab-1', 0)).toEqual([[1]])
+    expect(useQueryStore.getState().tabs['tab-1']!.results[0].sortColumn).toBeNull()
   })
 })
 
@@ -1102,7 +1060,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
               resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               lastExecutedSql: 'SELECT 1',
               reExecutable: true,
@@ -1112,7 +1070,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
               resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
               lastExecutedSql: 'SELECT 2',
               reExecutable: true,
@@ -1143,7 +1101,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
           newResults[0] = {
             ...newResults[0],
             queryId: 'q1-replaced-newer',
-            rows: [[777]],
+            ...withRows([[777]]),
           }
           return {
             tabs: {
@@ -1159,7 +1117,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          rows: [[42]],
+          firstWindow: firstWindowFor([[42]]),
 
           autoLimitApplied: false,
           error: null,
@@ -1173,7 +1131,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
 
     // The stale result should have been discarded
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].rows).toEqual([[777]])
+    expect(rowsOf('tab-1', 0)).toEqual([[777]])
     expect(tab.results[0].queryId).toBe('q1-replaced-newer')
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
@@ -1191,7 +1149,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          rows: [[42]],
+          firstWindow: firstWindowFor([[42]]),
 
           autoLimitApplied: false,
           error: null,
@@ -1206,7 +1164,7 @@ describe('useQueryStore — changeRowLimit stale re-execution discard', () => {
 
     // The result should have been applied normally
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.results[0].rows).toEqual([[42]])
+    expect(rowsOf('tab-1', 0)).toEqual([[42]])
     expect(tab.results[0].queryId).toBe('new-q1')
     expect(tab.results[0].rowLimit).toBe(50)
   })

@@ -100,6 +100,7 @@ async fn execute_query(
         &tab_id,
         &sql,
         row_limit.unwrap_or(1000),
+        None,
     )
     .await
 }
@@ -156,6 +157,7 @@ async fn reexecute_single_result(
         result_index,
         &sql,
         row_limit.unwrap_or(1000),
+        None,
     )
     .await
 }
@@ -262,8 +264,14 @@ struct ExecuteQueryResultDto {
     execution_time_ms: u64,
     total_time_ms: u64,
     affected_rows: u64,
-    rows: Vec<Vec<serde_json::Value>>,
     auto_limit_applied: bool,
+    view_row_count: usize,
+    view_version: u64,
+    truncated: bool,
+    row_ceiling: usize,
+    applied_row_limit: Option<usize>,
+    full_export_blocked_reason: Option<String>,
+    first_window: ResultWindowDto,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -277,10 +285,25 @@ struct MultiQueryResultItemDto {
     execution_time_ms: u64,
     total_time_ms: u64,
     affected_rows: u64,
-    rows: Vec<Vec<serde_json::Value>>,
     auto_limit_applied: bool,
     error: Option<String>,
     re_executable: bool,
+    view_row_count: usize,
+    view_version: u64,
+    truncated: bool,
+    row_ceiling: usize,
+    applied_row_limit: Option<usize>,
+    full_export_blocked_reason: Option<String>,
+    first_window: ResultWindowDto,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct ResultWindowDto {
+    offset: usize,
+    rows: Vec<Vec<serde_json::Value>>,
+    base_indices: Vec<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -481,9 +504,9 @@ async fn execute_query_ipc_serializes_mysql_result_values_instead_of_nulls() {
         vec!["id", "type", "consumption", "created_at"]
     );
     assert_eq!(result.total_rows, 1);
-    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.first_window.rows.len(), 1);
     assert_eq!(
-        result.rows[0],
+        result.first_window.rows[0],
         vec![
             serde_json::json!(1),
             serde_json::json!("electric"),
@@ -585,7 +608,7 @@ async fn execute_query_ipc_serializes_unsafe_integers_as_strings() {
 
     assert_eq!(result.total_rows, 1);
     assert_eq!(
-        result.rows[0],
+        result.first_window.rows[0],
         vec![
             serde_json::json!(9_007_199_254_740_991i64),
             serde_json::json!("-9007199254740992"),
@@ -631,7 +654,7 @@ async fn execute_query_ipc_preserves_fractional_datetime_and_mysql_time_strings(
 
     assert_eq!(result.total_rows, 1);
     assert_eq!(
-        result.rows[0],
+        result.first_window.rows[0],
         vec![
             serde_json::json!("2023-10-01 12:34:56.123456"),
             serde_json::json!("07:15:00.123456"),
@@ -675,7 +698,7 @@ async fn execute_query_ipc_serializes_timestamp_and_negative_mysql_time_strings(
 
     assert_eq!(result.total_rows, 1);
     assert_eq!(
-        result.rows[0],
+        result.first_window.rows[0],
         vec![
             serde_json::json!("2023-10-02 01:02:03.654321"),
             serde_json::json!("-27:15:00.123456"),
@@ -713,7 +736,7 @@ async fn execute_query_ipc_treats_call_as_dml_after_call_removal_from_select_lik
         "CALL should be treated as DML — no columns"
     );
     assert_eq!(result.total_rows, 0);
-    assert!(result.rows.is_empty());
+    assert!(result.first_window.rows.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -760,8 +783,16 @@ async fn execute_multi_query_ipc_uses_row_limit_and_serializes_rows_without_tota
     assert_eq!(request_body.get("rowLimit"), Some(&json!(321)));
     assert_eq!(result.results.len(), 2);
     let serialized = serde_json::to_value(&result).expect("result should serialize");
-    assert!(serialized.pointer("/results/0/rows").is_some());
-    assert!(serialized.pointer("/results/1/rows").is_some());
+    assert!(serialized.pointer("/results/0/firstWindow/rows").is_some());
+    assert!(serialized
+        .pointer("/results/0/firstWindow/baseIndices")
+        .is_some());
+    assert!(serialized.pointer("/results/0/rows").is_none());
+    assert!(serialized.pointer("/results/1/firstWindow/rows").is_some());
+    assert!(serialized
+        .pointer("/results/1/firstWindow/baseIndices")
+        .is_some());
+    assert!(serialized.pointer("/results/1/rows").is_none());
     assert!(serialized.pointer("/results/0/totalPages").is_none());
 }
 
@@ -805,7 +836,11 @@ async fn execute_call_query_ipc_uses_row_limit_and_serializes_rows_without_total
     assert_eq!(request_body.get("rowLimit"), Some(&json!(654)));
     assert_eq!(result.results.len(), 1);
     let serialized = serde_json::to_value(&result).expect("result should serialize");
-    assert!(serialized.pointer("/results/0/rows").is_some());
+    assert!(serialized.pointer("/results/0/firstWindow/rows").is_some());
+    assert!(serialized
+        .pointer("/results/0/firstWindow/baseIndices")
+        .is_some());
+    assert!(serialized.pointer("/results/0/rows").is_none());
     assert!(serialized.pointer("/results/0/totalPages").is_none());
 }
 
@@ -870,7 +905,8 @@ async fn reexecute_single_result_ipc_uses_row_limit_and_serializes_rows_without_
 
     assert_eq!(request_body.get("rowLimit"), Some(&json!(777)));
     let serialized = serde_json::to_value(&result).expect("result should serialize");
-    assert!(serialized.get("rows").is_some());
+    assert!(serialized.pointer("/firstWindow/rows").is_some());
+    assert!(serialized.get("rows").is_none());
     assert!(serialized.get("totalPages").is_none());
 }
 
@@ -1187,7 +1223,7 @@ async fn execute_multi_query_ipc_streams_nulls_blobs_and_non_utf8_bytes_row_by_r
     assert_eq!(item.error, None);
     assert_eq!(item.total_rows, 3);
     assert_eq!(
-        item.rows,
+        item.first_window.rows,
         vec![
             vec![json!(1), json!("AAH/"), json!("plain")],
             vec![json!(2), serde_json::Value::Null, serde_json::Value::Null],
@@ -1244,7 +1280,7 @@ async fn execute_call_query_ipc_drains_column_less_sets_and_streams_row_set() {
     assert_eq!(users.columns[0].name, "name");
     assert_eq!(users.total_rows, 3);
     assert_eq!(
-        users.rows,
+        users.first_window.rows,
         vec![
             vec![json!("Alice")],
             vec![serde_json::Value::Null],
@@ -1277,7 +1313,7 @@ async fn execute_multi_query_ipc_drains_dml_response_before_next_statement() {
 
     assert_eq!(result.results.len(), 2);
     assert_eq!(result.results[0].affected_rows, 4);
-    assert!(result.results[0].rows.is_empty());
+    assert!(result.results[0].first_window.rows.is_empty());
     assert_eq!(result.results[1].error, None);
-    assert_eq!(result.results[1].rows, vec![vec![json!(7)]]);
+    assert_eq!(result.results[1].first_window.rows, vec![vec![json!(7)]]);
 }

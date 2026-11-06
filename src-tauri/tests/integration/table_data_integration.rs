@@ -141,6 +141,9 @@ mod type_aware_filter_integration {
             import_jobs: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
             copy_jobs: std::sync::Arc::new(
                 std::sync::RwLock::new(std::collections::HashMap::new()),
             ),

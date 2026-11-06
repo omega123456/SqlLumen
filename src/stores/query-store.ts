@@ -1,12 +1,17 @@
 import { create } from 'zustand'
 import type {
   ColumnMeta,
+  ExportFormat,
   FilterCondition,
   FrontendRowResidencyState,
+  FullExportBlockedReason,
   MultiQueryResultItem,
   QueryTableEditInfo,
+  ResultViewSpec,
+  ResultWindow,
   RowEditState,
   SelectedCellInfo,
+  SetResultViewResult,
   ViewMode,
 } from '../types/schema'
 import {
@@ -14,20 +19,49 @@ import {
   executeMultiQuery as executeMultiQueryCmd,
   executeCallQuery as executeCallQueryCmd,
   reexecuteSingleResult as reexecuteSingleResultCmd,
-  fetchCachedRows as fetchCachedRowsCmd,
   evictResults as evictResultsCmd,
-  sortResults as sortResultsCmd,
+  setResultView as setResultViewCmd,
+  fetchResultWindow as fetchResultWindowCmd,
+  removeResultRows as removeResultRowsCmd,
   analyzeQueryForEdit as analyzeQueryForEditCmd,
   updateResultCell as updateResultCellCmd,
   cancelQuery as cancelQueryCmd,
   touchResults as touchResultsCmd,
+  type ExecuteQueryResult,
+  type ResultSlotRef,
 } from '../lib/query-commands'
 import {
   insertTableRow as insertTableRowCmd,
   updateTableRow as updateTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
-  normalizeTinyIntRows as normalizeQueryRows,
 } from '../lib/table-data-commands'
+import {
+  RESULT_LOADING_STATUS_DELAY_MS,
+  RESULT_PAGE_SIZE,
+  applyResultView,
+  applySavedRowValues,
+  clearResultWindowPages,
+  dropTabResultWindows,
+  getLoadedRow,
+  getResultSurface,
+  isResultsExpiredError,
+  parseSupersededVersion,
+  readViewRange,
+  retryFailedWindow,
+  seedResultWindow,
+  setWindowExpiredHandler,
+  setWindowStatusHandler,
+  type CachedRow,
+  type ViewRange,
+} from '../lib/result-window-cache'
+import { formatCount, formatRowRange } from '../lib/format-row-count'
+import {
+  cancelResultExport as cancelResultExportCmd,
+  getResultExportProgress as getResultExportProgressCmd,
+  startResultExport as startResultExportCmd,
+  type ResultExportProgress,
+  type ResultExportStatus,
+} from '../lib/export-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
 import { useTableDataStore } from './table-data-store'
 import {
@@ -94,18 +128,6 @@ export function isCallSql(sql: string): boolean {
   return getFirstSqlKeyword(sql) === 'CALL'
 }
 
-/** Validates a sort response payload contains an array of rows. */
-function parseSortedRowsPayload(value: unknown): { rows: unknown[][] } | null {
-  if (value == null || typeof value !== 'object') {
-    return null
-  }
-  const o = value as Record<string, unknown>
-  if (!Array.isArray(o.rows)) {
-    return null
-  }
-  return { rows: o.rows }
-}
-
 function isQueryTabVisibleInWorkspace(tabId: string): boolean {
   const workspaceState = useWorkspaceStore.getState()
 
@@ -129,6 +151,71 @@ function isQueryTabVisibleInWorkspace(tabId: string): boolean {
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
+/** Which rows the Export dialog should offer first ("Current view" / "All rows"). */
+export type ExportRowScope = 'currentView' | 'allRows'
+
+/** Polling interval for streaming full-export progress (ms). */
+export const RESULT_EXPORT_POLL_MS = 500
+
+/** What a streaming full export ("All rows") writes, and where. */
+export interface FullExportRequest {
+  connectionId: string
+  /** Result the export was started from. */
+  resultIndex: number
+  format: ExportFormat
+  filePath: string
+  includeHeaders: boolean
+  /** Table name for SQL INSERT output. */
+  tableName?: string
+}
+
+/**
+ * A tab's streaming full-export job (D22). It lives outside `results[]`, so a
+ * re-run that replaces the tab's results keeps it, and the store (not the
+ * Export dialog) polls it and shows its toasts.
+ */
+export interface ResultExportJob extends FullExportRequest {
+  /** Backend job id; null while `start_result_export` is pending or after it failed. */
+  jobId: string | null
+  /** Query id of the result the export was started from. */
+  queryId: string
+  status: ResultExportStatus
+  /** Last polled progress, or null before the first poll. */
+  progress: ResultExportProgress | null
+  /** True once Cancel export was clicked (the dialog shows "Cancelling…"). */
+  cancelRequested: boolean
+  /** Failure message for the failed state, or null. */
+  error: string | null
+  /**
+   * Identifies the `startFullExport` call that created this job. Patches
+   * (cancel, progress) replace the job object, so the start compares this
+   * token, not object identity, to tell whether the job was dropped or
+   * replaced while `start_result_export` was pending.
+   */
+  startToken: number
+}
+
+/** Verbs of row actions that can outlive the 1 s progress threshold (wireframes 7 and 8). */
+export type RowActionVerb = 'Copying' | 'Cutting' | 'Clearing' | 'Pasting' | 'Deleting'
+
+/** Progress of a row action that fetches or writes many rows. */
+export interface RowActionProgress {
+  verb: RowActionVerb
+  done: number
+  total: number
+  /** True when the action can be cancelled (fetches spanning more than one chunk). */
+  cancellable: boolean
+  /** False until the 1 s threshold passed; the toolbar only renders visible progress. */
+  visible: boolean
+}
+
+/** Maximum checked rows a single bulk delete accepts (wireframe 7). */
+export const MAX_BULK_DELETE_ROWS = 10_000
+/** Above this many checked rows the delete dialog warns about duration (wireframe 7). */
+export const BULK_DELETE_WARNING_ROWS = 1_000
+/** Rows the text view renders at most (the rest needs export). */
+export const TEXT_VIEW_ROW_CAP = 5_000
+
 /** Tab-level status extends ExecutionStatus with AI-specific states. */
 export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing' | 'restoring'
 export type ActiveBottomPanelItem = { type: 'result' } | { type: 'table-data'; tabId: string }
@@ -142,10 +229,24 @@ export interface SingleResultState {
   resultStatus: ExecutionStatus
   /** Column metadata from the query. */
   columns: ColumnMeta[]
-  /** Current page rows. */
-  rows: unknown[][]
-  /** Total row count. */
+  /** Live base rows in the Rust cache (deleted rows excluded). */
   totalRows: number
+  /** Rows in the current view (after filter and deletes). */
+  viewRowCount: number
+  /** View version of the painted view (window fetches use it). */
+  viewVersion: number
+  /** Latest view version any response reported (compare-and-swap base, D15). */
+  latestKnownViewVersion: number
+  /** Sequence number of the latest issued `set_result_view` request. */
+  viewRequestSeq: number
+  /** True when the result hit the row ceiling. */
+  truncated: boolean
+  /** Row ceiling in force when the result ran. */
+  rowCeiling: number
+  /** LIMIT actually injected by auto-LIMIT, or null. */
+  appliedRowLimit: number | null
+  /** Why a truncated result can't be exported in full, or null. */
+  fullExportBlockedReason: FullExportBlockedReason | null
   /** Server execution time only (ms), excluding row transfer/serialization. */
   executionTimeMs: number
   /** Total time (ms): execution + row transfer + serialization. */
@@ -166,12 +267,16 @@ export interface SingleResultState {
   sortColumn: string | null
   /** Sort direction (null = no sort). */
   sortDirection: 'asc' | 'desc' | null
-  /** Index of the selected row (null = none). */
+  /** View position of the selected row (null = none). */
   selectedRowIndex: number | null
-  /** Page-local row indices checked via the multi-select checkbox column. */
-  checkedRowIndices: number[]
+  /** Checked rows as half-open view-position ranges (multi-select checkbox column). */
+  checkedRanges: ViewRange[]
+  /** View version the checked ranges belong to (cleared on every view change). */
+  checkedViewVersion: number
   /** Whether the export dialog is open. */
   exportDialogOpen: boolean
+  /** Row scope the Export dialog should preselect. */
+  preferredExportScope: ExportRowScope
   /** The SQL that produced this result set. */
   lastExecutedSql: string | null
   /** Whether this result can be re-executed (false for stored proc results). */
@@ -181,10 +286,18 @@ export interface SingleResultState {
   /** Last clicked cell info (column + value) for filter dialog auto-population. */
   selectedCell: SelectedCellInfo | null
 
-  /** Active client-side filter conditions. */
+  /** Active filter conditions (mirrors the Rust view spec). */
   filterModel: FilterCondition[]
-  /** Original unfiltered rows (non-null while a filter is active). */
-  unfilteredRows: unknown[][] | null
+  /** True while a filter change (`set_result_view`) is pending. */
+  isFiltering: boolean
+  /** Message of the last failed view request (view-error band), or null. */
+  viewError: string | null
+  /** View range still loading after 1 s ("Loading rows X–Y…"), or null. */
+  pendingWindowRange: ViewRange | null
+  /** View range whose window fetch failed (Retry band), or null. */
+  failedWindowRange: ViewRange | null
+  /** Progress of a long row action (copy/cut/clear/paste/delete), or null. */
+  rowActionProgress: RowActionProgress | null
 
   // --- Edit mode fields ---
 
@@ -210,8 +323,12 @@ export interface SingleResultState {
   isStale: boolean
   /** Connection ID used for edit-mode IPC calls. */
   editConnectionId: string | null
-  /** Index of the row being edited in the current page's rows array. */
+  /** View position of the row being edited (the draft row sits at `viewRowCount`). */
   editingRowIndex: number | null
+  /** Base index of the row being edited (saves and cache sync use it); null for a draft. */
+  editingBaseIndex: number | null
+  /** Unsaved clone draft, shown as a virtual row after the last view row. */
+  draftRow: unknown[] | null
 
   // --- Scroll position ---
 
@@ -278,8 +395,15 @@ const EMPTY_OBJECT = Object.freeze({}) as Record<string, QueryTableEditInfo>
 export const DEFAULT_RESULT_STATE: SingleResultState = {
   resultStatus: 'idle',
   columns: [],
-  rows: [],
   totalRows: 0,
+  viewRowCount: 0,
+  viewVersion: 0,
+  latestKnownViewVersion: 0,
+  viewRequestSeq: 0,
+  truncated: false,
+  rowCeiling: 0,
+  appliedRowLimit: null,
+  fullExportBlockedReason: null,
   executionTimeMs: 0,
   totalTimeMs: 0,
   affectedRows: 0,
@@ -291,14 +415,20 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   sortColumn: null,
   sortDirection: null,
   selectedRowIndex: null,
-  checkedRowIndices: [],
+  checkedRanges: [],
+  checkedViewVersion: 0,
   exportDialogOpen: false,
+  preferredExportScope: 'currentView',
   lastExecutedSql: null,
   reExecutable: true,
   isAnalyzed: false,
   selectedCell: null,
   filterModel: [],
-  unfilteredRows: null,
+  isFiltering: false,
+  viewError: null,
+  pendingWindowRange: null,
+  failedWindowRange: null,
+  rowActionProgress: null,
 
   // Edit mode defaults
   editMode: null,
@@ -313,6 +443,8 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   isStale: false,
   editConnectionId: null,
   editingRowIndex: null,
+  editingBaseIndex: null,
+  draftRow: null,
   scrollRow: 0,
   scrollCol: 0,
   isExpired: false,
@@ -343,6 +475,15 @@ const DEFAULT_TAB_STATE: TabQueryState = {
 }
 
 /** Default values for all edit-related fields on a SingleResultState (used by clearEditState). */
+/** Per-row edit state, dropped when the view changes (edit mode itself stays). */
+const ROW_EDIT_STATE_RESET: Partial<SingleResultState> = {
+  editState: null,
+  editingRowIndex: null,
+  editingBaseIndex: null,
+  draftRow: null,
+  saveError: null,
+}
+
 const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
   editMode: null,
   editTableMetadata: EMPTY_OBJECT,
@@ -356,6 +497,8 @@ const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
   isStale: false,
   editConnectionId: null,
   editingRowIndex: null,
+  editingBaseIndex: null,
+  draftRow: null,
 }
 
 /**
@@ -401,135 +544,110 @@ function compositeTableKey(database: string, table: string): string {
   return `${database}.${table}`
 }
 
-/**
- * A condition precompiled for fast per-row evaluation. `colIndex` and any
- * regex / parsed numeric value are computed once, so the row loop only runs
- * `test(cell)`.
- */
-type PreparedCondition = { colIndex: number; test: (cell: unknown) => boolean }
+/** Number of rows covered by half-open view ranges. */
+export function countRanges(ranges: readonly ViewRange[]): number {
+  return ranges.reduce((sum, [start, end]) => sum + Math.max(0, end - start), 0)
+}
 
-/**
- * Precompute per-condition state (column index, compiled regex, parsed numeric
- * value) once so it is not recomputed on every row.
- *
- * - IS NULL / IS NOT NULL: null/undefined checks
- * - ==: string equality
- * - >, >=, <, <=: numeric if both sides parse as numbers, otherwise string comparison
- * - LIKE / NOT LIKE: SQL LIKE → regex (% → .*, _ → ., case-insensitive)
- *
- * Conditions whose column is not found are skipped (always-true test).
- */
-function prepareConditions(
-  columns: ColumnMeta[],
-  filterModel: FilterCondition[]
-): PreparedCondition[] {
-  return filterModel.map((condition) => {
-    const colIndex = columns.findIndex((c) => c.name === condition.column)
-    if (colIndex < 0) {
-      return { colIndex, test: () => true } // column not found — skip condition
-    }
+/** The view spec a result currently shows (sort and filter mirror the Rust view). */
+export function getResultViewSpec(result: SingleResultState): ResultViewSpec {
+  return {
+    sort:
+      result.sortColumn && result.sortDirection
+        ? { column: result.sortColumn, direction: result.sortDirection }
+        : null,
+    filters: result.filterModel,
+  }
+}
 
-    switch (condition.operator) {
-      case 'IS NULL':
-        return { colIndex, test: (cell) => cell === null || cell === undefined }
-      case 'IS NOT NULL':
-        return { colIndex, test: (cell) => cell !== null && cell !== undefined }
-      case '==': {
-        const condValue = condition.value
-        return { colIndex, test: (cell) => String(cell) === condValue }
-      }
-      case '!=': {
-        const condValue = condition.value
-        return { colIndex, test: (cell) => String(cell) !== condValue }
-      }
-      case '>':
-      case '>=':
-      case '<':
-      case '<=': {
-        const operator = condition.operator
-        const strCond = condition.value
-        const condNonEmpty = strCond !== ''
-        const numCond = condNonEmpty ? Number(strCond) : NaN
-        const condNumeric = condNonEmpty && Number.isFinite(numCond)
-        return {
-          colIndex,
-          test: (cell) => {
-            // Null/undefined cell values never satisfy comparison operators
-            if (cell === null || cell === undefined) return false
-
-            // Use numeric comparison only when both sides parse to finite
-            // numbers; otherwise fall back to string comparison.
-            const numVal = Number(cell)
-            if (condNumeric && Number.isFinite(numVal)) {
-              switch (operator) {
-                case '>':
-                  return numVal > numCond
-                case '>=':
-                  return numVal >= numCond
-                case '<':
-                  return numVal < numCond
-                case '<=':
-                  return numVal <= numCond
-              }
-            }
-            const strVal = String(cell)
-            switch (operator) {
-              case '>':
-                return strVal > strCond
-              case '>=':
-                return strVal >= strCond
-              case '<':
-                return strVal < strCond
-              case '<=':
-                return strVal <= strCond
-            }
-          },
-        }
-      }
-      case 'LIKE':
-      case 'NOT LIKE': {
-        const likePattern = condition.value
-          .split('')
-          .map((ch) => {
-            if (ch === '%') return '.*'
-            if (ch === '_') return '.'
-            // Escape regex-special characters
-            return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          })
-          .join('')
-        const regex = new RegExp(`^${likePattern}$`, 'i')
-        const negate = condition.operator === 'NOT LIKE'
-        return {
-          colIndex,
-          test: (cell) => {
-            const matches = regex.test(String(cell))
-            return negate ? !matches : matches
-          },
-        }
-      }
-    }
-  })
+/** The view spec to send with a re-run, or null when the result has no sort or filter. */
+function rerunViewSpec(result: SingleResultState | undefined): ResultViewSpec | null {
+  if (!result) return null
+  const spec = getResultViewSpec(result)
+  return spec.sort || spec.filters.length > 0 ? spec : null
 }
 
 /**
- * If the given result has an active filter, re-apply it to `newRows` and return
- * a patch object that sets rows/unfilteredRows correctly.
- * If no filter is active, returns a minimal patch with the new rows as-is.
+ * Sort and filter fields after a re-run with a view spec. Rust silently drops
+ * conditions and a sort on columns the new result lacks, so mirror that here.
  */
-function reapplyFilterIfActive(
-  result: SingleResultState,
-  newRows: unknown[][],
+function viewFieldsForColumns(
+  spec: ResultViewSpec | null,
   columns: ColumnMeta[]
-): Partial<SingleResultState> {
-  if (result.filterModel.length === 0) {
-    return { rows: newRows, unfilteredRows: null }
-  }
-  const prepared = prepareConditions(columns, result.filterModel)
-  const filteredRows = newRows.filter((row) => prepared.every((p) => p.test(row[p.colIndex])))
+): Pick<SingleResultState, 'sortColumn' | 'sortDirection' | 'filterModel'> {
+  const names = new Set(columns.map((column) => column.name))
+  const sort = spec?.sort && names.has(spec.sort.column) ? spec.sort : null
   return {
-    rows: filteredRows,
-    unfilteredRows: newRows,
+    sortColumn: sort?.column ?? null,
+    sortDirection: sort?.direction ?? null,
+    filterModel: (spec?.filters ?? []).filter((condition) => names.has(condition.column)),
   }
+}
+
+const EMPTY_WINDOW: ResultWindow = { offset: 0, rows: [], baseIndices: [] }
+
+/** Window/ceiling metadata of an execute response, tolerant of missing fields. */
+function windowMetaFromResponse(
+  response: Pick<MultiQueryResultItem, 'totalRows'> &
+    Partial<
+      Pick<
+        MultiQueryResultItem,
+        | 'viewRowCount'
+        | 'viewVersion'
+        | 'truncated'
+        | 'rowCeiling'
+        | 'appliedRowLimit'
+        | 'fullExportBlockedReason'
+        | 'firstWindow'
+      >
+    >
+): {
+  fields: Pick<
+    SingleResultState,
+    | 'viewRowCount'
+    | 'viewVersion'
+    | 'latestKnownViewVersion'
+    | 'truncated'
+    | 'rowCeiling'
+    | 'appliedRowLimit'
+    | 'fullExportBlockedReason'
+  >
+  window: ResultWindow
+} {
+  const viewVersion = response.viewVersion ?? 1
+  return {
+    fields: {
+      viewRowCount: response.viewRowCount ?? response.totalRows,
+      viewVersion,
+      latestKnownViewVersion: viewVersion,
+      truncated: response.truncated ?? false,
+      rowCeiling: response.rowCeiling ?? 0,
+      appliedRowLimit: response.appliedRowLimit ?? null,
+      fullExportBlockedReason: response.fullExportBlockedReason ?? null,
+    },
+    window: response.firstWindow ?? EMPTY_WINDOW,
+  }
+}
+
+/** Seed the page cache for a result from its execute response. */
+function seedResultFromResponse(
+  connectionId: string,
+  tabId: string,
+  resultIndex: number,
+  response: Pick<MultiQueryResultItem, 'queryId' | 'columns' | 'totalRows'> &
+    Partial<MultiQueryResultItem>
+): void {
+  const { fields, window } = windowMetaFromResponse(response)
+  seedResultWindow({
+    connectionId,
+    tabId,
+    resultIndex,
+    queryId: response.queryId,
+    viewVersion: fields.viewVersion,
+    viewRowCount: fields.viewRowCount,
+    columns: response.columns,
+    window,
+  })
 }
 
 function buildEditBindingContext(
@@ -612,13 +730,12 @@ function buildSingleResultFromItem(
   defaultRowLimit: number,
   isActive = false
 ): SingleResultState {
-  const normalizedRows = normalizeQueryRows(item.columns, item.rows)
   const resultStatus: ExecutionStatus = item.error ? 'error' : 'success'
   return {
     ...DEFAULT_RESULT_STATE,
+    ...windowMetaFromResponse(item).fields,
     resultStatus,
     columns: item.columns,
-    rows: normalizedRows,
     totalRows: item.totalRows,
     executionTimeMs: item.executionTimeMs,
     totalTimeMs: item.totalTimeMs,
@@ -638,9 +755,58 @@ function buildSingleResultFromItem(
   }
 }
 
+/** Fields shared by every path that replaces a result with a fresh execute response. */
+function freshResultFields(
+  response: ExecuteQueryResult | MultiQueryResultItem,
+  spec: ResultViewSpec | null
+): Partial<SingleResultState> {
+  return {
+    ...windowMetaFromResponse(response).fields,
+    ...viewFieldsForColumns(spec, response.columns),
+    columns: response.columns,
+    totalRows: response.totalRows,
+    queryId: response.queryId,
+    executionTimeMs: response.executionTimeMs,
+    totalTimeMs: response.totalTimeMs,
+    affectedRows: response.affectedRows,
+    autoLimitApplied: response.autoLimitApplied,
+    viewRequestSeq: 0,
+    isFiltering: false,
+    isSorting: false,
+    viewError: null,
+    pendingWindowRange: null,
+    failedWindowRange: null,
+    checkedRanges: [],
+    selectedRowIndex: null,
+    draftRow: null,
+  }
+}
+
+/** Handle returned by `beginRowAction`. */
+export interface RowActionHandle {
+  /** Report rows done so far. */
+  update: (done: number) => void
+  /** End the action. Returns true when its progress had become visible (1 s threshold). */
+  finish: () => boolean
+}
+
 interface QueryState {
   /** Per-tab state keyed by tab ID. */
   tabs: Record<string, TabQueryState>
+
+  /** Streaming full-export jobs keyed by tab ID (outside `results[]`, D22). */
+  exportJobs: Record<string, ResultExportJob>
+
+  /**
+   * Start a streaming full export ("All rows") of a truncated, re-runnable
+   * result. The store polls its progress until it ends, shows the completion
+   * toast or `showErrorToast` itself (also when the tab is inactive), and
+   * closes the Export dialog on completion. Ignored while a job is running.
+   */
+  startFullExport: (tabId: string, request: FullExportRequest) => Promise<void>
+
+  /** Cancel the tab's running full export ("Cancel export"). */
+  cancelFullExport: (tabId: string) => Promise<void>
 
   /** Get or create state for a tab. */
   getTabState: (tabId: string) => TabQueryState
@@ -658,7 +824,17 @@ interface QueryState {
   setCursorPosition: (tabId: string, position: { lineNumber: number; column: number }) => void
 
   /** Execute a SQL query for a tab (single statement, non-CALL). */
-  executeQuery: (connectionId: string, tabId: string, sql: string) => Promise<void>
+  /**
+   * Execute a single statement for a tab. `viewSpec` (sort plus filters) is
+   * applied in Rust so the first window arrives already sorted and filtered;
+   * it is used when restoring an expired result (D18).
+   */
+  executeQuery: (
+    connectionId: string,
+    tabId: string,
+    sql: string,
+    viewSpec?: ResultViewSpec | null
+  ) => Promise<void>
 
   /** Execute multiple SQL statements for a tab. */
   executeMultiQuery: (connectionId: string, tabId: string, statements: string[]) => Promise<void>
@@ -684,19 +860,45 @@ interface QueryState {
   /** Set the selected row index. */
   setSelectedRow: (tabId: string, index: number | null) => void
 
-  /** Replace the set of checkbox-checked row indices for the active result. */
-  setCheckedRowIndices: (tabId: string, indices: number[]) => void
+  /**
+   * Replace the checked rows of the active result: half-open view-position
+   * ranges, tagged with the current view version (cleared on every view change).
+   */
+  setCheckedRanges: (tabId: string, ranges: ViewRange[]) => void
 
   /**
-   * Delete rows from the bound source table by their page-local indices, then
-   * remove them from the displayed result. Only valid when the result is in
-   * edit mode (a table with a primary/unique key whose key columns are present
-   * in the result set) — the same gating as cell editing. Each row is deleted
-   * via its key values; the backend result cache is refreshed afterwards so
-   * exports / sorts do not resurrect deleted rows. Resolves with the number of
-   * rows successfully deleted.
+   * Delete the checked rows from the bound source table. Only valid in edit mode
+   * (a table with a primary/unique key whose key columns are present in the
+   * result) — the same gating as cell editing. Rows are deleted one statement at
+   * a time; the base indices of the rows MySQL actually deleted are then
+   * tombstoned in the Rust cache with `remove_result_rows`, with no query re-run.
+   * Refuses more than `MAX_BULK_DELETE_ROWS` rows. Resolves with the number of
+   * rows deleted.
    */
-  deleteResultRows: (tabId: string, rowIndices: number[]) => Promise<number>
+  deleteResultRows: (tabId: string) => Promise<number>
+
+  /**
+   * Track a long row action (copy/cut/clear/paste/delete). Progress becomes
+   * visible after 1 s. `onCancel` (when given) is wired to the toolbar Cancel.
+   */
+  beginRowAction: (
+    tabId: string,
+    verb: RowActionVerb,
+    total: number,
+    onCancel?: () => void
+  ) => RowActionHandle
+
+  /** Cancel the running row action of the active result, if it is cancellable. */
+  cancelRowAction: (tabId: string) => void
+
+  /** Mark every result of a tab expired (routes to the "Results expired" block). */
+  markResultsExpired: (tabId: string) => void
+
+  /** Retry the failed window range of the active result (the Retry band). */
+  retryResultWindow: (tabId: string) => void
+
+  /** Re-issue the latest requested sort/filter of the active result (view-error band). */
+  retryViewChange: (tabId: string) => void
 
   /** Set the selected cell info (column + value) for filter dialog auto-population. */
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
@@ -704,16 +906,16 @@ interface QueryState {
   /** Persist the scroll position (cell indices) for the active result. */
   setResultScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => void
 
-  /** Apply client-side filter conditions to a query result. */
+  /** Apply filter conditions to a query result (filtering runs in Rust). */
   applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => void
 
-  /** Open the export dialog. */
-  openExportDialog: (tabId: string) => void
+  /** Open the export dialog, optionally preselecting a row scope. */
+  openExportDialog: (tabId: string, scope?: ExportRowScope) => void
 
   /** Close the export dialog. */
   closeExportDialog: (tabId: string) => void
 
-  /** Sort results by a column via server-side sort IPC. */
+  /** Sort results by a column (sorting runs in Rust over a view; clearing needs no re-run). */
   sortResults: (
     connectionId: string,
     tabId: string,
@@ -732,8 +934,11 @@ interface QueryState {
   /** Enable or disable edit mode for a table. connectionId needed for IPC. */
   setEditMode: (connectionId: string, tabId: string, tableName: string | null) => Promise<void>
 
-  /** Start editing a specific row by its page-local index. */
-  startEditingRow: (tabId: string, rowIndex: number) => void
+  /**
+   * Start editing the row at a view position. `row` supplies the row when it
+   * isn't in the page cache (e.g. an FK lookup on a row that was just fetched).
+   */
+  startEditingRow: (tabId: string, rowIndex: number, row?: CachedRow) => void
 
   /** Clone the selected persisted row into an unsaved insert draft. */
   cloneSelectedRow: (tabId: string) => void
@@ -741,7 +946,7 @@ interface QueryState {
   /** Update a cell value in the current edit state (editState only). */
   updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
 
-  /** Update a cell value and also sync the local rows array for grid re-render. */
+  /** Update a cell value in the edit state (the grid overlays edit-state values). */
   syncCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
 
   /** Save the currently editing row to the database. Returns true on success, false on failure. */
@@ -781,11 +986,25 @@ interface QueryState {
   /** Mark a query-result surface inactive and schedule frontend row eviction when safe. */
   markResultSurfaceInactive: (tabId: string, resultIndex?: number) => void
 
-  /** Evict frontend rows for a hidden query result while preserving restore metadata. */
+  /** Drop the page cache of a hidden query result while preserving restore metadata. */
   evictInactiveResultRows: (tabId: string, resultIndex: number) => void
 
-  /** Restore frontend rows for an evicted active query result from backend cache. */
+  /** Re-check the backend cache and refetch the visible window of an evicted result. */
   restoreEvictedResultRows: (tabId: string, resultIndex?: number) => Promise<void>
+}
+
+/** Pending full-export progress polls, keyed by tab ID. */
+const exportPollTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Source of `ResultExportJob.startToken`. */
+let nextExportStartToken = 0
+
+function stopExportPolling(tabId: string): void {
+  const timer = exportPollTimers.get(tabId)
+  if (timer !== undefined) {
+    clearTimeout(timer)
+    exportPollTimers.delete(tabId)
+  }
 }
 
 export const useQueryStore = create<QueryState>()((set, get) => {
@@ -872,6 +1091,451 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     return Math.min(tab.activeResultIndex, tab.results.length - 1)
   }
 
+  // -------------------------------------------------------------------------
+  // Streaming full export (D22): job state per tab, polled by the store.
+  // -------------------------------------------------------------------------
+
+  const patchExportJob = (tabId: string, partial: Partial<ResultExportJob>) => {
+    set((state) => {
+      const job = state.exportJobs[tabId]
+      if (!job) return state
+      return { exportJobs: { ...state.exportJobs, [tabId]: { ...job, ...partial } } }
+    })
+  }
+
+  const dropExportJob = (tabId: string) => {
+    stopExportPolling(tabId)
+    set((state) => {
+      if (!(tabId in state.exportJobs)) return state
+      const exportJobs = { ...state.exportJobs }
+      delete exportJobs[tabId]
+      return { exportJobs }
+    })
+  }
+
+  const isExportDialogOpenForTab = (tabId: string): boolean =>
+    get().tabs[tabId]?.results.some((result) => result.exportDialogOpen) ?? false
+
+  const closeExportDialogsForTab = (tabId: string) => {
+    set((state) => {
+      const tab = state.tabs[tabId]
+      if (!tab || !tab.results.some((result) => result.exportDialogOpen)) return state
+      return {
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...tab,
+            results: tab.results.map((result) =>
+              result.exportDialogOpen ? { ...result, exportDialogOpen: false } : result
+            ),
+          },
+        },
+      }
+    })
+  }
+
+  /** Cancel a backend job without waiting (tab closed, start raced a close). */
+  const cancelExportJobInBackground = (jobId: string, context: string) => {
+    cancelResultExportCmd(jobId).catch((err: unknown) => {
+      logFrontend(
+        'error',
+        [`[query-store] cancelResultExport failed (${context}):`, err].map(String).join(' ')
+      )
+    })
+  }
+
+  /**
+   * End a job. Completed: drop it, close the dialog, show the success toast.
+   * Cancelled or failed: keep it while the dialog is open (it renders the
+   * InfoBar), otherwise drop it; a failure always shows `showErrorToast`.
+   */
+  const finishExportJob = (tabId: string, progress: ResultExportProgress) => {
+    const job = get().exportJobs[tabId]
+    if (!job) return
+    stopExportPolling(tabId)
+    if (progress.status === 'completed') {
+      dropExportJob(tabId)
+      closeExportDialogsForTab(tabId)
+      const limitNote = progress.stoppedAtSheetLimit
+        ? " Stopped at Excel's 1,048,576-row limit."
+        : ''
+      showSuccessToast(
+        'Export completed',
+        `${formatCount(progress.rowsWritten)} rows saved to ${job.filePath}${limitNote}`
+      )
+      if (progress.error) {
+        logFrontend('warn', `[query-store] full export: ${progress.error}`)
+        showWarningToast('Database not restored', progress.error)
+      }
+      return
+    }
+    const error =
+      progress.status === 'failed' ? (progress.error ?? 'The export stopped unexpectedly.') : null
+    if (progress.status === 'failed') {
+      showErrorToast('Export failed', error ?? undefined)
+    }
+    if (isExportDialogOpenForTab(tabId)) {
+      patchExportJob(tabId, { status: progress.status, progress, error, cancelRequested: false })
+    } else {
+      dropExportJob(tabId)
+    }
+  }
+
+  const pollExportJob = async (tabId: string, jobId: string) => {
+    exportPollTimers.delete(tabId)
+    let progress: ResultExportProgress
+    try {
+      progress = await getResultExportProgressCmd(jobId)
+    } catch (err) {
+      if (get().exportJobs[tabId]?.jobId !== jobId) return
+      const message = err instanceof Error ? err.message : String(err)
+      logFrontend('error', `[query-store] getResultExportProgress failed: ${message}`)
+      finishExportJob(tabId, {
+        status: 'failed',
+        rowsWritten: get().exportJobs[tabId]?.progress?.rowsWritten ?? 0,
+        bytesWritten: 0,
+        elapsedMs: 0,
+        stoppedAtSheetLimit: false,
+        error: message,
+      })
+      return
+    }
+    // The job was dropped (tab or connection cleaned up) or replaced meanwhile.
+    if (get().exportJobs[tabId]?.jobId !== jobId) return
+    if (progress.status === 'running') {
+      patchExportJob(tabId, { progress })
+      scheduleExportPoll(tabId, jobId, RESULT_EXPORT_POLL_MS)
+      return
+    }
+    finishExportJob(tabId, progress)
+  }
+
+  const scheduleExportPoll = (tabId: string, jobId: string, delayMs: number) => {
+    stopExportPolling(tabId)
+    exportPollTimers.set(
+      tabId,
+      setTimeout(() => {
+        void pollExportJob(tabId, jobId)
+      }, delayMs)
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Window cache wiring: window-level status is mirrored into result metadata.
+  // -------------------------------------------------------------------------
+
+  setWindowStatusHandler((tabId, resultIndex, patch, failure) => {
+    const result = get().tabs[tabId]?.results[resultIndex]
+    if (!result) return
+    patchResultByIndex(tabId, resultIndex, patch)
+    if (failure && patch.failedWindowRange) {
+      const [start, end] = patch.failedWindowRange
+      showErrorToast(`Couldn't load rows ${formatRowRange(start + 1, end)}`, failure.message)
+    }
+  })
+  setWindowExpiredHandler((tabId) => {
+    if (get().tabs[tabId]) markTabResultsExpired(tabId)
+  })
+
+  /** The cached-result slot of a result, or null when it has no query id. */
+  const slotFor = (tabId: string, resultIndex: number): ResultSlotRef | null => {
+    const tab = get().tabs[tabId]
+    const result = tab?.results[resultIndex]
+    if (!tab || !result?.queryId) return null
+    return {
+      connectionId: getResultSurface(tabId, resultIndex)?.slot.connectionId || tab.connectionId,
+      tabId,
+      resultIndex,
+      queryId: result.queryId,
+    }
+  }
+
+  /** Row of a result at a view position: the clone draft, or a loaded page-cache row. */
+  const rowAt = (
+    tabId: string,
+    resultIndex: number,
+    result: SingleResultState,
+    position: number
+  ): CachedRow | null => {
+    if (result.draftRow && position === result.viewRowCount) {
+      return { row: result.draftRow, baseIndex: -1 }
+    }
+    return getLoadedRow(tabId, resultIndex, position) ?? null
+  }
+
+  // -------------------------------------------------------------------------
+  // Row-action progress (wireframes 7 and 8)
+  // -------------------------------------------------------------------------
+
+  const rowActionCancels = new Map<string, () => void>()
+
+  // -------------------------------------------------------------------------
+  // View requests: compare-and-swap with sequence numbers and one re-issue (D15)
+  // -------------------------------------------------------------------------
+
+  interface ViewTracker {
+    queryId: string
+    /** Latest requested spec: the base for the next sort or filter change. */
+    spec: ResultViewSpec
+    /** Spec of the last failed request; Retry re-issues it. */
+    retrySpec: ResultViewSpec | null
+    lastSuccess: { seq: number; spec: ResultViewSpec; response: SetResultViewResult } | null
+  }
+  const viewTrackers = new Map<string, ViewTracker>()
+  const trackerFor = (tabId: string, resultIndex: number, result: SingleResultState) => {
+    const key = `${tabId}:${resultIndex}`
+    const existing = viewTrackers.get(key)
+    // A result that has issued no view request yet (fresh execute) starts a new tracker.
+    if (existing && existing.queryId === result.queryId && result.viewRequestSeq > 0) {
+      return existing
+    }
+    const tracker: ViewTracker = {
+      queryId: result.queryId ?? '',
+      spec: getResultViewSpec(result),
+      retrySpec: null,
+      lastSuccess: null,
+    }
+    viewTrackers.set(key, tracker)
+    return tracker
+  }
+
+  /** Forget the view trackers of a tab (closed, or its results replaced). */
+  const dropViewTrackers = (tabId: string) => {
+    for (const key of viewTrackers.keys()) {
+      if (key.startsWith(`${tabId}:`)) viewTrackers.delete(key)
+    }
+  }
+
+  /** Paint a view response: page cache plus result metadata. */
+  const paintView = (
+    tabId: string,
+    resultIndex: number,
+    spec: ResultViewSpec,
+    view: { viewVersion: number; viewRowCount: number; totalRows: number; window?: ResultWindow },
+    extra: Partial<SingleResultState> = {}
+  ) => {
+    applyResultView(tabId, resultIndex, view)
+    const result = get().tabs[tabId]?.results[resultIndex]
+    patchResultByIndex(tabId, resultIndex, {
+      viewVersion: view.viewVersion,
+      latestKnownViewVersion: Math.max(result?.latestKnownViewVersion ?? 0, view.viewVersion),
+      viewRowCount: view.viewRowCount,
+      totalRows: view.totalRows,
+      sortColumn: spec.sort?.column ?? null,
+      sortDirection: spec.sort?.direction ?? null,
+      filterModel: spec.filters,
+      checkedRanges: [],
+      checkedViewVersion: view.viewVersion,
+      selectedRowIndex: null,
+      selectedCell: null,
+      pendingWindowRange: null,
+      failedWindowRange: null,
+      isSorting: false,
+      isFiltering: false,
+      viewError: null,
+      ...extra,
+    })
+  }
+
+  const issueViewRequest = async (
+    tabId: string,
+    resultIndex: number,
+    seq: number,
+    baseViewVersion: number,
+    spec: ResultViewSpec,
+    attempt: number
+  ): Promise<void> => {
+    const slot = slotFor(tabId, resultIndex)
+    if (!slot) return
+    const isCurrent = () => {
+      const latest = get().tabs[tabId]?.results[resultIndex]
+      return latest?.queryId === slot.queryId ? latest : null
+    }
+    try {
+      const response = await setResultViewCmd(slot, baseViewVersion, spec)
+      const latest = isCurrent()
+      if (!latest) return
+      const tracker = trackerFor(tabId, resultIndex, latest)
+      tracker.lastSuccess = { seq, spec, response }
+      patchResultByIndex(tabId, resultIndex, {
+        latestKnownViewVersion: Math.max(latest.latestKnownViewVersion, response.viewVersion),
+      })
+      // An older request's success is not painted, but its version is kept (D15).
+      if (seq !== latest.viewRequestSeq) return
+      if (response.viewVersion < latest.latestKnownViewVersion) {
+        // A tombstone write (a delete) already moved the server past this
+        // response. It was applied on top of this view, so the server's view
+        // carries this spec: paint that, never the superseded version.
+        await repaintLatestKnownView(tabId, resultIndex, spec)
+        return
+      }
+      paintView(tabId, resultIndex, spec, {
+        viewVersion: response.viewVersion,
+        viewRowCount: response.viewRowCount,
+        totalRows: response.totalRows,
+        window: response.firstWindow,
+      })
+    } catch (error) {
+      const latest = isCurrent()
+      if (!latest) return
+      const current = parseSupersededVersion(error)
+      if (current !== null && current > latest.latestKnownViewVersion) {
+        patchResultByIndex(tabId, resultIndex, { latestKnownViewVersion: current })
+      }
+      // A newer request exists: it owns the outcome.
+      if (seq !== latest.viewRequestSeq) {
+        logFrontend(
+          'info',
+          `[query-store] set_result_view failed for a superseded request (${tabId}/${resultIndex}): ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        )
+        return
+      }
+      if (current !== null && attempt === 0) {
+        await issueViewRequest(tabId, resultIndex, seq, current, spec, 1)
+        return
+      }
+      if (isResultsExpiredError(error)) {
+        patchResultByIndex(tabId, resultIndex, { isSorting: false, isFiltering: false })
+        markTabResultsExpired(tabId)
+        return
+      }
+      await settleFailedView(tabId, resultIndex, error)
+    }
+  }
+
+  /**
+   * Fetch the first window of the latest view version the server reported and
+   * paint it with `spec`. Used when the server moved past the response at hand,
+   * so the grid never settles on a version whose windows are all `view_stale`.
+   * A failed refetch settles through the D15 terminal rule.
+   */
+  const repaintLatestKnownView = async (
+    tabId: string,
+    resultIndex: number,
+    spec: ResultViewSpec
+  ): Promise<void> => {
+    const result = get().tabs[tabId]?.results[resultIndex]
+    const slot = slotFor(tabId, resultIndex)
+    if (!result || !slot) return
+    try {
+      const window = await fetchResultWindowCmd(slot, result.latestKnownViewVersion, 0, 1000)
+      if (get().tabs[tabId]?.results[resultIndex]?.queryId !== slot.queryId) return
+      paintView(tabId, resultIndex, spec, {
+        viewVersion: window.viewVersion,
+        viewRowCount: window.viewRowCount,
+        totalRows: get().tabs[tabId]?.results[resultIndex]?.totalRows ?? result.totalRows,
+        window,
+      })
+    } catch (error) {
+      if (get().tabs[tabId]?.results[resultIndex]?.queryId !== slot.queryId) return
+      if (isResultsExpiredError(error)) {
+        patchResultByIndex(tabId, resultIndex, { isSorting: false, isFiltering: false })
+        markTabResultsExpired(tabId)
+        return
+      }
+      await settleFailedView(tabId, resultIndex, error)
+    }
+  }
+
+  /**
+   * Terminal rule (D15): paint the latest successful view response if it is the
+   * server's current view; otherwise keep the server's view (refetching its first
+   * window when its version moved on), then show the view-error band.
+   */
+  const settleFailedView = async (tabId: string, resultIndex: number, error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    logFrontend(
+      'warn',
+      `[query-store] set_result_view failed for ${tabId}/${resultIndex}: ${message}`
+    )
+    const result = get().tabs[tabId]?.results[resultIndex]
+    if (!result) return
+    const tracker = trackerFor(tabId, resultIndex, result)
+    const errorPatch: Partial<SingleResultState> = {
+      isSorting: false,
+      isFiltering: false,
+      viewError: message,
+    }
+    const success = tracker.lastSuccess
+    // Retry re-issues the failed spec; later changes start from the reverted view.
+    tracker.retrySpec = tracker.spec
+    if (success && success.response.viewVersion >= result.latestKnownViewVersion) {
+      tracker.spec = success.spec
+      paintView(
+        tabId,
+        resultIndex,
+        success.spec,
+        {
+          viewVersion: success.response.viewVersion,
+          viewRowCount: success.response.viewRowCount,
+          totalRows: success.response.totalRows,
+          window: success.response.firstWindow,
+        },
+        errorPatch
+      )
+    } else if (result.latestKnownViewVersion > result.viewVersion) {
+      tracker.spec = success?.spec ?? getResultViewSpec(result)
+      const slot = slotFor(tabId, resultIndex)
+      try {
+        if (!slot) throw new Error('Result is no longer available')
+        const window = await fetchResultWindowCmd(slot, result.latestKnownViewVersion, 0, 1000)
+        if (get().tabs[tabId]?.results[resultIndex]?.queryId !== slot.queryId) return
+        paintView(
+          tabId,
+          resultIndex,
+          success?.spec ?? getResultViewSpec(result),
+          {
+            viewVersion: window.viewVersion,
+            viewRowCount: window.viewRowCount,
+            totalRows: result.totalRows,
+            window,
+          },
+          errorPatch
+        )
+      } catch (refetchError) {
+        logFrontend(
+          'warn',
+          `[query-store] could not refetch the current view after a failed view change: ${String(refetchError)}`
+        )
+        patchResultByIndex(tabId, resultIndex, errorPatch)
+      }
+    } else {
+      tracker.spec = getResultViewSpec(result)
+      patchResultByIndex(tabId, resultIndex, errorPatch)
+    }
+    showErrorToast("Couldn't apply sort or filter", message)
+  }
+
+  /** Request a new view spec for a result (sort or filter change). */
+  const requestView = (
+    tabId: string,
+    resultIndex: number,
+    spec: ResultViewSpec,
+    kind: 'sort' | 'filter'
+  ): Promise<void> => {
+    const result = get().tabs[tabId]?.results[resultIndex]
+    if (!result) return Promise.resolve()
+    const tracker = trackerFor(tabId, resultIndex, result)
+    tracker.spec = spec
+    tracker.retrySpec = null
+    const seq = result.viewRequestSeq + 1
+    patchResultByIndex(tabId, resultIndex, {
+      viewRequestSeq: seq,
+      viewError: null,
+      ...(kind === 'sort' ? { isSorting: true } : { isFiltering: true }),
+    })
+    return issueViewRequest(tabId, resultIndex, seq, result.latestKnownViewVersion, spec, 0)
+  }
+
+  /** The spec the next request should start from (latest requested, not just painted). */
+  const latestRequestedSpec = (tabId: string, resultIndex: number): ResultViewSpec | null => {
+    const result = get().tabs[tabId]?.results[resultIndex]
+    if (!result) return null
+    return trackerFor(tabId, resultIndex, result).spec
+  }
+
   const ensureResultEditState = (
     tabId: string,
     resultIndex: number,
@@ -881,7 +1545,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     if (!result.editMode) return null
 
     const tableInfo = result.editTableMetadata[result.editMode]
-    const row = result.rows[rowIndex]
+    const cached = rowAt(tabId, resultIndex, result, rowIndex)
+    const row = cached?.row
     if (!tableInfo || !row) return null
 
     if (result.editState && result.editingRowIndex === rowIndex) {
@@ -907,6 +1572,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     patchResultByIndex(tabId, resultIndex, {
       editState,
       editingRowIndex: rowIndex,
+      editingBaseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
       saveError: null,
     })
 
@@ -1090,6 +1756,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const results = multiResult.results.map((item, index) =>
         buildSingleResultFromItem(item, getDefaultRowLimit(), index === 0 && isVisibleOnCompletion)
       )
+      multiResult.results.forEach((item, index) =>
+        seedResultFromResponse(connectionId, tabId, index, item)
+      )
 
       // Tab-level status: 'success' if at least one result exists
       const tabLevelStatus: ExecutionStatus = results.length > 0 ? 'success' : 'idle'
@@ -1160,12 +1829,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
   /**
    * Re-execute a single result within a multi-result tab via `reexecuteSingleResult`,
-   * guard against stale responses, normalize rows, patch the result, and schedule analysis.
+   * guard against stale responses, seed the page cache, patch the result, and
+   * schedule analysis. The result's current sort and filter are passed as the
+   * view spec, so the first window comes back already sorted and filtered (D18).
    *
-   * Does NOT set tab-level status to 'running'. Used by `sortResults` (sort-clear)
-   * and `changeRowLimit` for the multi-result path.
+   * Does NOT set tab-level status to 'running'. Used by `changeRowLimit`,
+   * the clone-insert re-run and expired-result restore for multi-result tabs.
    *
-   * @param extraPatch - additional fields to merge into the patched result (e.g. sortColumn reset, rowLimit)
+   * @param extraPatch - additional fields to merge into the patched result (e.g. rowLimit)
    */
   const reexecuteAndPatchResult = async (
     connectionId: string,
@@ -1176,7 +1847,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     capturedQueryId: string | null,
     extraPatch: Partial<SingleResultState>
   ) => {
-    const reResult = await reexecuteSingleResultCmd(connectionId, tabId, resultIndex, sql, rowLimit)
+    const spec = rerunViewSpec(get().tabs[tabId]?.results[resultIndex])
+    const reResult = await reexecuteSingleResultCmd(
+      connectionId,
+      tabId,
+      resultIndex,
+      sql,
+      rowLimit,
+      spec
+    )
 
     if (!get().tabs[tabId]) return
 
@@ -1196,26 +1875,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       return
     }
 
-    const normalizedRows = normalizeQueryRows(reResult.columns, reResult.rows)
-    // Re-apply active filter if one exists on this result
-    const filterPatch = reapplyFilterIfActive(
-      postResult ?? { ...DEFAULT_RESULT_STATE },
-      normalizedRows,
-      reResult.columns
-    )
+    seedResultFromResponse(connectionId, tabId, resultIndex, reResult)
     patchResultByIndex(tabId, resultIndex, {
-      ...filterPatch,
-      columns: reResult.columns,
-      totalRows: reResult.totalRows,
-      queryId: reResult.queryId,
-      executionTimeMs: reResult.executionTimeMs,
-      totalTimeMs: reResult.totalTimeMs,
-      affectedRows: reResult.affectedRows,
-      autoLimitApplied: reResult.autoLimitApplied,
+      ...freshResultFields(reResult, spec),
       resultStatus: 'success',
       errorMessage: reResult.error ?? null,
-      selectedRowIndex: null,
-      checkedRowIndices: [],
       isExpired: false,
       rowsEvictedAt: null,
       rowResidency: {
@@ -1301,13 +1965,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     result: SingleResultState
   ) => {
     const capturedQueryId = result.queryId
+    const spec = rerunViewSpec(get().tabs[tabId]?.results[resultIndex] ?? result)
     const execResult = await executeQueryCmd(
       connectionId,
       tabId,
       result.lastExecutedSql!,
-      result.rowLimit
+      result.rowLimit,
+      spec
     )
-    const normalizedRows = normalizeQueryRows(execResult.columns, execResult.rows)
 
     if (!get().tabs[tabId]) return
 
@@ -1325,21 +1990,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       return
     }
 
-    const refreshedResult = get().tabs[tabId]?.results[resultIndex] ?? result
-    const filterPatch = reapplyFilterIfActive(refreshedResult, normalizedRows, execResult.columns)
-
+    seedResultFromResponse(connectionId, tabId, resultIndex, execResult)
     patchResultByIndex(tabId, resultIndex, {
-      ...filterPatch,
-      columns: execResult.columns,
-      totalRows: execResult.totalRows,
-      queryId: execResult.queryId,
-      executionTimeMs: execResult.executionTimeMs,
-      totalTimeMs: execResult.totalTimeMs,
-      affectedRows: execResult.affectedRows,
-      autoLimitApplied: execResult.autoLimitApplied,
+      ...freshResultFields(execResult, spec),
       resultStatus: 'success',
       errorMessage: null,
-      selectedRowIndex: null,
       isStale: false,
       saveError: null,
     })
@@ -1364,6 +2019,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
   return {
     tabs: {},
+    exportJobs: {},
 
     getTabState: (tabId: string) => {
       return get().tabs[tabId] ?? { ...DEFAULT_TAB_STATE }
@@ -1386,7 +2042,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchTab(tabId, { cursorPosition: position })
     },
 
-    executeQuery: async (connectionId: string, tabId: string, sql: string) => {
+    executeQuery: async (
+      connectionId: string,
+      tabId: string,
+      sql: string,
+      viewSpec: ResultViewSpec | null = null
+    ) => {
       // Guard against double execution and AI lock for the same tab
       const currentState = get().tabs[tabId]
       if (
@@ -1409,12 +2070,18 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       beginExecution(tabId)
 
       try {
-        const result = await executeQueryCmd(connectionId, tabId, sql, getDefaultRowLimit())
+        const result = await executeQueryCmd(
+          connectionId,
+          tabId,
+          sql,
+          getDefaultRowLimit(),
+          viewSpec
+        )
 
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
 
-        const normalizedRows = normalizeQueryRows(result.columns, result.rows)
+        seedResultFromResponse(connectionId, tabId, 0, result)
 
         // If the owning connection is no longer the globally visible connection
         // (e.g. the user switched connections while this query was running),
@@ -1424,9 +2091,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
         const singleResult: SingleResultState = {
           ...DEFAULT_RESULT_STATE,
+          ...windowMetaFromResponse(result).fields,
+          ...viewFieldsForColumns(viewSpec, result.columns),
           resultStatus: 'success',
           columns: result.columns,
-          rows: normalizedRows,
           totalRows: result.totalRows,
           executionTimeMs: result.executionTimeMs,
           totalTimeMs: result.totalTimeMs,
@@ -1565,7 +2233,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         result.rowResidency.status !== 'resident' ||
         result.isExpired ||
         isDirtyResult(result) ||
-        (result.rows.length === 0 && (result.unfilteredRows?.length ?? 0) === 0)
+        result.viewRowCount === 0
       ) {
         return
       }
@@ -1591,14 +2259,16 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           return state
         }
 
+        // Only the page cache is dropped; result metadata (counts, view, sort,
+        // filter, scroll position) stays so reactivation can refetch the window.
+        clearResultWindowPages(tabId, resultIndex)
         const nextResults = [...tab.results]
         nextResults[resultIndex] = {
           ...result,
-          rows: [],
-          unfilteredRows: null,
-          selectedRowIndex: null,
           editingRowIndex: null,
+          editingBaseIndex: null,
           editState: null,
+          pendingWindowRange: null,
           rowsEvictedAt: Date.now(),
           rowResidency: {
             ...result.rowResidency,
@@ -1647,22 +2317,33 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           return
         }
 
-        const cached = await fetchCachedRowsCmd(
-          tab.connectionId,
-          tabId,
-          result.queryId,
-          targetIndex
-        )
+        // Refetch the window around the persisted scroll position under the
+        // restoring overlay; the grid loads anything else it scrolls to.
+        const slot = slotFor(tabId, targetIndex)
+        if (!slot) {
+          markTabResultsExpired(tabId)
+          return
+        }
+        const anchorRow = Math.min(result.scrollRow, Math.max(0, result.viewRowCount - 1))
+        const windowStart = Math.floor(anchorRow / RESULT_PAGE_SIZE) * RESULT_PAGE_SIZE
+        const window = await fetchResultWindowCmd(slot, result.viewVersion, windowStart, 1000)
 
         if (!get().tabs[tabId]) return
-
         const latestResult = get().tabs[tabId]?.results[targetIndex] ?? result
-        const normalizedRows = normalizeQueryRows(result.columns, cached.rows)
-        const filterPatch = reapplyFilterIfActive(latestResult, normalizedRows, result.columns)
+        if (latestResult.queryId !== slot.queryId) return
+
+        seedResultWindow({
+          ...slot,
+          viewVersion: window.viewVersion,
+          viewRowCount: window.viewRowCount,
+          columns: latestResult.columns,
+          window,
+        })
         const latestResidency = latestResult.rowResidency
 
         patchResultByIndex(tabId, targetIndex, {
-          ...filterPatch,
+          viewVersion: window.viewVersion,
+          viewRowCount: window.viewRowCount,
           isExpired: false,
           rowsEvictedAt: null,
           rowResidency: {
@@ -1822,7 +2503,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     },
 
     cleanupTab: (connectionId: string, tabId: string) => {
+      const exportJob = get().exportJobs[tabId]
+      if (exportJob?.status === 'running' && exportJob.jobId !== null) {
+        cancelExportJobInBackground(exportJob.jobId, 'cleanupTab')
+      }
+      dropExportJob(tabId)
       cancelAllResultLifecycleTimers(tabId, get().tabs[tabId]?.results.length ?? 0)
+      dropTabResultWindows(tabId)
+      dropViewTrackers(tabId)
+      rowActionCancels.delete(tabId)
       // Fire-and-forget eviction
       evictResultsCmd(connectionId, tabId).catch((err) => {
         logFrontend(
@@ -1840,7 +2529,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     cleanupConnection: (connectionId: string, tabIds: string[]) => {
       // Evict Rust-side results for each tab (fire-and-forget)
       for (const id of tabIds) {
+        // The backend cancels the connection's exports in close_connection.
+        dropExportJob(id)
         cancelAllResultLifecycleTimers(id, get().tabs[id]?.results.length ?? 0)
+        dropTabResultWindows(id)
+        dropViewTrackers(id)
+        rowActionCancels.delete(id)
         evictResultsCmd(connectionId, id).catch((err) => {
           logFrontend(
             'error',
@@ -1912,17 +2606,21 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchResultByIndex(tabId, resultIndex, { selectedRowIndex: index })
     },
 
-    setCheckedRowIndices: (tabId: string, indices: number[]) => {
+    setCheckedRanges: (tabId: string, ranges: ViewRange[]) => {
       const resultIndex = getActiveIndex(tabId)
       const result = get().tabs[tabId]?.results[resultIndex]
       if (!result) return
-      patchResultByIndex(tabId, resultIndex, { checkedRowIndices: indices })
+      if (ranges.length === 0 && result.checkedRanges.length === 0) return
+      patchResultByIndex(tabId, resultIndex, {
+        checkedRanges: ranges,
+        checkedViewVersion: result.viewVersion,
+      })
     },
 
-    deleteResultRows: async (tabId: string, rowIndices: number[]): Promise<number> => {
+    deleteResultRows: async (tabId: string): Promise<number> => {
       const resultIndex = getActiveIndex(tabId)
       const result = get().tabs[tabId]?.results[resultIndex]
-      if (!result || rowIndices.length === 0) return 0
+      if (!result || result.checkedRanges.length === 0) return 0
 
       // Delete is gated to the same conditions as editing: a bound table with a
       // primary/unique key whose key columns are present in the result set.
@@ -1955,93 +2653,134 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         return 0
       }
 
-      const uniqueIndices = [...new Set(rowIndices)].filter(
-        (index) => index >= 0 && index < result.rows.length
-      )
-      if (uniqueIndices.length === 0) return 0
+      // Checked rows are view ranges tagged with the view they were checked in.
+      if (result.checkedViewVersion !== result.viewVersion) {
+        patchResultByIndex(tabId, resultIndex, { checkedRanges: [] })
+        return 0
+      }
+      const checkedCount = countRanges(result.checkedRanges)
+      if (checkedCount > MAX_BULK_DELETE_ROWS) return 0
 
-      // Capture key values + row references up front — row indices shift as the
-      // displayed array mutates, but object references stay stable.
-      const targets = uniqueIndices.map((index) => {
-        const row = result.rows[index]
-        const pkValues: Record<string, unknown> = {}
-        keyColumns.forEach((column, i) => {
-          pkValues[column] = row[keyColIndices[i]]
-        })
-        return { row, pkValues }
-      })
+      // Resolve the checked view ranges to rows (and base indices) up front.
+      let targets: CachedRow[]
+      try {
+        targets = []
+        for (const range of result.checkedRanges) {
+          targets.push(...(await readViewRange(tabId, resultIndex, range)))
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (isResultsExpiredError(err)) {
+          markTabResultsExpired(tabId)
+          return 0
+        }
+        logFrontend('warn', `[query-store] could not load the checked rows to delete: ${message}`)
+        showErrorToast('Delete failed', message)
+        return 0
+      }
+      if (targets.length === 0) return 0
 
       const connectionId = result.editConnectionId
-      let deletedCount = 0
+      const action = get().beginRowAction(tabId, 'Deleting', targets.length)
+      const deletedBaseIndices: number[] = []
       let failureMessage: string | null = null
       for (const target of targets) {
-        if (!get().tabs[tabId]) return deletedCount
+        if (!get().tabs[tabId]) {
+          action.finish()
+          return deletedBaseIndices.length
+        }
+        const pkValues: Record<string, unknown> = {}
+        keyColumns.forEach((column, i) => {
+          pkValues[column] = target.row[keyColIndices[i]]
+        })
         try {
           await deleteTableRowCmd({
             connectionId,
             database: tableInfo.database,
             table: tableInfo.table,
             pkColumns: keyColumns,
-            pkValues: target.pkValues,
+            pkValues,
           })
-          deletedCount += 1
+          deletedBaseIndices.push(target.baseIndex)
+          action.update(deletedBaseIndices.length)
         } catch (err) {
           failureMessage = err instanceof Error ? err.message : String(err)
           showErrorToast('Delete failed', failureMessage)
           break
         }
       }
+      action.finish()
 
+      const deletedCount = deletedBaseIndices.length
       if (deletedCount === 0) {
         if (failureMessage) patchResultByIndex(tabId, resultIndex, { saveError: failureMessage })
         return 0
       }
 
-      // Optimistically remove successfully deleted rows from the displayed (and
-      // unfiltered, when a filter is active) arrays by reference.
-      const deletedRefs = new Set(targets.slice(0, deletedCount).map((target) => target.row))
-      const afterResult = get().tabs[tabId]?.results[resultIndex]
-      if (afterResult) {
-        const newRows = afterResult.rows.filter((row) => !deletedRefs.has(row))
-        const newUnfilteredRows = afterResult.unfilteredRows
-          ? afterResult.unfilteredRows.filter((row) => !deletedRefs.has(row))
-          : null
-        patchResultByIndex(tabId, resultIndex, {
-          rows: newRows,
-          unfilteredRows: newUnfilteredRows,
-          totalRows: Math.max(0, afterResult.totalRows - deletedCount),
-          selectedRowIndex: null,
-          selectedCell: null,
+      // Tombstone exactly the rows MySQL deleted in the Rust cache — no query
+      // re-run (D16). The store retries a compare-and-swap refusal once; that is
+      // safe because tombstoning is idempotent.
+      const slot = slotFor(tabId, resultIndex)
+      const removeRows = async (baseVersion: number, attempt: number) => {
+        if (!slot) throw new Error('Result is no longer available')
+        try {
+          return await removeResultRowsCmd(slot, baseVersion, deletedBaseIndices)
+        } catch (err) {
+          const current = parseSupersededVersion(err)
+          if (current !== null && attempt === 0) return removeRows(current, 1)
+          throw err
+        }
+      }
+      try {
+        const latest = get().tabs[tabId]?.results[resultIndex] ?? result
+        const removed = await removeRows(latest.latestKnownViewVersion, 0)
+        if (!get().tabs[tabId]) return deletedCount
+        const afterResult = get().tabs[tabId]?.results[resultIndex]
+        if (afterResult?.queryId !== result.queryId) return deletedCount
+        const deletePatch: Partial<SingleResultState> = {
           editState: null,
           editingRowIndex: null,
-          checkedRowIndices: [],
+          editingBaseIndex: null,
           saveError: failureMessage,
-        })
-      }
-
-      // Refresh the backend result cache so exports / sorts / restores do not
-      // resurrect deleted rows — this runs even on a partial failure, since the
-      // cache would otherwise still hold the rows we already removed from view.
-      // Mirrors the insert refresh path: a refresh failure only marks the result
-      // stale and keeps the optimistic removal.
-      if (result.lastExecutedSql) {
-        try {
-          if ((get().tabs[tabId]?.results.length ?? 0) > 1) {
-            await reexecuteSingleResultAfterMutation(connectionId, tabId, resultIndex, result)
-          } else {
-            await reexecuteOnlyResultAfterMutation(connectionId, tabId, resultIndex, result)
-          }
-        } catch (refreshErr) {
-          if (get().tabs[tabId]) {
-            patchResultByIndex(tabId, resultIndex, { isStale: true })
-          }
-          const errorMessage = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
-          showErrorToast(
-            'Refresh failed',
-            `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted, but the query result could not be refreshed: ${errorMessage}`
-          )
-          return deletedCount
         }
+        if (
+          removed.viewVersion <
+          Math.max(afterResult.latestKnownViewVersion, afterResult.viewVersion)
+        ) {
+          // A view change committed on top of the tombstones; its own response
+          // paints that newer view (or already did). Never go back to this one.
+          patchResultByIndex(tabId, resultIndex, { ...deletePatch, checkedRanges: [] })
+        } else {
+          paintView(
+            tabId,
+            resultIndex,
+            getResultViewSpec(afterResult),
+            {
+              viewVersion: removed.viewVersion,
+              viewRowCount: removed.viewRowCount,
+              totalRows: removed.totalRows,
+            },
+            deletePatch
+          )
+        }
+      } catch (refreshErr) {
+        const errorMessage = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+        logFrontend(
+          'warn',
+          `[query-store] remove_result_rows failed after deleting ${deletedCount} rows: ${errorMessage}`
+        )
+        if (get().tabs[tabId]) {
+          patchResultByIndex(tabId, resultIndex, {
+            isStale: true,
+            checkedRanges: [],
+            saveError: failureMessage,
+          })
+        }
+        showErrorToast(
+          'Refresh failed',
+          `${formatCount(deletedCount)} ${deletedCount === 1 ? 'row' : 'rows'} deleted, but the result couldn't be updated. Re-run the query to refresh.`
+        )
+        return deletedCount
       }
 
       // The "Delete failed" error toast was already shown on the partial failure;
@@ -2053,6 +2792,75 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         )
       }
       return deletedCount
+    },
+
+    beginRowAction: (
+      tabId: string,
+      verb: RowActionVerb,
+      total: number,
+      onCancel?: () => void
+    ): RowActionHandle => {
+      const resultIndex = getActiveIndex(tabId)
+      const queryId = get().tabs[tabId]?.results[resultIndex]?.queryId ?? null
+      let done = 0
+      let visible = false
+      let finished = false
+      const patchProgress = (progress: RowActionProgress | null) => {
+        const current = get().tabs[tabId]?.results[resultIndex]
+        if (!current || current.queryId !== queryId) return
+        patchResultByIndex(tabId, resultIndex, { rowActionProgress: progress })
+      }
+      const snapshot = (): RowActionProgress => ({
+        verb,
+        done,
+        total,
+        cancellable: onCancel !== undefined,
+        visible,
+      })
+      if (onCancel) rowActionCancels.set(tabId, onCancel)
+      patchProgress(snapshot())
+      const timer = setTimeout(() => {
+        if (finished) return
+        visible = true
+        patchProgress(snapshot())
+      }, RESULT_LOADING_STATUS_DELAY_MS)
+      return {
+        update: (nextDone: number) => {
+          done = nextDone
+          if (visible && !finished) patchProgress(snapshot())
+        },
+        finish: () => {
+          finished = true
+          clearTimeout(timer)
+          if (rowActionCancels.get(tabId) === onCancel) rowActionCancels.delete(tabId)
+          patchProgress(null)
+          return visible
+        },
+      }
+    },
+
+    cancelRowAction: (tabId: string) => {
+      const cancel = rowActionCancels.get(tabId)
+      if (!cancel) return
+      rowActionCancels.delete(tabId)
+      cancel()
+    },
+
+    markResultsExpired: (tabId: string) => {
+      markTabResultsExpired(tabId)
+    },
+
+    retryResultWindow: (tabId: string) => {
+      retryFailedWindow(tabId, getActiveIndex(tabId))
+    },
+
+    retryViewChange: (tabId: string) => {
+      const resultIndex = getActiveIndex(tabId)
+      const result = get().tabs[tabId]?.results[resultIndex]
+      if (!result) return
+      const tracker = trackerFor(tabId, resultIndex, result)
+      const spec = tracker.retrySpec ?? tracker.spec
+      void requestView(tabId, resultIndex, spec, spec.filters.length > 0 ? 'filter' : 'sort')
     },
 
     setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => {
@@ -2078,214 +2886,142 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => {
       const tab = get().tabs[tabId]
       if (!tab || resultIndex < 0 || resultIndex >= tab.results.length) return
-      const result = tab.results[resultIndex]
-
-      if (conditions.length === 0) {
-        // Clear filter — restore original rows if we have them
-        const restoredRows = result.unfilteredRows ?? result.rows
-        patchResultByIndex(tabId, resultIndex, {
-          rows: restoredRows,
-          unfilteredRows: null,
-          filterModel: [],
-          checkedRowIndices: [],
-        })
-        return
-      }
-
-      // Source rows: use unfiltered originals if available, else current rows
-      const sourceRows = result.unfilteredRows ?? result.rows
-      const columns = result.columns
-
-      const prepared = prepareConditions(columns, conditions)
-      const filteredRows = sourceRows.filter((row) =>
-        prepared.every((p) => p.test(row[p.colIndex]))
+      const base = latestRequestedSpec(tabId, resultIndex)
+      // Filtering runs in Rust and never blocks the UI ("Filtering…" status).
+      void requestView(
+        tabId,
+        resultIndex,
+        { sort: base?.sort ?? null, filters: conditions },
+        'filter'
       )
-
-      patchResultByIndex(tabId, resultIndex, {
-        rows: filteredRows,
-        unfilteredRows: sourceRows,
-        filterModel: conditions,
-        checkedRowIndices: [],
-      })
     },
 
-    openExportDialog: (tabId: string) => {
+    openExportDialog: (tabId: string, scope: ExportRowScope = 'currentView') => {
       const resultIndex = getActiveIndex(tabId)
-      patchResultByIndex(tabId, resultIndex, { exportDialogOpen: true })
+      patchResultByIndex(tabId, resultIndex, {
+        exportDialogOpen: true,
+        preferredExportScope: scope,
+      })
     },
 
     closeExportDialog: (tabId: string) => {
       const resultIndex = getActiveIndex(tabId)
       patchResultByIndex(tabId, resultIndex, { exportDialogOpen: false })
+      // A running export keeps going; a finished one's InfoBar is dismissed.
+      const job = get().exportJobs[tabId]
+      if (job && job.status !== 'running') dropExportJob(tabId)
+    },
+
+    startFullExport: async (tabId: string, request: FullExportRequest) => {
+      if (get().exportJobs[tabId]?.status === 'running') return
+      const result = get().tabs[tabId]?.results[request.resultIndex]
+      const queryId = result?.queryId ?? ''
+      const startToken = ++nextExportStartToken
+      stopExportPolling(tabId)
+      set((state) => ({
+        exportJobs: {
+          ...state.exportJobs,
+          [tabId]: {
+            ...request,
+            jobId: null,
+            queryId,
+            status: 'running',
+            progress: null,
+            cancelRequested: false,
+            error: null,
+            startToken,
+          },
+        },
+      }))
+      // Cancel patches the job (a new object), so match by token, not identity.
+      const isStillThisJob = () => get().exportJobs[tabId]?.startToken === startToken
+
+      let jobId: string
+      try {
+        jobId = await startResultExportCmd({
+          connectionId: request.connectionId,
+          tabId,
+          resultIndex: request.resultIndex,
+          queryId,
+          format: request.format,
+          filePath: request.filePath,
+          includeHeaders: request.includeHeaders,
+          tableName: request.tableName,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (!isStillThisJob()) {
+          logFrontend(
+            'info',
+            `[query-store] start_result_export failed after its job was dropped: ${message}`
+          )
+          return
+        }
+        if (isResultsExpiredError(message)) {
+          get().markResultsExpired(tabId)
+          dropExportJob(tabId)
+          closeExportDialogsForTab(tabId)
+          return
+        }
+        showErrorToast('Export failed', message)
+        patchExportJob(tabId, { status: 'failed', error: message })
+        return
+      }
+
+      if (!isStillThisJob()) {
+        // The tab was closed (or its connection cleaned up) while starting.
+        cancelExportJobInBackground(jobId, 'start raced cleanup')
+        return
+      }
+      patchExportJob(tabId, { jobId })
+      // Cancel export was clicked while starting: send it now. The poll then
+      // sees the cancelled job and finishes it like any other.
+      if (get().exportJobs[tabId]?.cancelRequested) {
+        cancelExportJobInBackground(jobId, 'queued cancel')
+      }
+      scheduleExportPoll(tabId, jobId, 0)
+    },
+
+    cancelFullExport: async (tabId: string) => {
+      const job = get().exportJobs[tabId]
+      if (!job || job.status !== 'running' || job.cancelRequested) return
+      patchExportJob(tabId, { cancelRequested: true })
+      // Still starting: the cancel is sent as soon as the job id arrives.
+      if (job.jobId === null) return
+      try {
+        await cancelResultExportCmd(job.jobId)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (get().exportJobs[tabId]?.jobId === job.jobId) {
+          patchExportJob(tabId, { cancelRequested: false })
+        }
+        showErrorToast('Cancel failed', message)
+      }
     },
 
     sortResults: async (
-      connectionId: string,
+      _connectionId: string,
       tabId: string,
       column: string,
       direction: 'asc' | 'desc' | null
     ) => {
       const resultIndex = getActiveIndex(tabId)
-      patchResultByIndex(tabId, resultIndex, { isSorting: true })
-
-      try {
-        if (!direction) {
-          // Sort cleared — re-execute to restore natural order
-          const tab = get().tabs[tabId]
-          const result = tab?.results[resultIndex]
-          const lastSql = result?.lastExecutedSql
-
-          if (lastSql && result) {
-            // Cache-only results: cannot re-execute to restore natural order
-            if (!result.reExecutable) {
-              showWarningToast(
-                'Sort not available',
-                'Sort cannot be cleared for cached results (stored procedure). Re-run the query to restore natural order.'
-              )
-              return
-            }
-
-            // Capture queryId before the await so we can detect stale responses
-            const capturedQueryId = result.queryId
-
-            // Clear edit state before re-execution
-            patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS })
-
-            // Use reexecuteSingleResult for multi-result tabs
-            if ((tab?.results.length ?? 0) > 1) {
-              await reexecuteAndPatchResult(
-                connectionId,
-                tabId,
-                resultIndex,
-                lastSql,
-                getDefaultRowLimit(),
-                capturedQueryId,
-                { sortColumn: null, sortDirection: null }
-              )
-            } else {
-              // Single-result tab: use executeQuery as before
-              const execResult = await executeQueryCmd(
-                connectionId,
-                tabId,
-                lastSql,
-                getDefaultRowLimit()
-              )
-              const normalizedRows = normalizeQueryRows(execResult.columns, execResult.rows)
-
-              if (!get().tabs[tabId]) return
-
-              // Re-apply active filter if one exists
-              const currentResultForFilter = get().tabs[tabId]?.results[resultIndex]
-              const filterPatch = reapplyFilterIfActive(
-                currentResultForFilter ?? { ...DEFAULT_RESULT_STATE },
-                normalizedRows,
-                execResult.columns
-              )
-
-              patchResultByIndex(tabId, resultIndex, {
-                sortColumn: null,
-                sortDirection: null,
-                ...filterPatch,
-                columns: execResult.columns,
-                totalRows: execResult.totalRows,
-                queryId: execResult.queryId,
-                executionTimeMs: execResult.executionTimeMs,
-                totalTimeMs: execResult.totalTimeMs,
-                affectedRows: execResult.affectedRows,
-                autoLimitApplied: execResult.autoLimitApplied,
-                resultStatus: 'success',
-                errorMessage: null,
-                selectedRowIndex: null,
-                checkedRowIndices: [],
-                isExpired: false,
-                rowsEvictedAt: null,
-                rowResidency: {
-                  ...(currentResultForFilter?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
-                  status: 'resident',
-                  inactiveSince:
-                    (currentResultForFilter?.rowResidency.isActive ?? false)
-                      ? null
-                      : (currentResultForFilter?.rowResidency.inactiveSince ?? null),
-                },
-              })
-
-              if (execResult.columns.length > 0 && isEditableSelectSql(lastSql)) {
-                _runAnalysis(tabId, connectionId, lastSql, execResult.queryId, resultIndex).catch(
-                  (err) => {
-                    logFrontend(
-                      'error',
-                      ['[query-edit] analyze_query_for_edit failed (sort re-exec):', err]
-                        .map(String)
-                        .join(' ')
-                    )
-                  }
-                )
-              }
-            }
-          } else {
-            // No lastSql — just clear sort state visually
-            patchResultByIndex(tabId, resultIndex, { sortColumn: null, sortDirection: null })
-          }
-          return
-        }
-
-        // Reset selection before performing sort
-        patchResultByIndex(tabId, resultIndex, { selectedRowIndex: null })
-
-        const currentResult = get().tabs[tabId]?.results[resultIndex]
-        const currentColumns = currentResult?.columns ?? []
-
-        const raw = await sortResultsCmd(connectionId, tabId, column, direction, resultIndex)
-        const parsed = parseSortedRowsPayload(raw)
-        if (!parsed) {
-          logFrontend(
-            'error',
-            ['[query-store] sortResults failed: invalid sort_results payload (expected rows)']
-              .map(String)
-              .join(' ')
-          )
-          return
-        }
-        const normalizedRows = normalizeQueryRows(currentColumns, parsed.rows)
-
-        // Guard: if the tab was closed while sorting, skip the update
-        if (!get().tabs[tabId]) return
-
-        // Re-apply active filter if one exists
-        const sortResult = get().tabs[tabId]?.results[resultIndex]
-        const filterPatch = reapplyFilterIfActive(
-          sortResult ?? { ...DEFAULT_RESULT_STATE },
-          normalizedRows,
-          currentColumns
-        )
-
-        patchResultByIndex(tabId, resultIndex, {
-          sortColumn: column,
-          sortDirection: direction,
-          ...filterPatch,
-          checkedRowIndices: [],
-          isExpired: false,
-          rowsEvictedAt: null,
-          rowResidency: {
-            ...(sortResult?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
-            status: 'resident',
-            inactiveSince:
-              (sortResult?.rowResidency.isActive ?? false)
-                ? null
-                : (sortResult?.rowResidency.inactiveSince ?? null),
-          },
-        })
-      } catch (error) {
-        logFrontend('error', ['[query-store] sortResults failed:', error].map(String).join(' '))
-        const errMsg = error instanceof Error ? error.message : String(error)
-        if (errMsg.includes('results_expired')) {
-          markTabResultsExpired(tabId)
-        }
-      } finally {
-        if (get().tabs[tabId]) {
-          patchResultByIndex(tabId, resultIndex, { isSorting: false })
-        }
-      }
+      const result = get().tabs[tabId]?.results[resultIndex]
+      if (!result) return
+      // Sorting (and clearing a sort, which restores base order) runs in Rust
+      // with no query re-run, so edit mode stays on. Only the per-row edit
+      // state is dropped: the new view moves rows to other positions.
+      patchResultByIndex(tabId, resultIndex, ROW_EDIT_STATE_RESET)
+      const base = latestRequestedSpec(tabId, resultIndex)
+      await requestView(
+        tabId,
+        resultIndex,
+        {
+          sort: direction ? { column, direction } : null,
+          filters: base?.filters ?? result.filterModel,
+        },
+        'sort'
+      )
     },
 
     changeRowLimit: async (connectionId: string, tabId: string, size: number) => {
@@ -2321,7 +3057,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             result.lastExecutedSql,
             size,
             capturedQueryId,
-            { rowLimit: size, sortColumn: null, sortDirection: null }
+            { rowLimit: size }
           )
         } catch (error) {
           if (!get().tabs[tabId]) return
@@ -2352,28 +3088,23 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         beginExecution(tabId)
 
         try {
+          const spec = rerunViewSpec(result)
           const execResult = await executeQueryCmd(
             connectionId,
             tabId,
             result.lastExecutedSql,
-            size
+            size,
+            spec
           )
-          const normalizedRows = normalizeQueryRows(execResult.columns, execResult.rows)
 
           if (!get().tabs[tabId]) return
 
+          seedResultFromResponse(connectionId, tabId, 0, execResult)
           const updatedResult: SingleResultState = {
             ...DEFAULT_RESULT_STATE,
+            ...freshResultFields(execResult, spec),
             resultStatus: 'success',
-            rows: normalizedRows,
-            columns: execResult.columns,
-            totalRows: execResult.totalRows,
             rowLimit: size,
-            queryId: execResult.queryId,
-            executionTimeMs: execResult.executionTimeMs,
-            totalTimeMs: execResult.totalTimeMs,
-            affectedRows: execResult.affectedRows,
-            autoLimitApplied: execResult.autoLimitApplied,
             lastExecutedSql: result.lastExecutedSql,
             reExecutable: true,
             rowResidency: {
@@ -2599,14 +3330,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       })
     },
 
-    startEditingRow: (tabId: string, rowIndex: number) => {
+    startEditingRow: (tabId: string, rowIndex: number, cachedRow?: CachedRow) => {
       const resultIndex = getActiveIndex(tabId)
       const tab = get().tabs[tabId]
       const result = tab?.results[resultIndex]
       if (!result?.editMode || !result.editTableMetadata[result.editMode]) return
 
-      const row = result.rows[rowIndex]
-      if (!row) return
+      const cached = cachedRow ?? rowAt(tabId, resultIndex, result, rowIndex)
+      if (!cached) return
+      const row = cached.row
 
       const tableInfo = result.editTableMetadata[result.editMode]
       const pkColumns = tableInfo.primaryKey?.keyColumns ?? []
@@ -2628,6 +3360,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchResultByIndex(tabId, resultIndex, {
         editState: seededEditState,
         editingRowIndex: rowIndex,
+        editingBaseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
         saveError: null,
       })
     },
@@ -2658,8 +3391,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         return
       }
 
-      const sourceRow = result.rows[result.selectedRowIndex]
-      if (!sourceRow) return
+      const sourceRow = rowAt(tabId, resultIndex, result, result.selectedRowIndex)?.row
+      if (!sourceRow || result.draftRow) return
 
       const {
         row: clonedRow,
@@ -2669,8 +3402,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (modifiedColumns.size === 0 && insertEligibleColumns.size === 0) {
         return
       }
-      const newRows = [...result.rows, clonedRow]
-      const draftRowIndex = newRows.length - 1
+      // The draft is a virtual row right after the last view row.
+      const draftRowIndex = result.viewRowCount
       const pkColumns = tableInfo.primaryKey.keyColumns
       const editState = buildRowEditState(
         clonedRow,
@@ -2689,9 +3422,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
 
       patchResultByIndex(tabId, resultIndex, {
-        rows: newRows,
+        draftRow: clonedRow,
         selectedRowIndex: draftRowIndex,
         editingRowIndex: draftRowIndex,
+        editingBaseIndex: null,
         editState: {
           ...editState,
           isNewRow: true,
@@ -2768,18 +3502,19 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         newModified.add(resolvedColumnName)
       }
 
-      // Also update the local row in the rows array for grid re-render
-      const colIdx = resultColumnIndex
-      let nextRows = activeResult.rows
-      if (colIdx !== -1 && activeResult.editingRowIndex < activeResult.rows.length) {
-        nextRows = [...activeResult.rows]
-        const nextRow = [...nextRows[activeResult.editingRowIndex]]
-        nextRow[colIdx] = value
-        nextRows[activeResult.editingRowIndex] = nextRow
-      }
+      // The grid overlays edit-state values on the editing row; keep the clone
+      // draft row in step so its unbound cells render the new value too.
+      const draftPatch: Partial<SingleResultState> =
+        activeResult.draftRow && activeResult.editingRowIndex === activeResult.viewRowCount
+          ? {
+              draftRow: activeResult.draftRow.map((cell, index) =>
+                index === resultColumnIndex ? value : cell
+              ),
+            }
+          : {}
 
       patchResultByIndex(tabId, resultIndex, {
-        rows: nextRows,
+        ...draftPatch,
         editState: {
           ...activeResult.editState,
           currentValues: { ...activeResult.editState.currentValues, [resolvedColumnName]: value },
@@ -2798,14 +3533,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       // Nothing modified — just clear editState
       if (result.editState.modifiedColumns.size === 0) {
         if (result.editState.isNewRow) {
-          const newRows = [...result.rows]
-          if (result.editingRowIndex >= 0 && result.editingRowIndex < newRows.length) {
-            newRows.splice(result.editingRowIndex, 1)
-          }
           patchResultByIndex(tabId, resultIndex, {
-            rows: newRows,
+            draftRow: null,
             editState: null,
             editingRowIndex: null,
+            editingBaseIndex: null,
             selectedRowIndex: null,
             saveError: null,
           })
@@ -2815,6 +3547,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         patchResultByIndex(tabId, resultIndex, {
           editState: null,
           editingRowIndex: null,
+          editingBaseIndex: null,
           saveError: null,
         })
         return true
@@ -2842,12 +3575,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
           if (!get().tabs[tabId]) return true
 
-          const newRows = [...result.rows]
-          newRows.splice(result.editingRowIndex, 1)
           patchResultByIndex(tabId, resultIndex, {
-            rows: newRows,
+            draftRow: null,
             editState: null,
             editingRowIndex: null,
+            editingBaseIndex: null,
             selectedRowIndex: null,
             saveError: null,
             isStale: false,
@@ -2920,57 +3652,73 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
         if (!get().tabs[tabId]) return true
 
-        // Update local row data
-        const newRows = [...result.rows]
-        const updatedRow = [...newRows[result.editingRowIndex]]
+        // The edited row, by base index (never by view position: a sort or filter
+        // may have moved it). Both caches get the displayed value (a blob
+        // envelope becomes its base64 text), so the Rust cache, which every
+        // refetch, sort, filter and export reads, holds what the grid shows.
+        const baseIndex = result.editingBaseIndex
+        const queryId = result.queryId
+        const displayUpdates: Record<number, unknown> = {}
         for (const colName of result.editState.modifiedColumns) {
           const colIdx = result.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
           if (colIdx !== -1) {
-            updatedRow[colIdx] = toDisplayedQueryCellValue(result.editState.currentValues[colName])
+            displayUpdates[colIdx] = toDisplayedQueryCellValue(
+              result.editState.currentValues[colName]
+            )
           }
         }
-        newRows[result.editingRowIndex] = updatedRow
 
-        // Sync backend result cache — row index is the editing row index
-        // (all rows are on page 1 for query results)
-        const absoluteRowIndex = result.editingRowIndex
-        const columnUpdates: Record<number, unknown> = {}
-        for (const colName of result.editState.modifiedColumns) {
-          const colIdx = result.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
-          if (colIdx !== -1) {
-            columnUpdates[colIdx] = result.editState.currentValues[colName]
+        // Sync the backend result cache at the edited base index.
+        if (baseIndex !== null && queryId) {
+          let replaced = false
+          try {
+            await updateResultCellCmd(
+              result.editConnectionId!,
+              tabId,
+              baseIndex,
+              displayUpdates,
+              queryId,
+              resultIndex
+            )
+          } catch (cacheErr) {
+            const cacheErrorMessage =
+              cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
+            if (cacheErrorMessage.includes('Results were refreshed')) {
+              // A re-run replaced the result while the save ran: the new result
+              // came from the database, so there is nothing to patch.
+              replaced = true
+              logFrontend(
+                'info',
+                `[query-store] saved row not synced into a replaced result: ${cacheErrorMessage}`
+              )
+            } else {
+              logFrontend(
+                'warn',
+                ['[query-store] Result cache sync failed:', cacheErr].map(String).join(' ')
+              )
+              if (cacheErrorMessage.includes('results_expired')) {
+                markTabResultsExpired(tabId)
+              }
+              showWarningToast(
+                'Cache sync warning',
+                'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.'
+              )
+            }
           }
-        }
-        try {
-          await updateResultCellCmd(
-            result.editConnectionId!,
-            tabId,
-            absoluteRowIndex,
-            columnUpdates,
-            resultIndex
-          )
-        } catch (cacheErr) {
-          logFrontend(
-            'warn',
-            ['[query-store] Result cache sync failed:', cacheErr].map(String).join(' ')
-          )
-          const cacheErrorMessage = cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
-          if (cacheErrorMessage.includes('results_expired')) {
-            markTabResultsExpired(tabId)
+          // The database holds the new values: show them (same view version),
+          // in the loaded page and in a form view showing a fetched row.
+          if (!replaced) {
+            applySavedRowValues(tabId, resultIndex, queryId, baseIndex, displayUpdates)
           }
-          showWarningToast(
-            'Cache sync warning',
-            'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.'
-          )
         }
 
         // Guard: tab may have been closed during the async cache-sync
         if (!get().tabs[tabId]) return true
 
         patchResultByIndex(tabId, resultIndex, {
-          rows: newRows,
           editState: null,
           editingRowIndex: null,
+          editingBaseIndex: null,
           saveError: null,
           isStale: false,
         })
@@ -2992,45 +3740,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const result = tab?.results[resultIndex]
       if (!result?.editState) return
 
-      if (result.editState.isNewRow) {
-        const newRows = [...result.rows]
-        if (result.editingRowIndex !== null && result.editingRowIndex < newRows.length) {
-          newRows.splice(result.editingRowIndex, 1)
-        }
-        patchResultByIndex(tabId, resultIndex, {
-          rows: newRows,
-          editState: null,
-          editingRowIndex: null,
-          selectedRowIndex: null,
-          saveError: null,
-        })
-        return
-      }
-
-      if (result.editingRowIndex !== null && result.editingRowIndex < result.rows.length) {
-        // Restore original values in the row
-        const newRows = [...result.rows]
-        const restoredRow = [...newRows[result.editingRowIndex]]
-        for (const [colName, value] of Object.entries(result.editState.originalValues)) {
-          const colIdx = result.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
-          if (colIdx !== -1) {
-            restoredRow[colIdx] = value
-          }
-        }
-        newRows[result.editingRowIndex] = restoredRow
-        patchResultByIndex(tabId, resultIndex, {
-          rows: newRows,
-          editState: null,
-          editingRowIndex: null,
-          saveError: null,
-        })
-      } else {
-        patchResultByIndex(tabId, resultIndex, {
-          editState: null,
-          editingRowIndex: null,
-          saveError: null,
-        })
-      }
+      // Cached rows are never mutated while editing (the grid overlays edit
+      // values), so discarding only drops the edit state (and any clone draft).
+      patchResultByIndex(tabId, resultIndex, {
+        ...(result.editState.isNewRow ? { draftRow: null, selectedRowIndex: null } : {}),
+        editState: null,
+        editingRowIndex: null,
+        editingBaseIndex: null,
+        saveError: null,
+      })
     },
 
     requestNavigationAction: (tabId: string, action: () => void) => {
@@ -3208,7 +3926,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
 
       try {
-        await executeQueryPlan(get(), connectionId, tabId, plan)
+        if (plan.kind === 'single') {
+          // Restore keeps the result's sort and filter in one execute call (D18).
+          await get().executeQuery(connectionId, tabId, plan.payload, rerunViewSpec(result))
+        } else {
+          await executeQueryPlan(get(), connectionId, tabId, plan)
+        }
       } catch (err) {
         logFrontend(
           'warn',

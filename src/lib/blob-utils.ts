@@ -588,8 +588,7 @@ export function blobPlaceholder(byteLength: number, modified = false): string {
 // ---------------------------------------------------------------------------
 
 export type ConvertBinaryPkValuesResult =
-  | { ok: true; values: Record<string, unknown> }
-  | { ok: false; error: string }
+  { ok: true; values: Record<string, unknown> } | { ok: false; error: string }
 
 /**
  * Return a fresh copy of `pkValues` in which each value belonging to a binary
@@ -632,8 +631,7 @@ export function convertBinaryPkValuesToEnvelopes(
 }
 
 export type BuildEnvelopedPkPairsResult =
-  | { ok: true; pairs: [string, unknown][] }
-  | { ok: false; error: string }
+  { ok: true; pairs: [string, unknown][] } | { ok: false; error: string }
 
 /**
  * Resolve the ordered PK column→value pairs for a BLOB lazy-fetch from a row's

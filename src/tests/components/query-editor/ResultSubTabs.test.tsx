@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { ResultSubTabs } from '../../../components/query-editor/ResultSubTabs'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import type { SingleResultState } from '../../../stores/query-store'
-import { makeTabState } from '../../helpers/query-test-utils'
+import { makeTabState, withRows } from '../../helpers/query-test-utils'
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
@@ -45,13 +45,13 @@ describe('ResultSubTabs', () => {
             makeResult({
               resultStatus: 'success',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
             }),
             makeResult({
               resultStatus: 'success',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
-              rows: [['Alice']],
+              ...withRows([['Alice']]),
               totalRows: 1,
             }),
           ],
@@ -302,5 +302,31 @@ describe('ResultSubTabs', () => {
     render(<ResultSubTabs tabId="tab-1" />)
     expect(screen.getByTestId('result-tab-0')).toBeInTheDocument()
     expect(screen.getByTestId('result-tab-1')).toBeInTheDocument()
+  })
+
+  it('marks each truncated result with an indicator, accessible name and tooltip', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...makeTabState({ status: 'success' }),
+          results: [
+            makeResult({
+              resultStatus: 'success',
+              columns: [{ name: 'id', dataType: 'INT' }],
+              truncated: true,
+              rowCeiling: 100000,
+            }),
+            makeResult({ resultStatus: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+          ],
+          activeResultIndex: 0,
+        },
+      },
+    })
+    render(<ResultSubTabs tabId="tab-1" />)
+    const indicator = screen.getByTestId('result-tab-0-truncated')
+    expect(indicator).toHaveAttribute('title', 'Truncated at 100,000 rows')
+    expect(screen.getByRole('tab', { name: 'Result 1 truncated' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Result 2' })).toBeInTheDocument()
+    expect(screen.queryByTestId('result-tab-1-truncated')).not.toBeInTheDocument()
   })
 })

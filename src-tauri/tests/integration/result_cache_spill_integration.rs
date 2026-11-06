@@ -9,22 +9,22 @@ use std::time::Duration;
 
 /// Helper: build a minimal `StoredResult` for testing.
 fn stub_result(query_id: &str) -> StoredResult {
-    StoredResult {
-        query_id: query_id.to_string(),
-        columns: vec![],
-        rows: std::sync::Arc::new(vec![]),
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        auto_limit_applied: false,
-    }
+    StoredResult::new(
+        query_id.to_string(),
+        vec![],
+        std::sync::Arc::new(vec![]),
+        0,
+        0,
+        0,
+        false,
+    )
 }
 
 /// Helper: build a `StoredResult` with typed Number values for round-trip testing.
 fn stub_result_with_numbers(query_id: &str) -> StoredResult {
-    StoredResult {
-        query_id: query_id.to_string(),
-        columns: vec![
+    StoredResult::new(
+        query_id.to_string(),
+        vec![
             ColumnMeta {
                 name: "u64_col".to_string(),
                 data_type: "BIGINT UNSIGNED".to_string(),
@@ -38,16 +38,16 @@ fn stub_result_with_numbers(query_id: &str) -> StoredResult {
                 data_type: "DOUBLE".to_string(),
             },
         ],
-        rows: crate::common::shared_rows(vec![vec![
+        crate::common::shared_rows(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(42u64)),
             serde_json::Value::Number(serde_json::Number::from(-99i64)),
             serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
         ]]),
-        execution_time_ms: 123,
-        total_time_ms: 123,
-        affected_rows: 0,
-        auto_limit_applied: false,
-    }
+        123,
+        123,
+        0,
+        false,
+    )
 }
 
 /// Test memory snapshot with controllable values.

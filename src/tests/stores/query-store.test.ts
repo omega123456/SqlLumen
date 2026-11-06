@@ -1,11 +1,22 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ipc, expectToast, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
-import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import {
+  useQueryStore,
+  DEFAULT_RESULT_STATE,
+  RESULT_EXPORT_POLL_MS,
+  countRanges,
+} from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
-import { flat } from '../helpers/query-test-utils'
+import {
+  baseIndicesOf,
+  flat,
+  firstWindowFor,
+  makeTabState,
+  withRows,
+} from '../helpers/query-test-utils'
 import { makeTableDataTabState } from '../helpers/table-data-test-utils'
 
 /**
@@ -38,8 +49,6 @@ const QUERY_STORE_COMMANDS = [
   'evict_results',
   'execute_multi_query',
   'execute_query',
-  'fetch_cached_rows',
-  'sort_results',
 ] as const
 
 beforeEach(() => {
@@ -53,11 +62,10 @@ beforeEach(() => {
       totalRows: 3,
       executionTimeMs: 10,
       affectedRows: 0,
-      rows: [[1], [2], [3]],
+      firstWindow: firstWindowFor([[1], [2], [3]]),
 
       autoLimitApplied: false,
     }),
-    fetch_cached_rows: () => ({ rows: [[4], [5]], columns: [{ name: 'id', dataType: 'INT' }] }),
     evict_results: () => null,
   })
 })
@@ -373,7 +381,7 @@ describe('useQueryStore — executeQuery', () => {
         totalRows: 1,
         executionTimeMs: 10,
         affectedRows: 0,
-        rows: [[true, false, 'flagged']],
+        firstWindow: firstWindowFor([[true, false, 'flagged']]),
 
         autoLimitApplied: false,
       }),
@@ -393,7 +401,7 @@ describe('useQueryStore — executeQuery', () => {
         totalRows: 1,
         executionTimeMs: 10,
         affectedRows: 0,
-        rows: [['\u0001', '\u0000', 'flagged']],
+        firstWindow: firstWindowFor([['\u0001', '\u0000', 'flagged']]),
 
         autoLimitApplied: false,
       }),
@@ -414,7 +422,7 @@ describe('useQueryStore — executeQuery', () => {
         totalRows: 1,
         executionTimeMs: 1,
         affectedRows: 0,
-        rows: [[1]],
+        firstWindow: firstWindowFor([[1]]),
 
         autoLimitApplied: false,
       }),
@@ -447,7 +455,7 @@ describe('useQueryStore — executeQuery', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -484,7 +492,7 @@ describe('useQueryStore — multi-result execution', () => {
         results: [
           {
             columns: [{ name: 'id', dataType: 'INT' }],
-            rows: [[1]],
+            firstWindow: firstWindowFor([[1]]),
             totalRows: 1,
             executionTimeMs: 5,
             affectedRows: 0,
@@ -497,7 +505,7 @@ describe('useQueryStore — multi-result execution', () => {
           },
           {
             columns: [{ name: 'name', dataType: 'VARCHAR' }],
-            rows: [['alice']],
+            firstWindow: firstWindowFor([['alice']]),
             totalRows: 1,
             executionTimeMs: 5,
             affectedRows: 0,
@@ -601,7 +609,7 @@ describe('useQueryStore — stale query guard', () => {
       totalRows: 1,
       executionTimeMs: 10,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
     })
@@ -684,7 +692,7 @@ describe('useQueryStore — setViewMode', () => {
       resultStatus: 'success' as const,
       queryId: 'q-save-fail',
       columns: [{ name: 'id', dataType: 'INT' }],
-      rows: [[1]],
+      ...withRows([[1]]),
       totalRows: 1,
       viewMode: 'grid' as const,
       editState: {
@@ -722,7 +730,7 @@ describe('useQueryStore — setViewMode', () => {
       resultStatus: 'success' as const,
       queryId: 'q-save-throw',
       columns: [{ name: 'id', dataType: 'INT' }],
-      rows: [[1]],
+      ...withRows([[1]]),
       totalRows: 1,
       viewMode: 'grid' as const,
       editState: {
@@ -791,276 +799,141 @@ describe('useQueryStore — export dialog', () => {
 })
 
 describe('useQueryStore — sortResults', () => {
-  it('calls sort_results IPC and updates store state', async () => {
-    // Set up mock IPC with sort_results handler
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-mock',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows: 3,
-            executionTimeMs: 10,
-            affectedRows: 0,
-            rows: [[3], [1], [2]],
+  function seedSortable(tabId: string) {
+    useQueryStore.getState().setContent(tabId, 'SELECT id FROM t')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        [tabId]: {
+          ...prev.tabs[tabId]!,
+          connectionId: 'conn-1',
+          tabStatus: 'success',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              columns: [{ name: 'id', dataType: 'INT' }],
+              queryId: 'q-sort',
+              totalRows: 3,
+              viewVersion: 1,
+              latestKnownViewVersion: 1,
+              lastExecutedSql: 'SELECT id FROM t',
+              checkedRanges: [[0, 2]],
+              checkedViewVersion: 1,
+              ...withRows([[3], [1], [2]]),
+            },
+          ],
+        },
+      },
+    }))
+  }
 
-            autoLimitApplied: false,
-          }
-        case 'sort_results':
-          return { rows: [[1], [2], [3]] }
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
-    })
+  it('sorts through set_result_view and paints the sorted first window', async () => {
+    seedSortable('tab-1')
+    ipc.override('set_result_view', () => ({
+      viewVersion: 2,
+      viewRowCount: 3,
+      totalRows: 3,
+      firstWindow: { offset: 0, rows: [[1], [2], [3]], baseIndices: [1, 2, 0] },
+    }))
 
-    // Execute a query first
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id FROM t')
-
-    // Sort ascending
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+
+    expect(ipc.calls('set_result_view')[0]).toMatchObject({
+      queryId: 'q-sort',
+      baseViewVersion: 1,
+      viewSpec: { sort: { column: 'id', direction: 'asc' }, filters: [] },
+    })
     const f = flat('tab-1')
     expect(f.sortColumn).toBe('id')
     expect(f.sortDirection).toBe('asc')
     expect(f.rows).toEqual([[1], [2], [3]])
+    expect(baseIndicesOf('tab-1')).toEqual([1, 2, 0])
+    // Checked ranges belong to the old view and are cleared.
+    expect(f.checkedRanges).toEqual([])
+    expect(ipc.calls('sort_results')).toHaveLength(0)
   })
 
-  it('resets checkedRowIndices after a sort (stale indices would target wrong rows)', async () => {
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-mock',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows: 3,
-            executionTimeMs: 10,
-            affectedRows: 0,
-            rows: [[3], [1], [2]],
-            autoLimitApplied: false,
-          }
-        case 'sort_results':
-          return { rows: [[1], [2], [3]] }
-        default:
-          return null
-      }
-    })
-
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id FROM t')
-    useQueryStore.getState().setCheckedRowIndices('tab-1', [0, 2])
-    expect(flat('tab-1').checkedRowIndices).toEqual([0, 2])
-
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
-
-    expect(flat('tab-1').checkedRowIndices).toEqual([])
-  })
-
-  it('clears sort state when direction is null and re-executes query', async () => {
-    // Set up mock IPC with execute_query handler (for re-execution)
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-reexec',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows: 3,
-            executionTimeMs: 8,
-            affectedRows: 0,
-            rows: [[3], [1], [2]],
-
-            autoLimitApplied: false,
-          }
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
-    })
-
-    // Set up tab with sort state and lastExecutedSql
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    patchResult('tab-1', {
-      sortColumn: 'id',
-      sortDirection: 'asc' as const,
-      lastExecutedSql: 'SELECT id FROM t',
-      queryId: 'q-old',
-      resultStatus: 'success' as const,
-    })
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-1': {
-          ...prev.tabs['tab-1']!,
-          tabStatus: 'success' as const,
-        },
-      },
+  it('clearing the sort restores base order in Rust with no execute command', async () => {
+    seedSortable('tab-1')
+    ipc.override('set_result_view', () => ({
+      viewVersion: 3,
+      viewRowCount: 3,
+      totalRows: 3,
+      firstWindow: { offset: 0, rows: [[3], [1], [2]], baseIndices: [0, 1, 2] },
     }))
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
+
+    expect(ipc.calls('set_result_view')[0]).toMatchObject({ viewSpec: { sort: null, filters: [] } })
+    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
     const f = flat('tab-1')
     expect(f.sortColumn).toBeNull()
     expect(f.sortDirection).toBeNull()
-    // Should have re-executed and gotten fresh data
-    expect(f.queryId).toBe('q-reexec')
     expect(f.rows).toEqual([[3], [1], [2]])
   })
 
-  it('normalizes tinyint boolean aliases when clearing sort re-executes the query', async () => {
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-reexec-bool',
-            columns: BOOLEAN_ALIAS_COLUMNS,
-            totalRows: 1,
-            executionTimeMs: 8,
-            affectedRows: 0,
-            rows: [[true, false, 'reexec']],
-
-            autoLimitApplied: false,
-          }
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
-    })
-
-    useQueryStore.getState().setContent('tab-bool-reexec', 'SELECT 1')
-    patchResult('tab-bool-reexec', {
-      sortColumn: 'is_active',
-      sortDirection: 'asc' as const,
-      lastExecutedSql: 'SELECT is_active FROM t',
-      queryId: 'q-old',
-      resultStatus: 'success' as const,
-    })
+  it('normalizes tinyint boolean aliases in the sorted window', async () => {
+    useQueryStore.getState().setContent('tab-bool', 'SELECT * FROM flags')
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
-        'tab-bool-reexec': {
-          ...prev.tabs['tab-bool-reexec']!,
-          tabStatus: 'success' as const,
+        'tab-bool': {
+          ...prev.tabs['tab-bool']!,
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              columns: BOOLEAN_ALIAS_COLUMNS,
+              queryId: 'q-bool',
+              totalRows: 1,
+              viewVersion: 1,
+              ...withRows([[1, 0, 'x']]),
+            },
+          ],
         },
       },
     }))
+    ipc.override('set_result_view', () => ({
+      viewVersion: 2,
+      viewRowCount: 1,
+      totalRows: 1,
+      firstWindow: { offset: 0, rows: [[true, false, 'x']], baseIndices: [0] },
+    }))
 
-    await useQueryStore.getState().sortResults('conn-1', 'tab-bool-reexec', 'is_active', null)
+    await useQueryStore.getState().sortResults('conn-1', 'tab-bool', 'label', 'desc')
 
-    const f = flat('tab-bool-reexec')
-    expect(f.sortColumn).toBeNull()
-    expect(f.sortDirection).toBeNull()
-    expect(f.rows).toEqual([[1, 0, 'reexec']])
+    expect(flat('tab-bool').rows).toEqual([[1, 0, 'x']])
   })
 
-  it('clears sort state visually when no lastExecutedSql', async () => {
-    // Set up tab with sort state but NO lastExecutedSql
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    patchResult('tab-1', {
-      sortColumn: 'id',
-      sortDirection: 'asc' as const,
-      lastExecutedSql: null,
-    })
-
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
-    const f = flat('tab-1')
-    expect(f.sortColumn).toBeNull()
-    expect(f.sortDirection).toBeNull()
+  it('ignores a sort request for an unknown tab', async () => {
+    await useQueryStore.getState().sortResults('conn-1', 'missing', 'id', 'asc')
+    expect(ipc.calls('set_result_view')).toHaveLength(0)
   })
 
-  it('logs error on IPC failure', async () => {
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      if (cmd === 'sort_results') throw new Error('Sort failed')
-      return null
-    })
-
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
-    expect(consoleSpy).not.toHaveBeenCalled()
-    consoleSpy.mockRestore()
-  })
-
-  it('handles null sort_results payload without throwing', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-sort-null',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows: 2,
-            executionTimeMs: 1,
-            affectedRows: 0,
-            rows: [[2], [1]],
-
-            autoLimitApplied: false,
-          }
-        case 'sort_results':
-          return null
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
-    })
-
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-sort-null', 'SELECT id FROM t')
-    await useQueryStore.getState().sortResults('conn-1', 'tab-sort-null', 'id', 'asc')
-
-    const f = flat('tab-sort-null')
-    expect(f.sortColumn).toBeNull()
-    expect(f.rows).toEqual([[2], [1]])
-    expect(consoleSpy).not.toHaveBeenCalled()
-    consoleSpy.mockRestore()
-  })
-
-  it('skips state update if tab was cleaned up during sort', async () => {
-    let resolveSortPromise: ((value: unknown) => void) | null = null
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      if (cmd === 'sort_results') {
-        return new Promise((resolve) => {
-          resolveSortPromise = resolve
+  it('skips the state update if the tab was cleaned up during the sort', async () => {
+    seedSortable('tab-1')
+    let release: (() => void) | undefined
+    ipc.override(
+      'set_result_view',
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              viewVersion: 2,
+              viewRowCount: 3,
+              totalRows: 3,
+              firstWindow: { offset: 0, rows: [[1], [2], [3]], baseIndices: [1, 2, 0] },
+            })
         })
-      }
-      if (cmd === 'evict_results') return null
-      return null
-    })
-
-    useQueryStore.getState().setContent('tab-stale-sort', 'SELECT 1')
-    const promise = useQueryStore.getState().sortResults('conn-1', 'tab-stale-sort', 'id', 'asc')
-
-    // Simulate tab close during sort
-    useQueryStore.getState().cleanupTab('conn-1', 'tab-stale-sort')
-    expect(useQueryStore.getState().tabs['tab-stale-sort']).toBeUndefined()
-
-    // Resolve the sort
-    resolveSortPromise!({ rows: [[1]] })
-    await promise
-
-    // Tab should remain undefined
-    expect(useQueryStore.getState().tabs['tab-stale-sort']).toBeUndefined()
-  })
-
-  it('normalizes tinyint boolean aliases to integer rows on sortResults', async () => {
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      if (cmd === 'sort_results') {
-        return { rows: [[false, true, 'sorted']] }
-      }
-      if (cmd === 'evict_results') return null
-      return null
-    })
-
-    useQueryStore.getState().setContent('tab-bool-sort', 'SELECT 1')
-    patchResult('tab-bool-sort', {
-      columns: BOOLEAN_ALIAS_COLUMNS,
-    })
-
-    await useQueryStore.getState().sortResults('conn-1', 'tab-bool-sort', 'is_active', 'asc')
-
-    const f = flat('tab-bool-sort')
-    expect(f.rows).toEqual([[0, 1, 'sorted']])
-    expect(f.sortColumn).toBe('is_active')
-    expect(f.sortDirection).toBe('asc')
+    )
+    const sortPromise = useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    useQueryStore.getState().cleanupTab('conn-1', 'tab-1')
+    release?.()
+    await sortPromise
+    expect(useQueryStore.getState().tabs['tab-1']).toBeUndefined()
   })
 })
 
@@ -1072,7 +945,7 @@ describe('useQueryStore — changeRowLimit', () => {
       totalRows: 100,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1], [2]],
+      firstWindow: firstWindowFor([[1], [2]]),
       autoLimitApplied: false,
     }))
 
@@ -1122,7 +995,7 @@ describe('useQueryStore — changeRowLimit', () => {
           totalRows: 1,
           executionTimeMs: 5,
           affectedRows: 0,
-          rows: [[false, true, 'resized']],
+          firstWindow: firstWindowFor([[false, true, 'resized']]),
 
           autoLimitApplied: false,
         }
@@ -1229,7 +1102,7 @@ describe('useQueryStore — changeRowLimit', () => {
       totalRows: 10,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
     })
@@ -1341,7 +1214,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
       totalRows: 1,
       executionTimeMs: 10,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
     })
@@ -1469,7 +1342,7 @@ describe('useQueryStore — changeRowLimit execution timing', () => {
       totalRows: 10,
       executionTimeMs: 5,
       affectedRows: 0,
-      rows: [[1]],
+      firstWindow: firstWindowFor([[1]]),
 
       autoLimitApplied: false,
     })
@@ -1527,7 +1400,7 @@ describe('useQueryStore — cancelQuery', () => {
           totalRows: 1,
           executionTimeMs: 10,
           affectedRows: 0,
-          rows: [[1]],
+          firstWindow: firstWindowFor([[1]]),
 
           autoLimitApplied: false,
         }
@@ -1788,16 +1661,21 @@ describe('useQueryStore — setResultScrollCell', () => {
   })
 })
 
-describe('useQueryStore — setCheckedRowIndices', () => {
-  it('replaces the checked row indices for the active result', () => {
+describe('useQueryStore — setCheckedRanges', () => {
+  it('stores checked view ranges tagged with the current view version', () => {
     useQueryStore.getState().setContent('tab-chk', 'SELECT 1')
-    patchResult('tab-chk', { checkedRowIndices: [] })
+    patchResult('tab-chk', { viewVersion: 4, checkedRanges: [] })
 
-    useQueryStore.getState().setCheckedRowIndices('tab-chk', [0, 2])
-    expect(flat('tab-chk').checkedRowIndices).toEqual([0, 2])
+    useQueryStore.getState().setCheckedRanges('tab-chk', [[0, 100_000]])
+    expect(flat('tab-chk').checkedRanges).toEqual([[0, 100_000]])
+    expect(flat('tab-chk').checkedViewVersion).toBe(4)
+    expect(countRanges(flat('tab-chk').checkedRanges)).toBe(100_000)
 
-    useQueryStore.getState().setCheckedRowIndices('tab-chk', [])
-    expect(flat('tab-chk').checkedRowIndices).toEqual([])
+    useQueryStore.getState().setCheckedRanges('tab-chk', [])
+    expect(flat('tab-chk').checkedRanges).toEqual([])
+    // Clearing an already-empty set is a no-op.
+    useQueryStore.getState().setCheckedRanges('tab-chk', [])
+    useQueryStore.getState().setCheckedRanges('missing', [[0, 1]])
   })
 })
 
@@ -1811,43 +1689,62 @@ describe('useQueryStore — deleteResultRows', () => {
       foreignKeys: [],
     },
   }
+  const ROWS = [
+    [1, 'a'],
+    [2, 'b'],
+    [3, 'c'],
+  ]
 
-  // Build an edit-mode result: a result bound to `users` with `id` as its key
-  // column, present at result column index 0. `lastExecutedSql: null` keeps the
-  // post-delete cache refresh disabled so tests can observe the optimistic
-  // in-memory removal directly (the refresh path is covered separately).
+  // An edit-mode result bound to `users` with `id` (result column 0) as its key.
   function setupEditableResult(tabId: string, overrides: Record<string, unknown> = {}) {
     useQueryStore.getState().setContent(tabId, 'SELECT id, name FROM users')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        [tabId]: { ...prev.tabs[tabId]!, connectionId: 'conn-1' },
+      },
+    }))
     patchResult(tabId, {
       columns: [
         { name: 'id', dataType: 'INT' },
         { name: 'name', dataType: 'VARCHAR' },
       ],
-      rows: [
-        [1, 'a'],
-        [2, 'b'],
-        [3, 'c'],
-      ],
+      ...withRows(ROWS),
+      queryId: 'q-del',
       totalRows: 3,
+      viewVersion: 1,
+      latestKnownViewVersion: 1,
       selectedRowIndex: 1,
       editMode: 'users',
       editConnectionId: 'conn-1',
-      lastExecutedSql: null,
+      lastExecutedSql: 'SELECT id, name FROM users',
       editTableMetadata: editMetadata,
       editBoundColumnIndexMap: new Map([
         ['id', 0],
         ['name', 1],
       ]),
-      checkedRowIndices: [0, 2],
+      checkedRanges: [
+        [0, 1],
+        [2, 3],
+      ],
+      checkedViewVersion: 1,
       ...overrides,
     })
   }
 
-  it('deletes checked rows from the DB by key value, then removes them from the view', async () => {
+  function removedResponse() {
+    ipc.override('remove_result_rows', (args) => {
+      const removed = (args?.baseIndices as number[]).length
+      return { viewVersion: 2, viewRowCount: 3 - removed, totalRows: 3 - removed }
+    })
+  }
+
+  it('deletes checked rows by key, tombstones exactly those base indices, and never re-runs', async () => {
     ipc.override('delete_table_row', () => undefined)
+    removedResponse()
     setupEditableResult('tab-del')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del', [0, 2])
+    const count = await useQueryStore.getState().deleteResultRows('tab-del')
 
     expect(count).toBe(2)
     const calls = ipc.calls('delete_table_row') as Array<Record<string, unknown>>
@@ -1859,125 +1756,217 @@ describe('useQueryStore — deleteResultRows', () => {
       pkValues: { id: 1 },
     })
     expect(calls[1]).toMatchObject({ pkValues: { id: 3 } })
+    expect(ipc.calls('remove_result_rows')[0]).toEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-del',
+      resultIndex: 0,
+      queryId: 'q-del',
+      baseViewVersion: 1,
+      baseIndices: [0, 2],
+    })
+    // D16: no re-execute after a delete.
+    expect(ipc.calls('execute_query')).toHaveLength(0)
+    expect(ipc.calls('reexecute_single_result')).toHaveLength(0)
 
     const result = flat('tab-del')
-    expect(result.rows).toEqual([[2, 'b']])
     expect(result.totalRows).toBe(1)
+    expect(result.viewRowCount).toBe(1)
+    expect(result.viewVersion).toBe(2)
     expect(result.selectedRowIndex).toBeNull()
-    expect(result.checkedRowIndices).toEqual([])
+    expect(result.checkedRanges).toEqual([])
+    await expectToast('success', 'Rows deleted')
   })
 
-  it('removes deleted rows from unfilteredRows when a filter is active', async () => {
+  it('resolves unloaded checked rows (header select-all) to base indices before deleting', async () => {
     ipc.override('delete_table_row', () => undefined)
-    const rowA = [1, 'a']
-    const rowB = [2, 'b']
-    const rowC = [3, 'c']
-    setupEditableResult('tab-del-f', {
-      rows: [rowA, rowC],
-      unfilteredRows: [rowA, rowB, rowC],
-      totalRows: 2,
-      checkedRowIndices: [0],
+    removedResponse()
+    // The view is sorted: positions map to base indices 2, 0, 1. Only the first row is loaded.
+    setupEditableResult('tab-del-sel', {
+      ...withRows([[3, 'c']]),
+      viewRowCount: 3,
+      checkedRanges: [[0, 3]],
     })
+    ipc.override('fetch_result_window', () => ({
+      offset: 0,
+      rows: [
+        [3, 'c'],
+        [1, 'a'],
+        [2, 'b'],
+      ],
+      baseIndices: [2, 0, 1],
+      viewRowCount: 3,
+      viewVersion: 1,
+    }))
 
-    await useQueryStore.getState().deleteResultRows('tab-del-f', [0])
+    await useQueryStore.getState().deleteResultRows('tab-del-sel')
 
-    const result = flat('tab-del-f')
-    expect(result.rows).toEqual([rowC])
-    // rowA removed from the unfiltered originals, rowB (filtered out) preserved.
-    expect(result.unfilteredRows).toEqual([rowB, rowC])
+    expect(ipc.calls('fetch_result_window')).toHaveLength(1)
+    expect(ipc.calls('remove_result_rows')[0]).toMatchObject({ baseIndices: [2, 0, 1] })
+  })
+
+  it('retries a superseded tombstone write once against the current version', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    let attempt = 0
+    ipc.override('remove_result_rows', () => {
+      attempt += 1
+      if (attempt === 1) throw new Error('view_superseded: current=5')
+      return { viewVersion: 6, viewRowCount: 1, totalRows: 1 }
+    })
+    setupEditableResult('tab-del-cas')
+
+    await useQueryStore.getState().deleteResultRows('tab-del-cas')
+
+    const calls = ipc.calls('remove_result_rows') as Array<Record<string, unknown>>
+    expect(calls.map((call) => call.baseViewVersion)).toEqual([1, 5])
+    expect(flat('tab-del-cas').viewVersion).toBe(6)
+  })
+
+  it('never repaints a tombstone response older than the view already painted', async () => {
+    // A sort committed on top of the tombstones (v3) and painted while the
+    // delete's own response (v2) was still in flight.
+    ipc.override('delete_table_row', () => {
+      patchResult('tab-del-late', { viewVersion: 3, latestKnownViewVersion: 3 })
+      return undefined
+    })
+    ipc.override('remove_result_rows', () => ({ viewVersion: 2, viewRowCount: 1, totalRows: 1 }))
+    setupEditableResult('tab-del-late')
+
+    await useQueryStore.getState().deleteResultRows('tab-del-late')
+
+    const result = flat('tab-del-late')
+    expect(result.viewVersion).toBe(3)
+    expect(result.checkedRanges).toEqual([])
+    expect(result.editState).toBeNull()
+    await expectToast('success', 'Rows deleted')
+  })
+
+  it('marks the result stale with the Refresh failed toast when remove_result_rows fails', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    ipc.override('remove_result_rows', () => {
+      throw new Error('cache write failed')
+    })
+    setupEditableResult('tab-del-stale')
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-stale')
+
+    expect(count).toBe(2)
+    expect(flat('tab-del-stale').isStale).toBe(true)
+    expect(flat('tab-del-stale').checkedRanges).toEqual([])
+    await expectToast(
+      'error',
+      "2 rows deleted, but the result couldn't be updated. Re-run the query to refresh."
+    )
+    expect(ipc.calls('execute_query')).toHaveLength(0)
+  })
+
+  it('treats a second superseded refusal like any other tombstone failure', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    ipc.override('remove_result_rows', () => {
+      throw new Error('view_superseded: current=9')
+    })
+    setupEditableResult('tab-del-cas2')
+
+    await useQueryStore.getState().deleteResultRows('tab-del-cas2')
+
+    expect(ipc.calls('remove_result_rows')).toHaveLength(2)
+    expect(flat('tab-del-cas2').isStale).toBe(true)
   })
 
   it('refuses to delete and warns when the result is not in edit mode', async () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-ro', { editMode: null })
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-ro', [0, 2])
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-ro')
 
     expect(count).toBe(0)
     expect(ipc.calls('delete_table_row')).toHaveLength(0)
-    expect(flat('tab-del-ro').rows).toHaveLength(3)
     await expectToast('error', 'Enable edit mode')
+  })
+
+  it('refuses when the table has no key, or there is no edit connection', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-nopk', {
+      editTableMetadata: { users: { ...editMetadata.users, primaryKey: null } },
+    })
+    expect(await useQueryStore.getState().deleteResultRows('tab-del-nopk')).toBe(0)
+    await expectToast('error', 'no primary or unique key')
+
+    setupEditableResult('tab-del-noconn', { editConnectionId: null })
+    expect(await useQueryStore.getState().deleteResultRows('tab-del-noconn')).toBe(0)
+    await expectToast('error', 'No active connection')
+    expect(ipc.calls('delete_table_row')).toHaveLength(0)
   })
 
   it('refuses to delete when the key columns are absent from the result set', async () => {
     ipc.override('delete_table_row', () => undefined)
     setupEditableResult('tab-del-nokey', { editBoundColumnIndexMap: new Map([['name', 1]]) })
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-nokey', [0])
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-nokey')
 
     expect(count).toBe(0)
     expect(ipc.calls('delete_table_row')).toHaveLength(0)
     await expectToast('error', 'key columns')
   })
 
-  it('stops on the first failed delete and records the error', async () => {
+  it('deletes nothing for checked ranges of an older view, or above the 10,000-row cap', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-old', { checkedViewVersion: 0 })
+    expect(await useQueryStore.getState().deleteResultRows('tab-del-old')).toBe(0)
+    expect(flat('tab-del-old').checkedRanges).toEqual([])
+
+    setupEditableResult('tab-del-cap', { viewRowCount: 100_000, checkedRanges: [[0, 100_000]] })
+    expect(await useQueryStore.getState().deleteResultRows('tab-del-cap')).toBe(0)
+    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    expect(ipc.calls('fetch_result_window')).toHaveLength(0)
+  })
+
+  it('shows Delete failed and deletes nothing when the checked rows cannot be loaded', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    ipc.override('fetch_result_window', () => {
+      throw new Error('offline')
+    })
+    setupEditableResult('tab-del-load', {
+      ...withRows([]),
+      viewRowCount: 3,
+      checkedRanges: [[0, 3]],
+    })
+
+    expect(await useQueryStore.getState().deleteResultRows('tab-del-load')).toBe(0)
+    expect(ipc.calls('delete_table_row')).toHaveLength(0)
+    await expectToast('error', 'offline')
+  })
+
+  it('routes results_expired while loading checked rows to the expired block', async () => {
+    ipc.override('fetch_result_window', () => {
+      throw new Error('results_expired: gone')
+    })
+    setupEditableResult('tab-del-exp', {
+      ...withRows([]),
+      viewRowCount: 3,
+      checkedRanges: [[0, 3]],
+    })
+
+    expect(await useQueryStore.getState().deleteResultRows('tab-del-exp')).toBe(0)
+    expect(flat('tab-del-exp').isExpired).toBe(true)
+  })
+
+  it('stops on the first failed delete and tombstones only the deleted subset', async () => {
     let callCount = 0
     ipc.override('delete_table_row', () => {
       callCount += 1
       if (callCount === 2) throw new Error('FK constraint')
       return undefined
     })
+    removedResponse()
+    useToastStore.setState({ toasts: [] })
     setupEditableResult('tab-del-err')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-err', [0, 2])
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-err')
 
     expect(count).toBe(1)
+    expect(ipc.calls('remove_result_rows')[0]).toMatchObject({ baseIndices: [0] })
     const result = flat('tab-del-err')
-    // Only the first (id=1) row was removed before the failure on id=3.
-    expect(result.rows).toEqual([
-      [2, 'b'],
-      [3, 'c'],
-    ])
     expect(result.saveError).toBe('FK constraint')
-    await expectToast('error', 'FK constraint')
-  })
-
-  it('records the error and removes nothing when the first delete fails', async () => {
-    ipc.override('delete_table_row', () => {
-      throw new Error('access denied')
-    })
-    setupEditableResult('tab-del-first-err')
-
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-first-err', [0, 2])
-
-    expect(count).toBe(0)
-    const result = flat('tab-del-first-err')
-    expect(result.rows).toHaveLength(3)
-    expect(result.saveError).toBe('access denied')
-    await expectToast('error', 'access denied')
-  })
-
-  it('refreshes the result cache after a successful delete', async () => {
-    ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-refresh', { lastExecutedSql: 'SELECT id, name FROM users' })
-
-    await useQueryStore.getState().deleteResultRows('tab-del-refresh', [0])
-
-    // The single-result refresh path re-runs execute_query (the beforeEach mock
-    // returns three id-only rows), proving the cache was refreshed.
-    const result = flat('tab-del-refresh')
-    expect(result.rows).toEqual([[1], [2], [3]])
-  })
-
-  it('refreshes the cache on a partial failure and skips the success toast', async () => {
-    useToastStore.setState({ toasts: [] })
-    let callCount = 0
-    ipc.override('delete_table_row', () => {
-      callCount += 1
-      if (callCount === 2) throw new Error('FK constraint')
-      return undefined
-    })
-    setupEditableResult('tab-del-partial-refresh', {
-      lastExecutedSql: 'SELECT id, name FROM users',
-    })
-
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-partial-refresh', [0, 2])
-
-    expect(count).toBe(1)
-    // The cache refresh ran despite the failure: rows now reflect the id-only
-    // execute_query mock rather than the optimistic in-memory removal.
-    const result = flat('tab-del-partial-refresh')
-    expect(result.rows).toEqual([[1], [2], [3]])
     await expectToast('error', 'FK constraint')
     // The failure already surfaced an error toast; no "Rows deleted" success.
     expect(
@@ -1987,14 +1976,102 @@ describe('useQueryStore — deleteResultRows', () => {
     ).toBe(false)
   })
 
-  it('no-ops for an empty index list', async () => {
-    ipc.override('delete_table_row', () => undefined)
-    setupEditableResult('tab-del-empty')
+  it('records the error and tombstones nothing when the first delete fails', async () => {
+    ipc.override('delete_table_row', () => {
+      throw new Error('access denied')
+    })
+    setupEditableResult('tab-del-first-err')
 
-    const count = await useQueryStore.getState().deleteResultRows('tab-del-empty', [])
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-first-err')
+
+    expect(count).toBe(0)
+    expect(ipc.calls('remove_result_rows')).toHaveLength(0)
+    const result = flat('tab-del-first-err')
+    expect(result.rows).toHaveLength(3)
+    expect(result.saveError).toBe('access denied')
+    await expectToast('error', 'access denied')
+  })
+
+  it('no-ops when nothing is checked', async () => {
+    ipc.override('delete_table_row', () => undefined)
+    setupEditableResult('tab-del-empty', { checkedRanges: [] })
+
+    const count = await useQueryStore.getState().deleteResultRows('tab-del-empty')
     expect(count).toBe(0)
     expect(ipc.calls('delete_table_row')).toHaveLength(0)
     expect(flat('tab-del-empty').rows).toHaveLength(3)
+  })
+
+  it('reports "Deleting… done of n" progress through beginRowAction after 1 s', async () => {
+    vi.useFakeTimers()
+    try {
+      let release: (() => void) | undefined
+      ipc.override(
+        'delete_table_row',
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve
+          })
+      )
+      removedResponse()
+      setupEditableResult('tab-del-progress', { checkedRanges: [[0, 1]] })
+
+      const deletion = useQueryStore.getState().deleteResultRows('tab-del-progress')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(flat('tab-del-progress').rowActionProgress).toMatchObject({
+        verb: 'Deleting',
+        total: 1,
+        visible: false,
+        cancellable: false,
+      })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(flat('tab-del-progress').rowActionProgress?.visible).toBe(true)
+      release?.()
+      await vi.advanceTimersByTimeAsync(0)
+      await deletion
+      expect(flat('tab-del-progress').rowActionProgress).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('useQueryStore — row actions', () => {
+  it('cancelRowAction calls the cancel hook of a cancellable action once', () => {
+    useQueryStore.getState().setContent('tab-act', 'SELECT 1')
+    patchResult('tab-act', { queryId: 'q-act' })
+    const onCancel = vi.fn()
+    const handle = useQueryStore.getState().beginRowAction('tab-act', 'Copying', 5000, onCancel)
+    expect(flat('tab-act').rowActionProgress).toMatchObject({ cancellable: true, total: 5000 })
+    handle.update(2000)
+    useQueryStore.getState().cancelRowAction('tab-act')
+    useQueryStore.getState().cancelRowAction('tab-act')
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(handle.finish()).toBe(false)
+    expect(flat('tab-act').rowActionProgress).toBeNull()
+  })
+
+  it('updates the visible progress after the 1 s threshold', () => {
+    vi.useFakeTimers()
+    try {
+      useQueryStore.getState().setContent('tab-act2', 'SELECT 1')
+      patchResult('tab-act2', { queryId: 'q-act2' })
+      const handle = useQueryStore.getState().beginRowAction('tab-act2', 'Pasting', 4000)
+      vi.advanceTimersByTime(1000)
+      handle.update(2000)
+      expect(flat('tab-act2').rowActionProgress).toMatchObject({ visible: true, done: 2000 })
+      expect(handle.finish()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('markResultsExpired and retryResultWindow are safe on any tab', () => {
+    useQueryStore.getState().setContent('tab-exp', 'SELECT 1')
+    patchResult('tab-exp', { queryId: 'q-exp' })
+    useQueryStore.getState().markResultsExpired('tab-exp')
+    expect(flat('tab-exp').isExpired).toBe(true)
+    useQueryStore.getState().retryResultWindow('missing')
   })
 })
 
@@ -2009,7 +2086,7 @@ describe('useQueryStore — totalTimeMs propagation', () => {
           executionTimeMs: 10,
           totalTimeMs: 45,
           affectedRows: 0,
-          rows: [[1], [2], [3]],
+          firstWindow: firstWindowFor([[1], [2], [3]]),
           autoLimitApplied: false,
         }
       return null
@@ -2022,41 +2099,27 @@ describe('useQueryStore — totalTimeMs propagation', () => {
     expect(f.totalTimeMs).toBe(45)
   })
 
-  it('preserves totalTimeMs after sortResults re-executes (clear sort)', async () => {
-    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
-      if (cmd === 'execute_query')
-        return {
-          queryId: 'q-sort-total',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          totalRows: 3,
-          executionTimeMs: 8,
-          totalTimeMs: 33,
-          affectedRows: 0,
-          rows: [[3], [1], [2]],
-          autoLimitApplied: false,
-        }
-      if (cmd === 'evict_results') return null
-      return null
-    })
-
+  it('keeps totalTimeMs when clearing a sort (no re-execute)', async () => {
     useQueryStore.getState().setContent('tab-sort-total', 'SELECT 1')
     patchResult('tab-sort-total', {
       sortColumn: 'id',
       sortDirection: 'asc' as const,
       lastExecutedSql: 'SELECT id FROM t',
       queryId: 'q-old',
+      totalTimeMs: 33,
       resultStatus: 'success' as const,
     })
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-sort-total': { ...prev.tabs['tab-sort-total']!, tabStatus: 'success' as const },
-      },
+    ipc.override('set_result_view', () => ({
+      viewVersion: 2,
+      viewRowCount: 0,
+      totalRows: 0,
+      firstWindow: { offset: 0, rows: [], baseIndices: [] },
     }))
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-sort-total', 'id', null)
 
     expect(flat('tab-sort-total').totalTimeMs).toBe(33)
+    expect(ipc.calls('execute_query')).toHaveLength(0)
   })
 
   it('preserves totalTimeMs after changeRowLimit re-executes', async () => {
@@ -2069,7 +2132,7 @@ describe('useQueryStore — totalTimeMs propagation', () => {
           executionTimeMs: 5,
           totalTimeMs: 27,
           affectedRows: 0,
-          rows: [[1], [2]],
+          firstWindow: firstWindowFor([[1], [2]]),
           autoLimitApplied: false,
         }
       if (cmd === 'evict_results') return null
@@ -2140,7 +2203,7 @@ describe('useQueryStore — connection-aware async completion', () => {
           {
             queryId: 'q-1',
             columns: [{ name: 'id', dataType: 'INT' }],
-            rows: [[1]],
+            firstWindow: firstWindowFor([[1]]),
             totalRows: 1,
             executionTimeMs: 1,
             totalTimeMs: 1,
@@ -2172,7 +2235,7 @@ describe('useQueryStore — connection-aware async completion', () => {
           {
             queryId: 'q-1',
             columns: [{ name: 'id', dataType: 'INT' }],
-            rows: [[1]],
+            firstWindow: firstWindowFor([[1]]),
             totalRows: 1,
             executionTimeMs: 1,
             totalTimeMs: 1,
@@ -2194,5 +2257,366 @@ describe('useQueryStore — connection-aware async completion', () => {
     expect(residency?.status).toBe('resident')
     expect(residency?.isActive).toBe(false)
     expect(typeof residency?.inactiveSince).toBe('number')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Streaming full export job (Phase 2, D22): owned and polled by the store.
+// ---------------------------------------------------------------------------
+
+describe('full export job', () => {
+  const TAB = 'tab-export'
+  const CONN = 'conn-export'
+  const REQUEST = {
+    connectionId: CONN,
+    resultIndex: 0,
+    format: 'csv' as const,
+    filePath: '/tmp/all.csv',
+    includeHeaders: true,
+  }
+
+  type Progress = {
+    status: 'running' | 'completed' | 'cancelled' | 'failed'
+    rowsWritten: number
+    bytesWritten: number
+    elapsedMs: number
+    stoppedAtSheetLimit: boolean
+    error: string | null
+  }
+  let progress: Progress
+
+  const running = (rowsWritten: number): Progress => ({
+    status: 'running',
+    rowsWritten,
+    bytesWritten: rowsWritten * 10,
+    elapsedMs: 1_000,
+    stoppedAtSheetLimit: false,
+    error: null,
+  })
+
+  function seedTruncatedTab(tabId = TAB, exportDialogOpen = true) {
+    useQueryStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        [tabId]: {
+          ...makeTabState({ connectionId: CONN, tabStatus: 'success' }),
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'q-truncated',
+              truncated: true,
+              rowCeiling: 5,
+              totalRows: 5,
+              viewRowCount: 5,
+              exportDialogOpen,
+              preferredExportScope: 'allRows',
+            },
+          ],
+        },
+      },
+    }))
+  }
+
+  const job = (tabId = TAB) => useQueryStore.getState().exportJobs[tabId]
+  const progressCalls = () => ipc.calls('get_result_export_progress').length
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    _resetToastTimeoutsForTests()
+    useToastStore.setState({ toasts: [] })
+    useQueryStore.setState({ exportJobs: {} })
+    progress = running(0)
+    ipc.override('start_result_export', () => 'job-1')
+    ipc.override('get_result_export_progress', () => progress)
+    ipc.override('cancel_result_export', () => null)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function startAndFirstPoll(tabId = TAB) {
+    await useQueryStore.getState().startFullExport(tabId, REQUEST)
+    await vi.advanceTimersByTimeAsync(0)
+  }
+
+  it('starts the export for the result, polls progress, and completes with a toast', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+
+    expect(ipc.calls('start_result_export')[0]).toEqual({
+      connectionId: CONN,
+      tabId: TAB,
+      resultIndex: 0,
+      queryId: 'q-truncated',
+      format: 'csv',
+      filePath: '/tmp/all.csv',
+      includeHeaders: true,
+      tableName: null,
+    })
+    expect(job()).toMatchObject({ jobId: 'job-1', status: 'running', queryId: 'q-truncated' })
+    expect(job()?.progress?.rowsWritten).toBe(0)
+
+    progress = running(1_500)
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS)
+    expect(job()?.progress?.rowsWritten).toBe(1_500)
+
+    progress = { ...running(250_000), status: 'completed' }
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS)
+    expect(job()).toBeUndefined()
+    expect(flat(TAB).exportDialogOpen).toBe(false)
+    await expectToast('success', 'Export completed')
+    await expectToast('success', '250,000 rows saved to /tmp/all.csv')
+
+    // Polling stopped.
+    const calls = progressCalls()
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS * 3)
+    expect(progressCalls()).toBe(calls)
+  })
+
+  it('mentions the Excel sheet limit and a failed database restore', async () => {
+    seedTruncatedTab()
+    progress = {
+      ...running(1_048_575),
+      status: 'completed',
+      stoppedAtSheetLimit: true,
+      error: "The session couldn't switch back to database 'crm': denied",
+    }
+    await startAndFirstPoll()
+
+    await expectToast('success', "Stopped at Excel's 1,048,576-row limit.")
+    await expectToast('warning', "couldn't switch back to database 'crm'")
+  })
+
+  it('keeps polling and never cancels when the dialog closes on a tab switch', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+    // ResultPanel closes the dialog whenever its tab goes inactive.
+    useQueryStore.getState().closeExportDialog(TAB)
+
+    const calls = progressCalls()
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS * 2)
+    expect(progressCalls()).toBeGreaterThan(calls)
+    expect(ipc.calls('cancel_result_export')).toHaveLength(0)
+    expect(job()?.status).toBe('running')
+
+    // Completion while the tab is inactive still shows the toast.
+    progress = { ...running(42), status: 'completed' }
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS)
+    await expectToast('success', '42 rows saved to /tmp/all.csv')
+    expect(job()).toBeUndefined()
+  })
+
+  it('cleanupTab cancels a running export and stops polling', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+
+    useQueryStore.getState().cleanupTab(CONN, TAB)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ipc.calls('cancel_result_export')).toEqual([{ jobId: 'job-1' }])
+    expect(job()).toBeUndefined()
+    const calls = progressCalls()
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS * 2)
+    expect(progressCalls()).toBe(calls)
+  })
+
+  it('cleanupConnection stops polling and drops the job without cancelling', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+
+    useQueryStore.getState().cleanupConnection(CONN, [TAB])
+    expect(job()).toBeUndefined()
+    const calls = progressCalls()
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS * 2)
+    expect(progressCalls()).toBe(calls)
+    expect(ipc.calls('cancel_result_export')).toHaveLength(0)
+  })
+
+  it('survives a re-run in the same tab and still shows its completion toast', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+
+    await useQueryStore.getState().executeQuery(CONN, TAB, 'SELECT id FROM t')
+    expect(flat(TAB).queryId).toBe('q-mock')
+    expect(job()).toMatchObject({ jobId: 'job-1', status: 'running', queryId: 'q-truncated' })
+
+    progress = { ...running(9), status: 'completed' }
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS)
+    await expectToast('success', '9 rows saved to /tmp/all.csv')
+  })
+
+  it('a failure shows showErrorToast and keeps the state while the dialog is open', async () => {
+    seedTruncatedTab()
+    progress = { ...running(3), status: 'failed', error: 'Query failed: Deadlock found' }
+    await startAndFirstPoll()
+
+    await expectToast('error', 'Export failed')
+    expect(job()).toMatchObject({ status: 'failed', error: 'Query failed: Deadlock found' })
+
+    // Closing the dialog dismisses the finished job.
+    useQueryStore.getState().closeExportDialog(TAB)
+    expect(job()).toBeUndefined()
+  })
+
+  it('a failure while the dialog is closed only toasts', async () => {
+    seedTruncatedTab(TAB, false)
+    progress = { ...running(3), status: 'failed', error: null }
+    await startAndFirstPoll()
+    await expectToast('error', 'The export stopped unexpectedly.')
+    expect(job()).toBeUndefined()
+  })
+
+  it('cancel sends cancel_result_export once and ends in the cancelled state', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+
+    await useQueryStore.getState().cancelFullExport(TAB)
+    await useQueryStore.getState().cancelFullExport(TAB)
+    expect(ipc.calls('cancel_result_export')).toEqual([{ jobId: 'job-1' }])
+    expect(job()?.cancelRequested).toBe(true)
+
+    progress = { ...running(10), status: 'cancelled' }
+    await vi.advanceTimersByTimeAsync(RESULT_EXPORT_POLL_MS)
+    expect(job()).toMatchObject({ status: 'cancelled', cancelRequested: false })
+  })
+
+  it('a failed cancel shows a toast and re-enables Cancel export', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+    ipc.override('cancel_result_export', () => {
+      throw new Error('no pool')
+    })
+
+    await useQueryStore.getState().cancelFullExport(TAB)
+    await expectToast('error', 'Cancel failed')
+    expect(job()?.cancelRequested).toBe(false)
+  })
+
+  it('a cancel while starting is sent as soon as the job id arrives', async () => {
+    seedTruncatedTab()
+    let resolveStart: (id: string) => void = () => {}
+    ipc.override('start_result_export', () => new Promise<string>((r) => (resolveStart = r)))
+
+    const started = useQueryStore.getState().startFullExport(TAB, REQUEST)
+    await vi.advanceTimersByTimeAsync(0)
+    await useQueryStore.getState().cancelFullExport(TAB)
+    expect(ipc.calls('cancel_result_export')).toHaveLength(0)
+    expect(job()).toMatchObject({ status: 'running', jobId: null, cancelRequested: true })
+    progress = { ...running(0), status: 'cancelled' }
+    resolveStart('job-queued')
+    await started
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ipc.calls('cancel_result_export')).toEqual([{ jobId: 'job-queued' }])
+    // The job is tracked and polled to its end, so the dialog can close and a
+    // new export can start (it used to stay "Cancelling…" with no job id).
+    expect(ipc.calls('get_result_export_progress')).toEqual([{ jobId: 'job-queued' }])
+    expect(job()).toMatchObject({
+      jobId: 'job-queued',
+      status: 'cancelled',
+      cancelRequested: false,
+    })
+
+    useQueryStore.getState().closeExportDialog(TAB)
+    expect(job()).toBeUndefined()
+    progress = running(0)
+    ipc.override('start_result_export', () => 'job-1')
+    await startAndFirstPoll()
+    expect(ipc.calls('start_result_export')).toHaveLength(2)
+    expect(job()).toMatchObject({ jobId: 'job-1', status: 'running' })
+  })
+
+  it('a start that fails after a cancel was queued ends in the failed state', async () => {
+    seedTruncatedTab()
+    let rejectStart: (error: Error) => void = () => {}
+    ipc.override(
+      'start_result_export',
+      () => new Promise<string>((_, reject) => (rejectStart = reject))
+    )
+
+    const started = useQueryStore.getState().startFullExport(TAB, REQUEST)
+    await vi.advanceTimersByTimeAsync(0)
+    await useQueryStore.getState().cancelFullExport(TAB)
+    rejectStart(new Error('Connection lost'))
+    await started
+    expect(job()).toMatchObject({ status: 'failed', error: 'Connection lost', jobId: null })
+    await expectToast('error', 'Export failed')
+    expect(ipc.calls('cancel_result_export')).toHaveLength(0)
+  })
+
+  it('a start that fails after its tab closed is only logged', async () => {
+    seedTruncatedTab()
+    let rejectStart: (error: Error) => void = () => {}
+    ipc.override(
+      'start_result_export',
+      () => new Promise<string>((_, reject) => (rejectStart = reject))
+    )
+
+    const started = useQueryStore.getState().startFullExport(TAB, REQUEST)
+    await vi.advanceTimersByTimeAsync(0)
+    useQueryStore.getState().cleanupTab(CONN, TAB)
+    rejectStart(new Error('Connection lost'))
+    await started
+    expect(job()).toBeUndefined()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'info',
+      message: expect.stringContaining('start_result_export failed after its job was dropped'),
+    })
+  })
+
+  it('closing the tab while starting cancels the job once it starts', async () => {
+    seedTruncatedTab()
+    let resolveStart: (id: string) => void = () => {}
+    ipc.override('start_result_export', () => new Promise<string>((r) => (resolveStart = r)))
+
+    const started = useQueryStore.getState().startFullExport(TAB, REQUEST)
+    await vi.advanceTimersByTimeAsync(0)
+    useQueryStore.getState().cleanupTab(CONN, TAB)
+    resolveStart('job-late')
+    await started
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ipc.calls('cancel_result_export')).toEqual([{ jobId: 'job-late' }])
+    expect(job()).toBeUndefined()
+    expect(progressCalls()).toBe(0)
+  })
+
+  it('a refused start fails with a toast; an expired result routes to the expired block', async () => {
+    seedTruncatedTab()
+    ipc.override('start_result_export', () => {
+      throw new Error("Full export isn't available for this result.")
+    })
+    await useQueryStore.getState().startFullExport(TAB, REQUEST)
+    expect(job()).toMatchObject({
+      status: 'failed',
+      jobId: null,
+      error: "Full export isn't available for this result.",
+    })
+    await expectToast('error', 'Export failed')
+
+    ipc.override('start_result_export', () => {
+      throw new Error('results_expired: Results expired. Re-run the query.')
+    })
+    await useQueryStore.getState().startFullExport(TAB, REQUEST)
+    expect(job()).toBeUndefined()
+    expect(flat(TAB).isExpired).toBe(true)
+    expect(flat(TAB).exportDialogOpen).toBe(false)
+  })
+
+  it('a progress poll failure fails the job', async () => {
+    seedTruncatedTab()
+    ipc.override('get_result_export_progress', () => {
+      throw new Error("Export job 'job-1' not found")
+    })
+    await startAndFirstPoll()
+    await expectToast('error', "Export job 'job-1' not found")
+    expect(job()?.status).toBe('failed')
+  })
+
+  it('ignores a second start while an export runs', async () => {
+    seedTruncatedTab()
+    await startAndFirstPoll()
+    await useQueryStore.getState().startFullExport(TAB, REQUEST)
+    expect(ipc.calls('start_result_export')).toHaveLength(1)
   })
 })

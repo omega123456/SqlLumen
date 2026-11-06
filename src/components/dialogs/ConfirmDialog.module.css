@@ -44,6 +44,11 @@
   border-top: 1px solid var(--stroke-divider);
 }
 
+/* A single action (Cancel hidden) sits in the right-hand slot. */
+.actionsSingle > :only-child {
+  grid-column: 2;
+}
+
 .confirmContent {
   display: inline-flex;
   align-items: center;

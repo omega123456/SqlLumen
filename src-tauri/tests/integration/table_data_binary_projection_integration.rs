@@ -61,6 +61,9 @@ mod binary_projection_integration {
             import_jobs: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),
             )),
+            result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
             copy_jobs: std::sync::Arc::new(
                 std::sync::RwLock::new(std::collections::HashMap::new()),
             ),

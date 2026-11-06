@@ -1,9 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
-import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
-import { ipc } from '../../ipc-mock'
+import {
+  useQueryStore,
+  DEFAULT_RESULT_STATE,
+  type SingleResultState,
+} from '../../../stores/query-store'
+import { useToastStore } from '../../../stores/toast-store'
+import { ipc, expectToast } from '../../ipc-mock'
+import { makeTabState } from '../../helpers/query-test-utils'
 
 beforeEach(() => {
   // Default: export_results returns success; plugin:dialog|save returns a path
@@ -585,33 +591,7 @@ describe('ExportDialog', () => {
     })
   })
 
-  it('passes rowIndices to exportResults when provided', async () => {
-    const user = userEvent.setup()
-    const onClose = vi.fn()
-    const rowIndices = [0, 2, 5]
-    render(<ExportDialog {...defaultProps} onClose={onClose} rowIndices={rowIndices} />)
-
-    setExportDestinationPath('/tmp/filtered-export.csv')
-    await user.click(screen.getByTestId('export-submit-button'))
-
-    await waitFor(
-      () => {
-        const calls = ipc.calls('export_results')
-        expect(calls).toHaveLength(1)
-        const args = calls[0] as Record<string, unknown>
-        expect(args).toMatchObject({
-          options: {
-            format: 'csv',
-            filePath: '/tmp/filtered-export.csv',
-          },
-          rowIndices: [0, 2, 5],
-        })
-      },
-      { timeout: 5000 }
-    )
-  }, 15000)
-
-  it('does not pass rowIndices to exportResults when not provided', async () => {
+  it('never passes rowIndices: the backend exports the current view', async () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
@@ -624,8 +604,367 @@ describe('ExportDialog', () => {
         expect(calls).toHaveLength(1)
         const args = calls[0] as Record<string, unknown>
         expect(args.options).toMatchObject({ format: 'csv' })
+        expect('rowIndices' in args).toBe(false)
       },
       { timeout: 5000 }
     )
   }, 15000)
+})
+
+// ---------------------------------------------------------------------------
+// Phase 2: "All rows" streaming full export for truncated results (wireframe 6)
+// ---------------------------------------------------------------------------
+
+describe('ExportDialog — full export of truncated results', () => {
+  const TAB = 'tab-1'
+  const CONN = 'conn-1'
+
+  type Progress = {
+    status: 'running' | 'completed' | 'cancelled' | 'failed'
+    rowsWritten: number
+    bytesWritten: number
+    elapsedMs: number
+    stoppedAtSheetLimit: boolean
+    error: string | null
+  }
+  let progress: Progress
+  const running = (rowsWritten: number, bytesWritten = 0, elapsedMs = 0): Progress => ({
+    status: 'running',
+    rowsWritten,
+    bytesWritten,
+    elapsedMs,
+    stoppedAtSheetLimit: false,
+    error: null,
+  })
+
+  function seedResult(overrides: Partial<SingleResultState> = {}) {
+    useQueryStore.setState({
+      exportJobs: {},
+      tabs: {
+        [TAB]: {
+          ...makeTabState({ connectionId: CONN, tabStatus: 'success' }),
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'q-truncated',
+              truncated: true,
+              rowCeiling: 100_000,
+              totalRows: 100_000,
+              viewRowCount: 2_340,
+              exportDialogOpen: true,
+              ...overrides,
+            },
+          ],
+        },
+      },
+    })
+  }
+
+  /** Renders the dialog while the store says it is open, as ResultPanel does. */
+  function Harness() {
+    const open = useQueryStore((s) => s.tabs[TAB]?.results[0]?.exportDialogOpen ?? false)
+    if (!open) return null
+    return (
+      <ExportDialog
+        connectionId={CONN}
+        tabId={TAB}
+        resultIndex={0}
+        onClose={() => useQueryStore.getState().closeExportDialog(TAB)}
+      />
+    )
+  }
+
+  async function openListbox(user: ReturnType<typeof userEvent.setup>, testId: string) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (screen.getByTestId(testId).getAttribute('aria-expanded') !== 'true') {
+        await user.click(screen.getByTestId(testId))
+      }
+      await act(async () => {})
+      const listboxId = screen.getByTestId(testId).getAttribute('aria-controls')
+      const listbox = listboxId ? document.getElementById(listboxId) : null
+      if (listbox) return listbox
+    }
+    return await screen.findByRole('listbox')
+  }
+
+  async function pick(user: ReturnType<typeof userEvent.setup>, testId: string, name: RegExp) {
+    const listbox = await openListbox(user, testId)
+    fireEvent.click(within(listbox).getByRole('option', { name }))
+  }
+
+  async function startAllRowsExport(user: ReturnType<typeof userEvent.setup>) {
+    setExportDestinationPath('/tmp/all.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+    await screen.findByTestId('export-progress')
+  }
+
+  beforeEach(() => {
+    progress = running(0)
+    ipc.override('start_result_export', () => 'job-1')
+    ipc.override('get_result_export_progress', () => progress)
+    ipc.override('cancel_result_export', () => null)
+    useToastStore.setState({ toasts: [] })
+  })
+
+  afterEach(() => {
+    // Stop any polling left running.
+    act(() => {
+      useQueryStore.getState().cleanupConnection(CONN, [TAB])
+    })
+  })
+
+  it('shows the unchanged dialog for untruncated results', async () => {
+    const user = userEvent.setup()
+    seedResult({ truncated: false })
+    render(<Harness />)
+    expect(screen.queryByTestId('export-rows-select')).not.toBeInTheDocument()
+    const listbox = await openListbox(user, 'export-format-select')
+    expect(listbox).toHaveTextContent('Excel Spreadsheet (.xlsx)')
+    expect(listbox).not.toHaveTextContent('up to 1,048,576 rows')
+  })
+
+  it.each(['call', 'locking', 'unknownDatabase'] as const)(
+    'offers no Rows choice for a truncated %s result',
+    (reason) => {
+      seedResult({ fullExportBlockedReason: reason, preferredExportScope: 'allRows' })
+      render(<Harness />)
+      expect(screen.queryByTestId('export-rows-select')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('export-sheet-limit-warning')).not.toBeInTheDocument()
+    }
+  )
+
+  it('offers the Rows choice with descriptions, defaulting to the current view', async () => {
+    const user = userEvent.setup()
+    seedResult()
+    render(<Harness />)
+
+    const rows = screen.getByTestId('export-rows-select')
+    expect(rows).toHaveTextContent('Current view · 2,340 rows')
+    const listbox = await openListbox(user, 'export-rows-select')
+    expect(listbox).toHaveTextContent(
+      'Rows in memory, with the current sort and filter. No re-run.'
+    )
+    expect(listbox).toHaveTextContent(
+      'Streams every row to file. Sort and filter are not applied. Not limited by the row ceiling.'
+    )
+    fireEvent.click(within(listbox).getByRole('option', { name: /All rows · re-runs the query/ }))
+    expect(screen.getByTestId('export-rows-select')).toHaveTextContent(
+      'All rows · re-runs the query'
+    )
+
+    const formats = await openListbox(user, 'export-format-select')
+    expect(formats).toHaveTextContent('Excel (.xlsx) · up to 1,048,576 rows')
+  })
+
+  it('preselects All rows when opened from "Export all rows…"', () => {
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    expect(screen.getByTestId('export-rows-select')).toHaveTextContent(
+      'All rows · re-runs the query'
+    )
+  })
+
+  it('warns that sort and filters are ignored, and "Use current view" switches back', async () => {
+    const user = userEvent.setup()
+    seedResult({
+      preferredExportScope: 'allRows',
+      filterModel: [
+        { column: 'a', operator: '==', value: '1' },
+        { column: 'b', operator: '!=', value: '2' },
+      ],
+    })
+    render(<Harness />)
+
+    const warning = screen.getByTestId('export-ignored-view-warning')
+    expect(warning).toHaveTextContent("Sort and filter aren't applied to all rows.")
+    expect(warning).toHaveTextContent('Your 2 filters will be ignored.')
+    expect(warning).toHaveAttribute('role', 'status')
+
+    await user.click(screen.getByTestId('export-use-current-view'))
+    expect(screen.queryByTestId('export-ignored-view-warning')).not.toBeInTheDocument()
+    expect(screen.getByTestId('export-rows-select')).toHaveTextContent('Current view · 2,340 rows')
+  })
+
+  it.each([
+    [{ sortColumn: 'a', sortDirection: 'asc' as const }, 'Your sort will be ignored.'],
+    [
+      {
+        sortColumn: 'a',
+        sortDirection: 'desc' as const,
+        filterModel: [{ column: 'a', operator: '==' as const, value: '1' }],
+      },
+      'Your sort and 1 filter will be ignored.',
+    ],
+  ])('names the ignored sort (%#)', (overrides, message) => {
+    seedResult({ preferredExportScope: 'allRows', ...overrides })
+    render(<Harness />)
+    expect(screen.getByTestId('export-ignored-view-warning')).toHaveTextContent(message)
+  })
+
+  it('warns about the Excel sheet limit, and "Switch to CSV" changes the format', async () => {
+    const user = userEvent.setup()
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    expect(screen.queryByTestId('export-sheet-limit-warning')).not.toBeInTheDocument()
+
+    await pick(user, 'export-format-select', /Excel \(\.xlsx\)/)
+    expect(screen.getByTestId('export-sheet-limit-warning')).toHaveTextContent(
+      'Excel sheets stop at 1,048,576 rows. Rows past that are not written.'
+    )
+
+    await user.click(screen.getByTestId('export-switch-to-csv'))
+    expect(screen.getByTestId('export-format-select')).toHaveTextContent('CSV')
+    expect(screen.queryByTestId('export-sheet-limit-warning')).not.toBeInTheDocument()
+  })
+
+  it('renders the Close and Browse buttons with icons and accessible names', () => {
+    seedResult()
+    render(<Harness />)
+    const close = screen.getByRole('button', { name: 'Close' })
+    const browse = screen.getByRole('button', { name: 'Browse' })
+    for (const button of [close, browse]) {
+      const icon = button.querySelector('svg')
+      expect(icon).not.toBeNull()
+      expect(icon).toHaveAttribute('aria-hidden', 'true')
+    }
+  })
+
+  it('a current-view export of a truncated result still uses the cached export', async () => {
+    const user = userEvent.setup()
+    seedResult()
+    render(<Harness />)
+    setExportDestinationPath('/tmp/view.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+    await waitFor(() => expect(ipc.calls('export_results')).toHaveLength(1))
+    expect(ipc.calls('start_result_export')).toHaveLength(0)
+  })
+
+  it('streams all rows with progress, cannot be dismissed, and cancels', async () => {
+    const user = userEvent.setup()
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    progress = running(1_240_000, 318 * 1024 * 1024, 42_000)
+
+    await startAllRowsExport(user)
+    expect(ipc.calls('start_result_export')[0]).toMatchObject({
+      tabId: TAB,
+      queryId: 'q-truncated',
+      format: 'csv',
+      filePath: '/tmp/all.csv',
+    })
+    expect(ipc.calls('export_results')).toHaveLength(0)
+    expect(screen.getByText('Exporting all rows…')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('export-progress-stats')).toHaveTextContent(
+        'Rows written 1,240,000 · 318 MB · 0:42'
+      )
+    )
+
+    // Non-dismissible: no close button, Escape does nothing.
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.getByTestId('export-progress')).toBeInTheDocument()
+
+    const cancel = screen.getByTestId('export-cancel-full-button')
+    expect(cancel).toHaveTextContent('Cancel export')
+    await user.click(cancel)
+    expect(screen.getByTestId('export-cancel-full-button')).toHaveTextContent('Cancelling…')
+    expect(screen.getByTestId('export-cancel-full-button')).toBeDisabled()
+    expect(ipc.calls('cancel_result_export')).toEqual([{ jobId: 'job-1' }])
+
+    progress = { ...running(1_240_100), status: 'cancelled' }
+    const bar = await screen.findByTestId('export-cancelled', {}, { timeout: 1_500 })
+    expect(bar).toHaveTextContent('Export cancelled')
+    expect(bar).toHaveTextContent('No file was written.')
+  })
+
+  it('shows "Building workbook…" for XLSX until rows flow, then rows and time without MB', async () => {
+    const user = userEvent.setup()
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    await pick(user, 'export-format-select', /Excel \(\.xlsx\)/)
+    await startAllRowsExport(user)
+    await waitFor(() => expect(ipc.calls('get_result_export_progress').length).toBeGreaterThan(0))
+    expect(screen.getByTestId('export-progress-stats')).toHaveTextContent('Building workbook…')
+
+    // XLSX reports 0 bytes until the workbook is saved, so the MB segment is hidden.
+    progress = running(1_500, 0, 65_000)
+    await waitFor(
+      () =>
+        expect(screen.getByTestId('export-progress-stats')).toHaveTextContent(
+          /^Rows written 1,500 · 1:05$/
+        ),
+      { timeout: 1_500 }
+    )
+    expect(screen.getByTestId('export-progress-stats')).not.toHaveTextContent('MB')
+  })
+
+  it('completion closes the dialog and shows the success toast', async () => {
+    const user = userEvent.setup()
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    progress = running(10, 2048, 1_000)
+    await startAllRowsExport(user)
+    await waitFor(() =>
+      expect(screen.getByTestId('export-progress-stats')).toHaveTextContent(
+        'Rows written 10 · 0.0 MB · 0:01'
+      )
+    )
+
+    progress = { ...running(250_000), status: 'completed' }
+    await waitFor(() => expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument(), {
+      timeout: 1_500,
+    })
+    await expectToast('success', 'Export completed')
+    await expectToast('success', '250,000 rows saved to /tmp/all.csv')
+  })
+
+  it('a failure shows the error bar, moves focus to it, toasts, and Try again restarts', async () => {
+    const user = userEvent.setup()
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    progress = { ...running(3), status: 'failed', error: 'Query failed: Deadlock found' }
+    setExportDestinationPath('/tmp/all.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    const bar = await screen.findByTestId('export-failed')
+    expect(bar).toHaveTextContent('Export failed')
+    expect(bar).toHaveTextContent('Query failed: Deadlock found')
+    expect(bar).toHaveTextContent('No file was written.')
+    await waitFor(() => expect(bar).toHaveFocus())
+    await expectToast('error', 'Export failed')
+
+    progress = running(1)
+    await user.click(screen.getByTestId('export-try-again'))
+    await screen.findByTestId('export-progress')
+    expect(ipc.calls('start_result_export')).toHaveLength(2)
+    expect(ipc.calls('start_result_export')[1]).toMatchObject({ filePath: '/tmp/all.csv' })
+  })
+
+  it('closing on a tab switch keeps the export running, and reopening shows its progress', async () => {
+    const user = userEvent.setup()
+    seedResult({ preferredExportScope: 'allRows' })
+    render(<Harness />)
+    progress = running(5, 10, 0)
+    await startAllRowsExport(user)
+
+    // ResultPanel closes the dialog when its tab goes inactive.
+    act(() => {
+      useQueryStore.getState().closeExportDialog(TAB)
+    })
+    expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument()
+    expect(ipc.calls('cancel_result_export')).toHaveLength(0)
+    const polls = ipc.calls('get_result_export_progress').length
+    await waitFor(
+      () => expect(ipc.calls('get_result_export_progress').length).toBeGreaterThan(polls),
+      { timeout: 1_500 }
+    )
+
+    act(() => {
+      useQueryStore.getState().openExportDialog(TAB, 'allRows')
+    })
+    expect(await screen.findByTestId('export-progress')).toBeInTheDocument()
+    expect(screen.getByTestId('export-progress-stats')).toHaveTextContent('Rows written 5')
+  })
 })

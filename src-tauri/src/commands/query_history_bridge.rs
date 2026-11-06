@@ -16,6 +16,7 @@ use crate::mysql::query_executor::{
     execute_call_query_impl, execute_multi_query_impl, execute_query_impl, ExecuteQueryResult,
     MultiQueryResult,
 };
+use crate::mysql::result_view::ResultViewSpec;
 use crate::state::AppState;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -144,15 +145,17 @@ pub fn invalidate_metadata_cache_for_executed_sql(state: &AppState, session_id: 
 
 // ── execute_query bridge ──────────────────────────────────────────────────────
 
-/// Execute a single query and log history.
+/// Execute a single query and log history. `view_spec` (sort plus filters) is
+/// passed through so a re-run keeps the user's view in one round trip.
 pub async fn execute_query_bridge(
     state: &AppState,
     session_id: &str,
     tab_id: &str,
     sql: &str,
     row_limit: usize,
+    view_spec: Option<ResultViewSpec>,
 ) -> Result<ExecuteQueryResult, String> {
-    let result = execute_query_impl(state, session_id, tab_id, sql, row_limit).await;
+    let result = execute_query_impl(state, session_id, tab_id, sql, row_limit, view_spec).await;
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 

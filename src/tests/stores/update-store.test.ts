@@ -211,8 +211,7 @@ describe('useUpdateStore', () => {
 
   it('ignores overlapping checks while already checking', async () => {
     let resolveCheck:
-      | ((value: ReturnType<typeof makeAvailableUpdateMetadata> | null) => void)
-      | undefined
+      ((value: ReturnType<typeof makeAvailableUpdateMetadata> | null) => void) | undefined
     ipc.override(
       'plugin:updater|check',
       () =>

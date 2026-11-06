@@ -24,24 +24,29 @@ pub fn write_csv<W: Write, R: AsRef<[serde_json::Value]>>(
     }
 
     for row in rows.iter().map(AsRef::as_ref) {
-        let record: Vec<String> = row
-            .iter()
-            .map(|v| match v {
-                serde_json::Value::Null => String::new(), // empty field for NULL
-                serde_json::Value::Bool(b) => {
-                    if *b {
-                        "1".to_string()
-                    } else {
-                        "0".to_string()
-                    }
-                }
-                serde_json::Value::String(s) => s.clone(),
-                other => other.to_string(),
-            })
-            .collect();
-        wtr.write_record(&record)?;
+        wtr.write_record(csv_record(row))?;
     }
 
     wtr.flush()?;
     Ok(())
+}
+
+/// The CSV fields of one row: NULL is an empty field, booleans are `1`/`0`,
+/// strings are written as-is and other values use their JSON text. Shared by
+/// the slice writer and the streaming writer so their output is identical.
+pub fn csv_record(row: &[serde_json::Value]) -> Vec<String> {
+    row.iter()
+        .map(|v| match v {
+            serde_json::Value::Null => String::new(), // empty field for NULL
+            serde_json::Value::Bool(b) => {
+                if *b {
+                    "1".to_string()
+                } else {
+                    "0".to_string()
+                }
+            }
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        })
+        .collect()
 }

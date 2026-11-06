@@ -81,8 +81,7 @@ function getGenerateDdlCalls() {
 
 let loadTableForDesignerImpl: () => Promise<TableDesignerSchema> | TableDesignerSchema
 let generateTableDdlImpl: () =>
-  | Promise<{ ddl: string; warnings: string[] }>
-  | { ddl: string; warnings: string[] }
+  Promise<{ ddl: string; warnings: string[] }> | { ddl: string; warnings: string[] }
 
 function registerTableDesignerIpc() {
   ipc.override('load_table_for_designer', () => loadTableForDesignerImpl())

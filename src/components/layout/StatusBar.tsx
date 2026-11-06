@@ -8,6 +8,7 @@ import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
+import { formatRowCountParts } from '../../lib/format-row-count'
 import styles from './StatusBar.module.css'
 
 const statusLabel: Record<string, string> = {
@@ -139,6 +140,18 @@ export function StatusBar() {
     activeTableDataState.error === null
 
   const visibleTableRows = activeTableDataState?.rows.length ?? 0
+
+  // The same unified row-count string as the result toolbar (wireframe 3).
+  const queryRowCount = activeResultState
+    ? formatRowCountParts({
+        viewRowCount: activeResultState.viewRowCount,
+        totalRows: activeResultState.totalRows,
+        isFiltered: activeResultState.filterModel.length > 0,
+        truncated: activeResultState.truncated,
+        autoLimitApplied: activeResultState.autoLimitApplied,
+        appliedRowLimit: activeResultState.appliedRowLimit,
+      })
+    : null
 
   const showIndexBuilding = indexStatus === 'building'
   const showIndexReady = flashType === 'ready' && !showIndexBuilding
@@ -295,22 +308,6 @@ export function StatusBar() {
               <span className={styles.queryRunningText}>Running...</span>
             </div>
           )}
-          {showQueryInfo && activeResultState && (
-            <div className={styles.queryInfo} data-testid="query-info">
-              <span className={styles.queryInfoItem} data-testid="query-rows">
-                <span className={styles.queryInfoLabel}>Rows</span>{' '}
-                <b className={styles.queryInfoTime}>{activeResultState.totalRows}</b>
-              </span>
-              <span className={styles.queryInfoItem} data-testid="query-time">
-                <span className={styles.queryInfoLabel}>Exec</span>{' '}
-                <b className={styles.queryInfoTime}>{activeResultState.executionTimeMs} ms</b>
-              </span>
-              <span className={styles.queryInfoItem} data-testid="query-total-time">
-                <span className={styles.queryInfoLabel}>Total</span>{' '}
-                <b className={styles.queryInfoTime}>{activeResultState.totalTimeMs} ms</b>
-              </span>
-            </div>
-          )}
           {showTableInfo && (
             <div className={styles.queryInfo} data-testid="table-data-info">
               <span className={styles.queryInfoItem} data-testid="table-data-rows">
@@ -320,6 +317,36 @@ export function StatusBar() {
             </div>
           )}
         </div>
+        {/* Query row count, Exec and Total sit outside the polite live region so count
+            changes aren't re-announced (wireframe 3). */}
+        {showQueryInfo && activeResultState && queryRowCount && (
+          <div className={styles.queryInfo} data-testid="query-info">
+            <span className={styles.queryInfoItem} data-testid="query-rows">
+              <b className={`${styles.queryInfoTime} ${styles.queryRowCount}`}>
+                {queryRowCount.segmentKind === 'truncated' && (
+                  <WarningCircle
+                    size={12}
+                    weight="fill"
+                    className={styles.queryRowCountWarning}
+                    aria-hidden="true"
+                    data-testid="query-rows-truncated-icon"
+                  />
+                )}
+                {queryRowCount.segment
+                  ? `${queryRowCount.count} · ${queryRowCount.segment}`
+                  : queryRowCount.count}
+              </b>
+            </span>
+            <span className={styles.queryInfoItem} data-testid="query-time">
+              <span className={styles.queryInfoLabel}>Exec</span>{' '}
+              <b className={styles.queryInfoTime}>{activeResultState.executionTimeMs} ms</b>
+            </span>
+            <span className={styles.queryInfoItem} data-testid="query-total-time">
+              <span className={styles.queryInfoLabel}>Total</span>{' '}
+              <b className={styles.queryInfoTime}>{activeResultState.totalTimeMs} ms</b>
+            </span>
+          </div>
+        )}
         {hasActivity && updateIndicator && <span className={styles.divider} aria-hidden="true" />}
         {updateIndicator}
         {(hasActivity || updateIndicator) && <span className={styles.divider} aria-hidden="true" />}

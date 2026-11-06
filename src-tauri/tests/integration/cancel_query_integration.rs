@@ -145,7 +145,7 @@ mod coverage_cancel {
         assert!(state.running_queries.read().await.is_empty());
 
         // Execute — the coverage stub inserts and removes dummy thread ID 42
-        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT 1", 100)
+        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT 1", 100, None)
             .await
             .expect("coverage stub should succeed");
 

@@ -416,6 +416,8 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
 
 #[cfg(coverage)]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
+    // Cancel running full exports first, while the pool their KILL needs exists.
+    crate::export::result_export::cancel_result_exports_for_connection(state, connection_id).await;
     if state.registry.contains(connection_id) {
         // Clean up schema index session tracking
         cleanup_schema_index_session(state, connection_id);
@@ -437,6 +439,10 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
 /// The registry's `remove()` cancels the health monitor's cancellation token.
 #[cfg(not(coverage))]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
+    // Cancel running full exports first: their KILL QUERY needs the registry's
+    // pool, which `registry.remove` below drops.
+    crate::export::result_export::cancel_result_exports_for_connection(state, connection_id).await;
+
     // Clean up schema index session tracking before removing from registry
     // (we need the registry entry to still exist for profile_id lookup in some paths)
     cleanup_schema_index_session(state, connection_id);

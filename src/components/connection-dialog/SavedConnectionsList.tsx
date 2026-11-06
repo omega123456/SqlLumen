@@ -110,9 +110,7 @@ function filterConnectionsByQuery(
 // --- Simplification 5: unified editing state for group rename / create ---
 
 type EditingGroupState =
-  | { mode: 'rename'; groupId: string; value: string }
-  | { mode: 'create'; value: string }
-  | null
+  { mode: 'rename'; groupId: string; value: string } | { mode: 'create'; value: string } | null
 
 interface GroupInlineInputProps {
   value: string

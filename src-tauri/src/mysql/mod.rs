@@ -7,6 +7,7 @@ pub mod query_executor;
 pub mod query_log;
 pub mod registry;
 pub mod result_cache;
+pub mod result_view;
 pub mod schema_queries;
 pub mod session;
 pub mod sql_table_parser;

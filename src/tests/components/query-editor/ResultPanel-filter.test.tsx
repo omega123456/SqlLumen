@@ -55,6 +55,7 @@ beforeEach(() => {
 })
 
 import React from 'react'
+import { withRows } from '../../helpers/query-test-utils'
 
 /**
  * Set up a tab in the query store with success status and filter-relevant state.
@@ -67,10 +68,10 @@ function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
       { name: 'id', dataType: 'INT' },
       { name: 'name', dataType: 'VARCHAR' },
     ],
-    rows: [
+    ...withRows([
       [1, 'Alice'],
       [2, 'Bob'],
-    ],
+    ]),
     totalRows: 2,
     queryId: 'q1',
     ...resultOverrides,
@@ -98,7 +99,7 @@ function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
 
 describe('ResultPanel — Filter button state', () => {
   it('filter button is disabled when no columns', () => {
-    setupQueryTab({ columns: [], rows: [] })
+    setupQueryTab({ columns: [], ...withRows([]) })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('btn-filter')).toBeDisabled()
   })
@@ -122,11 +123,8 @@ describe('ResultPanel — Clear filter', () => {
   it('clicking clear filter directly clears filters and shows toast', async () => {
     setupQueryTab({
       filterModel: [{ column: 'name', operator: '==', value: 'Alice' }],
-      unfilteredRows: [
-        [1, 'Alice'],
-        [2, 'Bob'],
-      ],
-      rows: [[1, 'Alice']],
+      ...withRows([[1, 'Alice']]),
+      totalRows: 2,
     })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 

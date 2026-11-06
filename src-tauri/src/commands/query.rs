@@ -15,11 +15,16 @@ use crate::commands::run_blocking_with_state;
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
-    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl, fetch_cached_rows_impl,
+    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
     fetch_schema_metadata_full_impl, fetch_schema_metadata_impl, read_file_impl,
-    reexecute_single_result_impl, sort_results_impl, touch_results_impl, update_result_cell_impl,
-    write_file_impl, ExecuteQueryResult, FetchCachedRowsResult, MultiQueryResult,
-    MultiQueryResultItem, QueryTableEditInfo, SchemaMetadata, SchemaMetadataFull, SortedRowsResult,
+    reexecute_single_result_impl, touch_results_impl, update_result_cell_impl, write_file_impl,
+    ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem, QueryTableEditInfo, SchemaMetadata,
+    SchemaMetadataFull,
+};
+#[cfg(not(coverage))]
+use crate::mysql::result_view::{
+    fetch_result_window_impl, remove_result_rows_impl, set_result_view_impl,
+    FetchResultWindowResult, RemoveResultRowsResult, ResultViewSpec, SetResultViewResult,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;
@@ -35,6 +40,7 @@ pub async fn execute_query(
     tab_id: String,
     sql: String,
     row_limit: Option<usize>,
+    view_spec: Option<ResultViewSpec>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
     execute_query_bridge(
@@ -43,23 +49,89 @@ pub async fn execute_query(
         &tab_id,
         &sql,
         row_limit.unwrap_or(1000),
+        view_spec,
     )
     .await
 }
 
-// ── fetch_cached_rows ─────────────────────────────────────────────────────────
+// ── Result views and windows ──────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub async fn fetch_cached_rows(
+#[allow(clippy::too_many_arguments)]
+pub async fn set_result_view(
     connection_id: String,
     tab_id: String,
+    result_index: usize,
     query_id: String,
-    result_index: Option<usize>,
+    base_view_version: u64,
+    view_spec: ResultViewSpec,
     app: tauri::AppHandle,
-) -> Result<FetchCachedRowsResult, String> {
+) -> Result<SetResultViewResult, String> {
     run_blocking_with_state(app, move |state| {
-        fetch_cached_rows_impl(state, &connection_id, &tab_id, &query_id, result_index)
+        set_result_view_impl(
+            state,
+            &connection_id,
+            &tab_id,
+            result_index,
+            &query_id,
+            base_view_version,
+            &view_spec,
+        )
+    })
+    .await?
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn fetch_result_window(
+    connection_id: String,
+    tab_id: String,
+    result_index: usize,
+    query_id: String,
+    view_version: u64,
+    offset: usize,
+    limit: usize,
+    app: tauri::AppHandle,
+) -> Result<FetchResultWindowResult, String> {
+    run_blocking_with_state(app, move |state| {
+        fetch_result_window_impl(
+            state,
+            &connection_id,
+            &tab_id,
+            result_index,
+            &query_id,
+            view_version,
+            offset,
+            limit,
+        )
+    })
+    .await?
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn remove_result_rows(
+    connection_id: String,
+    tab_id: String,
+    result_index: usize,
+    query_id: String,
+    base_view_version: u64,
+    base_indices: Vec<u32>,
+    app: tauri::AppHandle,
+) -> Result<RemoveResultRowsResult, String> {
+    run_blocking_with_state(app, move |state| {
+        remove_result_rows_impl(
+            state,
+            &connection_id,
+            &tab_id,
+            result_index,
+            &query_id,
+            base_view_version,
+            &base_indices,
+        )
     })
     .await?
 }
@@ -116,29 +188,6 @@ pub fn write_file(
     write_file_impl(&path, &content)
 }
 
-// ── sort_results ──────────────────────────────────────────────────────────────
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn sort_results(
-    connection_id: String,
-    tab_id: String,
-    column_name: String,
-    direction: String,
-    result_index: Option<usize>,
-    state: tauri::State<'_, AppState>,
-) -> Result<SortedRowsResult, String> {
-    sort_results_impl(
-        &state,
-        &connection_id,
-        &tab_id,
-        &column_name,
-        &direction,
-        result_index,
-    )
-    .await
-}
-
 // ── analyze_query_for_edit ────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
@@ -153,6 +202,7 @@ pub async fn analyze_query_for_edit(
 
 // ── update_result_cell ────────────────────────────────────────────────────────
 
+/// `row_index` is a base row index (see `update_result_cell_impl`).
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn update_result_cell(
@@ -161,6 +211,7 @@ pub async fn update_result_cell(
     row_index: usize,
     updates: HashMap<usize, serde_json::Value>,
     result_index: Option<usize>,
+    query_id: String,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     run_blocking_with_state(app, move |state| {
@@ -171,6 +222,7 @@ pub async fn update_result_cell(
             row_index,
             updates,
             result_index,
+            &query_id,
         )
     })
     .await?
@@ -198,6 +250,7 @@ pub async fn reexecute_single_result(
     result_index: usize,
     sql: String,
     row_limit: Option<usize>,
+    view_spec: Option<ResultViewSpec>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResultItem, String> {
     let result = reexecute_single_result_impl(
@@ -207,6 +260,7 @@ pub async fn reexecute_single_result(
         result_index,
         &sql,
         row_limit.unwrap_or(1000),
+        view_spec,
     )
     .await;
 

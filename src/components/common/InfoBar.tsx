@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode, Ref } from 'react'
 import styles from './InfoBar.module.css'
 
 export type InfoBarSeverity = 'info' | 'success' | 'warning' | 'error'
@@ -19,11 +19,20 @@ export type InfoBarProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
   detail?: ReactNode
   /** Buttons on the right (e.g. retry, dismiss). */
   actions?: ReactNode
+  /**
+   * Opt-in polite announcement (`role="status"`, `aria-live="polite"`) for
+   * warnings and errors that must not interrupt, e.g. the truncation notice.
+   * By default warnings and errors are announced as alerts.
+   */
+  polite?: boolean
+  /** Ref to the bar element (e.g. to move focus to a failure). */
+  ref?: Ref<HTMLDivElement>
 }
 
 /**
  * Inline status bar (Fluent InfoBar). The severity always shows a glyph as well as a colour,
- * so status never relies on colour alone. Errors and warnings are announced as alerts.
+ * so status never relies on colour alone. Errors and warnings are announced as alerts unless
+ * `polite` is set.
  */
 export function InfoBar({
   severity,
@@ -31,13 +40,17 @@ export function InfoBar({
   message,
   detail,
   actions,
+  polite = false,
   className,
+  ref,
   ...rest
 }: InfoBarProps) {
-  const isUrgent = severity === 'error' || severity === 'warning'
+  const isUrgent = !polite && (severity === 'error' || severity === 'warning')
   return (
     <div
+      ref={ref}
       role={isUrgent ? 'alert' : 'status'}
+      aria-live={polite ? 'polite' : undefined}
       data-severity={severity}
       {...rest}
       className={[styles.bar, styles[severity], className].filter(Boolean).join(' ')}

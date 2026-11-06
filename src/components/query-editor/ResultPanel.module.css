@@ -64,6 +64,17 @@
 
 /* tabpanel wrapper — must fill remaining space and contain overflow
    so the grid/form view height chain is preserved */
+/* Band slot between the toolbar and the grid: truncation notice, then failure band */
+.bandSlot {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--result-grid-bg);
+  border-top: 1px solid var(--stroke-divider);
+}
+
 .tabPanel {
   display: flex;
   flex-direction: column;

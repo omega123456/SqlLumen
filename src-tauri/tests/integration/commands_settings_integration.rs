@@ -99,6 +99,9 @@ fn test_settings_impls_surface_poisoned_db_lock_errors() {
         editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -151,6 +154,9 @@ fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
         editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -205,4 +211,28 @@ fn test_set_setting_impl_ignores_unparseable_result_cache_ttl() {
     assert_eq!(state.table_data_cache.ttl_seconds(), 1800);
     let persisted = get_setting_impl(&state, "results.cacheTTL").expect("should get ttl");
     assert_eq!(persisted, Some("not-a-number".to_string()));
+}
+
+#[test]
+fn test_set_setting_impl_updates_result_row_ceiling_with_clamping() {
+    let state = common::test_app_state();
+    assert_eq!(state.result_cache.row_ceiling(), 100_000);
+
+    set_setting_impl(&state, "results.maxRows", "250000").expect("valid value");
+    assert_eq!(state.result_cache.row_ceiling(), 250_000);
+
+    set_setting_impl(&state, "results.maxRows", "10").expect("too low is clamped");
+    assert_eq!(state.result_cache.row_ceiling(), 1_000);
+
+    set_setting_impl(&state, "results.maxRows", "9000000").expect("too high is clamped");
+    assert_eq!(state.result_cache.row_ceiling(), 1_000_000);
+
+    set_setting_impl(&state, "results.maxRows", "lots").expect("unparseable is persisted");
+    assert_eq!(
+        state.result_cache.row_ceiling(),
+        1_000_000,
+        "an unparseable value leaves the ceiling unchanged"
+    );
+    let persisted = get_setting_impl(&state, "results.maxRows").expect("should get value");
+    assert_eq!(persisted, Some("lots".to_string()));
 }

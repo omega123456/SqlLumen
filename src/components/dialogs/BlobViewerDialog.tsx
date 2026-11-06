@@ -75,9 +75,7 @@ function errorMessage(err: unknown): string {
  * them) so content and Save-to-file are suppressed.
  */
 type WorkingValue =
-  | { kind: 'bytes'; bytes: Uint8Array }
-  | { kind: 'null' }
-  | { kind: 'tooLarge'; byteLength: number }
+  { kind: 'bytes'; bytes: Uint8Array } | { kind: 'null' } | { kind: 'tooLarge'; byteLength: number }
 
 export interface BlobViewerDialogProps {
   isOpen: boolean

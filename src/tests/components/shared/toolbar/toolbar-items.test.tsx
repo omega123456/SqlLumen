@@ -500,6 +500,18 @@ describe('StatusArea', () => {
     expect(screen.queryByTestId('status-execution-time')).not.toBeInTheDocument()
   })
 
+  it('renders a preformatted count node in place of the numeric count', () => {
+    render(<StatusArea status="success" totalRows={12340} countLabel="2,340 of 12,340 rows" />)
+    expect(screen.getByText('2,340 of 12,340 rows')).toBeInTheDocument()
+    expect(screen.queryByText('12340 rows')).not.toBeInTheDocument()
+  })
+
+  it('renders a custom loading label in place of "Loading..."', () => {
+    render(<StatusArea status="loading" loadingLabel="Copying… 4,000 of 12,340" />)
+    expect(screen.getByTestId('status-loading')).toHaveTextContent('Copying… 4,000 of 12,340')
+    expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+  })
+
   it('renders success fallback text when totalRows is not provided', () => {
     render(<StatusArea status="success" />)
 

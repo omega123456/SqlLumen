@@ -16,6 +16,12 @@ export interface ConfirmDialogProps {
   warningText?: string | null
   /** When true, prevent dismissal via Cancel button, Escape key, and backdrop click. */
   nonDismissible?: boolean
+  /**
+   * When true, the Cancel button is not rendered and the confirm button sits
+   * alone in the right-hand action slot (e.g. an "OK" acknowledgement).
+   * Escape and the backdrop still call `onCancel`.
+   */
+  hideCancel?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -31,6 +37,7 @@ export function ConfirmDialog({
   error,
   warningText,
   nonDismissible = false,
+  hideCancel = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -57,7 +64,7 @@ export function ConfirmDialog({
           {error}
         </div>
       )}
-      <div className={styles.actions}>
+      <div className={hideCancel ? `${styles.actions} ${styles.actionsSingle}` : styles.actions}>
         <Button
           ref={confirmButtonRef}
           variant={isDestructive ? 'danger' : 'accent'}
@@ -74,9 +81,11 @@ export function ConfirmDialog({
             confirmLabel
           )}
         </Button>
-        <Button onClick={onCancel} disabled={nonDismissible} data-testid="confirm-cancel-button">
-          Cancel
-        </Button>
+        {!hideCancel && (
+          <Button onClick={onCancel} disabled={nonDismissible} data-testid="confirm-cancel-button">
+            Cancel
+          </Button>
+        )}
       </div>
     </DialogShell>
   )

@@ -530,12 +530,7 @@ async function restoreConnectionTabs(
           databaseName: tabState.databaseName,
           objectName: tabState.objectName,
           objectType: tabState.objectType as
-            | 'table'
-            | 'view'
-            | 'procedure'
-            | 'function'
-            | 'trigger'
-            | 'event',
+            'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event',
         })
         const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
         const created = allTabs.find(

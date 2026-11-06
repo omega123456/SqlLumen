@@ -7,6 +7,7 @@ import { CompactSelection, GridCellKind, type GridSelection } from '@glideapps/g
 import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBaseGridView'
 import * as GlideDataGridModule from '../../../../components/shared/glide/GlideDataGrid'
 import type { GridHandle } from '../../../../components/shared/glide/glide-grid-types'
+import { expectToast } from '../../../ipc-mock'
 
 // GlideDataGrid is a forwardRef object — vi.spyOn can't intercept it.
 // Use Object.defineProperty to replace it per-test (same pattern as ResultGridView.test.tsx).
@@ -718,18 +719,13 @@ describe('CanvasBaseGridView', () => {
     expect(deleteResult).toBe(false)
     expect(onCellValueChange).toHaveBeenLastCalledWith(0, 'name', '')
 
-    let pasteAccepted = false
-    act(() => {
+    // The only column is read-only here: a paste has no target cell.
+    let pasteAccepted = true
+    await act(async () => {
       pasteAccepted = props.onPaste([0, 0], [['pasted']])
     })
-    expect(pasteAccepted).toBe(true)
-    expect(onCellClipboardEdit).toHaveBeenCalledWith({
-      rowIdx: 0,
-      rowData: rows[0],
-      columnKey: 'name',
-      action: 'paste',
-      text: 'pasted',
-    })
+    expect(pasteAccepted).toBe(false)
+    expect(onCellClipboardEdit).not.toHaveBeenCalled()
     let pasteIgnored = true
     act(() => {
       pasteIgnored = props.onPaste([5, 0], [['ignored']])
@@ -1045,12 +1041,14 @@ describe('CanvasBaseGridView', () => {
       value: { writeText, readText },
     })
     const onCellValueChange = vi.fn()
-    const onCellClipboardEdit = vi.fn()
+    const onCellClipboardEdit = vi.fn(async () => true)
     render(
       <CanvasBaseGridView
         rows={rows}
-        columns={columns}
+        columns={[{ ...columns[0], editable: true }]}
         editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
         selectedCellPosition={{ rowIdx: 0, idx: 0 }}
         onCellValueChange={onCellValueChange}
         onCellClipboardEdit={onCellClipboardEdit}
@@ -1071,17 +1069,69 @@ describe('CanvasBaseGridView', () => {
     fireEvent.contextMenu(screen.getByTestId('clipboard-grid'))
     await user.click(screen.getByRole('menuitem', { name: 'Paste' }))
     expect(readText).toHaveBeenCalled()
-    expect(onCellClipboardEdit).toHaveBeenCalledWith({
-      rowIdx: 0,
-      rowData: rows[0],
-      columnKey: 'name',
-      action: 'paste',
-      text: 'pasted',
-    })
+    await waitFor(() =>
+      expect(onCellClipboardEdit).toHaveBeenCalledWith({
+        rowIdx: 0,
+        rowData: rows[0],
+        columnKey: 'name',
+        action: 'paste',
+        text: 'pasted',
+      })
+    )
 
     fireEvent.contextMenu(screen.getByTestId('clipboard-grid'))
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByTestId('clipboard-grid-clipboard-menu')).not.toBeInTheDocument()
+  })
+
+  it('pastes only the first line of a multi-line block in array mode and warns', async () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const onCellClipboardEdit = vi.fn(async () => true)
+    const twoColumns = [
+      { ...columns[0], editable: true },
+      { ...columns[0], key: 'note', displayName: 'Note', editable: true },
+    ]
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={twoColumns}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name', 'note'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+        onCellClipboardEdit={onCellClipboardEdit}
+      />
+    )
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onPaste: (
+        target: readonly [number, number],
+        values: readonly (readonly string[])[]
+      ) => boolean
+    }
+    let accepted = true
+    await act(async () => {
+      accepted = props.onPaste(
+        [0, 0],
+        [
+          ['n1', 'm1'],
+          ['n2', 'm2'],
+        ]
+      )
+    })
+    // Glide's own block paste is never used.
+    expect(accepted).toBe(false)
+    expect(onCellClipboardEdit).toHaveBeenCalledTimes(1)
+    expect(onCellClipboardEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ rowIdx: 0, columnKey: 'name', text: 'n1' })
+    )
+    expect(onCellValueChange.mock.calls).toEqual([[0, 'note', 'm1']])
+    expect(onRowsChange).toHaveBeenCalledWith(expect.any(Array), {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'note' }),
+    })
+    await expectToast('warning', 'Pasted one row')
   })
 
   it('cuts selection with Ctrl+X keyboard shortcut', async () => {

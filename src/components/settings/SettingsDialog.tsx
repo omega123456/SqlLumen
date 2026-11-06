@@ -30,6 +30,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const activeSection = useSettingsStore((s) => s.activeSection)
   const setActiveSection = useSettingsStore((s) => s.setActiveSection)
   const isDirty = useSettingsStore((s) => s.isDirty)
+  const hasValidationErrors = useSettingsStore((s) => Object.keys(s.validationErrors).length > 0)
   const loadSettings = useSettingsStore((s) => s.loadSettings)
   const save = useSettingsStore((s) => s.save)
   const discard = useSettingsStore((s) => s.discard)
@@ -58,6 +59,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const handleSave = useCallback(async () => {
     const savedKeys = Object.keys(useSettingsStore.getState().pendingChanges)
     await save()
+    // Invalid values block the save: keep the dialog open on the error.
+    if (Object.keys(useSettingsStore.getState().validationErrors).length > 0) return
     const remainingPendingChanges = useSettingsStore.getState().pendingChanges
     const intervalSaveSucceeded =
       savedKeys.includes('updates.checkInterval') &&
@@ -165,7 +168,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
               <Button
                 variant="accent"
                 onClick={() => void handleSave()}
-                disabled={!isDirty}
+                disabled={!isDirty || hasValidationErrors}
                 data-testid="settings-save"
               >
                 Save

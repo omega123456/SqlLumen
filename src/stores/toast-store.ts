@@ -29,9 +29,7 @@ function clearScheduled(id: string) {
 type ToastGetter = () => ToastState
 type ToastSetter = (
   partial:
-    | ToastState
-    | Partial<ToastState>
-    | ((state: ToastState) => ToastState | Partial<ToastState>)
+    ToastState | Partial<ToastState> | ((state: ToastState) => ToastState | Partial<ToastState>)
 ) => void
 
 function pushToast(set: ToastSetter, get: ToastGetter, item: ToastItem): string {

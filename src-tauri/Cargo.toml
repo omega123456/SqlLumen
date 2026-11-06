@@ -35,7 +35,7 @@ regex = { version = "~1.13.1", features = ["std"] }
 sqlparser = "~0.63.0"
 sqlx = { version = "~0.9.0", features = ["runtime-tokio", "mysql", "tls-rustls-ring", "chrono"] }
 tokio = { version = "~1.54.0", features = ["sync", "time", "macros", "rt"] }
-rust_xlsxwriter = "~0.100.0"
+rust_xlsxwriter = { version = "~0.100.0", features = ["constant_memory"] }
 base64 = "~0.23.1"
 futures = "~0.3.34"
 reqwest = { version = "~0.13.5", default-features = false, features = ["json", "stream", "rustls-no-provider"] }
@@ -88,6 +88,7 @@ rmp-serde = "~1.3.1"
 async-trait = "~0.1.92"
 opensrv-mysql = "~0.7.0"
 wiremock = "~0.6.5"
+zip = { version = "~9.0.5", default-features = false, features = ["deflate"] }
 
 [profile.dev]
 debug = "line-tables-only"

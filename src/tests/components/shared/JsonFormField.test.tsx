@@ -43,8 +43,7 @@ function createMonacoEditorMock() {
         }}
         ref={() => {
           const onMount = props.onMount as
-            | ((editor: unknown, monaco: Record<string, unknown>) => void)
-            | undefined
+            ((editor: unknown, monaco: Record<string, unknown>) => void) | undefined
           onMount?.(
             {
               getValue: () => valueRef.current,

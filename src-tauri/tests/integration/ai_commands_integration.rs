@@ -36,6 +36,9 @@ fn test_state() -> AppState {
         editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         ai_requests: Arc::new(Mutex::new(HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(HashMap::new())),

@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import { afterEach, vi } from 'vitest'
 
 import { setupIpc } from './ipc-mock'
+import { clearAllResultWindows } from '../lib/result-window-cache'
 
 /** React 19 + Vitest: known stray act() warnings from long-lived async test-only mocks. */
 const FILTERED_ACT_NOISE_PATTERNS = [
@@ -369,4 +370,6 @@ afterEach(() => {
   act(() => {
     cleanup()
   })
+  // The result page cache is a module-level singleton: start every test empty.
+  clearAllResultWindows()
 })

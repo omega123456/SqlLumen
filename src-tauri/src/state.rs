@@ -115,6 +115,72 @@ pub struct ImportJobProgress {
     pub completed_at: Option<std::time::SystemTime>,
 }
 
+/// Status of a streaming full export of a truncated query result.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ResultExportStatus {
+    Running,
+    Completed,
+    Cancelled,
+    Failed,
+}
+
+/// Progress of a streaming full export (`start_result_export`). Serialized
+/// fields are the `get_result_export_progress` IPC contract; the rest is
+/// bookkeeping for cancel, connection-scoped cancel and lazy cleanup.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultExportJobProgress {
+    pub status: ResultExportStatus,
+    pub rows_written: u64,
+    pub bytes_written: u64,
+    /// Milliseconds since the job started (frozen once it ends).
+    pub elapsed_ms: u64,
+    /// True when an XLSX export stopped at Excel's sheet row limit.
+    pub stopped_at_sheet_limit: bool,
+    pub error: Option<String>,
+    #[serde(skip)]
+    pub job_id: String,
+    #[serde(skip)]
+    pub cancel_requested: bool,
+    /// Editor-session thread running the re-run (the `KILL QUERY` target),
+    /// set only while the re-run streams.
+    #[serde(skip)]
+    pub mysql_thread_id: Option<u64>,
+    /// Registry connection the job runs on (`close_connection` cancels it).
+    #[serde(skip)]
+    pub connection_id: String,
+    #[serde(skip)]
+    pub started_at: std::time::Instant,
+    /// When the job reached a terminal state. Used for lazy cleanup.
+    #[serde(skip)]
+    pub completed_at: Option<std::time::SystemTime>,
+    /// Cancel state shared with the running job without the map lock.
+    #[serde(skip)]
+    pub cancel: Arc<ResultExportCancel>,
+}
+
+/// Cancel state of one export job, shared by the job and `cancel_result_export`.
+///
+/// The job reads `requested` on every streamed row without taking the job-map
+/// lock. A cancel `KILL QUERY` is counted in `kills_in_flight` from the moment
+/// it is registered (under the job-map write lock, while the job still has a
+/// thread id) until it was sent or given up, so the job can wait for it before
+/// releasing the shared editor session: a late KILL must never reach the next
+/// query that runs on that session.
+#[derive(Debug, Default)]
+pub struct ResultExportCancel {
+    pub requested: std::sync::atomic::AtomicBool,
+    pub kills_in_flight: std::sync::atomic::AtomicUsize,
+    /// True once a cancel `KILL QUERY` reached the server.
+    pub kill_sent: std::sync::atomic::AtomicBool,
+    /// Notified whenever an in-flight cancel KILL finishes.
+    pub kill_done: tokio::sync::Notify,
+}
+
+/// Shared map of streaming full-export jobs, keyed by job id.
+pub type ResultExportJobs = Arc<RwLock<HashMap<String, ResultExportJobProgress>>>;
+
 /// Application-wide state accessible from Tauri commands.
 pub struct AppState {
     /// SQLite database connection for local persistence.
@@ -143,6 +209,8 @@ pub struct AppState {
     pub dump_jobs: Arc<RwLock<HashMap<String, DumpJobProgress>>>,
     /// Progress tracking for SQL import jobs.
     pub import_jobs: Arc<RwLock<HashMap<String, ImportJobProgress>>>,
+    /// Progress tracking for streaming full exports of truncated query results.
+    pub result_export_jobs: ResultExportJobs,
     /// Progress tracking for copy-to-host jobs.
     pub copy_jobs: Arc<RwLock<HashMap<String, CopyJobProgress>>>,
     /// Cancellation tokens for in-progress AI chat streams, keyed by stream_id.

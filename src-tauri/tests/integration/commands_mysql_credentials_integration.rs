@@ -95,6 +95,9 @@ fn test_state() -> AppState {
         editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -139,6 +142,9 @@ fn poisoned_state() -> AppState {
         editor_sessions: Default::default(),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),

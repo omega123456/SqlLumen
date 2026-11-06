@@ -28,6 +28,59 @@
   white-space: nowrap;
 }
 
+/* Truncated count segment (wireframe 1): WarningCircle + "100,000+ rows · truncated" */
+.truncatedCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.truncatedIcon {
+  flex: none;
+  color: var(--warning);
+}
+
+/* "Filtering…" status text (non-blocking) */
+.statusNote {
+  white-space: nowrap;
+}
+
+/* "Loading rows X–Y…" after the 1 s threshold (wireframe 2) */
+.windowLoading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.miniSpinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--primary);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: resultToolbarSpin 0.7s linear infinite;
+}
+
+@keyframes resultToolbarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Text for assistive technology only (the one-time status announcement) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Edit actions group (Save / Discard) */
 .editActionsGroup {
   display: flex;

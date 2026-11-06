@@ -149,4 +149,37 @@ describe('ConfirmDialog', () => {
     await user.click(backdrop)
     expect(onCancel).not.toHaveBeenCalled()
   })
+
+  it('hideCancel renders only the confirm button, in the right-hand action slot', async () => {
+    const user = userEvent.setup()
+    const onConfirm = vi.fn()
+    render(
+      <ConfirmDialog
+        {...defaultProps}
+        hideCancel
+        confirmLabel="OK"
+        warningText={null}
+        onConfirm={onConfirm}
+      />
+    )
+    expect(screen.queryByTestId('confirm-cancel-button')).not.toBeInTheDocument()
+    const ok = screen.getByTestId('confirm-confirm-button')
+    expect(ok).toHaveTextContent('OK')
+    expect(ok.parentElement?.className).toMatch(/actionsSingle/)
+    await user.click(ok)
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('hideCancel still lets Escape close the dialog', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    render(<ConfirmDialog {...defaultProps} hideCancel onCancel={onCancel} />)
+    await user.keyboard('{Escape}')
+    expect(onCancel).toHaveBeenCalled()
+  })
+
+  it('renders Cancel by default', () => {
+    render(<ConfirmDialog {...defaultProps} />)
+    expect(screen.getByTestId('confirm-cancel-button')).toBeInTheDocument()
+  })
 })

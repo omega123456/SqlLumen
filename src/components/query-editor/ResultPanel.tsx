@@ -11,11 +11,21 @@
  * current row before completing the view mode switch.
  *
  * Supports multi-result tabs — renders ResultSubTabs when results.length > 1.
+ *
+ * Rows are windowed (the Rust cache owns them). Between the toolbar and the
+ * grid sits the band slot: the polite truncation notice (wireframes 1 / 1b),
+ * then the window-fetch or view-change failure band with Retry (wireframe 2).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Play, ClockCountdown } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
+import type { GridRowActions } from '../shared/glide/CanvasBaseGridView'
+import { formatCount, formatRowRange } from '../../lib/format-row-count'
+import { readViewRange, type CachedRow } from '../../lib/result-window-cache'
+import { logFrontend } from '../../lib/app-log-commands'
+import { toCachedRow } from '../../lib/result-row-materializer'
+import type { FullExportBlockedReason } from '../../types/schema'
 import { useToastStore } from '../../stores/toast-store'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
 import { FkLookupDialog } from '../table-data/FkLookupDialog'
@@ -51,11 +61,28 @@ const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 const EMPTY_RESULTS: readonly unknown[] = []
 const EMPTY_COLUMNS: ColumnMeta[] = []
-const EMPTY_ROWS: unknown[][] = []
 const EMPTY_FILTER_MODEL: FilterCondition[] = []
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_BINDINGS = new Map<number, string>()
 const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
+
+/** Truncation band message per full-export-blocked reason (wireframes 1 and 1b). */
+const TRUNCATION_MESSAGES: Record<FullExportBlockedReason | 'none', string> = {
+  none: 'Result truncated. This query returned more rows than the maximum rows kept per result.',
+  call: 'Result truncated. Exporting all rows would run this stored procedure again and repeat its changes. To keep more rows in future runs, raise Maximum rows kept per result in Settings.',
+  locking:
+    'Result truncated. Exporting all rows would run this locking query again and take its locks again. To export every row, remove the locking clause and run the query again.',
+  unknownDatabase:
+    "Result truncated. The database this query ran in couldn't be recorded, so all rows can't be exported. Run the query again to enable full export.",
+}
+
+/** The cached row a materialized grid row stands for, or null when it has no base index. */
+function cachedRowFromRowData(
+  rowData: Record<string, unknown>,
+  columnCount: number
+): CachedRow | null {
+  return typeof rowData.__baseIdx === 'number' ? toCachedRow(rowData, columnCount) : null
+}
 
 export function ResultPanel({
   tabId,
@@ -85,18 +112,30 @@ export function ResultPanel({
   const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
   const applyQueryFilters = useQueryStore((s) => s.applyQueryFilters)
   const retryExpiredResult = useQueryStore((s) => s.retryExpiredResult)
+  const openExportDialog = useQueryStore((s) => s.openExportDialog)
+  const retryResultWindow = useQueryStore((s) => s.retryResultWindow)
+  const retryViewChange = useQueryStore((s) => s.retryViewChange)
+  const beginRowAction = useQueryStore((s) => s.beginRowAction)
+  const markResultsExpired = useQueryStore((s) => s.markResultsExpired)
 
   // Read from active result
   const resultStatus = activeResult.resultStatus
   const columns = (activeResult.columns ?? EMPTY_COLUMNS) as ColumnMeta[]
-  const rows = (activeResult.rows ?? EMPTY_ROWS) as unknown[][]
+  const viewRowCount = activeResult.viewRowCount ?? 0
+  const viewVersion = activeResult.viewVersion ?? 0
+  const queryId = activeResult.queryId ?? null
+  const draftRow = activeResult.draftRow ?? null
+  const truncated = activeResult.truncated ?? false
+  const rowCeiling = activeResult.rowCeiling ?? 0
+  const fullExportBlockedReason = activeResult.fullExportBlockedReason ?? null
+  const failedWindowRange = activeResult.failedWindowRange ?? null
+  const viewError = activeResult.viewError ?? null
   const affectedRows = activeResult.affectedRows ?? 0
   const viewMode = activeResult.viewMode ?? 'grid'
   const sortColumn = activeResult.sortColumn ?? null
   const sortDirection = activeResult.sortDirection ?? null
   const selectedRowIndex = activeResult.selectedRowIndex ?? null
   const exportDialogOpen = activeResult.exportDialogOpen ?? false
-  const totalRows = activeResult.totalRows ?? 0
   const isExpired = activeResult.isExpired ?? false
   const rowResidencyStatus = activeResult.rowResidency?.status ?? 'resident'
   const isSorting = activeResult.isSorting ?? false
@@ -109,6 +148,7 @@ export function ResultPanel({
     activeResult.editBoundColumnIndexMap ?? EMPTY_BOUND_COLUMN_INDEX_MAP
   const editState = activeResult.editState ?? null
   const editingRowIndex = activeResult.editingRowIndex ?? null
+  const editingBaseIndex = activeResult.editingBaseIndex ?? null
   const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
   const saveError = activeResult.saveError ?? null
   const isAnalyzingQuery = activeResult.isAnalyzingQuery ?? false
@@ -123,23 +163,7 @@ export function ResultPanel({
   // Filter state
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
   const filterModel: FilterCondition[] = activeResult.filterModel ?? EMPTY_FILTER_MODEL
-  const unfilteredRows = activeResult.unfilteredRows as unknown[][] | null
   const filterColumns = useMemo(() => columns.map((c) => c.name), [columns])
-
-  // Compute visible row indices for export when a filter is active.
-  // When unfilteredRows is non-null, the displayed `rows` are a reference-preserving
-  // subset of unfilteredRows. We find the original indices via reference equality.
-  const visibleRowIndices = useMemo(() => {
-    if (!unfilteredRows) return undefined
-    const rowSet = new Set(rows)
-    const indices: number[] = []
-    for (let i = 0; i < unfilteredRows.length; i++) {
-      if (rowSet.has(unfilteredRows[i])) {
-        indices.push(i)
-      }
-    }
-    return indices
-  }, [unfilteredRows, rows])
   const selectedCell = activeResult?.selectedCell ?? null
 
   const showSuccess = useToastStore((s) => s.showSuccess)
@@ -162,30 +186,44 @@ export function ResultPanel({
   )
 
   /**
-   * Handle form-view record navigation (Previous / Next).
-   * All rows are in a single page, so no page boundary logic needed.
+   * Handle form-view record navigation (Previous / Next) over the whole view;
+   * the form view fetches rows that aren't loaded.
    */
+  const formRowCount = viewRowCount + (draftRow ? 1 : 0)
   const handleFormNavigate = useCallback(
     (direction: 'prev' | 'next') => {
       const currentIndex = selectedRowIndex ?? 0
       const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1
 
       // Bounds check
-      if (newIndex < 0 || newIndex >= totalRows) return
+      if (newIndex < 0 || newIndex >= formRowCount) return
 
       setSelectedRow(tabId, newIndex)
     },
-    [setSelectedRow, tabId, selectedRowIndex, totalRows]
+    [setSelectedRow, tabId, selectedRowIndex, formRowCount]
   )
 
   // --- Edit mode callbacks ---
 
   const handleStartEditing = useCallback(
-    (rowIndex: number) => {
-      startEditingRow(tabId, rowIndex)
+    (rowIndex: number, row?: CachedRow) => {
+      startEditingRow(tabId, rowIndex, row)
     },
     [startEditingRow, tabId]
   )
+
+  // Grid actions that fetch unloaded rows report progress through the store.
+  const gridRowActions = useMemo<GridRowActions>(
+    () => ({
+      begin: (verb, total, onCancel) => beginRowAction(tabId, verb, total, onCancel),
+      onExpired: () => markResultsExpired(tabId),
+    }),
+    [beginRowAction, markResultsExpired, tabId]
+  )
+
+  const handleExportAllRows = useCallback(() => {
+    openExportDialog(tabId, 'allRows')
+  }, [openExportDialog, tabId])
 
   const handleUpdateCellValue = useCallback(
     (columnIndex: number, value: unknown) => {
@@ -303,6 +341,25 @@ export function ResultPanel({
       const currentEditingRow = currentActiveResult.editingRowIndex ?? null
       const currentEditState = currentActiveResult.editState ?? null
 
+      // The lookup row may not be in the page cache (e.g. evicted): use the
+      // row the grid handed over, or fetch it by view position.
+      const resolveRow = async (): Promise<CachedRow | undefined> => {
+        const fromGrid = cachedRowFromRowData(args.rowData, currentActiveResult.columns.length)
+        if (fromGrid) return fromGrid
+        try {
+          const fetched = await readViewRange(tabId, activeResultIndex, [rowIndex, rowIndex + 1])
+          return fetched[0]
+        } catch (error) {
+          logFrontend(
+            'warn',
+            `[result-panel] FK lookup could not load row ${rowIndex + 1}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          )
+          return undefined
+        }
+      }
+
       if (currentEditingRow !== null && currentEditingRow !== rowIndex) {
         if (currentEditState && currentEditState.modifiedColumns.size > 0) {
           const saveSucceeded = await saveCurrentRow(tabId)
@@ -311,9 +368,9 @@ export function ResultPanel({
           discardCurrentRow(tabId)
         }
 
-        startEditingRow(tabId, rowIndex)
+        startEditingRow(tabId, rowIndex, await resolveRow())
       } else if (currentEditingRow === null) {
-        startEditingRow(tabId, rowIndex)
+        startEditingRow(tabId, rowIndex, await resolveRow())
       }
 
       handleRowSelected(rowIndex)
@@ -331,6 +388,7 @@ export function ResultPanel({
       resolveResultForeignKey,
       editMode,
       tabId,
+      activeResultIndex,
       saveCurrentRow,
       discardCurrentRow,
       handleRowSelected,
@@ -365,14 +423,26 @@ export function ResultPanel({
       }
 
       if (!sameRow) {
-        startEditingRow(tabId, rowIndex)
+        startEditingRow(
+          tabId,
+          rowIndex,
+          cachedRowFromRowData(fkLookupContext.rowData, columns.length) ?? undefined
+        )
       }
 
       syncCellValue(tabId, resultColumnIndex, selectedValue)
       handleRowSelected(rowIndex)
       setFkLookupOpen(false)
     },
-    [fkLookupContext, tabId, editingRowIndex, handleRowSelected, startEditingRow, syncCellValue]
+    [
+      columns.length,
+      fkLookupContext,
+      tabId,
+      editingRowIndex,
+      handleRowSelected,
+      startEditingRow,
+      syncCellValue,
+    ]
   )
 
   // Determine which status to show for the result area
@@ -387,7 +457,7 @@ export function ResultPanel({
           : resultStatus
   const cloneVisible = editMode !== null
   const selectedRowExists =
-    selectedRowIndex !== null && selectedRowIndex >= 0 && selectedRowIndex < rows.length
+    selectedRowIndex !== null && selectedRowIndex >= 0 && selectedRowIndex < viewRowCount
   const selectedRowIsDraft = !!editState?.isNewRow && editingRowIndex === selectedRowIndex
   const hasBlockingPendingEdit =
     editState !== null && (editState.isNewRow || editState.modifiedColumns.size > 0)
@@ -415,6 +485,81 @@ export function ResultPanel({
   const resultPanelLabelledBy =
     !hideSubTabs && results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
 
+  const isFiltered = filterModel.length > 0
+  const isTabRunning = tabStatus === 'running'
+
+  /** Truncation notice, then the window / view failure band (wireframes 1, 1b and 2). */
+  const renderBands = () => {
+    const showTruncation = truncated
+    const showWindowFailure = failedWindowRange !== null
+    const showViewError = viewError !== null
+    if (!showTruncation && !showWindowFailure && !showViewError) return null
+    return (
+      <div className={styles.bandSlot} data-testid="result-band-slot">
+        {showTruncation && (
+          <InfoBar
+            severity="warning"
+            polite
+            title={`Showing the first ${formatCount(rowCeiling)} rows`}
+            message={TRUNCATION_MESSAGES[fullExportBlockedReason ?? 'none']}
+            actions={
+              fullExportBlockedReason === null ? (
+                <Button
+                  size="sm"
+                  onClick={handleExportAllRows}
+                  disabled={isTabRunning}
+                  title={isTabRunning ? 'Wait for the query to finish.' : undefined}
+                  data-testid="truncation-export-all"
+                >
+                  Export all rows…
+                </Button>
+              ) : undefined
+            }
+            data-testid="result-truncation-band"
+          />
+        )}
+        {showViewError ? (
+          <InfoBar
+            severity="error"
+            title="Couldn't apply sort or filter"
+            message={viewError}
+            actions={
+              <Button
+                size="sm"
+                onClick={() => retryViewChange(tabId)}
+                data-testid="view-error-retry"
+              >
+                Retry
+              </Button>
+            }
+            data-testid="result-view-error-band"
+          />
+        ) : (
+          showWindowFailure && (
+            <InfoBar
+              severity="error"
+              title={`Couldn't load rows ${formatRowRange(
+                failedWindowRange[0] + 1,
+                failedWindowRange[1]
+              )}`}
+              message="Retry to load these rows."
+              actions={
+                <Button
+                  size="sm"
+                  onClick={() => retryResultWindow(tabId)}
+                  data-testid="window-error-retry"
+                >
+                  Retry
+                </Button>
+              }
+              data-testid="result-window-error-band"
+            />
+          )
+        )}
+      </div>
+    )
+  }
+
   const renderResultBody = (className: string) => (
     <div
       role={hideSubTabs ? undefined : 'tabpanel'}
@@ -433,6 +578,7 @@ export function ResultPanel({
         isCloneVisible={cloneVisible}
         isCloneDisabled={cloneDisabled}
       />
+      {columns.length > 0 && renderBands()}
       {columns.length > 0 ? (
         <FkLookupProvider onFkLookup={handleFkLookup}>
           {viewMode === 'grid' && (
@@ -441,7 +587,11 @@ export function ResultPanel({
               // doesn't leak between result sub-tabs.
               key={activeResultIndex}
               columns={columns}
-              rows={rows}
+              resultIndex={activeResultIndex}
+              queryId={queryId}
+              viewRowCount={viewRowCount}
+              viewVersion={viewVersion}
+              draftRow={draftRow}
               sortColumn={sortColumn}
               sortDirection={sortDirection}
               onSortChanged={handleSortChanged}
@@ -453,21 +603,26 @@ export function ResultPanel({
               editColumnBindings={editColumnBindings}
               editState={editState}
               editingRowIndex={editingRowIndex}
+              editingBaseIndex={editingBaseIndex}
               editTableColumns={editTableColumns}
               editForeignKeys={editForeignKeys}
               onStartEditing={handleStartEditing}
               onUpdateCellValue={handleUpdateCellValue}
               onSyncCellValue={handleSyncCellValue}
               onAutoSave={handleAutoSave}
+              rowActions={gridRowActions}
               isActive={isActive}
             />
           )}
           {viewMode === 'form' && (
             <ResultFormView
               columns={columns}
-              rows={rows}
+              resultIndex={activeResultIndex}
+              queryId={queryId}
+              viewVersion={viewVersion}
+              viewRowCount={viewRowCount}
+              draftRow={draftRow}
               selectedRowIndex={selectedRowIndex}
-              totalRows={totalRows}
               onNavigate={handleFormNavigate}
               tabId={tabId}
               editMode={editMode}
@@ -483,7 +638,18 @@ export function ResultPanel({
               onDiscardRow={handleFormDiscard}
             />
           )}
-          {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
+          {viewMode === 'text' && (
+            <ResultTextView
+              columns={columns}
+              tabId={tabId}
+              resultIndex={activeResultIndex}
+              queryId={queryId}
+              viewVersion={viewVersion}
+              viewRowCount={viewRowCount}
+              truncated={truncated}
+              isFiltered={isFiltered}
+            />
+          )}
         </FkLookupProvider>
       ) : (
         <div className={styles.infoBody}>
@@ -645,7 +811,6 @@ export function ResultPanel({
           tabId={tabId}
           resultIndex={activeResultIndex}
           onClose={() => closeExportDialog(tabId)}
-          rowIndices={visibleRowIndices}
         />
       )}
 

@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -17,7 +17,24 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use super::query_executor::{SharedRows, StoredResult};
+use super::query_executor::StoredResult;
+
+/// Default hard ceiling on rows kept per query-editor result
+/// (`results.maxRows`); see `commands::settings` for the setting bounds.
+pub const DEFAULT_ROW_CEILING: usize = 100_000;
+
+/// Outcome of [`GenericCache::modify_slot_in_place_if_current`].
+#[derive(Debug, PartialEq, Eq)]
+pub enum SlotWrite<T> {
+    /// The closure ran and its changes were written back.
+    Applied(T),
+    /// The invalidation version changed, or the entry or slot is gone.
+    Invalidated,
+    /// The slot holds a different query id than the request expected.
+    QueryIdMismatch,
+    /// The slot's view version no longer equals the request's base version.
+    ViewSuperseded { current: u64 },
+}
 
 /// Wrapper stored in the moka cache. Holds the cached value plus a
 /// monotonically increasing generation token used for stale-listener
@@ -85,6 +102,12 @@ pub trait MemorySnapshot: Send + Sync {
 /// Production implementation using `sysinfo`.
 pub struct SysinfoMemorySnapshot {
     sys: sysinfo::System,
+}
+
+impl Default for SysinfoMemorySnapshot {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SysinfoMemorySnapshot {
@@ -260,9 +283,11 @@ where
     cleaned_keys: Arc<RwLock<HashSet<(String, String)>>>,
     spill_worker_tx: Sender<SpillWorkerMessage<V>>,
     spill_worker_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
-    /// Serializes in-place read-modify-write updates (cell edits, sort
-    /// write-backs) so concurrent callers cannot lose each other's changes.
+    /// Serializes in-place read-modify-write updates (cell edits, view and
+    /// tombstone write-backs) so concurrent callers cannot lose each other's changes.
     in_place_write_lock: Mutex<()>,
+    /// Hard ceiling on rows kept per result (read by the editor decode loop).
+    row_ceiling: Arc<AtomicUsize>,
 }
 
 impl<V> GenericCache<V>
@@ -501,6 +526,7 @@ where
             spill_worker_tx,
             spill_worker_handle: Mutex::new(Some(spill_worker_handle)),
             in_place_write_lock: Mutex::new(()),
+            row_ceiling: Arc::new(AtomicUsize::new(DEFAULT_ROW_CEILING)),
         }
     }
 
@@ -643,7 +669,7 @@ where
                 .spillable_removals
                 .write()
                 .expect("spillable_removals lock poisoned");
-            spillable.retain(|&(ref c, ref t, _)| !(c == &key.0 && t == &key.1));
+            spillable.retain(|(c, t, _)| !(c == &key.0 && t == &key.1));
         }
 
         {
@@ -718,7 +744,7 @@ where
                 .spillable_removals
                 .write()
                 .expect("spillable_removals lock poisoned");
-            spillable.retain(|&(ref c, ref t, _)| !(c == &key.0 && t == &key.1));
+            spillable.retain(|(c, t, _)| !(c == &key.0 && t == &key.1));
         }
     }
 
@@ -924,67 +950,50 @@ where
     }
 }
 
-/// Result-set-specific cache operations that need to reach into the
-/// `Vec<StoredResult>` value (the generic `GenericCache<V>` impl cannot index
-/// into an opaque `V`).
 impl GenericCache<Vec<StoredResult>> {
-    /// Swap the `rows` Arc of a single result slot in place, only when the
-    /// invalidation version still matches `expected_invalidation_version`.
-    ///
-    /// Equivalent to [`Self::modify_rows_in_place_if_current`] with a closure
-    /// that ignores the current rows.
-    ///
-    /// Returns `true` if the swap was applied, `false` if the version no longer
-    /// matched (a query was re-run / invalidated during the sort) or the entry /
-    /// slot was gone.
-    pub fn update_rows_in_place_if_current(
-        &self,
-        connection_id: &str,
-        tab_id: &str,
-        expected_invalidation_version: u64,
-        idx: usize,
-        new_rows: SharedRows,
-    ) -> bool {
-        self.modify_rows_in_place_if_current(
-            connection_id,
-            tab_id,
-            expected_invalidation_version,
-            idx,
-            |_| Ok(new_rows),
-        )
-        .unwrap_or(false)
+    /// Hard ceiling on rows kept per query-editor result.
+    pub fn row_ceiling(&self) -> usize {
+        self.row_ceiling.load(Ordering::Relaxed)
     }
 
-    /// Replace the `rows` Arc of a single result slot with `f(current_rows)`,
-    /// only when the invalidation version still matches
-    /// `expected_invalidation_version`.
+    /// Set the ceiling used by runs that start after this call. Does not clamp
+    /// (the settings layer clamps), so tests can use small ceilings.
+    pub fn set_row_ceiling(&self, rows: usize) {
+        self.row_ceiling.store(rows, Ordering::Relaxed);
+    }
+
+    /// Read-modify-write one whole result slot in place (rows, view, view
+    /// spec, view version, tombstones), only when the invalidation version still
+    /// matches `expected_invalidation_version`.
     ///
-    /// The version check, read, `f` and write-back run under one mutex shared
-    /// by every in-place update, so two concurrent edits (or an edit and a sort
-    /// write-back) cannot lose each other's change. A concurrent
-    /// [`GenericCache::insert_if_current`] does not take this lock, so a narrow
-    /// race with a re-run remains; the version check makes it best-effort.
+    /// This is the only write path to a cached slot. The version check, read,
+    /// `f` and write-back run under one mutex shared by every in-place write, so
+    /// cell edits and view or tombstone writes can't lose each other's change.
+    /// A concurrent [`GenericCache::insert_if_current`] does not take this lock,
+    /// so a narrow race with a re-run remains; pass `expected_query_id` to
+    /// refuse a write that lands after a re-run replaced the slot. Unlike
+    /// `insert`, it does not bump the generation, remove spill files, or churn
+    /// LRU bookkeeping. In addition it optionally checks that:
+    /// - the slot still holds `expected_query_id` ([`SlotWrite::QueryIdMismatch`]);
+    /// - the slot's `view_version` still equals `base_view_version`
+    ///   (compare-and-swap, [`SlotWrite::ViewSuperseded`] with the current version).
     ///
-    /// Unlike [`GenericCache::insert_if_current`], this updates in place: it does
-    /// **not** bump the generation, remove spill files, or churn LRU
-    /// bookkeeping. Only `value[idx].rows` changes. `Arc::make_mut` avoids
-    /// cloning the underlying `Vec<StoredResult>` only when the entry Arc is
-    /// uniquely held (best-effort); if another reader still holds it, the vec is
-    /// cloned (row data itself is shared by pointer either way).
-    ///
-    /// Returns `Ok(true)` if the update was applied, `Ok(false)` if the version
-    /// no longer matched or the entry / slot was gone, and `Err` (leaving the
-    /// cache unchanged) if `f` failed.
-    pub fn modify_rows_in_place_if_current<F>(
+    /// `f` mutates a clone of the slot; the clone replaces the slot only when
+    /// `f` succeeds, so an `Err` from `f` leaves the cache unchanged. Rows that
+    /// were handed out are never mutated: `f` must build new `SharedRows`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn modify_slot_in_place_if_current<T, F>(
         &self,
         connection_id: &str,
         tab_id: &str,
         expected_invalidation_version: u64,
         idx: usize,
+        expected_query_id: Option<&str>,
+        base_view_version: Option<u64>,
         f: F,
-    ) -> Result<bool, String>
+    ) -> Result<SlotWrite<T>, String>
     where
-        F: FnOnce(&SharedRows) -> Result<SharedRows, String>,
+        F: FnOnce(&mut StoredResult) -> Result<T, String>,
     {
         let key = (connection_id.to_string(), tab_id.to_string());
         let _write_guard = self
@@ -998,34 +1007,45 @@ impl GenericCache<Vec<StoredResult>> {
                 connection_id = %connection_id,
                 tab_id = %tab_id,
                 expected_invalidation_version,
-                "in-place rows update skipped: invalidation version changed"
+                "in-place slot update skipped: invalidation version changed"
             );
-            return Ok(false);
+            return Ok(SlotWrite::Invalidated);
         }
 
         let Some(mut entry) = self.cache.get(&key) else {
             tracing::debug!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,
-                "in-place rows update skipped: entry no longer cached"
+                "in-place slot update skipped: entry no longer cached"
             );
-            return Ok(false);
+            return Ok(SlotWrite::Invalidated);
         };
 
-        let Some(current_rows) = entry.value.get(idx).map(|slot| &slot.rows) else {
+        let Some(slot) = entry.value.get(idx) else {
             tracing::warn!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,
                 idx,
-                "in-place rows update skipped: result slot index out of range"
+                "in-place slot update skipped: result slot index out of range"
             );
-            return Ok(false);
+            return Ok(SlotWrite::Invalidated);
         };
-        let new_rows = f(current_rows)?;
+        if expected_query_id.is_some_and(|qid| qid != slot.query_id) {
+            return Ok(SlotWrite::QueryIdMismatch);
+        }
+        if let Some(base) = base_view_version {
+            if slot.view_version != base {
+                return Ok(SlotWrite::ViewSuperseded {
+                    current: slot.view_version,
+                });
+            }
+        }
 
-        Arc::make_mut(&mut entry).value[idx].rows = new_rows;
+        let mut next = slot.clone();
+        let output = f(&mut next)?;
+        Arc::make_mut(&mut entry).value[idx] = next;
         self.cache.insert(key, entry);
-        Ok(true)
+        Ok(SlotWrite::Applied(output))
     }
 }
 

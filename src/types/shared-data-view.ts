@@ -120,7 +120,7 @@ export interface CellClipboardEditArgs {
 
 export interface AutoSizeConfig {
   enabled: boolean
-  computeWidth: (col: GridColumnDescriptor, rows: Record<string, unknown>[]) => number
+  computeWidth: (col: GridColumnDescriptor, rows: readonly Record<string, unknown>[]) => number
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +141,12 @@ export interface BaseGridViewProps {
   onCellClickGuard?: (args: CellClickGuardArgs) => Promise<CellClickGuardResult>
   onCellSelectionChange?: (args: CellClickGuardArgs) => void
   runCellClickGuardOnKeyboardSelection?: boolean
-  onCellClipboardEdit?: (args: CellClipboardEditArgs) => Promise<void> | void
+  /**
+   * Apply a clipboard edit to a cell. Resolves `true` once the target row is
+   * the row being edited with the value applied (a paste then applies the rest
+   * of its line to that row), `false` when nothing was applied.
+   */
+  onCellClipboardEdit?: (args: CellClipboardEditArgs) => Promise<boolean> | boolean
   onColumnResize?: (column: string, width: number) => void
   onRowsChange?: (
     rows: Record<string, unknown>[],
@@ -323,6 +328,13 @@ export type StatusType = 'idle' | 'loading' | 'success' | 'error'
 export interface StatusAreaProps {
   status: StatusType
   totalRows?: number
+  /**
+   * Preformatted row-count node shown in the **success** branch instead of the
+   * numeric `totalRows` text (e.g. "2,340 of 12,340 rows"). Optional and additive.
+   */
+  countLabel?: ReactNode
+  /** Label shown in the **loading** branch instead of "Loading..." (e.g. "Copying… 4,000 of 12,340"). */
+  loadingLabel?: ReactNode
   executionTimeMs?: number
   errorMessage?: string
   customContent?: ReactNode

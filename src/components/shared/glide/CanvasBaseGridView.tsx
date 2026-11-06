@@ -33,7 +33,7 @@ import {
   type DropdownCellType,
   type MultiSelectCellType,
 } from '@glideapps/glide-data-grid-cells'
-import { getDefaultColumnWidth } from '../../../lib/grid-column-style'
+import { AUTO_SIZE_SAMPLE_LIMIT, getDefaultColumnWidth } from '../../../lib/grid-column-style'
 import type {
   BaseGridViewProps,
   GridColumnDescriptor,
@@ -54,7 +54,15 @@ import {
   drawInfoAffordance,
   drawModifiedCellIndicator,
   drawSelectedRowAccent,
+  drawSkeletonCell,
 } from './glide-drawers'
+import {
+  createArrayRowSource,
+  resolveRowRange,
+  type GridRowSource,
+  type RowRange,
+} from './grid-row-source'
+import { useGlideSkeletonColor } from '../../../hooks/use-glide-grid-theme'
 import { GlideDataGrid } from './GlideDataGrid'
 import type { GridColumn, GridHandle, GridSortColumn } from './glide-grid-types'
 import { getGlideEditor } from './glide-editors'
@@ -65,7 +73,15 @@ import {
   getContextMenuPositionMode,
   getContextMenuPortalRoot,
   positionContextMenuInPortal,
+  readClipboardText,
+  writeClipboardText,
 } from '../../../lib/context-menu-utils'
+import { showErrorToast, showSuccessToast, showWarningToast } from '../../../stores/toast-store'
+import { formatCount } from '../../../lib/format-row-count'
+import {
+  CLIPBOARD_ACTION_FAILURES,
+  type ClipboardActionFailure,
+} from '../../../lib/clipboard-action-failures'
 type GridRow = Record<string, unknown>
 type GlideKeyDownEvent = GridKeyEventArgs
 type GlideDropdownOption = string | { value: string; label: string }
@@ -160,11 +176,142 @@ export interface CanvasBaseGridViewProps extends BaseGridViewProps {
    * so stale visual checkmarks no longer point at shifted rows.
    */
   resetSelectionKey?: number
+  /**
+   * Row source. When given (windowed mode), rows are read through it instead of
+   * `rows`: missing rows render as skeleton cells, the visible range is
+   * reported to it, and Copy/Cut/Clear/Paste fetch unloaded rows first.
+   */
+  rowSource?: GridRowSource<GridRow>
+  /** Windowed mode: checked rows as half-open view-position ranges (D17). */
+  onRowMarkerRangesChange?: (ranges: RowRange[]) => void
+  /** Windowed mode: progress and expiry hooks for actions that fetch unloaded rows. */
+  rowActions?: GridRowActions
+}
+
+/** Verbs of grid actions that may need to fetch unloaded rows first (wireframe 8). */
+export type GridRowActionVerb = 'Copying' | 'Cutting' | 'Clearing' | 'Pasting'
+
+/** Progress hooks a windowed grid uses for actions over unloaded rows. */
+export interface GridRowActions {
+  /**
+   * Start tracking an action over `total` rows. `onCancel` is given when the
+   * fetch spans more than one 2,000-row chunk. `finish()` returns true when the
+   * progress became visible (the 1 s threshold), which gates the success toast.
+   */
+  begin: (
+    verb: GridRowActionVerb,
+    total: number,
+    onCancel?: () => void
+  ) => { update: (done: number) => void; finish: () => boolean }
+  /** The cached result expired: route to the "Results expired" block (no toast). */
+  onExpired: () => void
+}
+
+/** Rows per fetch chunk; a cancel button appears for fetches spanning more than one. */
+const ROW_FETCH_CHUNK = 2000
+/** Rows repainted after a page loads when the visible region isn't known yet. */
+const VISIBLE_REPAINT_FALLBACK_ROWS = 200
+/** Skeleton bar height when the theme has no cell font size. */
+const SKELETON_FALLBACK_LINE_PX = 13
+const EMPTY_GRID_ROWS: GridRow[] = []
+
+/** Wireframe 8 failure copy per action verb (fetch and clipboard failures alike). */
+const ROW_ACTION_FAILURES: Record<GridRowActionVerb, ClipboardActionFailure> = {
+  Copying: CLIPBOARD_ACTION_FAILURES.copy,
+  Cutting: CLIPBOARD_ACTION_FAILURES.cut,
+  Clearing: CLIPBOARD_ACTION_FAILURES.clear,
+  Pasting: CLIPBOARD_ACTION_FAILURES.paste,
+}
+
+/** Windowed grids route Copy and Cut through the app's own async path (D21). */
+const WINDOWED_KEYBINDINGS = { copy: false, cut: false } as const
+
+function rowActionSuccess(verb: GridRowActionVerb, count: number): [string, string] {
+  const rows = `${formatCount(count)} ${count === 1 ? 'row' : 'rows'}`
+  switch (verb) {
+    case 'Copying':
+      return ['Copied', `${rows} copied to clipboard.`]
+    case 'Cutting':
+      return ['Cut', `${rows} cut.`]
+    case 'Clearing':
+      return ['Cleared', `${rows} cleared.`]
+    case 'Pasting':
+      return ['Pasted', `${rows} updated.`]
+  }
+}
+
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+/** The index in `next` that `previous` lacks (when exactly one was added). */
+function findAddedIndex(next: CompactSelection, previous: CompactSelection): number | undefined {
+  for (const index of next) {
+    if (!previous.hasIndex(index)) return index
+  }
+  return undefined
+}
+
+/**
+ * Half-open row ranges covered by a row selection (a Glide `CompactSelection`,
+ * with a fast path for one contiguous run, or any iterable of row indices).
+ */
+function selectionRowRanges(selection: CompactSelection | Iterable<number>): RowRange[] {
+  if (selection instanceof CompactSelection) {
+    const first = selection.first()
+    const last = selection.last()
+    if (first === undefined || last === undefined) return []
+    if (last - first + 1 === selection.length) return [[first, last + 1]]
+  }
+  const ranges: Array<[number, number]> = []
+  for (const index of [...selection].sort((a, b) => a - b)) {
+    const current = ranges[ranges.length - 1]
+    if (current && current[1] === index) current[1] = index + 1
+    else ranges.push([index, index + 1])
+  }
+  return ranges
+}
+
+/** Merge half-open ranges (clamped to `[0, rowCount)`), sorted and non-overlapping. */
+function mergeRowRanges(ranges: readonly RowRange[], rowCount: number): Array<[number, number]> {
+  const sorted = ranges
+    .map(([start, end]): [number, number] => [Math.max(0, start), Math.min(rowCount, end)])
+    .filter(([start, end]) => end > start)
+    .sort((a, b) => a[0] - b[0])
+  const merged: Array<[number, number]> = []
+  for (const [start, end] of sorted) {
+    const last = merged[merged.length - 1]
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end)
+    else merged.push([start, end])
+  }
+  return merged
+}
+
+/** Row ranges covered by selection rectangles. */
+function rectRowRanges(rects: readonly Rectangle[]): RowRange[] {
+  return rects.map((rect) => [rect.y, rect.y + rect.height] as const)
+}
+
+/** True when every row of `[start, end)` is loaded in the source. */
+function isRangeLoaded<TRow>(source: GridRowSource<TRow>, start: number, end: number): boolean {
+  for (let index = start; index < end; index++) {
+    if (!source.isLoaded(index)) return false
+  }
+  return true
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** `results_expired` failures route to the "Results expired" block, not a toast. */
+function isResultsExpired(error: unknown): boolean {
+  return errorText(error).includes('results_expired')
 }
 
 function toGridColumn(
   column: GridColumnDescriptor,
-  rows: GridRow[],
+  rows: readonly GridRow[],
   autoSizeConfig: CanvasBaseGridViewProps['autoSizeConfig']
 ): GridColumn<GridRow> {
   const computedWidth =
@@ -317,6 +464,26 @@ const CUSTOM_RENDERERS: CustomRenderer[] = [
   MultiSelectCellRenderer as unknown as CustomRenderer,
 ]
 
+/**
+ * The edited cell Glide's paste would produce for `text` in `cell`, or
+ * undefined when the cell is read-only or the value is unchanged (mirrors
+ * Glide's `pasteToCell` for the text and enum/SET cells that descriptor
+ * columns render; checkbox cells only exist for non-descriptor columns).
+ */
+function pasteTextIntoCell(cell: GridCell, text: string): EditableGridCell | undefined {
+  if (cell.kind === GridCellKind.Text) {
+    if (cell.readonly === true || text === cell.data) return undefined
+    return { ...cell, data: text }
+  }
+  if (cell.kind === GridCellKind.Custom) {
+    if (cell.readonly === true) return undefined
+    const renderer = CUSTOM_RENDERERS.find((candidate) => candidate.isMatch(cell))
+    const data = renderer?.onPaste?.(text, cell.data)
+    return data === undefined ? undefined : { ...cell, data }
+  }
+  return undefined
+}
+
 function resolveEditorBaselineValue(
   row: GridRow,
   columnKey: string,
@@ -335,7 +502,10 @@ function resolveEditorBaselineValue(
 
 function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<GridHandle>) {
   const {
-    rows,
+    rows: rowsProp,
+    rowSource,
+    onRowMarkerRangesChange,
+    rowActions,
     columns,
     sortColumn,
     sortDirection,
@@ -391,6 +561,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   // parent (and write to the store) when the checked rows actually change —
   // plain cell clicks / keyboard navigation must not churn checkbox state.
   const prevMarkedRowsRef = useRef<number[]>([])
+  const prevMarkedRangesKeyRef = useRef('[]')
   const lastSelectedListCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const lastAppliedInitialScrollRef = useRef<{ scrollRow: number; scrollCol: number } | null>(null)
   const lastReportedScrollCellRef = useRef<ScrollCell | null>(null)
@@ -401,6 +572,32 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const pendingTypingActivationRef = useRef<PendingTypingActivation | null>(null)
   const listEditorOpeningRef = useRef(false)
   const activeSelectedRowIndex = selectedRowIndex ?? internalSelectedRowIndex
+  const source = useMemo<GridRowSource<GridRow>>(
+    () => rowSource ?? createArrayRowSource(rowsProp),
+    [rowSource, rowsProp]
+  )
+  const isWindowed = source.kind === 'windowed'
+  const rowCount = source.rowCount
+  const skeletonColor = useGlideSkeletonColor()
+  // Auto-size samples only loaded rows (in windowed mode, the first window).
+  const autoSizeSampleRows = useMemo<readonly GridRow[]>(() => {
+    if (!isWindowed) return rowsProp
+    const sample: GridRow[] = []
+    for (
+      let index = 0;
+      index < source.rowCount && sample.length < AUTO_SIZE_SAMPLE_LIMIT;
+      index++
+    ) {
+      const row = source.getRow(index)
+      if (!row) break
+      sample.push(row)
+    }
+    return sample
+  }, [isWindowed, rowsProp, source])
+  /** True while a windowed action is fetching rows: blocks other actions and edits. */
+  const actionPendingRef = useRef(false)
+  const actionAbortRef = useRef<AbortController | null>(null)
+  const lastVisibleRegionRef = useRef<Rectangle | null>(null)
 
   useImperativeHandle(
     ref,
@@ -444,7 +641,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   )
 
   const gridColumns = useMemo<GridColumn<GridRow>[]>(() => {
-    const dataColumns = columns.map((column) => toGridColumn(column, rows, props.autoSizeConfig))
+    const dataColumns = columns.map((column) =>
+      toGridColumn(column, autoSizeSampleRows, props.autoSizeConfig)
+    )
     const infoColumns: GridColumn<GridRow>[] = showInfoColumn
       ? [{ key: 'info', name: 'Info', width: 260, resizable: true, sortable: true }]
       : []
@@ -468,7 +667,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     props.autoSizeConfig,
     props.prefixColumns,
     props.suffixColumns,
-    rows,
+    autoSizeSampleRows,
     showInfoColumn,
   ])
 
@@ -514,12 +713,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const selectRow = useCallback(
     (rowIndex: number | null) => {
-      const row = rowIndex == null ? null : (rows[rowIndex] ?? null)
+      const row = rowIndex == null ? null : (source.getRow(rowIndex) ?? null)
       const nextIndex = row == null ? null : rowIndex
       setInternalSelectedRowIndex(nextIndex)
       onSelectedRowChange?.(row, nextIndex)
     },
-    [onSelectedRowChange, rows]
+    [onSelectedRowChange, source]
   )
 
   const sortColumns = useMemo<GridSortColumn[]>(() => {
@@ -527,8 +726,8 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   }, [sortColumn, sortDirection])
 
   useLayoutEffect(() => {
-    if (!initialScrollCell || rows.length === 0 || gridColumns.length === 0) return
-    const normalized = clampScrollCell(initialScrollCell, rows.length - 1, gridColumns.length - 1)
+    if (!initialScrollCell || rowCount === 0 || gridColumns.length === 0) return
+    const normalized = clampScrollCell(initialScrollCell, rowCount - 1, gridColumns.length - 1)
     const lastApplied = lastAppliedInitialScrollRef.current
     if (isSameScrollCell(lastApplied, normalized)) {
       return
@@ -572,7 +771,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       }
       suppressScrollPersistenceRef.current = false
     }
-  }, [gridColumns.length, initialScrollCell, rows.length])
+  }, [gridColumns.length, initialScrollCell, rowCount])
 
   useEffect(() => {
     if (scrollToRowIndex == null || scrollToRowIndex < 0) return
@@ -589,17 +788,18 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   // the same render that observes the new key.
   if (resetSelectionKey != null && lastResetSelectionKey !== resetSelectionKey) {
     setLastResetSelectionKey(resetSelectionKey)
+    prevMarkedRangesKeyRef.current = '[]'
     setGridSelection((current) => {
       if (!current || current.rows.length === 0) return current
       return { ...current, rows: CompactSelection.empty() }
     })
   }
 
-  const getCellContent = useCallback(
-    ([colIndex, rowIndex]: Item): GridCell => {
+  /** Build the cell for `row` (a loaded row object) at `[colIndex, rowIndex]`. */
+  const buildCellForRow = useCallback(
+    (row: GridRow, colIndex: number, rowIndex: number): GridCell => {
       const column = gridColumns[colIndex]
-      const row = rows[rowIndex]
-      if (!column || !row) return buildTextCell('', classifyCellValue('', ''))
+      if (!column) return buildTextCell('', classifyCellValue('', ''))
       const rawValue = row[column.key]
       if (column.cellKind === 'checkbox') {
         return {
@@ -669,8 +869,32 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       isModifiedCell,
       isRowEditing,
       isRowSelected,
-      rows,
     ]
+  )
+
+  const getCellContent = useCallback(
+    ([colIndex, rowIndex]: Item): GridCell => {
+      const row = source.getRow(rowIndex)
+      if (!row) {
+        // Windowed rows that aren't loaded yet: a flat skeleton (drawn in drawCell).
+        return isWindowed
+          ? { kind: GridCellKind.Loading, allowOverlay: false }
+          : buildTextCell('', classifyCellValue('', ''))
+      }
+      return buildCellForRow(row, colIndex, rowIndex)
+    },
+    [buildCellForRow, isWindowed, source]
+  )
+
+  /** Windowed `getCellsForSelection`: synchronous, loaded rows only, never fetches. */
+  const getCellsForSelection = useCallback(
+    (rect: Rectangle): readonly (readonly GridCell[])[] =>
+      Array.from({ length: rect.height }, (_, rowOffset) =>
+        Array.from({ length: rect.width }, (_, colOffset) =>
+          getCellContent([rect.x + colOffset, rect.y + rowOffset])
+        )
+      ),
+    [getCellContent]
   )
 
   const handleHeaderClicked = useCallback(
@@ -694,7 +918,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const handleCellClicked = useCallback(
     (cell: Item, event: CellClickedEventArgs) => {
       const [colIndex, rowIndex] = cell
-      const row = rows[rowIndex]
+      const row = source.getRow(rowIndex)
       const column = gridColumns[colIndex]
       if (!row || !column) return
       lastInteractedCellRef.current = { rowIdx: rowIndex, idx: colIndex }
@@ -746,6 +970,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       }
 
       const run = async () => {
+        if (actionPendingRef.current) return
         const guard = onCellClickGuard
           ? await onCellClickGuard({ rowIdx: rowIndex, columnKey: column.key, rowData: row })
           : { proceed: true, targetRowIdx: rowIndex, targetColIdx: colIndex, enableEditor: false }
@@ -762,7 +987,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         if (ok) {
           selectRow(guard.targetRowIdx)
           const guardedColumn = gridColumns[guard.targetColIdx]
-          const guardedRow = rows[guard.targetRowIdx]
+          const guardedRow = source.getRow(guard.targetRowIdx)
           if (guardedColumn && guardedRow) {
             onCellSelectionChange?.({
               rowIdx: guard.targetRowIdx,
@@ -802,7 +1027,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       onInfoCellClick,
       onRowClick,
       openListEditor,
-      rows,
+      source,
       selectRow,
     ]
   )
@@ -846,41 +1071,185 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (!isNoOpCommit) {
         onCellValueChange?.(rowIndex, column.key, next)
       }
-      const nextRows = isNoOpCommit
-        ? rows
-        : rows.map((row, index) => (index === rowIndex ? { ...row, [column.key]: next } : row))
-      onRowsChange?.(nextRows, { indexes: [rowIndex], column })
+      // Windowed grids have no full row array; they rely on onCellValueChange.
+      if (onRowsChange && !isWindowed) {
+        const nextRows = isNoOpCommit
+          ? rowsProp
+          : rowsProp.map((row, index) =>
+              index === rowIndex ? { ...row, [column.key]: next } : row
+            )
+        onRowsChange(nextRows, { indexes: [rowIndex], column })
+      }
     },
-    [gridColumns, onCellValueChange, onRowsChange, rows]
+    [gridColumns, isWindowed, onCellValueChange, onRowsChange, rowsProp]
   )
 
+  /**
+   * Run a grid action over `ranges` of view positions. Rows that are already
+   * loaded are used directly; in windowed mode missing rows are fetched first
+   * (in 2,000-row chunks, with progress after 1 s and Cancel for multi-chunk
+   * fetches). Nothing is written until every row has loaded. `act` receives a
+   * row lookup by view position. Returns true when `act` ran.
+   */
+  const runRowAction = useCallback(
+    async (
+      verb: GridRowActionVerb,
+      ranges: readonly RowRange[],
+      act: (rowAt: (index: number) => GridRow | undefined) => boolean | Promise<boolean>
+    ): Promise<boolean> => {
+      const merged = mergeRowRanges(ranges, rowCount)
+      const missing = isWindowed
+        ? merged.filter(([start, end]) => !isRangeLoaded(source, start, end))
+        : []
+      if (missing.length === 0) {
+        return act((index) => source.getRow(index))
+      }
+
+      const total = merged.reduce((sum, [start, end]) => sum + (end - start), 0)
+      const chunkCount = merged.reduce(
+        (sum, [start, end]) => sum + Math.ceil((end - start) / ROW_FETCH_CHUNK),
+        0
+      )
+      const controller = new AbortController()
+      actionPendingRef.current = true
+      actionAbortRef.current = controller
+      const progress = rowActions?.begin(
+        verb,
+        total,
+        chunkCount > 1 ? () => controller.abort() : undefined
+      )
+      const resolved = new Map<number, GridRow>()
+      try {
+        let doneBefore = 0
+        for (const range of merged) {
+          const rows = await resolveRowRange(source, range, {
+            signal: controller.signal,
+            onProgress: ({ done }) => progress?.update(doneBefore + done),
+          })
+          if (controller.signal.aborted) throw new DOMException('Cancelled', 'AbortError')
+          rows.forEach((row, offset) => resolved.set(range[0] + offset, row))
+          doneBefore += range[1] - range[0]
+          progress?.update(doneBefore)
+        }
+      } catch (error) {
+        progress?.finish()
+        actionPendingRef.current = false
+        actionAbortRef.current = null
+        if (isAbort(error)) return false
+        if (isResultsExpired(error)) {
+          rowActions?.onExpired()
+          return false
+        }
+        const failure = ROW_ACTION_FAILURES[verb]
+        logFrontend('warn', `[grid] ${verb} could not load rows: ${errorText(error)}`)
+        showErrorToast(failure.title, failure.message)
+        return false
+      }
+      actionPendingRef.current = false
+      actionAbortRef.current = null
+      const wasVisible = progress?.finish() ?? false
+      const ok = await act((index) => resolved.get(index) ?? source.getRow(index))
+      if (ok && wasVisible) {
+        const [title, message] = rowActionSuccess(verb, total)
+        showSuccessToast(title, message)
+      }
+      return ok
+    },
+    [isWindowed, rowActions, rowCount, source]
+  )
+
+  /** The copy text of one cell of a resolved row. */
+  const cellCopyText = useCallback(
+    (row: GridRow, colIndex: number, rowIndex: number): string => {
+      const cell = buildCellForRow(row, colIndex, rowIndex)
+      return 'copyData' in cell && typeof cell.copyData === 'string' ? cell.copyData : ''
+    },
+    [buildCellForRow]
+  )
+
+  /**
+   * Paste one line of values into a row, starting at column `targetCol`. The
+   * first editable cell goes through `onCellClipboardEdit`, which saves the row
+   * being edited (if any) and starts editing this one; the rest of the line is
+   * applied only once that resolved `true`, so no value lands in another row.
+   * Read-only cells are skipped, and the line is clipped to the grid.
+   */
+  const pasteLineIntoRow = useCallback(
+    async (
+      rowIndex: number,
+      row: GridRow,
+      targetCol: number,
+      line: readonly string[]
+    ): Promise<boolean> => {
+      const isPasteTarget = (colIndex: number): boolean => {
+        const column = gridColumns[colIndex]
+        if (!column || isListSelectionColumn(column) || isInfoColumn(column)) return false
+        const cell = buildCellForRow(row, colIndex, rowIndex)
+        return !('readonly' in cell && cell.readonly === true)
+      }
+      const first = line.findIndex((_, offset) => isPasteTarget(targetCol + offset))
+      if (first < 0) return false
+      const started = await onCellClipboardEdit?.({
+        rowIdx: rowIndex,
+        rowData: row,
+        columnKey: gridColumns[targetCol + first].key,
+        action: 'paste',
+        text: line[first],
+      })
+      if (started !== true) return false
+      line.forEach((text, offset) => {
+        const colIndex = targetCol + offset
+        if (offset <= first || colIndex >= gridColumns.length) return
+        const pasted = pasteTextIntoCell(buildCellForRow(row, colIndex, rowIndex), text)
+        if (pasted) handleCellEdited([colIndex, rowIndex], pasted)
+      })
+      return true
+    },
+    [buildCellForRow, gridColumns, handleCellEdited, onCellClipboardEdit]
+  )
+
+  /**
+   * Paste a block at `target`. Rows are edited one at a time, so only the
+   * first pasted line is applied, to the target row, and a warning says the
+   * other lines were skipped. Glide's own block paste is never used (it would
+   * write every line into the row being edited); an unloaded target row is
+   * fetched first.
+   */
   const handlePaste = useCallback(
     (target: Item, values: readonly (readonly string[])[]) => {
       const [colIndex, rowIndex] = target
       const column = gridColumns[colIndex]
-      const row = rows[rowIndex]
-      const text = values[0]?.[0]
-      if (!column || !row || text == null) return false
+      const line = values[0]
+      if (!column || !line?.length || rowIndex < 0 || rowIndex >= rowCount) return false
       if (isListSelectionColumn(column)) return false
-      void onCellClipboardEdit?.({
-        rowIdx: rowIndex,
-        rowData: row,
-        columnKey: column.key,
-        action: 'paste',
-        text,
+      if (actionPendingRef.current) return false
+      // Only the result grid is windowed; it pastes only in edit mode.
+      if (isWindowed && !source.isLoaded(rowIndex) && isEditMode !== true) return false
+      void runRowAction('Pasting', [[rowIndex, rowIndex + 1]], async (rowAt) => {
+        const row = rowAt(rowIndex)
+        if (!row) return false
+        const pasted = await pasteLineIntoRow(rowIndex, row, colIndex, line)
+        if (pasted && values.length > 1) {
+          showWarningToast(
+            'Pasted one row',
+            `Rows are edited one at a time, so only the first of ${values.length.toLocaleString()} lines was pasted.`
+          )
+        }
+        return pasted
       })
-      return true
+      return false
     },
-    [gridColumns, onCellClipboardEdit, rows]
+    [gridColumns, isEditMode, isWindowed, pasteLineIntoRow, rowCount, runRowAction, source]
   )
 
-  const clearCellsInRange = useCallback(
-    (range: Rectangle) => {
+  /** Clear the cells of `range`, reading rows through `rowAt`. */
+  const clearCellsWithRows = useCallback(
+    (range: Rectangle, rowAt: (index: number) => GridRow | undefined) => {
       // Changed rows are copied below; untouched rows keep their identity.
-      const nextRows = rows.slice()
+      const nextRows = isWindowed ? [] : rowsProp.slice()
       const changedIndexes = new Set<number>()
       for (let rowIndex = range.y; rowIndex < range.y + range.height; rowIndex += 1) {
-        const row = rows[rowIndex]
+        const row = rowAt(rowIndex)
         if (!row) continue
         for (let colIndex = range.x; colIndex < range.x + range.width; colIndex += 1) {
           const column = gridColumns[colIndex]
@@ -917,82 +1286,120 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           changedIndexes.add(rowIndex)
         }
       }
-      if (changedIndexes.size > 0) {
+      // Windowed grids have no full row array; handleCellEdited already reported each cell.
+      if (changedIndexes.size > 0 && !isWindowed) {
         onRowsChange?.(nextRows, { indexes: [...changedIndexes], column: gridColumns[range.x] })
       }
     },
-    [gridColumns, handleCellEdited, onRowsChange, rows]
+    [gridColumns, handleCellEdited, isWindowed, onRowsChange, rowsProp]
+  )
+
+  /** Rectangles covered by a selection (row selections become full-width row runs). */
+  const selectionRects = useCallback(
+    (selection: GridSelection | undefined): Rectangle[] => {
+      const rects: Rectangle[] = []
+      if (!selection) return rects
+      if (selection.current) rects.push(selection.current.range, ...selection.current.rangeStack)
+      for (const [start, end] of selectionRowRanges(selection.rows)) {
+        rects.push({ x: 0, y: start, width: gridColumns.length, height: end - start })
+      }
+      for (const colIndex of selection.columns) {
+        rects.push({ x: colIndex, y: 0, width: 1, height: rowCount })
+      }
+      return rects
+    },
+    [gridColumns.length, rowCount]
   )
 
   const clearSelection = useCallback(
     (selection: GridSelection): boolean => {
-      if (selection.current) {
-        clearCellsInRange(selection.current.range)
-        selection.current.rangeStack.forEach(clearCellsInRange)
-      }
-      for (const rowIndex of selection.rows) {
-        clearCellsInRange({ x: 0, y: rowIndex, width: gridColumns.length, height: 1 })
-      }
-      for (const colIndex of selection.columns) {
-        clearCellsInRange({ x: colIndex, y: 0, width: 1, height: rows.length })
-      }
+      if (actionPendingRef.current) return false
+      const rects = selectionRects(selection)
+      if (rects.length === 0) return false
+      // In windowed mode only edit mode can change cells: don't fetch rows for a no-op.
+      if (isWindowed && isEditMode !== true) return false
+      void runRowAction('Clearing', rectRowRanges(rects), (rowAt) => {
+        rects.forEach((rect) => clearCellsWithRows(rect, rowAt))
+        return true
+      })
       return false
     },
-    [clearCellsInRange, gridColumns.length, rows.length]
+    [clearCellsWithRows, isEditMode, isWindowed, runRowAction, selectionRects]
   )
 
-  const selectedRanges = useCallback((): Rectangle[] => {
-    const selection = activeGridSelection
-    const ranges: Rectangle[] = []
-    if (selection?.current) ranges.push(selection.current.range, ...selection.current.rangeStack)
-    if (selection) {
-      for (const rowIndex of selection.rows)
-        ranges.push({ x: 0, y: rowIndex, width: gridColumns.length, height: 1 })
-      for (const colIndex of selection.columns)
-        ranges.push({ x: colIndex, y: 0, width: 1, height: rows.length })
-    }
-    return ranges
-  }, [activeGridSelection, gridColumns.length, rows.length])
+  /**
+   * Copy `rects` to the clipboard (Cmd/Ctrl+C in windowed mode, the context
+   * menu, and Cut). Unloaded rows are fetched first. `afterWrite` runs with the
+   * resolved rows only once the text reached the clipboard (Cut clears there,
+   * so a failed fetch or write keeps the cells). Resolves true on success.
+   */
+  const copyRects = useCallback(
+    async (
+      rects: Rectangle[],
+      verb: 'Copying' | 'Cutting',
+      afterWrite?: (rowAt: (index: number) => GridRow | undefined) => void
+    ): Promise<boolean> => {
+      if (rects.length === 0) return false
+      return runRowAction(verb, rectRowRanges(rects), async (rowAt) => {
+        const text = rects
+          .flatMap((rect) =>
+            Array.from({ length: rect.height }, (_, rowOffset) => {
+              const rowIndex = rect.y + rowOffset
+              const row = rowAt(rowIndex)
+              return Array.from({ length: rect.width }, (_, colOffset) =>
+                row ? cellCopyText(row, rect.x + colOffset, rowIndex) : ''
+              ).join('\t')
+            })
+          )
+          .join('\n')
+        if (!text) return false
+        try {
+          await writeClipboardText(text)
+        } catch (error) {
+          const failure = ROW_ACTION_FAILURES[verb]
+          logFrontend('warn', `Failed to write grid selection to clipboard: ${errorText(error)}`)
+          showErrorToast(failure.title, failure.message)
+          return false
+        }
+        afterWrite?.(rowAt)
+        return true
+      })
+    },
+    [cellCopyText, runRowAction]
+  )
 
   const copySelectionToClipboard = useCallback(async (): Promise<void> => {
-    const text = selectedRanges()
-      .flatMap((range) =>
-        Array.from({ length: range.height }, (_, rowOffset) =>
-          Array.from({ length: range.width }, (_, colOffset) => {
-            const cell = getCellContent([range.x + colOffset, range.y + rowOffset])
-            return 'copyData' in cell && typeof cell.copyData === 'string' ? cell.copyData : ''
-          }).join('\t')
-        )
-      )
-      .join('\n')
-    if (!text) return
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (error) {
-      logFrontend('warn', `Failed to write grid selection to clipboard: ${String(error)}`)
-    }
-  }, [getCellContent, selectedRanges])
+    if (actionPendingRef.current) return
+    await copyRects(selectionRects(activeGridSelection), 'Copying')
+  }, [activeGridSelection, copyRects, selectionRects])
 
   const activeSelectionCell = activeGridSelection?.current?.cell
 
   const pasteClipboardAtSelection = useCallback(async (): Promise<void> => {
     const target = activeSelectionCell
-    if (!target) return
+    if (!target || actionPendingRef.current) return
+    let text: string
     try {
-      const text = await navigator.clipboard.readText()
-      handlePaste(
-        target,
-        text.split(/\r?\n/).map((line) => line.split('\t'))
-      )
+      text = await readClipboardText()
     } catch (error) {
-      logFrontend('warn', `Failed to read grid clipboard text: ${String(error)}`)
+      logFrontend('warn', `Failed to read grid clipboard text: ${errorText(error)}`)
+      showErrorToast(ROW_ACTION_FAILURES.Pasting.title, ROW_ACTION_FAILURES.Pasting.message)
+      return
     }
+    handlePaste(
+      target,
+      text.split(/\r?\n/).map((line) => line.split('\t'))
+    )
   }, [activeSelectionCell, handlePaste])
 
   const cutSelectionToClipboard = useCallback(async (): Promise<void> => {
-    await copySelectionToClipboard()
-    if (activeGridSelection) clearSelection(activeGridSelection)
-  }, [activeGridSelection, clearSelection, copySelectionToClipboard])
+    if (actionPendingRef.current) return
+    const rects = selectionRects(activeGridSelection)
+    // Cut keeps the selection (and its cells) when the fetch or the clipboard write fails.
+    await copyRects(rects, 'Cutting', (rowAt) =>
+      rects.forEach((rect) => clearCellsWithRows(rect, rowAt))
+    )
+  }, [activeGridSelection, clearCellsWithRows, copyRects, selectionRects])
 
   const provideEditor = useCallback(
     (cell: GridCell) => {
@@ -1009,14 +1416,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         getGlideEditor(
           column as GridColumn<unknown>,
           (column.editorType as
-            | 'text'
-            | 'enum'
-            | 'set'
-            | 'datetime'
-            | 'fk'
-            | 'json'
-            | 'none'
-            | undefined) ?? 'text'
+            'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none' | undefined) ?? 'text'
         ) ?? undefined
       )
     },
@@ -1047,6 +1447,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const handleVisibleRegionChanged = useCallback(
     (range: Rectangle) => {
+      lastVisibleRegionRef.current = range
+      // Windowed mode: the page cache loads the visible rows (plus prefetch).
+      source.onVisibleRangeChange?.([range.y, range.y + range.height])
       cancelActiveEditor()
       const scrollCell = clampScrollCell(
         { scrollRow: range.y, scrollCol: range.x },
@@ -1080,14 +1483,39 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       lastReportedScrollCellRef.current = scrollCell
       onScrollCellChange?.(scrollCell.scrollRow, scrollCell.scrollCol)
     },
-    [cancelActiveEditor, onScrollCellChange]
+    [cancelActiveEditor, onScrollCellChange, source]
   )
+
+  // Windowed mode: repaint only the cells of newly loaded rows that are on screen.
+  const gridColumnCount = gridColumns.length
+  useEffect(() => {
+    if (!source.subscribe) return undefined
+    return source.subscribe(([start, end], info) => {
+      const region = lastVisibleRegionRef.current
+      // A re-seed dropped every page; the visible region may not change (and
+      // so not be reported again), so ask for its rows now.
+      if (info?.reseeded && region) {
+        source.onVisibleRangeChange?.([region.y, region.y + region.height])
+      }
+      const from = Math.max(start, region ? region.y : start)
+      const to = Math.min(
+        end,
+        region ? region.y + region.height : start + VISIBLE_REPAINT_FALLBACK_ROWS
+      )
+      if (to <= from) return
+      const cells: Array<readonly [number, number]> = []
+      for (let row = from; row < to; row++) {
+        for (let col = 0; col < gridColumnCount; col++) cells.push([col, row])
+      }
+      gridRef.current?.updateCells?.(cells)
+    })
+  }, [gridColumnCount, source])
 
   const handleCellActivatedForEditing = useCallback(
     (cell: Item) => {
       const [colIndex, rowIndex] = cell
       const column = gridColumns[colIndex]
-      const row = rows[rowIndex]
+      const row = source.getRow(rowIndex)
       if (column && row) {
         editorSessionBaselineRef.current = {
           rowIndex,
@@ -1099,19 +1527,19 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       }
       isEditingCellRef.current = true
     },
-    [editState, gridColumns, rows]
+    [editState, gridColumns, source]
   )
 
   const handleCellDoubleClicked = useCallback(
     (cell: Item) => {
       const [colIndex, rowIndex] = cell
-      const row = rows[rowIndex]
+      const row = source.getRow(rowIndex)
       const column = gridColumns[colIndex]
       if (!row || !column) return
       onCellDoubleClick?.(row, column.key)
       onRowDoubleClicked?.(row)
     },
-    [gridColumns, onCellDoubleClick, onRowDoubleClicked, rows]
+    [gridColumns, onCellDoubleClick, onRowDoubleClicked, source]
   )
 
   const gridSelectionCell = gridSelection?.current?.cell
@@ -1127,7 +1555,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             }
           : lastInteractedCellRef.current)
       if (!pos) return false
-      const row = rows[pos.rowIdx]
+      const row = source.getRow(pos.rowIdx)
       const column = gridColumns[pos.idx]
       if (!row || !column?.foreignKey || isListSelectionColumn(column)) return false
       event.preventDefault()
@@ -1139,13 +1567,27 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       })
       return true
     },
-    [gridColumns, gridSelectionCell, onFkCellAction, rows, selectedCellPosition]
+    [gridColumns, gridSelectionCell, onFkCellAction, source, selectedCellPosition]
   )
 
   const handleKeyDown = useCallback<(event: GlideKeyDownEvent) => void>(
     (event) => {
-      if (rows.length === 0) return
+      if (rowCount === 0) return
       const isShortcut = event.metaKey || event.ctrlKey
+      if (event.key === 'Escape' && actionPendingRef.current) {
+        // Escape cancels a fetch-first action; nothing has been written yet.
+        event.preventDefault()
+        event.cancel?.()
+        actionAbortRef.current?.abort()
+        return
+      }
+      if (isWindowed && isShortcut && event.key.toLowerCase() === 'c') {
+        // Glide's own copy is off in windowed mode; use the async copy path.
+        event.preventDefault()
+        event.cancel?.()
+        void copySelectionToClipboard()
+        return
+      }
       if (isShortcut && event.key.toLowerCase() === 'x') {
         event.preventDefault()
         event.cancel?.()
@@ -1162,7 +1604,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
       const moveSelection = (delta: -1 | 1) => {
         const currentRow = currentCell?.rowIdx ?? activeSelectedRowIndex ?? 0
-        const nextRow = Math.max(0, Math.min(rows.length - 1, currentRow + delta))
+        const nextRow = Math.max(0, Math.min(rowCount - 1, currentRow + delta))
         const nextCol = currentCell?.idx ?? 0
 
         if (nextRow === currentRow && currentCell) {
@@ -1176,7 +1618,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           return
         }
 
-        const nextRowData = rows[nextRow]
+        const nextRowData = source.getRow(nextRow)
         const nextColumn = gridColumns[nextCol]
         if (!nextRowData || !nextColumn) return
 
@@ -1216,7 +1658,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             onCellSelectionChange?.({
               rowIdx: guard.targetRowIdx,
               columnKey: gridColumns[guard.targetColIdx]?.key ?? nextColumn.key,
-              rowData: rows[guard.targetRowIdx] ?? nextRowData,
+              rowData: source.getRow(guard.targetRowIdx) ?? nextRowData,
               source: 'keyboard',
             })
             return
@@ -1280,7 +1722,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         return
       }
       if (isTypingActivationKey(event) && currentCell) {
-        const currentRow = rows[currentCell.rowIdx]
+        if (actionPendingRef.current) {
+          // Edits are blocked while an action fetches rows.
+          event.preventDefault()
+          event.cancel?.()
+          return
+        }
+        const currentRow = source.getRow(currentCell.rowIdx)
         const currentColumn = gridColumns[currentCell.idx]
         if (!currentRow || !currentColumn) return
         if (isListSelectionColumn(currentColumn)) {
@@ -1360,7 +1808,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         }
       }
       if (event.key === 'Enter' && activeSelectedRowIndex != null) {
-        const row = rows[activeSelectedRowIndex]
+        const row = source.getRow(activeSelectedRowIndex)
         if (row) {
           event.preventDefault()
           onRowDoubleClicked?.(row)
@@ -1373,14 +1821,17 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     },
     [
       activeSelectedRowIndex,
+      copySelectionToClipboard,
       cutSelectionToClipboard,
+      isWindowed,
+      rowCount,
       gridColumns,
       editableColumnKeys,
       isEditMode,
       onRowDoubleClicked,
       onCellClickGuard,
       onCellSelectionChange,
-      rows,
+      source,
       runCellClickGuardOnKeyboardSelection,
       selectedCellPosition,
       selectRow,
@@ -1447,7 +1898,19 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   ])
 
   const handleSelectionChange = useCallback(
-    (selection: GridSelection) => {
+    (nextSelection: GridSelection) => {
+      let selection = nextSelection
+      if (isWindowed) {
+        // A loading row's checkbox is disabled: ignore a single-row check on it.
+        // Range and header select-all checks are kept (they are view ranges).
+        const previousRows = gridSelection?.rows ?? CompactSelection.empty()
+        if (selection.rows.length === previousRows.length + 1) {
+          const added = findAddedIndex(selection.rows, previousRows)
+          if (added !== undefined && !source.isLoaded(added)) {
+            selection = { ...selection, rows: previousRows }
+          }
+        }
+      }
       setGridSelection(selection)
       if (selection.current) {
         lastInteractedCellRef.current = {
@@ -1459,7 +1922,14 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           ? { idx: selection.current.cell[0], rowIdx: selection.current.cell[1] }
           : null
       }
-      if (onRowMarkersChange) {
+      if (isWindowed && onRowMarkerRangesChange) {
+        const ranges = selectionRowRanges(selection.rows)
+        const key = JSON.stringify(ranges)
+        if (key !== prevMarkedRangesKeyRef.current) {
+          prevMarkedRangesKeyRef.current = key
+          onRowMarkerRangesChange(ranges)
+        }
+      } else if (onRowMarkersChange) {
         const selectedRowIndices = [...selection.rows]
         const prev = prevMarkedRowsRef.current
         const rowsChanged =
@@ -1468,13 +1938,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         if (rowsChanged) {
           prevMarkedRowsRef.current = selectedRowIndices
           const selected = selectedRowIndices
-            .map((rowIndex) => rows[rowIndex])
+            .map((rowIndex) => source.getRow(rowIndex))
             .filter((row): row is GridRow => row != null)
           onRowMarkersChange(selected)
         }
       }
     },
-    [gridColumns, onRowMarkersChange, rows]
+    [gridColumns, gridSelection, isWindowed, onRowMarkerRangesChange, onRowMarkersChange, source]
   )
 
   const handleContextMenu = useCallback<React.MouseEventHandler<HTMLDivElement>>((event) => {
@@ -1541,8 +2011,19 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const drawCell = useCallback<DrawCellCallback>(
     (args, drawContent) => {
-      const row = rows[args.row]
+      const row = source.getRow(args.row)
       const column = gridColumns[args.col]
+      if (row === undefined && isWindowed) {
+        // Not loaded yet: a flat --skeleton-base bar (never like NULL text).
+        drawSkeletonCell(
+          args.ctx,
+          args.rect,
+          skeletonColor,
+          args.theme.cellHorizontalPadding,
+          parseFloat(args.theme.editorFontSize) || SKELETON_FALLBACK_LINE_PX
+        )
+        return
+      }
       const hasInfoAffordance =
         column != null &&
         isInfoColumn(column) &&
@@ -1591,7 +2072,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       isModifiedCell,
       isRowEditing,
       isRowSelected,
-      rows,
+      isWindowed,
+      skeletonColor,
+      source,
     ]
   )
 
@@ -1622,8 +2105,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       <GlideDataGrid
         ref={gridRef}
         columns={glideColumns}
-        rows={rows}
+        rows={isWindowed ? EMPTY_GRID_ROWS : rowsProp}
+        rowCount={isWindowed ? rowCount : undefined}
         getCellContent={getCellContent}
+        getCellsForSelection={isWindowed ? getCellsForSelection : undefined}
+        keybindings={isWindowed ? WINDOWED_KEYBINDINGS : undefined}
         customRenderers={CUSTOM_RENDERERS}
         onColumnResize={handleColumnResize}
         onHeaderClicked={handleHeaderClicked}

@@ -8,6 +8,7 @@ import {
   drawNullText,
   drawReadOnlyOverlay,
   drawSelectedRowAccent,
+  drawSkeletonCell,
 } from '../../../../components/shared/glide/glide-drawers'
 import type { Theme } from '@glideapps/glide-data-grid'
 
@@ -86,5 +87,45 @@ describe('glide-drawers', () => {
     const c = ctx()
     drawHighlightedColumnBackground(c, { x: 1, y: 2, width: 30, height: 40 }, '#ff0')
     expect(c.fillRect).toHaveBeenCalledWith(1, 2, 30, 40)
+  })
+})
+
+describe('drawSkeletonCell', () => {
+  it('fills one flat bar inset by the cell padding and centred vertically', () => {
+    const c = { fillRect: vi.fn(), save: vi.fn(), restore: vi.fn(), fillStyle: '' }
+    drawSkeletonCell(
+      c as unknown as CanvasRenderingContext2D,
+      { x: 10, y: 20, width: 120, height: 28 },
+      'rgba(0, 0, 0, 0.06)',
+      10,
+      13
+    )
+    expect(c.fillStyle).toBe('rgba(0, 0, 0, 0.06)')
+    expect(c.fillRect).toHaveBeenCalledTimes(1)
+    expect(c.fillRect).toHaveBeenCalledWith(20, 28, 100, 13)
+    expect(c.save).toHaveBeenCalled()
+    expect(c.restore).toHaveBeenCalled()
+  })
+
+  it('caps the bar height to the cell and draws nothing for collapsed cells', () => {
+    const c = { fillRect: vi.fn(), save: vi.fn(), restore: vi.fn(), fillStyle: '' }
+    drawSkeletonCell(
+      c as unknown as CanvasRenderingContext2D,
+      { x: 0, y: 0, width: 50, height: 10 },
+      'red',
+      4,
+      20
+    )
+    expect(c.fillRect).toHaveBeenCalledWith(4, 2, 42, 6)
+
+    c.fillRect.mockClear()
+    drawSkeletonCell(
+      c as unknown as CanvasRenderingContext2D,
+      { x: 0, y: 0, width: 8, height: 28 },
+      'red',
+      4,
+      13
+    )
+    expect(c.fillRect).not.toHaveBeenCalled()
   })
 })

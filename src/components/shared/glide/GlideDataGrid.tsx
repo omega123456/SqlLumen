@@ -23,6 +23,7 @@ import {
   type EditableGridCell,
   type GridKeyEventArgs,
   type ProvideEditorCallback,
+  type DataEditorProps,
 } from '@glideapps/glide-data-grid'
 import { useElementSize } from '../../../hooks/use-element-size'
 import { useGlideGridTheme } from '../../../hooks/use-glide-grid-theme'
@@ -78,10 +79,22 @@ function constrainGlideEditorOverlay(element: HTMLElement): void {
   if (element.style.overflow !== 'hidden') element.style.overflow = 'hidden'
 }
 
+/** Synchronous `getCellsForSelection`: the cells of a rectangle, row by row. */
+export type GetCellsForSelection = (selection: Rectangle) => readonly (readonly GridCell[])[]
+
 export type GlideDataGridProps<TRow> = {
   columns: GlideGridColumn[]
   rows: readonly TRow[]
+  /** Row count when rows come from a row source instead of `rows` (windowed grids). */
+  rowCount?: number
   getCellContent: (cell: Item) => GridCell
+  /**
+   * Cells for a selection. Defaults to `true` (Glide reads `getCellContent`).
+   * Windowed grids pass a synchronous, loaded-rows-only function.
+   */
+  getCellsForSelection?: GetCellsForSelection
+  /** Glide keybinding overrides (windowed grids turn off Glide's own copy). */
+  keybindings?: DataEditorProps['keybindings']
   onCellEdited?: (cell: Item, newValue: EditableGridCell) => void
   onDelete?: (selection: GridSelection) => boolean | GridSelection
   provideEditor?: ProvideEditorCallback<GridCell>
@@ -110,7 +123,10 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   const {
     columns,
     rows,
+    rowCount,
     getCellContent,
+    getCellsForSelection,
+    keybindings,
     onCellEdited,
     onDelete,
     provideEditor,
@@ -248,6 +264,9 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
       get element() {
         return hostRef.current
       },
+      updateCells: (cells) => {
+        editorRef.current?.updateCells(cells.map(([col, row]) => ({ cell: [col, row] as Item })))
+      },
     }),
     [handleSelectionChange, openSelectedCellEditor]
   )
@@ -308,7 +327,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
         <DataEditor
           ref={editorRef}
           columns={columns}
-          rows={rows.length}
+          rows={rowCount ?? rows.length}
           getCellContent={getCellContent}
           onCellEdited={onCellEdited}
           onDelete={onDelete}
@@ -343,7 +362,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           rowSelectionMode="multi"
           rowSelectionBlending="mixed"
           columnSelect="none"
-          getCellsForSelection={true}
+          getCellsForSelection={getCellsForSelection ?? true}
+          keybindings={keybindings}
         />
       ) : (
         <div data-testid={testId ? `${testId}-placeholder` : undefined} />

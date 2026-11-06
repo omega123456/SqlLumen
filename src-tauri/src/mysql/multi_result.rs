@@ -296,7 +296,7 @@ pub fn serialize_mysql_value(
 ///
 /// MySQL error 1317 (ER_QUERY_INTERRUPTED) is mapped to "Query cancelled".
 #[cfg(not(coverage))]
-fn map_mysql_error(e: &mysql_async::Error) -> String {
+pub(crate) fn map_mysql_error(e: &mysql_async::Error) -> String {
     crate::mysql::query_log::log_mysql_async_error(e);
     if let mysql_async::Error::Server(ref server_err) = e {
         if server_err.code == 1317 {
@@ -363,18 +363,214 @@ pub async fn build_connection(
     Ok(conn)
 }
 
+// ── Ceiling enforcement ────────────────────────────────────────────────────────
+
+/// Per-run decode settings passed down from the session-holding entry points.
+#[cfg(not(coverage))]
+pub struct DecodeContext<'a> {
+    /// Hard row ceiling: the only cap on stored rows.
+    pub ceiling: usize,
+    /// Registry connection id (for KILL logging).
+    pub connection_id: &'a str,
+    /// MySQL thread id of the held editor session (the KILL target).
+    pub thread_id: u64,
+    /// Pool used to issue `KILL QUERY` on a separate connection.
+    pub pool: Option<sqlx::MySqlPool>,
+}
+
+/// Pool-acquire timeout for the ceiling KILL. Short, so a KILL that can't be
+/// issued (e.g. an exhausted pool) falls back to draining quickly.
+#[cfg(not(coverage))]
+const CEILING_KILL_ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Rows decoded from one result set, bounded by the ceiling.
+#[cfg(not(coverage))]
+struct DecodedRows {
+    rows: Vec<crate::mysql::query_executor::SharedRow>,
+    /// True when at least one row beyond the ceiling was seen (not stored).
+    overflowed: bool,
+}
+
+/// True for MySQL error 1317 (ER_QUERY_INTERRUPTED).
+#[cfg(not(coverage))]
+pub(crate) fn is_query_interrupted(e: &mysql_async::Error) -> bool {
+    matches!(e, mysql_async::Error::Server(server_err) if server_err.code == 1317)
+}
+
+/// Issue `KILL QUERY <thread_id>` over a pool connection after the ceiling was
+/// reached. Returns `false` (with a warning) when the KILL could not be sent,
+/// in which case the caller drains the rest of the stream instead.
+#[cfg(not(coverage))]
+async fn kill_for_ceiling(ctx: &DecodeContext<'_>) -> bool {
+    let Some(pool) = ctx.pool.as_ref() else {
+        tracing::warn!(
+            connection_id = ctx.connection_id,
+            thread_id = ctx.thread_id,
+            "row ceiling reached but no pool is available for KILL QUERY; draining instead"
+        );
+        return false;
+    };
+    let mut conn = match tokio::time::timeout(CEILING_KILL_ACQUIRE_TIMEOUT, pool.acquire()).await {
+        Ok(Ok(conn)) => conn,
+        Ok(Err(error)) => {
+            tracing::warn!(
+                connection_id = ctx.connection_id,
+                thread_id = ctx.thread_id,
+                %error,
+                "row ceiling reached but a pool connection for KILL QUERY failed; draining instead"
+            );
+            return false;
+        }
+        Err(_) => {
+            tracing::warn!(
+                connection_id = ctx.connection_id,
+                thread_id = ctx.thread_id,
+                "row ceiling reached but no pool connection for KILL QUERY within 1 s; draining instead"
+            );
+            return false;
+        }
+    };
+    let kill_sql = format!("KILL QUERY {}", ctx.thread_id);
+    tracing::debug!(
+        connection_id = ctx.connection_id,
+        thread_id = ctx.thread_id,
+        ceiling = ctx.ceiling,
+        "row ceiling reached: issuing KILL QUERY"
+    );
+    crate::mysql::query_log::log_outgoing_sql(&kill_sql);
+    match sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
+        .execute(&mut *conn)
+        .await
+    {
+        Ok(result) => {
+            crate::mysql::query_log::log_execute_result(&result);
+            true
+        }
+        Err(error) => {
+            crate::mysql::query_log::log_execute_error(&error);
+            tracing::warn!(
+                connection_id = ctx.connection_id,
+                thread_id = ctx.thread_id,
+                %error,
+                "row ceiling KILL QUERY failed; draining the rest of the result instead"
+            );
+            false
+        }
+    }
+}
+
+/// Read and discard the rest of a SELECT after the ceiling. The stream ends
+/// normally, or with error 1317 from the ceiling KILL; either way the result
+/// is a truncated success. Other errors are logged and also end the drain:
+/// the stored rows up to the ceiling are complete. Returns `true` when the
+/// stream ended with 1317 (the KILL was consumed by this statement).
+#[cfg(not(coverage))]
+async fn drain_after_ceiling<P>(
+    result: &mut mysql_async::QueryResult<'_, '_, P>,
+    ctx: &DecodeContext<'_>,
+) -> bool
+where
+    P: mysql_async::prelude::Protocol,
+{
+    loop {
+        match result.next().await {
+            Ok(Some(_)) => continue,
+            Ok(None) => return false,
+            Err(error) if is_query_interrupted(&error) => {
+                tracing::debug!(
+                    connection_id = ctx.connection_id,
+                    "row ceiling: stream ended by KILL QUERY (1317)"
+                );
+                return true;
+            }
+            Err(error) => {
+                crate::mysql::query_log::log_mysql_async_error(&error);
+                tracing::warn!(
+                    connection_id = ctx.connection_id,
+                    ?error,
+                    "row ceiling: error while draining a truncated result; keeping stored rows"
+                );
+                return false;
+            }
+        }
+    }
+}
+
+/// Absorb a `KILL QUERY` that may have reached the session after the statement
+/// it targeted had already ended, so it can't interrupt the next statement
+/// (another statement of the batch, or another tab's query on the shared
+/// session). Runs a logged `DO 0`: error 1317 means the late KILL landed here,
+/// which is the point; any other error is logged and ignored.
+#[cfg(not(coverage))]
+pub(crate) async fn absorb_late_kill(conn: &mut mysql_async::Conn, connection_id: &str) {
+    use mysql_async::prelude::Queryable;
+
+    let sql = "DO 0";
+    crate::mysql::query_log::log_outgoing_sql(sql);
+    match conn.query_drop(sql).await {
+        Ok(()) => {}
+        Err(error) if is_query_interrupted(&error) => {
+            tracing::debug!(
+                connection_id,
+                "a late KILL QUERY was absorbed before the next statement"
+            );
+        }
+        Err(error) => {
+            crate::mysql::query_log::log_mysql_async_error(&error);
+            tracing::warn!(
+                connection_id,
+                ?error,
+                "could not absorb a possibly late KILL QUERY"
+            );
+        }
+    }
+}
+
+/// Read `SELECT DATABASE()` on the held session to record the database a
+/// truncated, re-runnable result ran in. A failure (e.g. a late ceiling KILL
+/// landing on this statement with 1317) is a warning, never a statement error,
+/// and yields `None` (the caller marks the export blocked: `unknownDatabase`).
+#[cfg(not(coverage))]
+async fn capture_session_database(
+    conn: &mut mysql_async::Conn,
+    connection_id: &str,
+) -> Option<crate::mysql::query_executor::RunDatabase> {
+    use crate::mysql::query_executor::RunDatabase;
+    use mysql_async::prelude::Queryable;
+
+    let sql = "SELECT DATABASE()";
+    crate::mysql::query_log::log_outgoing_sql(sql);
+    match conn.query_first::<Option<String>, _>(sql).await {
+        Ok(Some(Some(database))) => Some(RunDatabase::Named(database)),
+        Ok(_) => Some(RunDatabase::NoDatabase),
+        Err(error) => {
+            crate::mysql::query_log::log_mysql_async_error(&error);
+            tracing::warn!(
+                connection_id,
+                ?error,
+                "could not record the database of a truncated result; full export disabled for it"
+            );
+            None
+        }
+    }
+}
+
 // ── Per-statement helpers ──────────────────────────────────────────────────────
 
 /// Execute a SELECT-like statement on the given connection.
 ///
 /// Returns a `(StoredResult, MultiQueryResultItem)` pair on success.
-/// Handles auto-LIMIT internally. Row collection errors propagate via `?`.
+/// Handles auto-LIMIT internally and stores at most `ctx.ceiling` rows. When
+/// the ceiling is exceeded, the rest of the stream is stopped with `KILL QUERY`
+/// (or drained when the KILL can't be sent) and the result is a truncated
+/// success. Row collection errors otherwise propagate via `?`.
 #[cfg(not(coverage))]
 async fn execute_single_select_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     auto_limit_applied: bool,
     row_limit_used: usize,
+    ctx: &DecodeContext<'_>,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -383,7 +579,8 @@ async fn execute_single_select_statement(
     String,
 > {
     use crate::mysql::query_executor::{
-        inject_limit_into_select, ColumnMeta, MultiQueryResultItem, StoredResult,
+        inject_limit_into_select, statement_blocked_reason, ColumnMeta, FullExportBlockedReason,
+        MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 
@@ -425,42 +622,54 @@ async fn execute_single_select_statement(
     } else {
         0
     };
-    let serialized_rows = stream_serialized_rows(&mut result, &col_types, capacity_hint).await?;
+    let decoded =
+        stream_serialized_rows(&mut result, &col_types, capacity_hint, ctx.ceiling).await?;
+    let mut late_kill_possible = false;
+    if decoded.overflowed {
+        // Rows remain unread: stop the server sending them. If the KILL can't
+        // be sent, the drain below still reads (and discards) the rest.
+        let kill_sent = kill_for_ceiling(ctx).await;
+        let interrupted = drain_after_ceiling(&mut result, ctx).await;
+        // The stream ended on its own after the KILL was sent: the KILL may
+        // still be pending on the session.
+        late_kill_possible = kill_sent && !interrupted;
+    }
 
     // Drop remaining result sets (if any unexpected ones)
     drop(result);
+    if late_kill_possible {
+        absorb_late_kill(conn, ctx.connection_id).await;
+    }
 
     // All rows streamed and serialized — record total time.
     let total_time_ms = start.elapsed().as_millis() as u64;
-    let total_rows = serialized_rows.len();
     let query_id = uuid::Uuid::new_v4().to_string();
 
-    let shared_rows = Arc::new(serialized_rows);
+    let mut stored = StoredResult::new(
+        query_id,
+        columns,
+        Arc::new(decoded.rows),
+        execution_time_ms,
+        total_time_ms,
+        0,
+        auto_limit_applied,
+    );
+    stored.truncated = decoded.overflowed;
+    stored.row_ceiling = ctx.ceiling;
+    stored.applied_row_limit = auto_limit_applied.then_some(row_limit_used);
+    stored.source_sql = sql.to_string();
+    stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
+    if stored.truncated && stored.full_export_blocked_reason.is_none() {
+        match capture_session_database(conn, ctx.connection_id).await {
+            Some(database) => stored.run_database = database,
+            None => {
+                stored.full_export_blocked_reason = Some(FullExportBlockedReason::UnknownDatabase)
+            }
+        }
+    }
 
-    Ok((
-        StoredResult {
-            query_id: query_id.clone(),
-            columns: columns.clone(),
-            rows: Arc::clone(&shared_rows),
-            execution_time_ms,
-            total_time_ms,
-            affected_rows: 0,
-            auto_limit_applied,
-        },
-        MultiQueryResultItem {
-            query_id,
-            source_sql: sql.to_string(),
-            columns,
-            total_rows: total_rows as i64,
-            execution_time_ms,
-            total_time_ms,
-            affected_rows: 0,
-            rows: shared_rows,
-            auto_limit_applied,
-            error: None,
-            re_executable: true,
-        },
-    ))
+    let item = MultiQueryResultItem::from_stored(&stored, None, true);
+    Ok((stored, item))
 }
 
 /// Execute a DML/DDL statement on the given connection.
@@ -471,7 +680,7 @@ async fn execute_single_select_statement(
 async fn execute_single_dml_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
-    _row_limit_used: usize,
+    ctx: &DecodeContext<'_>,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -501,43 +710,34 @@ async fn execute_single_dml_statement(
     let total_time_ms = start.elapsed().as_millis() as u64;
     let query_id = uuid::Uuid::new_v4().to_string();
 
-    Ok((
-        StoredResult {
-            query_id: query_id.clone(),
-            columns: vec![],
-            rows: Arc::new(vec![]),
-            execution_time_ms,
-            total_time_ms,
-            affected_rows: affected,
-            auto_limit_applied: false,
-        },
-        MultiQueryResultItem {
-            query_id,
-            source_sql: sql.to_string(),
-            columns: vec![],
-            total_rows: 0,
-            execution_time_ms,
-            total_time_ms,
-            affected_rows: affected,
-            rows: Arc::new(vec![]),
-            auto_limit_applied: false,
-            error: None,
-            re_executable: true,
-        },
-    ))
+    let mut stored = StoredResult::new(
+        query_id,
+        vec![],
+        Arc::new(vec![]),
+        execution_time_ms,
+        total_time_ms,
+        affected,
+        false,
+    );
+    stored.row_ceiling = ctx.ceiling;
+    stored.source_sql = sql.to_string();
+    let item = MultiQueryResultItem::from_stored(&stored, None, true);
+    Ok((stored, item))
 }
 
 /// Execute a CALL statement and collect all returned result sets.
 ///
 /// Returns a `Vec<(StoredResult, MultiQueryResultItem)>` — one entry per
 /// row-bearing result set, or a single synthetic DML-style entry if the
-/// procedure produced no row results.
+/// procedure produced no row results. A result set over the ceiling is drained
+/// (never killed, so the procedure's writes are not aborted) and marked
+/// truncated; later result sets are still read.
 /// Row collection errors propagate via `?`.
 #[cfg(not(coverage))]
 async fn execute_call_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
-    _row_limit_used: usize,
+    ctx: &DecodeContext<'_>,
 ) -> Result<
     Vec<(
         crate::mysql::query_executor::StoredResult,
@@ -545,7 +745,9 @@ async fn execute_call_statement(
     )>,
     String,
 > {
-    use crate::mysql::query_executor::{ColumnMeta, MultiQueryResultItem, StoredResult};
+    use crate::mysql::query_executor::{
+        ColumnMeta, FullExportBlockedReason, MultiQueryResultItem, StoredResult,
+    };
     use mysql_async::prelude::Queryable;
 
     let start = std::time::Instant::now();
@@ -563,6 +765,12 @@ async fn execute_call_statement(
     let mut pairs: Vec<(StoredResult, MultiQueryResultItem)> = Vec::new();
     let mut call_has_results = false;
     let mut call_last_affected: u64 = 0;
+
+    let finish = |stored: &mut StoredResult| {
+        stored.row_ceiling = ctx.ceiling;
+        stored.source_sql = sql.to_string();
+        stored.full_export_blocked_reason = Some(FullExportBlockedReason::Call);
+    };
 
     loop {
         let columns_ref = result.columns_ref();
@@ -594,39 +802,39 @@ async fn execute_call_statement(
             .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
             .collect();
 
-        let serialized_rows = stream_serialized_rows(&mut result, &col_types, 0).await?;
+        let decoded = stream_serialized_rows(&mut result, &col_types, 0, ctx.ceiling).await?;
+        if decoded.overflowed {
+            tracing::debug!(
+                connection_id = ctx.connection_id,
+                ceiling = ctx.ceiling,
+                "row ceiling reached in a CALL result set: draining the rest of the set"
+            );
+            while result
+                .next()
+                .await
+                .map_err(|e| map_mysql_error(&e))?
+                .is_some()
+            {}
+        }
 
         // This result set's rows are streamed and serialized — record its total
         // time. Execution time is the shared header time captured above.
         let total_time_ms = start.elapsed().as_millis() as u64;
-        let total_rows = serialized_rows.len();
-        let shared_rows = Arc::new(serialized_rows);
         let query_id = uuid::Uuid::new_v4().to_string();
 
-        pairs.push((
-            StoredResult {
-                query_id: query_id.clone(),
-                columns: columns.clone(),
-                rows: Arc::clone(&shared_rows),
-                execution_time_ms,
-                total_time_ms,
-                affected_rows: 0,
-                auto_limit_applied: false,
-            },
-            MultiQueryResultItem {
-                query_id,
-                source_sql: sql.to_string(),
-                columns,
-                total_rows: total_rows as i64,
-                execution_time_ms,
-                total_time_ms,
-                affected_rows: 0,
-                rows: shared_rows,
-                auto_limit_applied: false,
-                error: None,
-                re_executable: false,
-            },
-        ));
+        let mut stored = StoredResult::new(
+            query_id,
+            columns,
+            Arc::new(decoded.rows),
+            execution_time_ms,
+            total_time_ms,
+            0,
+            false,
+        );
+        finish(&mut stored);
+        stored.truncated = decoded.overflowed;
+        let item = MultiQueryResultItem::from_stored(&stored, None, false);
+        pairs.push((stored, item));
 
         if result.is_empty() {
             break;
@@ -639,30 +847,18 @@ async fn execute_call_statement(
         let total_time_ms = start.elapsed().as_millis() as u64;
         let query_id = uuid::Uuid::new_v4().to_string();
 
-        pairs.push((
-            StoredResult {
-                query_id: query_id.clone(),
-                columns: vec![],
-                rows: Arc::new(vec![]),
-                execution_time_ms,
-                total_time_ms,
-                affected_rows: call_last_affected,
-                auto_limit_applied: false,
-            },
-            MultiQueryResultItem {
-                query_id,
-                source_sql: sql.to_string(),
-                columns: vec![],
-                total_rows: 0,
-                execution_time_ms,
-                total_time_ms,
-                affected_rows: call_last_affected,
-                rows: Arc::new(vec![]),
-                auto_limit_applied: false,
-                error: None,
-                re_executable: false,
-            },
-        ));
+        let mut stored = StoredResult::new(
+            query_id,
+            vec![],
+            Arc::new(vec![]),
+            execution_time_ms,
+            total_time_ms,
+            call_last_affected,
+            false,
+        );
+        finish(&mut stored);
+        let item = MultiQueryResultItem::from_stored(&stored, None, false);
+        pairs.push((stored, item));
     }
 
     Ok(pairs)
@@ -684,30 +880,14 @@ fn push_error_result(
 ) {
     use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
 
-    let query_id = uuid::Uuid::new_v4().to_string();
-
-    stored.push(StoredResult {
-        query_id: query_id.clone(),
-        columns: vec![],
-        rows: Arc::new(vec![]),
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        auto_limit_applied: false,
-    });
-    items.push(MultiQueryResultItem {
-        query_id,
-        source_sql: sql.to_string(),
-        columns: vec![],
-        total_rows: 0,
-        execution_time_ms: 0,
-        total_time_ms: 0,
-        affected_rows: 0,
-        rows: Arc::new(vec![]),
-        auto_limit_applied: false,
-        error: Some(error_msg),
-        re_executable: false,
-    });
+    let mut result = StoredResult::empty(uuid::Uuid::new_v4().to_string());
+    result.source_sql = sql.to_string();
+    items.push(MultiQueryResultItem::from_stored(
+        &result,
+        Some(error_msg),
+        false,
+    ));
+    stored.push(result);
 }
 
 // ── Batch executor ─────────────────────────────────────────────────────────────
@@ -718,7 +898,8 @@ fn push_error_result(
 /// Stops on first error (which is included as the last result item).
 ///
 /// Thread ID is registered with `state.running_queries` before execution starts
-/// and removed on completion.
+/// and removed on completion. `row_limit` is the (already clamped) auto-LIMIT;
+/// decoding is capped by the cache's row ceiling.
 #[cfg(not(coverage))]
 pub async fn execute_multi_query_internal(
     state: &crate::state::AppState,
@@ -748,6 +929,12 @@ pub async fn execute_multi_query_internal(
         .await
         .insert(key.clone(), session.thread_id);
 
+    let ctx = DecodeContext {
+        ceiling: state.result_cache.row_ceiling(),
+        connection_id,
+        thread_id: session.thread_id,
+        pool: state.registry.get_pool(connection_id),
+    };
     let row_limit_used = if row_limit == 0 { 1000 } else { row_limit };
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
@@ -767,9 +954,9 @@ pub async fn execute_multi_query_internal(
 
         let stmt_result = if is_call_statement(sql) {
             // CALL may produce multiple result sets
-            execute_call_statement(&mut session.conn, sql, row_limit_used).await
+            execute_call_statement(&mut session.conn, sql, &ctx).await
         } else {
-            execute_statement(&mut session.conn, sql, row_limit_used)
+            execute_statement(&mut session.conn, sql, row_limit_used, &ctx)
                 .await
                 .map(|pair| vec![pair])
         };
@@ -795,6 +982,7 @@ pub async fn execute_multi_query_internal(
 
 /// Execute one non-CALL statement on the connection's shared editor session,
 /// registering the session thread ID for cancellation while it runs.
+/// `row_limit` is the (already clamped) auto-LIMIT.
 #[cfg(not(coverage))]
 pub async fn execute_single_on_session(
     state: &crate::state::AppState,
@@ -819,7 +1007,13 @@ pub async fn execute_single_on_session(
         .await
         .insert(key.clone(), session.thread_id);
 
-    let result = execute_statement(&mut session.conn, sql, row_limit).await;
+    let ctx = DecodeContext {
+        ceiling: state.result_cache.row_ceiling(),
+        connection_id,
+        thread_id: session.thread_id,
+        pool: state.registry.get_pool(connection_id),
+    };
+    let result = execute_statement(&mut session.conn, sql, row_limit, &ctx).await;
 
     state.running_queries.write().await.remove(&key);
 
@@ -832,6 +1026,7 @@ async fn execute_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     row_limit: usize,
+    ctx: &DecodeContext<'_>,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -854,9 +1049,9 @@ async fn execute_statement(
     };
 
     if is_result_set {
-        execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit).await
+        execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit, ctx).await
     } else {
-        execute_single_dml_statement(conn, sql, row_limit).await
+        execute_single_dml_statement(conn, sql, ctx).await
     }
 }
 
@@ -865,11 +1060,14 @@ async fn execute_statement(
 #[cfg(not(coverage))]
 const ROW_CAPACITY_HINT_MAX: usize = 10_000;
 
-/// Stream the current result set, serializing each row as it arrives.
+/// Stream the current result set, serializing each row as it arrives, and stop
+/// storing at `ceiling` rows.
 ///
 /// Each driver row is logged, converted to a `SharedRow` and dropped before the
 /// next one is read, so driver rows and JSON rows are never all alive at once.
-/// On error (including a `KILL`), the partial rows are dropped.
+/// Reading stops right after the first row beyond the ceiling (which is not
+/// stored), so the caller can KILL or drain while rows remain unread.
+/// On error (including a user `KILL`), the partial rows are dropped.
 #[cfg(not(coverage))]
 async fn stream_serialized_rows<P>(
     result: &mut mysql_async::QueryResult<'_, '_, P>,
@@ -878,20 +1076,26 @@ async fn stream_serialized_rows<P>(
         mysql_async::consts::ColumnFlags,
     )],
     capacity_hint: usize,
-) -> Result<Vec<crate::mysql::query_executor::SharedRow>, String>
+    ceiling: usize,
+) -> Result<DecodedRows, String>
 where
     P: mysql_async::prelude::Protocol,
 {
-    let mut serialized_rows = Vec::with_capacity(capacity_hint);
-    result
-        .for_each(|row| {
-            crate::mysql::query_log::log_mysql_async_row(serialized_rows.len(), &row);
-            serialized_rows.push(serialize_row(&row, col_types));
-        })
-        .await
-        .map_err(|e| map_mysql_error(&e))?;
+    let mut serialized_rows = Vec::with_capacity(capacity_hint.min(ceiling));
+    let mut overflowed = false;
+    while let Some(row) = result.next().await.map_err(|e| map_mysql_error(&e))? {
+        if serialized_rows.len() >= ceiling {
+            overflowed = true;
+            break;
+        }
+        crate::mysql::query_log::log_mysql_async_row(serialized_rows.len(), &row);
+        serialized_rows.push(serialize_row(&row, col_types));
+    }
     crate::mysql::query_log::log_mysql_async_row_count(serialized_rows.len());
-    Ok(serialized_rows)
+    Ok(DecodedRows {
+        rows: serialized_rows,
+        overflowed,
+    })
 }
 
 /// Read and discard the rest of the current result set (DML responses and
@@ -909,7 +1113,7 @@ where
 
 /// Serialize a single `mysql_async::Row` to a `SharedRow`, borrowing each cell.
 #[cfg(not(coverage))]
-fn serialize_row(
+pub(crate) fn serialize_row(
     row: &mysql_async::Row,
     col_types: &[(
         mysql_async::consts::ColumnType,

@@ -2,7 +2,9 @@
  * ResultSubTabs — horizontal tab strip for switching between
  * multiple query result sets within a single query editor tab.
  *
- * Only renders when results.length > 1.
+ * Only renders when results.length > 1. A result that hit the row ceiling
+ * shows a warning indicator after its label (accessible name includes
+ * "truncated", tooltip "Truncated at {ceiling} rows").
  *
  * Uses the shared UnderlineTabBar container so its height, border, and
  * scrollbar match the top-level workspace tabs. Individual tab styling
@@ -12,7 +14,8 @@
  */
 
 import { useCallback, useRef, useEffect } from 'react'
-import { Table, CheckCircle, Warning } from '@phosphor-icons/react'
+import { Table, CheckCircle, Warning, WarningCircle } from '@phosphor-icons/react'
+import { formatCount } from '../../lib/format-row-count'
 import { useQueryStore } from '../../stores/query-store'
 import type { SingleResultState } from '../../stores/query-store'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
@@ -108,6 +111,7 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
               aria-selected={isActive}
               aria-controls={`result-tabpanel-${tabId}-${index}`}
               tabIndex={isActive ? 0 : -1}
+              aria-label={result.truncated ? `Result ${index + 1} truncated` : undefined}
               className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
               onClick={() => handleTabClick(index)}
               data-testid={`result-tab-${index}`}
@@ -115,6 +119,15 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
               <span className={styles.tabLabel}>
                 {getTabIcon(result)}
                 <span>Result {index + 1}</span>
+                {result.truncated && (
+                  <span
+                    className={styles.truncatedIndicator}
+                    title={`Truncated at ${formatCount(result.rowCeiling)} rows`}
+                    data-testid={`result-tab-${index}-truncated`}
+                  >
+                    <WarningCircle size={12} weight="fill" aria-hidden="true" />
+                  </span>
+                )}
               </span>
             </button>
           )

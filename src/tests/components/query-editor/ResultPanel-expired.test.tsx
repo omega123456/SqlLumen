@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import { ipc } from '../../ipc-mock'
+import { withRows } from '../../helpers/query-test-utils'
 
 const TAB_ID = 'test-tab-expired'
 const CONN_ID = 'conn-expired-1'
@@ -27,7 +28,7 @@ function setTabWithExpiredResult() {
               queryId: 'q-expired-1',
               lastExecutedSql: 'SELECT * FROM users',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [[1]],
+              ...withRows([[1]]),
               totalRows: 1,
               isExpired: true,
             },
@@ -63,7 +64,7 @@ function setTabWithRestoringRows() {
               queryId: 'q-restoring-1',
               lastExecutedSql: 'SELECT * FROM users',
               columns: [{ name: 'id', dataType: 'INT' }],
-              rows: [],
+              ...withRows([]),
               totalRows: 1,
               rowResidency: {
                 status: 'restoring',
@@ -218,7 +219,7 @@ describe('ResultPanel — expired state', () => {
                 queryId: 'q-ok',
                 lastExecutedSql: 'SELECT 1',
                 columns: [{ name: 'id', dataType: 'INT' }],
-                rows: [[1]],
+                ...withRows([[1]]),
                 totalRows: 1,
                 isExpired: false,
               },
@@ -271,7 +272,7 @@ describe('ResultPanel — expired state', () => {
                 resultStatus: 'success',
                 queryId: 'q-active-1',
                 columns: [{ name: 'id', dataType: 'INT' }],
-                rows: [[1]],
+                ...withRows([[1]]),
                 totalRows: 1,
                 rowResidency: {
                   status: 'resident',
@@ -284,7 +285,7 @@ describe('ResultPanel — expired state', () => {
                 resultStatus: 'success',
                 queryId: 'q-restoring-2',
                 columns: [{ name: 'id', dataType: 'INT' }],
-                rows: [],
+                ...withRows([]),
                 totalRows: 1,
                 rowResidency: {
                   status: 'restoring',

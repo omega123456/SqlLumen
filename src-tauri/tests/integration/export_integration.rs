@@ -9,6 +9,9 @@ use sqllumen_lib::export::xlsx_writer::write_xlsx;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
 use sqllumen_lib::mysql::query_executor::{ColumnMeta, StoredResult};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::mysql::result_view::{
+    remove_result_rows_impl, set_result_view_impl, ResultViewSpec,
+};
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::io::{self, Write};
@@ -43,6 +46,9 @@ fn test_state() -> AppState {
         editor_sessions: Default::default(),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         copy_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -850,7 +856,7 @@ fn test_export_results_impl_missing_tab() {
         table_name: None,
     };
 
-    let err = export_results_impl(&state, "cx", "missing-tab", options, None, None)
+    let err = export_results_impl(&state, "cx", "missing-tab", options, None)
         .expect_err("should fail for missing tab");
     assert!(err.contains("No results found"));
 }
@@ -869,30 +875,30 @@ fn test_export_results_impl_with_query_id() {
         "conn-m",
         "tab-m",
         vec![
-            StoredResult {
-                query_id: "first-q".to_string(),
-                columns: vec![ColumnMeta {
+            StoredResult::new(
+                "first-q".to_string(),
+                vec![ColumnMeta {
                     name: "a".to_string(),
                     data_type: "INT".to_string(),
                 }],
-                rows: crate::common::shared_rows(vec![vec![serde_json::json!(10)]]),
-                execution_time_ms: 1,
-                total_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-            },
-            StoredResult {
-                query_id: "second-q".to_string(),
-                columns: vec![ColumnMeta {
+                crate::common::shared_rows(vec![vec![serde_json::json!(10)]]),
+                1,
+                1,
+                0,
+                false,
+            ),
+            StoredResult::new(
+                "second-q".to_string(),
+                vec![ColumnMeta {
                     name: "b".to_string(),
                     data_type: "INT".to_string(),
                 }],
-                rows: crate::common::shared_rows(vec![vec![serde_json::json!(20)]]),
-                execution_time_ms: 2,
-                total_time_ms: 2,
-                affected_rows: 0,
-                auto_limit_applied: false,
-            },
+                crate::common::shared_rows(vec![vec![serde_json::json!(20)]]),
+                2,
+                2,
+                0,
+                false,
+            ),
         ],
     );
 
@@ -904,7 +910,7 @@ fn test_export_results_impl_with_query_id() {
     };
 
     // Export the second result using result_index
-    let result = export_results_impl(&state, "conn-m", "tab-m", options, Some(1), None)
+    let result = export_results_impl(&state, "conn-m", "tab-m", options, Some(1))
         .expect("export should succeed");
     assert_eq!(result.rows_exported, 1);
 
@@ -924,18 +930,18 @@ fn test_export_results_impl_invalid_query_id() {
     state.result_cache.insert(
         "cx",
         "tx",
-        vec![StoredResult {
-            query_id: "real-q".to_string(),
-            columns: vec![ColumnMeta {
+        vec![StoredResult::new(
+            "real-q".to_string(),
+            vec![ColumnMeta {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+            crate::common::shared_rows(vec![vec![serde_json::json!(1)]]),
+            1,
+            1,
+            0,
+            false,
+        )],
     );
 
     let options = ExportOptions {
@@ -945,7 +951,7 @@ fn test_export_results_impl_invalid_query_id() {
         table_name: None,
     };
 
-    let err = export_results_impl(&state, "cx", "tx", options, Some(99), None)
+    let err = export_results_impl(&state, "cx", "tx", options, Some(99))
         .expect_err("should fail for out-of-range index");
     assert!(err.contains("out of range") || err.contains("No result"));
 }
@@ -1026,18 +1032,18 @@ fn test_export_results_impl_sql_default_table_name() {
     state.result_cache.insert(
         "c1",
         "t1",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![ColumnMeta {
+        vec![StoredResult::new(
+            "q1".to_string(),
+            vec![ColumnMeta {
                 name: "id".to_string(),
                 data_type: "INT".to_string(),
             }],
-            rows: crate::common::shared_rows(vec![vec![serde_json::json!(42)]]),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+            crate::common::shared_rows(vec![vec![serde_json::json!(42)]]),
+            1,
+            1,
+            0,
+            false,
+        )],
     );
 
     let options = ExportOptions {
@@ -1047,8 +1053,8 @@ fn test_export_results_impl_sql_default_table_name() {
         table_name: None, // should default to "exported_results"
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, None, None)
-        .expect("export should succeed");
+    let result =
+        export_results_impl(&state, "c1", "t1", options, None).expect("export should succeed");
     assert_eq!(result.rows_exported, 1);
 
     let content = std::fs::read_to_string(&path).expect("read file");
@@ -1057,100 +1063,80 @@ fn test_export_results_impl_sql_default_table_name() {
     let _ = std::fs::remove_file(&path);
 }
 
-// ── export_results_impl with row_indices (filtered export) ───────────────
+// ── export_results_impl follows the current view ─────────────────────────
 
-#[test]
-fn test_export_results_impl_with_row_indices() {
-    let state = test_state();
-    let dir = std::env::temp_dir();
-    let path = dir.join(format!("test_impl_row_indices_{}.csv", std::process::id()));
-    let path_str = path.to_string_lossy().to_string();
-
+fn insert_names(state: &AppState) {
     state.result_cache.insert(
         "cx",
         "tx",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![ColumnMeta {
+        vec![StoredResult::new(
+            "q1".to_string(),
+            vec![ColumnMeta {
                 name: "name".to_string(),
                 data_type: "VARCHAR".to_string(),
             }],
-            rows: crate::common::shared_rows(vec![
+            crate::common::shared_rows(vec![
                 vec![serde_json::json!("Alice")],
                 vec![serde_json::json!("Bob")],
                 vec![serde_json::json!("Charlie")],
                 vec![serde_json::json!("Diana")],
             ]),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
+            1,
+            1,
+            0,
+            false,
+        )],
     );
+}
+
+#[test]
+fn test_export_results_impl_exports_the_sorted_filtered_view() {
+    let state = test_state();
+    let path = std::env::temp_dir().join(format!("test_impl_view_{}.csv", std::process::id()));
+    insert_names(&state);
+    let spec: ResultViewSpec = serde_json::from_value(serde_json::json!({
+        "sort": { "column": "name", "direction": "desc" },
+        "filters": [{ "column": "name", "operator": "!=", "value": "Charlie" }]
+    }))
+    .expect("spec");
+    set_result_view_impl(&state, "cx", "tx", 0, "q1", 1, &spec).expect("set view");
 
     let options = ExportOptions {
         format: ExportFormat::Csv,
-        file_path: path_str.clone(),
-        include_headers: true,
+        file_path: path.to_string_lossy().to_string(),
+        include_headers: false,
         table_name: None,
     };
-
-    // Export only rows at indices 1 and 3 (Bob and Diana)
-    let result = export_results_impl(&state, "cx", "tx", options, None, Some(&[1, 3]))
-        .expect("export should succeed");
-    assert_eq!(result.rows_exported, 2);
+    let result =
+        export_results_impl(&state, "cx", "tx", options, None).expect("export should succeed");
+    assert_eq!(result.rows_exported, 3);
 
     let content = std::fs::read_to_string(&path).expect("read file");
-    assert!(content.contains("Bob"));
-    assert!(content.contains("Diana"));
-    assert!(!content.contains("Alice"));
-    assert!(!content.contains("Charlie"));
+    let lines: Vec<&str> = content.lines().collect();
+    assert_eq!(lines, vec!["Diana", "Bob", "Alice"]);
 
     let _ = std::fs::remove_file(&path);
 }
 
 #[test]
-fn test_export_results_impl_with_row_indices_out_of_bounds_skipped() {
+fn test_export_results_impl_excludes_tombstoned_rows() {
     let state = test_state();
-    let dir = std::env::temp_dir();
-    let path = dir.join(format!("test_impl_row_idx_oob_{}.csv", std::process::id()));
-    let path_str = path.to_string_lossy().to_string();
-
-    state.result_cache.insert(
-        "cx",
-        "tx",
-        vec![StoredResult {
-            query_id: "q1".to_string(),
-            columns: vec![ColumnMeta {
-                name: "id".to_string(),
-                data_type: "INT".to_string(),
-            }],
-            rows: crate::common::shared_rows(vec![
-                vec![serde_json::json!(1)],
-                vec![serde_json::json!(2)],
-            ]),
-            execution_time_ms: 1,
-            total_time_ms: 1,
-            affected_rows: 0,
-            auto_limit_applied: false,
-        }],
-    );
+    let path = std::env::temp_dir().join(format!("test_impl_tomb_{}.csv", std::process::id()));
+    insert_names(&state);
+    remove_result_rows_impl(&state, "cx", "tx", 0, "q1", 1, &[0, 2]).expect("tombstone");
 
     let options = ExportOptions {
         format: ExportFormat::Csv,
-        file_path: path_str.clone(),
+        file_path: path.to_string_lossy().to_string(),
         include_headers: false,
         table_name: None,
     };
-
-    // Index 99 is out of bounds — should be silently skipped
-    let result = export_results_impl(&state, "cx", "tx", options, None, Some(&[0, 99]))
-        .expect("export should succeed");
-    assert_eq!(result.rows_exported, 1);
+    let result =
+        export_results_impl(&state, "cx", "tx", options, None).expect("export should succeed");
+    assert_eq!(result.rows_exported, 2);
 
     let content = std::fs::read_to_string(&path).expect("read file");
-    assert!(content.contains("1"));
-    assert!(!content.contains("2"));
+    assert_eq!(content.lines().collect::<Vec<_>>(), vec!["Bob", "Diana"]);
 
     let _ = std::fs::remove_file(&path);
 }

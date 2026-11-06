@@ -12,6 +12,8 @@ import styles from './toolbar-items.module.css'
 export function StatusArea({
   status,
   totalRows,
+  countLabel,
+  loadingLabel,
   executionTimeMs,
   errorMessage,
   customContent,
@@ -21,7 +23,7 @@ export function StatusArea({
       {status === 'loading' && (
         <span className={styles.loadingStatus} data-testid="status-loading">
           <span className={styles.miniSpinner} />
-          <span>Loading...</span>
+          <span>{loadingLabel ?? 'Loading...'}</span>
         </span>
       )}
 
@@ -32,7 +34,10 @@ export function StatusArea({
               ✓
             </span>
             <b>
-              {totalRows != null ? `${totalRows} ${totalRows === 1 ? 'row' : 'rows'}` : 'Success'}
+              {countLabel ??
+                (totalRows != null
+                  ? `${totalRows} ${totalRows === 1 ? 'row' : 'rows'}`
+                  : 'Success')}
             </b>
           </span>
           {executionTimeMs != null && (

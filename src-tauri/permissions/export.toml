@@ -3,3 +3,21 @@ identifier = "allow-export-results"
 description = "Enables the export_results command without any pre-configured scope."
 commands.allow = ["export_results"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-start-result-export"
+description = "Enables the start_result_export command without any pre-configured scope."
+commands.allow = ["start_result_export"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-result-export-progress"
+description = "Enables the get_result_export_progress command without any pre-configured scope."
+commands.allow = ["get_result_export_progress"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-cancel-result-export"
+description = "Enables the cancel_result_export command without any pre-configured scope."
+commands.allow = ["cancel_result_export"]
+commands.deny = []

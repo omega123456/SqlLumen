@@ -5,7 +5,7 @@ import { QueryBottomPanel } from '../../../components/query-editor/QueryBottomPa
 import { useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { resetWorkspaceStore } from '../../helpers/workspace-test-utils'
-import { makeTabState } from '../../helpers/query-test-utils'
+import { makeTabState, withRows } from '../../helpers/query-test-utils'
 import * as ResultPanelModule from '../../../components/query-editor/ResultPanel'
 import * as TableDataTabModule from '../../../components/table-data/TableDataTab'
 
@@ -221,7 +221,7 @@ describe('QueryBottomPanel', () => {
           activeBottomPanelItem: { type: 'result' },
           results: [
             { ...makeTabState({}).results[0] },
-            { ...makeTabState({}).results[0], rows: [[2]] },
+            { ...makeTabState({}).results[0], ...withRows([[2]]) },
           ],
         }),
       },

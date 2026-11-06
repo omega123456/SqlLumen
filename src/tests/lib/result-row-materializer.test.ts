@@ -1,85 +1,82 @@
 import { describe, expect, it } from 'vitest'
-import { createRowObjectCache } from '../../lib/result-row-materializer'
+import {
+  MATERIALIZER_MAX_ENTRIES,
+  createWindowRowMaterializer,
+  materializeRow,
+  toCachedRow,
+} from '../../lib/result-row-materializer'
 
-describe('createRowObjectCache', () => {
-  it('materializes rows into __rowIdx + col_N objects with null for missing cells', () => {
-    const cache = createRowObjectCache()
+describe('materializeRow', () => {
+  it('builds a { __rowIdx, __baseIdx, col_N } object with null for missing cells', () => {
+    expect(materializeRow(4, 17, ['a'], 2)).toEqual({
+      __rowIdx: 4,
+      __baseIdx: 17,
+      col_0: 'a',
+      col_1: null,
+    })
+  })
+})
 
-    expect(cache.build([['a', 1], ['b']], 2)).toEqual([
-      { __rowIdx: 0, col_0: 'a', col_1: 1 },
-      { __rowIdx: 1, col_0: 'b', col_1: null },
-    ])
+describe('toCachedRow', () => {
+  it('rebuilds the row array and base index from a row object', () => {
+    expect(toCachedRow({ __rowIdx: 1, __baseIdx: 9, col_0: 'x', col_1: 2 }, 2)).toEqual({
+      row: ['x', 2],
+      baseIndex: 9,
+    })
   })
 
-  it('returns the same array when called again with the same rows', () => {
-    const cache = createRowObjectCache()
-    const rows = [['a'], ['b']]
+  it('uses -1 when the object has no base index (the clone draft)', () => {
+    expect(toCachedRow({ __rowIdx: 3, col_0: 'draft' }, 2)).toEqual({
+      row: ['draft', null],
+      baseIndex: -1,
+    })
+  })
+})
 
-    const first = cache.build(rows, 1)
-    expect(cache.build(rows, 1)).toBe(first)
+describe('createWindowRowMaterializer', () => {
+  it('reuses the object for the same base index, row array and position', () => {
+    const materializer = createWindowRowMaterializer(1)
+    const row = ['a']
+    const first = materializer.get(0, 5, row)
+    expect(materializer.get(0, 5, row)).toBe(first)
+    expect(first).toEqual({ __rowIdx: 0, __baseIdx: 5, col_0: 'a' })
   })
 
-  it('reuses objects for unchanged row arrays and rebuilds only the replaced one', () => {
-    const cache = createRowObjectCache()
-    const rows = [['a'], ['b'], ['c']]
-    const first = cache.build(rows, 1)
-
-    const edited = [rows[0], ['B'], rows[2]]
-    const second = cache.build(edited, 1)
-
+  it('rebuilds when the cached row array is replaced (a saved edit)', () => {
+    const materializer = createWindowRowMaterializer(1)
+    const first = materializer.get(0, 5, ['a'])
+    const second = materializer.get(0, 5, ['A'])
     expect(second).not.toBe(first)
-    expect(second[0]).toBe(first[0])
-    expect(second[2]).toBe(first[2])
-    expect(second[1]).not.toBe(first[1])
-    expect(second[1]).toEqual({ __rowIdx: 1, col_0: 'B' })
+    expect(second.col_0).toBe('A')
   })
 
-  it('rebuilds every row when the column count changes', () => {
-    const cache = createRowObjectCache()
-    const rows = [
-      ['a', 'x'],
-      ['b', 'y'],
-    ]
-    const first = cache.build(rows, 1)
-
-    const second = cache.build(rows, 2)
-
-    expect(second[0]).not.toBe(first[0])
-    expect(second[1]).not.toBe(first[1])
-    expect(second).toEqual([
-      { __rowIdx: 0, col_0: 'a', col_1: 'x' },
-      { __rowIdx: 1, col_0: 'b', col_1: 'y' },
-    ])
+  it('rebuilds when the same base row moves to another view position (sort)', () => {
+    const materializer = createWindowRowMaterializer(1)
+    const row = ['a']
+    const first = materializer.get(0, 5, row)
+    const moved = materializer.get(3, 5, row)
+    expect(moved).not.toBe(first)
+    expect(moved.__rowIdx).toBe(3)
   })
 
-  it('rebuilds shifted rows with the correct __rowIdx after an insert', () => {
-    const cache = createRowObjectCache()
-    const rowA = ['a']
-    const rowB = ['b']
-    const first = cache.build([rowA, rowB], 1)
-
-    const inserted = ['new']
-    const second = cache.build([inserted, rowA, rowB], 1)
-
-    expect(second).toEqual([
-      { __rowIdx: 0, col_0: 'new' },
-      { __rowIdx: 1, col_0: 'a' },
-      { __rowIdx: 2, col_0: 'b' },
-    ])
-    expect(second[1]).not.toBe(first[0])
+  it('reset forgets every object and applies the new column count', () => {
+    const materializer = createWindowRowMaterializer(1)
+    const row = ['a', 'b']
+    const first = materializer.get(0, 0, row)
+    materializer.reset(2)
+    const second = materializer.get(0, 0, row)
+    expect(second).not.toBe(first)
+    expect(second).toEqual({ __rowIdx: 0, __baseIdx: 0, col_0: 'a', col_1: 'b' })
   })
 
-  it('rebuilds shifted rows with the correct __rowIdx after a removal', () => {
-    const cache = createRowObjectCache()
-    const rowA = ['a']
-    const rowB = ['b']
-    const rowC = ['c']
-    const first = cache.build([rowA, rowB, rowC], 1)
-
-    const second = cache.build([rowA, rowC], 1)
-
-    expect(second[0]).toBe(first[0])
-    expect(second[1]).toEqual({ __rowIdx: 1, col_0: 'c' })
-    expect(second).toHaveLength(2)
+  it('stays bounded: past the cap it starts over instead of growing', () => {
+    const materializer = createWindowRowMaterializer(1)
+    const row = ['x']
+    const first = materializer.get(0, 0, row)
+    for (let index = 1; index <= MATERIALIZER_MAX_ENTRIES; index++) {
+      materializer.get(index, index, row)
+    }
+    // The map was reset when the cap was reached, so the first object is gone.
+    expect(materializer.get(0, 0, row)).not.toBe(first)
   })
 })

@@ -1,25 +1,39 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
-  ColumnMeta,
+  FetchResultWindowResult,
   MultiQueryResult,
   MultiQueryResultItem,
   QueryResultMeta,
   QueryTableEditInfo,
+  RemoveResultRowsResult,
+  ResultViewSpec,
+  ResultWindowMeta,
   SchemaMetadataResponse,
   SchemaMetadataFull,
+  SetResultViewResult,
 } from '../types/schema'
 
-export interface ExecuteQueryResult extends QueryResultMeta {
-  rows: unknown[][]
-}
+/** `execute_query` response: metadata plus the first window of the view. */
+export interface ExecuteQueryResult extends QueryResultMeta, ResultWindowMeta {}
 
+/**
+ * Execute one statement. When `viewSpec` is given, the cached result is stored
+ * with that sort and filter, and the first window comes back already applied.
+ */
 export async function executeQuery(
   connectionId: string,
   tabId: string,
   sql: string,
-  rowLimit = 1000
+  rowLimit = 1000,
+  viewSpec?: ResultViewSpec | null
 ): Promise<ExecuteQueryResult> {
-  return invoke<ExecuteQueryResult>('execute_query', { connectionId, tabId, sql, rowLimit })
+  return invoke<ExecuteQueryResult>('execute_query', {
+    connectionId,
+    tabId,
+    sql,
+    rowLimit,
+    ...(viewSpec ? { viewSpec } : {}),
+  })
 }
 
 export async function executeMultiQuery(
@@ -55,7 +69,8 @@ export async function reexecuteSingleResult(
   tabId: string,
   resultIndex: number,
   sql: string,
-  rowLimit: number
+  rowLimit: number,
+  viewSpec?: ResultViewSpec | null
 ): Promise<MultiQueryResultItem> {
   return invoke<MultiQueryResultItem>('reexecute_single_result', {
     connectionId,
@@ -63,50 +78,65 @@ export async function reexecuteSingleResult(
     resultIndex,
     sql,
     rowLimit,
+    ...(viewSpec ? { viewSpec } : {}),
   })
 }
 
-export interface FetchCachedRowsResult {
-  rows: unknown[][]
-  columns: ColumnMeta[]
+/** Identifies one cached result slot (and the query that produced it). */
+export interface ResultSlotRef {
+  connectionId: string
+  tabId: string
+  resultIndex: number
+  queryId: string
 }
 
-export async function fetchCachedRows(
-  connectionId: string,
-  tabId: string,
-  queryId: string,
-  resultIndex?: number
-): Promise<FetchCachedRowsResult> {
-  return invoke<FetchCachedRowsResult>('fetch_cached_rows', {
-    connectionId,
-    tabId,
-    queryId,
-    ...(resultIndex !== undefined ? { resultIndex } : {}),
+/**
+ * Replace a cached result's whole view spec (compare-and-swap against
+ * `baseViewVersion`). Fails with `view_superseded: current=<n>` when the slot's
+ * view changed since the caller last saw it.
+ */
+export async function setResultView(
+  slot: ResultSlotRef,
+  baseViewVersion: number,
+  viewSpec: ResultViewSpec
+): Promise<SetResultViewResult> {
+  return invoke<SetResultViewResult>('set_result_view', {
+    ...slot,
+    baseViewVersion,
+    viewSpec,
+  })
+}
+
+/** Fetch a window of the current view (`limit` is clamped to 2,000 in Rust). */
+export async function fetchResultWindow(
+  slot: ResultSlotRef,
+  viewVersion: number,
+  offset: number,
+  limit: number
+): Promise<FetchResultWindowResult> {
+  return invoke<FetchResultWindowResult>('fetch_result_window', {
+    ...slot,
+    viewVersion,
+    offset,
+    limit,
+  })
+}
+
+/** Tombstone deleted rows in the cached result (compare-and-swap like `setResultView`). */
+export async function removeResultRows(
+  slot: ResultSlotRef,
+  baseViewVersion: number,
+  baseIndices: number[]
+): Promise<RemoveResultRowsResult> {
+  return invoke<RemoveResultRowsResult>('remove_result_rows', {
+    ...slot,
+    baseViewVersion,
+    baseIndices,
   })
 }
 
 export async function evictResults(connectionId: string, tabId: string): Promise<void> {
   return invoke<void>('evict_results', { connectionId, tabId })
-}
-
-export interface SortedRowsResult {
-  rows: unknown[][]
-}
-
-export async function sortResults(
-  connectionId: string,
-  tabId: string,
-  columnName: string,
-  direction: string,
-  resultIndex?: number
-): Promise<SortedRowsResult> {
-  return invoke<SortedRowsResult>('sort_results', {
-    connectionId,
-    tabId,
-    columnName,
-    direction,
-    ...(resultIndex !== undefined ? { resultIndex } : {}),
-  })
 }
 
 export async function selectDatabase(connectionId: string, databaseName: string): Promise<void> {
@@ -136,11 +166,18 @@ export async function analyzeQueryForEdit(
   return invoke<QueryTableEditInfo[]>('analyze_query_for_edit', { connectionId, sql })
 }
 
+/** Update cells of one cached row. `rowIndex` is a **base** row index. */
+/**
+ * Sync a saved row into the cached result at base index `rowIndex`. Rust
+ * refuses the write ("Results were refreshed during edit") when the slot no
+ * longer holds `queryId`, i.e. a re-run replaced it while the save was running.
+ */
 export async function updateResultCell(
   connectionId: string,
   tabId: string,
   rowIndex: number,
   updates: Record<number, unknown>,
+  queryId: string,
   resultIndex?: number
 ): Promise<void> {
   return invoke<void>('update_result_cell', {
@@ -148,6 +185,7 @@ export async function updateResultCell(
     tabId,
     rowIndex,
     updates,
+    queryId,
     ...(resultIndex !== undefined ? { resultIndex } : {}),
   })
 }

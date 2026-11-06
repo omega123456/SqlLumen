@@ -124,3 +124,32 @@ export function drawHighlightedColumnBackground(
     ctx.restore()
   }
 }
+
+/**
+ * Skeleton for a row that isn't loaded yet (wireframe 2): a flat bar in the
+ * resolved `--skeleton-base` colour, one text line high, inset by the cell
+ * padding. No shimmer and no gradient, and deliberately unlike NULL text.
+ */
+export function drawSkeletonCell(
+  ctx: CanvasRenderingContext2D,
+  rect: Rectangle,
+  color: string,
+  horizontalPadding: number,
+  lineHeight: number
+): void {
+  const width = Math.max(0, rect.width - horizontalPadding * 2)
+  const height = Math.max(0, Math.min(lineHeight, rect.height - 4))
+  if (width === 0 || height === 0) return
+  ctx.save()
+  try {
+    ctx.fillStyle = color
+    ctx.fillRect(
+      rect.x + horizontalPadding,
+      rect.y + Math.round((rect.height - height) / 2),
+      width,
+      height
+    )
+  } finally {
+    ctx.restore()
+  }
+}
