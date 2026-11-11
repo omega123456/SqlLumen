@@ -48,8 +48,7 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
       })
       void loadBody(tabId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, connectionId, databaseName, objectName, objectType, mode])
+  }, [tabId, connectionId, databaseName, objectName, objectType, mode, initTab, loadBody])
 
   // Save handler with create→alter transition
   const performSave = useCallback(async () => {

@@ -3,25 +3,14 @@ import { Copy, GlobeSimple, PencilSimple, Trash } from '@phosphor-icons/react'
 import { useFavoritesStore } from '../../stores/favorites-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
+import { formatShortDate } from '../../lib/format-utils'
 import type { FavoriteEntry } from '../../types/schema'
+import { Button } from '../common/Button'
 import styles from './FavoriteCard.module.css'
 
 export interface FavoriteCardProps {
   entry: FavoriteEntry
   connectionId: string
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  } catch {
-    return iso
-  }
 }
 
 export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
@@ -63,8 +52,8 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
           {entry.name}
         </span>
         <div className={styles.actions}>
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.actionButton}
             title="Copy to editor"
             onClick={(e) => {
@@ -74,25 +63,25 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
             data-testid="favorite-card-copy"
           >
             <Copy size={14} weight="regular" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="bare"
             className={styles.actionButton}
             title="Edit"
             onClick={handleEdit}
             data-testid="favorite-card-edit"
           >
             <PencilSimple size={14} weight="regular" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="bare"
             className={`${styles.actionButton} ${styles.actionButtonDanger}`}
             title="Delete"
             onClick={handleDelete}
             data-testid="favorite-card-delete"
           >
             <Trash size={14} weight="regular" />
-          </button>
+          </Button>
         </div>
       </div>
       <div className={styles.sqlPreview} title={entry.sqlText}>
@@ -106,7 +95,7 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
           </span>
         )}
         {entry.category && <span>{entry.category}</span>}
-        <span>{formatDate(entry.updatedAt)}</span>
+        <span>{formatShortDate(entry.updatedAt)}</span>
       </div>
       {entry.description && (
         <div className={styles.notes} title={entry.description}>

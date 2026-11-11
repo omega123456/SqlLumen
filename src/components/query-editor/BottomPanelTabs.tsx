@@ -4,6 +4,7 @@ import { useQueryStore, type SingleResultState } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { TableDataTab } from '../../types/schema'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
+import { Button } from '../common/Button'
 import styles from './BottomPanelTabs.module.css'
 import workspaceTabStyles from '../workspace/WorkspaceTabs.module.css'
 
@@ -188,8 +189,8 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                     : `bottom-panel-table-tab-${item.tab.id}`
                 }
               >
-                <button
-                  type="button"
+                <Button
+                  variant="bare"
                   ref={(element) => {
                     tabRefs.current[index] = element
                   }}
@@ -213,10 +214,10 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                     )}
                     <span className={workspaceTabStyles.tabLabelText}>{item.label}</span>
                   </span>
-                </button>
+                </Button>
                 {item.kind === 'table-data' && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="bare"
                     className={`${workspaceTabStyles.tabClose} ${styles.closeButton}`}
                     aria-label={`Close ${item.tab.label} table`}
                     onClick={(event) => {
@@ -226,7 +227,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                     data-testid={`bottom-panel-close-${item.tab.id}`}
                   >
                     <X size={12} weight="regular" />
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>

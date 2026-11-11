@@ -10,6 +10,8 @@ import { useSettingsStore } from './stores/settings-store'
 import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
 import { hasTauriApis } from './lib/tauri-env'
+import { logBootstrapFailure, logFrontend } from './lib/app-log-commands'
+import type * as Monaco from 'monaco-editor'
 
 // Canvas grids (glide) only repaint when `document.fonts.ready` settles, and webfonts are
 // fetched lazily on first DOM use. Request the grid's mono faces up front so the first
@@ -22,47 +24,53 @@ document.documentElement.dataset.windowFocused = String(document.hasFocus())
 window.addEventListener('focus', () => (document.documentElement.dataset.windowFocused = 'true'))
 window.addEventListener('blur', () => (document.documentElement.dataset.windowFocused = 'false'))
 
-// ---------------------------------------------------------------------------
-// Dynamic Monaco import — non-blocking so app renders immediately
-// ---------------------------------------------------------------------------
-// Uses locally-installed monaco-editor instead of CDN.
-// The eager `./lib/monaco-worker-setup` import above sets
-// self.MonacoEnvironment.getWorker before Monaco initialises.
-// ---------------------------------------------------------------------------
-import('monaco-editor')
-  .then(async (monaco) => {
-    const { loader } = await import('@monaco-editor/react')
-    loader.config({ monaco })
+const MONACO_WORKER_ENTRY = 'workerMain.js'
 
-    // Patch editor.createWebWorker — see comment below for rationale.
-    // monaco-sql-languages' WorkerManager calls
-    //   editor.createWebWorker({ moduleId, label, createData })
-    // but Monaco >= 0.55 expects `opts.worker` (a Worker instance).
-    // We inject it from our MonacoEnvironment.getWorker.
-    const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
+type MonacoModule = typeof Monaco
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(monaco.editor as any).createWebWorker = function patchedCreateWebWorker(
-      opts: Parameters<typeof origCreateWebWorker>[0]
-    ) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const o = opts as any
-      if (!o.worker && o.label) {
-        const env = self.MonacoEnvironment
-        if (env?.getWorker) {
-          try {
-            o.worker = env.getWorker('workerMain.js', o.label)
-          } catch {
-            // fall through — let Monaco handle it
-          }
-        }
-      }
-      return origCreateWebWorker(opts)
+type LabelledWebWorkerOptions = Monaco.editor.IInternalWebWorkerOptions & { label?: string }
+
+function createLabelledWorker(label: string): Worker | Promise<Worker> | undefined {
+  const environment = self.MonacoEnvironment
+  if (!environment?.getWorker) return undefined
+  try {
+    return environment.getWorker(MONACO_WORKER_ENTRY, label)
+  } catch (error) {
+    logFrontend('warn', `[main] Creating the Monaco "${label}" worker failed: ${String(error)}`)
+    return undefined
+  }
+}
+
+function resolveMissingWorker(
+  options: LabelledWebWorkerOptions
+): Worker | Promise<Worker> | undefined {
+  if (options.worker) return undefined
+  if (!options.label) return undefined
+  return createLabelledWorker(options.label)
+}
+
+// monaco-sql-languages omits `worker` from createWebWorker options, which Monaco >= 0.55 requires.
+function supplyWorkerToSqlLanguageWorkers(monaco: MonacoModule): void {
+  const originalCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
+
+  function createWebWorkerWithLabelledWorker(options: LabelledWebWorkerOptions) {
+    const missingWorker = resolveMissingWorker(options)
+    if (missingWorker) {
+      options.worker = missingWorker
     }
-  })
-  // Deliberate console.error: logFrontend relies on Tauri IPC which is
-  // unavailable at module-evaluation time before ReactDOM.createRoot.
-  .catch(console.error)
+    return originalCreateWebWorker(options)
+  }
+
+  Object.assign(monaco.editor, { createWebWorker: createWebWorkerWithLabelledWorker })
+}
+
+async function configureMonaco(monaco: MonacoModule): Promise<void> {
+  const { loader } = await import('@monaco-editor/react')
+  loader.config({ monaco })
+  supplyWorkerToSqlLanguageWorkers(monaco)
+}
+
+import('monaco-editor').then(configureMonaco).catch(logBootstrapFailure)
 
 async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
@@ -134,8 +142,8 @@ async function init() {
     if (zoom && zoom !== '100') {
       document.documentElement.style.zoom = `${zoom}%`
     }
-  } catch {
-    // Fallback: use system preference if settings load fails
+  } catch (error) {
+    logFrontend('warn', `[main] Applying saved appearance settings failed: ${String(error)}`)
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light')
   }

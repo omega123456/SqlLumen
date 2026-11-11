@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { logFrontend } from '../lib/app-log-commands'
 import { getThemeSetting, setThemeSetting } from '../lib/tauri-commands'
 import { syncNativeTheme } from '../lib/window-commands'
 
@@ -52,11 +53,10 @@ export const useThemeStore = create<ThemeState>()((set, get) => ({
   setTheme: async (theme: Theme) => {
     applyThemeState(theme, set)
     set({ _previewSnapshot: null })
-    // Fire-and-forget persistence — don't block theme switching on IPC
     try {
       await setThemeSetting(theme)
-    } catch {
-      // Silently ignore persistence errors — theme still changes in UI
+    } catch (error) {
+      logFrontend('warn', `[theme-store] Persisting the theme failed: ${String(error)}`)
     }
   },
 
@@ -68,8 +68,8 @@ export const useThemeStore = create<ThemeState>()((set, get) => ({
         applyThemeState(savedTheme, set)
         return
       }
-    } catch {
-      // Fall through to system preference on any IPC error
+    } catch (error) {
+      logFrontend('warn', `[theme-store] Reading the saved theme failed: ${String(error)}`)
     }
     // Fallback: use system preference
     applyThemeState('system', set)

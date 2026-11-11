@@ -17,6 +17,7 @@ import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
 import type { WorkspaceTab, TableDataTab as TableDataTabType } from '../../types/schema'
 import { InfoBar } from '../common/InfoBar'
+import { Button } from '../common/Button'
 import styles from './TableDataTab.module.css'
 
 interface TableDataTabProps {
@@ -61,8 +62,7 @@ export function TableDataTab({
     }
     // DO NOT call cleanupTab on unmount — workspace-store handles that
     // when the tab is actually closed (via closeTab / closeTabsByDatabase etc.)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, connectionId, database, table, isActive])
+  }, [tabId, connectionId, database, table, isActive, initTab, loadTableData])
 
   const handleRetry = useCallback(() => {
     loadTableData(tabId)
@@ -80,6 +80,13 @@ export function TableDataTab({
     cancelNavigation(tabId)
   }, [cancelNavigation, tabId])
 
+  const filterModel = tabState?.filterModel
+  const sort = tabState?.sort
+  const currentPage = tabState?.currentPage
+  const pageSize = tabState?.pageSize
+  const hasActiveFilters = (filterModel?.length ?? 0) > 0
+  const exportFilterModel = hasActiveFilters ? filterModel : undefined
+
   const handleExport = useCallback(
     async (options: {
       format: string
@@ -88,21 +95,18 @@ export function TableDataTab({
       tableName: string
     }) => {
       await exportTableData({
-        connectionId,
-        database,
-        table,
+        connectionId: connectionId,
+        database: database,
+        table: table,
         format: options.format,
         filePath: options.filePath,
         includeHeaders: options.includeHeaders,
         tableNameForSql: options.tableName,
-        filterModel:
-          tabState?.filterModel && tabState.filterModel.length > 0
-            ? tabState.filterModel
-            : undefined,
-        sortColumn: tabState?.sort?.column,
-        sortDirection: tabState?.sort?.direction,
-        page: tabState?.currentPage,
-        pageSize: tabState?.pageSize,
+        filterModel: exportFilterModel,
+        sortColumn: sort?.column,
+        sortDirection: sort?.direction,
+        page: currentPage,
+        pageSize: pageSize,
       })
       closeExportDialog(tabId)
     },
@@ -110,10 +114,10 @@ export function TableDataTab({
       connectionId,
       database,
       table,
-      tabState?.filterModel,
-      tabState?.sort,
-      tabState?.currentPage,
-      tabState?.pageSize,
+      exportFilterModel,
+      sort,
+      currentPage,
+      pageSize,
       closeExportDialog,
       tabId,
     ]
@@ -178,14 +182,14 @@ export function TableDataTab({
       {error && (
         <div className={styles.errorState} data-testid="table-data-error">
           <span className={styles.errorMessage}>{error}</span>
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.retryButton}
             onClick={handleRetry}
             data-testid="btn-retry"
           >
             Retry
-          </button>
+          </Button>
         </div>
       )}
 

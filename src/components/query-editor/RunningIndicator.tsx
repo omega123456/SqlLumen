@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react'
 import { Stop } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
 import { formatElapsedTime } from '../../lib/elapsed-time'
+import { Button } from '../common/Button'
 import styles from './RunningIndicator.module.css'
 
 interface RunningIndicatorProps {
@@ -60,8 +61,8 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
       <span className={styles.timer} data-testid="running-timer" aria-hidden="true">
         {formatElapsedTime(elapsed)}
       </span>
-      <button
-        type="button"
+      <Button
+        variant="bare"
         className={`${styles.cancelButton}${isCancelling ? ` ${styles.cancelling}` : ''}`}
         onClick={() => cancelQuery(connectionId, tabId)}
         disabled={isCancelling}
@@ -69,7 +70,7 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
       >
         <Stop size={14} weight="fill" />
         <span>{isCancelling ? 'Cancelling...' : 'Cancel'}</span>
-      </button>
+      </Button>
     </div>
   )
 }

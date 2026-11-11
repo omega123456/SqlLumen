@@ -21,7 +21,7 @@ const ELSE_MESSAGE = 'Use guard clauses, a lookup table, or a named function ins
 
 const CONFORMANCE_RULE_SCOPES = [
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { 'no-console': 'error' },
   },
   {

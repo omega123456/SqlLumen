@@ -29,6 +29,7 @@ import {
 } from '../../lib/context-menu-utils'
 import type { SavedConnection, ConnectionGroup } from '../../types/connection'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
+import { Button } from '../common/Button'
 import styles from './SavedConnectionsList.module.css'
 
 // --- Simplification 6: pure helper to build grouped/sorted sections ---
@@ -542,8 +543,8 @@ export function SavedConnectionsList({
           >
             {contextMenu.type === 'group' && (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="bare"
                   className="ui-context-menu__item"
                   role="menuitem"
                   onClick={() => handleRenameGroup(contextMenu.groupId)}
@@ -555,33 +556,33 @@ export function SavedConnectionsList({
                     aria-hidden
                   />
                   <span>Rename</span>
-                </button>
+                </Button>
                 <div
                   className="ui-context-menu__separator"
                   role="separator"
                   aria-orientation="horizontal"
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="bare"
                   className="ui-context-menu__item ui-context-menu__item--destructive"
                   role="menuitem"
                   onClick={() => void handleDeleteGroup(contextMenu.groupId)}
                 >
                   <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
                   <span>Delete</span>
-                </button>
+                </Button>
               </>
             )}
             {contextMenu.type === 'connection' && (
-              <button
-                type="button"
+              <Button
+                variant="bare"
                 className="ui-context-menu__item"
                 role="menuitem"
                 onClick={() => handleDuplicateConnection(contextMenu.connection)}
               >
                 <Copy className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
                 <span>Duplicate</span>
-              </button>
+              </Button>
             )}
           </div>,
           contextMenu.portalRoot

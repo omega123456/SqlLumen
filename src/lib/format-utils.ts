@@ -1,3 +1,5 @@
+import { logParseFallback } from './app-log-commands'
+
 /** Formats an ISO timestamp for display in data tables (e.g., "Jan 5, 14:22"). */
 export function formatTableTimestamp(iso: string): string {
   try {
@@ -7,7 +9,8 @@ export function formatTableTimestamp(iso: string): string {
       hour: '2-digit',
       minute: '2-digit',
     })
-  } catch {
+  } catch (error) {
+    logParseFallback('[format-utils] formatTableTimestamp', error)
     return iso
   }
 }
@@ -20,7 +23,8 @@ export function formatShortDate(iso: string): string {
       day: 'numeric',
       year: 'numeric',
     })
-  } catch {
+  } catch (error) {
+    logParseFallback('[format-utils] formatShortDate', error)
     return iso
   }
 }
@@ -33,7 +37,8 @@ export function formatFromEpochSeconds(ts: number): string {
       day: 'numeric',
       year: 'numeric',
     })
-  } catch {
+  } catch (error) {
+    logParseFallback('[format-utils] formatFromEpochSeconds', error)
     return String(ts)
   }
 }

@@ -6,6 +6,7 @@ import { Checkbox } from '../common/Checkbox'
 import { InfoBar } from '../common/InfoBar'
 import { DialogShell } from './DialogShell'
 import { Button } from '../common/Button'
+import { logFrontend } from '../../lib/app-log-commands'
 import { exportResults } from '../../lib/export-commands'
 import { formatCount } from '../../lib/format-row-count'
 import { useQueryStore, type ExportRowScope, type ResultExportJob } from '../../stores/query-store'
@@ -213,8 +214,8 @@ export default function ExportDialog({
         filters: [{ name: config.label, extensions: [config.extension] }],
       })
       if (selectedPath) setFilePath(selectedPath)
-    } catch {
-      // Dialog not available (e.g. in test/Playwright mode)
+    } catch (error) {
+      logFrontend('info', `[export-dialog] Save dialog unavailable: ${String(error)}`)
     }
   }, [format])
 
@@ -335,14 +336,14 @@ export default function ExportDialog({
         <div className={styles.header}>
           <h2 className={styles.title}>Export results</h2>
           {!isFullExportRunning && (
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.closeButton}
               onClick={onClose}
               aria-label="Close"
             >
               <X size={20} aria-hidden="true" />
-            </button>
+            </Button>
           )}
         </div>
 
@@ -465,15 +466,15 @@ export default function ExportDialog({
                   placeholder={`query_results.${EXPORT_FORMAT_CONFIG[format].extension}`}
                   data-testid="export-file-path-input"
                 />
-                <button
-                  type="button"
+                <Button
+                  variant="bare"
                   className={styles.browseButton}
                   onClick={handleBrowse}
                   aria-label="Browse"
                   data-testid="export-browse-button"
                 >
                   <FolderOpen size={20} aria-hidden="true" />
-                </button>
+                </Button>
               </div>
             </div>
 

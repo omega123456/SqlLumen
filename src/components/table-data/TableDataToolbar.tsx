@@ -32,6 +32,7 @@ import { StatusArea } from '../shared/toolbar/StatusArea'
 import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import type { ViewMode } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
+import { Button } from '../common/Button'
 import styles from './TableDataToolbar.module.css'
 
 interface TableDataToolbarProps {
@@ -365,8 +366,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
         {/* Action buttons — hidden for views (read-only) */}
         {!isView && (
           <>
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.toolbarButton}
               disabled={isMutationDisabled || isEditingNewRow || isBusy}
               onClick={handleAddRow}
@@ -375,10 +376,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             >
               <Plus size={16} weight="bold" />
               <span>Add</span>
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.toolbarButton}
               disabled={!canClone || isBusy}
               onClick={handleCloneRow}
@@ -387,10 +388,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             >
               <Copy size={16} weight="regular" />
               <span>Clone</span>
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.toolbarButton}
               disabled={!canDelete || isBusy}
               onClick={handleDeleteRow}
@@ -399,10 +400,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             >
               <Trash size={16} weight="regular" />
               <span>{deleteTargetCount > 1 ? `Delete (${deleteTargetCount})` : 'Delete'}</span>
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.toolbarButton}
               disabled={!hasModifications || isBusy}
               onClick={handleSave}
@@ -411,10 +412,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             >
               <FloppyDisk size={16} weight="regular" />
               <span>Save</span>
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.toolbarButton}
               disabled={!hasModifications || isBusy}
               onClick={handleDiscard}
@@ -422,13 +423,13 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
               data-testid="btn-discard"
             >
               <span>Discard</span>
-            </button>
+            </Button>
           </>
         )}
 
         {isLoading && !isRestoring ? (
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={`${styles.cancelButton}${isCancelling ? ` ${styles.cancelling}` : ''}`}
             onClick={handleCancelLoad}
             disabled={isCancelling}
@@ -437,10 +438,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
           >
             <Stop size={14} weight="fill" />
             <span>{isCancelling ? 'Cancelling...' : 'Cancel'}</span>
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.iconButton}
             onClick={handleRefresh}
             disabled={isBusy}
@@ -448,7 +449,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             data-testid="btn-refresh"
           >
             <ArrowCounterClockwise size={16} weight="bold" />
-          </button>
+          </Button>
         )}
       </div>
 

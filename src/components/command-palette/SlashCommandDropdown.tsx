@@ -4,6 +4,7 @@ import { ObjectTypeIcon } from '../shared/ObjectTypeIcon'
 import type { PaletteTypeFilter } from '../../types/schema'
 import type { CommandPaletteFilterPillValue } from './CommandPalette'
 import { buildSlashOptions } from './slash-options'
+import { Button } from '../common/Button'
 import styles from './SlashCommandDropdown.module.css'
 
 export interface SlashCommandDropdownProps {
@@ -52,9 +53,9 @@ export function SlashCommandDropdown({
             const isActive = index === activeIndex
 
             return (
-              <button
+              <Button
+                variant="bare"
                 key={option.id}
-                type="button"
                 role="option"
                 aria-selected={isActive}
                 className={styles.option}
@@ -69,7 +70,7 @@ export function SlashCommandDropdown({
                   <span className={styles.optionLabel}>{option.pill.label}</span>
                   <span className={styles.optionMeta}>{option.meta}</span>
                 </span>
-              </button>
+              </Button>
             )
           })}
         </section>
@@ -82,9 +83,9 @@ export function SlashCommandDropdown({
             const isActive = optionIndex === activeIndex
 
             return (
-              <button
+              <Button
+                variant="bare"
                 key={option.id}
-                type="button"
                 role="option"
                 aria-selected={isActive}
                 className={styles.option}
@@ -99,7 +100,7 @@ export function SlashCommandDropdown({
                   <span className={styles.optionLabel}>{option.pill.label}</span>
                   <span className={styles.optionMeta}>{option.meta}</span>
                 </span>
-              </button>
+              </Button>
             )
           })}
         </section>

@@ -1,6 +1,7 @@
 import { Play, Trash } from '@phosphor-icons/react'
 import type { FavoriteEntry } from '../../types/schema'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
+import { Button } from '../common/Button'
 import styles from './FavouritesDetailPanel.module.css'
 
 export interface FavouritesDetailPanelProps {
@@ -34,24 +35,24 @@ export function FavouritesDetailPanel({
       </div>
 
       <div className={styles.actions}>
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={styles.insertCta}
           onClick={onInsert}
           data-testid="favourites-detail-insert"
         >
           <Play size={14} weight="fill" />
           Insert into Editor
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="bare"
           className={styles.deleteButton}
           onClick={onDelete}
           data-testid="favourites-detail-delete"
         >
           <Trash size={14} weight="regular" />
           Delete
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -323,8 +323,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       showSuccessToast('Database dropped', droppedName)
 
       // Full rebuild of schema index after dropping a database (fire-and-forget)
-      buildSchemaIndex(connectionId).catch(() => {
-        // Best-effort — index rebuild failure is non-critical
+      buildSchemaIndex(connectionId).catch((error: unknown) => {
+        logFrontend(
+          'warn',
+          `[object-browser-actions] Schema index rebuild after drop failed: ${String(error)}`
+        )
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -348,8 +351,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       showSuccessToast('Table dropped', `${db}.${table}`)
 
       // Invalidate schema index for the dropped table (fire-and-forget)
-      invalidateSchemaIndex(connectionId, [`${db}.${table}`]).catch(() => {
-        // Best-effort — index invalidation failure is non-critical
+      invalidateSchemaIndex(connectionId, [`${db}.${table}`]).catch((error: unknown) => {
+        logFrontend(
+          'warn',
+          `[object-browser-actions] Schema index invalidation after drop failed: ${String(error)}`
+        )
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -436,13 +442,19 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       // so always also call refreshDatabase to ensure tree awareness.
       try {
         await refreshCategory(connectionId, databaseName, objectType)
-      } catch {
-        // Ignore refreshCategory errors
+      } catch (error) {
+        logFrontend(
+          'warn',
+          `[object-browser-actions] Refreshing the object category after drop failed: ${String(error)}`
+        )
       }
       try {
         await refreshDatabase(connectionId, databaseName)
-      } catch {
-        // Ignore refresh errors — the drop itself succeeded
+      } catch (error) {
+        logFrontend(
+          'warn',
+          `[object-browser-actions] Refreshing the database after drop failed: ${String(error)}`
+        )
       }
       const typeLabel = OBJECT_TYPE_LABELS[objectType]
       showSuccessToast(`${typeLabel} dropped`, `${databaseName}.${objectName}`)

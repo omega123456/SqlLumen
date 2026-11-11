@@ -3,6 +3,7 @@ import { PencilSimple, Play } from '@phosphor-icons/react'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import { formatShortDate } from '../../lib/format-utils'
 import type { FavoriteEntry } from '../../types/schema'
+import { Button } from '../common/Button'
 import styles from './FavouritesSnippetCard.module.css'
 
 export interface FavouritesSnippetCardProps {
@@ -61,8 +62,8 @@ export function FavouritesSnippetCard({
           {favourite.name}
         </span>
         <div className={styles.actions}>
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.actionButton}
             title="Edit"
             onClick={handleEdit}
@@ -70,9 +71,9 @@ export function FavouritesSnippetCard({
             data-testid="snippet-card-edit"
           >
             <PencilSimple size={14} weight="regular" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="bare"
             className={styles.insertButton}
             title="Insert into editor"
             onClick={handleInsert}
@@ -80,7 +81,7 @@ export function FavouritesSnippetCard({
             data-testid="snippet-card-insert"
           >
             <Play size={14} weight="fill" />
-          </button>
+          </Button>
         </div>
       </div>
 

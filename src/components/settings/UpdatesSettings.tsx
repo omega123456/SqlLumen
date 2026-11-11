@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { ArrowsClockwise, CheckCircle, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { Dropdown } from '../common/Dropdown'
@@ -96,6 +96,12 @@ export function UpdatesSettings() {
   const [confirmAction, setConfirmAction] = useState<'download' | 'restart'>('download')
   const [isConfirmingAction, setIsConfirmingAction] = useState(false)
 
+  const recheckAnnouncedUpdate = useEffectEvent(() => {
+    if (status === 'available') {
+      void checkForUpdate(false)
+    }
+  })
+
   useEffect(() => {
     let cancelled = false
 
@@ -112,14 +118,11 @@ export function UpdatesSettings() {
         }
       })
 
-    if (status === 'available') {
-      void checkForUpdate(false)
-    }
+    recheckAnnouncedUpdate()
 
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const pendingWork = buildPendingWorkSummary()

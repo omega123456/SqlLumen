@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { logParseFallback } from '../../lib/app-log-commands'
 import { useShortcutStore, DEFAULT_SHORTCUTS } from '../../stores/shortcut-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { SettingsSection } from './SettingsSection'
@@ -63,51 +64,59 @@ function findConflict(
   return null
 }
 
+function isShortcutOverride(
+  actionId: string,
+  binding: ShortcutBinding | null
+): binding is ShortcutBinding {
+  return actionId in DEFAULT_SHORTCUTS && typeof binding?.key === 'string'
+}
+
+function mergeOntoDefaultShortcuts(
+  storedShortcuts: Record<string, ShortcutBinding | null>
+): Record<string, ShortcutBinding> {
+  const merged = { ...DEFAULT_SHORTCUTS }
+  for (const [actionId, binding] of Object.entries(storedShortcuts)) {
+    if (isShortcutOverride(actionId, binding)) {
+      merged[actionId] = binding
+    }
+  }
+  return merged
+}
+
+function parsePendingShortcuts(
+  pendingShortcuts: string | undefined
+): Record<string, ShortcutBinding> | null {
+  if (!pendingShortcuts) return null
+  try {
+    return mergeOntoDefaultShortcuts(JSON.parse(pendingShortcuts))
+  } catch (error) {
+    logParseFallback('[shortcuts-settings] parsePendingShortcuts', error)
+    return null
+  }
+}
+
 export function ShortcutsSettings() {
   const liveShortcuts = useShortcutStore((s) => s.shortcuts)
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
   const pendingShortcuts = useSettingsStore((s) => s.pendingChanges['shortcuts'])
 
-  // Local working state — initialized from pending changes if present, else from live shortcuts
-  const [workingShortcuts, setWorkingShortcuts] = useState<Record<string, ShortcutBinding>>(() => {
-    if (pendingShortcuts) {
-      try {
-        const parsed = JSON.parse(pendingShortcuts) as Record<string, ShortcutBinding>
-        const merged = { ...DEFAULT_SHORTCUTS }
-        for (const [actionId, binding] of Object.entries(parsed)) {
-          if (actionId in merged && binding && typeof binding.key === 'string') {
-            merged[actionId] = binding
-          }
-        }
-        return merged
-      } catch {
-        return { ...liveShortcuts }
-      }
+  const [workingShortcuts, setWorkingShortcuts] = useState<Record<string, ShortcutBinding>>(
+    () => parsePendingShortcuts(pendingShortcuts) ?? { ...liveShortcuts }
+  )
+
+  const syncWorkingShortcutsWithPending = useEffectEvent((pending: string | undefined) => {
+    if (!pending) {
+      setWorkingShortcuts({ ...liveShortcuts })
+      return
     }
-    return { ...liveShortcuts }
+    const parsedShortcuts = parsePendingShortcuts(pending)
+    if (parsedShortcuts) {
+      setWorkingShortcuts(parsedShortcuts)
+    }
   })
 
-  // Re-initialize when pendingShortcuts changes externally (e.g. reset section)
   useEffect(() => {
-    if (pendingShortcuts) {
-      try {
-        const parsed = JSON.parse(pendingShortcuts) as Record<string, ShortcutBinding>
-        const merged = { ...DEFAULT_SHORTCUTS }
-        for (const [actionId, binding] of Object.entries(parsed)) {
-          if (actionId in merged && binding && typeof binding.key === 'string') {
-            merged[actionId] = binding
-          }
-        }
-        setWorkingShortcuts(merged)
-      } catch {
-        // ignore parse errors
-      }
-    } else {
-      // No pending changes — reset to live shortcuts
-      setWorkingShortcuts({ ...liveShortcuts })
-    }
-    // Only react to pendingShortcuts changes, not liveShortcuts
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    syncWorkingShortcutsWithPending(pendingShortcuts)
   }, [pendingShortcuts])
 
   const [recordingActionId, setRecordingActionId] = useState<string | null>(null)
@@ -253,32 +262,32 @@ export function ShortcutsSettings() {
                   <td>
                     <div className={styles.shortcutCell}>
                       {isRecording ? (
-                        <button
-                          type="button"
+                        <Button
+                          variant="bare"
                           className={`${styles.recordButton} ${styles.recording}`}
                           data-testid={`shortcut-recording-${id}`}
                           onClick={() => cancelRecording()}
                         >
                           Press keys...
-                        </button>
+                        </Button>
                       ) : binding ? (
-                        <button
-                          type="button"
+                        <Button
+                          variant="bare"
                           className={styles.recordButton}
                           data-testid={`shortcut-record-${id}`}
                           onClick={() => setRecordingActionId(id)}
                         >
                           <KeyCapBadge binding={binding} />
-                        </button>
+                        </Button>
                       ) : (
-                        <button
-                          type="button"
+                        <Button
+                          variant="bare"
                           className={styles.recordButton}
                           data-testid={`shortcut-record-${id}`}
                           onClick={() => setRecordingActionId(id)}
                         >
                           Unassigned
-                        </button>
+                        </Button>
                       )}
                       {hasConflict && (
                         <span className={styles.conflict}>
@@ -298,15 +307,15 @@ export function ShortcutsSettings() {
                   </td>
                   <td>
                     {isModified(id) && (
-                      <button
-                        type="button"
+                      <Button
+                        variant="bare"
                         className={styles.resetButton}
                         data-testid={`shortcut-reset-${id}`}
                         onClick={() => resetShortcut(id)}
                         title={`Reset to default (${defaults[id]?.modifiers.join('+')}${defaults[id]?.modifiers.length ? '+' : ''}${defaults[id]?.key})`}
                       >
                         Reset
-                      </button>
+                      </Button>
                     )}
                   </td>
                 </tr>

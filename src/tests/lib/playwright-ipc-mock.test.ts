@@ -1,9 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import {
   playwrightIpcMockHandler,
   resetPlaywrightSessionAllocator,
 } from '../../lib/playwright-ipc-mock'
-import { overrideFixture, resetFixtureOverrides } from '../playwright-fixtures'
+import {
+  overrideFixture,
+  overrideStaticFixture,
+  resetFixtureOverrides,
+} from '../playwright-fixtures'
 import type {
   MultiQueryResult,
   MultiQueryResultItem,
@@ -741,6 +745,172 @@ describe('playwrightIpcMockHandler', () => {
       eventId: 42,
     })
     expect(result).toBeNull()
+  })
+
+  it('serves AI setting defaults from the fixture registry and null for other keys', () => {
+    expect(playwrightIpcMockHandler('get_setting', { key: 'ai.temperature' })).toBe('0.3')
+    expect(playwrightIpcMockHandler('get_setting', { key: 'ai.endpoint' })).toBe('')
+    expect(playwrightIpcMockHandler('get_setting', { key: 'theme' })).toBeNull()
+
+    overrideStaticFixture('aiDefaultSettings', { 'ai.temperature': '0.9' })
+    expect(playwrightIpcMockHandler('get_setting', { key: 'ai.temperature' })).toBe('0.9')
+    expect(playwrightIpcMockHandler('get_setting', { key: 'ai.endpoint' })).toBeNull()
+  })
+
+  it('serves all settings with the command palette recents', () => {
+    const settings = playwrightIpcMockHandler('get_all_settings') as Record<string, string>
+
+    expect(settings.theme).toBe('system')
+    expect(settings['ai.maxTokens']).toBe('2048')
+    expect(typeof settings['commandPalette.recents']).toBe('string')
+  })
+
+  it('echoes the requested job id in dump and import progress', () => {
+    expect(playwrightIpcMockHandler('get_dump_progress', { jobId: 'dump-7' })).toMatchObject({
+      jobId: 'dump-7',
+      status: 'completed',
+    })
+    expect(playwrightIpcMockHandler('get_dump_progress', {})).toMatchObject({
+      jobId: 'mock-dump-job-1',
+    })
+    expect(playwrightIpcMockHandler('get_import_progress', { jobId: 'import-3' })).toMatchObject({
+      jobId: 'import-3',
+      status: 'running',
+    })
+    expect(playwrightIpcMockHandler('get_import_progress', {})).toMatchObject({
+      jobId: 'mock-import-job-1',
+    })
+  })
+
+  it('serves overridden table DDL previews keyed by mode', () => {
+    overrideFixture('tableDdlPreview', 'create', {
+      ddl: 'CREATE TABLE `t` (id INT);',
+      warnings: [],
+    })
+
+    expect(playwrightIpcMockHandler('generate_table_ddl', { request: { mode: 'create' } })).toEqual(
+      { ddl: 'CREATE TABLE `t` (id INT);', warnings: [] }
+    )
+  })
+
+  it('serves overridden static fixtures until the overrides are reset', () => {
+    overrideStaticFixture('processList', [])
+    overrideStaticFixture('historyPage', { entries: [], total: 7, page: 1, pageSize: 50 })
+
+    expect(playwrightIpcMockHandler('get_processlist', { sessionId: 's-1' })).toEqual([])
+    expect(playwrightIpcMockHandler('clear_history', {})).toBe(7)
+
+    resetFixtureOverrides()
+
+    expect(playwrightIpcMockHandler('get_processlist', { sessionId: 's-1' })).toHaveLength(6)
+    expect(playwrightIpcMockHandler('clear_history', {})).toBe(3)
+  })
+
+  it('serves the derived exportable objects for every schema metadata database', () => {
+    const exportable = playwrightIpcMockHandler('list_exportable_objects', {
+      connectionId: 'conn-1',
+    }) as Array<{ name: string; tables: Array<{ name: string; objectType: string }> }>
+
+    expect(exportable.map((database) => database.name)).toEqual(['ecommerce_db', 'analytics_db'])
+    expect(exportable[0].tables.map((table) => table.name)).toEqual([
+      'users',
+      'orders',
+      'products',
+      'bit_test',
+      'user_stats_view',
+    ])
+  })
+
+  describe('ai_chat streaming simulation', () => {
+    type MockAiWindow = typeof window & {
+      __mockAiThinking__?: boolean
+      __mockAiError__?: boolean
+      __TAURI_INTERNALS__: { runCallback: (id: number, data: unknown) => void }
+    }
+
+    type RunCallbackMock = Mock<(id: number, data: unknown) => void>
+
+    function lastOf(events: string[]): string | undefined {
+      return events[events.length - 1]
+    }
+
+    const STREAM_EVENT_HANDLERS = {
+      'ai-stream-chunk': 901,
+      'ai-stream-done': 902,
+      'ai-stream-error': 903,
+    }
+
+    function listenToStreamEvents(): void {
+      for (const [eventName, handlerId] of Object.entries(STREAM_EVENT_HANDLERS)) {
+        playwrightIpcMockHandler('plugin:event|listen', { event: eventName, handler: handlerId })
+      }
+    }
+
+    function unlistenStreamEvents(): void {
+      for (const [eventName, handlerId] of Object.entries(STREAM_EVENT_HANDLERS)) {
+        playwrightIpcMockHandler('plugin:event|unlisten', { event: eventName, eventId: handlerId })
+      }
+    }
+
+    function emittedEvents(runCallback: RunCallbackMock): string[] {
+      return runCallback.mock.calls.map(([, data]) => (data as { event: string }).event)
+    }
+
+    let runCallback: RunCallbackMock
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      runCallback = vi.fn<(id: number, data: unknown) => void>()
+      vi.spyOn((window as MockAiWindow).__TAURI_INTERNALS__, 'runCallback').mockImplementation(
+        runCallback
+      )
+      listenToStreamEvents()
+    })
+
+    afterEach(() => {
+      unlistenStreamEvents()
+      delete (window as MockAiWindow).__mockAiThinking__
+      delete (window as MockAiWindow).__mockAiError__
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    })
+
+    it('streams content chunks and then a done event', () => {
+      playwrightIpcMockHandler('ai_chat', { request: { streamId: 'stream-content' } })
+      vi.runAllTimers()
+
+      const events = emittedEvents(runCallback)
+      expect(events[0]).toBe('ai-stream-chunk')
+      expect(lastOf(events)).toBe('ai-stream-done')
+    })
+
+    it('streams a thinking chunk before the content when thinking is simulated', () => {
+      ;(window as MockAiWindow).__mockAiThinking__ = true
+
+      playwrightIpcMockHandler('ai_chat', { request: { streamId: 'stream-thinking' } })
+      vi.runAllTimers()
+
+      const firstPayload = runCallback.mock.calls[0][1] as {
+        payload: { kind: string; content: string }
+      }
+      expect(firstPayload.payload.kind).toBe('thinking')
+      expect(lastOf(emittedEvents(runCallback))).toBe('ai-stream-done')
+    })
+
+    it('emits a stream error when the AI error is simulated', () => {
+      ;(window as MockAiWindow).__mockAiError__ = true
+
+      playwrightIpcMockHandler('ai_chat', { request: {} })
+      vi.runAllTimers()
+
+      expect(runCallback).toHaveBeenCalledWith(STREAM_EVENT_HANDLERS['ai-stream-error'], {
+        event: 'ai-stream-error',
+        payload: {
+          streamId: 'mock-stream-id',
+          error: 'Connection refused: unable to reach AI endpoint',
+        },
+      })
+    })
   })
 
   // --- Deterministic multi-session allocation ---

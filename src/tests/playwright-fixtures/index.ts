@@ -43,6 +43,12 @@ import {
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { DEFAULT_SCHEMA_OBJECTS_BY_TYPE } from './schema-objects'
+import {
+  DEFAULT_STATIC_FIXTURES,
+  type PlaywrightStaticFixtureName,
+  type PlaywrightStaticFixtures,
+} from './static-fixtures'
+import { TABLE_DDL_PREVIEW_BY_MODE } from './table-designer'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
 import {
   DEFAULT_CREATED_SNAPSHOT_ID,
@@ -53,7 +59,8 @@ import type { AiModelInfo } from '../../lib/ai-commands'
 import type { LogLevelFilter, LogPage } from '../../lib/log-commands'
 import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
 import type { OpenConnectionSession } from '../../types/connection'
-import type { BlobValueResponse, SchemaMetadataFull } from '../../types/schema'
+import type { BlobValueResponse, GenerateDdlResponse, SchemaMetadataFull } from '../../types/schema'
+import type { DumpJobProgress, ImportJobProgress } from '../../lib/sql-dump-commands'
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
 import type { ResultExportProgress } from '../../lib/export-commands'
 import type {
@@ -115,6 +122,7 @@ type FixtureOverrideDomain =
   | 'commandPaletteRecents'
   | 'openConnectionSessions'
   | 'windowBackdrop'
+  | 'tableDdlPreview'
 
 type QueryResultFixtureFactory = (activeMockDb: string | null) => PlaywrightQueryResultFixture
 
@@ -147,6 +155,8 @@ type FixtureOverrides = {
   commandPaletteRecents: Record<string, string>
   openConnectionSessions: Record<string, OpenConnectionSession[]>
   windowBackdrop: Record<string, WindowBackdrop>
+  tableDdlPreview: Record<string, GenerateDdlResponse>
+  staticFixtures: Partial<PlaywrightStaticFixtures>
 }
 
 type FixtureOverrideValueMap = {
@@ -178,6 +188,7 @@ type FixtureOverrideValueMap = {
   commandPaletteRecents: string
   openConnectionSessions: OpenConnectionSession[]
   windowBackdrop: WindowBackdrop
+  tableDdlPreview: GenerateDdlResponse
 }
 
 type FixtureRegistryApi = {
@@ -230,6 +241,17 @@ type FixtureRegistryApi = {
   getCommandPaletteRecentsFixture: () => string
   getOpenConnectionSessionsFixture: () => OpenConnectionSession[]
   getWindowBackdropFixture: () => WindowBackdrop
+  getTableDdlPreviewFixture: (mode: string | null | undefined) => GenerateDdlResponse
+  getAiDefaultSettingFixture: (key: string) => string | null
+  getSqlDumpProgressFixture: (jobId: string | null | undefined) => DumpJobProgress
+  getSqlImportProgressFixture: (jobId: string | null | undefined) => ImportJobProgress
+  getStaticFixture: <TName extends PlaywrightStaticFixtureName>(
+    name: TName
+  ) => PlaywrightStaticFixtures[TName]
+  overrideStaticFixture: <TName extends PlaywrightStaticFixtureName>(
+    name: TName,
+    data: PlaywrightStaticFixtures[TName]
+  ) => void
   overrideFixture: <TDomain extends FixtureOverrideDomain>(
     domain: TDomain,
     key: string,
@@ -314,36 +336,42 @@ const DEFAULT_COMMAND_PALETTE_RECENTS_BY_KEY: Record<string, string> = {
   default: COMMAND_PALETTE_RECENTS_FIXTURE,
 }
 
-const overrides: FixtureOverrides = {
-  tableData: {},
-  columns: {},
-  foreignKeys: {},
-  schemaInfo: {},
-  schemaObjects: {},
-  queryResult: {},
-  analyzeQueryForEdit: {},
-  objectBody: {},
-  routineParams: {},
-  copyableObjects: {},
-  targetDatabases: {},
-  copyToHostStart: {},
-  copyProgress: {},
-  copyCancel: {},
-  resultExportStart: {},
-  resultExportProgress: {},
-  resultExportCancel: {},
-  blobValue: {},
-  aiModels: {},
-  logsPage: {},
-  logsExport: {},
-  snapshotList: {},
-  snapshotState: {},
-  snapshotCreatedId: {},
-  schemaMetadataFull: {},
-  commandPaletteRecents: {},
-  openConnectionSessions: {},
-  windowBackdrop: {},
+function createEmptyFixtureOverrides(): FixtureOverrides {
+  return {
+    tableData: {},
+    columns: {},
+    foreignKeys: {},
+    schemaInfo: {},
+    schemaObjects: {},
+    queryResult: {},
+    analyzeQueryForEdit: {},
+    objectBody: {},
+    routineParams: {},
+    copyableObjects: {},
+    targetDatabases: {},
+    copyToHostStart: {},
+    copyProgress: {},
+    copyCancel: {},
+    resultExportStart: {},
+    resultExportProgress: {},
+    resultExportCancel: {},
+    blobValue: {},
+    aiModels: {},
+    logsPage: {},
+    logsExport: {},
+    snapshotList: {},
+    snapshotState: {},
+    snapshotCreatedId: {},
+    schemaMetadataFull: {},
+    commandPaletteRecents: {},
+    openConnectionSessions: {},
+    windowBackdrop: {},
+    tableDdlPreview: {},
+    staticFixtures: {},
+  }
 }
+
+let overrides = createEmptyFixtureOverrides()
 
 function getLogsPageLookupKey(
   page: number | null | undefined,
@@ -863,6 +891,51 @@ export function getWindowBackdropFixture(): WindowBackdrop {
   return overrides.windowBackdrop.default ?? DEFAULT_WINDOW_BACKDROP
 }
 
+export function getTableDdlPreviewFixture(mode: string | null | undefined): GenerateDdlResponse {
+  const modeKey = normalizeLookupKey(mode)
+
+  return getOverrideOrDefault(
+    overrides.tableDdlPreview,
+    TABLE_DDL_PREVIEW_BY_MODE,
+    modeKey,
+    TABLE_DDL_PREVIEW_BY_MODE.default
+  )
+}
+
+export function getStaticFixture<TName extends PlaywrightStaticFixtureName>(
+  name: TName
+): PlaywrightStaticFixtures[TName] {
+  return overrides.staticFixtures[name] ?? DEFAULT_STATIC_FIXTURES[name]
+}
+
+export function overrideStaticFixture<TName extends PlaywrightStaticFixtureName>(
+  name: TName,
+  data: PlaywrightStaticFixtures[TName]
+): void {
+  overrides.staticFixtures[name] = data
+}
+
+export function getAiDefaultSettingFixture(key: string): string | null {
+  const aiDefaultSettings = getStaticFixture('aiDefaultSettings')
+  const isAiSetting = key in aiDefaultSettings
+  if (!isAiSetting) return null
+  return aiDefaultSettings[key]
+}
+
+export function getSqlDumpProgressFixture(jobId: string | null | undefined): DumpJobProgress {
+  return {
+    ...getStaticFixture('sqlDumpProgress'),
+    jobId: jobId ?? getStaticFixture('sqlDumpJobId'),
+  }
+}
+
+export function getSqlImportProgressFixture(jobId: string | null | undefined): ImportJobProgress {
+  return {
+    ...getStaticFixture('sqlImportProgress'),
+    jobId: jobId ?? getStaticFixture('sqlImportJobId'),
+  }
+}
+
 export function overrideFixture<TDomain extends FixtureOverrideDomain>(
   domain: TDomain,
   key: string,
@@ -883,36 +956,9 @@ export function overrideFixture<TDomain extends FixtureOverrideDomain>(
 }
 
 export function resetFixtureOverrides(): void {
-  overrides.tableData = {}
-  overrides.columns = {}
-  overrides.foreignKeys = {}
-  overrides.schemaInfo = {}
-  overrides.schemaObjects = {}
-  overrides.queryResult = {}
-  overrides.analyzeQueryForEdit = {}
+  overrides = createEmptyFixtureOverrides()
   resultSlots.clear()
   resultWindowRequests = []
-  overrides.objectBody = {}
-  overrides.routineParams = {}
-  overrides.copyableObjects = {}
-  overrides.targetDatabases = {}
-  overrides.copyToHostStart = {}
-  overrides.copyProgress = {}
-  overrides.copyCancel = {}
-  overrides.resultExportStart = {}
-  overrides.resultExportProgress = {}
-  overrides.resultExportCancel = {}
-  overrides.blobValue = {}
-  overrides.aiModels = {}
-  overrides.logsPage = {}
-  overrides.logsExport = {}
-  overrides.snapshotList = {}
-  overrides.snapshotState = {}
-  overrides.snapshotCreatedId = {}
-  overrides.schemaMetadataFull = {}
-  overrides.commandPaletteRecents = {}
-  overrides.openConnectionSessions = {}
-  overrides.windowBackdrop = {}
 }
 
 const fixtureRegistry: FixtureRegistryApi = {
@@ -952,6 +998,12 @@ const fixtureRegistry: FixtureRegistryApi = {
   getCommandPaletteRecentsFixture,
   getOpenConnectionSessionsFixture,
   getWindowBackdropFixture,
+  getTableDdlPreviewFixture,
+  getAiDefaultSettingFixture,
+  getSqlDumpProgressFixture,
+  getSqlImportProgressFixture,
+  getStaticFixture,
+  overrideStaticFixture,
   overrideFixture,
   resetFixtureOverrides,
 }

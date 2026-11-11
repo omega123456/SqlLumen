@@ -11,6 +11,7 @@ import { Button } from '../../common/Button'
 import { Textarea } from '../../common/Textarea'
 import { MemoryRow, MEMORY_DRAG_MIME_TYPE, type MemoryDragPayload } from './MemoryRow'
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
+import { logParseFallback } from '../../../lib/app-log-commands'
 import styles from './MemorySection.module.css'
 
 export interface MemorySectionProps {
@@ -101,7 +102,8 @@ function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null 
           ? parsed.fromGroupId
           : undefined,
     }
-  } catch {
+  } catch (error) {
+    logParseFallback('[memory-section] parseDragPayload', error)
     return null
   }
 }
@@ -222,8 +224,8 @@ export function MemorySection({
       onDrop={handleDrop}
     >
       {collapsible ? (
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={`${styles.header} ${styles.headerButton} ${toneClass} ${
             subdued ? styles.headerSubdued : ''
           }`}
@@ -239,7 +241,7 @@ export function MemorySection({
           <span className={styles.countBadge}>
             {memories.length} {memories.length === 1 ? 'memory' : 'memories'}
           </span>
-        </button>
+        </Button>
       ) : (
         <div className={`${styles.header} ${toneClass} ${subdued ? styles.headerSubdued : ''}`}>
           <span className={styles.headerIcon}>{scopeIcon(scope)}</span>

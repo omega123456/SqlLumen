@@ -1,3 +1,5 @@
+import { logFrontend } from './app-log-commands'
+
 /** Input types that support text editing context actions (cut/copy/paste). */
 const EDITABLE_INPUT_TYPES = new Set([
   '',
@@ -190,8 +192,11 @@ export async function writeClipboardText(text: string): Promise<void> {
       const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
       await writeText(text)
       return
-    } catch {
-      // Fall through to browser API
+    } catch (error) {
+      logFrontend(
+        'warn',
+        `[context-menu-utils] Tauri clipboard write failed, using the browser clipboard: ${String(error)}`
+      )
     }
   }
 

@@ -19,12 +19,14 @@ import {
   Wrench,
 } from '@phosphor-icons/react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { logFrontend } from '../../lib/app-log-commands'
 import { clampContextMenuPosition, writeClipboardText } from '../../lib/context-menu-utils'
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
 import type { CopyObjectCategory, CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { parseNodeId, useSchemaStore, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { NodeType, ObjectType, EditableObjectType } from '../../types/schema'
+import { Button } from '../common/Button'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -230,8 +232,8 @@ export function ObjectBrowserContextMenu({
   }
 
   const copyName = () => {
-    void writeClipboardText(nodeLabel).catch(() => {
-      // Clipboard write failed — non-critical
+    void writeClipboardText(nodeLabel).catch((error: unknown) => {
+      logFrontend('warn', `[object-browser-context-menu] Copying the name failed: ${String(error)}`)
     })
     closeMenu()
   }
@@ -317,9 +319,9 @@ export function ObjectBrowserContextMenu({
           .join(' ')
 
         return (
-          <button
+          <Button
+            variant="bare"
             key={entry.key}
-            type="button"
             className={itemClass}
             role="menuitem"
             disabled={entry.disabled}
@@ -329,7 +331,7 @@ export function ObjectBrowserContextMenu({
           >
             <span className="ui-context-menu__icon">{entry.icon}</span>
             <span>{entry.label}</span>
-          </button>
+          </Button>
         )
       })}
     </div>,

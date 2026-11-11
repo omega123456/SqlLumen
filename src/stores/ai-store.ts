@@ -580,8 +580,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     if (tab?._unlisten) {
       try {
         tab._unlisten()
-      } catch {
-        // Swallow — listener cleanup is best-effort
+      } catch (error) {
+        logFrontend('warn', `[ai-store] Removing the stream listener failed: ${String(error)}`)
       }
       patchTab(tabId, { _unlisten: null })
     }

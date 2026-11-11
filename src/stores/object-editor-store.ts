@@ -5,6 +5,7 @@
 
 import { create } from 'zustand'
 import type { EditableObjectType, SaveObjectResponse } from '../types/schema'
+import { logFrontend } from '../lib/app-log-commands'
 import { getObjectBody, saveObject } from '../lib/object-editor-commands'
 import { getObjectTemplate } from '../components/object-editor/object-editor-templates'
 import { showSuccessToast, showErrorToast } from './toast-store'
@@ -216,13 +217,19 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
           await useSchemaStore
             .getState()
             .refreshCategory(tab.connectionId, tab.database, tab.objectType)
-        } catch {
-          // Ignore refreshCategory errors
+        } catch (error) {
+          logFrontend(
+            'warn',
+            `[object-editor-store] Refreshing the object category after save failed: ${String(error)}`
+          )
         }
         try {
           await useSchemaStore.getState().refreshDatabase(tab.connectionId, tab.database)
-        } catch {
-          // Ignore refresh errors — the save itself succeeded
+        } catch (error) {
+          logFrontend(
+            'warn',
+            `[object-editor-store] Refreshing the database after save failed: ${String(error)}`
+          )
         }
       } else {
         const errorMsg = response.errorMessage ?? 'Unknown error'

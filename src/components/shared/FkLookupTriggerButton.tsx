@@ -11,6 +11,7 @@
 import { DotsThree } from '@phosphor-icons/react'
 import { useFkLookup } from './fk-lookup-context'
 import type { ForeignKeyColumnInfo } from '../../types/schema'
+import { Button } from '../common/Button'
 
 interface FkLookupTriggerButtonProps {
   foreignKey: ForeignKeyColumnInfo
@@ -55,8 +56,8 @@ export function FkLookupTriggerButton({
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="bare"
       className={className}
       aria-label="Look up foreign key value (F4)"
       data-testid="fk-lookup-trigger"
@@ -65,6 +66,6 @@ export function FkLookupTriggerButton({
       onClick={handleClick}
     >
       <DotsThree size={14} />
-    </button>
+    </Button>
   )
 }

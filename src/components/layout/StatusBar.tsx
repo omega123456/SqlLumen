@@ -9,6 +9,7 @@ import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import { formatRowCountParts } from '../../lib/format-row-count'
+import { Button } from '../common/Button'
 import styles from './StatusBar.module.css'
 
 const statusLabel: Record<string, string> = {
@@ -184,8 +185,8 @@ export function StatusBar() {
 
   const updateIndicator =
     updateStatus === 'available' ? (
-      <button
-        type="button"
+      <Button
+        variant="bare"
         className={styles.updateButton}
         data-testid="status-bar-update-indicator"
         aria-label="Update available, click to open update settings"
@@ -193,7 +194,7 @@ export function StatusBar() {
       >
         <ArrowsClockwise size={12} weight="fill" className={styles.indexingIcon} />
         <span className={styles.updateButtonText}>Update available</span>
-      </button>
+      </Button>
     ) : null
 
   const hasActivity =

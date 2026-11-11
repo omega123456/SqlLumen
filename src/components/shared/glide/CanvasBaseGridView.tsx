@@ -82,6 +82,8 @@ import {
   CLIPBOARD_ACTION_FAILURES,
   type ClipboardActionFailure,
 } from '../../../lib/clipboard-action-failures'
+import { Button } from '../../common/Button'
+
 type GridRow = Record<string, unknown>
 type GlideKeyDownEvent = GridKeyEventArgs
 type GlideDropdownOption = string | { value: string; label: string }
@@ -2146,8 +2148,8 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
               }}
               onPointerDown={(event) => event.stopPropagation()}
             >
-              <button
-                type="button"
+              <Button
+                variant="bare"
                 className="ui-context-menu__item"
                 role="menuitem"
                 onClick={() => {
@@ -2162,9 +2164,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
                   aria-hidden
                 />
                 <span>Copy</span>
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="bare"
                 className="ui-context-menu__item"
                 role="menuitem"
                 onClick={() => {
@@ -2179,9 +2181,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
                   aria-hidden
                 />
                 <span>Cut</span>
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="bare"
                 className="ui-context-menu__item"
                 role="menuitem"
                 onClick={() => {
@@ -2196,7 +2198,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
                   aria-hidden
                 />
                 <span>Paste</span>
-              </button>
+              </Button>
             </div>,
             contextMenu.portalRoot
           )

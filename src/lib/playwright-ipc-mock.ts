@@ -1,7 +1,7 @@
-import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 import type { LogLevelFilter } from './log-commands'
 import {
+  getAiDefaultSettingFixture,
   getAiModelsFixture,
   getAnalyzeQueryForEditFixture,
   getBlobValueFixture,
@@ -40,10 +40,13 @@ import {
   getTableDataFixture,
   getTargetDatabasesFixture,
   getSchemaObjectsFixture,
+  getSqlDumpProgressFixture,
+  getSqlImportProgressFixture,
+  getStaticFixture,
+  getTableDdlPreviewFixture,
   getWindowBackdropFixture,
 } from '../tests/playwright-fixtures'
 
-const MOCK_TS = '2025-01-01T00:00:00.000Z'
 const PLAYWRIGHT_LOG_LEVEL_FILTERS: LogLevelFilter[] = [
   'all',
   'error',
@@ -53,30 +56,18 @@ const PLAYWRIGHT_LOG_LEVEL_FILTERS: LogLevelFilter[] = [
   'trace',
 ]
 
-/** Deterministic saved profile for Playwright / VITE_PLAYWRIGHT browser runs. */
-export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
-  id: 'conn-playwright-1',
-  name: 'Sample MySQL',
-  host: '127.0.0.1',
-  port: 3306,
-  username: 'appuser',
-  hasPassword: true,
-  defaultDatabase: 'ecommerce_db',
-  sslEnabled: false,
-  sslCaPath: null,
-  sslCertPath: null,
-  sslKeyPath: null,
-  color: '#2563eb',
-  groupId: null,
-  readOnly: false,
-  sortOrder: 0,
-  connectTimeoutSecs: 10,
-  keepaliveIntervalSecs: 60,
-  createdAt: MOCK_TS,
-  updatedAt: MOCK_TS,
+const COMMAND_PALETTE_RECENTS_SETTING_KEY = 'commandPalette.recents'
+const AI_STREAM_START_DELAY_MS = 10
+const AI_STREAM_CHUNK_INTERVAL_MS = 10
+const AI_THINKING_LEAD_MS = 20
+const AI_STREAM_ERROR_DELAY_MS = 20
+const AI_STREAM_CHUNK_PATTERN = /[\s\S]{1,20}/g
+
+function defaultMockDatabase(): string | null {
+  return getStaticFixture('savedConnection').defaultDatabase
 }
 
-let activeMockDatabase: string | null = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
+let activeMockDatabase: string | null = defaultMockDatabase()
 
 // ---------------------------------------------------------------------------
 // Deterministic multi-session allocation
@@ -152,9 +143,37 @@ function emitMockEvent(eventName: string, payload: unknown): void {
   }
 }
 
-/** The pre-defined AI mock response containing a SQL code block. */
-const AI_MOCK_RESPONSE =
-  "Here's a query to help you:\n\n```sql\nSELECT * FROM users WHERE active = 1;\n```\n\nThis query filters for active users."
+function splitAiResponseIntoChunks(responseText: string): string[] {
+  return responseText.match(AI_STREAM_CHUNK_PATTERN) ?? [responseText]
+}
+
+function scheduleAiContentStream(streamId: string, startDelayMs: number): void {
+  let delay = startDelayMs
+  for (const chunk of splitAiResponseIntoChunks(getStaticFixture('aiChat').responseText)) {
+    setTimeout(() => {
+      emitMockEvent('ai-stream-chunk', { streamId, content: chunk, kind: 'content' })
+    }, delay)
+    delay += AI_STREAM_CHUNK_INTERVAL_MS
+  }
+  setTimeout(() => {
+    emitMockEvent('ai-stream-done', { streamId })
+  }, delay)
+}
+
+function scheduleAiThinkingStream(streamId: string): void {
+  const thinkingText = getStaticFixture('aiChat').thinkingText
+  setTimeout(() => {
+    emitMockEvent('ai-stream-chunk', { streamId, content: thinkingText, kind: 'thinking' })
+  }, AI_STREAM_START_DELAY_MS)
+  scheduleAiContentStream(streamId, AI_STREAM_START_DELAY_MS + AI_THINKING_LEAD_MS)
+}
+
+function scheduleAiStreamError(streamId: string): void {
+  const errorMessage = getStaticFixture('aiChat').errorMessage
+  setTimeout(() => {
+    emitMockEvent('ai-stream-error', { streamId: streamId, error: errorMessage })
+  }, AI_STREAM_ERROR_DELAY_MS)
+}
 
 // ---------------------------------------------------------------------------
 
@@ -181,12 +200,13 @@ function getMockUpdateMetadata(): Record<string, unknown> | null {
     return null
   }
 
+  const update = getStaticFixture('update')
   return {
-    rid: 101,
-    currentVersion: override.currentVersion ?? '0.1.0',
-    version: override.version ?? '0.2.0',
-    date: override.date ?? MOCK_TS,
-    body: override.body ?? 'Mock SqlLumen update for Playwright flows.',
+    rid: update.rid,
+    currentVersion: override.currentVersion ?? update.currentVersion,
+    version: override.version ?? update.version,
+    date: override.date ?? update.date,
+    body: override.body ?? update.body,
     rawJson: override.rawJson ?? null,
   }
 }
@@ -194,6 +214,20 @@ function getMockUpdateMetadata(): Record<string, unknown> | null {
 function emitUpdaterEvent(args: Record<string, unknown> | undefined, payload: unknown): void {
   const onEvent = args?.onEvent as { onmessage?: (payload: unknown) => void } | undefined
   onEvent?.onmessage?.(payload)
+}
+
+function emitUpdaterDownload(
+  args: Record<string, unknown> | undefined,
+  chunkLengths: number[]
+): void {
+  emitUpdaterEvent(args, {
+    event: 'Started',
+    data: { contentLength: getStaticFixture('update').contentLength },
+  })
+  for (const chunkLength of chunkLengths) {
+    emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: chunkLength } })
+  }
+  emitUpdaterEvent(args, { event: 'Finished' })
 }
 
 function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
@@ -267,20 +301,15 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'plugin:updater|check':
       return getMockUpdateMetadata()
     case 'plugin:updater|download_and_install':
-      emitUpdaterEvent(args, { event: 'Started', data: { contentLength: 100 } })
-      emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: 50 } })
-      emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: 50 } })
-      emitUpdaterEvent(args, { event: 'Finished' })
+      emitUpdaterDownload(args, getStaticFixture('update').installChunkLengths)
       return null
     case 'plugin:updater|download':
-      emitUpdaterEvent(args, { event: 'Started', data: { contentLength: 100 } })
-      emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: 100 } })
-      emitUpdaterEvent(args, { event: 'Finished' })
-      return 201
+      emitUpdaterDownload(args, getStaticFixture('update').downloadChunkLengths)
+      return getStaticFixture('update').downloadRid
     case 'plugin:updater|install':
       return null
     case 'plugin:os|platform':
-      return 'linux'
+      return getStaticFixture('platform')
     case 'plugin:process|restart':
     case 'plugin:process|relaunch':
       return null
@@ -288,53 +317,17 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     // --- Settings ---
     case 'get_setting': {
       const key = args?.key as string
-      // Return AI defaults for AI-related keys
-      const AI_DEFAULTS: Record<string, string> = {
-        'ai.enabled': 'false',
-        'ai.endpoint': '',
-        'ai.model': '',
-        'ai.embeddingModel': '',
-        'ai.temperature': '0.3',
-        'ai.maxTokens': '2048',
-        'ai.enableReasoning': 'false',
-        'ai.preferResponsesApi': 'false',
-      }
-      if (key in AI_DEFAULTS) return AI_DEFAULTS[key]
-      if (key === 'commandPalette.recents') {
+      if (key === COMMAND_PALETTE_RECENTS_SETTING_KEY) {
         return getCommandPaletteRecentsValue()
       }
-      return null
+      return getAiDefaultSettingFixture(key)
     }
     case 'set_setting':
       return null
     case 'get_all_settings':
       return {
-        theme: 'system',
-        'log.level': 'info',
-        'session.restore': 'true',
-        'editor.fontFamily': 'JetBrains Mono',
-        'editor.fontSize': '14',
-        'editor.lineHeight': '1.6',
-        'editor.wordWrap': 'false',
-        'editor.minimap': 'false',
-        'editor.lineNumbers': 'true',
-        'editor.autocompleteBackticks': 'false',
-        'results.pageSize': '500',
-        'results.nullDisplay': 'NULL',
-        'results.tableTabsInBottomPanel': 'false',
-        'connection.defaultTimeout': '10',
-        'connection.defaultKeepalive': '60',
-        shortcuts: '{}',
-        'commandPalette.recents': getCommandPaletteRecentsValue(),
-        'session.state': 'null',
-        'ai.enabled': 'false',
-        'ai.endpoint': '',
-        'ai.model': '',
-        'ai.embeddingModel': '',
-        'ai.temperature': '0.3',
-        'ai.maxTokens': '2048',
-        'ai.enableReasoning': 'false',
-        'ai.preferResponsesApi': 'false',
+        ...getStaticFixture('appSettings'),
+        [COMMAND_PALETTE_RECENTS_SETTING_KEY]: getCommandPaletteRecentsValue(),
       }
 
     case 'log_frontend':
@@ -359,7 +352,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- App info ---
     case 'get_app_info':
-      return { rustLogOverride: false, appVersion: '0.1.0' }
+      return getStaticFixture('appInfo')
 
     // --- Window chrome ---
     case 'set_window_theme':
@@ -370,37 +363,33 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- Connection management ---
     case 'list_connections':
-      return [PLAYWRIGHT_MOCK_CONNECTION]
+      return [getStaticFixture('savedConnection')]
     case 'list_connection_groups':
       return []
     case 'list_open_connection_sessions':
       return getOpenConnectionSessionsFixture()
     case 'open_connection':
-      activeMockDatabase = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
-      return { sessionId: allocatePlaywrightSessionId(), serverVersion: '8.0.33-mock' }
+      activeMockDatabase = defaultMockDatabase()
+      return {
+        sessionId: allocatePlaywrightSessionId(),
+        serverVersion: getStaticFixture('serverVersion'),
+      }
     case 'select_database':
       activeMockDatabase =
         ((args as Record<string, unknown>)?.databaseName as string | null) ?? null
       return null
     case 'test_connection':
-      return {
-        success: true,
-        serverVersion: '8.0.33-mock',
-        authMethod: 'caching_sha2_password',
-        sslStatus: 'Disabled',
-        connectionTimeMs: 12,
-        errorMessage: null,
-      }
+      return getStaticFixture('testConnection')
     case 'save_connection':
-      return 'conn-playwright-new'
+      return getStaticFixture('newConnectionId')
     case 'update_connection':
       return null
     case 'delete_connection':
       return null
     case 'get_connection':
-      return PLAYWRIGHT_MOCK_CONNECTION
+      return getStaticFixture('savedConnection')
     case 'create_connection_group':
-      return 'grp-playwright-new'
+      return getStaticFixture('newConnectionGroupId')
     case 'update_connection_group':
       return null
     case 'delete_connection_group':
@@ -434,22 +423,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return getSchemaInfoFixture(String(objectType))
     }
     case 'get_database_details':
-      return {
-        name: 'ecommerce_db',
-        defaultCharacterSet: 'utf8mb4',
-        defaultCollation: 'utf8mb4_general_ci',
-      }
+      return getStaticFixture('databaseDetails')
     case 'list_charsets':
-      return [
-        {
-          charset: 'utf8mb4',
-          description: 'UTF-8 Unicode',
-          defaultCollation: 'utf8mb4_general_ci',
-          maxLength: 4,
-        },
-      ]
+      return getStaticFixture('charsets')
     case 'list_collations':
-      return [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
+      return getStaticFixture('collations')
 
     // --- Copy to another host ---
     case 'start_copy_to_host':
@@ -465,123 +443,10 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- Table designer ---
     case 'load_table_for_designer':
-      return {
-        tableName: 'users',
-        columns: [
-          {
-            name: 'id',
-            type: 'BIGINT',
-            typeModifier: 'UNSIGNED',
-            length: '20',
-            nullable: false,
-            isPrimaryKey: true,
-            isAutoIncrement: true,
-            defaultValue: { tag: 'NO_DEFAULT' },
-            comment: '',
-            originalName: 'id',
-          },
-          {
-            name: 'username',
-            type: 'VARCHAR',
-            length: '64',
-            nullable: false,
-            isPrimaryKey: false,
-            isAutoIncrement: false,
-            defaultValue: { tag: 'NO_DEFAULT' },
-            comment: '',
-            originalName: 'username',
-          },
-          {
-            name: 'email',
-            type: 'VARCHAR',
-            length: '255',
-            nullable: true,
-            isPrimaryKey: false,
-            isAutoIncrement: false,
-            defaultValue: { tag: 'NULL_DEFAULT' },
-            comment: '',
-            originalName: 'email',
-          },
-          {
-            name: 'status',
-            type: 'VARCHAR',
-            length: '50',
-            nullable: false,
-            isPrimaryKey: false,
-            isAutoIncrement: false,
-            defaultValue: { tag: 'LITERAL', value: 'active' },
-            comment: 'Account status',
-            originalName: 'status',
-          },
-          {
-            name: 'created_at',
-            type: 'DATETIME',
-            length: '',
-            nullable: true,
-            isPrimaryKey: false,
-            isAutoIncrement: false,
-            defaultValue: { tag: 'EXPRESSION', value: 'CURRENT_TIMESTAMP' },
-            comment: 'Row creation timestamp',
-            originalName: 'created_at',
-          },
-        ],
-        indexes: [
-          {
-            name: 'PRIMARY',
-            indexType: 'PRIMARY',
-            columns: ['id'],
-          },
-          {
-            name: 'uk_username',
-            indexType: 'UNIQUE',
-            columns: ['username'],
-          },
-        ],
-        foreignKeys: [
-          {
-            name: 'fk_orders_user',
-            sourceColumn: 'id',
-            referencedDatabase: 'ecommerce_db',
-            referencedTable: 'roles',
-            referencedColumn: 'id',
-            onDelete: 'CASCADE',
-            onUpdate: 'NO ACTION',
-            isComposite: false,
-          },
-          {
-            name: 'fk_composite_example',
-            sourceColumn: 'id',
-            referencedDatabase: 'ecommerce_db',
-            referencedTable: 'composite_table',
-            referencedColumn: 'id',
-            onDelete: 'NO ACTION',
-            onUpdate: 'NO ACTION',
-            isComposite: true,
-          },
-        ],
-        properties: {
-          engine: 'InnoDB',
-          charset: 'utf8mb4',
-          collation: 'utf8mb4_unicode_ci',
-          autoIncrement: 1,
-          rowFormat: 'DYNAMIC',
-          comment: 'User accounts table',
-        },
-      }
+      return getStaticFixture('tableDesignerSchema')
     case 'generate_table_ddl': {
       const request = (args as Record<string, unknown>)?.request as { mode?: string } | undefined
-
-      if (request?.mode === 'create') {
-        return {
-          ddl: 'CREATE TABLE `mock_db`.`__new_table__` (\n  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;',
-          warnings: [],
-        }
-      }
-
-      return {
-        ddl: 'ALTER TABLE `mock_db`.`users`\n  MODIFY COLUMN `email` VARCHAR(320) NOT NULL;',
-        warnings: [],
-      }
+      return getTableDdlPreviewFixture(request?.mode)
     }
     case 'apply_table_ddl':
       return undefined
@@ -604,7 +469,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         typeof window !== 'undefined' &&
         (window as unknown as Record<string, unknown>).__mockQueryError__
       ) {
-        throw new Error("Table 'app_db.nonexistent' doesn't exist")
+        throw new Error(getStaticFixture('querySimulation').errorMessage)
       }
 
       // Build the windowed result for this request (used for both immediate and delayed paths)
@@ -675,7 +540,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         if (pendingReject) {
           // Clear the reference BEFORE calling reject to prevent recursive issues
           ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = null
-          pendingReject(new Error('Query execution was interrupted (cancelled by mock)'))
+          pendingReject(new Error(getStaticFixture('querySimulation').cancelledMessage))
         }
       }
       return true
@@ -691,7 +556,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return { status: 'available' }
 
     case 'export_results':
-      return { bytesWritten: 1024, rowsExported: 5 }
+      return getStaticFixture('exportResults')
 
     case 'start_result_export':
       return getResultExportStartFixture()
@@ -703,85 +568,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return getCancelResultExportFixture(args?.jobId as string | null | undefined)
 
     case 'fetch_schema_metadata':
-      return (
-        getSchemaMetadataOverride() ?? {
-          databases: ['ecommerce_db', 'analytics_db', 'staging_db'],
-          tables: {
-            ecommerce_db: [
-              {
-                name: 'users',
-                engine: 'InnoDB',
-                charset: 'utf8mb4',
-                rowCount: 1000,
-                dataSize: 1048576,
-              },
-              {
-                name: 'orders',
-                engine: 'InnoDB',
-                charset: 'utf8mb4',
-                rowCount: 5000,
-                dataSize: 2097152,
-              },
-              {
-                name: 'products',
-                engine: 'InnoDB',
-                charset: 'utf8mb4',
-                rowCount: 200,
-                dataSize: 524288,
-              },
-              {
-                name: 'bit_test',
-                engine: 'InnoDB',
-                charset: 'utf8mb4',
-                rowCount: 4,
-                dataSize: 16384,
-              },
-            ],
-            analytics_db: [
-              {
-                name: 'events',
-                engine: 'InnoDB',
-                charset: 'utf8mb4',
-                rowCount: 50000,
-                dataSize: 8388608,
-              },
-            ],
-          },
-          columns: {
-            'ecommerce_db.users': [
-              { name: 'id', dataType: 'BIGINT' },
-              { name: 'name', dataType: 'VARCHAR' },
-              { name: 'email', dataType: 'VARCHAR' },
-              { name: 'status', dataType: 'VARCHAR' },
-              { name: 'created_at', dataType: 'DATETIME' },
-            ],
-            'ecommerce_db.orders': [
-              { name: 'id', dataType: 'BIGINT' },
-              { name: 'user_id', dataType: 'BIGINT' },
-              { name: 'status', dataType: 'VARCHAR' },
-              { name: 'total', dataType: 'DECIMAL' },
-            ],
-            'ecommerce_db.bit_test': [
-              { name: 'id', dataType: 'INT' },
-              { name: 'is_active', dataType: 'BIT' },
-              { name: 'flags', dataType: 'BIT' },
-              { name: 'label', dataType: 'VARCHAR' },
-            ],
-            'analytics_db.events': [
-              { name: 'id', dataType: 'BIGINT' },
-              { name: 'event_name', dataType: 'VARCHAR' },
-              { name: 'user_id', dataType: 'BIGINT' },
-              { name: 'created_at', dataType: 'DATETIME' },
-            ],
-          },
-          routines: {
-            ecommerce_db: [
-              { name: 'sp_get_orders', routineType: 'PROCEDURE' },
-              { name: 'fn_calculate_total', routineType: 'FUNCTION' },
-            ],
-          },
-        }
-      )
+      return getSchemaMetadataOverride() ?? getStaticFixture('schemaMetadata')
 
     case 'fetch_schema_metadata_full': {
       const fixtureMetadata = getSchemaMetadataFullFixture()
@@ -835,16 +622,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return null
 
     case 'insert_table_row':
-      return [
-        ['id', 1005],
-        ['name', ''],
-        ['email', null],
-        ['status', 'active'],
-        ['created_at', null],
-        ['updated_at', null],
-        ['birth_date', null],
-        ['login_time', null],
-      ]
+      return getStaticFixture('insertedRow')
 
     case 'delete_table_row':
       return null
@@ -871,21 +649,13 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     }
 
     case 'save_object':
-      return {
-        success: true,
-        errorMessage: null,
-        dropSucceeded: true,
-        savedObjectName: 'mock_object',
-      }
+      return getStaticFixture('savedObject')
 
     case 'drop_object':
       return undefined
 
     case 'get_routine_parameters':
-      return [
-        { name: 'p_id', dataType: 'int', mode: 'IN', ordinalPosition: 1 },
-        { name: 'p_result', dataType: 'varchar(255)', mode: 'OUT', ordinalPosition: 2 },
-      ]
+      return getStaticFixture('routineParameters')
 
     case 'get_routine_parameters_with_return_type': {
       const rtType = (args as Record<string, unknown>)?.routineType
@@ -893,131 +663,41 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     }
 
     case 'read_file':
-      return "SELECT * FROM users\nWHERE status = 'active'\nLIMIT 100;"
+      return getStaticFixture('openedFileContent')
 
     case 'write_file':
       return null
 
     // --- SQL Dump Export (Phase 9.5a) ---
     case 'list_exportable_objects':
-      return [
-        {
-          name: 'ecommerce_db',
-          tables: [
-            { name: 'users', objectType: 'table', estimatedRows: 1000 },
-            { name: 'orders', objectType: 'table', estimatedRows: 5000 },
-            { name: 'products', objectType: 'table', estimatedRows: 200 },
-            { name: 'bit_test', objectType: 'table', estimatedRows: 4 },
-            { name: 'user_stats_view', objectType: 'view', estimatedRows: 0 },
-          ],
-        },
-        {
-          name: 'analytics_db',
-          tables: [{ name: 'events', objectType: 'table', estimatedRows: 50000 }],
-        },
-      ]
+      return getStaticFixture('exportableDatabases')
 
     case 'start_sql_dump':
-      return 'mock-dump-job-1'
+      return getStaticFixture('sqlDumpJobId')
 
-    case 'get_dump_progress':
-      return {
-        jobId: String(args?.jobId ?? 'mock-dump-job-1'),
-        status: 'completed',
-        tablesTotal: 4,
-        tablesDone: 4,
-        currentTable: null,
-        bytesWritten: 102400,
-        rowsExported: 0,
-        errorMessage: null,
-        cancelRequested: false,
-      }
+    case 'get_dump_progress': {
+      const jobId = (args as Record<string, unknown>)?.jobId
+      return getSqlDumpProgressFixture(typeof jobId === 'string' ? jobId : undefined)
+    }
 
     case 'cancel_dump':
       return null
 
     // --- SQL Import (Phase 9.5b) ---
     case 'start_sql_import':
-      return 'mock-import-job-1'
+      return getStaticFixture('sqlImportJobId')
 
-    case 'get_import_progress':
-      return {
-        jobId: String(args?.jobId ?? 'mock-import-job-1'),
-        status: 'running',
-        statementsTotal: 42,
-        statementsDone: 18,
-        errors: [],
-        stopOnError: true,
-        cancelRequested: false,
-      }
+    case 'get_import_progress': {
+      const jobId = (args as Record<string, unknown>)?.jobId
+      return getSqlImportProgressFixture(typeof jobId === 'string' ? jobId : undefined)
+    }
 
     case 'cancel_import':
       return null
 
     // --- Process List ---
     case 'get_processlist':
-      return [
-        {
-          id: 1,
-          user: 'root',
-          host: 'localhost:3306',
-          db: 'ecommerce_db',
-          command: 'Query',
-          time: 0,
-          state: 'executing',
-          info: "SELECT * FROM users WHERE status = 'active'",
-        },
-        {
-          id: 2,
-          user: 'appuser',
-          host: '10.0.0.5:49152',
-          db: 'ecommerce_db',
-          command: 'Sleep',
-          time: 120,
-          state: 'Idle',
-          info: 'SELECT SLEEP(120)',
-        },
-        {
-          id: 3,
-          user: 'repl_user',
-          host: '10.0.0.10:52000',
-          db: null,
-          command: 'Binlog Dump',
-          time: 86400,
-          state: 'Master has sent all binlog to slave',
-          info: null,
-        },
-        {
-          id: 4,
-          user: 'appuser',
-          host: '10.0.0.5:49200',
-          db: 'analytics_db',
-          command: 'Query',
-          time: 5,
-          state: 'Sending data',
-          info: 'SELECT COUNT(*) FROM events WHERE created_at > NOW() - INTERVAL 1 DAY',
-        },
-        {
-          id: 5,
-          user: 'admin',
-          host: 'localhost:3307',
-          db: 'ecommerce_db',
-          command: 'Query',
-          time: 42,
-          state: 'Sorting result',
-          info: 'SELECT o.*, u.name FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 1000',
-        },
-        {
-          id: 6,
-          user: 'root',
-          host: 'localhost',
-          db: null,
-          command: 'Daemon',
-          time: 0,
-          state: 'Waiting for next activation',
-          info: null,
-        },
-      ]
+      return getStaticFixture('processList')
 
     case 'kill_queries': {
       const ids = (args as Record<string, unknown>)?.ids as number[] | undefined
@@ -1026,82 +706,19 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- Query History & Favorites (Phase 9.3) ---
     case 'list_history':
-      return {
-        entries: [
-          {
-            id: 1,
-            connectionId: 'conn-playwright-1',
-            databaseName: 'ecommerce_db',
-            sqlText: "SELECT * FROM users WHERE status = 'active'",
-            timestamp: '2025-01-01T12:00:00.000Z',
-            durationMs: 42,
-            rowCount: 5,
-            affectedRows: 0,
-            success: true,
-            errorMessage: null,
-          },
-          {
-            id: 2,
-            connectionId: 'conn-playwright-1',
-            databaseName: 'ecommerce_db',
-            sqlText: 'SELECT COUNT(*) FROM orders',
-            timestamp: '2025-01-01T11:30:00.000Z',
-            durationMs: 8,
-            rowCount: 1,
-            affectedRows: 0,
-            success: true,
-            errorMessage: null,
-          },
-          {
-            id: 3,
-            connectionId: 'conn-playwright-1',
-            databaseName: 'ecommerce_db',
-            sqlText: 'SELECT * FROM nonexistent_table',
-            timestamp: '2025-01-01T11:00:00.000Z',
-            durationMs: 0,
-            rowCount: 0,
-            affectedRows: 0,
-            success: false,
-            errorMessage: "Table 'ecommerce_db.nonexistent_table' doesn't exist",
-          },
-        ],
-        total: 3,
-        page: 1,
-        pageSize: 50,
-      }
+      return getStaticFixture('historyPage')
 
     case 'delete_history_entry':
       return true
 
     case 'clear_history':
-      return 3
+      return getStaticFixture('historyPage').total
 
     case 'create_favorite':
-      return 1
+      return getStaticFixture('createdFavoriteId')
 
     case 'list_favorites':
-      return [
-        {
-          id: 1,
-          name: 'Active Users',
-          sqlText: "SELECT * FROM users WHERE status = 'active'",
-          description: 'Frequently used query for monitoring',
-          category: 'Monitoring',
-          connectionId: 'conn-playwright-1',
-          createdAt: '2025-01-01T10:00:00.000Z',
-          updatedAt: '2025-01-01T10:00:00.000Z',
-        },
-        {
-          id: 2,
-          name: 'Order Summary',
-          sqlText: 'SELECT status, COUNT(*) as cnt FROM orders GROUP BY status',
-          description: null,
-          category: null,
-          connectionId: 'conn-playwright-1',
-          createdAt: '2025-01-01T09:00:00.000Z',
-          updatedAt: '2025-01-01T09:00:00.000Z',
-        },
-      ]
+      return getStaticFixture('favorites')
 
     case 'update_favorite':
       return true
@@ -1111,67 +728,26 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- AI commands ---
     case 'ai_chat': {
-      // Simulate streaming by emitting mock events after a short delay
       const request = args?.request as { streamId?: string } | undefined
-      const streamId = request?.streamId ?? 'mock-stream-id'
+      const streamId = request?.streamId ?? getStaticFixture('aiChat').fallbackStreamId
 
-      // Support AI error simulation for Playwright tests
       if (
         typeof window !== 'undefined' &&
         (window as unknown as Record<string, unknown>).__mockAiError__
       ) {
-        setTimeout(() => {
-          emitMockEvent('ai-stream-error', {
-            streamId,
-            error: 'Connection refused: unable to reach AI endpoint',
-          })
-        }, 20)
+        scheduleAiStreamError(streamId)
         return null
       }
 
-      // Support thinking/reasoning simulation for Playwright tests
       if (
         typeof window !== 'undefined' &&
         (window as unknown as Record<string, unknown>).__mockAiThinking__
       ) {
-        const thinkingText = 'Let me analyze the database schema and find the best approach...'
-        let delay = 10
-        // Emit thinking chunk
-        setTimeout(() => {
-          emitMockEvent('ai-stream-chunk', { streamId, content: thinkingText, kind: 'thinking' })
-        }, delay)
-        delay += 20
-        // Then emit normal content chunks
-        const chunks = AI_MOCK_RESPONSE.match(/[\s\S]{1,20}/g) ?? [AI_MOCK_RESPONSE]
-        for (const chunk of chunks) {
-          setTimeout(() => {
-            emitMockEvent('ai-stream-chunk', { streamId, content: chunk, kind: 'content' })
-          }, delay)
-          delay += 10
-        }
-        setTimeout(() => {
-          emitMockEvent('ai-stream-done', { streamId })
-        }, delay)
+        scheduleAiThinkingStream(streamId)
         return null
       }
 
-      // Break the response into chunks and emit them asynchronously.
-      // Use [\s\S] instead of . so newlines are preserved in chunks —
-      // . does not match \n by default, which would strip the newlines
-      // that markdown fenced code blocks require.
-      const chunks = AI_MOCK_RESPONSE.match(/[\s\S]{1,20}/g) ?? [AI_MOCK_RESPONSE]
-      let delay = 10
-      for (const chunk of chunks) {
-        setTimeout(() => {
-          emitMockEvent('ai-stream-chunk', { streamId, content: chunk, kind: 'content' })
-        }, delay)
-        delay += 10
-      }
-      // Emit done after all chunks
-      setTimeout(() => {
-        emitMockEvent('ai-stream-done', { streamId })
-      }, delay)
-
+      scheduleAiContentStream(streamId, AI_STREAM_START_DELAY_MS)
       return null
     }
 
@@ -1184,9 +760,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       }
 
     case 'ai_query_expand':
-      return {
-        text: '{"queries":["SELECT users","JOIN orders","user_id foreign key"],"hypotheticalSql":"SELECT u.* FROM `ecommerce_db`.`users` u JOIN `ecommerce_db`.`orders` o ON u.id = o.user_id","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
-      }
+      return getStaticFixture('aiQueryExpansion')
 
     // --- Schema index commands ---
     case 'build_schema_index':
@@ -1194,22 +768,9 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'force_rebuild_schema_index':
       return null
     case 'semantic_search':
-      return [
-        {
-          chunkId: 1,
-          chunkKey: 'table:ecommerce_db.users',
-          dbName: 'ecommerce_db',
-          tableName: 'users',
-          chunkType: 'table',
-          ddlText:
-            'CREATE TABLE `ecommerce_db`.`users` (`id` int NOT NULL, `name` varchar(255), `email` varchar(255), PRIMARY KEY (`id`)) -- approximate rows: 15000\n-- Table comment: Registered platform users',
-          refDbName: null,
-          refTableName: null,
-          score: 0.95,
-        },
-      ]
+      return getStaticFixture('semanticSearchResults')
     case 'get_index_status':
-      return { status: 'ready' }
+      return getStaticFixture('schemaIndexStatus')
     case 'invalidate_schema_index':
       return null
     case 'list_indexed_tables':

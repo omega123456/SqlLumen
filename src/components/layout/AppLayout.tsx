@@ -234,8 +234,8 @@ export function AppLayout() {
               queryState.setContent(tabId, formatted)
             }
           }
-        } catch {
-          // format failed — ignore
+        } catch (error) {
+          logFrontend('warn', `[app-layout] Formatting the query failed: ${String(error)}`)
         }
       }
     })

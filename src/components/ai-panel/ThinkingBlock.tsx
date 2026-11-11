@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Brain, CaretRight, CaretDown } from '@phosphor-icons/react'
+import { Button } from '../common/Button'
 import styles from './ThinkingBlock.module.css'
 
 export interface ThinkingBlockProps {
@@ -29,18 +30,18 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
 
   return (
     <div className={styles.container} data-testid="thinking-block">
-      <button
+      <Button
+        variant="bare"
         className={styles.header}
         onClick={handleToggle}
         data-testid="thinking-block-header"
-        type="button"
       >
         <span className={styles.headerLabel}>
           <Brain size={14} />
           {isStreaming ? 'Thinking…' : 'Reasoning'}
         </span>
         {!isStreaming && (isOpen ? <CaretDown size={12} /> : <CaretRight size={12} />)}
-      </button>
+      </Button>
       {isExpanded && (
         <div ref={contentRef} className={styles.content} data-testid="thinking-block-content">
           <pre className={styles.pre}>

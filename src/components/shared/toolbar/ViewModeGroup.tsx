@@ -7,6 +7,7 @@
 
 import { Table, Rows, Code } from '@phosphor-icons/react'
 import type { ViewModeGroupProps, ViewMode } from '../../../types/shared-data-view'
+import { Button } from '../../common/Button'
 import styles from './toolbar-items.module.css'
 
 const MODE_ICONS: Record<ViewMode, typeof Table> = {
@@ -35,16 +36,16 @@ export function ViewModeGroup({
         const Icon = MODE_ICONS[mode]
         const isActive = currentMode === mode
         return (
-          <button
+          <Button
+            variant="bare"
             key={mode}
-            type="button"
             className={`${styles.viewModeButton} ${isActive ? styles.viewModeActive : ''}`}
             onClick={() => onModeChange(mode)}
             title={MODE_LABELS[mode]}
             data-testid={`${prefix}-${mode}`}
           >
             <Icon size={16} weight={isActive ? 'fill' : 'regular'} />
-          </button>
+          </Button>
         )
       })}
     </div>

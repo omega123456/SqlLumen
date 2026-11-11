@@ -160,8 +160,8 @@ export function LogViewer() {
               <ArrowsClockwise size={16} weight="bold" />
             </IconButton>
 
-            <button
-              type="button"
+            <Button
+              variant="bare"
               aria-label="Auto-refresh"
               aria-pressed={autoRefresh}
               onClick={() => setAutoRefresh((value) => !value)}
@@ -175,7 +175,7 @@ export function LogViewer() {
                 aria-hidden="true"
               />
               {autoRefresh ? 'Auto-refresh on' : 'Auto-refresh off'}
-            </button>
+            </Button>
 
             <Button
               variant="subtle"

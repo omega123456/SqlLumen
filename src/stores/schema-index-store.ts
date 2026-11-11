@@ -351,8 +351,11 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
             }
             return s
           })
-        } catch {
-          // Status check failed — non-critical, events will update status
+        } catch (error) {
+          logFrontend(
+            'warn',
+            `[schema-index-store] Index status check failed; waiting for index events: ${String(error)}`
+          )
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -418,8 +421,11 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
             }
             return s
           })
-        } catch {
-          // Status check failed — non-critical, events will update status
+        } catch (error) {
+          logFrontend(
+            'warn',
+            `[schema-index-store] Index status check failed; waiting for index events: ${String(error)}`
+          )
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

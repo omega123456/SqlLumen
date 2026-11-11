@@ -123,8 +123,11 @@ function initEventListeners(): void {
         }))
       }, 2000)
     }
-  }).catch(() => {
-    // listen not available — non-critical
+  }).catch((error: unknown) => {
+    logFrontend(
+      'warn',
+      `[ai-memory-store] Listening for re-embed progress failed: ${String(error)}`
+    )
   })
 }
 

@@ -24,6 +24,7 @@ import { EntityContextType } from 'monaco-sql-languages'
 import { getCache } from './schema-metadata-cache'
 import { buildAliasMap, buildAliasMapFromText, stripQuotes } from './alias-resolver'
 import type { AliasMap } from './alias-resolver'
+import { logParseFallback } from '../../lib/app-log-commands'
 import { useConnectionStore } from '../../stores/connection-store'
 import { parseNodeId, useSchemaStore } from '../../stores/schema-store'
 import { SQL_KEYWORDS, SQL_BUILTIN_FUNCTIONS, STORED_PROGRAM_BODY_KEYWORDS } from './sql-keywords'
@@ -224,7 +225,8 @@ export function getSelectedDatabase(connectionId: string | undefined): string | 
   try {
     const parsed = parseNodeId(selectedNodeId)
     return parsed.database || null
-  } catch {
+  } catch (error) {
+    logParseFallback('[completion-service] getSelectedDatabase', error)
     return null
   }
 }

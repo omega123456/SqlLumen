@@ -23,6 +23,7 @@ import { useFkLookup } from './fk-lookup-context'
 import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { TextInput } from '../common/TextInput'
 import { Textarea } from '../common/Textarea'
+import { Button } from '../common/Button'
 import styles from './grid-cell-editors.module.css'
 
 // ---------------------------------------------------------------------------
@@ -225,15 +226,15 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
       </div>
       <div className={styles.editorMarkerGroup}>
         {isNullable && (
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
             NULL
-          </button>
+          </Button>
         )}
         {foreignKey && fkLookup && (
           <FkLookupTriggerButton
@@ -398,15 +399,15 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
       </div>
       <div className={styles.editorMarkerGroup}>
         {isNullable && (
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
             NULL
-          </button>
+          </Button>
         )}
         {foreignKey && fkLookup && (
           <FkLookupTriggerButton
@@ -633,15 +634,15 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
       {!fullOverlay && (
         <div className={styles.editorMarkerGroup}>
           {isNullable && (
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
               onClick={handleToggleNull}
               tabIndex={-1}
             >
               NULL
-            </button>
+            </Button>
           )}
           {foreignKey && fkLookup && (
             <FkLookupTriggerButton

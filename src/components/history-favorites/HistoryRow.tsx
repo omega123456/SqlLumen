@@ -4,26 +4,14 @@ import { useHistoryStore } from '../../stores/history-store'
 import { useFavoritesStore } from '../../stores/favorites-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
+import { formatTableTimestamp } from '../../lib/format-utils'
 import type { HistoryEntry } from '../../types/schema'
+import { Button } from '../common/Button'
 import styles from './HistoryRow.module.css'
 
 export interface HistoryRowProps {
   entry: HistoryEntry
   connectionId: string
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
 }
 
 function formatDuration(ms: number | null): string {
@@ -85,11 +73,11 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
         </span>
         {!isError && <span>{entry.rowCount ?? 0} rows</span>}
         <span>{formatDuration(entry.durationMs)}</span>
-        <span>{formatTimestamp(entry.timestamp)}</span>
+        <span>{formatTableTimestamp(entry.timestamp)}</span>
       </div>
       <div className={styles.actions}>
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={styles.actionButton}
           title="Copy to editor"
           onClick={(e) => {
@@ -99,9 +87,9 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
           data-testid="history-row-copy"
         >
           <Copy size={14} weight="regular" />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="bare"
           className={styles.actionButton}
           title="Save as favorite"
           onClick={(e) => {
@@ -111,16 +99,16 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
           data-testid="history-row-favorite"
         >
           <Star size={14} weight="regular" />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="bare"
           className={`${styles.actionButton} ${styles.actionButtonDanger}`}
           title="Delete"
           onClick={handleDelete}
           data-testid="history-row-delete"
         >
           <Trash size={14} weight="regular" />
-        </button>
+        </Button>
       </div>
     </div>
   )

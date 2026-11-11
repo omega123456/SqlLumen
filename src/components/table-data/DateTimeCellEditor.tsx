@@ -33,6 +33,7 @@ import { getTemporalColumnType } from '../../lib/date-utils'
 import type { TemporalColumnType } from '../../lib/date-utils'
 import { useCellEditor } from './useCellEditor'
 import type { CellEditorParams, CellEditorCallbacks } from './useCellEditor'
+import { Button } from '../common/Button'
 import sharedStyles from '../shared/grid-cell-editors.module.css'
 import { DateTimePicker } from './DateTimePicker'
 import styles from '../shared/BaseGridView.module.css'
@@ -236,18 +237,18 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
       </div>
       <div className={sharedStyles.editorMarkerGroup}>
         {props.isNullable && (
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
             NULL
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={styles.calendarBtn}
           onMouseDown={(e) => e.preventDefault()}
           onClick={handleCalendarClick}
@@ -257,7 +258,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
           aria-label="Open date picker"
         >
           <IconComponent size={14} />
-        </button>
+        </Button>
       </div>
 
       {pickerOpen && (

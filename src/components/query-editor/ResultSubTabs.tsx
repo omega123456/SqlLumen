@@ -19,6 +19,7 @@ import { formatCount } from '../../lib/format-row-count'
 import { useQueryStore } from '../../stores/query-store'
 import type { SingleResultState } from '../../stores/query-store'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
+import { Button } from '../common/Button'
 import styles from './ResultSubTabs.module.css'
 
 interface ResultSubTabsProps {
@@ -100,12 +101,12 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
         {results.map((result, index) => {
           const isActive = index === activeResultIndex
           return (
-            <button
+            <Button
+              variant="bare"
               key={index}
               ref={(el) => {
                 tabRefs.current[index] = el
               }}
-              type="button"
               role="tab"
               id={`result-tab-${tabId}-${index}`}
               aria-selected={isActive}
@@ -129,7 +130,7 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
                   </span>
                 )}
               </span>
-            </button>
+            </Button>
           )
         })}
       </UnderlineTabBar>

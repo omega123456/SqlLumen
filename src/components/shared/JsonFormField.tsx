@@ -3,25 +3,10 @@ import type * as Monaco from 'monaco-editor'
 import { useEffect, useMemo, useRef } from 'react'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { JsonSyntaxHighlighter } from '../../lib/json-syntax-highlighter'
+import { normalizeJson, prettyPrintJson } from '../../lib/json-text'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 import { useThemeStore } from '../../stores/theme-store'
 import styles from './JsonFormField.module.css'
-
-function prettyPrintJson(value: string): string {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
-}
-
-function normalizeJson(value: string): string | null {
-  try {
-    return JSON.stringify(JSON.parse(value))
-  } catch {
-    return null
-  }
-}
 
 function toStringValue(value: string | null): string {
   return value ?? ''

@@ -12,6 +12,7 @@ import { Dropdown } from '../common/Dropdown'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { KillSummaryDialog } from './KillSummaryDialog'
 import { StatusArea } from '../shared/toolbar/StatusArea'
+import { Button } from '../common/Button'
 import sharedToolbarStyles from '../shared/toolbar/toolbar-items.module.css'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../stores/toast-store'
 import type { KillResult } from '../../lib/processlist-commands'
@@ -235,8 +236,8 @@ export function ProcessListToolbar({
 
         <div className={styles.divider} />
 
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={styles.iconButton}
           onClick={onRefresh}
           title="Refresh"
@@ -244,7 +245,7 @@ export function ProcessListToolbar({
           aria-label="Refresh"
         >
           <ArrowCounterClockwise size={16} weight="bold" />
-        </button>
+        </Button>
 
         {lastRefreshedAt !== null && (
           <span className={styles.meta} data-testid="processlist-last-updated">
@@ -281,8 +282,8 @@ export function ProcessListToolbar({
 
         <div className={styles.divider} />
 
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={styles.toolbarButtonDanger}
           data-testid="processlist-kill-button"
           disabled={selectedCount === 0}
@@ -290,7 +291,7 @@ export function ProcessListToolbar({
         >
           <StopCircle size={16} weight="regular" />
           {killLabel}
-        </button>
+        </Button>
       </div>
 
       <ConfirmDialog

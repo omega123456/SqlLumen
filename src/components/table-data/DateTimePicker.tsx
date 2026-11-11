@@ -10,7 +10,7 @@
  * Communicates via props/callbacks only — no store access.
  */
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useEffectEvent, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import DatePicker from 'react-datepicker'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
@@ -18,9 +18,26 @@ import { parseMysqlDate, formatMysqlDate, type TemporalColumnType } from '../../
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 import { TextInput } from '../common/TextInput'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { Button } from '../common/Button'
 import styles from './DateTimePicker.module.css'
 
 import 'react-datepicker/dist/react-datepicker.css'
+
+const INITIAL_FOCUS_DELAY_MS = 50
+const MIDNIGHT_TIME_INPUT = '00:00:00'
+const ESTIMATED_POPUP_HEIGHT_PX = 380
+const POPUP_WIDTH_PX = 300
+const ANCHOR_GAP_PX = 4
+const VIEWPORT_EDGE_MARGIN_PX = 8
+const MINIMUM_LEFT_PX = 4
+
+interface PopupPosition {
+  top: number
+  left: number
+  flipUp: boolean
+}
+
+const UNANCHORED_POPUP_POSITION: PopupPosition = { top: 0, left: 0, flipUp: false }
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,7 +80,37 @@ function parseTimeInput(input: string): { hours: number; minutes: number; second
 
 /** Format a Date as HH:mm:ss using date-utils. Falls back to '00:00:00'. */
 function formatTime(date: Date): string {
-  return formatMysqlDate(date, 'TIME') ?? '00:00:00'
+  return formatMysqlDate(date, 'TIME') ?? MIDNIGHT_TIME_INPUT
+}
+
+function formatTimeInput(date: Date | null): string {
+  return date ? formatTime(date) : MIDNIGHT_TIME_INPUT
+}
+
+function shouldFlipAbove(anchorRect: DOMRect): boolean {
+  const spaceBelow = window.innerHeight - anchorRect.bottom
+  const fitsBelow = spaceBelow >= ESTIMATED_POPUP_HEIGHT_PX
+  const fitsAbove = anchorRect.top > ESTIMATED_POPUP_HEIGHT_PX
+  return !fitsBelow && fitsAbove
+}
+
+function popupTop(anchorRect: DOMRect, flipUp: boolean): number {
+  if (flipUp) return anchorRect.top - ESTIMATED_POPUP_HEIGHT_PX - ANCHOR_GAP_PX
+  return anchorRect.bottom + ANCHOR_GAP_PX
+}
+
+function popupLeft(anchorRect: DOMRect): number {
+  const overflowsViewport = anchorRect.left + POPUP_WIDTH_PX > window.innerWidth
+  const left = overflowsViewport
+    ? window.innerWidth - POPUP_WIDTH_PX - VIEWPORT_EDGE_MARGIN_PX
+    : anchorRect.left
+  return Math.max(left, MINIMUM_LEFT_PX)
+}
+
+function computePopupPosition(anchorEl: HTMLElement): PopupPosition {
+  const anchorRect = anchorEl.getBoundingClientRect()
+  const flipUp = shouldFlipAbove(anchorRect)
+  return { top: popupTop(anchorRect, flipUp), left: popupLeft(anchorRect), flipUp: flipUp }
 }
 
 // ---------------------------------------------------------------------------
@@ -82,33 +129,33 @@ function CalendarHeader({ date, decreaseMonth, increaseMonth, onTodayClick }: Ca
 
   return (
     <div className={styles.calendarHeader} data-testid="calendar-header">
-      <button
-        type="button"
+      <Button
+        variant="bare"
         className={styles.navArrow}
         onClick={decreaseMonth}
         aria-label="Previous month"
         data-testid="btn-prev-month"
       >
         <CaretLeft size={16} weight="bold" />
-      </button>
+      </Button>
       <span className={styles.monthYearLabel}>{monthYear}</span>
-      <button
-        type="button"
+      <Button
+        variant="bare"
         className={styles.navArrow}
         onClick={increaseMonth}
         aria-label="Next month"
         data-testid="btn-next-month"
       >
         <CaretRight size={16} weight="bold" />
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="bare"
         className={styles.todayLink}
         onClick={onTodayClick}
         data-testid="btn-today"
       >
         TODAY
-      </button>
+      </Button>
     </div>
   )
 }
@@ -130,9 +177,7 @@ export function DateTimePicker({
   // Parse initial value
   const initialDate = parseMysqlDate(value, columnType)
   const [localDate, setLocalDate] = useState<Date | null>(initialDate)
-  const [timeInput, setTimeInput] = useState<string>(
-    initialDate ? formatTime(initialDate) : '00:00:00'
-  )
+  const [timeInput, setTimeInput] = useState<string>(formatTimeInput(initialDate))
   const internalPopupRef = useRef<HTMLDivElement>(null)
 
   // Callback ref that sets both the internal ref and the optional external ref.
@@ -140,65 +185,40 @@ export function DateTimePicker({
     (node: HTMLDivElement | null) => {
       internalPopupRef.current = node
       if (externalPopupRef) {
-        ;(externalPopupRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+        externalPopupRef.current = node
       }
     },
     [externalPopupRef]
   )
 
-  const [position, setPosition] = useState<{ top: number; left: number; flipUp: boolean }>({
-    top: 0,
-    left: 0,
-    flipUp: false,
-  })
-
   const showCalendar =
     columnType === 'DATE' || columnType === 'DATETIME' || columnType === 'TIMESTAMP'
   const showTime = columnType === 'DATETIME' || columnType === 'TIMESTAMP' || columnType === 'TIME'
 
-  // --- Sync internal state when `value` prop changes externally ---
-  // Uses a ref to track the previous value so we only sync when the parent
-  // actually provides a new value, avoiding resetting mid-selection.
-  const prevValueRef = useRef(value)
-  useEffect(() => {
-    if (value !== prevValueRef.current) {
-      prevValueRef.current = value
-      const parsed = parseMysqlDate(value, columnType)
-      setLocalDate(parsed)
-      if (showTime) {
-        setTimeInput(parsed ? formatTime(parsed) : '00:00:00')
-      }
+  const [syncedValue, setSyncedValue] = useState(value)
+  const applyExternalValue = (externalValue: string | null) => {
+    const parsed = parseMysqlDate(externalValue, columnType)
+    setLocalDate(parsed)
+    if (showTime) {
+      setTimeInput(formatTimeInput(parsed))
     }
-  }, [value, columnType, showTime])
+  }
+  if (value !== syncedValue) {
+    setSyncedValue(value)
+    applyExternalValue(value)
+  }
 
-  // --- Positioning ---
+  const [position, setPosition] = useState<PopupPosition>(UNANCHORED_POPUP_POSITION)
+
   useEffect(() => {
     if (!anchorEl) {
-      onCancel() // Can't position without anchor
+      onCancel()
       return
     }
-
-    const rect = anchorEl.getBoundingClientRect()
-    const popupHeight = 380 // approximate height
-    const spaceBelow = window.innerHeight - rect.bottom
-    const flipUp = spaceBelow < popupHeight && rect.top > popupHeight
-
-    let top: number
-    if (flipUp) {
-      top = rect.top - popupHeight - 4
-    } else {
-      top = rect.bottom + 4
-    }
-
-    // Ensure left doesn't overflow viewport
-    let left = rect.left
-    const popupWidth = 300
-    if (left + popupWidth > window.innerWidth) {
-      left = window.innerWidth - popupWidth - 8
-    }
-    if (left < 4) left = 4
-
-    setPosition({ top, left, flipUp })
+    const measureFrame = requestAnimationFrame(() => {
+      setPosition(computePopupPosition(anchorEl))
+    })
+    return () => cancelAnimationFrame(measureFrame)
   }, [anchorEl, onCancel])
 
   // --- Click outside (delegated to shared hook) ---
@@ -216,9 +236,9 @@ export function DateTimePicker({
   // react-datepicker natively handles arrow keys, Page Up/Down, Enter/Space
   // for day selection when the calendar has focus. A small delay lets the
   // portal and positioning settle before we shift focus.
-  useEffect(() => {
-    if (disabled) return
-    const timer = setTimeout(() => {
+  const scheduleInitialFocus = useEffectEvent((): ReturnType<typeof setTimeout> | undefined => {
+    if (disabled) return undefined
+    return setTimeout(() => {
       if (!internalPopupRef.current) return
       // Prefer the selected day (react-datepicker's roving tabindex) so arrow keys move the
       // date; fall back to the first control only when no day is focusable.
@@ -230,10 +250,12 @@ export function DateTimePicker({
           'button, [tabindex]:not([tabindex="-1"]), input'
         )
       if (focusable) focusable.focus()
-    }, 50)
-    return () => clearTimeout(timer)
-    // Only on mount — intentionally empty deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, INITIAL_FOCUS_DELAY_MS)
+  })
+
+  useEffect(() => {
+    const initialFocusTimer = scheduleInitialFocus()
+    return () => clearTimeout(initialFocusTimer)
   }, [])
 
   // --- Keyboard ---
@@ -374,24 +396,24 @@ export function DateTimePicker({
         )}
 
         <div className={styles.buttonRow}>
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.cancelButton}
             onClick={onCancel}
             disabled={disabled}
             data-testid="btn-picker-cancel"
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="bare"
             className={`${styles.applyButton} ${localDate === null ? styles.applyButtonDisabled : ''}`}
             onClick={handleApply}
             disabled={disabled || localDate === null}
             data-testid="btn-picker-apply"
           >
             Apply
-          </button>
+          </Button>
         </div>
       </div>
     </div>

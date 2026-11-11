@@ -68,7 +68,16 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false)
+  const [previousIsActive, setPreviousIsActive] = useState(isActive)
   const postApplyActionRef = useRef<(() => void) | null>(null)
+
+  const hasBecomeInactive = previousIsActive && !isActive
+  if (previousIsActive !== isActive) {
+    setPreviousIsActive(isActive)
+  }
+  if (hasBecomeInactive) {
+    setIsApplyDialogOpen(false)
+  }
 
   useEffect(() => {
     const existing = useTableDesignerStore.getState().tabs[tabId]
@@ -78,8 +87,7 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
         void loadSchema(tabId)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, mode, connectionId, databaseName, objectName])
+  }, [tabId, mode, connectionId, databaseName, objectName, initTab, loadSchema])
 
   const currentSchema = tabState?.currentSchema
   const validationErrors = tabState?.validationErrors ?? {}
@@ -202,7 +210,6 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
 
   useEffect(() => {
     if (isActive) return
-    setIsApplyDialogOpen(false)
     postApplyActionRef.current = null
   }, [isActive])
 

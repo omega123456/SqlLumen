@@ -12,6 +12,22 @@ interface InitialEncodingState {
   collation?: string
 }
 
+interface AlterDatabaseDialogState {
+  detailsLoading: boolean
+  initialEncoding: InitialEncodingState
+  isSubmitting: boolean
+  detailsError: string | null
+  submitError: string | null
+}
+
+const IDLE_DIALOG_STATE: AlterDatabaseDialogState = {
+  detailsLoading: true,
+  initialEncoding: {},
+  isSubmitting: false,
+  detailsError: null,
+  submitError: null,
+}
+
 export interface AlterDatabaseDialogProps {
   isOpen: boolean
   connectionId: string
@@ -27,20 +43,16 @@ export function AlterDatabaseDialog({
   onSuccess,
   onCancel,
 }: AlterDatabaseDialogProps) {
-  const [detailsLoading, setDetailsLoading] = useState(true)
-  const [initialEncoding, setInitialEncoding] = useState<InitialEncodingState>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [detailsError, setDetailsError] = useState<string | null>(null)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [dialogState, setDialogState] = useState<AlterDatabaseDialogState>(IDLE_DIALOG_STATE)
+  const { detailsLoading, initialEncoding, isSubmitting, detailsError, submitError } = dialogState
+
+  const patchDialogState = useCallback((patch: Partial<AlterDatabaseDialogState>) => {
+    setDialogState((current) => ({ ...current, ...patch }))
+  }, [])
 
   useEffect(() => {
     if (isOpen) return
-    setDetailsLoading(true)
-    setInitialEncoding({})
-    setIsSubmitting(false)
-    setDetailsError(null)
-    setSubmitError(null)
-    setInitialEncoding({})
+    setDialogState(IDLE_DIALOG_STATE)
   }, [isOpen])
 
   // Load current database details on open
@@ -49,26 +61,26 @@ export function AlterDatabaseDialog({
     let cancelled = false
 
     async function load() {
-      setDetailsLoading(true)
-      setDetailsError(null)
-      setSubmitError(null)
+      patchDialogState({ detailsLoading: true, detailsError: null, submitError: null })
       try {
         const details = await getDatabaseDetails(connectionId, databaseName)
         if (!cancelled) {
-          setInitialEncoding({
-            charset: details.defaultCharacterSet,
-            collation: details.defaultCollation,
+          patchDialogState({
+            initialEncoding: {
+              charset: details.defaultCharacterSet,
+              collation: details.defaultCollation,
+            },
           })
         }
       } catch (err) {
         if (!cancelled) {
           const msg = err instanceof Error ? err.message : String(err)
-          setDetailsError(msg)
+          patchDialogState({ detailsError: msg })
           showErrorToast('Failed to load database', msg)
         }
       } finally {
         if (!cancelled) {
-          setDetailsLoading(false)
+          patchDialogState({ detailsLoading: false })
         }
       }
     }
@@ -77,7 +89,7 @@ export function AlterDatabaseDialog({
     return () => {
       cancelled = true
     }
-  }, [isOpen, connectionId, databaseName])
+  }, [isOpen, connectionId, databaseName, patchDialogState])
 
   const encoding = useDatabaseEncoding(
     connectionId,
@@ -94,8 +106,7 @@ export function AlterDatabaseDialog({
   const hasBlockingLoadError = detailsError !== null || encoding.error !== null
 
   const handleSubmit = useCallback(async () => {
-    setIsSubmitting(true)
-    setSubmitError(null)
+    patchDialogState({ isSubmitting: true, submitError: null })
 
     try {
       await alterDatabase(
@@ -107,12 +118,19 @@ export function AlterDatabaseDialog({
       onSuccess()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setSubmitError(msg)
+      patchDialogState({ submitError: msg })
       showErrorToast('Failed to alter database', msg)
     } finally {
-      setIsSubmitting(false)
+      patchDialogState({ isSubmitting: false })
     }
-  }, [connectionId, databaseName, encoding.charset, encoding.collation, onSuccess])
+  }, [
+    connectionId,
+    databaseName,
+    encoding.charset,
+    encoding.collation,
+    onSuccess,
+    patchDialogState,
+  ])
 
   const handleFormSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {

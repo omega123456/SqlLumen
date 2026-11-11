@@ -7,12 +7,13 @@
 
 import { Export } from '@phosphor-icons/react'
 import type { ExportButtonProps } from '../../../types/shared-data-view'
+import { Button } from '../../common/Button'
 import styles from './toolbar-items.module.css'
 
 export function ExportButton({ disabled, onClick, testId }: ExportButtonProps) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="bare"
       className={styles.exportButton}
       disabled={disabled}
       onClick={onClick}
@@ -20,6 +21,6 @@ export function ExportButton({ disabled, onClick, testId }: ExportButtonProps) {
     >
       <Export size={16} weight="regular" />
       <span>Export</span>
-    </button>
+    </Button>
   )
 }

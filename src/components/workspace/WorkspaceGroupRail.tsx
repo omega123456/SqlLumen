@@ -24,6 +24,7 @@ import {
   getWorkspaceStackIconDescriptor,
   getWorkspaceTabIconDescriptor,
 } from './workspace-tab-icons'
+import { Button } from '../common/Button'
 import styles from './WorkspaceGroupRail.module.css'
 
 /** Matches the enter/leave animation length in WorkspaceGroupRail.module.css. */
@@ -270,10 +271,10 @@ export function WorkspaceGroupRail({
         const dirty = tabs.some(isTabDirty)
         const { IconComponent, testId } = getWorkspaceStackIconDescriptor(entry.key)
         return (
-          <button
+          <Button
+            variant="bare"
             key={entry.key}
             ref={setItemRef(entry.key)}
-            type="button"
             role={live ? 'tab' : undefined}
             className={styles.item}
             aria-selected={live ? selected : undefined}
@@ -309,7 +310,7 @@ export function WorkspaceGroupRail({
               ) : null}
             </span>
             <span className={styles.count}>{count}</span>
-          </button>
+          </Button>
         )
       })}
       {pinnedTabs.length > 0 ? (
@@ -319,10 +320,10 @@ export function WorkspaceGroupRail({
             const selected = key === selectedKey
             const { IconComponent, testId } = getWorkspaceTabIconDescriptor(tab)
             return (
-              <button
+              <Button
+                variant="bare"
                 key={tab.id}
                 ref={setItemRef(key)}
-                type="button"
                 role="tab"
                 className={`${styles.item} ${styles.pinnedItem}`}
                 aria-selected={selected}
@@ -345,7 +346,7 @@ export function WorkspaceGroupRail({
                   data-testid={testId}
                   className={styles.icon}
                 />
-              </button>
+              </Button>
             )
           })}
         </div>

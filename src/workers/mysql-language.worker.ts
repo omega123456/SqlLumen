@@ -13,22 +13,18 @@
  * factory so `EditorWorker._foreignModule` is set immediately.
  */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — no .d.ts for internal Monaco worker entry point
 import { start } from 'monaco-editor/esm/vs/editor/editor.worker.start.js'
 import { MySQLWorker } from 'monaco-sql-languages/esm/languages/mysql/mysqlWorker.js'
+
+type MySQLWorkerContext = ConstructorParameters<typeof MySQLWorker>[0]
 
 type ParseErrorListener = (error: unknown) => void
 
 const SILENT_PARSE_ERROR_LISTENER: ParseErrorListener = () => {}
 
 class QuietMySQLWorker extends MySQLWorker {
-  constructor(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ctx: any,
-    createData: { languageId: string }
-  ) {
-    super(ctx, createData)
+  constructor(workerContext: MySQLWorkerContext, createData: { languageId: string }) {
+    super(workerContext, createData)
 
     // dt-sql-parser uses ConsoleErrorListener by default when no error listener is
     // supplied. During autocomplete the parser intentionally sees incomplete SQL,
@@ -46,8 +42,5 @@ class QuietMySQLWorker extends MySQLWorker {
 }
 
 self.onmessage = () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  start((ctx: any) => {
-    return new QuietMySQLWorker(ctx, { languageId: 'mysql' })
-  })
+  start((workerContext) => new QuietMySQLWorker(workerContext, { languageId: 'mysql' }))
 }

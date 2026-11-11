@@ -73,8 +73,7 @@ export interface DeleteDialogCopy {
 }
 
 /** The three-tier delete dialog copy (wireframe 7). */
-// eslint-disable-next-line react-refresh/only-export-components
-export function getDeleteDialogCopy(count: number, tableName: string): DeleteDialogCopy {
+function getDeleteDialogCopy(count: number, tableName: string): DeleteDialogCopy {
   const n = formatCount(count)
   if (count > MAX_BULK_DELETE_ROWS) {
     return {
@@ -394,8 +393,8 @@ export function ResultToolbar({
       {/* Clone is independently visible whenever editable query-result mode is active. */}
       {isCloneVisible && (
         <div className={styles.editActionsGroup} data-testid="clone-actions-group">
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.cloneButton}
             onClick={handleClone}
             title="Clone selected row; primary key fields are left blank."
@@ -404,7 +403,7 @@ export function ResultToolbar({
           >
             <Copy size={16} weight="regular" />
             <span>Clone</span>
-          </button>
+          </Button>
         </div>
       )}
 
@@ -414,8 +413,8 @@ export function ResultToolbar({
           stays enabled at every count so keyboard users reach the explanation. */}
       {editMode !== null && checkedCount > 0 && (
         <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.discardButton}
             onClick={handleDeleteChecked}
             title={`Delete ${formatCount(checkedCount)} selected row${checkedCount === 1 ? '' : 's'} from the database`}
@@ -423,7 +422,7 @@ export function ResultToolbar({
           >
             <Trash size={16} weight="regular" />
             <span>Delete ({formatCount(checkedCount)})</span>
-          </button>
+          </Button>
         </div>
       )}
 
@@ -431,8 +430,8 @@ export function ResultToolbar({
       {editState !== null && (
         <div className={styles.editActionsGroup} data-testid="edit-actions-group">
           {hasModifications && (
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.saveButton}
               onClick={handleSave}
               title="Save changes"
@@ -440,17 +439,17 @@ export function ResultToolbar({
             >
               <FloppyDisk size={16} weight="regular" />
               <span>Save</span>
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.discardButton}
             onClick={handleDiscard}
             title="Discard changes"
             data-testid="query-discard-button"
           >
             <span>Discard</span>
-          </button>
+          </Button>
         </div>
       )}
 

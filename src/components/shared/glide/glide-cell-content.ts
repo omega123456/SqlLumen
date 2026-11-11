@@ -5,6 +5,7 @@ import {
   blobPlaceholder,
   isBlobEnvelope,
 } from '../../../lib/blob-utils'
+import { logParseFallback } from '../../../lib/app-log-commands'
 import type { BlobEnvelope } from '../../../types/schema'
 
 export interface CellStateFlags {
@@ -90,7 +91,8 @@ function envelopeByteLength(envelope: BlobEnvelope): number {
   if (envelope.kind === 'bytes' && typeof envelope.base64 === 'string') {
     try {
       return base64ToBytes(envelope.base64).byteLength
-    } catch {
+    } catch (error) {
+      logParseFallback('[glide-cell-content] envelopeByteLength', error)
       return 0
     }
   }

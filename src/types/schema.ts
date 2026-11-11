@@ -133,8 +133,7 @@ export type WorkspaceTab =
   | ProcessListTab
 
 /** Distributive Omit — works correctly on union types. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never
+export type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 // ---------------------------------------------------------------------------
 // Schema data types (match Rust backend structs — camelCase via serde)

@@ -1,5 +1,6 @@
 import type { SettingsSection } from '../../types/schema'
 import { SETTINGS_SECTIONS } from './settings-sections'
+import { Button } from '../common/Button'
 import styles from './SettingsSidebar.module.css'
 
 export interface SettingsSidebarProps {
@@ -11,9 +12,9 @@ export function SettingsSidebar({ activeSection, onSelect }: SettingsSidebarProp
   return (
     <nav className={styles.sidebar} data-testid="settings-sidebar" aria-label="Settings sections">
       {SETTINGS_SECTIONS.map(({ id, label, Icon }) => (
-        <button
+        <Button
+          variant="bare"
           key={id}
-          type="button"
           className={styles.navButton}
           data-active={activeSection === id}
           data-testid={`settings-nav-${id}`}
@@ -24,7 +25,7 @@ export function SettingsSidebar({ activeSection, onSelect }: SettingsSidebarProp
             <Icon size={16} weight="regular" />
           </span>
           {label}
-        </button>
+        </Button>
       ))}
     </nav>
   )

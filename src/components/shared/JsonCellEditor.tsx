@@ -9,30 +9,16 @@ import {
 } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
+import { normalizeJson, prettyPrintJson } from '../../lib/json-text'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 import { useThemeStore } from '../../stores/theme-store'
 import { useEditorCallbacks } from './editor-callbacks-context'
 import type { CellEditorBaseProps } from './grid-cell-editors'
+import { Button } from '../common/Button'
 import styles from './JsonCellEditor.module.css'
 
 function isNullish(value: unknown): value is null | undefined {
   return value === null || value === undefined
-}
-
-function safePrettyPrintJson(value: string): string {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
-}
-
-function normalizeJsonString(value: string): string | null {
-  try {
-    return JSON.stringify(JSON.parse(value))
-  } catch {
-    return null
-  }
 }
 
 function resolveCommittedValue(originalValue: string | null, editorValue: string): string | null {
@@ -40,8 +26,8 @@ function resolveCommittedValue(originalValue: string | null, editorValue: string
     return editorValue
   }
 
-  const normalizedOriginal = normalizeJsonString(originalValue)
-  const normalizedNext = normalizeJsonString(editorValue)
+  const normalizedOriginal = normalizeJson(originalValue)
+  const normalizedNext = normalizeJson(editorValue)
 
   if (
     normalizedOriginal !== null &&
@@ -103,7 +89,7 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
   const originalValue = initialNull ? null : String(restoreValue ?? '')
   const initialInputValue = props.initialInputValue
   const prettyPrintedOriginal = useMemo(
-    () => (originalValue === null ? '' : safePrettyPrintJson(originalValue)),
+    () => (originalValue === null ? '' : prettyPrintJson(originalValue)),
     [originalValue]
   )
   const fallbackValue = useMemo(
@@ -362,8 +348,8 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
       </div>
       <div className={styles.editorMarkerGroup}>
         {isNullable ? (
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={`td-null-toggle click-outside-ignore ${isNull ? 'td-null-active' : ''}`}
             onMouseDown={handleInternalControlMouseDown}
             onClick={(event) => {
@@ -377,7 +363,7 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
             tabIndex={-1}
           >
             NULL
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>

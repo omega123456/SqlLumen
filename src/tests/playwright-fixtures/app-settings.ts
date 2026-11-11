@@ -1,0 +1,31 @@
+export const AI_DEFAULT_SETTINGS: Record<string, string> = {
+  'ai.enabled': 'false',
+  'ai.endpoint': '',
+  'ai.model': '',
+  'ai.embeddingModel': '',
+  'ai.temperature': '0.3',
+  'ai.maxTokens': '2048',
+  'ai.enableReasoning': 'false',
+  'ai.preferResponsesApi': 'false',
+}
+
+export const DEFAULT_APP_SETTINGS: Record<string, string> = {
+  theme: 'system',
+  'log.level': 'info',
+  'session.restore': 'true',
+  'editor.fontFamily': 'JetBrains Mono',
+  'editor.fontSize': '14',
+  'editor.lineHeight': '1.6',
+  'editor.wordWrap': 'false',
+  'editor.minimap': 'false',
+  'editor.lineNumbers': 'true',
+  'editor.autocompleteBackticks': 'false',
+  'results.pageSize': '500',
+  'results.nullDisplay': 'NULL',
+  'results.tableTabsInBottomPanel': 'false',
+  'connection.defaultTimeout': '10',
+  'connection.defaultKeepalive': '60',
+  shortcuts: '{}',
+  'session.state': 'null',
+  ...AI_DEFAULT_SETTINGS,
+}

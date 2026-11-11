@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import { HexColorPicker } from 'react-colorful'
 import { TextInput } from '../common/TextInput'
+import { Button } from '../common/Button'
 import styles from './ColorPickerPopover.module.css'
 
 interface ColorPickerPopoverProps {
@@ -83,8 +84,8 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
 
   return (
     <div className={styles.wrapper} ref={wrapperRef}>
-      <button
-        type="button"
+      <Button
+        variant="bare"
         className={styles.swatch}
         style={{ backgroundColor: color ?? 'var(--surface-container-high)' }}
         ref={swatchRef}
@@ -109,8 +110,8 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
               placeholder="#000000"
               aria-label="Hex color value"
             />
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.clearButton}
               onClick={() => {
                 onChange(null)
@@ -118,7 +119,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
               }}
             >
               Clear color
-            </button>
+            </Button>
           </div>,
           portalContainer
         )}

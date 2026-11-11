@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ipc } from '../ipc-mock'
-import { logFrontend } from '../../lib/app-log-commands'
+import { logBootstrapFailure, logFrontend, logParseFallback } from '../../lib/app-log-commands'
 
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
@@ -32,5 +32,29 @@ describe('logFrontend', () => {
     await vi.waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith('[app-log]', expect.any(Error))
     })
+  })
+})
+
+describe('logParseFallback', () => {
+  it('logs the source and the parse error at debug level', async () => {
+    logParseFallback('[format-utils] formatShortDate', new RangeError('Invalid time value'))
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'debug',
+      message:
+        '[format-utils] formatShortDate could not parse its input, using the fallback: RangeError: Invalid time value',
+    })
+  })
+})
+
+describe('logBootstrapFailure', () => {
+  it('writes to the console because IPC is not available during bootstrap', () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const bootstrapError = new Error('Monaco failed to load')
+
+    logBootstrapFailure(bootstrapError)
+
+    expect(consoleSpy).toHaveBeenCalledWith('[bootstrap]', bootstrapError)
+    expect(ipc.calls('log_frontend')).toHaveLength(0)
   })
 })

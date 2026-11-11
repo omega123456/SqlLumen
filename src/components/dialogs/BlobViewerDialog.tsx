@@ -615,10 +615,10 @@ export function BlobViewerDialog({
               const selected = activeTab === tab.id
               const tabClass = selected ? `${styles.tab} ${styles.tabActive}` : styles.tab
               return (
-                <button
+                <Button
+                  variant="bare"
                   key={tab.id}
                   ref={index === 0 ? firstTabRef : undefined}
-                  type="button"
                   className={tabClass}
                   onClick={() => setActiveTab(tab.id)}
                   onKeyDown={(e) => handleTabKeyDown(e, index)}
@@ -630,7 +630,7 @@ export function BlobViewerDialog({
                   data-testid={`blob-tab-${tab.id}`}
                 >
                   {tab.label}
-                </button>
+                </Button>
               )
             })}
           </div>

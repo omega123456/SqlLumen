@@ -4,9 +4,19 @@ import {
   formatShortDate,
   formatFromEpochSeconds,
 } from '../../lib/format-utils'
+import { ipc } from '../ipc-mock'
 
 function throwOnDateConstruction(this: unknown): Date {
   throw new RangeError('Invalid time value')
+}
+
+async function expectParseFallbackLogged(source: string): Promise<void> {
+  await vi.waitFor(() => {
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'debug',
+      message: `${source} could not parse its input, using the fallback: RangeError: Invalid time value`,
+    })
+  })
 }
 
 describe('formatTableTimestamp', () => {
@@ -29,13 +39,14 @@ describe('formatTableTimestamp', () => {
     expect(result).toBeTruthy()
   })
 
-  it('returns original string when Date constructor throws', () => {
+  it('returns original string when Date constructor throws', async () => {
     vi.spyOn(globalThis, 'Date').mockImplementation(throwOnDateConstruction)
     try {
       expect(formatTableTimestamp('2025-01-01T00:00:00Z')).toBe('2025-01-01T00:00:00Z')
     } finally {
       vi.mocked(globalThis.Date).mockRestore()
     }
+    await expectParseFallbackLogged('[format-utils] formatTableTimestamp')
   })
 })
 
@@ -58,13 +69,14 @@ describe('formatShortDate', () => {
     expect(result).toBeTruthy()
   })
 
-  it('returns original string when Date constructor throws', () => {
+  it('returns original string when Date constructor throws', async () => {
     vi.spyOn(globalThis, 'Date').mockImplementation(throwOnDateConstruction)
     try {
       expect(formatShortDate('bad-input')).toBe('bad-input')
     } finally {
       vi.mocked(globalThis.Date).mockRestore()
     }
+    await expectParseFallbackLogged('[format-utils] formatShortDate')
   })
 })
 
@@ -81,12 +93,13 @@ describe('formatFromEpochSeconds', () => {
     expect(result).toContain('1970')
   })
 
-  it('returns string of number when Date constructor throws', () => {
+  it('returns string of number when Date constructor throws', async () => {
     vi.spyOn(globalThis, 'Date').mockImplementation(throwOnDateConstruction)
     try {
       expect(formatFromEpochSeconds(12345)).toBe('12345')
     } finally {
       vi.mocked(globalThis.Date).mockRestore()
     }
+    await expectParseFallbackLogged('[format-utils] formatFromEpochSeconds')
   })
 })

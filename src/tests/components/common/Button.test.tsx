@@ -57,6 +57,22 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button', 'extra-slot')
   })
 
+  it('renders only the caller className for the bare variant', () => {
+    render(
+      <Button variant="bare" size="sm" iconOnly dangerText className="toolbar-slot">
+        Bare
+      </Button>
+    )
+    const btn = screen.getByRole('button', { name: 'Bare' })
+    expect(btn.className).toBe('toolbar-slot')
+    expect(btn).toHaveAttribute('type', 'button')
+  })
+
+  it('renders no class attribute for a bare button without a className', () => {
+    render(<Button variant="bare">Plain</Button>)
+    expect(screen.getByRole('button', { name: 'Plain' })).not.toHaveAttribute('class')
+  })
+
   it('forwards ref', () => {
     const ref = createRef<HTMLButtonElement>()
     render(<Button ref={ref}>T</Button>)

@@ -1,12 +1,14 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react'
 
 /** Fluent button variants: default (control fill), accent, subtle (transparent) and danger (fill). */
-export type ButtonVariant = 'default' | 'accent' | 'subtle' | 'danger'
+type StyledButtonVariant = 'default' | 'accent' | 'subtle' | 'danger'
+
+export type ButtonVariant = StyledButtonVariant | 'bare'
 
 /** md is 32px (dialogs, command bars); sm is 28px (result and grid toolbars). */
 export type ButtonSize = 'md' | 'sm'
 
-const VARIANT_CLASS: Record<ButtonVariant, string | undefined> = {
+const VARIANT_CLASS: Record<StyledButtonVariant, string | undefined> = {
   default: undefined,
   accent: 'ui-button--accent',
   subtle: 'ui-button--subtle',
@@ -26,6 +28,32 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   iconOnly?: boolean
 }
 
+interface ButtonClassOptions {
+  variant: ButtonVariant
+  size: ButtonSize
+  dangerText: boolean
+  iconOnly: boolean
+  className: string | undefined
+}
+
+function resolveButtonClassName({
+  variant,
+  size,
+  dangerText,
+  iconOnly,
+  className,
+}: ButtonClassOptions): string | undefined {
+  if (variant === 'bare') return className
+  return mergeClassNames(
+    'ui-button',
+    VARIANT_CLASS[variant],
+    size === 'sm' && 'ui-button--sm',
+    iconOnly && 'ui-button--icon',
+    dangerText && 'ui-button--danger-text',
+    className
+  )
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant = 'default',
@@ -42,14 +70,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       type={type}
-      className={mergeClassNames(
-        'ui-button',
-        VARIANT_CLASS[variant],
-        size === 'sm' && 'ui-button--sm',
-        iconOnly && 'ui-button--icon',
-        dangerText && 'ui-button--danger-text',
-        className
-      )}
+      className={resolveButtonClassName({ variant, size, dangerText, iconOnly, className })}
       {...rest}
     />
   )

@@ -167,3 +167,14 @@ export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
     ],
   },
 ]
+
+export const INSERTED_USER_ROW: [string, unknown][] = [
+  ['id', 1005],
+  ['name', ''],
+  ['email', null],
+  ['status', 'active'],
+  ['created_at', null],
+  ['updated_at', null],
+  ['birth_date', null],
+  ['login_time', null],
+]

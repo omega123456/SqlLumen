@@ -125,7 +125,12 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
       return
     }
 
-    await waitForSave.catch(() => {})
+    await waitForSave.catch((error: unknown) => {
+      logFrontend(
+        'debug',
+        `[session-restore] Session save failed for a caller that does not rethrow: ${String(error)}`
+      )
+    })
   },
 
   restoreSession: async (): Promise<void> => {

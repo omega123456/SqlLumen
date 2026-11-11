@@ -1,3 +1,4 @@
+import { formatShortDate } from '../../lib/format-utils'
 import type { TableMetadata } from '../../types/schema'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import styles from './MetadataCard.module.css'
@@ -6,19 +7,16 @@ export interface MetadataCardProps {
   metadata: TableMetadata
 }
 
+const MISSING_VALUE_LABEL = '—'
+
+function isInvalidDate(dateStr: string): boolean {
+  return Number.isNaN(new Date(dateStr).getTime())
+}
+
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—'
-  try {
-    const d = new Date(dateStr)
-    if (isNaN(d.getTime())) return dateStr
-    return d.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  } catch {
-    return dateStr
-  }
+  if (!dateStr) return MISSING_VALUE_LABEL
+  if (isInvalidDate(dateStr)) return dateStr
+  return formatShortDate(dateStr)
 }
 
 export function MetadataCard({ metadata }: MetadataCardProps) {
@@ -37,7 +35,9 @@ export function MetadataCard({ metadata }: MetadataCardProps) {
         <div className={styles.item}>
           <dt className={styles.label}>Auto increment</dt>
           <dd className={styles.value}>
-            {metadata.autoIncrement != null ? metadata.autoIncrement.toLocaleString() : '—'}
+            {metadata.autoIncrement != null
+              ? metadata.autoIncrement.toLocaleString()
+              : MISSING_VALUE_LABEL}
           </dd>
         </div>
         <div className={styles.item}>

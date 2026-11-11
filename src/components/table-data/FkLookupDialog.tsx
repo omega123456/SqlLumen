@@ -452,15 +452,15 @@ export function FkLookupDialog({
                 {sourceTable}.{sourceColumn} → {referencedTable}.{referencedColumn}
               </p>
             </div>
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.closeButton}
               onClick={onClose}
               aria-label="Close"
               data-testid="fk-lookup-close"
             >
               <X size={18} weight="bold" />
-            </button>
+            </Button>
           </div>
 
           {/* ── Toolbar ────────────────────────────────── */}

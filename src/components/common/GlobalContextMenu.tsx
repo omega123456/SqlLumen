@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ClipboardText, CopySimple, Scissors } from '@phosphor-icons/react'
+import { logFrontend } from '../../lib/app-log-commands'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import {
   getContextMenuPositionMode,
@@ -241,8 +242,8 @@ export function GlobalContextMenu() {
     void (async () => {
       try {
         await fn()
-      } catch {
-        // Clipboard failures are environment-specific; keep menu usable
+      } catch (error) {
+        logFrontend('warn', `[global-context-menu] Clipboard action failed: ${String(error)}`)
       } finally {
         closeMenu()
       }

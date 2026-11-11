@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
+import { logFrontend } from '../../lib/app-log-commands'
 import {
   deleteConnection,
   testConnection,
@@ -169,15 +170,15 @@ function SslFileField({
           disabled={disabled}
           autoComplete="off"
         />
-        <button
-          type="button"
+        <Button
+          variant="bare"
           className={styles.browseButton}
           onClick={onBrowse}
           disabled={disabled}
           aria-label={browseLabel}
         >
           <FolderOpen size={16} />
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -295,8 +296,8 @@ export function ConnectionForm({
       if (typeof selected === 'string') {
         updateField(field, selected)
       }
-    } catch {
-      // User cancelled or error — ignore
+    } catch (error) {
+      logFrontend('warn', `[connection-form] Certificate file dialog failed: ${String(error)}`)
     }
   }
 

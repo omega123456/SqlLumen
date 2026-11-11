@@ -171,8 +171,7 @@ export function DiffOverlay({
         setLineChanges((editor.getLineChanges() as LineChange[] | null) ?? [])
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [] // Intentionally empty — content is set once at mount, not re-synced.
+    [originalSql, proposedSql]
   )
 
   /** Keep model content in sync when props change while the overlay stays mounted. */

@@ -48,6 +48,18 @@ const OPERATOR_DROPDOWN_OPTIONS: DropdownOption[] = OPERATORS.map((op) => ({
 const PANEL_WIDTH = 'min(50vw, 720px)'
 const PANEL_HEIGHT = 'min(50vh, 560px)'
 
+function copyConditions(conditions: FilterCondition[]): FilterCondition[] {
+  return conditions.map((condition) => ({ ...condition }))
+}
+
+function copyConditionsWhenOpen(
+  isOpen: boolean,
+  initialConditions: FilterCondition[]
+): FilterCondition[] {
+  if (!isOpen) return []
+  return copyConditions(initialConditions)
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -72,18 +84,25 @@ export function FilterDialog({
   columns,
 }: FilterDialogProps) {
   // Local editing copy — reset from props every time dialog opens.
-  const [conditions, setConditions] = useState<FilterCondition[]>([])
+  const [conditions, setConditions] = useState<FilterCondition[]>(() =>
+    copyConditionsWhenOpen(isOpen, initialConditions)
+  )
+  const [syncedOpenState, setSyncedOpenState] = useState({ isOpen, initialConditions })
   const valueInputRefs = useRef<(HTMLInputElement | null)[]>([])
   const hasAutoFocusedForOpenRef = useRef(false)
 
+  const hasOpenStateChanged =
+    syncedOpenState.isOpen !== isOpen || syncedOpenState.initialConditions !== initialConditions
+  if (hasOpenStateChanged) {
+    setSyncedOpenState({ isOpen, initialConditions })
+  }
+  const shouldResetConditions = hasOpenStateChanged && isOpen
+  if (shouldResetConditions) {
+    setConditions(copyConditions(initialConditions))
+  }
+
   useEffect(() => {
-    if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setConditions(initialConditions.map((c) => ({ ...c })))
-      hasAutoFocusedForOpenRef.current = false
-    } else {
-      hasAutoFocusedForOpenRef.current = false
-    }
+    hasAutoFocusedForOpenRef.current = false
   }, [isOpen, initialConditions])
 
   // --- Handlers ---
@@ -175,15 +194,15 @@ export function FilterDialog({
         {/* Header */}
         <div className={styles.header}>
           <h2 className={styles.title}>Filter conditions</h2>
-          <button
-            type="button"
+          <Button
+            variant="bare"
             className={styles.closeButton}
             onClick={onCancel}
             aria-label="Close"
             data-testid="filter-dialog-close"
           >
             <X size={18} weight="bold" />
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
@@ -237,30 +256,30 @@ export function FilterDialog({
                       />
 
                       {/* Remove */}
-                      <button
-                        type="button"
+                      <Button
+                        variant="bare"
                         className={styles.removeButton}
                         onClick={() => handleRemove(idx)}
                         aria-label={`Remove condition ${idx + 1}`}
                         data-testid="filter-remove-button"
                       >
                         <X size={14} weight="bold" />
-                      </button>
+                      </Button>
                     </div>
                   )
                 })}
               </div>
 
               {/* Add button */}
-              <button
-                type="button"
+              <Button
+                variant="bare"
                 className={styles.addButton}
                 onClick={handleAdd}
                 data-testid="filter-add-button"
               >
                 <Plus size={14} weight="bold" />
                 <span>Add condition</span>
-              </button>
+              </Button>
             </>
           ) : (
             /* Empty state */
@@ -270,15 +289,15 @@ export function FilterDialog({
               <span className={styles.emptyHelp}>
                 Add conditions to narrow table rows. All conditions are combined with AND.
               </span>
-              <button
-                type="button"
+              <Button
+                variant="bare"
                 className={styles.addButton}
                 onClick={handleAdd}
                 data-testid="filter-add-button"
               >
                 <Plus size={14} weight="bold" />
                 <span>Add condition</span>
-              </button>
+              </Button>
             </div>
           )}
         </div>

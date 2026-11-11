@@ -222,8 +222,8 @@ export default function SqlDumpDialog({
         filters: [{ name: 'SQL files', extensions: ['sql'] }],
       })
       if (selectedPath) setFilePath(selectedPath)
-    } catch {
-      // Dialog not available (e.g. in test/Playwright mode)
+    } catch (error) {
+      logFrontend('info', `[sql-dump-dialog] Save dialog unavailable: ${String(error)}`)
     }
   }, [initialDatabase])
 
@@ -322,8 +322,8 @@ export default function SqlDumpDialog({
         <div className={styles.header}>
           <h2 className={styles.title}>{schemaOnly ? 'Export schema DDL' : 'Export SQL dump'}</h2>
           {!isExporting && (
-            <button
-              type="button"
+            <Button
+              variant="bare"
               className={styles.closeButton}
               onClick={onClose}
               aria-label="Close"
@@ -331,7 +331,7 @@ export default function SqlDumpDialog({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
-            </button>
+            </Button>
           )}
         </div>
 
@@ -468,8 +468,8 @@ export default function SqlDumpDialog({
                 placeholder="database_dump.sql"
                 data-testid="dump-file-path-input"
               />
-              <button
-                type="button"
+              <Button
+                variant="bare"
                 className={styles.browseButton}
                 onClick={handleBrowse}
                 aria-label="Browse"
@@ -478,7 +478,7 @@ export default function SqlDumpDialog({
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                 </svg>
-              </button>
+              </Button>
             </div>
           </div>
 

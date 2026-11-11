@@ -202,8 +202,7 @@ export function provideCodeLenses(
 // Change emitter — fires when settings change so Monaco re-queries lenses
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const onDidChangeEmitter = new monaco.Emitter<any>()
+const onDidChangeEmitter = new monaco.Emitter<monaco.languages.CodeLensProvider>()
 
 // ---------------------------------------------------------------------------
 // Build and register the CodeLens provider object

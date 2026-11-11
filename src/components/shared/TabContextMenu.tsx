@@ -7,6 +7,7 @@ import {
   getContextMenuPositionMode,
   positionContextMenuInPortal,
 } from '../../lib/context-menu-utils'
+import { Button } from '../common/Button'
 
 export interface TabContextMenuItem {
   key: string
@@ -81,9 +82,9 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
           .filter(Boolean)
           .join(' ')
         const button = (
-          <button
+          <Button
+            variant="bare"
             key={item.key}
-            type="button"
             role="menuitem"
             className={itemClass}
             disabled={item.disabled}
@@ -103,7 +104,7 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
                 {item.shortcut}
               </span>
             ) : null}
-          </button>
+          </Button>
         )
         if (!item.separatorAfter) {
           return button

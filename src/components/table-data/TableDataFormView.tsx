@@ -165,7 +165,6 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   }, [selectedRowKey, rows, columns, pkColumns])
 
   const absoluteIndex = (currentPage - 1) * pageSize + localIndex
-  // Use effectiveTotalRows so temp rows are counted in the display total
   const currentRow = rows.length > 0 ? rows[localIndex] : null
 
   // Current row key (for edit-state matching)

@@ -1,3 +1,4 @@
+import { Button } from '../common/Button'
 import styles from './HistoryFilterPanel.module.css'
 
 export type TimeRange = 'all' | '24h' | '7d' | '30d'
@@ -19,16 +20,16 @@ export function HistoryFilterPanel({ value, onChange }: HistoryFilterPanelProps)
     <div className={styles.panel} data-testid="history-filter-panel">
       <h3 className={styles.heading}>Time range</h3>
       {FILTERS.map((filter) => (
-        <button
+        <Button
+          variant="bare"
           key={filter.value}
-          type="button"
           className={`${styles.filterButton} ${value === filter.value ? styles.filterButtonActive : ''}`}
           onClick={() => onChange(filter.value)}
           aria-pressed={value === filter.value}
           data-testid={`filter-${filter.value}`}
         >
           {filter.label}
-        </button>
+        </Button>
       ))}
     </div>
   )

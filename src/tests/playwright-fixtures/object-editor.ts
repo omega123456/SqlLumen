@@ -1,3 +1,4 @@
+import type { RoutineParameter, SaveObjectResponse } from '../../types/schema'
 import type { PlaywrightRoutineParametersResponse } from './types'
 
 export const OBJECT_BODY_BY_TYPE: Record<string, string> = {
@@ -30,3 +31,15 @@ export const DEFAULT_ROUTINE_PARAMETERS_WITH_RETURN_TYPE: PlaywrightRoutineParam
   ],
   found: true,
 }
+
+export const ROUTINE_PARAMETERS: RoutineParameter[] =
+  DEFAULT_ROUTINE_PARAMETERS_WITH_RETURN_TYPE.parameters
+
+export const SAVED_OBJECT_RESPONSE: SaveObjectResponse = {
+  success: true,
+  errorMessage: null,
+  dropSucceeded: true,
+  savedObjectName: 'mock_object',
+}
+
+export const OPENED_SQL_FILE_CONTENT = "SELECT * FROM users\nWHERE status = 'active'\nLIMIT 100;"
