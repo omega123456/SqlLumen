@@ -5,10 +5,15 @@
 //! transactions) carries over between runs and windows. A session runs one
 //! statement at a time: concurrent runs queue on the slot mutex.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio_util::sync::CancellationToken;
 
 use crate::state::AppState;
+
+pub const QUEUED_RUN_CANCELLED_MESSAGE: &str =
+    "Query cancelled while waiting for the editor session";
 
 pub struct EditorSession {
     pub conn: mysql_async::Conn,
@@ -19,12 +24,77 @@ pub struct EditorSession {
 pub type SessionSlot = Arc<Mutex<Option<EditorSession>>>;
 pub type SessionGuard = OwnedMutexGuard<Option<EditorSession>>;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TabRun {
+    pub connection_id: String,
+    pub tab_id: String,
+}
+
+impl TabRun {
+    pub fn new(connection_id: &str, tab_id: &str) -> Self {
+        Self {
+            connection_id: connection_id.to_string(),
+            tab_id: tab_id.to_string(),
+        }
+    }
+
+    pub fn running_query_key(&self) -> (String, String) {
+        (self.connection_id.clone(), self.tab_id.clone())
+    }
+}
+
+#[derive(Default)]
+pub struct EditorSessions {
+    slots: std::sync::Mutex<HashMap<String, SessionSlot>>,
+    queued_runs: std::sync::Mutex<HashMap<TabRun, CancellationToken>>,
+}
+
+impl EditorSessions {
+    pub fn has_session(&self, connection_id: &str) -> bool {
+        self.lock_slots().contains_key(connection_id)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lock_slots().is_empty()
+    }
+
+    pub fn cancel_queued_run(&self, run: &TabRun) -> bool {
+        let Some(cancellation) = self.lock_queued_runs().remove(run) else {
+            return false;
+        };
+        cancellation.cancel();
+        true
+    }
+
+    fn lock_slots(&self) -> std::sync::MutexGuard<'_, HashMap<String, SessionSlot>> {
+        self.slots.lock().expect("editor sessions lock poisoned")
+    }
+
+    fn lock_queued_runs(&self) -> std::sync::MutexGuard<'_, HashMap<TabRun, CancellationToken>> {
+        self.queued_runs
+            .lock()
+            .expect("queued editor runs lock poisoned")
+    }
+
+    #[cfg(not(coverage))]
+    fn join_queue(&self, run: &TabRun) -> CancellationToken {
+        let cancellation = CancellationToken::new();
+        self.lock_queued_runs()
+            .insert(run.clone(), cancellation.clone());
+        cancellation
+    }
+
+    #[cfg(not(coverage))]
+    fn leave_queue(&self, run: &TabRun) {
+        self.lock_queued_runs().remove(run);
+    }
+}
+
 #[cfg(not(coverage))]
 fn slot(state: &AppState, connection_id: &str) -> SessionSlot {
     state
         .editor_sessions
-        .lock()
-        .expect("editor sessions lock poisoned")
+        .lock_slots()
         .entry(connection_id.to_string())
         .or_default()
         .clone()
@@ -33,8 +103,7 @@ fn slot(state: &AppState, connection_id: &str) -> SessionSlot {
 fn existing_slot(state: &AppState, connection_id: &str) -> Option<SessionSlot> {
     state
         .editor_sessions
-        .lock()
-        .expect("editor sessions lock poisoned")
+        .lock_slots()
         .get(connection_id)
         .cloned()
 }
@@ -80,6 +149,50 @@ pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGua
     }
 
     Ok(guard)
+}
+
+#[cfg(not(coverage))]
+pub async fn acquire_for_run(state: &AppState, run: &TabRun) -> Result<SessionGuard, String> {
+    let cancellation = state.editor_sessions.join_queue(run);
+
+    let acquired = acquire_unless_cancelled(state, &run.connection_id, &cancellation).await;
+    if acquired.is_err() {
+        state.editor_sessions.leave_queue(run);
+    }
+    let guard = acquired?;
+
+    let thread_id = guard
+        .as_ref()
+        .expect("acquire always yields a session")
+        .thread_id;
+    state
+        .running_queries
+        .write()
+        .await
+        .insert(run.running_query_key(), thread_id);
+    state.editor_sessions.leave_queue(run);
+
+    if cancellation.is_cancelled() {
+        state
+            .running_queries
+            .write()
+            .await
+            .remove(&run.running_query_key());
+        return Err(QUEUED_RUN_CANCELLED_MESSAGE.to_string());
+    }
+    Ok(guard)
+}
+
+#[cfg(not(coverage))]
+async fn acquire_unless_cancelled(
+    state: &AppState,
+    connection_id: &str,
+    cancellation: &CancellationToken,
+) -> Result<SessionGuard, String> {
+    tokio::select! {
+        acquired = acquire(state, connection_id) => acquired,
+        _ = cancellation.cancelled() => Err(QUEUED_RUN_CANCELLED_MESSAGE.to_string()),
+    }
 }
 
 /// Switch an existing editor session to `database` so session state survives a
@@ -142,11 +255,7 @@ pub async fn use_database(
 /// Drop the connection's editor session. An idle session is disconnected right
 /// away; a busy one is dropped (and disconnected) when its running query ends.
 pub async fn close(state: &AppState, connection_id: &str) {
-    let removed = state
-        .editor_sessions
-        .lock()
-        .expect("editor sessions lock poisoned")
-        .remove(connection_id);
+    let removed = state.editor_sessions.lock_slots().remove(connection_id);
     let Some(slot) = removed else {
         return;
     };

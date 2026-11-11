@@ -7,6 +7,8 @@
 use crate::mysql::metadata_cache::MetadataCache;
 use crate::mysql::result_cache::CacheGet;
 use crate::mysql::schema_queries::safe_identifier;
+#[cfg(not(coverage))]
+use crate::mysql::sqlx_type_names::is_sqlx_integer_type_name;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -858,7 +860,6 @@ fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Valu
 fn serialize_table_value(
     row: &sqlx::mysql::MySqlRow,
     i: usize,
-    is_boolean_alias: bool,
     is_binary: bool,
     is_pk: bool,
 ) -> serde_json::Value {
@@ -906,14 +907,6 @@ fn serialize_table_value(
 
     let type_name = raw_value.type_info().name().to_uppercase();
 
-    if is_boolean_alias {
-        if let Ok(v) = row.try_get::<Option<bool>, _>(i) {
-            return v
-                .map(|b| serde_json::Value::from(if b { 1 } else { 0 }))
-                .unwrap_or(serde_json::Value::Null);
-        }
-    }
-
     // BIT: sqlx u64 decoder has an explicit ColumnType::Bit path that reads raw big-endian bytes
     if type_name == "BIT" {
         return match row.try_get::<Option<u64>, _>(i) {
@@ -932,13 +925,7 @@ fn serialize_table_value(
         };
     }
 
-    // Integer types
-    if matches!(
-        type_name.as_str(),
-        "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG"
-    ) || type_name.contains("INT")
-        || type_name == "YEAR"
-    {
+    if is_sqlx_integer_type_name(&type_name) {
         if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
             return v
                 .map(|n| {
@@ -1050,13 +1037,7 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::
         return serde_json::Value::Null;
     }
 
-    // Integer types
-    if matches!(
-        type_name.as_str(),
-        "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG"
-    ) || type_name.contains("INT")
-        || type_name == "YEAR"
-    {
+    if is_sqlx_integer_type_name(&type_name) {
         if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(i) {
             return serde_json::Value::from(v);
         }
@@ -1491,13 +1472,7 @@ pub async fn fetch_table_data_impl(
         for (i, col_meta) in columns.iter().enumerate() {
             if i < row_col_count {
                 let is_pk = pk_col_set.contains(col_meta.name.as_str());
-                serialized_row.push(serialize_table_value(
-                    row,
-                    i,
-                    col_meta.is_boolean_alias,
-                    col_meta.is_binary,
-                    is_pk,
-                ));
+                serialized_row.push(serialize_table_value(row, i, col_meta.is_binary, is_pk));
             } else {
                 serialized_row.push(serde_json::Value::Null);
             }
@@ -1778,14 +1753,11 @@ pub async fn insert_table_row_impl(
                 .map(|i| {
                     let col_name = row.column(i).name().to_string();
                     let col_meta = columns.get(i);
-                    let is_boolean_alias = col_meta
-                        .map(|column| column.is_boolean_alias)
-                        .unwrap_or(false);
                     let is_binary = col_meta.map(|column| column.is_binary).unwrap_or(false);
                     let is_pk = col_meta
                         .map(|column| pk_col_set.contains(column.name.as_str()))
                         .unwrap_or(false);
-                    let value = serialize_table_value(&row, i, is_boolean_alias, is_binary, is_pk);
+                    let value = serialize_table_value(&row, i, is_binary, is_pk);
                     (col_name, value)
                 })
                 .collect();

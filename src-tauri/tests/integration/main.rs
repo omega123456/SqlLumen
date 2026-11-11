@@ -86,6 +86,7 @@ mod sql_dump_integration;
 mod sql_dump_streaming_integration;
 mod sql_import_integration;
 mod sql_table_parser_integration;
+mod sqlx_type_names_integration;
 mod stream_writer_integration;
 mod table_data_binary_pk_write_integration;
 mod table_data_binary_projection_integration;

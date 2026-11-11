@@ -20,9 +20,10 @@ use sqllumen_lib::commands::mysql::{
 };
 use sqllumen_lib::commands::session::{select_database_impl, set_test_select_database_hook};
 use sqllumen_lib::mysql::query_executor::{
-    execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
+    cancel_query_impl, execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
     reexecute_single_result_impl, ExecuteQueryResult, MultiQueryResult, MultiQueryResultItem,
 };
+use sqllumen_lib::mysql::session::QUEUED_RUN_CANCELLED_MESSAGE;
 use sqllumen_lib::state::AppState;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
@@ -43,7 +44,8 @@ fn build_query_commands_app() -> (
             execute_call_query,
             reexecute_single_result,
             close_connection,
-            select_database
+            select_database,
+            cancel_query
         ])
         .build(mock_context(noop_assets()))
         .expect("should build test app");
@@ -160,6 +162,15 @@ async fn reexecute_single_result(
         None,
     )
     .await
+}
+
+#[tauri::command]
+async fn cancel_query(
+    connection_id: String,
+    tab_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    cancel_query_impl(&state, &connection_id, &tab_id).await
 }
 
 fn invoke_tauri_command<T: DeserializeOwned>(
@@ -1044,6 +1055,96 @@ async fn query_editor_concurrent_runs_queue_on_the_shared_session() {
     assert_eq!(session_setup_count(&server), 1);
 }
 
+const QUEUE_WAIT_DEADLINE: std::time::Duration = std::time::Duration::from_millis(1500);
+const QUEUE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+const QUEUED_TAB_ID: &str = "tab-2";
+const QUEUED_SQL: &str = "SET @x = 1";
+
+fn try_run_single(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    connection_id: &str,
+    tab_id: &str,
+    sql: &str,
+) -> Result<ExecuteQueryResultDto, serde_json::Value> {
+    invoke_tauri_command(
+        webview,
+        "execute_query",
+        json!({
+            "connectionId": connection_id,
+            "tabId": tab_id,
+            "sql": sql,
+            "rowLimit": 1000,
+        }),
+    )
+}
+
+fn cancel_run(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    connection_id: &str,
+    tab_id: &str,
+) -> bool {
+    invoke_tauri_command(
+        webview,
+        "cancel_query",
+        json!({ "connectionId": connection_id, "tabId": tab_id }),
+    )
+    .expect("cancel_query IPC should succeed")
+}
+
+fn cancel_once_queued(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    connection_id: &str,
+    tab_id: &str,
+) {
+    let deadline = std::time::Instant::now() + QUEUE_WAIT_DEADLINE;
+    loop {
+        if cancel_run(webview, connection_id, tab_id) {
+            return;
+        }
+        let is_before_deadline = std::time::Instant::now() < deadline;
+        assert!(
+            is_before_deadline,
+            "{tab_id} never queued for the editor session"
+        );
+        std::thread::sleep(QUEUE_POLL_INTERVAL);
+    }
+}
+
+fn server_received(server: &MockMySqlServer, sql: &str) -> bool {
+    server.text_queries().iter().any(|query| query == sql)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancel_query_cancels_a_run_queued_behind_another_window() {
+    let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
+    let (app, webview) = build_query_commands_app();
+    let open_result = open_mock_connection(&webview, server.port).await;
+    let conn_id = open_result.session_id.as_str();
+    let state = app.state::<AppState>();
+    let busy_session = sqllumen_lib::mysql::session::acquire(&state, conn_id)
+        .await
+        .expect("first window should acquire the session");
+
+    let queued_result = std::thread::scope(|scope| {
+        let queued_run =
+            scope.spawn(|| try_run_single(&webview, conn_id, QUEUED_TAB_ID, QUEUED_SQL));
+        cancel_once_queued(&webview, conn_id, QUEUED_TAB_ID);
+        queued_run
+            .join()
+            .expect("queued run thread should not panic")
+    });
+    drop(busy_session);
+
+    let error = queued_result.expect_err("cancelled queued run should fail");
+    assert_eq!(error, json!(QUEUED_RUN_CANCELLED_MESSAGE));
+    let cancelled_again = cancel_run(&webview, conn_id, QUEUED_TAB_ID);
+    assert!(!cancelled_again);
+    let queued_sql_reached_server = server_received(&server, QUEUED_SQL);
+    assert!(!queued_sql_reached_server);
+
+    run_single(&webview, conn_id, QUEUED_TAB_ID, QUEUED_SQL);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn close_connection_drops_the_editor_session() {
     let server = MockMySqlServer::start_script(vec![connection_id_step()]).await;
@@ -1052,12 +1153,7 @@ async fn close_connection_drops_the_editor_session() {
     let conn_id = open_result.session_id.as_str();
 
     run_single(&webview, conn_id, "tab-1", "SET @x = 1");
-    assert!(app
-        .state::<AppState>()
-        .editor_sessions
-        .lock()
-        .unwrap()
-        .contains_key(conn_id));
+    assert!(app.state::<AppState>().editor_sessions.has_session(conn_id));
 
     let _: () = invoke_tauri_command(
         &webview,
@@ -1066,12 +1162,7 @@ async fn close_connection_drops_the_editor_session() {
     )
     .expect("close_connection IPC should succeed");
 
-    assert!(app
-        .state::<AppState>()
-        .editor_sessions
-        .lock()
-        .unwrap()
-        .is_empty());
+    assert!(app.state::<AppState>().editor_sessions.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

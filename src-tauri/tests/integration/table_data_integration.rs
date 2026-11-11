@@ -757,6 +757,8 @@ mod type_aware_filter_integration {
         set_test_pool_factory(None);
     }
 
+    const TINYINT_ONE_VALUE_ABOVE_ONE: i8 = 7;
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fetch_table_data_serializes_boolean_alias_columns_as_integers() {
         let server = MockMySqlServer::start_script(vec![
@@ -807,7 +809,10 @@ mod type_aware_filter_integration {
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
                     MockColumnDef { name: "is_admin", coltype: ColumnType::MYSQL_TYPE_TINY, colflags: ColumnFlags::empty() },
                 ],
-                rows: vec![vec![MockCell::U32(1), MockCell::I8(1)]],
+                rows: vec![
+                    vec![MockCell::U32(1), MockCell::I8(1)],
+                    vec![MockCell::U32(2), MockCell::I8(TINYINT_ONE_VALUE_ABOVE_ONE)],
+                ],
                 error: None,
                 affected_rows: None,
             },
@@ -853,8 +858,12 @@ mod type_aware_filter_integration {
         )
         .expect("fetch_table_data IPC should succeed");
 
-        assert_eq!(response.rows.len(), 1);
+        assert_eq!(response.rows.len(), 2);
         assert_eq!(response.rows[0][1], serde_json::json!(1));
+        assert_eq!(
+            response.rows[1][1],
+            serde_json::json!(TINYINT_ONE_VALUE_ABOVE_ONE)
+        );
 
         set_test_pool_factory(None);
     }

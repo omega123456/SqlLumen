@@ -36,7 +36,7 @@ fn format_cell(row: &MySqlRow, i: usize) -> String {
         return "None".to_string();
     }
 
-    if type_name.contains("INT") || type_name == "YEAR" {
+    if crate::mysql::sqlx_type_names::is_sqlx_integer_type_name(&type_name) {
         if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
             return format!("{v:?}");
         }
@@ -62,12 +62,6 @@ fn format_cell(row: &MySqlRow, i: usize) -> String {
             decode_unchecked_string(row, i).or_else(|| decode_raw_string(raw_value.clone()))
         {
             return format!("Some({v:?})");
-        }
-    }
-
-    if type_name == "BOOL" || type_name == "BOOLEAN" {
-        if let Ok(v) = row.try_get::<Option<bool>, _>(i) {
-            return format!("{v:?}");
         }
     }
 

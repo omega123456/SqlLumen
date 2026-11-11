@@ -908,10 +908,6 @@ pub fn evict_results_impl(state: &AppState, connection_id: &str, tab_id: &str) {
         .remove_with_spill_cleanup(connection_id, tab_id);
 }
 
-/// Cancel a running query by issuing `KILL QUERY <thread_id>` on the MySQL server.
-///
-/// Returns `Ok(true)` if a running query was found and `KILL QUERY` was issued,
-/// or `Ok(false)` if no running query was found for the given (connection_id, tab_id).
 #[cfg(not(coverage))]
 pub async fn cancel_query_impl(
     state: &AppState,
@@ -927,7 +923,8 @@ pub async fn cancel_query_impl(
     };
 
     let Some(thread_id) = thread_id else {
-        return Ok(false);
+        let queued_run = crate::mysql::session::TabRun::new(connection_id, tab_id);
+        return Ok(state.editor_sessions.cancel_queued_run(&queued_run));
     };
 
     // Resolve the pool from the registry (only needed when we actually issue KILL)
@@ -976,7 +973,8 @@ pub async fn cancel_query_impl(
     };
 
     let Some(thread_id) = thread_id else {
-        return Ok(false);
+        let queued_run = crate::mysql::session::TabRun::new(connection_id, tab_id);
+        return Ok(state.editor_sessions.cancel_queued_run(&queued_run));
     };
 
     // Validate connection exists (matches real impl behavior)

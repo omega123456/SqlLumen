@@ -11,6 +11,7 @@ pub mod result_view;
 pub mod schema_queries;
 pub mod session;
 pub mod sql_table_parser;
+pub mod sqlx_type_names;
 pub mod table_data;
 pub mod table_data_cache;
 pub mod table_designer;

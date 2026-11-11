@@ -917,17 +917,10 @@ pub async fn execute_multi_query_internal(
 > {
     use crate::mysql::query_executor::{is_read_only_allowed, MultiQueryResultItem, StoredResult};
 
-    let mut guard = crate::mysql::session::acquire(state, connection_id).await?;
+    let run = crate::mysql::session::TabRun::new(connection_id, tab_id);
+    let mut guard = crate::mysql::session::acquire_for_run(state, &run).await?;
     let session = guard.as_mut().expect("acquire always yields a session");
-
-    // Register thread ID for cancellation — only once the session is ours, so
-    // cancelling a queued tab never kills another tab's query.
-    let key = (connection_id.to_string(), tab_id.to_string());
-    state
-        .running_queries
-        .write()
-        .await
-        .insert(key.clone(), session.thread_id);
+    let key = run.running_query_key();
 
     let ctx = DecodeContext {
         ceiling: state.result_cache.row_ceiling(),
@@ -997,15 +990,10 @@ pub async fn execute_single_on_session(
     ),
     String,
 > {
-    let mut guard = crate::mysql::session::acquire(state, connection_id).await?;
+    let run = crate::mysql::session::TabRun::new(connection_id, tab_id);
+    let mut guard = crate::mysql::session::acquire_for_run(state, &run).await?;
     let session = guard.as_mut().expect("acquire always yields a session");
-
-    let key = (connection_id.to_string(), tab_id.to_string());
-    state
-        .running_queries
-        .write()
-        .await
-        .insert(key.clone(), session.thread_id);
+    let key = run.running_query_key();
 
     let ctx = DecodeContext {
         ceiling: state.result_cache.row_ceiling(),
