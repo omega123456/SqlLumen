@@ -94,9 +94,9 @@ async fn embed_texts_multi_batch_parallel_preserves_ordering() {
     let vecs = result.unwrap();
     assert_eq!(vecs.len(), 70);
     // Verify every vector is in the correct position
-    for i in 0..70 {
+    for (i, vector) in vecs.iter().enumerate() {
         assert_eq!(
-            vecs[i],
+            *vector,
             vec![i as f32],
             "vector at position {i} should be [{i}]"
         );

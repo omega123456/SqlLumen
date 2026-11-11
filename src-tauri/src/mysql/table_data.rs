@@ -128,6 +128,52 @@ pub struct FilterClause {
     pub params: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchTableDataRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub database: String,
+    pub table: String,
+    pub page: u32,
+    pub page_size: u32,
+    pub sort_column: Option<String>,
+    pub sort_direction: Option<String>,
+    pub filter_model: Option<Vec<FilterCondition>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncTableDataCacheRequest {
+    pub connection_id: String,
+    pub tab_id: String,
+    pub database: String,
+    pub table: String,
+    pub columns: Vec<TableDataColumnMeta>,
+    pub rows: Vec<Vec<serde_json::Value>>,
+    pub current_page: u32,
+    pub page_size: u32,
+    pub primary_key: Option<PrimaryKeyInfo>,
+    pub execution_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportTableDataRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub table: String,
+    pub format: String,
+    pub file_path: String,
+    pub include_headers: bool,
+    pub table_name_for_sql: String,
+    pub filter_model: Option<Vec<FilterCondition>>,
+    pub sort_column: Option<String>,
+    pub sort_direction: Option<String>,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
 /// Options for exporting table data to a file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -263,88 +309,37 @@ fn sync_table_data_cache_response(
 
 pub fn sync_table_data_cache_after_insert_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    database: &str,
-    table: &str,
-    columns: Vec<TableDataColumnMeta>,
-    rows: Vec<Vec<serde_json::Value>>,
-    current_page: u32,
-    page_size: u32,
-    primary_key: Option<PrimaryKeyInfo>,
-    execution_time_ms: u64,
+    request: SyncTableDataCacheRequest,
 ) -> TableDataCacheSyncResponse {
     sync_table_data_cache_response(
         state,
-        connection_id,
-        tab_id,
-        database,
-        table,
+        &request.connection_id,
+        &request.tab_id,
+        &request.database,
+        &request.table,
         TableDataResponse {
-            columns,
-            rows: Arc::new(rows),
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
+            columns: request.columns,
+            rows: Arc::new(request.rows),
+            current_page: request.current_page,
+            page_size: request.page_size,
+            primary_key: request.primary_key,
+            execution_time_ms: request.execution_time_ms,
         },
     )
 }
 
 pub fn sync_table_data_cache_after_update_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    database: &str,
-    table: &str,
-    columns: Vec<TableDataColumnMeta>,
-    rows: Vec<Vec<serde_json::Value>>,
-    current_page: u32,
-    page_size: u32,
-    primary_key: Option<PrimaryKeyInfo>,
-    execution_time_ms: u64,
+    request: SyncTableDataCacheRequest,
 ) -> TableDataCacheSyncResponse {
-    sync_table_data_cache_after_insert_impl(
-        state,
-        connection_id,
-        tab_id,
-        database,
-        table,
-        columns,
-        rows,
-        current_page,
-        page_size,
-        primary_key,
-        execution_time_ms,
-    )
+    sync_table_data_cache_after_insert_impl(state, request)
 }
 
 pub fn sync_table_data_cache_after_delete_impl(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    database: &str,
-    table: &str,
-    columns: Vec<TableDataColumnMeta>,
-    rows: Vec<Vec<serde_json::Value>>,
-    current_page: u32,
-    page_size: u32,
-    primary_key: Option<PrimaryKeyInfo>,
-    execution_time_ms: u64,
+    request: SyncTableDataCacheRequest,
 ) -> TableDataCacheSyncResponse {
-    sync_table_data_cache_after_insert_impl(
-        state,
-        connection_id,
-        tab_id,
-        database,
-        table,
-        columns,
-        rows,
-        current_page,
-        page_size,
-        primary_key,
-        execution_time_ms,
-    )
+    sync_table_data_cache_after_insert_impl(state, request)
 }
 
 pub fn evict_table_data_impl(state: &AppState, connection_id: &str, tab_id: &str) {

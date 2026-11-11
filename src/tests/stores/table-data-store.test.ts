@@ -320,9 +320,11 @@ describe('useTableDataStore — fetchPage', () => {
     expect(tab.currentPage).toBe(2)
     expect(ipc.calls('fetch_table_data').length).toBe(2)
     expect(ipc.calls('fetch_table_data')[1]).toMatchObject({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      page: 2,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        page: 2,
+      },
     })
   })
 
@@ -528,20 +530,22 @@ describe('useTableDataStore — backend cache lifecycle', () => {
 
     expect(result).toBe(true)
     expect(ipc.calls('sync_table_data_cache_after_insert')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: mockColumns,
-      rows: [
-        [1, 'Alice'],
-        [2, 'Bob'],
-        [3, 'Charlie'],
-      ],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: mockPrimaryKey,
-      executionTimeMs: 42,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'mydb',
+        table: 'users',
+        columns: mockColumns,
+        rows: [
+          [1, 'Alice'],
+          [2, 'Bob'],
+          [3, 'Charlie'],
+        ],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: mockPrimaryKey,
+        executionTimeMs: 42,
+      },
     })
   })
 
@@ -554,19 +558,21 @@ describe('useTableDataStore — backend cache lifecycle', () => {
 
     expect(result).toBe(true)
     expect(ipc.calls('sync_table_data_cache_after_update')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: mockColumns,
-      rows: [
-        [1, 'Updated'],
-        [2, 'Bob'],
-      ],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: mockPrimaryKey,
-      executionTimeMs: 42,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'mydb',
+        table: 'users',
+        columns: mockColumns,
+        rows: [
+          [1, 'Updated'],
+          [2, 'Bob'],
+        ],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: mockPrimaryKey,
+        executionTimeMs: 42,
+      },
     })
   })
 
@@ -576,16 +582,18 @@ describe('useTableDataStore — backend cache lifecycle', () => {
     await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
 
     expect(ipc.calls('sync_table_data_cache_after_delete')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: mockColumns,
-      rows: [[2, 'Bob']],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: mockPrimaryKey,
-      executionTimeMs: 42,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'mydb',
+        table: 'users',
+        columns: mockColumns,
+        rows: [[2, 'Bob']],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: mockPrimaryKey,
+        executionTimeMs: 42,
+      },
     })
   })
 

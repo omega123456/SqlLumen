@@ -308,8 +308,8 @@ fn test_dump_options_serde_round_trip() {
     assert_eq!(json["useTransaction"], serde_json::json!(false));
 
     let round_trip: DumpOptions = serde_json::from_value(json).expect("deserialize");
-    assert_eq!(round_trip.include_data, false);
-    assert_eq!(round_trip.use_transaction, false);
+    assert!(!round_trip.include_data);
+    assert!(!round_trip.use_transaction);
 }
 
 // ── DumpJobProgress/DumpJobStatus ─────────────────────────────────────────
@@ -473,7 +473,7 @@ fn test_start_dump_input_serde_with_object_entries() {
         entries[2].object_type,
         sqllumen_lib::commands::sql_dump::DumpObjectType::View
     );
-    assert_eq!(input.options.include_drop, false);
+    assert!(!input.options.include_drop);
 }
 
 #[test]
@@ -596,12 +596,12 @@ fn test_sql_dump_value_uint() {
 fn test_sql_dump_value_float() {
     let mut buf = Vec::new();
     let columns = vec!["price".to_string()];
-    let rows = vec![vec![SqlDumpValue::Float(3.14)]];
+    let rows = vec![vec![SqlDumpValue::Float(1.25)]];
 
     sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
     let output = String::from_utf8(buf).unwrap();
 
-    assert!(output.contains("(3.14)"));
+    assert!(output.contains("(1.25)"));
 }
 
 #[test]

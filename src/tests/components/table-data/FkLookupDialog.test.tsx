@@ -165,7 +165,9 @@ describe('FkLookupDialog', () => {
     await waitFor(() => {
       expect(ipc.calls('fetch_table_data')).toContainEqual(
         expect.objectContaining({
-          filterModel: [expect.objectContaining({ value: 'One' })],
+          payload: expect.objectContaining({
+            filterModel: [expect.objectContaining({ value: 'One' })],
+          }),
         })
       )
     })

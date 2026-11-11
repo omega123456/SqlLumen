@@ -66,7 +66,7 @@ fn read_setting(
     let conn = db.lock().map_err(|e| format!("DB lock error: {e}"))?;
     settings::get_setting(&conn, key)
         .map_err(|e| format!("Failed to read setting '{key}': {e}"))?
-        .ok_or_else(|| String::new()) // return empty string error for "not set"
+        .ok_or_else(String::new) // return empty string error for "not set"
         .or(Ok(String::new()))
 }
 
@@ -613,8 +613,7 @@ pub async fn semantic_search_impl(
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2)
-        .min(3)
-        .max(1);
+        .clamp(1, 3);
     let feedback_boost: f64 = read_setting(&state.db, "ai.retrieval.feedbackBoost")
         .ok()
         .and_then(|s| s.parse().ok())

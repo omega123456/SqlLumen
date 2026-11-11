@@ -70,6 +70,10 @@ beforeEach(() => {
 const DEFAULT_SYNC_COLUMNS: TableDataColumnMeta[] = DEFAULT_FETCH_RESPONSE.columns
 const DEFAULT_SYNC_PRIMARY_KEY = DEFAULT_FETCH_RESPONSE.primaryKey
 
+function payloadOf(call: unknown): Record<string, unknown> {
+  return (call as { payload: Record<string, unknown> }).payload
+}
+
 describe('fetchTableData', () => {
   it('invokes fetch_table_data and returns response', async () => {
     const result = await fetchTableData({
@@ -118,7 +122,7 @@ describe('fetchTableData', () => {
 
     const calls = ipc.calls('fetch_table_data')
     expect(calls).toHaveLength(1)
-    const capturedArgs = calls[0] as Record<string, unknown>
+    const capturedArgs = payloadOf(calls[0])
     expect(capturedArgs.tabId).toBe('tab-1')
     const sentFilter = capturedArgs.filterModel as {
       column: string
@@ -147,7 +151,7 @@ describe('fetchTableData', () => {
       filterModel,
     })
 
-    const capturedArgs = ipc.calls('fetch_table_data')[0] as Record<string, unknown>
+    const capturedArgs = payloadOf(ipc.calls('fetch_table_data')[0])
     const sentFilter = capturedArgs.filterModel as {
       column: string
       operator: string
@@ -293,16 +297,18 @@ describe('table data cache lifecycle commands', () => {
 
     expect(result).toEqual({ status: 'synced' })
     expect(ipc.calls('sync_table_data_cache_after_insert')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: DEFAULT_SYNC_COLUMNS,
-      rows: [[1], [2], [3]],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-      executionTimeMs: 14,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'mydb',
+        table: 'users',
+        columns: DEFAULT_SYNC_COLUMNS,
+        rows: [[1], [2], [3]],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
+        executionTimeMs: 14,
+      },
     })
   })
 
@@ -322,16 +328,18 @@ describe('table data cache lifecycle commands', () => {
 
     expect(result).toEqual({ status: 'synced' })
     expect(ipc.calls('sync_table_data_cache_after_update')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: DEFAULT_SYNC_COLUMNS,
-      rows: [[1, 'Updated']],
-      currentPage: 2,
-      pageSize: 50,
-      primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-      executionTimeMs: 22,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'mydb',
+        table: 'users',
+        columns: DEFAULT_SYNC_COLUMNS,
+        rows: [[1, 'Updated']],
+        currentPage: 2,
+        pageSize: 50,
+        primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
+        executionTimeMs: 22,
+      },
     })
   })
 
@@ -351,16 +359,18 @@ describe('table data cache lifecycle commands', () => {
 
     expect(result).toEqual({ status: 'synced' })
     expect(ipc.calls('sync_table_data_cache_after_delete')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'mydb',
-      table: 'users',
-      columns: DEFAULT_SYNC_COLUMNS,
-      rows: [[2]],
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
-      executionTimeMs: 8,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'mydb',
+        table: 'users',
+        columns: DEFAULT_SYNC_COLUMNS,
+        rows: [[2]],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: DEFAULT_SYNC_PRIMARY_KEY,
+        executionTimeMs: 8,
+      },
     })
   })
 })
@@ -445,7 +455,7 @@ describe('exportTableData', () => {
 
     const calls = ipc.calls('export_table_data')
     expect(calls).toHaveLength(1)
-    const capturedArgs = calls[0] as Record<string, unknown>
+    const capturedArgs = payloadOf(calls[0])
     expect(capturedArgs.connectionId).toBe('conn-1')
     expect(capturedArgs.format).toBe('csv')
     expect(capturedArgs.filePath).toBe('/tmp/export.csv')
@@ -469,7 +479,7 @@ describe('exportTableData', () => {
       sortDirection: 'desc',
     })
 
-    const capturedArgs = ipc.calls('export_table_data')[0] as Record<string, unknown>
+    const capturedArgs = payloadOf(ipc.calls('export_table_data')[0])
     expect(capturedArgs.sortColumn).toBe('name')
     expect(capturedArgs.sortDirection).toBe('desc')
     const sentFilter = capturedArgs.filterModel as {
@@ -493,7 +503,7 @@ describe('exportTableData', () => {
       tableNameForSql: 'users',
     })
 
-    const capturedArgs = ipc.calls('export_table_data')[0] as Record<string, unknown>
+    const capturedArgs = payloadOf(ipc.calls('export_table_data')[0])
     expect(capturedArgs.format).toBe('sql')
   })
 
@@ -508,7 +518,7 @@ describe('exportTableData', () => {
       tableNameForSql: 'users',
     })
 
-    const capturedArgs = ipc.calls('export_table_data')[0] as Record<string, unknown>
+    const capturedArgs = payloadOf(ipc.calls('export_table_data')[0])
     expect(capturedArgs.format).toBe('csv')
   })
 })

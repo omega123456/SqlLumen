@@ -1434,7 +1434,7 @@ async fn health_reconnect_uses_profile_id_credential_key() {
     let token = sqllumen_lib::mysql::health::spawn_health_monitor(
         connection_id.clone(),
         1,
-        tauri::AppHandle::clone(&app.handle()),
+        tauri::AppHandle::clone(app.handle()),
     );
 
     // 1s keepalive + failed ping (~≤1s with connect_timeout) + 5s reconnect backoff + pool swap

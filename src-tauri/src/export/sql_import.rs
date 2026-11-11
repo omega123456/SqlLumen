@@ -293,10 +293,7 @@ pub fn execute_sql_import(
         }
     }
 
-    let mut statements_executed: usize = 0;
-    let mut error_count: usize = 0;
-    let mut total_rows_affected: u64 = 0;
-    let mut last_error_message: Option<String> = None;
+    let mut tally = ImportTally::default();
     let mut statement_history_entries: Vec<NewHistoryEntry> = Vec::new();
 
     for (idx, sql) in statements.iter().enumerate() {
@@ -317,8 +314,8 @@ pub fn execute_sql_import(
                     tracing::info!(
                         job_id = %job_id,
                         connection_id = %connection_id,
-                        statements_executed = statements_executed,
-                        error_count = error_count,
+                        statements_executed = tally.statements_executed,
+                        error_count = tally.error_count,
                         elapsed_ms = elapsed_ms,
                         "SQL import cancelled"
                     );
@@ -329,14 +326,13 @@ pub fn execute_sql_import(
                     );
                     log_import_history(
                         db,
-                        connection_id,
-                        filename,
-                        statements_executed,
-                        error_count,
-                        total_rows_affected,
-                        elapsed_ms,
-                        last_error_message,
-                        true, // cancelled
+                        ImportHistorySummary {
+                            connection_id,
+                            filename,
+                            tally,
+                            elapsed_ms,
+                            cancelled: true,
+                        },
                     );
 
                     return Ok(());
@@ -370,11 +366,11 @@ pub fn execute_sql_import(
             let mut jobs = import_jobs.write().unwrap_or_else(|p| p.into_inner());
             if let Some(progress) = jobs.get_mut(job_id) {
                 progress.statements_done = idx + 1;
-                statements_executed += 1;
+                tally.statements_executed += 1;
 
                 match &result {
                     Ok(query_result) => {
-                        total_rows_affected += query_result.rows_affected();
+                        tally.total_rows_affected += query_result.rows_affected();
                         statement_history_entries.push(NewHistoryEntry {
                             connection_id: connection_id.to_string(),
                             database_name: None,
@@ -396,8 +392,8 @@ pub fn execute_sql_import(
                             "Import statement failed"
                         );
 
-                        error_count += 1;
-                        last_error_message = Some(err_str.clone());
+                        tally.error_count += 1;
+                        tally.last_error_message = Some(err_str.clone());
 
                         let preview = if sql.len() > 120 {
                             format!("{}...", &sql[..120])
@@ -418,8 +414,8 @@ pub fn execute_sql_import(
                             tracing::info!(
                                 job_id = %job_id,
                                 connection_id = %connection_id,
-                                statements_executed = statements_executed,
-                                error_count = error_count,
+                                statements_executed = tally.statements_executed,
+                                error_count = tally.error_count,
                                 elapsed_ms = elapsed_ms,
                                 "SQL import stopped on error"
                             );
@@ -430,14 +426,13 @@ pub fn execute_sql_import(
                             );
                             log_import_history(
                                 db,
-                                connection_id,
-                                filename,
-                                statements_executed,
-                                error_count,
-                                total_rows_affected,
-                                elapsed_ms,
-                                last_error_message,
-                                false, // not cancelled
+                                ImportHistorySummary {
+                                    connection_id,
+                                    filename,
+                                    tally,
+                                    elapsed_ms,
+                                    cancelled: false,
+                                },
                             );
 
                             return Ok(());
@@ -453,9 +448,9 @@ pub fn execute_sql_import(
     tracing::info!(
         job_id = %job_id,
         connection_id = %connection_id,
-        statements_executed = statements_executed,
-        error_count = error_count,
-        total_rows_affected = total_rows_affected,
+        statements_executed = tally.statements_executed,
+        error_count = tally.error_count,
+        total_rows_affected = tally.total_rows_affected,
         elapsed_ms = elapsed_ms,
         "SQL import completed"
     );
@@ -479,55 +474,61 @@ pub fn execute_sql_import(
     query_history_bridge::log_batch_entries(db, std::mem::take(&mut statement_history_entries));
     log_import_history(
         db,
-        connection_id,
-        filename,
-        statements_executed,
-        error_count,
-        total_rows_affected,
-        elapsed_ms,
-        last_error_message,
-        false, // not cancelled
+        ImportHistorySummary {
+            connection_id,
+            filename,
+            tally,
+            elapsed_ms,
+            cancelled: false,
+        },
     );
 
     Ok(())
 }
 
-/// Log a single summary history entry for a SQL import job.
-fn log_import_history(
-    db: &Arc<Mutex<rusqlite::Connection>>,
-    connection_id: &str,
-    filename: &str,
+#[derive(Default)]
+struct ImportTally {
     statements_executed: usize,
     error_count: usize,
     total_rows_affected: u64,
-    elapsed_ms: i64,
     last_error_message: Option<String>,
+}
+
+struct ImportHistorySummary<'a> {
+    connection_id: &'a str,
+    filename: &'a str,
+    tally: ImportTally,
+    elapsed_ms: i64,
     cancelled: bool,
-) {
-    let success = error_count == 0 && !cancelled;
-    let status_label = if cancelled {
+}
+
+/// Log a single summary history entry for a SQL import job.
+fn log_import_history(db: &Arc<Mutex<rusqlite::Connection>>, summary: ImportHistorySummary<'_>) {
+    let tally = summary.tally;
+    let success = tally.error_count == 0 && !summary.cancelled;
+    let status_label = if summary.cancelled {
         "cancelled"
-    } else if error_count > 0 {
+    } else if tally.error_count > 0 {
         "with errors"
     } else {
         "OK"
     };
     let sql_text = format!(
         "/* SQL Import: {} — {} statements, {} errors, {} */",
-        filename, statements_executed, error_count, status_label
+        summary.filename, tally.statements_executed, tally.error_count, status_label
     );
 
     query_history_bridge::log_single_entry(
         db,
         NewHistoryEntry {
-            connection_id: connection_id.to_string(),
+            connection_id: summary.connection_id.to_string(),
             database_name: None,
             sql_text,
-            duration_ms: Some(elapsed_ms),
+            duration_ms: Some(summary.elapsed_ms),
             row_count: Some(0),
-            affected_rows: Some(total_rows_affected as i64),
+            affected_rows: Some(tally.total_rows_affected as i64),
             success,
-            error_message: last_error_message,
+            error_message: tally.last_error_message,
         },
     );
 }

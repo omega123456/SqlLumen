@@ -41,7 +41,7 @@ fn stub_result_with_numbers(query_id: &str) -> StoredResult {
         crate::common::shared_rows(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(42u64)),
             serde_json::Value::Number(serde_json::Number::from(-99i64)),
-            serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
+            serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
         ]]),
         123,
         123,
@@ -198,7 +198,7 @@ fn rewarmed_data_preserves_number_types() {
 
     // f64
     assert!(row[2].is_f64(), "f64 value should be preserved as f64");
-    assert!((row[2].as_f64().unwrap() - 3.14).abs() < 1e-10);
+    assert!((row[2].as_f64().unwrap() - 1.25).abs() < 1e-10);
 }
 
 // ── Known key with no spill file returns Expired ─────────────────────────────

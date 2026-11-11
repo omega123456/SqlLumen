@@ -1,7 +1,7 @@
 //! Integration tests for `fetch_blob_value_impl` against the in-process MySQL mock.
 
 #[cfg(not(coverage))]
-mod blob_value_fetch_integration {
+mod fetch_blob_value_against_mock {
     use crate::common::blob_step_helpers::{connect_mock_pool, len_step, val_step};
     use crate::common::mock_mysql_server::{MockCell, MockMySqlServer};
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};

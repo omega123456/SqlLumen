@@ -764,7 +764,7 @@ fn read_file_errors_for_non_utf8() {
     let dir = std::env::temp_dir();
     let filename = format!("test_non_utf8_{}.bin", std::process::id());
     let path = dir.join(&filename);
-    std::fs::write(&path, &[0xFF, 0xFE, 0xFD]).expect("write should succeed");
+    std::fs::write(&path, [0xFF, 0xFE, 0xFD]).expect("write should succeed");
 
     let err = read_file_impl(&path.to_string_lossy()).expect_err("non-UTF-8 should error");
     assert!(err.contains("UTF-8"), "expected UTF-8 error, got: {err}");

@@ -38,11 +38,20 @@ use std::sync::Once;
 /// Uses `sqlite3_auto_extension` so that every new `Connection::open*` call
 /// automatically loads the vec0 virtual table support. Safe to call multiple
 /// times — a `Once` guard ensures the FFI registration happens exactly once.
+type SqliteExtensionEntryPoint = unsafe extern "C" fn(
+    *mut rusqlite::ffi::sqlite3,
+    *mut *mut std::ffi::c_char,
+    *const rusqlite::ffi::sqlite3_api_routines,
+) -> std::ffi::c_int;
+
 pub fn init_sqlite_vec() {
     static INIT: Once = Once::new();
     INIT.call_once(|| unsafe {
-        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-            sqlite_vec::sqlite3_vec_init as *const (),
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute::<
+            *const (),
+            SqliteExtensionEntryPoint,
+        >(
+            sqlite_vec::sqlite3_vec_init as *const ()
         )));
     });
 }
@@ -82,10 +91,7 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     // large tables, leaving freed pages behind. Reclaim that disk space with a
     // single VACUUM. VACUUM is illegal inside a transaction and the migration
     // runner wraps each migration in one, so it must run here, after the loop.
-    if applied
-        .iter()
-        .any(|&version| version == MIGRATION_CONNECTION_CASCADE_CLEANUP)
-    {
+    if applied.contains(&MIGRATION_CONNECTION_CASCADE_CLEANUP) {
         tracing::info!("migration 013 newly applied; running one-time VACUUM to reclaim space");
         if let Err(e) = conn.execute_batch("VACUUM;") {
             tracing::error!(error = ?e, "one-time VACUUM after migration 013 failed");
@@ -97,10 +103,7 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     // existing database requires a full VACUUM to take effect; VACUUM is illegal
     // inside a transaction, so the conversion runs here rather than in migration
     // SQL.
-    if applied
-        .iter()
-        .any(|&version| version == MIGRATION_VACUUM_STATE_MAIN)
-    {
+    if applied.contains(&MIGRATION_VACUUM_STATE_MAIN) {
         tracing::info!(
             "migration 014 newly applied; converting main database to incremental auto-vacuum"
         );

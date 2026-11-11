@@ -800,9 +800,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     // --- Table data browser/editor ---
     case 'fetch_table_data': {
-      const table = (args as Record<string, unknown>)?.table
-      void (args as Record<string, unknown>)?.tabId
-      return getTableDataFixture(String(table))
+      const payload = args?.payload as Record<string, unknown> | undefined
+      return getTableDataFixture(String(payload?.table))
     }
 
     case 'touch_table_data':
@@ -827,8 +826,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'sync_table_data_cache_after_insert':
     case 'sync_table_data_cache_after_update':
     case 'sync_table_data_cache_after_delete': {
-      const table = (args as Record<string, unknown>)?.table
-      void getTableDataFixture(String(table))
+      const payload = args?.payload as Record<string, unknown> | undefined
+      void getTableDataFixture(String(payload?.table))
       return { status: 'synced' }
     }
 

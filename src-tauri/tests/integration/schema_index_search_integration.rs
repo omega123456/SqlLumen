@@ -77,16 +77,26 @@ fn insert_table_chunk(
     storage::insert_chunk(conn, &chunk).expect("insert table chunk")
 }
 
-fn insert_fk_chunk(
-    conn: &Connection,
-    connection_id: &str,
-    db_name: &str,
-    table_name: &str,
-    constraint_name: &str,
-    ref_db_name: &str,
-    ref_table_name: &str,
+struct FkChunkFixture<'a> {
+    connection_id: &'a str,
+    db_name: &'a str,
+    table_name: &'a str,
+    constraint_name: &'a str,
+    ref_db_name: &'a str,
+    ref_table_name: &'a str,
     embedding: Vec<f32>,
-) -> i64 {
+}
+
+fn insert_fk_chunk(conn: &Connection, fixture: FkChunkFixture<'_>) -> i64 {
+    let FkChunkFixture {
+        connection_id,
+        db_name,
+        table_name,
+        constraint_name,
+        ref_db_name,
+        ref_table_name,
+        embedding,
+    } = fixture;
     let chunk = ChunkInsert {
         connection_id: connection_id.to_string(),
         chunk_key: format!("fk:{db_name}.{table_name}:{constraint_name}"),
@@ -107,17 +117,28 @@ fn insert_fk_chunk(
     storage::insert_chunk(conn, &chunk).expect("insert fk chunk")
 }
 
-fn insert_fk_edge(
-    conn: &Connection,
-    connection_id: &str,
-    src_db: &str,
-    src_tbl: &str,
-    src_col: &str,
-    dst_db: &str,
-    dst_tbl: &str,
-    dst_col: &str,
-    constraint_name: &str,
-) {
+struct FkEdgeFixture<'a> {
+    connection_id: &'a str,
+    src_db: &'a str,
+    src_tbl: &'a str,
+    src_col: &'a str,
+    dst_db: &'a str,
+    dst_tbl: &'a str,
+    dst_col: &'a str,
+    constraint_name: &'a str,
+}
+
+fn insert_fk_edge(conn: &Connection, fixture: FkEdgeFixture<'_>) {
+    let FkEdgeFixture {
+        connection_id,
+        src_db,
+        src_tbl,
+        src_col,
+        dst_db,
+        dst_tbl,
+        dst_col,
+        constraint_name,
+    } = fixture;
     let edge = FkEdge {
         connection_id: connection_id.to_string(),
         src_db: src_db.to_string(),
@@ -268,28 +289,32 @@ fn test_fk_fanout_includes_related_fk_chunks() {
     // Insert FK edge: orders → users
     insert_fk_edge(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "user_id",
-        "testdb",
-        "users",
-        "id",
-        "fk_user_id",
+        FkEdgeFixture {
+            connection_id: "conn-1",
+            src_db: "testdb",
+            src_tbl: "orders",
+            src_col: "user_id",
+            dst_db: "testdb",
+            dst_tbl: "users",
+            dst_col: "id",
+            constraint_name: "fk_user_id",
+        },
     );
 
     // Also insert a third table linked via FK to orders but far from query
     insert_table_chunk(&conn, "conn-1", "testdb", "order_items", unit_vec(3));
     insert_fk_edge(
         &conn,
-        "conn-1",
-        "testdb",
-        "order_items",
-        "order_id",
-        "testdb",
-        "orders",
-        "id",
-        "fk_order_id",
+        FkEdgeFixture {
+            connection_id: "conn-1",
+            src_db: "testdb",
+            src_tbl: "order_items",
+            src_col: "order_id",
+            dst_db: "testdb",
+            dst_tbl: "orders",
+            dst_col: "id",
+            constraint_name: "fk_order_id",
+        },
     );
 
     // Query along axis 0 — should match "users" (top-N), and "orders" should
@@ -320,14 +345,16 @@ fn test_fk_fanout_is_capped() {
         insert_table_chunk(&conn, "conn-1", "testdb", &tbl_name, unit_vec(3));
         insert_fk_edge(
             &conn,
-            "conn-1",
-            "testdb",
-            &tbl_name,
-            "user_id",
-            "testdb",
-            "users",
-            "id",
-            &format!("fk_constraint_{i}"),
+            FkEdgeFixture {
+                connection_id: "conn-1",
+                src_db: "testdb",
+                src_tbl: &tbl_name,
+                src_col: "user_id",
+                dst_db: "testdb",
+                dst_tbl: "users",
+                dst_col: "id",
+                constraint_name: &format!("fk_constraint_{i}"),
+            },
         );
     }
 
@@ -378,13 +405,15 @@ fn test_result_ordering() {
     // Insert FK chunk
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        unit_vec(3), // far from query
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(3), // far from query
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -455,13 +484,15 @@ fn test_fk_in_top_n_not_duplicated_by_fanout() {
     // Insert FK chunk with embedding close to query (so it appears in KNN top-N)
     let fk_id = insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        unit_vec(0), // same direction as query — will be in KNN results
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(0), // same direction as query — will be in KNN results
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -489,13 +520,15 @@ fn test_fk_fanout_includes_fk_for_referenced_table() {
     // This FK should be picked up because "orders" is in the top-N
     let fk_id = insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        unit_vec(3), // far from query
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(3), // far from query
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -671,13 +704,15 @@ fn test_fk_fanout_dedup_within_fanout() {
     // Insert FK chunk: orders → users (should be found via BOTH "orders" and "users" fan-out)
     let fk_id = insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        unit_vec(3), // far from query, won't be in KNN
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(3), // far from query, won't be in KNN
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -704,13 +739,15 @@ fn test_fk_chunks_in_top_n_sorted_after_table_chunks() {
     // Insert FK chunk with embedding close to query (so it enters KNN top-N)
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        blend_vec(0, 1, 0.9), // close to query → in KNN top-N
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: blend_vec(0, 1, 0.9), // close to query → in KNN top-N
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -900,23 +937,27 @@ fn test_top_n_with_fk_only_knn_results() {
 
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        unit_vec(0),
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(0),
+        },
     );
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "items",
-        "fk_order_id",
-        "testdb",
-        "orders",
-        unit_vec(1),
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "items",
+            constraint_name: "fk_order_id",
+            ref_db_name: "testdb",
+            ref_table_name: "orders",
+            embedding: unit_vec(1),
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -1012,13 +1053,15 @@ fn test_fk_fanout_cap_zero() {
     for i in 0..5 {
         insert_fk_chunk(
             &conn,
-            "conn-1",
-            "testdb",
-            &format!("related_{i}"),
-            &format!("fk_{i}"),
-            "testdb",
-            "users",
-            unit_vec(3), // orthogonal to query
+            FkChunkFixture {
+                connection_id: "conn-1",
+                db_name: "testdb",
+                table_name: &format!("related_{i}"),
+                constraint_name: &format!("fk_{i}"),
+                ref_db_name: "testdb",
+                ref_table_name: "users",
+                embedding: unit_vec(3), // orthogonal to query
+            },
         );
     }
 
@@ -1050,23 +1093,27 @@ fn test_multiple_fk_chunks_same_table_pair() {
     // Two FK constraints from orders → users
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_user_id",
-        "testdb",
-        "users",
-        unit_vec(3),
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_user_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(3),
+        },
     );
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "testdb",
-        "orders",
-        "fk_manager_id",
-        "testdb",
-        "users",
-        unit_vec(3),
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "testdb",
+            table_name: "orders",
+            constraint_name: "fk_manager_id",
+            ref_db_name: "testdb",
+            ref_table_name: "users",
+            embedding: unit_vec(3),
+        },
     );
 
     let query = vec![unit_vec(0)];
@@ -1388,24 +1435,28 @@ fn lexical_boost_with_fk_enrichment() {
     insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(1));
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "db1",
-        "orders",
-        "fk_orders_customers",
-        "db1",
-        "customers",
-        blend_vec(0, 1, 0.5),
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            constraint_name: "fk_orders_customers",
+            ref_db_name: "db1",
+            ref_table_name: "customers",
+            embedding: blend_vec(0, 1, 0.5),
+        },
     );
     insert_fk_edge(
         &conn,
-        "conn-1",
-        "db1",
-        "orders",
-        "customer_id",
-        "db1",
-        "customers",
-        "id",
-        "fk_orders_customers",
+        FkEdgeFixture {
+            connection_id: "conn-1",
+            src_db: "db1",
+            src_tbl: "orders",
+            src_col: "customer_id",
+            dst_db: "db1",
+            dst_tbl: "customers",
+            dst_col: "id",
+            constraint_name: "fk_orders_customers",
+        },
     );
 
     let query_texts = vec!["SELECT * FROM orders".to_string()];
@@ -1457,10 +1508,30 @@ fn extended_search_graph_walk_with_lexical_and_hints() {
     insert_table_chunk(&conn, "conn-1", "db1", "C", unit_vec(2));
 
     insert_fk_edge(
-        &conn, "conn-1", "db1", "A", "b_id", "db1", "B", "id", "fk_a_b",
+        &conn,
+        FkEdgeFixture {
+            connection_id: "conn-1",
+            src_db: "db1",
+            src_tbl: "A",
+            src_col: "b_id",
+            dst_db: "db1",
+            dst_tbl: "B",
+            dst_col: "id",
+            constraint_name: "fk_a_b",
+        },
     );
     insert_fk_edge(
-        &conn, "conn-1", "db1", "B", "c_id", "db1", "C", "id", "fk_b_c",
+        &conn,
+        FkEdgeFixture {
+            connection_id: "conn-1",
+            src_db: "db1",
+            src_tbl: "B",
+            src_col: "c_id",
+            dst_db: "db1",
+            dst_tbl: "C",
+            dst_col: "id",
+            constraint_name: "fk_b_c",
+        },
     );
 
     let query_texts = vec!["SELECT * FROM A".to_string()];
@@ -1509,13 +1580,15 @@ fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
     // FK chunk with ref_db_name/ref_table_name pointing at customers
     insert_fk_chunk(
         &conn,
-        "conn-1",
-        "db1",
-        "orders",
-        "fk_orders_customers",
-        "db1",
-        "customers",
-        unit_vec(0), // closest to query
+        FkChunkFixture {
+            connection_id: "conn-1",
+            db_name: "db1",
+            table_name: "orders",
+            constraint_name: "fk_orders_customers",
+            ref_db_name: "db1",
+            ref_table_name: "customers",
+            embedding: unit_vec(0), // closest to query
+        },
     );
 
     let query_vecs = vec![unit_vec(0)]; // will match FK chunk first

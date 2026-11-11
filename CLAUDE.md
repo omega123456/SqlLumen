@@ -37,13 +37,14 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --features test-utils --t
 pnpm test:e2e -- --update-snapshots
 
 # Code quality
-pnpm lint               # ESLint on src/
-pnpm lint:fix           # ESLint auto-fix
+pnpm lint               # ESLint on src/ + Rust else check (scripts/check-rust-else.mjs)
+pnpm lint:fix           # ESLint auto-fix + Rust else check
 pnpm format             # Prettier on src/
-pnpm typecheck          # tsc --noEmit
+pnpm typecheck          # tsc --noEmit + cargo check
+pnpm clippy             # Clippy on all Rust targets and features, -D warnings
 ```
 
-**Lint rule (always apply):** `pnpm lint` must be clean after every change. Fix all lint warnings and errors, whether they are newly introduced or already existed in the touched code, before finishing.
+**Lint rule (always apply):** `pnpm lint` and `pnpm clippy` must be clean after every change. Fix all lint warnings and errors, whether they are newly introduced or already existed in the touched code, before finishing.
 
 **Agent rule (always apply):** Before finishing a session where any code was changed, run targeted tests that cover the changed functionality and ensure they are passing.
 
@@ -58,6 +59,9 @@ pnpm typecheck          # tsc --noEmit
 - **Each individual test must complete in under 2 seconds.** Refactor slow tests to remove unnecessary setup and waiting.
 - **Never add `istanbul`/`c8` ignore comments or widen `exclude` lists** to hide coverage gaps without explicit user approval naming what to exclude.
 - **Package manager: `pnpm` only.** Do not use npm or yarn.
+- **Lint must be genuinely clean.** See the **Lint rule** above — zero warnings/errors repo-wide, no suppressions, including for pre-existing issues encountered during the session.
+- **Functions take at most 3 parameters.** Enforced by ESLint (`max-params: 3`) and Clippy (`too-many-arguments-threshold` in `src-tauri/clippy.toml`, run with `-D warnings`) within the lint scopes described below. In Rust, `&self` counts toward the limit. When a function needs more, group the values that travel together into a parameter struct/object, or move the method onto a type that already holds some of them, rather than adding an allow.
+- **Coding-rule lints are switched on area by area and only ever widen.** ESLint rules take effect for the globs in their `files` list in `CONFORMANCE_RULE_SCOPES` (`eslint.config.js`; production `src/` only, never `src/tests/`). The Rust else check covers the paths in `RUST_PATHS_CHECKED_FOR_ELSE` (`scripts/check-rust-else.mjs`). Clippy restriction lints are enabled crate-wide in `[lints.clippy]` (`src-tauri/Cargo.toml`) or per module with `#![warn(clippy::…)]`. Code inside a scope must stay clean; never remove a path from a scope to make lint pass.
 - **Every new MySQL query path must use the shared query logger wrappers.** Before executing SQL, call `src-tauri/src/mysql/query_log.rs` helpers (at minimum `log_outgoing_sql`; plus row/execute/error helpers as applicable) so all new query traffic appears in debug logs.
 - **Vitest IPC mocking is mandatory and centralized.** All Vitest tests that touch Tauri IPC must use the shared harness in `src/tests/ipc-mock.ts` plus `ipc.override(...)` / `ipc.emit(...)`. Do not create ad hoc IPC mocks, per-test `mockIPC(...)` calls, direct `vi.mock()` stubs for `@tauri-apps/api/*` IPC modules, or direct mocks of `src/lib/*-commands.ts` command wrappers. If a command is missing from the default fixtures, add it to `src/tests/fixtures.ts` or override it in the test. The intentional missing-mock failure is part of the contract and must not be bypassed.
 

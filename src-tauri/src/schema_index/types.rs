@@ -110,7 +110,7 @@ impl ChunkType {
     }
 
     /// Parse from the SQLite storage string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_storage_str(s: &str) -> Option<Self> {
         match s {
             "table" => Some(ChunkType::Table),
             "fk" => Some(ChunkType::Fk),
@@ -145,7 +145,7 @@ impl IndexStatus {
     }
 
     /// Parse from the SQLite storage string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_storage_str(s: &str) -> Option<Self> {
         match s {
             "not_configured" => Some(IndexStatus::NotConfigured),
             "building" => Some(IndexStatus::Building),
@@ -204,6 +204,17 @@ pub struct ChunkInsert {
     pub ref_table_name: Option<String>,
     pub embedding: Vec<f32>,
     pub text_for_embedding: Option<String>,
+    pub row_count_approx: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChunkEmbeddingUpdate<'a> {
+    pub chunk_id: i64,
+    pub ddl_text: &'a str,
+    pub ddl_hash: &'a str,
+    pub model_id: &'a str,
+    pub embedding: &'a [f32],
+    pub text_for_embedding: Option<&'a str>,
     pub row_count_approx: Option<i64>,
 }
 

@@ -999,6 +999,34 @@ struct ResponsesStreamState {
     saw_valid_responses_payload: bool,
     saw_streamed_output_text: bool,
     saw_streamed_reasoning: bool,
+    thinking_buffer: String,
+    content_buffer: String,
+    last_flush: Instant,
+}
+
+impl ResponsesStreamState {
+    fn new() -> Self {
+        Self {
+            response_id: None,
+            saw_valid_responses_payload: false,
+            saw_streamed_output_text: false,
+            saw_streamed_reasoning: false,
+            thinking_buffer: String::new(),
+            content_buffer: String::new(),
+            last_flush: Instant::now(),
+        }
+    }
+}
+
+struct ResponsesStreamTarget<'a, R: Runtime> {
+    app_handle: &'a tauri::AppHandle<R>,
+    stream_id: &'a str,
+    enable_reasoning: bool,
+}
+
+struct ResponsesSseEvent<'a> {
+    json: &'a serde_json::Value,
+    event_type: Option<&'a str>,
 }
 
 /// Process a single Responses `data:` JSON payload, updating shared buffers/flags.
@@ -1006,16 +1034,14 @@ struct ResponsesStreamState {
 /// Returns `Done` when `response.completed` is seen, `Continue` otherwise.
 /// Errors are returned as `ResponsesStreamError`.
 fn process_responses_payload<R: Runtime>(
-    json: &serde_json::Value,
-    event_type: Option<&str>,
-    enable_reasoning: bool,
-    stream_id: &str,
-    app_handle: &tauri::AppHandle<R>,
-    thinking_buffer: &mut String,
-    content_buffer: &mut String,
-    last_flush: &mut Instant,
+    event: ResponsesSseEvent<'_>,
+    target: &ResponsesStreamTarget<'_, R>,
     state: &mut ResponsesStreamState,
 ) -> Result<ResponsesPayloadOutcome, ResponsesStreamError> {
+    let json = event.json;
+    let enable_reasoning = target.enable_reasoning;
+    let stream_id = target.stream_id;
+    let app_handle = target.app_handle;
     if is_chat_completions_style_payload(json) {
         return Err(ResponsesStreamError::new(
             "Responses endpoint returned chat-completions-style stream payload",
@@ -1023,7 +1049,7 @@ fn process_responses_payload<R: Runtime>(
         ));
     }
 
-    let event_type = merge_responses_event_type(event_type, json);
+    let event_type = merge_responses_event_type(event.event_type, json);
 
     if let Some(message) = extract_responses_error_message(json) {
         if is_responses_failure_event(event_type) {
@@ -1060,7 +1086,7 @@ fn process_responses_payload<R: Runtime>(
     };
 
     if !reasoning_text.is_empty() && enable_reasoning {
-        thinking_buffer.push_str(&reasoning_text);
+        state.thinking_buffer.push_str(&reasoning_text);
         state.saw_streamed_reasoning = true;
         state.saw_valid_responses_payload = true;
     }
@@ -1072,7 +1098,12 @@ fn process_responses_payload<R: Runtime>(
             | Some("response.reasoning_text.done")
     ) {
         state.saw_valid_responses_payload = true;
-        flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
+        flush_buffer(
+            app_handle,
+            stream_id,
+            &mut state.thinking_buffer,
+            ChunkKind::Thinking,
+        );
     }
 
     let text_to_append =
@@ -1082,16 +1113,31 @@ fn process_responses_payload<R: Runtime>(
         state.saw_streamed_output_text = true;
     }
 
-    content_buffer.push_str(&text_to_append);
+    state.content_buffer.push_str(&text_to_append);
 
-    if last_flush.elapsed() >= FLUSH_INTERVAL {
-        flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
-        flush_buffer(app_handle, stream_id, content_buffer, ChunkKind::Content);
-        *last_flush = Instant::now();
+    if state.last_flush.elapsed() >= FLUSH_INTERVAL {
+        flush_buffer(
+            app_handle,
+            stream_id,
+            &mut state.thinking_buffer,
+            ChunkKind::Thinking,
+        );
+        flush_buffer(
+            app_handle,
+            stream_id,
+            &mut state.content_buffer,
+            ChunkKind::Content,
+        );
+        state.last_flush = Instant::now();
     }
 
     if event_type == Some("response.completed") {
-        flush_both_buffers(app_handle, stream_id, thinking_buffer, content_buffer);
+        flush_both_buffers(
+            app_handle,
+            stream_id,
+            &mut state.thinking_buffer,
+            &mut state.content_buffer,
+        );
         return Ok(ResponsesPayloadOutcome::Done);
     }
 
@@ -1207,14 +1253,11 @@ async fn stream_responses_completion<R: Runtime>(
 
     let mut byte_stream = response.bytes_stream();
     let mut line_buffer = String::new();
-    let mut buffer = String::new();
-    let mut thinking_buffer = String::new();
-    let mut last_flush = Instant::now();
-    let mut stream_state = ResponsesStreamState {
-        response_id: None,
-        saw_valid_responses_payload: false,
-        saw_streamed_output_text: false,
-        saw_streamed_reasoning: false,
+    let mut stream_state = ResponsesStreamState::new();
+    let stream_target = ResponsesStreamTarget {
+        app_handle,
+        stream_id,
+        enable_reasoning: request.enable_reasoning,
     };
     let mut saw_response_completed = false;
     let mut current_event_type: Option<String> = None;
@@ -1223,7 +1266,12 @@ async fn stream_responses_completion<R: Runtime>(
         let chunk_result = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
-                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                flush_both_buffers(
+                    app_handle,
+                    stream_id,
+                    &mut stream_state.thinking_buffer,
+                    &mut stream_state.content_buffer,
+                );
                 return Err(ResponsesStreamError::new("Stream cancelled", false));
             }
             chunk = byte_stream.next() => chunk,
@@ -1258,14 +1306,11 @@ async fn stream_responses_completion<R: Runtime>(
                             })?;
 
                         match process_responses_payload(
-                            &json,
-                            current_event_type.as_deref(),
-                            request.enable_reasoning,
-                            stream_id,
-                            app_handle,
-                            &mut thinking_buffer,
-                            &mut buffer,
-                            &mut last_flush,
+                            ResponsesSseEvent {
+                                json: &json,
+                                event_type: current_event_type.as_deref(),
+                            },
+                            &stream_target,
                             &mut stream_state,
                         )? {
                             ResponsesPayloadOutcome::Done => {
@@ -1284,7 +1329,12 @@ async fn stream_responses_completion<R: Runtime>(
                 }
             }
             Some(Err(e)) => {
-                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                flush_both_buffers(
+                    app_handle,
+                    stream_id,
+                    &mut stream_state.thinking_buffer,
+                    &mut stream_state.content_buffer,
+                );
                 return Err(ResponsesStreamError::new(
                     format!("Stream read error: {e}"),
                     !stream_state.saw_valid_responses_payload,
@@ -1302,14 +1352,11 @@ async fn stream_responses_completion<R: Runtime>(
                         })?;
 
                     match process_responses_payload(
-                        &json,
-                        current_event_type.as_deref(),
-                        request.enable_reasoning,
-                        stream_id,
-                        app_handle,
-                        &mut thinking_buffer,
-                        &mut buffer,
-                        &mut last_flush,
+                        ResponsesSseEvent {
+                            json: &json,
+                            event_type: current_event_type.as_deref(),
+                        },
+                        &stream_target,
                         &mut stream_state,
                     )? {
                         ResponsesPayloadOutcome::Done => {
@@ -1326,7 +1373,12 @@ async fn stream_responses_completion<R: Runtime>(
                     ));
                 }
 
-                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                flush_both_buffers(
+                    app_handle,
+                    stream_id,
+                    &mut stream_state.thinking_buffer,
+                    &mut stream_state.content_buffer,
+                );
                 emit_responses_done(app_handle, stream_id, stream_state.response_id);
                 return Ok(());
             }

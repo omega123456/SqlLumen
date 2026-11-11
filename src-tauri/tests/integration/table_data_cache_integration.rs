@@ -7,7 +7,8 @@ use sqllumen_lib::mysql::result_cache::{MemorySnapshot, ResultCache};
 use sqllumen_lib::mysql::table_data::{
     evict_table_data_impl, restore_table_data_cache_impl, sync_table_data_cache_after_delete_impl,
     sync_table_data_cache_after_insert_impl, sync_table_data_cache_after_update_impl,
-    touch_table_data_impl, PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse,
+    touch_table_data_impl, PrimaryKeyInfo, SyncTableDataCacheRequest, TableDataColumnMeta,
+    TableDataResponse,
 };
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
@@ -50,7 +51,7 @@ fn sample_response(id: i64) -> TableDataResponse {
         ],
         rows: std::sync::Arc::new(vec![vec![
             serde_json::Value::Number(serde_json::Number::from(id)),
-            serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
+            serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
         ]]),
         current_page: 1,
         page_size: 50,
@@ -122,7 +123,7 @@ fn insert_and_get_round_trips_table_data_response() {
         *entry.value.rows,
         vec![vec![
             serde_json::json!(42),
-            serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
+            serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
         ]]
     );
     assert_eq!(entry.value.columns[0].name, "id");
@@ -178,7 +179,7 @@ fn touch_rewarms_spilled_entry_from_disk() {
         *entry.value.rows,
         vec![vec![
             serde_json::json!(99),
-            serde_json::Value::Number(serde_json::Number::from_f64(3.14).unwrap()),
+            serde_json::Value::Number(serde_json::Number::from_f64(1.25).unwrap()),
         ]]
     );
     assert_eq!(entry.value.columns[1].name, "score");
@@ -306,16 +307,18 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
     let response = sample_response(9);
     let synced = sync_table_data_cache_after_insert_impl(
         &state,
-        "conn-1",
-        "tab-1",
-        "app_db",
-        "users",
-        response.columns.clone(),
-        (*response.rows).clone(),
-        response.current_page,
-        response.page_size,
-        response.primary_key.clone(),
-        response.execution_time_ms,
+        SyncTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+            columns: response.columns.clone(),
+            rows: (*response.rows).clone(),
+            current_page: response.current_page,
+            page_size: response.page_size,
+            primary_key: response.primary_key.clone(),
+            execution_time_ms: response.execution_time_ms,
+        },
     );
 
     assert_eq!(synced.status, "missing");
@@ -382,24 +385,26 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         .table_data_cache
         .insert("conn-1", "tab-1", sample_response(1));
 
-    let columns = sample_response(1).columns;
-    let primary_key = sample_response(1).primary_key;
+    let sample_columns = sample_response(1).columns;
+    let sample_primary_key = sample_response(1).primary_key;
 
     let inserted = sync_table_data_cache_after_insert_impl(
         &state,
-        "conn-1",
-        "tab-1",
-        "app_db",
-        "users",
-        columns.clone(),
-        vec![
-            vec![serde_json::json!(1), serde_json::json!(3.14)],
-            vec![serde_json::json!(2), serde_json::json!(9.5)],
-        ],
-        1,
-        50,
-        primary_key.clone(),
-        20,
+        SyncTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+            columns: sample_columns.clone(),
+            rows: vec![
+                vec![serde_json::json!(1), serde_json::json!(1.25)],
+                vec![serde_json::json!(2), serde_json::json!(9.5)],
+            ],
+            current_page: 1,
+            page_size: 50,
+            primary_key: sample_primary_key.clone(),
+            execution_time_ms: 20,
+        },
     );
     assert_eq!(inserted.status, "synced");
 
@@ -414,19 +419,21 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
 
     let updated = sync_table_data_cache_after_update_impl(
         &state,
-        "conn-1",
-        "tab-1",
-        "app_db",
-        "users",
-        columns.clone(),
-        vec![
-            vec![serde_json::json!(1), serde_json::json!(4.2)],
-            vec![serde_json::json!(2), serde_json::json!(9.5)],
-        ],
-        1,
-        50,
-        primary_key.clone(),
-        25,
+        SyncTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+            columns: sample_columns.clone(),
+            rows: vec![
+                vec![serde_json::json!(1), serde_json::json!(4.2)],
+                vec![serde_json::json!(2), serde_json::json!(9.5)],
+            ],
+            current_page: 1,
+            page_size: 50,
+            primary_key: sample_primary_key.clone(),
+            execution_time_ms: 25,
+        },
     );
     assert_eq!(updated.status, "synced");
 
@@ -441,16 +448,18 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
 
     let deleted = sync_table_data_cache_after_delete_impl(
         &state,
-        "conn-1",
-        "tab-1",
-        "app_db",
-        "users",
-        columns,
-        vec![vec![serde_json::json!(2), serde_json::json!(9.5)]],
-        1,
-        50,
-        primary_key,
-        30,
+        SyncTableDataCacheRequest {
+            connection_id: "conn-1".to_string(),
+            tab_id: "tab-1".to_string(),
+            database: "app_db".to_string(),
+            table: "users".to_string(),
+            columns: sample_columns,
+            rows: vec![vec![serde_json::json!(2), serde_json::json!(9.5)]],
+            current_page: 1,
+            page_size: 50,
+            primary_key: sample_primary_key,
+            execution_time_ms: 30,
+        },
     );
     assert_eq!(deleted.status, "synced");
 

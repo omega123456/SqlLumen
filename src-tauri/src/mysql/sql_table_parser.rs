@@ -141,7 +141,7 @@ fn matches_keyword_at(chars: &[char], i: usize, keyword: &str) -> bool {
     // Compare characters case-insensitively
     let kw_chars: Vec<char> = keyword.chars().collect();
     for j in 0..kw_len {
-        if chars[i + j].to_ascii_uppercase() != kw_chars[j].to_ascii_uppercase() {
+        if !chars[i + j].eq_ignore_ascii_case(&kw_chars[j]) {
             return false;
         }
     }
@@ -373,10 +373,10 @@ fn parse_table_list(chars: &[char], mut i: usize, tables: &mut Vec<TableReferenc
         }
 
         // Check if we've hit a stop keyword or JOIN before reading a table
-        if is_word_boundary_before(chars, i) {
-            if matches_any_stop_keyword(chars, i) || match_join_keyword(chars, i).is_some() {
-                break;
-            }
+        if is_word_boundary_before(chars, i)
+            && (matches_any_stop_keyword(chars, i) || match_join_keyword(chars, i).is_some())
+        {
+            break;
         }
 
         // Parse a single table reference

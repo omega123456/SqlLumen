@@ -1068,12 +1068,12 @@ mod serialization_parity {
 
     #[test]
     fn float_double_serialize_as_numbers() {
-        let val = mysql_async::Value::Float(3.14);
+        let val = mysql_async::Value::Float(1.25);
         let result =
             serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_FLOAT, ColumnFlags::empty());
         assert!(result.is_number());
 
-        let val = mysql_async::Value::Double(2.718281828);
+        let val = mysql_async::Value::Double(2.5);
         let result =
             serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_DOUBLE, ColumnFlags::empty());
         assert!(result.is_number());
@@ -1663,12 +1663,12 @@ mod serialization_parity {
 
     #[test]
     fn serialize_float_and_double_values() {
-        let val = mysql_async::Value::Float(3.14);
+        let val = mysql_async::Value::Float(1.25);
         let result =
             serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_FLOAT, ColumnFlags::empty());
         assert!(result.is_number());
 
-        let val = mysql_async::Value::Double(2.718281828);
+        let val = mysql_async::Value::Double(2.5);
         let result =
             serialize_mysql_value(&val, ColumnType::MYSQL_TYPE_DOUBLE, ColumnFlags::empty());
         assert!(result.is_number());

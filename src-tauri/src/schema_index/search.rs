@@ -990,7 +990,7 @@ fn idf_weight(segment: &str, segment_df: &HashMap<String, usize>, total_tables: 
     let df = segment_df.get(segment).copied().unwrap_or(1).max(1);
     let raw_idf = (total_tables as f64 / df as f64).ln();
     // Normalize: cap at a reasonable max so IDF doesn't blow up scores
-    raw_idf.max(0.0).min(5.0) / 5.0
+    raw_idf.clamp(0.0, 5.0) / 5.0
 }
 
 fn lexical_score_for_table(

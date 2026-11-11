@@ -98,12 +98,14 @@ describe('playwrightIpcMockHandler', () => {
 
   it('returns fetch_table_data results without removed total fields', () => {
     const result = playwrightIpcMockHandler('fetch_table_data', {
-      connectionId: 'conn-1',
-      tabId: 'tab-1',
-      database: 'ecommerce_db',
-      table: 'users',
-      page: 1,
-      pageSize: 100,
+      payload: {
+        connectionId: 'conn-1',
+        tabId: 'tab-1',
+        database: 'ecommerce_db',
+        table: 'users',
+        page: 1,
+        pageSize: 100,
+      },
     }) as Record<string, unknown>
 
     expect(result.currentPage).toBe(1)

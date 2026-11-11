@@ -88,10 +88,7 @@ pub fn initialize_log_database(path: impl AsRef<Path>) -> Result<Connection> {
     // existing database requires a full VACUUM to take effect. VACUUM is illegal
     // inside a transaction, so this runs here in initialization code rather than
     // in migration SQL.
-    if applied
-        .iter()
-        .any(|&version| version == MIGRATION_VACUUM_STATE_LOGS)
-    {
+    if applied.contains(&MIGRATION_VACUUM_STATE_LOGS) {
         tracing::info!(
             "logs migration 002 newly applied; converting logs database to incremental auto-vacuum"
         );

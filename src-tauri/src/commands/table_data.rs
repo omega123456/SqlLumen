@@ -94,16 +94,19 @@ pub fn build_select_sql(
 #[tauri::command]
 pub async fn fetch_table_data(
     state: tauri::State<'_, AppState>,
-    connection_id: String,
-    tab_id: String,
-    database: String,
-    table: String,
-    page: u32,
-    page_size: u32,
-    sort_column: Option<String>,
-    sort_direction: Option<String>,
-    filter_model: Option<Vec<table_data::FilterCondition>>,
+    payload: table_data::FetchTableDataRequest,
 ) -> Result<table_data::TableDataResponse, String> {
+    let table_data::FetchTableDataRequest {
+        connection_id,
+        tab_id,
+        database,
+        table,
+        page,
+        page_size,
+        sort_column,
+        sort_direction,
+        filter_model,
+    } = payload;
     if page_size == 0 {
         return Err("page_size must be at least 1".to_string());
     }
@@ -226,31 +229,10 @@ pub async fn restore_table_data_cache<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn sync_table_data_cache_after_insert<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
-    connection_id: String,
-    tab_id: String,
-    database: String,
-    table: String,
-    columns: Vec<table_data::TableDataColumnMeta>,
-    rows: Vec<Vec<serde_json::Value>>,
-    current_page: u32,
-    page_size: u32,
-    primary_key: Option<table_data::PrimaryKeyInfo>,
-    execution_time_ms: u64,
+    payload: table_data::SyncTableDataCacheRequest,
 ) -> Result<table_data::TableDataCacheSyncResponse, String> {
     run_blocking_with_state(app, move |state| {
-        table_data::sync_table_data_cache_after_insert_impl(
-            state,
-            &connection_id,
-            &tab_id,
-            &database,
-            &table,
-            columns,
-            rows,
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
-        )
+        table_data::sync_table_data_cache_after_insert_impl(state, payload)
     })
     .await
 }
@@ -258,31 +240,10 @@ pub async fn sync_table_data_cache_after_insert<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn sync_table_data_cache_after_update<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
-    connection_id: String,
-    tab_id: String,
-    database: String,
-    table: String,
-    columns: Vec<table_data::TableDataColumnMeta>,
-    rows: Vec<Vec<serde_json::Value>>,
-    current_page: u32,
-    page_size: u32,
-    primary_key: Option<table_data::PrimaryKeyInfo>,
-    execution_time_ms: u64,
+    payload: table_data::SyncTableDataCacheRequest,
 ) -> Result<table_data::TableDataCacheSyncResponse, String> {
     run_blocking_with_state(app, move |state| {
-        table_data::sync_table_data_cache_after_update_impl(
-            state,
-            &connection_id,
-            &tab_id,
-            &database,
-            &table,
-            columns,
-            rows,
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
-        )
+        table_data::sync_table_data_cache_after_update_impl(state, payload)
     })
     .await
 }
@@ -290,31 +251,10 @@ pub async fn sync_table_data_cache_after_update<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn sync_table_data_cache_after_delete<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
-    connection_id: String,
-    tab_id: String,
-    database: String,
-    table: String,
-    columns: Vec<table_data::TableDataColumnMeta>,
-    rows: Vec<Vec<serde_json::Value>>,
-    current_page: u32,
-    page_size: u32,
-    primary_key: Option<table_data::PrimaryKeyInfo>,
-    execution_time_ms: u64,
+    payload: table_data::SyncTableDataCacheRequest,
 ) -> Result<table_data::TableDataCacheSyncResponse, String> {
     run_blocking_with_state(app, move |state| {
-        table_data::sync_table_data_cache_after_delete_impl(
-            state,
-            &connection_id,
-            &tab_id,
-            &database,
-            &table,
-            columns,
-            rows,
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
-        )
+        table_data::sync_table_data_cache_after_delete_impl(state, payload)
     })
     .await
 }
@@ -557,19 +497,22 @@ pub fn write_file_bytes(path: String, base64: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn export_table_data(
     state: tauri::State<'_, AppState>,
-    connection_id: String,
-    database: String,
-    table: String,
-    format: String,
-    file_path: String,
-    include_headers: bool,
-    table_name_for_sql: String,
-    filter_model: Option<Vec<table_data::FilterCondition>>,
-    sort_column: Option<String>,
-    sort_direction: Option<String>,
-    page: Option<u32>,
-    page_size: Option<u32>,
+    payload: table_data::ExportTableDataRequest,
 ) -> Result<(), String> {
+    let table_data::ExportTableDataRequest {
+        connection_id,
+        database,
+        table,
+        format,
+        file_path,
+        include_headers,
+        table_name_for_sql,
+        filter_model,
+        sort_column,
+        sort_direction,
+        page,
+        page_size,
+    } = payload;
     let pool = state
         .registry
         .get_pool(&connection_id)

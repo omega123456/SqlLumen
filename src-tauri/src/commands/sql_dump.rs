@@ -482,6 +482,80 @@ fn execute_dump(
     Ok(metadata.len())
 }
 
+struct TableInsertWriter<'a> {
+    table_name: &'a str,
+    escaped_table: String,
+    col_list: String,
+    dump_jobs: &'a std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
+    job_id: &'a str,
+    header_written: bool,
+    total_rows: u64,
+}
+
+impl<'a> TableInsertWriter<'a> {
+    fn new(
+        table_name: &'a str,
+        columns: &[String],
+        dump_jobs: &'a std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
+        job_id: &'a str,
+    ) -> Self {
+        let col_list = columns
+            .iter()
+            .map(|c| format!("`{}`", sql_dump::escape_identifier(c)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Self {
+            table_name,
+            escaped_table: sql_dump::escape_identifier(table_name),
+            col_list,
+            dump_jobs,
+            job_id,
+            header_written: false,
+            total_rows: 0,
+        }
+    }
+
+    fn flush_batch<W: Write + Seek>(
+        &mut self,
+        file: &mut W,
+        batch: &[Vec<SqlDumpValue>],
+    ) -> Result<(), String> {
+        self.total_rows += batch.len() as u64;
+        if !self.header_written {
+            self.write_header(file)?;
+        }
+
+        sql_dump::write_insert_batch(file, &self.escaped_table, &self.col_list, batch)
+            .map_err(|e| format!("Write error: {e}"))?;
+
+        let pos = file
+            .stream_position()
+            .map_err(|e| format!("Seek error: {e}"))?;
+        let mut jobs = self.dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+        if let Some(progress) = jobs.get_mut(self.job_id) {
+            progress.bytes_written = pos;
+            progress.rows_exported = self.total_rows;
+        }
+        Ok(())
+    }
+
+    fn write_header<W: Write>(&mut self, file: &mut W) -> Result<(), String> {
+        writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
+        writeln!(
+            file,
+            "-- Data for `{}`",
+            sql_dump::escape_identifier(self.table_name)
+        )
+        .map_err(|e| format!("Write error: {e}"))?;
+        writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
+        writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+        writeln!(file, "LOCK TABLES `{}` WRITE;", self.escaped_table)
+            .map_err(|e| format!("Write error: {e}"))?;
+        self.header_written = true;
+        Ok(())
+    }
+}
+
 /// Stream rows from a `TryStream`, batch them, and write INSERT statements to the dump file.
 ///
 /// This is the core streaming helper that replaces the old `fetch_all` + `write_data_inserts`
@@ -505,63 +579,12 @@ where
     F: Fn(&R) -> Vec<SqlDumpValue>,
     W: Write + Seek,
 {
-    let escaped_table = sql_dump::escape_identifier(table_name);
-    let col_list: String = columns
-        .iter()
-        .map(|c| format!("`{}`", sql_dump::escape_identifier(c)))
-        .collect::<Vec<_>>()
-        .join(", ");
-
     if columns.is_empty() {
         return Ok(());
     }
 
     let mut batch: Vec<Vec<SqlDumpValue>> = Vec::with_capacity(INSERT_BATCH_SIZE);
-    let mut header_written = false;
-
-    let mut total_rows: u64 = 0;
-
-    fn flush_batch<W: Write + Seek>(
-        file: &mut W,
-        header_written: &mut bool,
-        table_name: &str,
-        escaped_table: &str,
-        col_list: &str,
-        batch: &[Vec<SqlDumpValue>],
-        total_rows: u64,
-        dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
-        job_id: &str,
-    ) -> Result<(), String> {
-        if !*header_written {
-            writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
-            writeln!(
-                file,
-                "-- Data for `{}`",
-                sql_dump::escape_identifier(table_name)
-            )
-            .map_err(|e| format!("Write error: {e}"))?;
-            writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
-            writeln!(file).map_err(|e| format!("Write error: {e}"))?;
-            writeln!(file, "LOCK TABLES `{escaped_table}` WRITE;")
-                .map_err(|e| format!("Write error: {e}"))?;
-            *header_written = true;
-        }
-
-        sql_dump::write_insert_batch(file, escaped_table, col_list, batch)
-            .map_err(|e| format!("Write error: {e}"))?;
-
-        let pos = file
-            .stream_position()
-            .map_err(|e| format!("Seek error: {e}"))?;
-        {
-            let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
-            if let Some(progress) = jobs.get_mut(job_id) {
-                progress.bytes_written = pos;
-                progress.rows_exported = total_rows;
-            }
-        }
-        Ok(())
-    }
+    let mut insert_writer = TableInsertWriter::new(table_name, columns, dump_jobs, job_id);
 
     let loop_result: Result<(), String> = async {
         loop {
@@ -575,18 +598,7 @@ where
                     batch.push(serialize(&r));
 
                     if batch.len() >= INSERT_BATCH_SIZE {
-                        total_rows += batch.len() as u64;
-                        flush_batch(
-                            file,
-                            &mut header_written,
-                            table_name,
-                            &escaped_table,
-                            &col_list,
-                            &batch,
-                            total_rows,
-                            dump_jobs,
-                            job_id,
-                        )?;
+                        insert_writer.flush_batch(file, &batch)?;
                         batch.clear();
 
                         if is_cancel_requested(dump_jobs, job_id) {
@@ -597,18 +609,7 @@ where
                 None => {
                     // Stream exhausted — flush remainder
                     if !batch.is_empty() {
-                        total_rows += batch.len() as u64;
-                        flush_batch(
-                            file,
-                            &mut header_written,
-                            table_name,
-                            &escaped_table,
-                            &col_list,
-                            &batch,
-                            total_rows,
-                            dump_jobs,
-                            job_id,
-                        )?;
+                        insert_writer.flush_batch(file, &batch)?;
                         batch.clear();
                     }
 
@@ -621,7 +622,7 @@ where
     .await;
 
     // Always write UNLOCK if LOCK was written, regardless of success or error
-    if header_written {
+    if insert_writer.header_written {
         writeln!(file, "UNLOCK TABLES;").map_err(|e| format!("Write error: {e}"))?;
         writeln!(file).map_err(|e| format!("Write error: {e}"))?;
     }

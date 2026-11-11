@@ -29,6 +29,12 @@ struct CacheInner {
     capacity: usize,
 }
 
+impl Default for EmbeddingCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EmbeddingCache {
     /// Create a new embedding cache with the default capacity (256).
     pub fn new() -> Self {

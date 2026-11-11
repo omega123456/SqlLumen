@@ -24,8 +24,8 @@ use super::embeddings;
 use super::storage;
 #[cfg(not(coverage))]
 use super::types::{
-    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, ChunkType, IndexMeta,
-    IndexStatus, ProgressCallback,
+    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkEmbeddingUpdate, ChunkInsert,
+    ChunkType, IndexMeta, IndexStatus, ProgressCallback,
 };
 use super::types::{FkEdge, FkInput, TableDdlInput};
 
@@ -160,16 +160,26 @@ pub fn extract_column_comments(ddl: &str) -> Vec<(String, String)> {
 /// The output is a human-readable paragraph that captures table identity,
 /// column names/types/comments, primary key, unique indexes, foreign keys,
 /// and approximate row count.
-pub fn generate_text_for_embedding(
-    db: &str,
-    tbl: &str,
-    table_comment: Option<&str>,
-    cols: &[(String, String, Option<String>)], // (col_name, col_type, col_comment)
-    pk_cols: &[String],
-    unique_idx: &[String],
-    fks: &[FkEdge],
-    row_count: Option<i64>,
-) -> String {
+pub struct TableEmbeddingDescription<'a> {
+    pub db_name: &'a str,
+    pub table_name: &'a str,
+    pub table_comment: Option<&'a str>,
+    pub columns: &'a [(String, String, Option<String>)],
+    pub primary_key_columns: &'a [String],
+    pub unique_indexes: &'a [String],
+    pub foreign_keys: &'a [FkEdge],
+    pub row_count: Option<i64>,
+}
+
+pub fn generate_text_for_embedding(description: &TableEmbeddingDescription<'_>) -> String {
+    let db = description.db_name;
+    let tbl = description.table_name;
+    let table_comment = description.table_comment;
+    let cols = description.columns;
+    let pk_cols = description.primary_key_columns;
+    let unique_idx = description.unique_indexes;
+    let fks = description.foreign_keys;
+    let row_count = description.row_count;
     let mut parts = Vec::new();
 
     // Table identity
@@ -455,7 +465,7 @@ pub fn diff_chunks(
 
     // Keys to delete: in stored but not in new
     let mut to_delete = Vec::new();
-    for (key, _) in &stored_map {
+    for key in stored_map.keys() {
         if !new_map.contains_key(key) {
             to_delete.push(key.to_string());
         }
@@ -950,7 +960,7 @@ pub async fn build_index(
     let total_embed_batches = if total_to_embed == 0 {
         0
     } else {
-        (total_to_embed + EMBED_BATCH_SIZE - 1) / EMBED_BATCH_SIZE
+        total_to_embed.div_ceil(EMBED_BATCH_SIZE)
     };
     let mut embed_batches_done: usize = 0;
     let mut finalizing_started = false;
@@ -1052,14 +1062,16 @@ pub async fn build_index(
                 if let Some(existing_chunk) = existing {
                     storage::update_chunk_embedding(
                         &conn,
-                        existing_chunk.id,
-                        &chunk.ddl_text,
-                        &chunk.ddl_hash,
-                        &config.model_id,
-                        embedding,
                         &config.connection_id,
-                        chunk.text_for_embedding.as_deref(),
-                        chunk.row_count_approx,
+                        &ChunkEmbeddingUpdate {
+                            chunk_id: existing_chunk.id,
+                            ddl_text: &chunk.ddl_text,
+                            ddl_hash: &chunk.ddl_hash,
+                            model_id: &config.model_id,
+                            embedding,
+                            text_for_embedding: chunk.text_for_embedding.as_deref(),
+                            row_count_approx: chunk.row_count_approx,
+                        },
                     )
                     .map_err(|e| format!("Failed to update chunk: {e}"))?;
                 } else {
@@ -1709,16 +1721,15 @@ pub fn parse_unique_indexes_from_ddl(ddl: &str) -> Vec<String> {
 ///
 /// `row_counts` provides approximate row counts from `information_schema.TABLES`.
 ///
+pub type GeneratedFkChunk = (String, String, String, FkInput);
+
 /// Returns:
 /// - table_chunks: `Vec<GeneratedTableChunk>`
 /// - fk_chunks: `Vec<(chunk_key, fk_text, fk_hash, FkInput)>`
 /// - fk_edges: `Vec<FkEdge>` — flat list of all FK edges for bulk storage
 pub fn generate_all_chunks(
     ddl_inputs: &[TableDdlInput],
-) -> (
-    Vec<GeneratedTableChunk>,
-    Vec<(String, String, String, FkInput)>,
-) {
+) -> (Vec<GeneratedTableChunk>, Vec<GeneratedFkChunk>) {
     generate_all_chunks_with_row_counts(ddl_inputs, &HashMap::new())
 }
 
@@ -1726,10 +1737,7 @@ pub fn generate_all_chunks(
 pub fn generate_all_chunks_with_row_counts(
     ddl_inputs: &[TableDdlInput],
     row_counts: &HashMap<(String, String), i64>,
-) -> (
-    Vec<GeneratedTableChunk>,
-    Vec<(String, String, String, FkInput)>,
-) {
+) -> (Vec<GeneratedTableChunk>, Vec<GeneratedFkChunk>) {
     let mut table_chunks = Vec::new();
     let mut fk_chunks = Vec::new();
 
@@ -1770,16 +1778,16 @@ pub fn generate_all_chunks_with_row_counts(
             .collect();
 
         // Generate rich embedding text
-        let text_for_embedding = generate_text_for_embedding(
-            &input.db_name,
-            &input.table_name,
-            table_comment.as_deref(),
-            &cols,
-            &pk_cols,
-            &unique_idx,
-            &fk_edges,
+        let text_for_embedding = generate_text_for_embedding(&TableEmbeddingDescription {
+            db_name: &input.db_name,
+            table_name: &input.table_name,
+            table_comment: table_comment.as_deref(),
+            columns: &cols,
+            primary_key_columns: &pk_cols,
+            unique_indexes: &unique_idx,
+            foreign_keys: &fk_edges,
             row_count,
-        );
+        });
 
         // Table chunk: compact DDL (preserving comments for LLM) with optional row count annotation
         let compacted = compact_ddl_for_llm(raw_ddl);
@@ -1940,9 +1948,7 @@ async fn fetch_all_table_signatures(
         let charset = decode_string(row, 10).unwrap_or_default();
         let collation = decode_string(row, 11).unwrap_or_default();
 
-        let hasher = hashers
-            .entry((schema.clone(), table.clone()))
-            .or_insert_with(Sha256::new);
+        let hasher = hashers.entry((schema.clone(), table.clone())).or_default();
         hasher.update(b"C|");
         hasher.update(ordinal.to_le_bytes());
         hasher.update(b"|");
@@ -1995,9 +2001,7 @@ async fn fetch_all_table_signatures(
             .unwrap_or(0);
         let idx_type = decode_string(row, 6).unwrap_or_default();
 
-        let hasher = hashers
-            .entry((schema.clone(), table.clone()))
-            .or_insert_with(Sha256::new);
+        let hasher = hashers.entry((schema.clone(), table.clone())).or_default();
         hasher.update(b"I|");
         hasher.update(idx_name.as_bytes());
         hasher.update(b"|");
@@ -2040,9 +2044,7 @@ async fn fetch_all_table_signatures(
         let upd = decode_string(row, 8).unwrap_or_default();
         let del = decode_string(row, 9).unwrap_or_default();
 
-        let hasher = hashers
-            .entry((schema.clone(), table.clone()))
-            .or_insert_with(Sha256::new);
+        let hasher = hashers.entry((schema.clone(), table.clone())).or_default();
         hasher.update(b"F|");
         hasher.update(constraint.as_bytes());
         hasher.update(b"|");
@@ -2285,7 +2287,7 @@ async fn fetch_create_tables_parallel(
     let completed = Arc::new(AtomicUsize::new(0));
     let phase_started = Instant::now();
 
-    let results: Vec<Result<TableDdlInput, String>> = stream::iter(targets.into_iter())
+    let results: Vec<Result<TableDdlInput, String>> = stream::iter(targets)
         .map(|(db, tbl)| {
             let completed = Arc::clone(&completed);
             let profile_id = profile_id.to_string();
@@ -2293,7 +2295,7 @@ async fn fetch_create_tables_parallel(
                 let per_started = Instant::now();
                 let ddl = fetch_create_table(pool, &db, &tbl).await?;
                 let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                if done % 10 == 0 || done == total_to_fetch {
+                if done.is_multiple_of(10) || done == total_to_fetch {
                     tracing::debug!(
                         profile_id = %profile_id,
                         fetched = done,

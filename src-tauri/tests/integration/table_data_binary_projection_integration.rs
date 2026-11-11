@@ -17,7 +17,7 @@ mod binary_projection_integration {
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::mysql::table_data::{
-        insert_table_row_impl, FilterCondition, PrimaryKeyInfo, TableDataResponse,
+        insert_table_row_impl, PrimaryKeyInfo, TableDataResponse,
     };
     use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
@@ -120,29 +120,9 @@ mod binary_projection_integration {
     #[tauri::command]
     async fn fetch_table_data(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
-        page: u32,
-        page_size: u32,
-        sort_column: Option<String>,
-        sort_direction: Option<String>,
-        filter_model: Option<Vec<FilterCondition>>,
+        payload: sqllumen_lib::mysql::table_data::FetchTableDataRequest,
     ) -> Result<TableDataResponse, String> {
-        table_data_commands::fetch_table_data(
-            state,
-            connection_id,
-            tab_id,
-            database,
-            table,
-            page,
-            page_size,
-            sort_column,
-            sort_direction,
-            filter_model,
-        )
-        .await
+        table_data_commands::fetch_table_data(state, payload).await
     }
 
     fn invoke_tauri_command<T: DeserializeOwned>(
@@ -309,15 +289,17 @@ mod binary_projection_integration {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": open_result.session_id,
-                "tabId": "binary-projection-tab",
-                "database": "app_db",
-                "table": "assets",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "tabId": "binary-projection-tab",
+                    "database": "app_db",
+                    "table": "assets",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch_table_data IPC should succeed");

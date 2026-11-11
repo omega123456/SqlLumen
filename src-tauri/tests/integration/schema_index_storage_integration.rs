@@ -3,7 +3,9 @@
 use rusqlite::Connection;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, IndexMeta, IndexStatus};
+use sqllumen_lib::schema_index::types::{
+    ChunkEmbeddingUpdate, ChunkInsert, ChunkType, IndexMeta, IndexStatus,
+};
 
 /// Helper: register sqlite-vec, open an in-memory DB, run all migrations, and
 /// create the vec0 virtual table with a test dimension for the given profile.
@@ -261,14 +263,16 @@ fn test_update_chunk_embedding() {
     let new_embedding = test_embedding(dim, 99.0);
     storage::update_chunk_embedding(
         &conn,
-        id,
-        "CREATE TABLE users (id INT, name VARCHAR(255))",
-        "new_hash",
-        "gpt-4",
-        &new_embedding,
         "conn-1",
-        None,
-        None,
+        &ChunkEmbeddingUpdate {
+            chunk_id: id,
+            ddl_text: "CREATE TABLE users (id INT, name VARCHAR(255))",
+            ddl_hash: "new_hash",
+            model_id: "gpt-4",
+            embedding: &new_embedding,
+            text_for_embedding: None,
+            row_count_approx: None,
+        },
     )
     .expect("update chunk embedding");
 
@@ -609,12 +613,12 @@ fn test_index_meta_serde() {
 
 #[test]
 fn test_chunk_type_from_str_unknown() {
-    assert!(ChunkType::from_str("unknown").is_none());
+    assert!(ChunkType::from_storage_str("unknown").is_none());
 }
 
 #[test]
 fn test_index_status_from_str_unknown() {
-    assert!(IndexStatus::from_str("unknown").is_none());
+    assert!(IndexStatus::from_storage_str("unknown").is_none());
 }
 
 use sqllumen_lib::schema_index::types::ChunkMetadata;

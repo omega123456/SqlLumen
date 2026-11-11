@@ -423,15 +423,17 @@ describe('TableDataTab', () => {
     await waitFor(() => {
       expect(ipc.calls('export_table_data')).toContainEqual(
         expect.objectContaining({
-          connectionId: 'conn-1',
-          database: 'mydb',
-          table: 'users',
-          format: 'csv',
-          filePath: '/tmp/export-users.csv',
-          includeHeaders: true,
-          tableNameForSql: 'users',
-          page: 1,
-          pageSize: 1000,
+          payload: expect.objectContaining({
+            connectionId: 'conn-1',
+            database: 'mydb',
+            table: 'users',
+            format: 'csv',
+            filePath: '/tmp/export-users.csv',
+            includeHeaders: true,
+            tableNameForSql: 'users',
+            page: 1,
+            pageSize: 1000,
+          }),
         })
       )
     })
@@ -479,15 +481,17 @@ describe('TableDataTab', () => {
     await waitFor(() => {
       expect(ipc.calls('export_table_data')).toContainEqual(
         expect.objectContaining({
-          connectionId: 'conn-1',
-          database: 'mydb',
-          table: 'users',
-          format: 'csv',
-          filePath: '/tmp/test.csv',
-          includeHeaders: true,
-          tableNameForSql: 'users',
-          page: 3,
-          pageSize: 50,
+          payload: expect.objectContaining({
+            connectionId: 'conn-1',
+            database: 'mydb',
+            table: 'users',
+            format: 'csv',
+            filePath: '/tmp/test.csv',
+            includeHeaders: true,
+            tableNameForSql: 'users',
+            page: 3,
+            pageSize: 50,
+          }),
         })
       )
     })

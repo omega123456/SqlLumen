@@ -500,7 +500,7 @@ describe('TableDataFormView', () => {
     expect(
       ipc
         .calls('fetch_table_data')
-        .some((call) => (call as Record<string, unknown>)?.database === 'mydb')
+        .some((call) => (call as { payload: Record<string, unknown> }).payload.database === 'mydb')
     ).toBe(true)
   })
 
@@ -553,7 +553,10 @@ describe('TableDataFormView', () => {
     expect(
       ipc
         .calls('fetch_table_data')
-        .some((call) => (call as Record<string, unknown>)?.database === 'accounts_db')
+        .some(
+          (call) =>
+            (call as { payload: Record<string, unknown> }).payload.database === 'accounts_db'
+        )
     ).toBe(true)
   })
 
@@ -1067,7 +1070,9 @@ describe('TableDataFormView', () => {
     fireEvent.click(nextBtn)
     await waitFor(() => {
       expect(
-        ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)
+        ipc
+          .calls('fetch_table_data')
+          .some((c) => (c as { payload: Record<string, unknown> }).payload.page === 2)
       ).toBe(true)
     })
   })

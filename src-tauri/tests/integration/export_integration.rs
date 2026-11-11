@@ -995,14 +995,14 @@ fn test_sql_with_float_values() {
     let columns = vec!["price".to_string()];
     let rows = vec![
         vec![serde_json::json!(19.99)],
-        vec![serde_json::json!(-3.14)],
+        vec![serde_json::json!(-1.25)],
     ];
     let mut buf = Vec::new();
     write_sql(&mut buf, &columns, &rows, true, "prices").expect("write_sql should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("19.99"));
-    assert!(output.contains("-3.14"));
+    assert!(output.contains("-1.25"));
 }
 
 #[test]

@@ -994,9 +994,9 @@ fn test_ddl_hash_stable_when_row_count_fluctuates() {
     row_counts_b.insert(("mydb".to_string(), "users".to_string()), 1042);
 
     let (chunks_a, _) =
-        builder::generate_all_chunks_with_row_counts(&[input.clone()], &row_counts_a);
+        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &row_counts_a);
     let (chunks_b, _) =
-        builder::generate_all_chunks_with_row_counts(&[input.clone()], &row_counts_b);
+        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &row_counts_b);
 
     assert_eq!(
         chunks_a[0].ddl_hash, chunks_b[0].ddl_hash,
@@ -1026,7 +1026,8 @@ fn test_diff_chunks_skips_reembedding_when_only_row_count_fluctuates() {
     // First build: TABLE_ROWS = 5000
     let mut rc1: HashMap<(String, String), i64> = HashMap::new();
     rc1.insert(("shop".to_string(), "orders".to_string()), 5000);
-    let (chunks1, _) = builder::generate_all_chunks_with_row_counts(&[input.clone()], &rc1);
+    let (chunks1, _) =
+        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &rc1);
     let stored_hashes: Vec<(String, String)> = chunks1
         .iter()
         .map(|c| (c.chunk_key.clone(), c.ddl_hash.clone()))
@@ -1035,7 +1036,8 @@ fn test_diff_chunks_skips_reembedding_when_only_row_count_fluctuates() {
     // Second build: TABLE_ROWS = 5123 (InnoDB estimate fluctuation)
     let mut rc2: HashMap<(String, String), i64> = HashMap::new();
     rc2.insert(("shop".to_string(), "orders".to_string()), 5123);
-    let (chunks2, _) = builder::generate_all_chunks_with_row_counts(&[input.clone()], &rc2);
+    let (chunks2, _) =
+        builder::generate_all_chunks_with_row_counts(std::slice::from_ref(&input), &rc2);
     let new_chunks: Vec<(String, String, String)> = chunks2
         .iter()
         .map(|c| (c.chunk_key.clone(), c.ddl_text.clone(), c.ddl_hash.clone()))

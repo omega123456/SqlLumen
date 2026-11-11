@@ -24,19 +24,25 @@ fn test_embedding() -> Vec<f32> {
 #[test]
 fn chunk_type_view_roundtrip() {
     assert_eq!(ChunkType::View.as_str(), "view");
-    assert_eq!(ChunkType::from_str("view"), Some(ChunkType::View));
+    assert_eq!(ChunkType::from_storage_str("view"), Some(ChunkType::View));
 }
 
 #[test]
 fn chunk_type_procedure_roundtrip() {
     assert_eq!(ChunkType::Procedure.as_str(), "procedure");
-    assert_eq!(ChunkType::from_str("procedure"), Some(ChunkType::Procedure));
+    assert_eq!(
+        ChunkType::from_storage_str("procedure"),
+        Some(ChunkType::Procedure)
+    );
 }
 
 #[test]
 fn chunk_type_function_roundtrip() {
     assert_eq!(ChunkType::Function.as_str(), "function");
-    assert_eq!(ChunkType::from_str("function"), Some(ChunkType::Function));
+    assert_eq!(
+        ChunkType::from_storage_str("function"),
+        Some(ChunkType::Function)
+    );
 }
 
 // ── text_for_embedding / row_count_approx ───────────────────────────────
@@ -340,7 +346,7 @@ fn vec_schema_version_is_2() {
 
 use sqllumen_lib::schema_index::builder::{
     compact_ddl_for_llm, extract_column_comments, extract_table_comment,
-    generate_text_for_embedding,
+    generate_text_for_embedding, TableEmbeddingDescription,
 };
 
 #[test]
@@ -426,11 +432,11 @@ fn generate_text_for_embedding_with_comment_and_fks() {
         on_delete: Some("CASCADE".to_string()),
         on_update: Some("RESTRICT".to_string()),
     }];
-    let text = generate_text_for_embedding(
-        "db",
-        "orders",
-        Some("Customer orders"),
-        &[
+    let text = generate_text_for_embedding(&TableEmbeddingDescription {
+        db_name: "db",
+        table_name: "orders",
+        table_comment: Some("Customer orders"),
+        columns: &[
             ("id".to_string(), "INT".to_string(), None),
             (
                 "user_id".to_string(),
@@ -438,11 +444,11 @@ fn generate_text_for_embedding_with_comment_and_fks() {
                 Some("FK to users".to_string()),
             ),
         ],
-        &["id".to_string()],
-        &["email".to_string()],
-        &fks,
-        Some(1234),
-    );
+        primary_key_columns: &["id".to_string()],
+        unique_indexes: &["email".to_string()],
+        foreign_keys: &fks,
+        row_count: Some(1234),
+    });
     assert!(text.contains("Table `db`.`orders` — Customer orders."));
     assert!(text.contains("Columns: id (INT), user_id (INT, \"FK to users\")."));
     assert!(text.contains("Primary key: id."));
@@ -454,16 +460,16 @@ fn generate_text_for_embedding_with_comment_and_fks() {
 
 #[test]
 fn generate_text_for_embedding_without_comment_uses_default() {
-    let text = generate_text_for_embedding(
-        "mydb",
-        "items",
-        None,
-        &[("id".to_string(), "INT".to_string(), None)],
-        &[],
-        &[],
-        &[],
-        None,
-    );
+    let text = generate_text_for_embedding(&TableEmbeddingDescription {
+        db_name: "mydb",
+        table_name: "items",
+        table_comment: None,
+        columns: &[("id".to_string(), "INT".to_string(), None)],
+        primary_key_columns: &[],
+        unique_indexes: &[],
+        foreign_keys: &[],
+        row_count: None,
+    });
     assert!(text.contains("Table `mydb`.`items` — stores items data."));
     assert!(!text.contains("Primary key"));
     assert!(!text.contains("Approximate rows"));

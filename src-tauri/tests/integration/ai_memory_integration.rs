@@ -234,7 +234,7 @@ fn knn_search_returns_nearest_vectors() {
     storage::insert_memory_vector(&conn, &table, id3, &emb3).unwrap();
 
     // Search for something close to emb1
-    let query_emb = vec![1.0, 0.0, 0.0, 0.0];
+    let query_emb = [1.0, 0.0, 0.0, 0.0];
     let query_bytes: Vec<u8> = query_emb
         .iter()
         .flat_map(|f: &f32| f.to_le_bytes())

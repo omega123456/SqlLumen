@@ -200,29 +200,9 @@ mod type_aware_filter_integration {
     #[tauri::command]
     async fn fetch_table_data(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
-        page: u32,
-        page_size: u32,
-        sort_column: Option<String>,
-        sort_direction: Option<String>,
-        filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
+        payload: sqllumen_lib::mysql::table_data::FetchTableDataRequest,
     ) -> Result<sqllumen_lib::mysql::table_data::TableDataResponse, String> {
-        table_data_commands::fetch_table_data(
-            state,
-            connection_id,
-            tab_id,
-            database,
-            table,
-            page,
-            page_size,
-            sort_column,
-            sort_direction,
-            filter_model,
-        )
-        .await
+        table_data_commands::fetch_table_data(state, payload).await
     }
 
     fn invoke_tauri_command<T: DeserializeOwned>(
@@ -392,21 +372,23 @@ mod type_aware_filter_integration {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": open_result.session_id,
-                "tabId": "table-data-tab-1",
-                "database": "pi_management",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": [
-                    {
-                        "column": "email_verified_at",
-                        "operator": "IS NOT NULL",
-                        "value": ""
-                    }
-                ]
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "tabId": "table-data-tab-1",
+                    "database": "pi_management",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": [
+                        {
+                            "column": "email_verified_at",
+                            "operator": "IS NOT NULL",
+                            "value": ""
+                        }
+                    ]
+                }
             }),
         )
         .expect("type-aware timestamp notBlank filter should succeed");
@@ -523,15 +505,17 @@ mod type_aware_filter_integration {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": open_result.session_id,
-                "tabId": "table-data-tab-1",
-                "database": "pi_management",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "tabId": "table-data-tab-1",
+                    "database": "pi_management",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch_table_data IPC should succeed");
@@ -632,15 +616,17 @@ mod type_aware_filter_integration {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": open_result.session_id,
-                "tabId": "table-data-tab-1",
-                "database": "pi_management",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "tabId": "table-data-tab-1",
+                    "database": "pi_management",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch_table_data IPC should succeed");
@@ -736,15 +722,17 @@ mod type_aware_filter_integration {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": open_result.session_id,
-                "tabId": "table-data-tab-1",
-                "database": "pi_management",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "tabId": "table-data-tab-1",
+                    "database": "pi_management",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch_table_data IPC should succeed");
@@ -845,15 +833,17 @@ mod type_aware_filter_integration {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": open_result.session_id,
-                "tabId": "table-data-tab-1",
-                "database": "pi_management",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": open_result.session_id,
+                    "tabId": "table-data-tab-1",
+                    "database": "pi_management",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch_table_data IPC should succeed");
@@ -1111,29 +1101,9 @@ mod command_wrapper_coverage {
     #[tauri::command]
     async fn fetch_table_data(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
-        page: u32,
-        page_size: u32,
-        sort_column: Option<String>,
-        sort_direction: Option<String>,
-        filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
+        payload: sqllumen_lib::mysql::table_data::FetchTableDataRequest,
     ) -> Result<sqllumen_lib::mysql::table_data::TableDataResponse, String> {
-        table_data_commands::fetch_table_data(
-            state,
-            connection_id,
-            tab_id,
-            database,
-            table,
-            page,
-            page_size,
-            sort_column,
-            sort_direction,
-            filter_model,
-        )
-        .await
+        table_data_commands::fetch_table_data(state, payload).await
     }
 
     #[tauri::command]
@@ -1151,91 +1121,25 @@ mod command_wrapper_coverage {
     #[tauri::command]
     async fn sync_table_data_cache_after_insert(
         app: tauri::AppHandle<tauri::test::MockRuntime>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
-        columns: Vec<TableDataColumnMeta>,
-        rows: Vec<Vec<serde_json::Value>>,
-        current_page: u32,
-        page_size: u32,
-        primary_key: Option<PrimaryKeyInfo>,
-        execution_time_ms: u64,
+        payload: sqllumen_lib::mysql::table_data::SyncTableDataCacheRequest,
     ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
-        table_data_commands::sync_table_data_cache_after_insert(
-            app,
-            connection_id,
-            tab_id,
-            database,
-            table,
-            columns,
-            rows,
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
-        )
-        .await
+        table_data_commands::sync_table_data_cache_after_insert(app, payload).await
     }
 
     #[tauri::command]
     async fn sync_table_data_cache_after_update(
         app: tauri::AppHandle<tauri::test::MockRuntime>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
-        columns: Vec<TableDataColumnMeta>,
-        rows: Vec<Vec<serde_json::Value>>,
-        current_page: u32,
-        page_size: u32,
-        primary_key: Option<PrimaryKeyInfo>,
-        execution_time_ms: u64,
+        payload: sqllumen_lib::mysql::table_data::SyncTableDataCacheRequest,
     ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
-        table_data_commands::sync_table_data_cache_after_update(
-            app,
-            connection_id,
-            tab_id,
-            database,
-            table,
-            columns,
-            rows,
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
-        )
-        .await
+        table_data_commands::sync_table_data_cache_after_update(app, payload).await
     }
 
     #[tauri::command]
     async fn sync_table_data_cache_after_delete(
         app: tauri::AppHandle<tauri::test::MockRuntime>,
-        connection_id: String,
-        tab_id: String,
-        database: String,
-        table: String,
-        columns: Vec<TableDataColumnMeta>,
-        rows: Vec<Vec<serde_json::Value>>,
-        current_page: u32,
-        page_size: u32,
-        primary_key: Option<PrimaryKeyInfo>,
-        execution_time_ms: u64,
+        payload: sqllumen_lib::mysql::table_data::SyncTableDataCacheRequest,
     ) -> Result<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse, String> {
-        table_data_commands::sync_table_data_cache_after_delete(
-            app,
-            connection_id,
-            tab_id,
-            database,
-            table,
-            columns,
-            rows,
-            current_page,
-            page_size,
-            primary_key,
-            execution_time_ms,
-        )
-        .await
+        table_data_commands::sync_table_data_cache_after_delete(app, payload).await
     }
 
     #[tauri::command]
@@ -1303,35 +1207,9 @@ mod command_wrapper_coverage {
     #[tauri::command]
     async fn export_table_data(
         state: tauri::State<'_, AppState>,
-        connection_id: String,
-        database: String,
-        table: String,
-        format: String,
-        file_path: String,
-        include_headers: bool,
-        table_name_for_sql: String,
-        filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
-        sort_column: Option<String>,
-        sort_direction: Option<String>,
-        page: Option<u32>,
-        page_size: Option<u32>,
+        payload: sqllumen_lib::mysql::table_data::ExportTableDataRequest,
     ) -> Result<(), String> {
-        table_data_commands::export_table_data(
-            state,
-            connection_id,
-            database,
-            table,
-            format,
-            file_path,
-            include_headers,
-            table_name_for_sql,
-            filter_model,
-            sort_column,
-            sort_direction,
-            page,
-            page_size,
-        )
-        .await
+        table_data_commands::export_table_data(state, payload).await
     }
 
     #[tokio::test]
@@ -1345,15 +1223,17 @@ mod command_wrapper_coverage {
                 &webview,
                 "fetch_table_data",
                 json!({
-                    "connectionId": "conn-1",
-                    "tabId": "table-data-tab-1",
-                    "database": "test_db",
-                    "table": "users",
-                    "page": 1,
-                    "pageSize": 0,
-                    "sortColumn": null,
-                    "sortDirection": null,
-                    "filterModel": null
+                    "payload": {
+                        "connectionId": "conn-1",
+                        "tabId": "table-data-tab-1",
+                        "database": "test_db",
+                        "table": "users",
+                        "page": 1,
+                        "pageSize": 0,
+                        "sortColumn": null,
+                        "sortDirection": null,
+                        "filterModel": null
+                    }
                 }),
             )
             .expect_err("page size zero should error");
@@ -1366,15 +1246,17 @@ mod command_wrapper_coverage {
                 &webview,
                 "fetch_table_data",
                 json!({
-                    "connectionId": "missing",
-                    "tabId": "table-data-tab-1",
-                    "database": "test_db",
-                    "table": "users",
-                    "page": 1,
-                    "pageSize": 50,
-                    "sortColumn": null,
-                    "sortDirection": null,
-                    "filterModel": null
+                    "payload": {
+                        "connectionId": "missing",
+                        "tabId": "table-data-tab-1",
+                        "database": "test_db",
+                        "table": "users",
+                        "page": 1,
+                        "pageSize": 50,
+                        "sortColumn": null,
+                        "sortDirection": null,
+                        "filterModel": null
+                    }
                 }),
             )
             .expect_err("missing connection should error");
@@ -1384,21 +1266,23 @@ mod command_wrapper_coverage {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": "conn-1",
-                "tabId": "table-data-tab-1",
-                "database": "test_db",
-                "table": "users",
-                "page": 2,
-                "pageSize": 25,
-                "sortColumn": "name",
-                "sortDirection": "asc",
-                "filterModel": [
-                    {
-                        "column": "name",
-                        "operator": "LIKE",
-                        "value": "%ali%"
-                    }
-                ]
+                "payload": {
+                    "connectionId": "conn-1",
+                    "tabId": "table-data-tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "page": 2,
+                    "pageSize": 25,
+                    "sortColumn": "name",
+                    "sortDirection": "asc",
+                    "filterModel": [
+                        {
+                            "column": "name",
+                            "operator": "LIKE",
+                            "value": "%ali%"
+                        }
+                    ]
+                }
             }),
         )
         .expect("fetch should succeed");
@@ -1502,22 +1386,24 @@ mod command_wrapper_coverage {
             &webview,
             "export_table_data",
             json!({
-                "connectionId": "conn-1",
-                "database": "test_db",
-                "table": "users",
-                "format": "csv",
-                "filePath": "ignored.csv",
-                "includeHeaders": true,
-                "tableNameForSql": "users",
-                "filterModel": [
-                    {
-                        "column": "name",
-                        "operator": "LIKE",
-                        "value": "A%"
-                    }
-                ],
-                "sortColumn": "id",
-                "sortDirection": "desc"
+                "payload": {
+                    "connectionId": "conn-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "format": "csv",
+                    "filePath": "ignored.csv",
+                    "includeHeaders": true,
+                    "tableNameForSql": "users",
+                    "filterModel": [
+                        {
+                            "column": "name",
+                            "operator": "LIKE",
+                            "value": "A%"
+                        }
+                    ],
+                    "sortColumn": "id",
+                    "sortDirection": "desc"
+                }
             }),
         )
         .expect("export should succeed");
@@ -1599,19 +1485,21 @@ mod command_wrapper_coverage {
                 &webview,
                 "sync_table_data_cache_after_insert",
                 json!({
-                    "connectionId": "conn-1",
-                    "tabId": "tab-1",
-                    "database": "test_db",
-                    "table": "users",
-                    "columns": cached.columns.clone(),
-                    "rows": [
-                        [1, "Alice"],
-                        [2, "Bob"]
-                    ],
-                    "currentPage": 1,
-                    "pageSize": 50,
-                    "primaryKey": cached.primary_key.clone(),
-                    "executionTimeMs": 15
+                    "payload": {
+                        "connectionId": "conn-1",
+                        "tabId": "tab-1",
+                        "database": "test_db",
+                        "table": "users",
+                        "columns": cached.columns.clone(),
+                        "rows": [
+                            [1, "Alice"],
+                            [2, "Bob"]
+                        ],
+                        "currentPage": 1,
+                        "pageSize": 50,
+                        "primaryKey": cached.primary_key.clone(),
+                        "executionTimeMs": 15
+                    }
                 }),
             )
             .expect("insert sync should succeed");
@@ -1622,19 +1510,21 @@ mod command_wrapper_coverage {
                 &webview,
                 "sync_table_data_cache_after_update",
                 json!({
-                    "connectionId": "conn-1",
-                    "tabId": "tab-1",
-                    "database": "test_db",
-                    "table": "users",
-                    "columns": cached.columns.clone(),
-                    "rows": [
-                        [1, "Alicia"],
-                        [2, "Bob"]
-                    ],
-                    "currentPage": 1,
-                    "pageSize": 50,
-                    "primaryKey": cached.primary_key.clone(),
-                    "executionTimeMs": 18
+                    "payload": {
+                        "connectionId": "conn-1",
+                        "tabId": "tab-1",
+                        "database": "test_db",
+                        "table": "users",
+                        "columns": cached.columns.clone(),
+                        "rows": [
+                            [1, "Alicia"],
+                            [2, "Bob"]
+                        ],
+                        "currentPage": 1,
+                        "pageSize": 50,
+                        "primaryKey": cached.primary_key.clone(),
+                        "executionTimeMs": 18
+                    }
                 }),
             )
             .expect("update sync should succeed");
@@ -1666,18 +1556,20 @@ mod command_wrapper_coverage {
                 &webview,
                 "sync_table_data_cache_after_delete",
                 json!({
-                    "connectionId": "conn-1",
-                    "tabId": "tab-1",
-                    "database": "test_db",
-                    "table": "users",
-                    "columns": after_update_data.columns.clone(),
-                    "rows": [
-                        [2, "Bob"]
-                    ],
-                    "currentPage": 1,
-                    "pageSize": 50,
-                    "primaryKey": after_update_data.primary_key.clone(),
-                    "executionTimeMs": 20
+                    "payload": {
+                        "connectionId": "conn-1",
+                        "tabId": "tab-1",
+                        "database": "test_db",
+                        "table": "users",
+                        "columns": after_update_data.columns.clone(),
+                        "rows": [
+                            [2, "Bob"]
+                        ],
+                        "currentPage": 1,
+                        "pageSize": 50,
+                        "primaryKey": after_update_data.primary_key.clone(),
+                        "executionTimeMs": 20
+                    }
                 }),
             )
             .expect("delete sync should succeed");
@@ -1709,18 +1601,20 @@ mod command_wrapper_coverage {
                 &webview,
                 "sync_table_data_cache_after_insert",
                 json!({
-                    "connectionId": "conn-1",
-                    "tabId": "missing-tab",
-                    "database": "test_db",
-                    "table": "users",
-                    "columns": final_data.columns.clone(),
-                    "rows": [
-                        [3, "Cara"]
-                    ],
-                    "currentPage": 1,
-                    "pageSize": 50,
-                    "primaryKey": final_data.primary_key.clone(),
-                    "executionTimeMs": 22
+                    "payload": {
+                        "connectionId": "conn-1",
+                        "tabId": "missing-tab",
+                        "database": "test_db",
+                        "table": "users",
+                        "columns": final_data.columns.clone(),
+                        "rows": [
+                            [3, "Cara"]
+                        ],
+                        "currentPage": 1,
+                        "pageSize": 50,
+                        "primaryKey": final_data.primary_key.clone(),
+                        "executionTimeMs": 22
+                    }
                 }),
             )
             .expect("missing sync should return status");
@@ -1760,15 +1654,17 @@ mod command_wrapper_coverage {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": "hist-conn",
-                "tabId": "table-data-tab-1",
-                "database": "test_db",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": "hist-conn",
+                    "tabId": "table-data-tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch should succeed");
@@ -1802,21 +1698,23 @@ mod command_wrapper_coverage {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": "hist-sf",
-                "tabId": "table-data-tab-1",
-                "database": "mydb",
-                "table": "products",
-                "page": 2,
-                "pageSize": 25,
-                "sortColumn": "name",
-                "sortDirection": "desc",
-                "filterModel": [
-                    {
-                        "column": "name",
-                        "operator": "LIKE",
-                        "value": "%widget%"
-                    }
-                ]
+                "payload": {
+                    "connectionId": "hist-sf",
+                    "tabId": "table-data-tab-1",
+                    "database": "mydb",
+                    "table": "products",
+                    "page": 2,
+                    "pageSize": 25,
+                    "sortColumn": "name",
+                    "sortDirection": "desc",
+                    "filterModel": [
+                        {
+                            "column": "name",
+                            "operator": "LIKE",
+                            "value": "%widget%"
+                        }
+                    ]
+                }
             }),
         )
         .expect("fetch should succeed");
@@ -1859,15 +1757,17 @@ mod command_wrapper_coverage {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": "hist-fallback",
-                "tabId": "table-data-tab-1",
-                "database": invalid_database,
-                "table": "users",
-                "page": 1,
-                "pageSize": 10,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": "hist-fallback",
+                    "tabId": "table-data-tab-1",
+                    "database": invalid_database,
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 10,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect("fetch should still succeed via coverage stub");
@@ -1906,15 +1806,17 @@ mod command_wrapper_coverage {
             &webview,
             "fetch_table_data",
             json!({
-                "connectionId": "missing-conn",
-                "tabId": "table-data-tab-1",
-                "database": "test_db",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
+                "payload": {
+                    "connectionId": "missing-conn",
+                    "tabId": "table-data-tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }
             }),
         )
         .expect_err("should fail for missing connection");
@@ -1947,16 +1849,18 @@ mod command_wrapper_coverage {
             &webview,
             "export_table_data",
             json!({
-                "connectionId": "hist-export",
-                "database": "test_db",
-                "table": "orders",
-                "format": "csv",
-                "filePath": "ignored.csv",
-                "includeHeaders": true,
-                "tableNameForSql": "orders",
-                "filterModel": null,
-                "sortColumn": null,
-                "sortDirection": null
+                "payload": {
+                    "connectionId": "hist-export",
+                    "database": "test_db",
+                    "table": "orders",
+                    "format": "csv",
+                    "filePath": "ignored.csv",
+                    "includeHeaders": true,
+                    "tableNameForSql": "orders",
+                    "filterModel": null,
+                    "sortColumn": null,
+                    "sortDirection": null
+                }
             }),
         )
         .expect("export should succeed");
@@ -1990,22 +1894,24 @@ mod command_wrapper_coverage {
             &webview,
             "export_table_data",
             json!({
-                "connectionId": "hist-export-sf",
-                "database": "test_db",
-                "table": "items",
-                "format": "json",
-                "filePath": "ignored.json",
-                "includeHeaders": false,
-                "tableNameForSql": "items",
-                "filterModel": [
-                    {
-                        "column": "price",
-                        "operator": ">",
-                        "value": "100"
-                    }
-                ],
-                "sortColumn": "price",
-                "sortDirection": "asc"
+                "payload": {
+                    "connectionId": "hist-export-sf",
+                    "database": "test_db",
+                    "table": "items",
+                    "format": "json",
+                    "filePath": "ignored.json",
+                    "includeHeaders": false,
+                    "tableNameForSql": "items",
+                    "filterModel": [
+                        {
+                            "column": "price",
+                            "operator": ">",
+                            "value": "100"
+                        }
+                    ],
+                    "sortColumn": "price",
+                    "sortDirection": "asc"
+                }
             }),
         )
         .expect("export should succeed");
@@ -2250,16 +2156,18 @@ mod command_wrapper_coverage {
             &webview,
             "export_table_data",
             json!({
-                "connectionId": "missing",
-                "database": "test_db",
-                "table": "users",
-                "format": "json",
-                "filePath": "ignored.json",
-                "includeHeaders": false,
-                "tableNameForSql": "users",
-                "filterModel": null,
-                "sortColumn": null,
-                "sortDirection": null
+                "payload": {
+                    "connectionId": "missing",
+                    "database": "test_db",
+                    "table": "users",
+                    "format": "json",
+                    "filePath": "ignored.json",
+                    "includeHeaders": false,
+                    "tableNameForSql": "users",
+                    "filterModel": null,
+                    "sortColumn": null,
+                    "sortDirection": null
+                }
             }),
         )
         .expect_err("missing export connection should error");

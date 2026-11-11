@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection, Result};
 
 use super::embedding_to_bytes;
-use super::types::{ChunkInsert, ChunkMetadata, ChunkType, FkEdge, IndexMeta, IndexStatus};
+use super::types::{
+    ChunkEmbeddingUpdate, ChunkInsert, ChunkMetadata, ChunkType, FkEdge, IndexMeta, IndexStatus,
+};
 
 /// Current schema version of the vec0 virtual table layout.
 /// Increment this when the vec0 CREATE statement changes (e.g. distance metric).
@@ -76,25 +78,26 @@ pub fn insert_chunk(conn: &Connection, chunk: &ChunkInsert) -> Result<i64> {
 /// Update an existing chunk's DDL, hash, model_id, embedded_at, and vector embedding.
 pub fn update_chunk_embedding(
     conn: &Connection,
-    chunk_id: i64,
-    ddl_text: &str,
-    ddl_hash: &str,
-    model_id: &str,
-    embedding: &[f32],
     profile_id: &str,
-    text_for_embedding: Option<&str>,
-    row_count_approx: Option<i64>,
+    update: &ChunkEmbeddingUpdate<'_>,
 ) -> Result<()> {
     conn.execute(
         "UPDATE schema_index_chunks SET ddl_text = ?1, ddl_hash = ?2, model_id = ?3, embedded_at = datetime('now'), text_for_embedding = ?5, row_count_approx = ?6 WHERE id = ?4",
-        params![ddl_text, ddl_hash, model_id, chunk_id, text_for_embedding, row_count_approx],
+        params![
+            update.ddl_text,
+            update.ddl_hash,
+            update.model_id,
+            update.chunk_id,
+            update.text_for_embedding,
+            update.row_count_approx
+        ],
     )?;
 
     let table = vec_table_name(profile_id);
-    let bytes = embedding_to_bytes(embedding);
+    let bytes = embedding_to_bytes(update.embedding);
     conn.execute(
         &format!("UPDATE {table} SET embedding = ?1 WHERE id = ?2"),
-        params![bytes, chunk_id],
+        params![bytes, update.chunk_id],
     )?;
 
     Ok(())
@@ -250,7 +253,7 @@ pub fn list_chunks(conn: &Connection, connection_id: &str) -> Result<Vec<ChunkMe
          ORDER BY id",
     )?;
     let rows = stmt
-        .query_map(params![connection_id], |row| row_to_chunk_metadata(row))?
+        .query_map(params![connection_id], row_to_chunk_metadata)?
         .collect::<Result<Vec<_>>>()?;
     Ok(rows)
 }
@@ -290,7 +293,7 @@ pub fn get_index_meta(conn: &Connection, connection_id: &str) -> Result<Option<I
             model_id: row.get(1)?,
             embedding_dimension: row.get(2)?,
             last_build_at: row.get(3)?,
-            status: IndexStatus::from_str(&status_str).unwrap_or(IndexStatus::Stale),
+            status: IndexStatus::from_storage_str(&status_str).unwrap_or(IndexStatus::Stale),
             vec_schema_version: row.get(5)?,
         })
     })?;
@@ -525,7 +528,7 @@ fn row_to_chunk_metadata(row: &rusqlite::Row<'_>) -> Result<ChunkMetadata> {
         chunk_key: row.get(2)?,
         db_name: row.get(3)?,
         table_name: row.get(4)?,
-        chunk_type: ChunkType::from_str(&chunk_type_str).unwrap_or(ChunkType::Table),
+        chunk_type: ChunkType::from_storage_str(&chunk_type_str).unwrap_or(ChunkType::Table),
         ddl_text: row.get(6)?,
         ddl_hash: row.get(7)?,
         model_id: row.get(8)?,

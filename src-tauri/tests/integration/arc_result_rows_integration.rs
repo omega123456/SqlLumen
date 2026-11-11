@@ -17,7 +17,7 @@ fn sample_rows() -> Vec<Vec<Value>> {
             json!(1),
             json!("alice"),
             json!(true),
-            json!(3.14),
+            json!(1.25),
             Value::Null,
         ],
         vec![

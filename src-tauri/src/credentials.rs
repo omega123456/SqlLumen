@@ -55,38 +55,30 @@ pub fn set_test_credential_backend(backend: Option<TestCredentialBackend>) {
     *guard = backend;
 }
 
+#[cfg(target_os = "macos")]
+const SECURE_STORAGE_DISPLAY_NAME: &str = "macOS Keychain";
+
+#[cfg(target_os = "windows")]
+const SECURE_STORAGE_DISPLAY_NAME: &str = "Windows Credential Manager";
+
+#[cfg(target_os = "linux")]
+const SECURE_STORAGE_DISPLAY_NAME: &str = "Linux Secret Service / keyring";
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+const SECURE_STORAGE_DISPLAY_NAME: &str = "secure storage";
+
+#[cfg(target_os = "linux")]
+const LINUX_UNAVAILABLE_GUIDANCE: &str = " Linux Secret Service / keyring is unavailable or locked. Unlock your keyring or install a Secret Service provider such as GNOME Keyring, then try again.";
+
+#[cfg(not(target_os = "linux"))]
+const LINUX_UNAVAILABLE_GUIDANCE: &str = "";
+
 pub fn secure_storage_display_name() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        return "macOS Keychain";
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        return "Windows Credential Manager";
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        return "Linux Secret Service / keyring";
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        return "secure storage";
-    }
+    SECURE_STORAGE_DISPLAY_NAME
 }
 
 fn linux_unavailable_guidance() -> &'static str {
-    #[cfg(target_os = "linux")]
-    {
-        return " Linux Secret Service / keyring is unavailable or locked. Unlock your keyring or install a Secret Service provider such as GNOME Keyring, then try again.";
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        return "";
-    }
+    LINUX_UNAVAILABLE_GUIDANCE
 }
 
 fn secure_storage_error(action: &str, error: impl std::fmt::Display) -> String {
@@ -170,26 +162,29 @@ pub fn store_password(profile_id: &str, password: &str) -> Result<(), String> {
         return (backend.store_password)(profile_id, password);
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        let _guard = MACOS_SHARED_VAULT_LOCK
-            .lock()
-            .expect("shared vault lock poisoned");
-        let entry = shared_vault_entry()?;
-        let mut vault = read_shared_vault(&entry)?.unwrap_or_else(SharedVault::empty);
-        vault
-            .passwords
-            .insert(profile_id.to_string(), password.to_string());
-        return write_shared_vault(&entry, &vault);
-    }
+    store_password_in_secure_storage(profile_id, password)
+}
 
-    #[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "macos")]
+fn store_password_in_secure_storage(profile_id: &str, password: &str) -> Result<(), String> {
+    let _guard = MACOS_SHARED_VAULT_LOCK
+        .lock()
+        .expect("shared vault lock poisoned");
+    let entry = shared_vault_entry()?;
+    let mut vault = read_shared_vault(&entry)?.unwrap_or_else(SharedVault::empty);
+    vault
+        .passwords
+        .insert(profile_id.to_string(), password.to_string());
+    write_shared_vault(&entry, &vault)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn store_password_in_secure_storage(profile_id: &str, password: &str) -> Result<(), String> {
     let entry = keyring::Entry::new(SERVICE_NAME, profile_id).map_err(|error| {
         warn!(profile_id, error = %error, "failed to access secure-storage entry for password store");
         secure_storage_error("access secure storage", error)
     })?;
 
-    #[cfg(not(target_os = "macos"))]
     entry.set_password(password).map_err(|error| {
         warn!(profile_id, error = %error, "failed to store password in secure storage");
         secure_storage_error("store password", error)
@@ -206,23 +201,26 @@ pub fn get_password(profile_id: &str) -> Result<Option<String>, String> {
         return (backend.get_password)(profile_id);
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        let _guard = MACOS_SHARED_VAULT_LOCK
-            .lock()
-            .expect("shared vault lock poisoned");
-        let entry = shared_vault_entry()?;
-        let vault = read_shared_vault(&entry)?;
-        return Ok(vault.and_then(|shared_vault| shared_vault.passwords.get(profile_id).cloned()));
-    }
+    get_password_from_secure_storage(profile_id)
+}
 
-    #[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "macos")]
+fn get_password_from_secure_storage(profile_id: &str) -> Result<Option<String>, String> {
+    let _guard = MACOS_SHARED_VAULT_LOCK
+        .lock()
+        .expect("shared vault lock poisoned");
+    let entry = shared_vault_entry()?;
+    let vault = read_shared_vault(&entry)?;
+    Ok(vault.and_then(|shared_vault| shared_vault.passwords.get(profile_id).cloned()))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_password_from_secure_storage(profile_id: &str) -> Result<Option<String>, String> {
     let entry = keyring::Entry::new(SERVICE_NAME, profile_id).map_err(|error| {
         warn!(profile_id, error = %error, "failed to access secure-storage entry for password retrieval");
         secure_storage_error("access secure storage", error)
     })?;
 
-    #[cfg(not(target_os = "macos"))]
     match entry.get_password() {
         Ok(password) => Ok(Some(password)),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -255,47 +253,50 @@ pub fn delete_password(profile_id: &str) -> Result<(), String> {
         return (backend.delete_password)(profile_id);
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        let _guard = MACOS_SHARED_VAULT_LOCK
-            .lock()
-            .expect("shared vault lock poisoned");
-        let entry = shared_vault_entry()?;
-        let mut vault = match read_shared_vault(&entry)? {
-            Some(shared_vault) => shared_vault,
-            None => {
-                return Ok(());
-            }
-        };
+    delete_password_from_secure_storage(profile_id)
+}
 
-        if vault.passwords.remove(profile_id).is_none() {
-            warn!(
-                profile_id,
-                "shared password vault did not contain requested profile during delete"
-            );
-            return Err(secure_storage_missing_entry_error("delete password"));
+#[cfg(target_os = "macos")]
+fn delete_password_from_secure_storage(profile_id: &str) -> Result<(), String> {
+    let _guard = MACOS_SHARED_VAULT_LOCK
+        .lock()
+        .expect("shared vault lock poisoned");
+    let entry = shared_vault_entry()?;
+    let mut vault = match read_shared_vault(&entry)? {
+        Some(shared_vault) => shared_vault,
+        None => {
+            return Ok(());
         }
+    };
 
-        if vault.passwords.is_empty() {
-            return match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                Err(error) => {
-                    warn!(error = %error, "failed to delete shared password vault from secure storage");
-                    Err(secure_storage_error("delete shared password vault", error))
-                }
-            };
-        }
-
-        return write_shared_vault(&entry, &vault);
+    if vault.passwords.remove(profile_id).is_none() {
+        warn!(
+            profile_id,
+            "shared password vault did not contain requested profile during delete"
+        );
+        return Err(secure_storage_missing_entry_error("delete password"));
     }
 
-    #[cfg(not(target_os = "macos"))]
+    if vault.passwords.is_empty() {
+        return match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => {
+                warn!(error = %error, "failed to delete shared password vault from secure storage");
+                Err(secure_storage_error("delete shared password vault", error))
+            }
+        };
+    }
+
+    write_shared_vault(&entry, &vault)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn delete_password_from_secure_storage(profile_id: &str) -> Result<(), String> {
     let entry = keyring::Entry::new(SERVICE_NAME, profile_id).map_err(|error| {
         warn!(profile_id, error = %error, "failed to access secure-storage entry for password deletion");
         secure_storage_error("access secure storage", error)
     })?;
 
-    #[cfg(not(target_os = "macos"))]
     match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(error) => {

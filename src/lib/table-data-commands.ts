@@ -97,15 +97,17 @@ export async function fetchTableData(params: {
   filterModel?: FilterCondition[]
 }): Promise<TableDataResponse> {
   const response = await invoke<TableDataResponse>('fetch_table_data', {
-    connectionId: params.connectionId,
-    tabId: params.tabId,
-    database: params.database,
-    table: params.table,
-    page: params.page,
-    pageSize: params.pageSize,
-    sortColumn: params.sortColumn ?? null,
-    sortDirection: params.sortDirection ?? null,
-    filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
+    payload: {
+      connectionId: params.connectionId,
+      tabId: params.tabId,
+      database: params.database,
+      table: params.table,
+      page: params.page,
+      pageSize: params.pageSize,
+      sortColumn: params.sortColumn ?? null,
+      sortDirection: params.sortDirection ?? null,
+      filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
+    },
   })
   return { ...response, rows: normalizeTinyIntRows(response.columns, response.rows) }
 }
@@ -162,16 +164,18 @@ async function syncTableDataCache(
   params: SyncTableDataCacheParams
 ): Promise<TableDataCacheSyncResult> {
   return invoke<TableDataCacheSyncResult>(command, {
-    connectionId: params.connectionId,
-    tabId: params.tabId,
-    database: params.database,
-    table: params.table,
-    columns: params.columns,
-    rows: params.rows,
-    currentPage: params.currentPage,
-    pageSize: params.pageSize,
-    primaryKey: params.primaryKey,
-    executionTimeMs: params.executionTimeMs,
+    payload: {
+      connectionId: params.connectionId,
+      tabId: params.tabId,
+      database: params.database,
+      table: params.table,
+      columns: params.columns,
+      rows: params.rows,
+      currentPage: params.currentPage,
+      pageSize: params.pageSize,
+      primaryKey: params.primaryKey,
+      executionTimeMs: params.executionTimeMs,
+    },
   })
 }
 
@@ -295,17 +299,19 @@ export async function exportTableData(params: {
   const backendFormat = params.format === 'sql-insert' ? 'sql' : params.format
 
   return invoke<void>('export_table_data', {
-    connectionId: params.connectionId,
-    database: params.database,
-    table: params.table,
-    format: backendFormat,
-    filePath: params.filePath,
-    includeHeaders: params.includeHeaders,
-    tableNameForSql: params.tableNameForSql,
-    filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
-    sortColumn: params.sortColumn ?? null,
-    sortDirection: params.sortDirection ?? null,
-    page: params.page ?? null,
-    pageSize: params.pageSize ?? null,
+    payload: {
+      connectionId: params.connectionId,
+      database: params.database,
+      table: params.table,
+      format: backendFormat,
+      filePath: params.filePath,
+      includeHeaders: params.includeHeaders,
+      tableNameForSql: params.tableNameForSql,
+      filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
+      sortColumn: params.sortColumn ?? null,
+      sortDirection: params.sortDirection ?? null,
+      page: params.page ?? null,
+      pageSize: params.pageSize ?? null,
+    },
   })
 }
