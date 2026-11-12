@@ -50,11 +50,14 @@ import { showErrorToast } from '../../stores/toast-store'
 import { logFrontend } from '../../lib/app-log-commands'
 import type { BlobEnvelope, BlobValueResponse } from '../../types/schema'
 import styles from './BlobViewerDialog.module.css'
+import { BYTES_PER_MEGABYTE } from '../../lib/units'
 
 const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 /** Hard cap (10 MB) enforced on file loads inside the dialog. */
-const FILE_LOAD_CAP = 10 * 1024 * 1024
+const FILE_LOAD_CAP_MEGABYTES = 10
+const FILE_LOAD_CAP = FILE_LOAD_CAP_MEGABYTES * BYTES_PER_MEGABYTE
+const HEX_DUMP_GROUP_SIZE = 8
 
 type BlobTab = 'image' | 'text' | 'hex'
 
@@ -65,8 +68,8 @@ const TABS: { id: BlobTab; label: string }[] = [
 ]
 
 /** Extract a human-readable message from an unknown thrown value. */
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -142,10 +145,10 @@ export function BlobViewerDialog({
           if (cancelled) return
           setWorking(workingFromResponse(response))
         })
-        .catch((err) => {
+        .catch((error) => {
           if (cancelled) return
-          const msg = errorMessage(err)
-          showErrorToast('Failed to load BLOB value', msg)
+          const message = errorMessage(error)
+          showErrorToast('Failed to load BLOB value', message)
           setWorking({ kind: 'bytes', bytes: new Uint8Array(0) })
         })
         .finally(() => {
@@ -156,9 +159,9 @@ export function BlobViewerDialog({
     } else {
       try {
         setWorking({ kind: 'bytes', bytes: base64ToBytes(initialBase64) })
-      } catch (err) {
-        const msg = errorMessage(err)
-        showErrorToast('Failed to decode BLOB value', msg)
+      } catch (error) {
+        const message = errorMessage(error)
+        showErrorToast('Failed to decode BLOB value', message)
         setWorking({ kind: 'bytes', bytes: new Uint8Array(0) })
       }
     }
@@ -218,7 +221,7 @@ export function BlobViewerDialog({
 
   // -- Acquire actions ------------------------------------------------------
   const applyBytes = useCallback((bytes: Uint8Array) => {
-    setWorking({ kind: 'bytes', bytes })
+    setWorking({ kind: 'bytes', bytes: bytes })
     setPasteOpen(false)
   }, [])
 
@@ -234,10 +237,10 @@ export function BlobViewerDialog({
         return
       }
       applyBytes(bytes)
-    } catch (err) {
-      const msg = errorMessage(err)
-      logFrontend('error', `[blob-viewer] load from file failed: ${msg}`)
-      showErrorToast('Failed to load file', msg)
+    } catch (error) {
+      const message = errorMessage(error)
+      logFrontend('error', `[blob-viewer] load from file failed: ${message}`)
+      showErrorToast('Failed to load file', message)
     }
   }, [applyBytes])
 
@@ -281,18 +284,18 @@ export function BlobViewerDialog({
       })
       if (typeof selected !== 'string') return
       await writeFileBytes(selected, bytesToBase64(bytes))
-    } catch (err) {
-      const msg = errorMessage(err)
-      logFrontend('error', `[blob-viewer] save to file failed: ${msg}`)
-      showErrorToast('Failed to save file', msg)
+    } catch (error) {
+      const message = errorMessage(error)
+      logFrontend('error', `[blob-viewer] save to file failed: ${message}`)
+      showErrorToast('Failed to save file', message)
     }
   }, [working, columnLabel])
 
   // -- Drag and drop --------------------------------------------------------
   const handleDragEnter = useCallback(
-    (e: React.DragEvent) => {
+    (event: React.DragEvent) => {
       if (!isEdit) return
-      e.preventDefault()
+      event.preventDefault()
       dragDepth.current += 1
       setDragOver(true)
     },
@@ -300,17 +303,17 @@ export function BlobViewerDialog({
   )
 
   const handleDragOver = useCallback(
-    (e: React.DragEvent) => {
+    (event: React.DragEvent) => {
       if (!isEdit) return
-      e.preventDefault()
+      event.preventDefault()
     },
     [isEdit]
   )
 
   const handleDragLeave = useCallback(
-    (e: React.DragEvent) => {
+    (event: React.DragEvent) => {
       if (!isEdit) return
-      e.preventDefault()
+      event.preventDefault()
       dragDepth.current = Math.max(0, dragDepth.current - 1)
       if (dragDepth.current === 0) setDragOver(false)
     },
@@ -318,12 +321,12 @@ export function BlobViewerDialog({
   )
 
   const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
+    async (event: React.DragEvent) => {
       if (!isEdit) return
-      e.preventDefault()
+      event.preventDefault()
       dragDepth.current = 0
       setDragOver(false)
-      const file = e.dataTransfer.files?.[0]
+      const file = event.dataTransfer.files?.[0]
       if (!file) return
       try {
         const buffer = await file.arrayBuffer()
@@ -333,10 +336,10 @@ export function BlobViewerDialog({
           return
         }
         applyBytes(bytes)
-      } catch (err) {
-        const msg = errorMessage(err)
-        logFrontend('error', `[blob-viewer] drop failed: ${msg}`)
-        showErrorToast('Failed to read dropped file', msg)
+      } catch (error) {
+        const message = errorMessage(error)
+        logFrontend('error', `[blob-viewer] drop failed: ${message}`)
+        showErrorToast('Failed to read dropped file', message)
       }
     },
     [isEdit, applyBytes]
@@ -353,10 +356,10 @@ export function BlobViewerDialog({
   }, [dragOver, onClose])
 
   // Tab roll-over with arrow keys.
-  const handleTabKeyDown = useCallback((e: React.KeyboardEvent, index: number) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-      e.preventDefault()
-      const delta = e.key === 'ArrowRight' ? 1 : -1
+  const handleTabKeyDown = useCallback((event: React.KeyboardEvent, index: number) => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      event.preventDefault()
+      const delta = event.key === 'ArrowRight' ? 1 : -1
       const next = (index + delta + TABS.length) % TABS.length
       setActiveTab(TABS[next].id)
     }
@@ -438,8 +441,12 @@ export function BlobViewerDialog({
           <div className={styles.hexRow} key={row.offset}>
             <span className={styles.hexOffset}>{row.offset}</span>
             <span className={styles.hexBytes}>
-              <span className={styles.hexGroup}>{row.hexBytes.slice(0, 8).join(' ')}</span>
-              <span className={styles.hexGroup}>{row.hexBytes.slice(8).join(' ')}</span>
+              <span className={styles.hexGroup}>
+                {row.hexBytes.slice(0, HEX_DUMP_GROUP_SIZE).join(' ')}
+              </span>
+              <span className={styles.hexGroup}>
+                {row.hexBytes.slice(HEX_DUMP_GROUP_SIZE).join(' ')}
+              </span>
             </span>
             <span className={styles.hexAscii}>{row.ascii}</span>
           </div>
@@ -549,7 +556,7 @@ export function BlobViewerDialog({
                   ref={pasteAnchorRef}
                   variant="subtle"
                   size="sm"
-                  onClick={() => setPasteOpen((v) => !v)}
+                  onClick={() => setPasteOpen((isOpen) => !isOpen)}
                   title="Paste base64 or hex"
                   aria-label="Paste"
                   data-testid="blob-paste-toggle"
@@ -561,7 +568,7 @@ export function BlobViewerDialog({
                   isOpen={pasteOpen}
                   onClose={() => setPasteOpen(false)}
                   onApply={applyBytes}
-                  onError={(msg) => showErrorToast('Could not parse pasted data', msg)}
+                  onError={(message) => showErrorToast('Could not parse pasted data', message)}
                   anchorRef={pasteAnchorRef}
                 />
               </div>
@@ -621,7 +628,7 @@ export function BlobViewerDialog({
                   ref={index === 0 ? firstTabRef : undefined}
                   className={tabClass}
                   onClick={() => setActiveTab(tab.id)}
-                  onKeyDown={(e) => handleTabKeyDown(e, index)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
                   role="tab"
                   aria-selected={selected}
                   aria-controls={`blob-panel-${tab.id}`}

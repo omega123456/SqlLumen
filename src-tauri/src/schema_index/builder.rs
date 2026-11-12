@@ -139,7 +139,7 @@ pub fn extract_table_comment(ddl: &str) -> Option<String> {
         Regex::new(r"(?i)\)\s*[^;]*COMMENT\s*=\s*'((?:[^'\\]|\\.)*)'")
             .expect("valid table comment regex")
     });
-    re.captures(ddl).map(|c| c[1].to_string())
+    re.captures(ddl).map(|captures| captures[1].to_string())
 }
 
 /// Extract `(column_name, comment)` pairs from inline column `COMMENT '...'`
@@ -151,7 +151,7 @@ pub fn extract_column_comments(ddl: &str) -> Vec<(String, String)> {
             .expect("valid column comment regex")
     });
     re.captures_iter(ddl)
-        .map(|c| (c[1].to_string(), c[2].to_string()))
+        .map(|captures| (captures[1].to_string(), captures[2].to_string()))
         .collect()
 }
 
@@ -176,16 +176,16 @@ pub fn generate_text_for_embedding(description: &TableEmbeddingDescription<'_>) 
     let tbl = description.table_name;
     let table_comment = description.table_comment;
     let cols = description.columns;
-    let pk_cols = description.primary_key_columns;
-    let unique_idx = description.unique_indexes;
-    let fks = description.foreign_keys;
+    let primary_key_columns = description.primary_key_columns;
+    let unique_index = description.unique_indexes;
+    let foreign_keys = description.foreign_keys;
     let row_count = description.row_count;
     let mut parts = Vec::new();
 
     // Table identity
     let default_comment = format!("stores {tbl} data");
     let comment_desc = table_comment
-        .filter(|c| !c.is_empty())
+        .filter(|comment| !comment.is_empty())
         .unwrap_or(&default_comment);
     parts.push(format!("Table `{db}`.`{tbl}` — {comment_desc}."));
 
@@ -194,8 +194,8 @@ pub fn generate_text_for_embedding(description: &TableEmbeddingDescription<'_>) 
         let col_descs: Vec<String> = cols
             .iter()
             .map(|(name, typ, comment)| {
-                if let Some(c) = comment {
-                    format!("{name} ({typ}, \"{c}\")")
+                if let Some(comment_text) = comment {
+                    format!("{name} ({typ}, \"{comment_text}\")")
                 } else {
                     format!("{name} ({typ})")
                 }
@@ -205,24 +205,24 @@ pub fn generate_text_for_embedding(description: &TableEmbeddingDescription<'_>) 
     }
 
     // Primary key
-    if !pk_cols.is_empty() {
-        parts.push(format!("Primary key: {}.", pk_cols.join(", ")));
+    if !primary_key_columns.is_empty() {
+        parts.push(format!("Primary key: {}.", primary_key_columns.join(", ")));
     }
 
     // Unique indexes
-    if !unique_idx.is_empty() {
-        parts.push(format!("Unique indexes: {}.", unique_idx.join(", ")));
+    if !unique_index.is_empty() {
+        parts.push(format!("Unique indexes: {}.", unique_index.join(", ")));
     }
 
     // Foreign keys
-    if !fks.is_empty() {
+    if !foreign_keys.is_empty() {
         parts.push("Foreign keys:".to_string());
-        for fk in fks {
+        for foreign_key in foreign_keys {
             let mut desc = format!(
                 "  - {} references `{}`.`{}`({})",
-                fk.src_col, fk.dst_db, fk.dst_tbl, fk.dst_col
+                foreign_key.src_col, foreign_key.dst_db, foreign_key.dst_tbl, foreign_key.dst_col
             );
-            if let Some(ref on_del) = fk.on_delete {
+            if let Some(ref on_del) = foreign_key.on_delete {
                 if on_del != "RESTRICT" {
                     desc.push_str(&format!(" [ON DELETE {on_del}]"));
                 }
@@ -281,7 +281,10 @@ pub fn qualify_references_in_ddl(db_name: &str, ddl: &str) -> String {
     });
 
     re.replace_all(ddl, |captures: &regex::Captures<'_>| {
-        let identifier = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
+        let identifier = captures
+            .get(1)
+            .map(|matched| matched.as_str())
+            .unwrap_or_default();
         let parts = parse_identifier_parts(identifier);
         let qualified = match parts.as_slice() {
             [table_name] => format!(
@@ -312,17 +315,17 @@ pub fn normalize_table_ddl(db_name: &str, table_name: &str, ddl: &str) -> String
 }
 
 /// Generate a human-readable chunk text describing a foreign key relationship.
-pub fn generate_fk_chunk_text(fk: &FkInput) -> String {
-    let cols = fk.columns.join(", ");
-    let ref_cols = fk.ref_columns.join(", ");
+pub fn generate_fk_chunk_text(foreign_key: &FkInput) -> String {
+    let cols = foreign_key.columns.join(", ");
+    let ref_cols = foreign_key.ref_columns.join(", ");
     format!(
         "Table {db}.{table} has a foreign key ({cols}) that references {ref_db}.{ref_table}({ref_cols}) ON DELETE {on_delete} ON UPDATE {on_update}",
-        db = fk.db_name,
-        table = fk.table_name,
-        ref_db = fk.ref_db_name,
-        ref_table = fk.ref_table_name,
-        on_delete = fk.on_delete,
-        on_update = fk.on_update,
+        db = foreign_key.db_name,
+        table = foreign_key.table_name,
+        ref_db = foreign_key.ref_db_name,
+        ref_table = foreign_key.ref_table_name,
+        on_delete = foreign_key.on_delete,
+        on_update = foreign_key.on_update,
     )
 }
 
@@ -386,26 +389,26 @@ pub fn parse_fks_from_ddl(db_name: &str, table_name: &str, ddl: &str) -> Vec<FkI
         .expect("valid FK regex")
     });
 
-    let mut fks = Vec::new();
+    let mut foreign_keys = Vec::new();
     for cap in re.captures_iter(ddl) {
         let constraint_name = cap[1].to_string();
         let columns = parse_backtick_list(&cap[2]);
         let ref_db = cap
             .get(3)
-            .map(|m| m.as_str().to_string())
+            .map(|matched| matched.as_str().to_string())
             .unwrap_or_else(|| db_name.to_string());
         let ref_table = cap[4].to_string();
         let ref_columns = parse_backtick_list(&cap[5]);
         let on_delete = cap
             .get(6)
-            .map(|m| m.as_str().to_uppercase())
+            .map(|matched| matched.as_str().to_uppercase())
             .unwrap_or_else(|| "RESTRICT".to_string());
         let on_update = cap
             .get(7)
-            .map(|m| m.as_str().to_uppercase())
+            .map(|matched| matched.as_str().to_uppercase())
             .unwrap_or_else(|| "RESTRICT".to_string());
 
-        fks.push(FkInput {
+        foreign_keys.push(FkInput {
             db_name: db_name.to_string(),
             table_name: table_name.to_string(),
             constraint_name,
@@ -417,15 +420,17 @@ pub fn parse_fks_from_ddl(db_name: &str, table_name: &str, ddl: &str) -> Vec<FkI
             on_update,
         });
     }
-    fks
+    foreign_keys
 }
 
 /// Parse a backtick-delimited column list like `` `col1`,`col2` `` into `["col1", "col2"]`.
-fn parse_backtick_list(s: &str) -> Vec<String> {
+fn parse_backtick_list(list: &str) -> Vec<String> {
     static BACKTICK_LIST_REGEX: OnceLock<Regex> = OnceLock::new();
     let re = BACKTICK_LIST_REGEX
         .get_or_init(|| Regex::new(r"`([^`]+)`").expect("valid backtick list regex"));
-    re.captures_iter(s).map(|c| c[1].to_string()).collect()
+    re.captures_iter(list)
+        .map(|captures| captures[1].to_string())
+        .collect()
 }
 
 // ── Diff logic ───────────────────────────────────────────────────────────
@@ -442,12 +447,12 @@ pub fn diff_chunks(
 ) -> (Vec<String>, Vec<String>) {
     let stored_map: HashMap<&str, &str> = stored_hashes
         .iter()
-        .map(|(k, h)| (k.as_str(), h.as_str()))
+        .map(|(key, hash)| (key.as_str(), hash.as_str()))
         .collect();
 
     let new_map: HashMap<&str, (&str, &str)> = new_chunks
         .iter()
-        .map(|(k, _text, h)| (k.as_str(), (_text.as_str(), h.as_str())))
+        .map(|(key, _text, hash)| (key.as_str(), (_text.as_str(), hash.as_str())))
         .collect();
 
     // Keys that need embedding: new or hash changed
@@ -503,7 +508,9 @@ pub fn decide_signature_action(
     chunk_exists: bool,
 ) -> SignatureDecision {
     match (current_sig, stored_sig) {
-        (Some(c), Some(s)) if c == s && chunk_exists => SignatureDecision::Reuse,
+        (Some(current), Some(stored)) if current == stored && chunk_exists => {
+            SignatureDecision::Reuse
+        }
         _ => SignatureDecision::Refetch,
     }
 }
@@ -555,9 +562,9 @@ pub async fn build_index(
     {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         storage::update_index_status(&conn, &config.connection_id, &IndexStatus::Building)
-            .map_err(|e| format!("Failed to set building status: {e}"))?;
+            .map_err(|error| format!("Failed to set building status: {error}"))?;
     }
     tracing::debug!(
         profile_id = %config.connection_id,
@@ -622,9 +629,9 @@ pub async fn build_index(
     let stored_signatures = {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         storage::get_signatures_for_connection(&conn, &config.connection_id)
-            .map_err(|e| format!("Failed to load stored signatures: {e}"))?
+            .map_err(|error| format!("Failed to load stored signatures: {error}"))?
     };
 
     // Partition tables: reuse stored DDL when signature matches AND a `table:`
@@ -634,21 +641,23 @@ pub async fn build_index(
     {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         for (db_name, table_name) in &all_tables {
             let current = current_signatures
                 .get(&(db_name.clone(), table_name.clone()))
-                .map(|s| s.as_str());
+                .map(|signature| signature.as_str());
             let stored = stored_signatures
                 .get(&(db_name.clone(), table_name.clone()))
-                .map(|s| s.as_str());
+                .map(|signature| signature.as_str());
 
             // We only need to check for chunk existence when the signatures
             // match — otherwise the decision is already `Refetch`.
             let chunk_key = table_chunk_key(db_name, table_name);
-            let existing_chunk = if matches!((current, stored), (Some(c), Some(s)) if c == s) {
-                storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key)
-                    .map_err(|e| format!("Failed to look up existing chunk {chunk_key}: {e}"))?
+            let existing_chunk = if matches!((current, stored), (Some(current_signature), Some(stored_signature)) if current_signature == stored_signature)
+            {
+                storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key).map_err(
+                    |error| format!("Failed to look up existing chunk {chunk_key}: {error}"),
+                )?
             } else {
                 None
             };
@@ -738,42 +747,47 @@ pub async fn build_index(
     );
 
     // 4. Generate chunk data (table + FK chunks)
-    let (table_chunks, fk_chunks) =
+    let (table_chunks, foreign_key_chunks) =
         generate_all_chunks_with_row_counts(&all_ddl_inputs, &row_counts);
     tracing::debug!(
         profile_id = %config.connection_id,
         table_chunk_rows = table_chunks.len(),
-        fk_chunk_rows = fk_chunks.len(),
+        fk_chunk_rows = foreign_key_chunks.len(),
         "schema_index build_index: generated table and FK chunk texts (DDL normalized, hashes computed)"
     );
 
     // 4a. Store FK edges in the adjacency table
     {
-        let all_fk_edges: Vec<FkEdge> = fk_chunks
+        let all_foreign_key_edges: Vec<FkEdge> = foreign_key_chunks
             .iter()
-            .flat_map(|(_, _, _, fk)| {
-                fk.columns
+            .flat_map(|(_, _, _, foreign_key)| {
+                foreign_key
+                    .columns
                     .iter()
-                    .zip(fk.ref_columns.iter())
+                    .zip(foreign_key.ref_columns.iter())
                     .map(|(src_col, dst_col)| FkEdge {
                         connection_id: config.connection_id.clone(),
-                        src_db: fk.db_name.clone(),
-                        src_tbl: fk.table_name.clone(),
+                        src_db: foreign_key.db_name.clone(),
+                        src_tbl: foreign_key.table_name.clone(),
                         src_col: src_col.clone(),
-                        dst_db: fk.ref_db_name.clone(),
-                        dst_tbl: fk.ref_table_name.clone(),
+                        dst_db: foreign_key.ref_db_name.clone(),
+                        dst_tbl: foreign_key.ref_table_name.clone(),
                         dst_col: dst_col.clone(),
-                        constraint_name: fk.constraint_name.clone(),
-                        on_delete: Some(fk.on_delete.clone()),
-                        on_update: Some(fk.on_update.clone()),
+                        constraint_name: foreign_key.constraint_name.clone(),
+                        on_delete: Some(foreign_key.on_delete.clone()),
+                        on_update: Some(foreign_key.on_update.clone()),
                     })
             })
             .collect();
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
-        storage::replace_fk_edges_for_connection(&conn, &config.connection_id, &all_fk_edges)
-            .map_err(|e| format!("Failed to store FK edges: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
+        storage::replace_fk_edges_for_connection(
+            &conn,
+            &config.connection_id,
+            &all_foreign_key_edges,
+        )
+        .map_err(|error| format!("Failed to store FK edges: {error}"))?;
     }
 
     // 4b. Compute and store segment document frequency for lexical IDF scoring
@@ -789,9 +803,9 @@ pub async fn build_index(
         let entries: Vec<(String, usize)> = segment_counts.into_iter().collect();
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         storage::replace_segment_df_for_connection(&conn, &config.connection_id, &entries)
-            .map_err(|e| format!("Failed to store segment DF: {e}"))?;
+            .map_err(|error| format!("Failed to store segment DF: {error}"))?;
     }
 
     // Merge into a single list for diffing
@@ -820,7 +834,7 @@ pub async fn build_index(
         let truncated = create_view_ddl
             .char_indices()
             .nth(500)
-            .map_or(create_view_ddl.as_str(), |(i, _)| &create_view_ddl[..i]);
+            .map_or(create_view_ddl.as_str(), |(cut, _)| &create_view_ddl[..cut]);
         let text_for_emb = format!("View `{db}`.`{view_name}`: {truncated}");
         all_new.push(PendingChunk {
             chunk_key: key,
@@ -849,7 +863,7 @@ pub async fn build_index(
         let truncated = create_ddl
             .char_indices()
             .nth(500)
-            .map_or(create_ddl.as_str(), |(i, _)| &create_ddl[..i]);
+            .map_or(create_ddl.as_str(), |(cut, _)| &create_ddl[..cut]);
         let text_for_emb = format!("{routine_type} `{db}`.`{routine_name}`: {truncated}");
         all_new.push(PendingChunk {
             chunk_key: key,
@@ -869,14 +883,20 @@ pub async fn build_index(
     let stored_hashes = {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         storage::get_chunk_hashes(&conn, &config.connection_id)
-            .map_err(|e| format!("Failed to get chunk hashes: {e}"))?
+            .map_err(|error| format!("Failed to get chunk hashes: {error}"))?
     };
 
     let new_for_diff: Vec<(String, String, String)> = all_new
         .iter()
-        .map(|c| (c.chunk_key.clone(), c.ddl_text.clone(), c.ddl_hash.clone()))
+        .map(|chunk| {
+            (
+                chunk.chunk_key.clone(),
+                chunk.ddl_text.clone(),
+                chunk.ddl_hash.clone(),
+            )
+        })
         .collect();
 
     let (needs_embed_keys, to_delete_keys) = diff_chunks(&stored_hashes, &new_for_diff);
@@ -897,28 +917,28 @@ pub async fn build_index(
         );
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         for key in &to_delete_keys {
             storage::delete_chunk_by_key(&conn, &config.connection_id, key)
-                .map_err(|e| format!("Failed to delete chunk {key}: {e}"))?;
+                .map_err(|error| format!("Failed to delete chunk {key}: {error}"))?;
         }
     }
 
     // 6. Embed new/changed chunks in batches
     let chunks_to_embed: Vec<_> = all_new
         .iter()
-        .filter(|c| needs_embed_keys.contains(&c.chunk_key))
+        .filter(|chunk| needs_embed_keys.contains(&chunk.chunk_key))
         .collect();
 
     let total_to_embed = chunks_to_embed.len();
     let staged_at = Utc::now().to_rfc3339();
     let staged_table_chunks = chunks_to_embed
         .iter()
-        .filter(|c| matches!(&c.chunk_type, ChunkType::Table))
+        .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Table))
         .count();
-    let staged_fk_chunks = chunks_to_embed
+    let staged_foreign_key_chunks = chunks_to_embed
         .iter()
-        .filter(|c| matches!(&c.chunk_type, ChunkType::Fk))
+        .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Fk))
         .count();
     let unchanged_chunks = all_new.len().saturating_sub(total_to_embed);
 
@@ -928,7 +948,7 @@ pub async fn build_index(
         total_chunks_current = all_new.len(),
         staged_for_embedding = total_to_embed,
         staged_table_chunks,
-        staged_fk_chunks,
+        staged_foreign_key_chunks,
         unchanged_chunks_skipped = unchanged_chunks,
         obsolete_chunks_removed = to_delete_keys.len(),
         "schema_index build_index: diff complete — staged chunks for embedding (new or hash-changed); skipped unchanged"
@@ -937,7 +957,7 @@ pub async fn build_index(
     if tracing::enabled!(tracing::Level::DEBUG) && !chunks_to_embed.is_empty() {
         let keys_preview: Vec<(&str, &str)> = chunks_to_embed
             .iter()
-            .map(|c| (c.chunk_key.as_str(), c.chunk_type.as_str()))
+            .map(|chunk| (chunk.chunk_key.as_str(), chunk.chunk_type.as_str()))
             .collect();
         tracing::debug!(
             profile_id = %config.connection_id,
@@ -950,8 +970,8 @@ pub async fn build_index(
     let unchanged_tables = {
         let table_keys_to_embed: std::collections::HashSet<&str> = chunks_to_embed
             .iter()
-            .filter(|c| matches!(&c.chunk_type, ChunkType::Table))
-            .map(|c| c.chunk_key.as_str())
+            .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Table))
+            .map(|chunk| chunk.chunk_key.as_str())
             .collect();
         let total_table_chunks = table_chunks.len();
         total_table_chunks - table_keys_to_embed.len()
@@ -1010,10 +1030,16 @@ pub async fn build_index(
         // Use text_for_embedding when available, falling back to ddl_text
         let texts: Vec<String> = batch
             .iter()
-            .map(|c| c.text_for_embedding.as_ref().unwrap_or(&c.ddl_text).clone())
+            .map(|chunk| {
+                chunk
+                    .text_for_embedding
+                    .as_ref()
+                    .unwrap_or(&chunk.ddl_text)
+                    .clone()
+            })
             .collect();
 
-        let batch_keys: Vec<&str> = batch.iter().map(|c| c.chunk_key.as_str()).collect();
+        let batch_keys: Vec<&str> = batch.iter().map(|chunk| chunk.chunk_key.as_str()).collect();
         tracing::info!(
             profile_id = %config.connection_id,
             batch_start,
@@ -1032,13 +1058,13 @@ pub async fn build_index(
         let embeddings =
             embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts, None)
                 .await
-                .map_err(|e| format!("Embedding failed: {e}"))?;
+                .map_err(|error| format!("Embedding failed: {error}"))?;
         tracing::debug!(
             profile_id = %config.connection_id,
             batch_start,
             elapsed_ms = embed_started.elapsed().as_millis() as u64,
             vectors_returned = embeddings.len(),
-            vector_dims = embeddings.first().map(|v| v.len()).unwrap_or(0),
+            vector_dims = embeddings.first().map(|embedding| embedding.len()).unwrap_or(0),
             "schema_index build_index: embedding API batch finished"
         );
 
@@ -1046,18 +1072,18 @@ pub async fn build_index(
         {
             let conn = sqlite_conn
                 .lock()
-                .map_err(|e| format!("SQLite lock: {e}"))?;
+                .map_err(|error| format!("SQLite lock: {error}"))?;
             let mut tx_count = 0;
             conn.execute_batch("BEGIN")
-                .map_err(|e| format!("BEGIN: {e}"))?;
+                .map_err(|error| format!("BEGIN: {error}"))?;
 
-            for (i, chunk) in batch.iter().enumerate() {
-                let embedding = &embeddings[i];
+            for (chunk_index, chunk) in batch.iter().enumerate() {
+                let embedding = &embeddings[chunk_index];
 
                 // Check if chunk already exists (update vs insert)
                 let existing =
                     storage::get_chunk_by_key(&conn, &config.connection_id, &chunk.chunk_key)
-                        .map_err(|e| format!("Failed to lookup chunk: {e}"))?;
+                        .map_err(|error| format!("Failed to lookup chunk: {error}"))?;
 
                 if let Some(existing_chunk) = existing {
                     storage::update_chunk_embedding(
@@ -1073,7 +1099,7 @@ pub async fn build_index(
                             row_count_approx: chunk.row_count_approx,
                         },
                     )
-                    .map_err(|e| format!("Failed to update chunk: {e}"))?;
+                    .map_err(|error| format!("Failed to update chunk: {error}"))?;
                 } else {
                     let insert = ChunkInsert {
                         connection_id: config.connection_id.clone(),
@@ -1091,21 +1117,21 @@ pub async fn build_index(
                         row_count_approx: chunk.row_count_approx,
                     };
                     storage::insert_chunk(&conn, &insert)
-                        .map_err(|e| format!("Failed to insert chunk: {e}"))?;
+                        .map_err(|error| format!("Failed to insert chunk: {error}"))?;
                 }
 
                 tx_count += 1;
                 if tx_count >= SQLITE_COMMIT_BATCH {
                     conn.execute_batch("COMMIT")
-                        .map_err(|e| format!("COMMIT: {e}"))?;
+                        .map_err(|error| format!("COMMIT: {error}"))?;
                     conn.execute_batch("BEGIN")
-                        .map_err(|e| format!("BEGIN: {e}"))?;
+                        .map_err(|error| format!("BEGIN: {error}"))?;
                     tx_count = 0;
                 }
             }
 
             conn.execute_batch("COMMIT")
-                .map_err(|e| format!("COMMIT: {e}"))?;
+                .map_err(|error| format!("COMMIT: {error}"))?;
         }
 
         tracing::debug!(
@@ -1118,7 +1144,7 @@ pub async fn build_index(
         // Count how many table chunks (not FK chunks) were in this batch
         let table_chunks_in_batch = batch
             .iter()
-            .filter(|c| matches!(&c.chunk_type, ChunkType::Table))
+            .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Table))
             .count();
         tables_done += table_chunks_in_batch;
         embed_batches_done += 1;
@@ -1167,16 +1193,16 @@ pub async fn build_index(
     {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
 
         let sig_rows: Vec<(String, String, String)> = current_signatures
             .iter()
             .map(|((db, tbl), sig)| (db.clone(), tbl.clone(), sig.clone()))
             .collect();
         conn.execute_batch("BEGIN")
-            .map_err(|e| format!("BEGIN signatures: {e}"))?;
+            .map_err(|error| format!("BEGIN signatures: {error}"))?;
         storage::upsert_signatures(&conn, &config.connection_id, &sig_rows)
-            .map_err(|e| format!("Failed to upsert signatures: {e}"))?;
+            .map_err(|error| format!("Failed to upsert signatures: {error}"))?;
 
         // Remove signatures for tables no longer present. `current_signatures`
         // already covers only existing tables, so stored signatures whose key
@@ -1186,11 +1212,11 @@ pub async fn build_index(
         for (db, tbl) in stored_signatures.keys() {
             if !current_keys.contains(&(db.clone(), tbl.clone())) {
                 storage::delete_signature(&conn, &config.connection_id, db, tbl)
-                    .map_err(|e| format!("Failed to delete stale signature: {e}"))?;
+                    .map_err(|error| format!("Failed to delete stale signature: {error}"))?;
             }
         }
         conn.execute_batch("COMMIT")
-            .map_err(|e| format!("COMMIT signatures: {e}"))?;
+            .map_err(|error| format!("COMMIT signatures: {error}"))?;
     }
 
     if let Some(cb) = on_progress {
@@ -1209,15 +1235,15 @@ pub async fn build_index(
     {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         let now = chrono::Utc::now().to_rfc3339();
         let meta = storage::get_index_meta(&conn, &config.connection_id)
-            .map_err(|e| format!("Failed to get index meta: {e}"))?;
-        if let Some(mut m) = meta {
-            m.status = IndexStatus::Ready;
-            m.last_build_at = Some(now);
-            storage::upsert_index_meta(&conn, &m)
-                .map_err(|e| format!("Failed to update index meta: {e}"))?;
+            .map_err(|error| format!("Failed to get index meta: {error}"))?;
+        if let Some(mut meta_update) = meta {
+            meta_update.status = IndexStatus::Ready;
+            meta_update.last_build_at = Some(now);
+            storage::upsert_index_meta(&conn, &meta_update)
+                .map_err(|error| format!("Failed to update index meta: {error}"))?;
         }
     }
 
@@ -1276,12 +1302,12 @@ pub async fn rebuild_tables(
     {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         for (db, tbl) in tables {
             storage::delete_chunks_by_table(&conn, &config.connection_id, db, tbl)
-                .map_err(|e| format!("Failed to delete chunks for {db}.{tbl}: {e}"))?;
+                .map_err(|error| format!("Failed to delete chunks for {db}.{tbl}: {error}"))?;
             storage::delete_signature(&conn, &config.connection_id, db, tbl)
-                .map_err(|e| format!("Failed to delete signature for {db}.{tbl}: {e}"))?;
+                .map_err(|error| format!("Failed to delete signature for {db}.{tbl}: {error}"))?;
         }
     }
     tracing::debug!(
@@ -1303,11 +1329,11 @@ pub async fn rebuild_tables(
                     create_table_sql: ddl,
                 });
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
                     db_name = %db,
                     table_name = %tbl,
-                    error = %e,
+                    error = %error,
                     "Table not found during rebuild (likely dropped), skipping"
                 );
                 // Skip this table — chunks were already deleted above
@@ -1317,33 +1343,36 @@ pub async fn rebuild_tables(
     }
 
     // 3. Generate new table + FK chunks
-    let (table_chunks, fk_chunks) = generate_all_chunks(&ddl_inputs);
+    let (table_chunks, foreign_key_chunks) = generate_all_chunks(&ddl_inputs);
 
     // 3a. Store FK edges for rebuilt tables
     {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         for tc in &table_chunks {
             // Collect edges for this table from fk_chunks
-            let edges: Vec<FkEdge> = fk_chunks
+            let edges: Vec<FkEdge> = foreign_key_chunks
                 .iter()
-                .filter(|(_, _, _, fk)| fk.db_name == tc.db_name && fk.table_name == tc.table_name)
-                .flat_map(|(_, _, _, fk)| {
-                    fk.columns
+                .filter(|(_, _, _, foreign_key)| {
+                    foreign_key.db_name == tc.db_name && foreign_key.table_name == tc.table_name
+                })
+                .flat_map(|(_, _, _, foreign_key)| {
+                    foreign_key
+                        .columns
                         .iter()
-                        .zip(fk.ref_columns.iter())
+                        .zip(foreign_key.ref_columns.iter())
                         .map(|(src_col, dst_col)| FkEdge {
                             connection_id: config.connection_id.clone(),
-                            src_db: fk.db_name.clone(),
-                            src_tbl: fk.table_name.clone(),
+                            src_db: foreign_key.db_name.clone(),
+                            src_tbl: foreign_key.table_name.clone(),
                             src_col: src_col.clone(),
-                            dst_db: fk.ref_db_name.clone(),
-                            dst_tbl: fk.ref_table_name.clone(),
+                            dst_db: foreign_key.ref_db_name.clone(),
+                            dst_tbl: foreign_key.ref_table_name.clone(),
                             dst_col: dst_col.clone(),
-                            constraint_name: fk.constraint_name.clone(),
-                            on_delete: Some(fk.on_delete.clone()),
-                            on_update: Some(fk.on_update.clone()),
+                            constraint_name: foreign_key.constraint_name.clone(),
+                            on_delete: Some(foreign_key.on_delete.clone()),
+                            on_update: Some(foreign_key.on_update.clone()),
                         })
                 })
                 .collect();
@@ -1354,9 +1383,9 @@ pub async fn rebuild_tables(
                 &tc.table_name,
                 &edges,
             )
-            .map_err(|e| {
+            .map_err(|error| {
                 format!(
-                    "Failed to store FK edges for {}.{}: {e}",
+                    "Failed to store FK edges for {}.{}: {error}",
                     tc.db_name, tc.table_name
                 )
             })?;
@@ -1385,18 +1414,18 @@ pub async fn rebuild_tables(
     let staged_at = Utc::now().to_rfc3339();
     let staged_tables = embed_items
         .iter()
-        .filter(|c| matches!(&c.chunk_type, ChunkType::Table))
+        .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Table))
         .count();
-    let staged_fks = embed_items
+    let staged_foreign_keys = embed_items
         .iter()
-        .filter(|c| matches!(&c.chunk_type, ChunkType::Fk))
+        .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Fk))
         .count();
     tracing::info!(
         profile_id = %config.connection_id,
         staged_at = %staged_at,
         chunks_to_embed = embed_items.len(),
         staged_table_chunks = staged_tables,
-        staged_fk_chunks = staged_fks,
+        staged_fk_chunks = staged_foreign_keys,
         "schema_index rebuild_tables: staged all chunks for targeted tables before embedding"
     );
 
@@ -1412,9 +1441,15 @@ pub async fn rebuild_tables(
         // Use text_for_embedding when available, falling back to ddl_text
         let texts: Vec<String> = batch
             .iter()
-            .map(|c| c.text_for_embedding.as_ref().unwrap_or(&c.ddl_text).clone())
+            .map(|chunk| {
+                chunk
+                    .text_for_embedding
+                    .as_ref()
+                    .unwrap_or(&chunk.ddl_text)
+                    .clone()
+            })
             .collect();
-        let batch_keys: Vec<&str> = batch.iter().map(|c| c.chunk_key.as_str()).collect();
+        let batch_keys: Vec<&str> = batch.iter().map(|chunk| chunk.chunk_key.as_str()).collect();
         tracing::info!(
             profile_id = %config.connection_id,
             batch_start,
@@ -1433,7 +1468,7 @@ pub async fn rebuild_tables(
         let embeddings =
             embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts, None)
                 .await
-                .map_err(|e| format!("Embedding failed: {e}"))?;
+                .map_err(|error| format!("Embedding failed: {error}"))?;
         tracing::debug!(
             profile_id = %config.connection_id,
             batch_start,
@@ -1444,11 +1479,11 @@ pub async fn rebuild_tables(
 
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         conn.execute_batch("BEGIN")
-            .map_err(|e| format!("BEGIN: {e}"))?;
+            .map_err(|error| format!("BEGIN: {error}"))?;
 
-        for (i, chunk) in batch.iter().enumerate() {
+        for (chunk_index, chunk) in batch.iter().enumerate() {
             let insert = ChunkInsert {
                 connection_id: config.connection_id.clone(),
                 chunk_key: chunk.chunk_key.clone(),
@@ -1460,16 +1495,16 @@ pub async fn rebuild_tables(
                 model_id: config.model_id.clone(),
                 ref_db_name: chunk.ref_db_name.clone(),
                 ref_table_name: chunk.ref_table_name.clone(),
-                embedding: embeddings[i].clone(),
+                embedding: embeddings[chunk_index].clone(),
                 text_for_embedding: chunk.text_for_embedding.clone(),
                 row_count_approx: chunk.row_count_approx,
             };
             storage::insert_chunk(&conn, &insert)
-                .map_err(|e| format!("Failed to insert chunk: {e}"))?;
+                .map_err(|error| format!("Failed to insert chunk: {error}"))?;
         }
 
         conn.execute_batch("COMMIT")
-            .map_err(|e| format!("COMMIT: {e}"))?;
+            .map_err(|error| format!("COMMIT: {error}"))?;
     }
 
     tracing::info!(
@@ -1512,9 +1547,9 @@ async fn handle_model_change(
     let existing_meta = {
         let conn = sqlite_conn
             .lock()
-            .map_err(|e| format!("SQLite lock: {e}"))?;
+            .map_err(|error| format!("SQLite lock: {error}"))?;
         storage::get_index_meta(&conn, &config.connection_id)
-            .map_err(|e| format!("Failed to get index meta: {e}"))?
+            .map_err(|error| format!("Failed to get index meta: {error}"))?
     };
 
     match existing_meta {
@@ -1532,19 +1567,19 @@ async fn handle_model_change(
                 &config.model_id,
             )
             .await
-            .map_err(|e| format!("Failed to detect embedding dimension: {e}"))?;
+            .map_err(|error| format!("Failed to detect embedding dimension: {error}"))?;
 
             let conn = sqlite_conn
                 .lock()
-                .map_err(|e| format!("SQLite lock: {e}"))?;
+                .map_err(|error| format!("SQLite lock: {error}"))?;
             // Delete chunks BEFORE dropping vec table, because delete_all_chunks
             // needs to remove rows from the vec table first.
             storage::delete_all_chunks(&conn, &config.connection_id)
-                .map_err(|e| format!("Failed to delete chunks: {e}"))?;
+                .map_err(|error| format!("Failed to delete chunks: {error}"))?;
             storage::drop_vec_table(&conn, &config.connection_id)
-                .map_err(|e| format!("Failed to drop vec table: {e}"))?;
+                .map_err(|error| format!("Failed to drop vec table: {error}"))?;
             storage::create_vec_table(&conn, &config.connection_id, dimension)
-                .map_err(|e| format!("Failed to create vec table: {e}"))?;
+                .map_err(|error| format!("Failed to create vec table: {error}"))?;
 
             let new_meta = IndexMeta {
                 connection_id: config.connection_id.clone(),
@@ -1555,7 +1590,7 @@ async fn handle_model_change(
                 vec_schema_version: Some(storage::VEC_SCHEMA_VERSION as i64),
             };
             storage::upsert_index_meta(&conn, &new_meta)
-                .map_err(|e| format!("Failed to upsert index meta: {e}"))?;
+                .map_err(|error| format!("Failed to upsert index meta: {error}"))?;
         }
         Some(meta) if meta.vec_schema_version != Some(storage::VEC_SCHEMA_VERSION as i64) => {
             // Same model but stale vec0 schema (e.g. L2 → cosine migration) —
@@ -1569,13 +1604,13 @@ async fn handle_model_change(
             let dimension = meta.embedding_dimension as usize;
             let conn = sqlite_conn
                 .lock()
-                .map_err(|e| format!("SQLite lock: {e}"))?;
+                .map_err(|error| format!("SQLite lock: {error}"))?;
             storage::delete_all_chunks(&conn, &config.connection_id)
-                .map_err(|e| format!("Failed to delete chunks: {e}"))?;
+                .map_err(|error| format!("Failed to delete chunks: {error}"))?;
             storage::drop_vec_table(&conn, &config.connection_id)
-                .map_err(|e| format!("Failed to drop vec table: {e}"))?;
+                .map_err(|error| format!("Failed to drop vec table: {error}"))?;
             storage::create_vec_table(&conn, &config.connection_id, dimension)
-                .map_err(|e| format!("Failed to create vec table: {e}"))?;
+                .map_err(|error| format!("Failed to create vec table: {error}"))?;
 
             let new_meta = IndexMeta {
                 connection_id: config.connection_id.clone(),
@@ -1586,7 +1621,7 @@ async fn handle_model_change(
                 vec_schema_version: Some(storage::VEC_SCHEMA_VERSION as i64),
             };
             storage::upsert_index_meta(&conn, &new_meta)
-                .map_err(|e| format!("Failed to upsert index meta: {e}"))?;
+                .map_err(|error| format!("Failed to upsert index meta: {error}"))?;
         }
         None => {
             // No meta yet — detect dimension and create
@@ -1596,13 +1631,13 @@ async fn handle_model_change(
                 &config.model_id,
             )
             .await
-            .map_err(|e| format!("Failed to detect embedding dimension: {e}"))?;
+            .map_err(|error| format!("Failed to detect embedding dimension: {error}"))?;
 
             let conn = sqlite_conn
                 .lock()
-                .map_err(|e| format!("SQLite lock: {e}"))?;
+                .map_err(|error| format!("SQLite lock: {error}"))?;
             storage::create_vec_table(&conn, &config.connection_id, dimension)
-                .map_err(|e| format!("Failed to create vec table: {e}"))?;
+                .map_err(|error| format!("Failed to create vec table: {error}"))?;
 
             let new_meta = IndexMeta {
                 connection_id: config.connection_id.clone(),
@@ -1613,7 +1648,7 @@ async fn handle_model_change(
                 vec_schema_version: Some(storage::VEC_SCHEMA_VERSION as i64),
             };
             storage::upsert_index_meta(&conn, &new_meta)
-                .map_err(|e| format!("Failed to upsert index meta: {e}"))?;
+                .map_err(|error| format!("Failed to upsert index meta: {error}"))?;
         }
         Some(_) => {
             // Same model, same vec schema — continue incrementally
@@ -1690,7 +1725,9 @@ pub fn parse_columns_from_ddl(ddl: &str) -> Vec<(String, String, Option<String>)
         if let Some(cap) = re.captures(trimmed) {
             let name = cap[1].to_string();
             let typ = cap[2].to_string();
-            let comment = re_comment.captures(trimmed).map(|c| c[1].to_string());
+            let comment = re_comment
+                .captures(trimmed)
+                .map(|captures| captures[1].to_string());
             cols.push((name, typ, comment));
         }
     }
@@ -1714,7 +1751,9 @@ pub fn parse_unique_indexes_from_ddl(ddl: &str) -> Vec<String> {
     let re = UNIQUE_REGEX.get_or_init(|| {
         Regex::new(r"(?i)UNIQUE\s+(?:KEY|INDEX)\s+`([^`]+)`").expect("valid unique index regex")
     });
-    re.captures_iter(ddl).map(|c| c[1].to_string()).collect()
+    re.captures_iter(ddl)
+        .map(|captures| captures[1].to_string())
+        .collect()
 }
 
 /// Generate table + FK chunks from DDL inputs, enriched with `text_for_embedding`.
@@ -1739,39 +1778,40 @@ pub fn generate_all_chunks_with_row_counts(
     row_counts: &HashMap<(String, String), i64>,
 ) -> (Vec<GeneratedTableChunk>, Vec<GeneratedFkChunk>) {
     let mut table_chunks = Vec::new();
-    let mut fk_chunks = Vec::new();
+    let mut foreign_key_chunks = Vec::new();
 
     for input in ddl_inputs {
         let raw_ddl = &input.create_table_sql;
 
         // Parse structural info from DDL
         let cols = parse_columns_from_ddl(raw_ddl);
-        let pk_cols = parse_pk_from_ddl(raw_ddl);
-        let unique_idx = parse_unique_indexes_from_ddl(raw_ddl);
+        let primary_key_columns = parse_pk_from_ddl(raw_ddl);
+        let unique_index = parse_unique_indexes_from_ddl(raw_ddl);
         let table_comment = extract_table_comment(raw_ddl);
-        let fks = parse_fks_from_ddl(&input.db_name, &input.table_name, raw_ddl);
+        let foreign_keys = parse_fks_from_ddl(&input.db_name, &input.table_name, raw_ddl);
         let row_count = row_counts
             .get(&(input.db_name.clone(), input.table_name.clone()))
             .copied();
 
         // Convert FkInputs to FkEdges for text_for_embedding
-        let fk_edges: Vec<FkEdge> = fks
+        let foreign_key_edges: Vec<FkEdge> = foreign_keys
             .iter()
-            .flat_map(|fk| {
-                fk.columns
+            .flat_map(|foreign_key| {
+                foreign_key
+                    .columns
                     .iter()
-                    .zip(fk.ref_columns.iter())
+                    .zip(foreign_key.ref_columns.iter())
                     .map(|(src_col, dst_col)| FkEdge {
                         connection_id: String::new(), // filled in by caller
-                        src_db: fk.db_name.clone(),
-                        src_tbl: fk.table_name.clone(),
+                        src_db: foreign_key.db_name.clone(),
+                        src_tbl: foreign_key.table_name.clone(),
                         src_col: src_col.clone(),
-                        dst_db: fk.ref_db_name.clone(),
-                        dst_tbl: fk.ref_table_name.clone(),
+                        dst_db: foreign_key.ref_db_name.clone(),
+                        dst_tbl: foreign_key.ref_table_name.clone(),
                         dst_col: dst_col.clone(),
-                        constraint_name: fk.constraint_name.clone(),
-                        on_delete: Some(fk.on_delete.clone()),
-                        on_update: Some(fk.on_update.clone()),
+                        constraint_name: foreign_key.constraint_name.clone(),
+                        on_delete: Some(foreign_key.on_delete.clone()),
+                        on_update: Some(foreign_key.on_update.clone()),
                     })
                     .collect::<Vec<_>>()
             })
@@ -1783,9 +1823,9 @@ pub fn generate_all_chunks_with_row_counts(
             table_name: &input.table_name,
             table_comment: table_comment.as_deref(),
             columns: &cols,
-            primary_key_columns: &pk_cols,
-            unique_indexes: &unique_idx,
-            foreign_keys: &fk_edges,
+            primary_key_columns: &primary_key_columns,
+            unique_indexes: &unique_index,
+            foreign_keys: &foreign_key_edges,
             row_count,
         });
 
@@ -1809,15 +1849,24 @@ pub fn generate_all_chunks_with_row_counts(
         });
 
         // FK chunks from DDL parsing
-        for fk in fks {
-            let fk_text = generate_fk_chunk_text(&fk);
-            let fk_hash = compute_hash(&fk_text);
-            let fk_key = fk_chunk_key(&fk.db_name, &fk.table_name, &fk.constraint_name);
-            fk_chunks.push((fk_key, fk_text, fk_hash, fk));
+        for foreign_key in foreign_keys {
+            let foreign_key_text = generate_fk_chunk_text(&foreign_key);
+            let foreign_key_hash = compute_hash(&foreign_key_text);
+            let foreign_key_key = fk_chunk_key(
+                &foreign_key.db_name,
+                &foreign_key.table_name,
+                &foreign_key.constraint_name,
+            );
+            foreign_key_chunks.push((
+                foreign_key_key,
+                foreign_key_text,
+                foreign_key_hash,
+                foreign_key,
+            ));
         }
     }
 
-    (table_chunks, fk_chunks)
+    (table_chunks, foreign_key_chunks)
 }
 
 // ── MySQL fetch helpers (excluded from coverage builds) ──────────────────
@@ -1843,12 +1892,12 @@ async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<(String, St
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to enumerate user tables: {e}"))?;
+    .map_err(|error| format!("Failed to enumerate user tables: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
-        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
+        let table = decode_string(row, 1).map_err(|error| format!("table: {error}"))?;
         // Double-check: bind does not work with NOT IN (tuple) so guard in Rust too.
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
@@ -1862,11 +1911,11 @@ async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<(String, St
 /// Used everywhere we read MySQL identifier / metadata columns that the server
 /// may hand back as either depending on collation.
 #[cfg(not(coverage))]
-fn decode_string(row: &sqlx::mysql::MySqlRow, idx: usize) -> Result<String, sqlx::Error> {
+fn decode_string(row: &sqlx::mysql::MySqlRow, index: usize) -> Result<String, sqlx::Error> {
     use sqlx::Row;
-    row.try_get::<String, _>(idx).or_else(|_| {
-        row.try_get::<Vec<u8>, _>(idx)
-            .map(|b| String::from_utf8_lossy(&b).into_owned())
+    row.try_get::<String, _>(index).or_else(|_| {
+        row.try_get::<Vec<u8>, _>(index)
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
     })
 }
 
@@ -1896,7 +1945,7 @@ async fn fetch_all_table_signatures(
          ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
     );
 
-    let idx_sql = format!(
+    let index_sql = format!(
         "SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, \
                 NON_UNIQUE, IFNULL(INDEX_TYPE, '') \
          FROM information_schema.STATISTICS \
@@ -1904,7 +1953,7 @@ async fn fetch_all_table_signatures(
          ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX"
     );
 
-    let fks_sql = format!(
+    let foreign_keys_sql = format!(
         "SELECT kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION, \
                 kcu.COLUMN_NAME, IFNULL(kcu.REFERENCED_TABLE_SCHEMA, ''), \
                 IFNULL(kcu.REFERENCED_TABLE_NAME, ''), IFNULL(kcu.REFERENCED_COLUMN_NAME, ''), \
@@ -1927,16 +1976,16 @@ async fn fetch_all_table_signatures(
     let col_rows = sqlx::query(sqlx::AssertSqlSafe(cols_sql.as_str()))
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to fetch column signatures: {e}"))?;
+        .map_err(|error| format!("Failed to fetch column signatures: {error}"))?;
     for row in &col_rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
         }
-        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let table = decode_string(row, 1).map_err(|error| format!("table: {error}"))?;
         let ordinal: i64 = row
             .try_get::<i64, _>(2)
-            .or_else(|_| row.try_get::<u64, _>(2).map(|v| v as i64))
+            .or_else(|_| row.try_get::<u64, _>(2).map(|value| value as i64))
             .unwrap_or(0);
         let col_name = decode_string(row, 3).unwrap_or_default();
         let col_type = decode_string(row, 4).unwrap_or_default();
@@ -1979,31 +2028,31 @@ async fn fetch_all_table_signatures(
 
     // Indexes
     let started = Instant::now();
-    let idx_rows = sqlx::query(sqlx::AssertSqlSafe(idx_sql.as_str()))
+    let index_rows = sqlx::query(sqlx::AssertSqlSafe(index_sql.as_str()))
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to fetch index signatures: {e}"))?;
-    for row in &idx_rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        .map_err(|error| format!("Failed to fetch index signatures: {error}"))?;
+    for row in &index_rows {
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
         }
-        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
-        let idx_name = decode_string(row, 2).unwrap_or_default();
+        let table = decode_string(row, 1).map_err(|error| format!("table: {error}"))?;
+        let index_name = decode_string(row, 2).unwrap_or_default();
         let seq: i64 = row
             .try_get::<i64, _>(3)
-            .or_else(|_| row.try_get::<u64, _>(3).map(|v| v as i64))
+            .or_else(|_| row.try_get::<u64, _>(3).map(|value| value as i64))
             .unwrap_or(0);
         let col_name = decode_string(row, 4).unwrap_or_default();
         let non_unique: i64 = row
             .try_get::<i64, _>(5)
-            .or_else(|_| row.try_get::<u64, _>(5).map(|v| v as i64))
+            .or_else(|_| row.try_get::<u64, _>(5).map(|value| value as i64))
             .unwrap_or(0);
-        let idx_type = decode_string(row, 6).unwrap_or_default();
+        let index_type = decode_string(row, 6).unwrap_or_default();
 
         let hasher = hashers.entry((schema.clone(), table.clone())).or_default();
         hasher.update(b"I|");
-        hasher.update(idx_name.as_bytes());
+        hasher.update(index_name.as_bytes());
         hasher.update(b"|");
         hasher.update(seq.to_le_bytes());
         hasher.update(b"|");
@@ -2011,31 +2060,31 @@ async fn fetch_all_table_signatures(
         hasher.update(b"|");
         hasher.update(non_unique.to_le_bytes());
         hasher.update(b"|");
-        hasher.update(idx_type.as_bytes());
+        hasher.update(index_type.as_bytes());
         hasher.update(b"\x1e");
     }
     tracing::debug!(
-        rows = idx_rows.len(),
+        rows = index_rows.len(),
         elapsed_ms = started.elapsed().as_millis() as u64,
         "schema_index signatures: STATISTICS bulk query complete"
     );
 
     // Foreign keys
     let started = Instant::now();
-    let fk_rows = sqlx::query(sqlx::AssertSqlSafe(fks_sql.as_str()))
+    let foreign_key_rows = sqlx::query(sqlx::AssertSqlSafe(foreign_keys_sql.as_str()))
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to fetch FK signatures: {e}"))?;
-    for row in &fk_rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        .map_err(|error| format!("Failed to fetch FK signatures: {error}"))?;
+    for row in &foreign_key_rows {
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
         }
-        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let table = decode_string(row, 1).map_err(|error| format!("table: {error}"))?;
         let constraint = decode_string(row, 2).unwrap_or_default();
         let ord: i64 = row
             .try_get::<i64, _>(3)
-            .or_else(|_| row.try_get::<u64, _>(3).map(|v| v as i64))
+            .or_else(|_| row.try_get::<u64, _>(3).map(|value| value as i64))
             .unwrap_or(0);
         let col_name = decode_string(row, 4).unwrap_or_default();
         let ref_schema = decode_string(row, 5).unwrap_or_default();
@@ -2064,14 +2113,14 @@ async fn fetch_all_table_signatures(
         hasher.update(b"\x1e");
     }
     tracing::debug!(
-        rows = fk_rows.len(),
+        rows = foreign_key_rows.len(),
         elapsed_ms = started.elapsed().as_millis() as u64,
         "schema_index signatures: KEY_COLUMN_USAGE bulk query complete"
     );
 
     let out = hashers
         .into_iter()
-        .map(|(k, hasher)| (k, hex::encode(hasher.finalize())))
+        .map(|(key, hasher)| (key, hex::encode(hasher.finalize())))
         .collect();
     Ok(out)
 }
@@ -2093,18 +2142,18 @@ async fn fetch_row_counts(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to fetch row counts: {e}"))?;
+    .map_err(|error| format!("Failed to fetch row counts: {error}"))?;
 
     let mut out = HashMap::with_capacity(rows.len());
     for row in &rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
         }
-        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let table = decode_string(row, 1).map_err(|error| format!("table: {error}"))?;
         let count: i64 = row
             .try_get::<i64, _>(2)
-            .or_else(|_| row.try_get::<u64, _>(2).map(|v| v as i64))
+            .or_else(|_| row.try_get::<u64, _>(2).map(|value| value as i64))
             .unwrap_or(0);
         out.insert((schema, table), count);
     }
@@ -2129,20 +2178,20 @@ async fn fetch_all_user_views(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to enumerate user views: {e}"))?;
+    .map_err(|error| format!("Failed to enumerate user views: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
         }
-        let view_name = decode_string(row, 1).map_err(|e| format!("view: {e}"))?;
+        let view_name = decode_string(row, 1).map_err(|error| format!("view: {error}"))?;
 
-        let safe_db =
-            safe_identifier(&schema).map_err(|e| format!("Invalid db name {schema}: {e}"))?;
+        let safe_db = safe_identifier(&schema)
+            .map_err(|error| format!("Invalid db name {schema}: {error}"))?;
         let safe_view = safe_identifier(&view_name)
-            .map_err(|e| format!("Invalid view name {view_name}: {e}"))?;
+            .map_err(|error| format!("Invalid view name {view_name}: {error}"))?;
         let sql = format!("SHOW CREATE VIEW {safe_db}.{safe_view}");
 
         match sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
@@ -2160,11 +2209,11 @@ async fn fetch_all_user_views(
                     "SHOW CREATE VIEW returned no rows, skipping"
                 );
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
                     view = %view_name,
                     db = %schema,
-                    error = %e,
+                    error = %error,
                     "SHOW CREATE VIEW failed, skipping"
                 );
             }
@@ -2191,21 +2240,21 @@ async fn fetch_all_user_routines(
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to enumerate user routines: {e}"))?;
+    .map_err(|error| format!("Failed to enumerate user routines: {error}"))?;
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        let schema = decode_string(row, 0).map_err(|error| format!("schema: {error}"))?;
         if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
             continue;
         }
-        let routine_name = decode_string(row, 1).map_err(|e| format!("routine: {e}"))?;
-        let routine_type = decode_string(row, 2).map_err(|e| format!("type: {e}"))?;
+        let routine_name = decode_string(row, 1).map_err(|error| format!("routine: {error}"))?;
+        let routine_type = decode_string(row, 2).map_err(|error| format!("type: {error}"))?;
 
-        let safe_db =
-            safe_identifier(&schema).map_err(|e| format!("Invalid db name {schema}: {e}"))?;
+        let safe_db = safe_identifier(&schema)
+            .map_err(|error| format!("Invalid db name {schema}: {error}"))?;
         let safe_name = safe_identifier(&routine_name)
-            .map_err(|e| format!("Invalid routine name {routine_name}: {e}"))?;
+            .map_err(|error| format!("Invalid routine name {routine_name}: {error}"))?;
 
         let show_cmd = if routine_type.to_uppercase() == "PROCEDURE" {
             format!("SHOW CREATE PROCEDURE {safe_db}.{safe_name}")
@@ -2228,11 +2277,11 @@ async fn fetch_all_user_routines(
                     "SHOW CREATE {routine_type} returned no rows, skipping"
                 );
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
                     routine = %routine_name,
                     db = %schema,
-                    error = %e,
+                    error = %error,
                     "SHOW CREATE {routine_type} failed, skipping"
                 );
             }
@@ -2256,7 +2305,7 @@ async fn fetch_create_table(
     let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .fetch_optional(pool)
         .await
-        .map_err(|e| format!("SHOW CREATE TABLE {database}.{table} failed: {e}"))?
+        .map_err(|error| format!("SHOW CREATE TABLE {database}.{table} failed: {error}"))?
         .ok_or_else(|| format!("Table {database}.{table} not found"))?;
 
     let ddl = decode_string(&row, 1).unwrap_or_default();
@@ -2331,8 +2380,8 @@ async fn fetch_create_tables_parallel(
     }
 
     let mut out = Vec::with_capacity(results.len());
-    for r in results {
-        out.push(r?);
+    for result in results {
+        out.push(result?);
     }
 
     tracing::info!(

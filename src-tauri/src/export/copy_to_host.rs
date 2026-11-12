@@ -176,20 +176,20 @@ impl CopySelection {
     /// events (always structure-only).
     pub fn work_list(&self) -> Vec<(CopyObjectType, String)> {
         let mut out = Vec::with_capacity(self.total());
-        for t in &self.tables {
-            out.push((CopyObjectType::Table, t.clone()));
+        for table in &self.tables {
+            out.push((CopyObjectType::Table, table.clone()));
         }
-        for p in &self.procedures {
-            out.push((CopyObjectType::Procedure, p.clone()));
+        for procedure in &self.procedures {
+            out.push((CopyObjectType::Procedure, procedure.clone()));
         }
-        for f in &self.functions {
-            out.push((CopyObjectType::Function, f.clone()));
+        for function in &self.functions {
+            out.push((CopyObjectType::Function, function.clone()));
         }
-        for t in &self.triggers {
-            out.push((CopyObjectType::Trigger, t.clone()));
+        for trigger in &self.triggers {
+            out.push((CopyObjectType::Trigger, trigger.clone()));
         }
-        for e in &self.events {
-            out.push((CopyObjectType::Event, e.clone()));
+        for event in &self.events {
+            out.push((CopyObjectType::Event, event.clone()));
         }
         out
     }
@@ -276,7 +276,7 @@ pub fn validate_mysql_identifier_token(kind: &str, value: &str) -> Result<(), St
 
     if value
         .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
     {
         return Ok(());
     }
@@ -311,48 +311,48 @@ pub fn strip_definer(ddl: &str) -> String {
         return ddl.to_string();
     };
 
-    let mut i = start + needle.len();
+    let mut position = start + needle.len();
     // optional whitespace
-    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
+    while position < bytes.len() && bytes[position].is_ascii_whitespace() {
+        position += 1;
     }
     // require '='
-    if i >= bytes.len() || bytes[i] != b'=' {
+    if position >= bytes.len() || bytes[position] != b'=' {
         return ddl.to_string();
     }
-    i += 1;
+    position += 1;
     // optional whitespace
-    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-        i += 1;
+    while position < bytes.len() && bytes[position].is_ascii_whitespace() {
+        position += 1;
     }
     // consume the user@host spec, allowing whitespace inside quoted identifiers
-    if i >= bytes.len() || bytes[i].is_ascii_whitespace() {
+    if position >= bytes.len() || bytes[position].is_ascii_whitespace() {
         return ddl.to_string();
     }
     let mut quote: Option<u8> = None;
-    while i < bytes.len() {
-        let b = bytes[i];
+    while position < bytes.len() {
+        let byte = bytes[position];
         match quote {
-            Some(q) => {
-                i += 1;
-                if b == q {
+            Some(open_quote) => {
+                position += 1;
+                if byte == open_quote {
                     // MySQL escapes quote characters in quoted identifiers by
                     // doubling them; keep the doubled pair inside the quote.
-                    if i < bytes.len() && bytes[i] == q {
-                        i += 1;
+                    if position < bytes.len() && bytes[position] == open_quote {
+                        position += 1;
                     } else {
                         quote = None;
                     }
                 }
             }
             None => {
-                if b.is_ascii_whitespace() {
+                if byte.is_ascii_whitespace() {
                     break;
                 }
-                if b == b'\'' || b == b'`' || b == b'"' {
-                    quote = Some(b);
+                if byte == b'\'' || byte == b'`' || byte == b'"' {
+                    quote = Some(byte);
                 }
-                i += 1;
+                position += 1;
             }
         }
     }
@@ -360,7 +360,7 @@ pub fn strip_definer(ddl: &str) -> String {
         return ddl.to_string();
     }
     // consume trailing whitespace after the clause
-    let mut after = i;
+    let mut after = position;
     while after < bytes.len() && bytes[after].is_ascii_whitespace() {
         after += 1;
     }
@@ -477,21 +477,21 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
     let after_keyword = &ddl[search_start..];
     let ws_len = after_keyword
         .bytes()
-        .take_while(|b| b.is_ascii_whitespace())
+        .take_while(|byte| byte.is_ascii_whitespace())
         .count();
     let name_start = search_start + ws_len;
     let first_end = parse_mysql_identifier_end(ddl, name_start)?;
     let after_first = &ddl[first_end..];
     let ws_after_first = after_first
         .bytes()
-        .take_while(|b| b.is_ascii_whitespace())
+        .take_while(|byte| byte.is_ascii_whitespace())
         .count();
     let dot_pos = first_end + ws_after_first;
     if ddl[dot_pos..].starts_with('.') {
         let after_dot = dot_pos + 1;
         let ws_after_dot = ddl[after_dot..]
             .bytes()
-            .take_while(|b| b.is_ascii_whitespace())
+            .take_while(|byte| byte.is_ascii_whitespace())
             .count();
         let object_start = after_dot + ws_after_dot;
         let object_end = parse_mysql_identifier_end(ddl, object_start)?;
@@ -503,17 +503,17 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
 
 fn parse_mysql_identifier_end(sql: &str, start: usize) -> Option<usize> {
     if sql[start..].starts_with('`') {
-        let mut idx = start + 1;
+        let mut index = start + 1;
         let bytes = sql.as_bytes();
-        while idx < sql.len() {
-            if bytes[idx] == b'`' {
-                if idx + 1 < sql.len() && bytes[idx + 1] == b'`' {
-                    idx += 2;
+        while index < sql.len() {
+            if bytes[index] == b'`' {
+                if index + 1 < sql.len() && bytes[index + 1] == b'`' {
+                    index += 2;
                     continue;
                 }
-                return Some(idx + 1);
+                return Some(index + 1);
             }
-            idx += 1;
+            index += 1;
         }
         return None;
     }
@@ -573,7 +573,7 @@ pub fn qualify_table_ddl_schema(ddl: &str, target_database: &str, table_name: &s
     let after_prefix = &ddl[header_start..];
     let ws_len = after_prefix
         .bytes()
-        .take_while(|b| b.is_ascii_whitespace())
+        .take_while(|byte| byte.is_ascii_whitespace())
         .count();
     let name_start = header_start + ws_len;
     let escaped_table = table_name.replace('`', "``");
@@ -604,7 +604,7 @@ pub fn qualify_table_ddl_schema(ddl: &str, target_database: &str, table_name: &s
 /// emitted as its own batch.
 pub fn batch_byte_budget(max_allowed_packet: Option<u64>) -> u64 {
     let base = match max_allowed_packet {
-        Some(v) if v > 0 => v,
+        Some(packet_bytes) if packet_bytes > 0 => packet_bytes,
         _ => FALLBACK_PACKET_BYTES,
     };
     let budget = (base as f64 * PACKET_BUDGET_FRACTION) as u64;
@@ -621,11 +621,11 @@ pub fn render_row(row: &[SqlDumpValue]) -> (String, usize) {
     use crate::export::sql_dump::value_to_literal;
     let mut tuple = String::with_capacity(2 + row.len() * 8);
     tuple.push('(');
-    for (i, val) in row.iter().enumerate() {
-        if i > 0 {
+    for (column_index, value) in row.iter().enumerate() {
+        if column_index > 0 {
             tuple.push_str(", ");
         }
-        let lit = value_to_literal(val);
+        let lit = value_to_literal(value);
         tuple.push_str(&lit);
     }
     tuple.push(')');
@@ -677,12 +677,12 @@ pub fn plan_batches(
     let mut acc = prefix_len; // running serialized size of the current batch
     let mut count = 0usize;
 
-    for (idx, (_, row_len)) in rows.iter().enumerate() {
+    for (index, (_, row_len)) in rows.iter().enumerate() {
         // Separator before this row (", " between value tuples), only if not first.
         if should_start_new_batch(count, acc, *row_len, budget, cap) {
             // Close the current batch [start, idx) and start a new one at idx.
-            batches.push((start, idx));
-            start = idx;
+            batches.push((start, index));
+            start = index;
             acc = prefix_len + row_len;
             count = 1;
         } else {
@@ -822,7 +822,7 @@ mod engine {
             let conn = state
                 .db
                 .lock()
-                .map_err(|e| format!("Failed to lock database: {e}"))?;
+                .map_err(|error| format!("Failed to lock database: {error}"))?;
             match crate::db::connections::get_connection(&conn, profile_id) {
                 Ok(Some(record)) => record,
                 Ok(None) => return Err(format!("Connection '{profile_id}' not found")),
@@ -854,7 +854,7 @@ mod engine {
         let params = stored.to_connection_params(password);
         pool::create_pool(&params)
             .await
-            .map_err(|e| format!("Failed to connect to target: {e}"))
+            .map_err(|error| format!("Failed to connect to target: {error}"))
     }
 
     /// Resolve the target pool by reusing a live writable session for the saved
@@ -886,9 +886,9 @@ mod engine {
             .bind(database)
             .fetch_optional(source)
             .await
-            .map_err(|e| {
-                query_log::log_execute_error(&e);
-                format!("Failed to read source charset: {e}")
+            .map_err(|error| {
+                query_log::log_execute_error(&error);
+                format!("Failed to read source charset: {error}")
             })?
             .ok_or_else(|| format!("Source database '{database}' not found"))?;
         query_log::log_mysql_row(&row);
@@ -908,9 +908,9 @@ mod engine {
             .bind(database)
             .fetch_optional(&mut *target)
             .await
-            .map_err(|e| {
-                query_log::log_execute_error(&e);
-                format!("Failed to check target database: {e}")
+            .map_err(|error| {
+                query_log::log_execute_error(&error);
+                format!("Failed to check target database: {error}")
             })?;
         if let Some(row) = &row {
             query_log::log_mysql_row(row);
@@ -952,10 +952,13 @@ mod engine {
         let sql = "SELECT @@max_allowed_packet";
         query_log::log_outgoing_sql(sql);
         match sqlx::query(sql).fetch_optional(&mut *target).await {
-            Ok(Some(row)) => row.try_get::<i64, _>(0).ok().map(|v| v.max(0) as u64),
+            Ok(Some(row)) => row
+                .try_get::<i64, _>(0)
+                .ok()
+                .map(|value| value.max(0) as u64),
             Ok(None) => None,
-            Err(e) => {
-                query_log::log_execute_error(&e);
+            Err(error) => {
+                query_log::log_execute_error(&error);
                 None
             }
         }
@@ -977,9 +980,9 @@ mod engine {
                 query_log::log_execute_result(&result);
                 Ok(())
             }
-            Err(e) => {
-                query_log::log_execute_error(&e);
-                Err(e.to_string())
+            Err(error) => {
+                query_log::log_execute_error(&error);
+                Err(error.to_string())
             }
         }
     }
@@ -1050,15 +1053,15 @@ mod engine {
         let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .fetch_one(source)
             .await
-            .map_err(|e| {
-                query_log::log_execute_error(&e);
-                format!("Failed to count rows in '{table}': {e}")
+            .map_err(|error| {
+                query_log::log_execute_error(&error);
+                format!("Failed to count rows in '{table}': {error}")
             })?;
         query_log::log_mysql_row(&row);
 
         let row_count = row
             .try_get::<i64, _>("row_count")
-            .map_err(|e| format!("Failed to decode row count for '{table}': {e}"))?;
+            .map_err(|error| format!("Failed to decode row count for '{table}': {error}"))?;
         Ok(row_count.max(0) as u64)
     }
 
@@ -1116,17 +1119,17 @@ mod engine {
         loop {
             // Cancel checkpoint at batch boundary (before fetching the next row).
             {
-                let map = jobs.read().unwrap_or_else(|p| p.into_inner());
-                if let Some(p) = map.get(job_id) {
-                    if should_cancel(p) {
+                let map = jobs.read().unwrap_or_else(|poisoned| poisoned.into_inner());
+                if let Some(progress) = map.get(job_id) {
+                    if should_cancel(progress) {
                         return Ok(false);
                     }
                 }
             }
 
-            let next = stream.next().await.transpose().map_err(|e| {
-                query_log::log_execute_error(&e);
-                format!("Failed to read data from '{table}': {e}")
+            let next = stream.next().await.transpose().map_err(|error| {
+                query_log::log_execute_error(&error);
+                format!("Failed to read data from '{table}': {error}")
             })?;
 
             let Some(row) = next else {
@@ -1138,7 +1141,7 @@ mod engine {
                 let col_list = row
                     .columns()
                     .iter()
-                    .map(|c| format!("`{}`", c.name().replace('`', "``")))
+                    .map(|column| format!("`{}`", column.name().replace('`', "``")))
                     .collect::<Vec<_>>()
                     .join(", ");
                 // Validate the target table identifier (length/shape) on the
@@ -1155,10 +1158,12 @@ mod engine {
                 prefix = Some(built);
             }
 
-            let vals: Vec<SqlDumpValue> = (0..row.columns().len())
-                .map(|i| crate::commands::sql_dump::serialize_dump_value(&row, i))
+            let values: Vec<SqlDumpValue> = (0..row.columns().len())
+                .map(|column_index| {
+                    crate::commands::sql_dump::serialize_dump_value(&row, column_index)
+                })
                 .collect();
-            let (tuple, tuple_len) = render_row(&vals);
+            let (tuple, tuple_len) = render_row(&values);
 
             // Decide whether this row fits the current batch or starts a new one.
             if should_start_new_batch(batch.len(), acc, tuple_len, budget, cap) {
@@ -1211,8 +1216,8 @@ mod engine {
     ) -> Result<u64, String> {
         let mut stmt = String::with_capacity(prefix.len() + batch.len() * 32);
         stmt.push_str(prefix);
-        for (i, (tuple, _)) in batch.iter().enumerate() {
-            if i > 0 {
+        for (batch_index, (tuple, _)) in batch.iter().enumerate() {
+            if batch_index > 0 {
                 stmt.push_str(", ");
             }
             stmt.push_str(tuple);
@@ -1220,9 +1225,11 @@ mod engine {
         run_target_statement(&mut *target, &stmt).await?;
 
         let new_rows_done = rows_done + batch.len() as u64;
-        let mut map = jobs.write().unwrap_or_else(|p| p.into_inner());
-        if let Some(p) = map.get_mut(job_id) {
-            p.rows_done = Some(new_rows_done);
+        let mut map = jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(progress) = map.get_mut(job_id) {
+            progress.rows_done = Some(new_rows_done);
         }
         Ok(new_rows_done)
     }
@@ -1237,16 +1244,18 @@ mod engine {
         let result = run_copy_inner(state, &params, &jobs, &job_id).await;
         // Terminal-status write must never be silently dropped on a poisoned
         // lock — recover the guard so the job does not stay `Running` forever.
-        let mut map = jobs.write().unwrap_or_else(|p| p.into_inner());
+        let mut map = jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         match map.get_mut(&job_id) {
-            Some(p) => {
+            Some(progress) => {
                 // Only set a terminal state if still running (cancel may have
                 // already set Cancelled inside the inner loop).
-                if p.status == CopyJobStatus::Running {
+                if progress.status == CopyJobStatus::Running {
                     match result {
-                        Ok(true) => mark_completed(p),
-                        Ok(false) => mark_cancelled(p),
-                        Err(e) => mark_failed(p, e),
+                        Ok(true) => mark_completed(progress),
+                        Ok(false) => mark_cancelled(progress),
+                        Err(error) => mark_failed(progress, error),
                     }
                 }
             }
@@ -1311,7 +1320,7 @@ mod engine {
         let mut conn = target
             .acquire()
             .await
-            .map_err(|e| format!("Failed to acquire target connection: {e}"))?;
+            .map_err(|error| format!("Failed to acquire target connection: {error}"))?;
 
         ensure_target_database(
             source,
@@ -1334,12 +1343,12 @@ mod engine {
                 restore?;
                 Ok(outcome)
             }
-            Err(e) => {
+            Err(error) => {
                 // Surface the original error even if restore also failed.
                 if let Err(re) = restore {
                     tracing::error!(error = %re, "Failed to restore FOREIGN_KEY_CHECKS after copy error");
                 }
-                Err(e)
+                Err(error)
             }
         }
     }
@@ -1366,13 +1375,15 @@ mod engine {
 
             // Cancel checkpoint at object boundary.
             {
-                let mut map = jobs.write().unwrap_or_else(|p| p.into_inner());
-                let p = map.get_mut(job_id).ok_or("Job entry missing")?;
-                if should_cancel(p) {
-                    mark_cancelled(p);
+                let mut map = jobs
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let progress = map.get_mut(job_id).ok_or("Job entry missing")?;
+                if should_cancel(progress) {
+                    mark_cancelled(progress);
                     return Ok(false);
                 }
-                begin_object(p, object_type, &name, rows_total);
+                begin_object(progress, object_type, &name, rows_total);
             }
 
             // Structure phase (all object types; routines/triggers/events are
@@ -1407,17 +1418,21 @@ mod engine {
                 )
                 .await?;
                 if !completed {
-                    let mut map = jobs.write().unwrap_or_else(|p| p.into_inner());
-                    if let Some(p) = map.get_mut(job_id) {
-                        mark_cancelled(p);
+                    let mut map = jobs
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    if let Some(progress) = map.get_mut(job_id) {
+                        mark_cancelled(progress);
                     }
                     return Ok(false);
                 }
             }
 
-            let mut map = jobs.write().unwrap_or_else(|p| p.into_inner());
-            if let Some(p) = map.get_mut(job_id) {
-                complete_object(p);
+            let mut map = jobs
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if let Some(progress) = map.get_mut(job_id) {
+                complete_object(progress);
             }
         }
 

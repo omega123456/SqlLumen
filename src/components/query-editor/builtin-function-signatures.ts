@@ -13,10 +13,10 @@ export interface BuiltinFunctionSignature {
  * Auto-generate a signature label from the function name and parameter labels.
  * Returns the explicit `label` when provided, otherwise builds `NAME(p1, p2, ...)`.
  */
-export function getSignatureLabel(name: string, sig: BuiltinFunctionSignature): string {
-  if (sig.label) return sig.label
-  const paramStr = sig.parameters.map((p) => p.label).join(', ')
-  return `${name}(${paramStr})`
+export function getSignatureLabel(name: string, signature: BuiltinFunctionSignature): string {
+  if (signature.label) return signature.label
+  const parameterList = signature.parameters.map((parameter) => parameter.label).join(', ')
+  return `${name}(${parameterList})`
 }
 
 export const BUILTIN_FUNCTION_SIGNATURES: Map<string, BuiltinFunctionSignature> = new Map([
@@ -4859,7 +4859,7 @@ export function getBuiltinSignature(
   name: string
 ): (BuiltinFunctionSignature & { label: string }) | undefined {
   const key = name.toUpperCase()
-  const sig = BUILTIN_FUNCTION_SIGNATURES.get(key)
-  if (!sig) return undefined
-  return { ...sig, label: getSignatureLabel(key, sig) }
+  const signature = BUILTIN_FUNCTION_SIGNATURES.get(key)
+  if (!signature) return undefined
+  return { ...signature, label: getSignatureLabel(key, signature) }
 }

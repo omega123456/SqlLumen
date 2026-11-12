@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BaseFormView } from '../shared/BaseFormView'
 import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
-import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
+import { columnKey, columnIndexFromKey } from '../../lib/col-key-utils'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import { isBinaryDataType } from '../../lib/blob-utils'
 import { logFrontend } from '../../lib/app-log-commands'
@@ -144,7 +144,7 @@ export function ResultFormView({
       subscribeToRowPatches(tabId, resultIndex, (baseIndex, apply) => {
         setFetched((current) =>
           current && current.row.baseIndex === baseIndex
-            ? { ...current, row: { baseIndex, row: apply(current.row.row) } }
+            ? { ...current, row: { baseIndex: baseIndex, row: apply(current.row.row) } }
             : current
         )
       }),
@@ -197,15 +197,15 @@ export function ResultFormView({
       __rowIdx: clampedIndex,
       __baseIdx: currentCached?.baseIndex ?? -1,
     }
-    for (let i = 0; i < columns.length; i++) {
-      rowData[colKey(i)] = currentRow[i] ?? null
+    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+      rowData[columnKey(columnIndex)] = currentRow[columnIndex] ?? null
     }
 
     if (editingRowIndex === clampedIndex && editState) {
-      for (let i = 0; i < columns.length; i++) {
-        const boundName = editColumnBindings.get(i)
+      for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+        const boundName = editColumnBindings.get(columnIndex)
         if (boundName && boundName in editState.currentValues) {
-          rowData[colKey(i)] = editState.currentValues[boundName]
+          rowData[columnKey(columnIndex)] = editState.currentValues[boundName]
         }
       }
     }
@@ -237,11 +237,11 @@ export function ResultFormView({
     () =>
       resolveQueryResultColumns({
         resultColumns: columns,
-        editMode,
-        editableColumnMap,
-        editTableColumns,
-        editForeignKeys,
-        editColumnBindings,
+        editMode: editMode,
+        editableColumnMap: editableColumnMap,
+        editTableColumns: editTableColumns,
+        editForeignKeys: editForeignKeys,
+        editColumnBindings: editColumnBindings,
       }),
     [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings]
   )
@@ -249,22 +249,22 @@ export function ResultFormView({
   // --- Transform columns → GridColumnDescriptor[] ---
 
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return resolvedColumns.map((col, colIdx) => {
-      const isBinary = col.tableColumnMeta?.isBinary ?? isBinaryDataType(col.dataType)
+    return resolvedColumns.map((column, columnIndex) => {
+      const isBinary = column.tableColumnMeta?.isBinary ?? isBinaryDataType(column.dataType)
       return {
-        key: col.key,
-        displayName: col.displayName,
-        dataType: col.tableColumnMeta?.dataType ?? col.dataType,
-        editable: col.editable,
-        isBinary,
+        key: column.key,
+        displayName: column.displayName,
+        dataType: column.tableColumnMeta?.dataType ?? column.dataType,
+        editable: column.editable,
+        isBinary: isBinary,
         blobViewer: isBinary,
-        blobViewerEditable: isBinary && editMode !== null && editColumnBindings.has(colIdx),
-        isNullable: col.tableColumnMeta?.isNullable ?? false,
-        isPrimaryKey: col.tableColumnMeta?.isPrimaryKey ?? false,
-        isUniqueKey: col.tableColumnMeta?.isUniqueKey ?? false,
-        enumValues: col.tableColumnMeta?.enumValues,
-        tableColumnMeta: col.tableColumnMeta,
-        foreignKey: col.foreignKey,
+        blobViewerEditable: isBinary && editMode !== null && editColumnBindings.has(columnIndex),
+        isNullable: column.tableColumnMeta?.isNullable ?? false,
+        isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
+        isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
+        enumValues: column.tableColumnMeta?.enumValues,
+        tableColumnMeta: column.tableColumnMeta,
+        foreignKey: column.foreignKey,
       }
     })
   }, [editColumnBindings, editMode, resolvedColumns])
@@ -277,32 +277,32 @@ export function ResultFormView({
     const currentValues: Record<string, unknown> = {}
     const originalValues: Record<string, unknown> = {}
 
-    for (let i = 0; i < columns.length; i++) {
-      const colName = editColumnBindings.get(i)
-      if (!colName) continue
-      const key = colKey(i)
-      if (colName in editState.currentValues) {
-        currentValues[key] = editState.currentValues[colName]
+    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+      const columnName = editColumnBindings.get(columnIndex)
+      if (!columnName) continue
+      const key = columnKey(columnIndex)
+      if (columnName in editState.currentValues) {
+        currentValues[key] = editState.currentValues[columnName]
       }
-      if (colName in editState.originalValues) {
-        originalValues[key] = editState.originalValues[colName]
+      if (columnName in editState.originalValues) {
+        originalValues[key] = editState.originalValues[columnName]
       }
     }
 
     return {
       rowKey: JSON.stringify(editState.rowKey),
-      currentValues,
-      originalValues,
+      currentValues: currentValues,
+      originalValues: originalValues,
     }
   }, [isEditingCurrentRow, editState, columns, editColumnBindings])
 
   // --- Edit callbacks (translate col_N → real column name) ---
 
   const handleUpdateCell = useCallback(
-    (colKey_: string, value: unknown) => {
-      const colIndex = colIndexFromKey(colKey_)
-      if (columns[colIndex]) {
-        onUpdateCell?.(colIndex, value)
+    (changedColumnKey: string, value: unknown) => {
+      const columnIndex = columnIndexFromKey(changedColumnKey)
+      if (columns[columnIndex]) {
+        onUpdateCell?.(columnIndex, value)
       }
     },
     [columns, onUpdateCell]
@@ -327,10 +327,10 @@ export function ResultFormView({
 
   const handleBlobView = useCallback(
     (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
-      const columnIndex = colIndexFromKey(column.key)
+      const columnIndex = columnIndexFromKey(column.key)
       const cellValue = rowData?.[column.key]
       setBlobContext({
-        columnIndex,
+        columnIndex: columnIndex,
         columnLabel: column.displayName,
         base64: typeof cellValue === 'string' ? cellValue : null,
         editable: column.blobViewerEditable === true,
@@ -373,7 +373,10 @@ export function ResultFormView({
     [isInEditMode, editState, onSaveRow, onDiscardRow, onNavigate]
   )
 
-  const handleNavigatePrev = useCallback(() => navigateWithAutoSave('prev'), [navigateWithAutoSave])
+  const handleNavigatePrevious = useCallback(
+    () => navigateWithAutoSave('prev'),
+    [navigateWithAutoSave]
+  )
 
   const handleNavigateNext = useCallback(() => navigateWithAutoSave('next'), [navigateWithAutoSave])
 
@@ -389,7 +392,7 @@ export function ResultFormView({
         currentAbsoluteIndex={currentIndex}
         isFirstRecord={currentIndex <= 0}
         isLastRecord={currentIndex >= totalRows - 1}
-        onNavigatePrev={handleNavigatePrev}
+        onNavigatePrev={handleNavigatePrevious}
         onNavigateNext={handleNavigateNext}
         editState={sharedEditState}
         onEnsureEditing={isInEditMode ? handleEnsureEditing : undefined}

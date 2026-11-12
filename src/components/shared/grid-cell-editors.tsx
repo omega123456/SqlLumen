@@ -76,7 +76,7 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
   const foreignKey = props.foreignKey
-  const fkLookup = useFkLookup()
+  const foreignKeyLookup = useFkLookup()
 
   const rawValue = row[fieldName]
   const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
@@ -177,24 +177,24 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
           variant="gridCell"
           className={styles.editorInput}
           value={displayValue}
-          onChange={(e) => handleChange(e.target.value)}
-          onBlur={(e) => handleBlur(e.relatedTarget)}
-          onKeyDown={(e) => {
+          onChange={(event) => handleChange(event.target.value)}
+          onBlur={(event) => handleBlur(event.relatedTarget)}
+          onKeyDown={(event) => {
             if (
-              e.key === 'F4' &&
-              !e.altKey &&
-              !e.ctrlKey &&
-              !e.metaKey &&
-              !e.shiftKey &&
+              event.key === 'F4' &&
+              !event.altKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
               foreignKey &&
-              fkLookup
+              foreignKeyLookup
             ) {
-              e.preventDefault()
-              e.stopPropagation()
+              event.preventDefault()
+              event.stopPropagation()
               // Close the overlay before opening the dialog so it does not float
               // over the modal (the glide overlay portal outranks the dialog z-index).
               onClose(true, false)
-              fkLookup.onFkLookup({
+              foreignKeyLookup.onFkLookup({
                 columnKey: fieldName,
                 currentValue: isNull ? null : value,
                 foreignKey: foreignKey,
@@ -203,14 +203,14 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
               })
               return
             }
-            if (e.key === 'Tab' || e.key === 'Enter') {
+            if (event.key === 'Tab' || event.key === 'Enter') {
               // Commit and focus grid for navigation
               onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
               onClose(true, true)
-              e.preventDefault()
+              event.preventDefault()
               return
             }
-            if (e.key === 'Escape') {
+            if (event.key === 'Escape') {
               // Restore original value and sync to store
               isCancellingRef.current = true
               setIsNull(initialNull)
@@ -229,14 +229,14 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
           <Button
             variant="bare"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
             NULL
           </Button>
         )}
-        {foreignKey && fkLookup && (
+        {foreignKey && foreignKeyLookup && (
           <FkLookupTriggerButton
             foreignKey={foreignKey}
             columnKey={fieldName}
@@ -256,7 +256,7 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
   const foreignKey = props.foreignKey
-  const fkLookup = useFkLookup()
+  const foreignKeyLookup = useFkLookup()
 
   const rawValue = row[fieldName]
   const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
@@ -354,39 +354,39 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
           className={styles.editorTextarea}
           rows={6}
           value={displayValue}
-          onChange={(e) => handleChange(e.target.value)}
-          onBlur={(e) => handleBlur(e.relatedTarget)}
-          onKeyDown={(e) => {
+          onChange={(event) => handleChange(event.target.value)}
+          onBlur={(event) => handleBlur(event.relatedTarget)}
+          onKeyDown={(event) => {
             if (
-              e.key === 'F4' &&
-              !e.altKey &&
-              !e.ctrlKey &&
-              !e.metaKey &&
-              !e.shiftKey &&
+              event.key === 'F4' &&
+              !event.altKey &&
+              !event.ctrlKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
               foreignKey &&
-              fkLookup
+              foreignKeyLookup
             ) {
-              e.preventDefault()
-              e.stopPropagation()
+              event.preventDefault()
+              event.stopPropagation()
               // Close the overlay before opening the dialog so it does not float
               // over the modal (the glide overlay portal outranks the dialog z-index).
               onClose(true, false)
-              fkLookup.onFkLookup({
+              foreignKeyLookup.onFkLookup({
                 columnKey: fieldName,
                 currentValue: isNull ? null : value,
-                foreignKey,
+                foreignKey: foreignKey,
                 rowData: row,
                 source: 'keyboard',
               })
               return
             }
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (event.key === 'Enter' && !event.shiftKey) {
               onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
               onClose(true, true)
-              e.preventDefault()
+              event.preventDefault()
               return
             }
-            if (e.key === 'Escape') {
+            if (event.key === 'Escape') {
               isCancellingRef.current = true
               setIsNull(initialNull)
               setValue(initialNull ? '' : String(initialValue ?? ''))
@@ -402,14 +402,14 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
           <Button
             variant="bare"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
             NULL
           </Button>
         )}
-        {foreignKey && fkLookup && (
+        {foreignKey && foreignKeyLookup && (
           <FkLookupTriggerButton
             foreignKey={foreignKey}
             columnKey={fieldName}
@@ -433,7 +433,7 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
   const foreignKey = props.foreignKey
-  const fkLookup = useFkLookup()
+  const foreignKeyLookup = useFkLookup()
   const fullOverlay = props.fullOverlay ?? false
 
   const rawValue = row[fieldName]
@@ -508,29 +508,29 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
     if (isNullable) {
       out.push({ value: ENUM_NULL_SENTINEL, label: 'NULL' })
     }
-    for (const enumVal of ev) {
-      out.push({ value: enumVal, label: enumVal })
+    for (const enumValue of ev) {
+      out.push({ value: enumValue, label: enumValue })
     }
     return out
   }, [props.columnMeta?.enumValues, isNullable])
 
   const handleCommitKeys = useCallback(
-    (e: ReactKeyboardEvent) => {
+    (event: ReactKeyboardEvent) => {
       if (
-        e.key === 'F4' &&
-        !e.altKey &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.shiftKey &&
+        event.key === 'F4' &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
         foreignKey &&
-        fkLookup
+        foreignKeyLookup
       ) {
-        e.preventDefault()
-        e.stopPropagation()
+        event.preventDefault()
+        event.stopPropagation()
         // Close the overlay before opening the dialog so it does not float
         // over the modal (the glide overlay portal outranks the dialog z-index).
         onClose(true, false)
-        fkLookup.onFkLookup({
+        foreignKeyLookup.onFkLookup({
           columnKey: fieldName,
           currentValue: isNull ? null : value,
           foreignKey: foreignKey,
@@ -539,23 +539,23 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
         })
         return
       }
-      if (e.key === 'Tab' || e.key === 'Enter') {
+      if (event.key === 'Tab' || event.key === 'Enter') {
         onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
         onClose(true, true)
-        e.preventDefault()
+        event.preventDefault()
         return
       }
-      if (e.key === 'Escape') {
+      if (event.key === 'Escape') {
         setIsNull(initialNull)
         setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
         syncToStore(initialValue)
         onClose(false, false)
-        e.preventDefault()
+        event.preventDefault()
       }
     },
     [
       fieldName,
-      fkLookup,
+      foreignKeyLookup,
       foreignKey,
       initialNull,
       initialValue,
@@ -637,14 +637,14 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
             <Button
               variant="bare"
               className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(event) => event.preventDefault()}
               onClick={handleToggleNull}
               tabIndex={-1}
             >
               NULL
             </Button>
           )}
-          {foreignKey && fkLookup && (
+          {foreignKey && foreignKeyLookup && (
             <FkLookupTriggerButton
               foreignKey={foreignKey}
               columnKey={fieldName}

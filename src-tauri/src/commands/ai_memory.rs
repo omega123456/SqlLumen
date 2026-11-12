@@ -31,9 +31,12 @@ pub fn resolve_save_owner(
         MemoryScope::Connection => Ok(Some(profile_id)),
         MemoryScope::Global => Ok(None),
         MemoryScope::Group => {
-            let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+            let conn = state
+                .db
+                .lock()
+                .map_err(|error| format!("DB lock: {error}"))?;
             let record = connections::get_connection(&conn, &profile_id)
-                .map_err(|e| e.to_string())?
+                .map_err(|error| error.to_string())?
                 .ok_or_else(|| format!("Connection '{profile_id}' not found"))?;
             record
                 .group_id
@@ -65,7 +68,10 @@ pub fn save_memory_impl(
 ) -> Result<(AiMemory, Option<String>, String, String), String> {
     let owner_id = resolve_save_owner(state, session_id, scope)?;
 
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
 
     // Read embedding config — fail early if not configured.
     let (endpoint, model) = read_embedding_config(&conn)?;
@@ -106,10 +112,13 @@ pub async fn save_memory_full(
     let embed_result = async {
         let dim = embeddings::detect_embedding_dimension(&state.http_client, &endpoint, &model)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
 
         let table_name = {
-            let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+            let conn = state
+                .db
+                .lock()
+                .map_err(|error| format!("DB lock: {error}"))?;
             storage::ensure_vec_table_for_scope(&conn, scope, owner_id.as_deref(), dim)?
         };
 
@@ -121,7 +130,7 @@ pub async fn save_memory_full(
             None,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
         if vecs.len() != 1 {
             return Err(format!(
@@ -131,21 +140,24 @@ pub async fn save_memory_full(
         }
 
         let embedding = vecs.into_iter().next().unwrap();
-        let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
         storage::insert_memory_vector(&conn, &table_name, memory.id, &embedding)
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
 
         Ok::<(), String>(())
     }
     .await;
 
-    if let Err(e) = embed_result {
-        tracing::error!(memory_id = memory.id, scope = scope.as_str(), error = %e, "save_memory: embedding failed — cleaning up row");
+    if let Err(error) = embed_result {
+        tracing::error!(memory_id = memory.id, scope = scope.as_str(), error = %error, "save_memory: embedding failed — cleaning up row");
         // Best-effort cleanup: remove the orphaned memory row.
         if let Ok(conn) = state.db.lock() {
             let _ = storage::delete_memory_scoped(&conn, scope, memory.id);
         }
-        return Err(e);
+        return Err(error);
     }
 
     tracing::debug!(
@@ -163,16 +175,23 @@ pub async fn save_memory_full(
 
 pub fn list_global_memories_impl(state: &AppState) -> Result<Vec<AiMemory>, String> {
     tracing::debug!("list_global_memories: start");
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
-    let memories = storage::list_global_memories(&conn).map_err(|e| e.to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
+    let memories = storage::list_global_memories(&conn).map_err(|error| error.to_string())?;
     tracing::debug!(count = memories.len(), "list_global_memories: done");
     Ok(memories)
 }
 
 pub fn list_group_memories_impl(state: &AppState, group_id: &str) -> Result<Vec<AiMemory>, String> {
     tracing::debug!(group_id, "list_group_memories: start");
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
-    let memories = storage::list_group_memories(&conn, group_id).map_err(|e| e.to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
+    let memories =
+        storage::list_group_memories(&conn, group_id).map_err(|error| error.to_string())?;
     tracing::debug!(
         group_id,
         count = memories.len(),
@@ -186,8 +205,12 @@ pub fn list_connection_memories_impl(
     connection_id: &str,
 ) -> Result<Vec<AiMemory>, String> {
     tracing::debug!(connection_id, "list_connection_memories: start");
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
-    let memories = storage::list_memories(&conn, connection_id).map_err(|e| e.to_string())?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
+    let memories =
+        storage::list_memories(&conn, connection_id).map_err(|error| error.to_string())?;
     tracing::debug!(
         connection_id,
         count = memories.len(),
@@ -204,7 +227,10 @@ pub fn delete_memory_impl(
     memory_id: i64,
 ) -> Result<(), String> {
     tracing::debug!(scope = scope.as_str(), memory_id, "delete_memory: start");
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
 
     let memory = storage::get_memory_by_id_scoped(&conn, scope, memory_id)?.ok_or_else(|| {
         tracing::error!(
@@ -247,7 +273,10 @@ pub fn move_memory_prepare(
     to_group_id: Option<&str>,
     to_connection_id: Option<&str>,
 ) -> Result<(String, Option<String>, String, String), String> {
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
 
     let source = storage::get_memory_by_id_scoped(&conn, from_scope, memory_id)?
         .ok_or_else(|| format!("Memory with id {memory_id} not found at source scope"))?;
@@ -258,7 +287,7 @@ pub fn move_memory_prepare(
         MemoryScope::Group => {
             let gid = to_group_id.ok_or_else(|| "group target requires toGroupId".to_string())?;
             connection_groups::get_group(&conn, gid)
-                .map_err(|e| e.to_string())?
+                .map_err(|error| error.to_string())?
                 .ok_or_else(|| format!("Group '{gid}' not found"))?;
             Some(gid.to_string())
         }
@@ -266,7 +295,7 @@ pub fn move_memory_prepare(
             let cid = to_connection_id
                 .ok_or_else(|| "connection target requires toConnectionId".to_string())?;
             connections::get_connection(&conn, cid)
-                .map_err(|e| e.to_string())?
+                .map_err(|error| error.to_string())?
                 .ok_or_else(|| format!("Connection '{cid}' not found"))?;
             Some(cid.to_string())
         }
@@ -307,7 +336,7 @@ pub async fn move_memory_full(
 
     let dim = embeddings::detect_embedding_dimension(&state.http_client, &endpoint, &model)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     let _ = dim; // dimension is implied by the embedding length; kept for parity/logging.
 
     let vecs = embeddings::embed_texts(
@@ -318,7 +347,7 @@ pub async fn move_memory_full(
         None,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|error| error.to_string())?;
 
     let embedding = vecs
         .into_iter()
@@ -326,7 +355,10 @@ pub async fn move_memory_full(
         .ok_or_else(|| "Empty embedding response".to_string())?;
 
     let new_memory = {
-        let mut conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+        let mut conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
         storage::move_memory(
             &mut conn,
             from_scope,
@@ -357,9 +389,12 @@ pub fn resolve_search_owners(
     session_id: &str,
 ) -> Result<(String, Option<String>), String> {
     let profile_id = resolve_session_profile(state, session_id)?;
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
     let group_id = connections::get_connection(&conn, &profile_id)
-        .map_err(|e| e.to_string())?
+        .map_err(|error| error.to_string())?
         .and_then(|record| record.group_id);
     Ok((profile_id, group_id))
 }
@@ -371,7 +406,10 @@ pub fn resolve_search_owners(
 pub fn reembed_targets(
     state: &AppState,
 ) -> Result<Vec<(MemoryScope, Option<String>, String)>, String> {
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
 
     let mut targets: Vec<(MemoryScope, Option<String>, String)> = Vec::new();
 
@@ -379,13 +417,13 @@ pub fn reembed_targets(
     targets.push((MemoryScope::Global, None, "global".to_string()));
 
     // Every group.
-    for group in connection_groups::list_groups(&conn).map_err(|e| e.to_string())? {
+    for group in connection_groups::list_groups(&conn).map_err(|error| error.to_string())? {
         let owner_key = format!("group_{}", group.id);
         targets.push((MemoryScope::Group, Some(group.id), owner_key));
     }
 
     // Every connection.
-    for record in connections::list_connections(&conn).map_err(|e| e.to_string())? {
+    for record in connections::list_connections(&conn).map_err(|error| error.to_string())? {
         targets.push((MemoryScope::Connection, Some(record.id.clone()), record.id));
     }
 
@@ -476,11 +514,11 @@ pub async fn move_memory(
 pub async fn search_memories(
     session_id: String,
     query: String,
-    k: usize,
+    limit: usize,
     state: State<'_, AppState>,
 ) -> Result<Vec<AiMemory>, String> {
     let (connection_id, group_id) = resolve_search_owners(&state, &session_id)?;
-    search::search_memories_impl(&state, &connection_id, group_id.as_deref(), &query, k).await
+    search::search_memories_impl(&state, &connection_id, group_id.as_deref(), &query, limit).await
 }
 
 #[cfg(not(coverage))]

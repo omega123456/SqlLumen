@@ -147,10 +147,10 @@ export async function listAiModels(endpoint: string): Promise<ListAiModelsResult
   try {
     const response = await invoke<{ models: AiModelInfo[] }>('list_ai_models', { endpoint })
     return { models: response.models }
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err)
-    logFrontend('error', `[ai-commands] Failed to list AI models: ${errorMsg}`)
-    return { models: [], error: errorMsg }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logFrontend('error', `[ai-commands] Failed to list AI models: ${errorMessage}`)
+    return { models: [], error: errorMessage }
   }
 }
 
@@ -174,6 +174,6 @@ export interface AiQueryExpandResponse {
  * Non-streaming query expansion via `ai_query_expand`.
  * Sends a system + user message pair and returns the assistant response text.
  */
-export async function aiQueryExpand(req: AiQueryExpandRequest): Promise<AiQueryExpandResponse> {
-  return invoke<AiQueryExpandResponse>('ai_query_expand', { req })
+export async function aiQueryExpand(request: AiQueryExpandRequest): Promise<AiQueryExpandResponse> {
+  return invoke<AiQueryExpandResponse>('ai_query_expand', { req: request })
 }

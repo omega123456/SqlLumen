@@ -39,9 +39,9 @@ pub fn create_session_snapshot_impl(
         summary_json: summary_json.to_string(),
         state_json: state_json.to_string(),
     };
-    session_snapshots::insert_and_prune(&conn, &snapshot, keep).map_err(|e| {
-        error!(error = %e, trigger_type, "failed to create session snapshot");
-        e.to_string()
+    session_snapshots::insert_and_prune(&conn, &snapshot, keep).map_err(|error| {
+        error!(error = %error, trigger_type, "failed to create session snapshot");
+        error.to_string()
     })
 }
 
@@ -72,9 +72,9 @@ pub fn create_session_snapshot(
 
 pub fn list_session_snapshots_impl(state: &AppState) -> Result<Vec<SnapshotSummary>, String> {
     let conn = lock_db(state)?;
-    session_snapshots::list_summaries(&conn).map_err(|e| {
-        error!(error = %e, "failed to list session snapshots");
-        e.to_string()
+    session_snapshots::list_summaries(&conn).map_err(|error| {
+        error!(error = %error, "failed to list session snapshots");
+        error.to_string()
     })
 }
 
@@ -90,9 +90,9 @@ pub fn list_session_snapshots(
 
 pub fn get_session_snapshot_impl(state: &AppState, id: i64) -> Result<Option<String>, String> {
     let conn = lock_db(state)?;
-    session_snapshots::get_state_json(&conn, id).map_err(|e| {
-        error!(error = %e, id, "failed to get session snapshot");
-        e.to_string()
+    session_snapshots::get_state_json(&conn, id).map_err(|error| {
+        error!(error = %error, id, "failed to get session snapshot");
+        error.to_string()
     })
 }
 
@@ -109,9 +109,9 @@ pub fn get_session_snapshot(
 
 pub fn delete_session_snapshot_impl(state: &AppState, id: i64) -> Result<bool, String> {
     let conn = lock_db(state)?;
-    session_snapshots::delete_snapshot(&conn, id).map_err(|e| {
-        error!(error = %e, id, "failed to delete session snapshot");
-        e.to_string()
+    session_snapshots::delete_snapshot(&conn, id).map_err(|error| {
+        error!(error = %error, id, "failed to delete session snapshot");
+        error.to_string()
     })
 }
 

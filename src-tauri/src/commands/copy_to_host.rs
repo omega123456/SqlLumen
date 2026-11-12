@@ -135,9 +135,9 @@ pub async fn list_copyable_objects_impl(
         .bind(database)
         .fetch_all(&pool)
         .await
-        .map_err(|e| {
-            query_log::log_execute_error(&e);
-            format!("Failed to list tables: {e}")
+        .map_err(|error| {
+            query_log::log_execute_error(&error);
+            format!("Failed to list tables: {error}")
         })?;
     let decoded_tables: Vec<(String, String, i64)> = table_rows
         .iter()
@@ -162,9 +162,9 @@ pub async fn list_copyable_objects_impl(
         .bind(database)
         .fetch_all(&pool)
         .await
-        .map_err(|e| {
-            query_log::log_execute_error(&e);
-            format!("Failed to list routines: {e}")
+        .map_err(|error| {
+            query_log::log_execute_error(&error);
+            format!("Failed to list routines: {error}")
         })?;
     let decoded_routines: Vec<(String, String)> = routine_rows
         .iter()
@@ -189,9 +189,9 @@ pub async fn list_copyable_objects_impl(
         .bind(database)
         .fetch_all(&pool)
         .await
-        .map_err(|e| {
-            query_log::log_execute_error(&e);
-            format!("Failed to list triggers: {e}")
+        .map_err(|error| {
+            query_log::log_execute_error(&error);
+            format!("Failed to list triggers: {error}")
         })?;
     let decoded_triggers: Vec<String> = trigger_rows
         .iter()
@@ -211,9 +211,9 @@ pub async fn list_copyable_objects_impl(
         .bind(database)
         .fetch_all(&pool)
         .await
-        .map_err(|e| {
-            query_log::log_execute_error(&e);
-            format!("Failed to list events: {e}")
+        .map_err(|error| {
+            query_log::log_execute_error(&error);
+            format!("Failed to list events: {error}")
         })?;
     let decoded_events: Vec<String> = event_rows
         .iter()
@@ -256,7 +256,7 @@ fn resolve_hosts(state: &AppState, params: &CopyToHostParams) -> Result<(String,
     let source_host = state
         .registry
         .get_connection_params(&params.source_connection_id)
-        .map(|p| p.host)
+        .map(|params| params.host)
         .ok_or_else(|| {
             format!(
                 "Source connection '{}' not found",
@@ -268,7 +268,7 @@ fn resolve_hosts(state: &AppState, params: &CopyToHostParams) -> Result<(String,
         let conn = state
             .db
             .lock()
-            .map_err(|e| format!("Failed to lock database: {e}"))?;
+            .map_err(|error| format!("Failed to lock database: {error}"))?;
         match crate::db::connections::get_connection(&conn, &params.target_connection_id) {
             Ok(Some(record)) => record.host,
             Ok(None) => {
@@ -291,7 +291,7 @@ fn validate_target_connection_is_writable(
     let conn = state
         .db
         .lock()
-        .map_err(|e| format!("Failed to lock database: {e}"))?;
+        .map_err(|error| format!("Failed to lock database: {error}"))?;
     let target = crate::db::connections::get_connection(&conn, target_connection_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("Target connection '{target_connection_id}' not found"))?;
@@ -348,7 +348,7 @@ pub fn start_copy_to_host_impl(
         let mut jobs = state
             .copy_jobs
             .write()
-            .map_err(|e| format!("Failed to lock copy jobs: {e}"))?;
+            .map_err(|error| format!("Failed to lock copy jobs: {error}"))?;
         cleanup_stale_copy_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
     }
@@ -363,7 +363,7 @@ pub fn get_copy_progress_impl(state: &AppState, job_id: &str) -> Result<CopyJobP
     let mut jobs = state
         .copy_jobs
         .write()
-        .map_err(|e| format!("Failed to lock copy jobs: {e}"))?;
+        .map_err(|error| format!("Failed to lock copy jobs: {error}"))?;
     // Lazy cleanup of stale terminal entries, mirroring the dump job model.
     cleanup_stale_copy_jobs(&mut jobs);
     jobs.get(job_id)
@@ -377,7 +377,7 @@ pub fn cancel_copy_impl(state: &AppState, job_id: &str) -> Result<(), String> {
     let mut jobs = state
         .copy_jobs
         .write()
-        .map_err(|e| format!("Failed to lock copy jobs: {e}"))?;
+        .map_err(|error| format!("Failed to lock copy jobs: {error}"))?;
     match jobs.get_mut(job_id) {
         Some(progress) => {
             progress.cancel_requested = true;

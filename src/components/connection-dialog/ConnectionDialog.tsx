@@ -9,9 +9,9 @@ import styles from './ConnectionDialog.module.css'
 
 export function ConnectionDialog() {
   const dialogRef = useRef<HTMLDialogElement>(null)
-  const dialogOpen = useConnectionStore((s) => s.dialogOpen)
-  const closeDialog = useConnectionStore((s) => s.closeDialog)
-  const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
+  const dialogOpen = useConnectionStore((state) => state.dialogOpen)
+  const closeDialog = useConnectionStore((state) => state.closeDialog)
+  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
 
   const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null)
   const [duplicateSeed, setDuplicateSeed] = useState<ConnectionFormSeed | null>(null)
@@ -28,8 +28,8 @@ export function ConnectionDialog() {
     }
   }, [dialogOpen, fetchSavedConnections])
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDialogElement>) => {
-    if (e.target === dialogRef.current) {
+  const handleBackdropClick = (event: React.MouseEvent<HTMLDialogElement>) => {
+    if (event.target === dialogRef.current) {
       setEditingConnection(null)
       setDuplicateSeed(null)
       closeDialog()
@@ -61,7 +61,7 @@ export function ConnectionDialog() {
 
   const handleDuplicateConnection = useCallback((source: SavedConnection) => {
     setEditingConnection(null)
-    setDuplicateSeed((prev) => ({
+    setDuplicateSeed((previous) => ({
       data: {
         name: `Copy of ${source.name.trim() || source.host}`,
         host: source.host,
@@ -80,7 +80,7 @@ export function ConnectionDialog() {
         keepaliveIntervalSecs: source.keepaliveIntervalSecs,
       },
       sourceHadPassword: source.hasPassword,
-      key: (prev?.key ?? 0) + 1,
+      key: (previous?.key ?? 0) + 1,
     }))
   }, [])
 

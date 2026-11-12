@@ -45,13 +45,13 @@ function getExecutableStatements(sql: string): string[] {
 
 export function AppLayout() {
   const sidebarPanelRef = usePanelRef()
-  const isSettingsOpen = useSettingsStore((s) => s.isDialogOpen)
-  const openSettingsDialog = useSettingsStore((s) => s.openDialog)
-  const closeSettingsDialog = useSettingsStore((s) => s.closeDialog)
-  const importDialogRequest = useImportDialogStore((s) => s.request)
-  const closeImportDialog = useImportDialogStore((s) => s.closeImportDialog)
+  const isSettingsOpen = useSettingsStore((state) => state.isDialogOpen)
+  const openSettingsDialog = useSettingsStore((state) => state.openDialog)
+  const closeSettingsDialog = useSettingsStore((state) => state.closeDialog)
+  const importDialogRequest = useImportDialogStore((state) => state.request)
+  const closeImportDialog = useImportDialogStore((state) => state.closeImportDialog)
   const initializeCommandPaletteRecents = useCommandPaletteRecentsStore(
-    (s) => s.initializeFromBackend
+    (state) => state.initializeFromBackend
   )
 
   // Activate global keyboard shortcut listener
@@ -88,11 +88,11 @@ export function AppLayout() {
 
       const workspaceState = useWorkspaceStore.getState()
       const tabId = workspaceState.activeTabByConnection[connectionId] ?? null
-      if (!tabId) return { connectionId, tabId: null, tabType: null }
+      if (!tabId) return { connectionId: connectionId, tabId: null, tabType: null }
 
       const tabs = workspaceState.tabsByConnection[connectionId] ?? []
-      const tab = tabs.find((t) => t.id === tabId)
-      return { connectionId, tabId, tabType: tab?.type ?? null }
+      const tab = tabs.find((tab) => tab.id === tabId)
+      return { connectionId: connectionId, tabId: tabId, tabType: tab?.type ?? null }
     }
 
     store.registerAction('execute-query', () => {
@@ -187,9 +187,9 @@ export function AppLayout() {
               selectionStart = cursorOffset
             } else {
               // Fallback: search for the selected text nearest to cursor
-              const idx = content.indexOf(selectedText)
-              if (idx === -1) return
-              selectionStart = idx
+              const index = content.indexOf(selectedText)
+              if (index === -1) return
+              selectionStart = index
             }
 
             const newContent =
@@ -245,10 +245,10 @@ export function AppLayout() {
       if (!tabId) return
 
       if (tabType === 'object-editor') {
-        const objStore = useObjectEditorStore.getState()
-        const objTab = objStore.tabs[tabId]
-        if (objTab && objTab.content !== objTab.originalContent && !objTab.isSaving) {
-          void objStore.saveBody(tabId)
+        const objectStore = useObjectEditorStore.getState()
+        const objectTab = objectStore.tabs[tabId]
+        if (objectTab && objectTab.content !== objectTab.originalContent && !objectTab.isSaving) {
+          void objectStore.saveBody(tabId)
         }
       }
       // For query-editor tabs, save-file is handled by the EditorToolbar button
@@ -291,8 +291,8 @@ export function AppLayout() {
             queryState.setContent(tabId, contents)
             queryState.setFilePath(tabId, filePath)
           }
-        } catch (err) {
-          logFrontend('error', ['[app-layout] open-file failed:', err].map(String).join(' '))
+        } catch (error) {
+          logFrontend('error', ['[app-layout] open-file failed:', error].map(String).join(' '))
         }
       })()
     })
@@ -325,7 +325,7 @@ export function AppLayout() {
       const { connectionId, tabId } = getActiveContext()
       if (!connectionId || !tabId) return
       const tab = (useWorkspaceStore.getState().tabsByConnection[connectionId] ?? []).find(
-        (t) => t.id === tabId
+        (tab) => tab.id === tabId
       )
       if (tab) {
         void revealTabInObjectBrowser(tab)

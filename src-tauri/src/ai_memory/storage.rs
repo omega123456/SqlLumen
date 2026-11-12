@@ -72,9 +72,9 @@ pub fn delete_memory(conn: &Connection, memory_id: i64) -> Result<()> {
         "DELETE FROM connection_memories WHERE id = ?1",
         params![memory_id],
     )
-    .map_err(|e| {
-        tracing::error!(memory_id, %e, "delete_memory: failed to delete memory row");
-        e
+    .map_err(|error| {
+        tracing::error!(memory_id, %error, "delete_memory: failed to delete memory row");
+        error
     })?;
     Ok(())
 }
@@ -110,8 +110,8 @@ pub fn get_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Option<AiMe
     )?;
     let mut rows = stmt.query_map(params![memory_id], map_connection_row)?;
     match rows.next() {
-        Some(Ok(m)) => Ok(Some(m)),
-        Some(Err(e)) => Err(e),
+        Some(Ok(memory)) => Ok(Some(memory)),
+        Some(Err(error)) => Err(error),
         None => Ok(None),
     }
 }
@@ -161,8 +161,8 @@ pub fn get_group_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Optio
     )?;
     let mut rows = stmt.query_map(params![memory_id], map_group_row)?;
     match rows.next() {
-        Some(Ok(m)) => Ok(Some(m)),
-        Some(Err(e)) => Err(e),
+        Some(Ok(memory)) => Ok(Some(memory)),
+        Some(Err(error)) => Err(error),
         None => Ok(None),
     }
 }
@@ -210,8 +210,8 @@ pub fn get_global_memory_by_id(conn: &Connection, memory_id: i64) -> Result<Opti
         conn.prepare("SELECT id, content, created_at, source FROM global_memories WHERE id = ?1")?;
     let mut rows = stmt.query_map(params![memory_id], map_global_row)?;
     match rows.next() {
-        Some(Ok(m)) => Ok(Some(m)),
-        Some(Err(e)) => Err(e),
+        Some(Ok(memory)) => Ok(Some(memory)),
+        Some(Err(error)) => Err(error),
         None => Ok(None),
     }
 }
@@ -229,13 +229,15 @@ pub fn insert_memory_scoped(
         MemoryScope::Connection => {
             let id =
                 owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
-            insert_memory(conn, id, content).map_err(|e| e.to_string())
+            insert_memory(conn, id, content).map_err(|error| error.to_string())
         }
         MemoryScope::Group => {
             let id = owner_id.ok_or_else(|| "group scope requires a group id".to_string())?;
-            insert_group_memory(conn, id, content).map_err(|e| e.to_string())
+            insert_group_memory(conn, id, content).map_err(|error| error.to_string())
         }
-        MemoryScope::Global => insert_global_memory(conn, content).map_err(|e| e.to_string()),
+        MemoryScope::Global => {
+            insert_global_memory(conn, content).map_err(|error| error.to_string())
+        }
     }
 }
 
@@ -249,13 +251,13 @@ pub fn list_memories_scoped(
         MemoryScope::Connection => {
             let id =
                 owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
-            list_memories(conn, id).map_err(|e| e.to_string())
+            list_memories(conn, id).map_err(|error| error.to_string())
         }
         MemoryScope::Group => {
             let id = owner_id.ok_or_else(|| "group scope requires a group id".to_string())?;
-            list_group_memories(conn, id).map_err(|e| e.to_string())
+            list_group_memories(conn, id).map_err(|error| error.to_string())
         }
-        MemoryScope::Global => list_global_memories(conn).map_err(|e| e.to_string()),
+        MemoryScope::Global => list_global_memories(conn).map_err(|error| error.to_string()),
     }
 }
 
@@ -270,7 +272,7 @@ pub fn get_memory_by_id_scoped(
         MemoryScope::Group => get_group_memory_by_id(conn, memory_id),
         MemoryScope::Global => get_global_memory_by_id(conn, memory_id),
     }
-    .map_err(|e| e.to_string())
+    .map_err(|error| error.to_string())
 }
 
 /// Get (id, content) pairs at the given scope/owner — used for re-embedding.
@@ -283,13 +285,13 @@ pub fn get_memory_texts_scoped(
         MemoryScope::Connection => {
             let id =
                 owner_id.ok_or_else(|| "connection scope requires a connection id".to_string())?;
-            get_memory_texts(conn, id).map_err(|e| e.to_string())
+            get_memory_texts(conn, id).map_err(|error| error.to_string())
         }
         MemoryScope::Group => {
             let id = owner_id.ok_or_else(|| "group scope requires a group id".to_string())?;
-            get_group_memory_texts(conn, id).map_err(|e| e.to_string())
+            get_group_memory_texts(conn, id).map_err(|error| error.to_string())
         }
-        MemoryScope::Global => get_global_memory_texts(conn).map_err(|e| e.to_string()),
+        MemoryScope::Global => get_global_memory_texts(conn).map_err(|error| error.to_string()),
     }
 }
 
@@ -304,7 +306,7 @@ pub fn delete_memory_scoped(
         MemoryScope::Group => delete_group_memory(conn, memory_id),
         MemoryScope::Global => delete_global_memory(conn, memory_id),
     }
-    .map_err(|e| e.to_string())
+    .map_err(|error| error.to_string())
 }
 
 // ── Vector table operations (scope-aware) ───────────────────────────────────
@@ -318,9 +320,9 @@ pub fn ensure_vec_table(conn: &Connection, connection_id: &str, dim: usize) -> R
 pub fn ensure_vec_table_named(conn: &Connection, table: &str, dim: usize) -> Result<String> {
     conn.execute_batch(&format!(
         "CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0(id INTEGER PRIMARY KEY, embedding FLOAT[{dim}] distance_metric=cosine)"
-    )).map_err(|e| {
-        tracing::error!(table, dim, %e, "ensure_vec_table: failed to create vec0 table");
-        e
+    )).map_err(|error| {
+        tracing::error!(table, dim, %error, "ensure_vec_table: failed to create vec0 table");
+        error
     })?;
     Ok(table.to_string())
 }
@@ -333,7 +335,7 @@ pub fn ensure_vec_table_for_scope(
     dim: usize,
 ) -> Result<String, String> {
     let table = vec_table_for_scope(scope, owner_id)?;
-    ensure_vec_table_named(conn, &table, dim).map_err(|e| e.to_string())
+    ensure_vec_table_named(conn, &table, dim).map_err(|error| error.to_string())
 }
 
 /// Insert an embedding vector for a memory.
@@ -348,9 +350,9 @@ pub fn insert_memory_vector(
         &format!("INSERT INTO {table_name} (id, embedding) VALUES (?1, ?2)"),
         params![memory_id, bytes],
     )
-    .map_err(|e| {
-        tracing::error!(table_name, memory_id, %e, "insert_memory_vector: failed to insert vector");
-        e
+    .map_err(|error| {
+        tracing::error!(table_name, memory_id, %error, "insert_memory_vector: failed to insert vector");
+        error
     })?;
     Ok(())
 }
@@ -363,8 +365,8 @@ pub fn delete_vector_from_table(conn: &Connection, table: &str, memory_id: i64) 
     );
     match result {
         Ok(_) => Ok(()),
-        Err(e) => {
-            let msg = e.to_string();
+        Err(error) => {
+            let msg = error.to_string();
             if msg.contains("no such table") {
                 tracing::warn!(
                     table,
@@ -373,7 +375,7 @@ pub fn delete_vector_from_table(conn: &Connection, table: &str, memory_id: i64) 
                 );
                 Ok(())
             } else {
-                Err(e)
+                Err(error)
             }
         }
     }
@@ -392,7 +394,7 @@ pub fn delete_memory_vector_scoped(
     memory_id: i64,
 ) -> Result<(), String> {
     let table = vec_table_for_scope(scope, owner_id)?;
-    delete_vector_from_table(conn, &table, memory_id).map_err(|e| e.to_string())
+    delete_vector_from_table(conn, &table, memory_id).map_err(|error| error.to_string())
 }
 
 // ── Move + cascade ──────────────────────────────────────────────────────────
@@ -422,16 +424,20 @@ pub fn move_memory(
 
     let target_table = vec_table_for_scope(to_scope, to_owner_id)?;
 
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
 
     let new_id = insert_memory_scoped(&tx, to_scope, to_owner_id, &source.content)?;
-    ensure_vec_table_named(&tx, &target_table, embedding.len()).map_err(|e| e.to_string())?;
-    insert_memory_vector(&tx, &target_table, new_id, embedding).map_err(|e| e.to_string())?;
+    ensure_vec_table_named(&tx, &target_table, embedding.len())
+        .map_err(|error| error.to_string())?;
+    insert_memory_vector(&tx, &target_table, new_id, embedding)
+        .map_err(|error| error.to_string())?;
 
     delete_memory_vector_scoped(&tx, from_scope, from_owner_id, memory_id)?;
     delete_memory_scoped(&tx, from_scope, memory_id)?;
 
-    tx.commit().map_err(|e| e.to_string())?;
+    tx.commit().map_err(|error| error.to_string())?;
 
     get_memory_by_id_scoped(conn, to_scope, new_id)?
         .ok_or_else(|| "Failed to read back moved memory".to_string())

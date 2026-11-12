@@ -26,6 +26,7 @@ import {
 } from './workspace-tab-icons'
 import { Button } from '../common/Button'
 import styles from './WorkspaceGroupRail.module.css'
+import { HALF_DIVISOR } from '../../lib/units'
 
 /** Matches the enter/leave animation length in WorkspaceGroupRail.module.css. */
 export const RAIL_ITEM_TRANSITION_MS = 150
@@ -77,9 +78,9 @@ function mergeEntries(previous: RailEntry[], groups: WorkspaceTabStackGroup[]): 
     const prior = before.get(key)
     if (group) {
       const phase: RailItemPhase = !prior || prior.phase === 'leaving' ? 'entering' : prior.phase
-      next.push({ key, phase, tabs: group.tabs })
+      next.push({ key: key, phase: phase, tabs: group.tabs })
     } else if (prior) {
-      next.push({ key, phase: 'leaving', tabs: prior.tabs })
+      next.push({ key: key, phase: 'leaving', tabs: prior.tabs })
     }
   }
   return next
@@ -148,7 +149,7 @@ export function WorkspaceGroupRail({
     }
     // The first placement jumps; later ones slide.
     marker.dataset.animate = markerPlacedRef.current ? 'true' : 'false'
-    marker.style.transform = `translateY(${item.offsetTop + (item.offsetHeight - MARKER_HEIGHT) / 2}px)`
+    marker.style.transform = `translateY(${item.offsetTop + (item.offsetHeight - MARKER_HEIGHT) / HALF_DIVISOR}px)`
     markerPlacedRef.current = true
   }, [selectedKey, entries])
 
@@ -173,7 +174,10 @@ export function WorkspaceGroupRail({
       if (!item) {
         return
       }
-      setTooltip({ key, top: item.offsetTop + (item.offsetHeight - TOOLTIP_HEIGHT) / 2 })
+      setTooltip({
+        key: key,
+        top: item.offsetTop + (item.offsetHeight - TOOLTIP_HEIGHT) / HALF_DIVISOR,
+      })
     }, RAIL_TOOLTIP_DELAY_MS)
   }
   useEffect(() => clearTooltipTimer, [])

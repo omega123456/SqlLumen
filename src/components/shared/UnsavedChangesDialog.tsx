@@ -50,8 +50,8 @@ export function UnsavedChangesDialog({
     setInternalError(null)
     try {
       await onSave()
-    } catch (err) {
-      setInternalError(err instanceof Error ? err.message : String(err))
+    } catch (error) {
+      setInternalError(error instanceof Error ? error.message : String(error))
     } finally {
       setInternalSaving(false)
     }

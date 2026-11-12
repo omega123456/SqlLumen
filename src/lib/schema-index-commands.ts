@@ -65,7 +65,7 @@ export async function semanticSearch(
   queries: string[],
   hints?: RetrievalHints
 ): Promise<SearchResult[]> {
-  return invoke('semantic_search', { sessionId, queries, hints: hints ?? null })
+  return invoke('semantic_search', { sessionId: sessionId, queries: queries, hints: hints ?? null })
 }
 
 export async function getIndexStatus(sessionId: string): Promise<SchemaIndexStatus> {

@@ -114,8 +114,8 @@ export function ObjectBrowser({
   const openTab = useWorkspaceStore((state) => state.openTab)
   const revealRequest = useSchemaStore((state) => state.revealRequest)
 
-  const [treeScrollEl, setTreeScrollEl] = useState<HTMLDivElement | null>(null)
-  const pinnedDatabaseId = usePinnedDatabase(treeScrollEl)
+  const [treeScrollElement, setTreeScrollElement] = useState<HTMLDivElement | null>(null)
+  const pinnedDatabaseId = usePinnedDatabase(treeScrollElement)
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(CLOSED_MENU)
   const [dumpDialog, setDumpDialog] = useState<SqlDumpDialogState>(CLOSED_DUMP_DIALOG)
@@ -183,18 +183,18 @@ export function ObjectBrowser({
   // tabs (only the connectionId prop changes), so we must reset the tracked
   // scope when the connection changes — otherwise switching tabs is mistaken
   // for a scope change and wipes the newly-active connection's restored filter.
-  const prevScopeRootRef = useRef<string | null | undefined>(undefined)
-  const prevConnectionIdRef = useRef<string | null>(null)
+  const previousScopeRootRef = useRef<string | null | undefined>(undefined)
+  const previousConnectionIdRef = useRef<string | null>(null)
   useEffect(() => {
-    const connectionChanged = prevConnectionIdRef.current !== connectionId
-    prevConnectionIdRef.current = connectionId
+    const connectionChanged = previousConnectionIdRef.current !== connectionId
+    previousConnectionIdRef.current = connectionId
 
-    if (connectionChanged || prevScopeRootRef.current === undefined) {
-      prevScopeRootRef.current = effectiveScopeRoot
+    if (connectionChanged || previousScopeRootRef.current === undefined) {
+      previousScopeRootRef.current = effectiveScopeRoot
       return
     }
-    if (prevScopeRootRef.current !== effectiveScopeRoot) {
-      prevScopeRootRef.current = effectiveScopeRoot
+    if (previousScopeRootRef.current !== effectiveScopeRoot) {
+      previousScopeRootRef.current = effectiveScopeRoot
       setFilter('', connectionId)
     }
   }, [effectiveScopeRoot, connectionId, setFilter])
@@ -235,8 +235,8 @@ export function ObjectBrowser({
     })
   }, [nodes, filterMatchIds, topLevelIds, effectiveScopeRoot])
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilter(e.target.value, connectionId)
+  const handleFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFilter(event.target.value, connectionId)
   }
 
   const ensurePathExpanded = useSchemaStore((state) => state.ensurePathExpanded)
@@ -249,18 +249,18 @@ export function ObjectBrowser({
   }, [connectionId, setFilter, effectiveScopeRoot, filterText, ensurePathExpanded])
 
   const handleTreeKeyDownCapture = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) {
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) {
         return
       }
 
-      const target = e.target as HTMLElement | null
+      const target = event.target as HTMLElement | null
       if (!target || target.closest('input, textarea, [contenteditable="true"]')) {
         return
       }
 
-      if (e.key === 'F5') {
-        e.preventDefault()
+      if (event.key === 'F5') {
+        event.preventDefault()
         const dbName =
           selectedNode?.databaseName ??
           (selectedNodeId ? parseNodeId(selectedNodeId).database : null)
@@ -270,16 +270,16 @@ export function ObjectBrowser({
         return
       }
 
-      const isPrintableCharacter = e.key.length === 1 && !/\s/.test(e.key)
-      const isBackspace = e.key === 'Backspace'
+      const isPrintableCharacter = event.key.length === 1 && !/\s/.test(event.key)
+      const isBackspace = event.key === 'Backspace'
 
       if (!isPrintableCharacter && !isBackspace) {
         return
       }
 
-      e.preventDefault()
+      event.preventDefault()
 
-      const nextValue = isBackspace ? filterText.slice(0, -1) : `${filterText}${e.key}`
+      const nextValue = isBackspace ? filterText.slice(0, -1) : `${filterText}${event.key}`
       setFilter(nextValue, connectionId)
       filterInputRef.current?.focus()
     },
@@ -293,20 +293,21 @@ export function ObjectBrowser({
   /** Scroll a pinned database row back to its real position at the top of its section. */
   const handleRevealPinned = useCallback(
     (nodeId: string) => {
-      if (!treeScrollEl) return
+      if (!treeScrollElement) return
       const section = Array.from(
-        treeScrollEl.querySelectorAll<HTMLElement>('[data-database-section]')
-      ).find((el) => el.dataset.databaseSection === nodeId)
+        treeScrollElement.querySelectorAll<HTMLElement>('[data-database-section]')
+      ).find((element) => element.dataset.databaseSection === nodeId)
       if (!section) return
 
-      const delta = section.getBoundingClientRect().top - treeScrollEl.getBoundingClientRect().top
+      const delta =
+        section.getBoundingClientRect().top - treeScrollElement.getBoundingClientRect().top
       const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-      treeScrollEl.scrollTo({
-        top: treeScrollEl.scrollTop + delta,
+      treeScrollElement.scrollTo({
+        top: treeScrollElement.scrollTop + delta,
         behavior: reduceMotion ? 'auto' : 'smooth',
       })
     },
-    [treeScrollEl]
+    [treeScrollElement]
   )
 
   // Scroll to and focus the node named by the latest reveal request for this
@@ -314,12 +315,12 @@ export function ObjectBrowser({
   // Start from the current seq so a freshly mounted browser does not replay an old request.
   const handledRevealSeqRef = useRef(useSchemaStore.getState().revealRequest?.seq ?? 0)
   useEffect(() => {
-    if (!revealRequest || revealRequest.connectionId !== connectionId || !treeScrollEl) return
+    if (!revealRequest || revealRequest.connectionId !== connectionId || !treeScrollElement) return
     if (revealRequest.seq <= handledRevealSeqRef.current) return
 
-    const row = Array.from(treeScrollEl.querySelectorAll<HTMLElement>('[role="treeitem"]')).find(
-      (el) => el.dataset.testid === `tree-node-${revealRequest.nodeId}`
-    )
+    const row = Array.from(
+      treeScrollElement.querySelectorAll<HTMLElement>('[role="treeitem"]')
+    ).find((element) => element.dataset.testid === `tree-node-${revealRequest.nodeId}`)
     if (!row) {
       if (filterText) {
         setFilter('', connectionId)
@@ -342,17 +343,17 @@ export function ObjectBrowser({
     row.addEventListener('keydown', restoreFocusRing)
     row.addEventListener('blur', restoreFocusRing)
     row.focus({ preventScroll: true })
-  }, [revealRequest, connectionId, treeScrollEl, filterText, setFilter, nodes, selectedNodeId])
+  }, [revealRequest, connectionId, treeScrollElement, filterText, setFilter, nodes, selectedNodeId])
 
   // ---------------------------------------------------------------------------
   // Context menu handlers
   // ---------------------------------------------------------------------------
 
-  const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
-    e.preventDefault()
+  const handleContextMenu = useCallback((event: React.MouseEvent, nodeId: string) => {
+    event.preventDefault()
     dispatchDismissAll()
     requestAnimationFrame(() => {
-      setContextMenu({ visible: true, x: e.clientX, y: e.clientY, nodeId })
+      setContextMenu({ visible: true, x: event.clientX, y: event.clientY, nodeId: nodeId })
     })
   }, [])
 
@@ -366,8 +367,8 @@ export function ObjectBrowser({
         type: 'table-designer',
         mode: 'alter',
         objectName: tableName,
-        databaseName,
-        connectionId,
+        databaseName: databaseName,
+        connectionId: connectionId,
         label: tableName,
       })
     },
@@ -380,8 +381,8 @@ export function ObjectBrowser({
         type: 'table-designer',
         mode: 'create',
         objectName: '__new_table__',
-        databaseName,
-        connectionId,
+        databaseName: databaseName,
+        connectionId: connectionId,
         label: 'New table',
       })
     },
@@ -409,7 +410,7 @@ export function ObjectBrowser({
       setCopyToHostDialog({
         open: true,
         database: databaseName,
-        objectSelection,
+        objectSelection: objectSelection,
       })
     },
     []
@@ -483,7 +484,7 @@ export function ObjectBrowser({
           </div>
 
           <div
-            ref={setTreeScrollEl}
+            ref={setTreeScrollElement}
             className={styles.treeContainer}
             data-testid="object-browser-scroll"
             onKeyDownCapture={handleTreeKeyDownCapture}

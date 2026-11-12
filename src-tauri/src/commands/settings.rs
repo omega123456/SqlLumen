@@ -79,11 +79,11 @@ pub fn set_setting_impl(state: &AppState, key: &str, value: &str) -> Result<(), 
                         state.result_cache.set_ttl(secs);
                         state.table_data_cache.set_ttl(secs);
                     }
-                    Err(e) => {
+                    Err(error) => {
                         tracing::warn!(
                             key,
                             value,
-                            error = %e,
+                            error = %error,
                             "ignoring unparseable results.cacheTTL value"
                         );
                     }

@@ -10,6 +10,9 @@
 use super::search::SearchResult;
 use serde::{Deserialize, Serialize};
 
+const SUMMARY_MAX_CHARS: usize = 200;
+const BODY_PREVIEW_MAX_CHARS: usize = 200;
+
 /// Rerank search results using an LLM cross-encoder.
 ///
 /// Sends the candidate chunk IDs and summaries to the LLM, which returns a
@@ -37,21 +40,22 @@ pub async fn rerank_with_llm(
     // Build the candidate list for the prompt
     let candidate_list: Vec<RerankCandidate> = candidates
         .iter()
-        .map(|r| {
-            // Truncate text_for_embedding / ddl_text to ~200 chars for the summary
-            let summary = if r.ddl_text.len() > 200 {
-                let truncated = r
+        .map(|candidate| {
+            let summary = if candidate.ddl_text.len() > SUMMARY_MAX_CHARS {
+                let truncated = candidate
                     .ddl_text
                     .char_indices()
-                    .nth(200)
-                    .map_or(r.ddl_text.as_str(), |(i, _)| &r.ddl_text[..i]);
+                    .nth(SUMMARY_MAX_CHARS)
+                    .map_or(candidate.ddl_text.as_str(), |(cut, _)| {
+                        &candidate.ddl_text[..cut]
+                    });
                 format!("{}…", truncated)
             } else {
-                r.ddl_text.clone()
+                candidate.ddl_text.clone()
             };
             RerankCandidate {
-                id: r.chunk_id,
-                name: format!("`{}`.`{}`", r.db_name, r.table_name),
+                id: candidate.chunk_id,
+                name: format!("`{}`.`{}`", candidate.db_name, candidate.table_name),
                 summary,
             }
         })
@@ -92,8 +96,8 @@ pub async fn rerank_with_llm(
 
     let response = match result {
         Ok(Ok(resp)) => resp,
-        Ok(Err(e)) => {
-            tracing::warn!(error = %e, "rerank_with_llm: HTTP request failed, falling back to original order");
+        Ok(Err(error)) => {
+            tracing::warn!(error = %error, "rerank_with_llm: HTTP request failed, falling back to original order");
             return candidates;
         }
         Err(_) => {
@@ -106,8 +110,8 @@ pub async fn rerank_with_llm(
 
     let body = match response.text().await {
         Ok(text) => text,
-        Err(e) => {
-            tracing::warn!(error = %e, "rerank_with_llm: failed to read response body");
+        Err(error) => {
+            tracing::warn!(error = %error, "rerank_with_llm: failed to read response body");
             return candidates;
         }
     };
@@ -119,7 +123,7 @@ pub async fn rerank_with_llm(
         Some(ids) if !ids.is_empty() => reorder_by_ids(candidates, &ids),
         _ => {
             tracing::warn!(
-                body_preview = %body.chars().take(200).collect::<String>(),
+                body_preview = %body.chars().take(BODY_PREVIEW_MAX_CHARS).collect::<String>(),
                 "rerank_with_llm: could not parse ranked IDs from LLM response"
             );
             candidates
@@ -186,8 +190,10 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
 pub fn reorder_by_ids(candidates: Vec<SearchResult>, ranked_ids: &[i64]) -> Vec<SearchResult> {
     use std::collections::HashMap;
 
-    let mut id_to_result: HashMap<i64, SearchResult> =
-        candidates.into_iter().map(|r| (r.chunk_id, r)).collect();
+    let mut id_to_result: HashMap<i64, SearchResult> = candidates
+        .into_iter()
+        .map(|candidate| (candidate.chunk_id, candidate))
+        .collect();
 
     let mut reordered = Vec::new();
 
@@ -200,9 +206,10 @@ pub fn reorder_by_ids(candidates: Vec<SearchResult>, ranked_ids: &[i64]) -> Vec<
 
     // Append remaining results not in the ranked list
     let mut remaining: Vec<SearchResult> = id_to_result.into_values().collect();
-    remaining.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
+    remaining.sort_by(|left, right| {
+        right
+            .score
+            .partial_cmp(&left.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     reordered.extend(remaining);

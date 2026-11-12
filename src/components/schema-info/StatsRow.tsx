@@ -1,6 +1,7 @@
 import type { TableMetadata } from '../../types/schema'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import styles from './StatsRow.module.css'
+import { BYTES_PER_GIGABYTE, BYTES_PER_KILOBYTE, BYTES_PER_MEGABYTE } from '../../lib/units'
 
 function joinClasses(...parts: (string | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
@@ -13,10 +14,10 @@ export interface StatsRowProps {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+  if (bytes < BYTES_PER_KILOBYTE) return `${bytes} B`
+  if (bytes < BYTES_PER_MEGABYTE) return `${(bytes / BYTES_PER_KILOBYTE).toFixed(1)} KB`
+  if (bytes < BYTES_PER_GIGABYTE) return `${(bytes / BYTES_PER_MEGABYTE).toFixed(1)} MB`
+  return `${(bytes / BYTES_PER_GIGABYTE).toFixed(1)} GB`
 }
 
 export function StatsRow({ metadata, columnCount }: StatsRowProps) {

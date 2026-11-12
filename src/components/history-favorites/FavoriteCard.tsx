@@ -26,16 +26,16 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
   }, [connectionId, entry.name, entry.sqlText, openQueryTab])
 
   const handleEdit = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
       openDialog(entry)
     },
     [entry, openDialog]
   )
 
   const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
       deleteFavorite(entry.id)
     },
     [deleteFavorite, entry.id]
@@ -56,8 +56,8 @@ export function FavoriteCard({ entry, connectionId }: FavoriteCardProps) {
             variant="bare"
             className={styles.actionButton}
             title="Copy to editor"
-            onClick={(e) => {
-              e.stopPropagation()
+            onClick={(event) => {
+              event.stopPropagation()
               handleCopyToEditor()
             }}
             data-testid="favorite-card-copy"

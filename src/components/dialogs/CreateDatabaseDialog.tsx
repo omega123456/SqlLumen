@@ -7,6 +7,7 @@ import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
 import { showErrorToast } from '../../stores/toast-store'
 import styles from './CreateDatabaseDialog.module.css'
+import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../../lib/sql-utils'
 
 export interface CreateDatabaseDialogProps {
   isOpen: boolean
@@ -40,12 +41,13 @@ export function CreateDatabaseDialog({
 
   const validateName = useCallback((value: string): string | null => {
     if (!value.trim()) return 'Database name is required'
-    if (value.length > 64) return 'Database name cannot exceed 64 characters'
+    if (value.length > MYSQL_IDENTIFIER_MAX_LENGTH)
+      return `Database name cannot exceed ${MYSQL_IDENTIFIER_MAX_LENGTH} characters`
     return null
   }, [])
 
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+  const handleNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
     setName(value)
     if (nameError) {
       setNameError(validateName(value))
@@ -70,10 +72,10 @@ export function CreateDatabaseDialog({
         encoding.collation || undefined
       )
       onSuccess(name.trim())
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg)
-      showErrorToast('Failed to create database', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setError(message)
+      showErrorToast('Failed to create database', message)
     } finally {
       setIsSubmitting(false)
     }
@@ -99,14 +101,14 @@ export function CreateDatabaseDialog({
 
   const collationOptions: DropdownOption[] = [
     { value: '', label: 'Default' },
-    ...encoding.filteredCollations.map((c) => ({
-      value: c.name,
-      label: c.name,
-      description: c.isDefault ? 'default' : undefined,
+    ...encoding.filteredCollations.map((collation) => ({
+      value: collation.name,
+      label: collation.name,
+      description: collation.isDefault ? 'default' : undefined,
     })),
   ]
 
-  const isValid = name.trim().length > 0 && name.length <= 64
+  const isValid = name.trim().length > 0 && name.length <= MYSQL_IDENTIFIER_MAX_LENGTH
 
   return (
     <DialogShell

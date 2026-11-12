@@ -10,7 +10,7 @@ export function insertSqlIntoEditor(connectionId: string, sqlText: string, label
   const { activeTabByConnection, tabsByConnection, openQueryTab } = useWorkspaceStore.getState()
   const activeTabId = activeTabByConnection[connectionId]
   const tabs = tabsByConnection[connectionId] ?? []
-  const activeTab = tabs.find((t) => t.id === activeTabId && t.type === 'query-editor')
+  const activeTab = tabs.find((tab) => tab.id === activeTabId && tab.type === 'query-editor')
 
   if (activeTab && activeTabId) {
     const existing = useQueryStore.getState().tabs[activeTabId]?.content ?? ''

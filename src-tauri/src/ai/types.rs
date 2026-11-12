@@ -336,8 +336,8 @@ pub fn parse_sse_line(line: &str) -> Result<SseParsed, String> {
             return Ok(SseParsed::Done);
         }
 
-        let chunk: ApiStreamChunk =
-            serde_json::from_str(data).map_err(|e| format!("Failed to parse SSE JSON: {e}"))?;
+        let chunk: ApiStreamChunk = serde_json::from_str(data)
+            .map_err(|error| format!("Failed to parse SSE JSON: {error}"))?;
         return Ok(SseParsed::Chunk(chunk));
     }
 

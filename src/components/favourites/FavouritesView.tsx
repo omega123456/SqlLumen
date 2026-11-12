@@ -76,12 +76,12 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
     openDialog(null)
   }, [openDialog])
 
-  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value)
+  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(event.target.value)
   }, [])
 
   const handleSelect = useCallback((id: number) => {
-    setSelectedFavouriteId((prev) => (prev === id ? null : id))
+    setSelectedFavouriteId((previous) => (previous === id ? null : id))
   }, [])
 
   function renderListContent() {

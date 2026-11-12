@@ -201,19 +201,19 @@ pub fn generate_create_table_ddl(schema: &DesignerTableSchema, database: &str) -
         }
     }
 
-    for fk in schema
+    for generatable_foreign_key in schema
         .foreign_keys
         .iter()
-        .filter(|fk| is_generatable_foreign_key(fk))
+        .filter(|foreign_key| is_generatable_foreign_key(foreign_key))
     {
         definitions.push(format!(
             "  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
-            quote_identifier(&fk.name),
-            quote_identifier(&fk.source_column),
-            format_referenced_table_name(fk, database),
-            quote_identifier(&fk.referenced_column),
-            fk.on_delete,
-            fk.on_update
+            quote_identifier(&generatable_foreign_key.name),
+            quote_identifier(&generatable_foreign_key.source_column),
+            format_referenced_table_name(generatable_foreign_key, database),
+            quote_identifier(&generatable_foreign_key.referenced_column),
+            generatable_foreign_key.on_delete,
+            generatable_foreign_key.on_update
         ));
     }
 
@@ -272,7 +272,7 @@ pub fn generate_alter_table_ddl(
         .map(|column| (column.name.as_str(), column))
         .collect();
 
-    let mut drop_fk_clauses = diff_drop_foreign_keys(original, current);
+    let mut drop_foreign_key_clauses = diff_drop_foreign_keys(original, current);
     let mut drop_index_clauses = diff_drop_indexes(original, current);
     let drop_column_clauses = original
         .columns
@@ -323,17 +323,17 @@ pub fn generate_alter_table_ddl(
         .collect::<Vec<_>>();
 
     let mut add_index_clauses = diff_add_indexes(original, current);
-    let add_fk_clauses = diff_add_foreign_keys(original, current, database);
+    let add_foreign_key_clauses = diff_add_foreign_keys(original, current, database);
     let table_option_clauses = diff_table_options(&original.properties, &current.properties);
 
     let mut clauses = Vec::new();
-    clauses.append(&mut drop_fk_clauses);
+    clauses.append(&mut drop_foreign_key_clauses);
     clauses.append(&mut drop_index_clauses);
     clauses.extend(drop_column_clauses);
     clauses.extend(modify_column_clauses);
     clauses.extend(add_column_clauses);
     clauses.append(&mut add_index_clauses);
-    clauses.extend(add_fk_clauses);
+    clauses.extend(add_foreign_key_clauses);
     clauses.extend(table_option_clauses);
 
     if clauses.is_empty() {
@@ -427,25 +427,25 @@ fn is_generatable_index(index: &DesignerIndexDef) -> bool {
             .all(|column| !identifier_is_blank(column))
 }
 
-fn is_generatable_foreign_key(fk: &DesignerForeignKeyDef) -> bool {
-    !fk.is_composite
-        && !identifier_is_blank(&fk.name)
-        && !identifier_is_blank(&fk.source_column)
-        && !identifier_is_blank(&fk.referenced_table)
-        && !identifier_is_blank(&fk.referenced_column)
+fn is_generatable_foreign_key(foreign_key: &DesignerForeignKeyDef) -> bool {
+    !foreign_key.is_composite
+        && !identifier_is_blank(&foreign_key.name)
+        && !identifier_is_blank(&foreign_key.source_column)
+        && !identifier_is_blank(&foreign_key.referenced_table)
+        && !identifier_is_blank(&foreign_key.referenced_column)
 }
 
-fn format_referenced_table_name(fk: &DesignerForeignKeyDef, database: &str) -> String {
-    let referenced_database = if identifier_is_blank(&fk.referenced_database) {
+fn format_referenced_table_name(foreign_key: &DesignerForeignKeyDef, database: &str) -> String {
+    let referenced_database = if identifier_is_blank(&foreign_key.referenced_database) {
         database
     } else {
-        &fk.referenced_database
+        &foreign_key.referenced_database
     };
 
     format!(
         "{}.{}",
         quote_identifier(referenced_database),
-        quote_identifier(&fk.referenced_table)
+        quote_identifier(&foreign_key.referenced_table)
     )
 }
 
@@ -690,18 +690,27 @@ fn diff_drop_foreign_keys(
     let current_foreign_keys = current
         .foreign_keys
         .iter()
-        .filter(|fk| is_generatable_foreign_key(fk))
-        .map(|fk| (fk.name.as_str(), fk))
+        .filter(|foreign_key| is_generatable_foreign_key(foreign_key))
+        .map(|foreign_key| (foreign_key.name.as_str(), foreign_key))
         .collect::<HashMap<_, _>>();
 
     original
         .foreign_keys
         .iter()
-        .filter(|fk| is_generatable_foreign_key(fk))
-        .filter_map(|fk| match current_foreign_keys.get(fk.name.as_str()) {
-            Some(current_fk) if foreign_keys_equal(fk, current_fk) => None,
-            _ => Some(format!("DROP FOREIGN KEY {}", quote_identifier(&fk.name))),
-        })
+        .filter(|foreign_key| is_generatable_foreign_key(foreign_key))
+        .filter_map(
+            |foreign_key| match current_foreign_keys.get(foreign_key.name.as_str()) {
+                Some(current_foreign_key)
+                    if foreign_keys_equal(foreign_key, current_foreign_key) =>
+                {
+                    None
+                }
+                _ => Some(format!(
+                    "DROP FOREIGN KEY {}",
+                    quote_identifier(&foreign_key.name)
+                )),
+            },
+        )
         .collect()
 }
 
@@ -713,29 +722,29 @@ fn diff_add_foreign_keys(
     let original_foreign_keys = original
         .foreign_keys
         .iter()
-        .filter(|fk| is_generatable_foreign_key(fk))
-        .map(|fk| (fk.name.as_str(), fk))
+        .filter(|foreign_key| is_generatable_foreign_key(foreign_key))
+        .map(|foreign_key| (foreign_key.name.as_str(), foreign_key))
         .collect::<HashMap<_, _>>();
 
     current
         .foreign_keys
         .iter()
-        .filter(|fk| is_generatable_foreign_key(fk))
-        .filter_map(|fk| {
-            let should_add = match original_foreign_keys.get(fk.name.as_str()) {
-                Some(original_fk) => !foreign_keys_equal(original_fk, fk),
+        .filter(|foreign_key| is_generatable_foreign_key(foreign_key))
+        .filter_map(|foreign_key| {
+            let should_add = match original_foreign_keys.get(foreign_key.name.as_str()) {
+                Some(original_foreign_key) => !foreign_keys_equal(original_foreign_key, foreign_key),
                 None => true,
             };
 
             if should_add {
                 Some(format!(
                     "ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
-                    quote_identifier(&fk.name),
-                    quote_identifier(&fk.source_column),
-                    format_referenced_table_name(fk, database),
-                    quote_identifier(&fk.referenced_column),
-                    fk.on_delete,
-                    fk.on_update
+                    quote_identifier(&foreign_key.name),
+                    quote_identifier(&foreign_key.source_column),
+                    format_referenced_table_name(foreign_key, database),
+                    quote_identifier(&foreign_key.referenced_column),
+                    foreign_key.on_delete,
+                    foreign_key.on_update
                 ))
             } else {
                 None

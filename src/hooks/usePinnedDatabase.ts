@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 /** Attribute TreeNode sets on each top-level database section. */
 const SECTION_SELECTOR = '[data-database-section]'
+const SUBPIXEL_SCROLL_TOLERANCE_PX = 0.5
 
 /**
  * Return the id of the database section whose sticky row is currently pinned,
@@ -15,7 +16,7 @@ export function findPinnedDatabaseSection(container: HTMLElement): string | null
   for (const section of sections) {
     if (!section.querySelector('[role="group"]')) continue
     const rect = section.getBoundingClientRect()
-    if (rect.top < containerTop - 0.5 && rect.bottom > containerTop + 1) {
+    if (rect.top < containerTop - SUBPIXEL_SCROLL_TOLERANCE_PX && rect.bottom > containerTop + 1) {
       return section.dataset.databaseSection ?? null
     }
   }

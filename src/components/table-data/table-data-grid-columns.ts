@@ -7,41 +7,44 @@ import { isEnumColumn, isSetColumn } from './enum-field-utils'
 export function buildColumnDescriptors(
   columns: TableDataColumnMeta[],
   isReadOnly: boolean,
-  hasPk: boolean,
+  hasPrimaryKey: boolean,
   foreignKeys: ForeignKeyColumnInfo[] = []
 ): GridColumnDescriptor[] {
-  return columns.map((col) => {
-    const fk = foreignKeys.find((fk) => fk.columnName === col.name)
-    const editorType = col.isBinary
+  return columns.map((column) => {
+    const foreignKey = foreignKeys.find((candidate) => candidate.columnName === column.name)
+    const editorType = column.isBinary
       ? 'none'
-      : isJsonSqlType(col.dataType)
+      : isJsonSqlType(column.dataType)
         ? 'json'
-        : getTemporalColumnType(col.dataType)
+        : getTemporalColumnType(column.dataType)
           ? 'datetime'
-          : isEnumColumn(col)
+          : isEnumColumn(column)
             ? 'enum'
-            : isSetColumn(col)
+            : isSetColumn(column)
               ? 'set'
-              : fk
+              : foreignKey
                 ? 'fk'
                 : 'text'
     return {
-      key: col.name,
-      displayName: col.name,
-      dataType: col.dataType,
-      editable: !isReadOnly && hasPk && !col.isBinary,
-      isBinary: col.isBinary,
-      isNullable: col.isNullable,
-      isPrimaryKey: col.isPrimaryKey,
-      isUniqueKey: col.isUniqueKey,
-      enumValues: col.enumValues,
-      setValues: col.setValues,
-      tableColumnMeta: col,
-      editorType,
+      key: column.name,
+      displayName: column.name,
+      dataType: column.dataType,
+      editable: !isReadOnly && hasPrimaryKey && !column.isBinary,
+      isBinary: column.isBinary,
+      isNullable: column.isNullable,
+      isPrimaryKey: column.isPrimaryKey,
+      isUniqueKey: column.isUniqueKey,
+      enumValues: column.enumValues,
+      setValues: column.setValues,
+      tableColumnMeta: column,
+      editorType: editorType,
       // Binary columns keep `editorType: 'none'`/`editable: false`; the marker
       // lets the grid host open the shared BLOB viewer on double-click.
-      ...(col.isBinary && { blobViewer: true, blobViewerEditable: !isReadOnly && hasPk }),
-      ...(fk && { foreignKey: fk }),
+      ...(column.isBinary && {
+        blobViewer: true,
+        blobViewerEditable: !isReadOnly && hasPrimaryKey,
+      }),
+      ...(foreignKey && { foreignKey: foreignKey }),
     }
   })
 }

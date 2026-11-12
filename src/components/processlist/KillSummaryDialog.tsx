@@ -10,8 +10,8 @@ export interface KillSummaryDialogProps {
 export function KillSummaryDialog({ results, onClose }: KillSummaryDialogProps) {
   if (!results) return null
 
-  const successes = results.filter((r) => r.success)
-  const failures = results.filter((r) => !r.success)
+  const successes = results.filter((result) => result.success)
+  const failures = results.filter((result) => !result.success)
 
   return (
     <DialogShell
@@ -27,9 +27,9 @@ export function KillSummaryDialog({ results, onClose }: KillSummaryDialogProps) 
       </p>
       {failures.length > 0 && (
         <ul style={{ margin: '0 0 12px', paddingLeft: 20 }}>
-          {failures.map((f) => (
-            <li key={f.id} style={{ color: 'var(--error)' }}>
-              ID {f.id}: {f.error ?? 'Unknown error'}
+          {failures.map((failure) => (
+            <li key={failure.id} style={{ color: 'var(--error)' }}>
+              ID {failure.id}: {failure.error ?? 'Unknown error'}
             </li>
           ))}
         </ul>

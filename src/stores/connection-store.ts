@@ -89,20 +89,20 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     try {
       const [connections, groups] = await Promise.all([listConnections(), listConnectionGroups()])
       set({ savedConnections: connections, connectionGroups: groups, error: null })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      set({ error: msg })
-      showErrorToast('Failed to load connections', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      set({ error: message })
+      showErrorToast('Failed to load connections', message)
     }
   },
 
   openConnection: async (id: string, options) => {
-    const profile = get().savedConnections.find((c) => c.id === id)
+    const profile = get().savedConnections.find((connection) => connection.id === id)
     if (!profile) {
-      const errorMsg = `Connection profile '${id}' not found`
-      set({ error: errorMsg })
-      showErrorToast('Connection failed', errorMsg)
-      throw new Error(errorMsg)
+      const errorMessage = `Connection profile '${id}' not found`
+      set({ error: errorMessage })
+      showErrorToast('Connection failed', errorMessage)
+      throw new Error(errorMessage)
     }
 
     try {
@@ -121,18 +121,18 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
       // Register session for schema index and trigger initial build (fire-and-forget)
       const schemaIndexStore = useSchemaIndexStore.getState()
-      schemaIndexStore.triggerBuild(result.sessionId).catch((err) => {
-        const msg = err instanceof Error ? err.message : String(err)
+      schemaIndexStore.triggerBuild(result.sessionId).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
         logFrontend(
           'error',
-          ['[connection-store] Schema index build failed:', msg].map(String).join(' ')
+          ['[connection-store] Schema index build failed:', message].map(String).join(' ')
         )
       })
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      set({ error: errorMsg })
-      showErrorToast('Connection failed', errorMsg)
-      throw err
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      set({ error: errorMessage })
+      showErrorToast('Connection failed', errorMessage)
+      throw error
     }
   },
 
@@ -148,7 +148,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
     const active: ActiveConnection = {
       id: session.sessionId,
-      profile,
+      profile: profile,
       sessionDatabase: session.sessionDatabase,
       status: session.status,
       serverVersion: session.serverVersion,
@@ -157,7 +157,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     set((state) => {
       const activeConnections = { ...state.activeConnections, [session.sessionId]: active }
       return {
-        activeConnections,
+        activeConnections: activeConnections,
         activeConnectionOrder: normalizeActiveConnectionOrder(
           [...state.activeConnectionOrder, session.sessionId],
           activeConnections
@@ -170,9 +170,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     useWorkspaceStore.getState().openProcessListTab(session.sessionId)
     useWorkspaceStore.getState().setVisibleConnectionSession(session.sessionId)
 
-    bootstrapSchemaCache(session.sessionId, session.profileId).catch((err) => {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('warn', `[connection-store] Schema cache bootstrap failed: ${msg}`)
+    bootstrapSchemaCache(session.sessionId, session.profileId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('warn', `[connection-store] Schema cache bootstrap failed: ${message}`)
     })
     useSchemaIndexStore.getState().registerSession(session.sessionId, session.profileId)
     return true
@@ -194,12 +194,15 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
             const queryTabState = useQueryStore.getState().tabs[tab.id]
             if (!queryTabState?.results) continue
 
-            const activeIdx = queryTabState.activeResultIndex ?? 0
+            const activeIndex = queryTabState.activeResultIndex ?? 0
 
             // Check for dirty non-active results — these cannot be saved
             // by saveCurrentRow, so we need to prompt the user.
             const hasNonActiveDirty = queryTabState.results.some(
-              (r, i) => i !== activeIdx && r.editState && r.editState.modifiedColumns.size > 0
+              (result, index) =>
+                index !== activeIndex &&
+                result.editState &&
+                result.editState.modifiedColumns.size > 0
             )
             if (hasNonActiveDirty) {
               const confirmed = globalThis.confirm(
@@ -211,7 +214,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
             }
 
             // Check the active result for dirty edits — try to save it
-            const activeResult = queryTabState.results[activeIdx]
+            const activeResult = queryTabState.results[activeIndex]
             const activeIsDirty =
               activeResult?.editState && activeResult.editState.modifiedColumns.size > 0
             if (activeIsDirty) {
@@ -305,10 +308,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         error: null,
       })
       return true
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      set({ error: msg })
-      showErrorToast('Failed to close connection', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      set({ error: message })
+      showErrorToast('Failed to close connection', message)
       return false
     }
   },
@@ -342,7 +345,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
           const queryTabState = queryTabs[tab.id]
           return (
             queryTabState?.results?.some(
-              (r) => r.editState && r.editState.modifiedColumns.size > 0
+              (result) => result.editState && result.editState.modifiedColumns.size > 0
             ) ?? false
           )
         }
@@ -469,9 +472,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
     try {
       await selectDatabaseIPC(sessionId, trimmedName)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showErrorToast('Failed to switch database', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Failed to switch database', message)
 
       if (get().activeConnections[sessionId]) {
         set((state) => ({
@@ -513,8 +516,8 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     // Update in-memory optimistically (all sessions for this profile + saved list)
     set((state) => ({
       activeConnections: patchActivesForProfile(state, updatedProfile),
-      savedConnections: state.savedConnections.map((c) =>
-        c.id === profileId ? { ...c, defaultDatabase: newDefaultDb } : c
+      savedConnections: state.savedConnections.map((connection) =>
+        connection.id === profileId ? { ...connection, defaultDatabase: newDefaultDb } : connection
       ),
     }))
 
@@ -537,17 +540,22 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         connectTimeoutSecs: updatedProfile.connectTimeoutSecs,
         keepaliveIntervalSecs: updatedProfile.keepaliveIntervalSecs,
       })
-    } catch (e) {
-      logFrontend('error', ['Failed to persist defaultDatabase change:', e].map(String).join(' '))
-      const msg = e instanceof Error ? e.message : String(e)
-      showErrorToast('Failed to save default database', msg)
+    } catch (error) {
+      logFrontend(
+        'error',
+        ['Failed to persist defaultDatabase change:', error].map(String).join(' ')
+      )
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Failed to save default database', message)
       const revertedProfile = { ...updatedProfile, defaultDatabase: originalDefault }
       const current = get().activeConnections[sessionId]
       if (current) {
         set((state) => ({
           activeConnections: patchActivesForProfile(state, revertedProfile),
-          savedConnections: state.savedConnections.map((c) =>
-            c.id === profileId ? { ...c, defaultDatabase: originalDefault } : c
+          savedConnections: state.savedConnections.map((connection) =>
+            connection.id === profileId
+              ? { ...connection, defaultDatabase: originalDefault }
+              : connection
           ),
         }))
       }
@@ -567,12 +575,12 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         get().updateConnectionStatus(event.payload)
       })
       return unlisten
-    } catch (err) {
+    } catch (error) {
       logFrontend(
         'warn',
         [
           '[connection-store] connection-status-changed listen failed (unexpected Tauri error):',
-          err,
+          error,
         ]
           .map(String)
           .join(' ')

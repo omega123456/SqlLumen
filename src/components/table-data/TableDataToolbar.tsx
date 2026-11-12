@@ -17,6 +17,7 @@ import {
   findRowIndexByKey as findStoreRowIndexByKey,
 } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { FALLBACK_ROW_LIMIT } from '../../stores/query-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
@@ -72,7 +73,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const editState = tabState?.editState ?? null
   const viewMode = tabState?.viewMode ?? 'grid'
   const currentPage = tabState?.currentPage ?? 1
-  const pageSize = tabState?.pageSize ?? 1000
+  const pageSize = tabState?.pageSize ?? FALLBACK_ROW_LIMIT
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const checkedRowKeys = useMemo(() => tabState?.checkedRowKeys ?? [], [tabState?.checkedRowKeys])
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
@@ -83,8 +84,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const isRestoring = rowResidencyStatus === 'restoring'
   const isBusy = isLoading || isRestoring
 
-  const showError = useToastStore((s) => s.showError)
-  const showSuccess = useToastStore((s) => s.showSuccess)
+  const showError = useToastStore((state) => state.showError)
+  const showSuccess = useToastStore((state) => state.showSuccess)
 
   // Navigation guard helper — wraps an action with unsaved-changes check.
   const withNavigationGuard = useCallback(
@@ -94,8 +95,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     [tabId, requestNavigationAction]
   )
 
-  const hasPk = primaryKey !== null
-  const isMutationDisabled = isConnectionReadOnly || !hasPk
+  const hasPrimaryKey = primaryKey !== null
+  const isMutationDisabled = isConnectionReadOnly || !hasPrimaryKey
   const hasModifications =
     editState !== null && (editState.modifiedColumns.size > 0 || editState.isNewRow)
 
@@ -283,7 +284,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     [withNavigationGuard, setPageSize, tabId]
   )
 
-  const handlePrevPage = useCallback(() => {
+  const handlePreviousPage = useCallback(() => {
     if (currentPage > 1) {
       withNavigationGuard(() => {
         fetchPage(tabId, currentPage - 1)
@@ -354,7 +355,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
         )}
 
         {/* No-PK badge — only for tables without a primary key */}
-        {!isView && !hasPk && !isLoading && tabState?.columns?.length > 0 && (
+        {!isView && !hasPrimaryKey && !isLoading && tabState?.columns?.length > 0 && (
           <span className={styles.nopkBadge} data-testid="nopk-badge">
             NO KEY
           </span>
@@ -495,7 +496,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
               fetchPage(tabId, page)
             })
           }}
-          onPrevPage={handlePrevPage}
+          onPrevPage={handlePreviousPage}
           onNextPage={handleNextPage}
         />
       </div>
@@ -519,7 +520,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       <FilterDialog
         isOpen={isFilterDialogOpen}
         initialConditions={filterDialogInitialConditions}
-        columns={columns.map((c) => c.name)}
+        columns={columns.map((column) => column.name)}
         onApply={handleFilterApply}
         onCancel={() => setIsFilterDialogOpen(false)}
       />

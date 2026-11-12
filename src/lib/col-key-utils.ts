@@ -14,12 +14,12 @@ import type { TableDataColumnMeta } from '../types/schema'
 // ---------------------------------------------------------------------------
 
 /** Build a positional column key: `col_0`, `col_1`, … */
-export function colKey(index: number): string {
+export function columnKey(index: number): string {
   return `col_${index}`
 }
 
 /** Parse the column index back from a `col_N` key. */
-export function colIndexFromKey(key: string): number {
+export function columnIndexFromKey(key: string): number {
   return parseInt(key.replace('col_', ''), 10)
 }
 
@@ -33,7 +33,7 @@ export function colIndexFromKey(key: string): number {
  * Used by both ResultGridView and ResultFormView to enrich GridColumnDescriptor
  * entries with metadata from the edit table (nullable, PK, enum values, etc.).
  */
-export function buildTableColLookup(
+export function buildTableColumnLookup(
   editTableColumns: TableDataColumnMeta[]
 ): Map<string, TableDataColumnMeta> {
   const map = new Map<string, TableDataColumnMeta>()

@@ -47,15 +47,15 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
   ...INITIAL_STATE,
 
   loadFavorites: async (connectionId: string) => {
-    set({ isLoading: true, error: null, connectionId })
+    set({ isLoading: true, error: null, connectionId: connectionId })
 
     try {
       const entries = await listFavoritesCmd(connectionId)
-      set({ entries, isLoading: false })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[favorites-store] loadFavorites failed:', err].map(String).join(' '))
-      set({ isLoading: false, error: msg })
+      set({ entries: entries, isLoading: false })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', ['[favorites-store] loadFavorites failed:', error].map(String).join(' '))
+      set({ isLoading: false, error: message })
     }
   },
 
@@ -69,10 +69,13 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
         await get().loadFavorites(connectionId)
       }
       return id
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[favorites-store] createFavorite failed:', err].map(String).join(' '))
-      showErrorToast('Failed to save favorite', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend(
+        'error',
+        ['[favorites-store] createFavorite failed:', error].map(String).join(' ')
+      )
+      showErrorToast('Failed to save favorite', message)
       return null
     }
   },
@@ -88,10 +91,13 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
         }
       }
       return updated
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[favorites-store] updateFavorite failed:', err].map(String).join(' '))
-      showErrorToast('Failed to update favorite', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend(
+        'error',
+        ['[favorites-store] updateFavorite failed:', error].map(String).join(' ')
+      )
+      showErrorToast('Failed to update favorite', message)
       return false
     }
   },
@@ -104,10 +110,13 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
       if (connectionId) {
         await get().loadFavorites(connectionId)
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[favorites-store] deleteFavorite failed:', err].map(String).join(' '))
-      showErrorToast('Failed to delete favorite', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend(
+        'error',
+        ['[favorites-store] deleteFavorite failed:', error].map(String).join(' ')
+      )
+      showErrorToast('Failed to delete favorite', message)
     }
   },
 

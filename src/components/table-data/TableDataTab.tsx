@@ -31,11 +31,11 @@ export function TableDataTab({
   isActive = true,
   renderMode = 'standalone',
 }: TableDataTabProps) {
-  const tdTab = tab as TableDataTabType
-  const tabId = tdTab.id
-  const connectionId = tdTab.connectionId
-  const database = tdTab.databaseName
-  const table = tdTab.objectName
+  const tableDataTab = tab as TableDataTabType
+  const tabId = tableDataTab.id
+  const connectionId = tableDataTab.connectionId
+  const database = tableDataTab.databaseName
+  const table = tableDataTab.objectName
 
   const tabState = useTableDataStore((state) => state.tabs[tabId])
   const initTab = useTableDataStore((state) => state.initTab)
@@ -49,7 +49,7 @@ export function TableDataTab({
   // Look up the active connection to get the profile for readOnly info
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
   const isReadOnly = activeConnection?.profile?.readOnly ?? false
-  const isViewObject = tdTab.objectType === 'view'
+  const isViewObject = tableDataTab.objectType === 'view'
   const effectiveReadOnly = isReadOnly || isViewObject
 
   useEffect(() => {
@@ -135,7 +135,7 @@ export function TableDataTab({
   const isRestoring = rowResidencyStatus === 'restoring'
 
   // Show no-PK warning only for actual tables, not views (views never have PKs)
-  const showNoPkWarning =
+  const showNoPrimaryKeyWarning =
     !isViewObject && primaryKey === null && !isLoading && !error && columns.length > 0
 
   useEffect(() => {
@@ -159,7 +159,7 @@ export function TableDataTab({
       <TableDataToolbar tabId={tabId} isView={isViewObject} />
 
       {/* No-PK Warning Banner */}
-      {showNoPkWarning && (
+      {showNoPrimaryKeyWarning && (
         <div className={styles.warningHost}>
           <InfoBar
             severity="warning"

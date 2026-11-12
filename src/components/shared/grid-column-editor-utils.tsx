@@ -25,21 +25,21 @@ void ENUM_NULL_SENTINEL
 void getEnumFallbackValue
 
 export function getCellEditorForColumn(
-  col: TableDataColumnMeta | undefined,
+  column: TableDataColumnMeta | undefined,
   callbacks: CellEditorCallbackProps,
   foreignKey?: ForeignKeyColumnInfo
 ): CellEditorConfig {
-  const temporalType = col ? getTemporalColumnType(col.dataType) : null
+  const temporalType = column ? getTemporalColumnType(column.dataType) : null
   const sharedEditorOptions = { closeOnExternalRowChange: false }
 
-  if (temporalType && col) {
+  if (temporalType && column) {
     return {
       editorType: 'datetime',
       renderEditCell: (props: CellEditorBaseProps) => (
         <DateTimeCellEditor
           {...props}
-          isNullable={col.isNullable}
-          columnMeta={col}
+          isNullable={column.isNullable}
+          columnMeta={column}
           tabId={callbacks.tabId}
           updateCellValue={callbacks.updateCellValue}
           syncCellValue={callbacks.syncCellValue}
@@ -52,14 +52,14 @@ export function getCellEditorForColumn(
     }
   }
 
-  if (col && isEnumColumn(col)) {
+  if (column && isEnumColumn(column)) {
     return {
       editorType: foreignKey ? 'fk' : 'enum',
       renderEditCell: (props: CellEditorBaseProps) => (
         <EnumCellEditor
           {...props}
-          isNullable={col.isNullable}
-          columnMeta={col}
+          isNullable={column.isNullable}
+          columnMeta={column}
           foreignKey={foreignKey}
           tabId={callbacks.tabId}
           updateCellValue={callbacks.updateCellValue}
@@ -73,14 +73,14 @@ export function getCellEditorForColumn(
     }
   }
 
-  if (col?.dataType.trim().toUpperCase() === 'JSON') {
+  if (column?.dataType.trim().toUpperCase() === 'JSON') {
     return {
       editorType: 'json',
       renderEditCell: (props: CellEditorBaseProps) => (
         <JsonCellEditor
           {...props}
-          isNullable={col.isNullable}
-          columnMeta={col}
+          isNullable={column.isNullable}
+          columnMeta={column}
           foreignKey={foreignKey}
           tabId={callbacks.tabId}
           updateCellValue={callbacks.updateCellValue}
@@ -99,8 +99,8 @@ export function getCellEditorForColumn(
     renderEditCell: (props: CellEditorBaseProps) => (
       <NullableCellEditor
         {...props}
-        isNullable={col?.isNullable ?? false}
-        columnMeta={col}
+        isNullable={column?.isNullable ?? false}
+        columnMeta={column}
         foreignKey={foreignKey}
         tabId={callbacks.tabId}
         updateCellValue={callbacks.updateCellValue}

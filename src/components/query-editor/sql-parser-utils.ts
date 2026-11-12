@@ -1,3 +1,6 @@
+const BACKSLASH_ESCAPE_LENGTH = 2
+const BLOCK_COMMENT_DELIMITER_LENGTH = 2
+
 /**
  * SQL statement splitting with full MySQL DELIMITER support.
  * Reusable utility for query editor and stored procedure editors.
@@ -23,95 +26,95 @@ export interface StatementRange {
 export function splitStatements(sql: string): StatementRange[] {
   const results: StatementRange[] = []
   let delimiter = ';'
-  let pos = 0
+  let position = 0
 
   // Skip whitespace at start
-  while (pos < sql.length && /\s/.test(sql[pos])) pos++
-  let stmtStart = pos
+  while (position < sql.length && /\s/.test(sql[position])) position++
+  let statementStart = position
 
-  while (pos < sql.length) {
+  while (position < sql.length) {
     // Skip string literals
-    if (sql[pos] === "'" || sql[pos] === '"' || sql[pos] === '`') {
-      const quote = sql[pos]
-      pos++
-      while (pos < sql.length) {
-        if (sql[pos] === '\\') {
-          pos += 2
+    if (sql[position] === "'" || sql[position] === '"' || sql[position] === '`') {
+      const quote = sql[position]
+      position++
+      while (position < sql.length) {
+        if (sql[position] === '\\') {
+          position += BACKSLASH_ESCAPE_LENGTH
           continue
         }
-        if (sql[pos] === quote) {
-          pos++
+        if (sql[position] === quote) {
+          position++
           break
         }
-        pos++
+        position++
       }
       continue
     }
 
     // Skip block comments (non-executable: /* ... */)
-    if (pos + 1 < sql.length && sql[pos] === '/' && sql[pos + 1] === '*') {
+    if (position + 1 < sql.length && sql[position] === '/' && sql[position + 1] === '*') {
       // Check if executable comment — still skip for splitting purposes
-      pos += 2
-      while (pos + 1 < sql.length && !(sql[pos] === '*' && sql[pos + 1] === '/')) {
-        pos++
+      position += BLOCK_COMMENT_DELIMITER_LENGTH
+      while (position + 1 < sql.length && !(sql[position] === '*' && sql[position + 1] === '/')) {
+        position++
       }
-      pos += 2 // skip */
+      position += BLOCK_COMMENT_DELIMITER_LENGTH
       continue
     }
 
     // Skip line comments -- ...
-    if (pos + 1 < sql.length && sql[pos] === '-' && sql[pos + 1] === '-') {
-      while (pos < sql.length && sql[pos] !== '\n') pos++
+    if (position + 1 < sql.length && sql[position] === '-' && sql[position + 1] === '-') {
+      while (position < sql.length && sql[position] !== '\n') position++
       continue
     }
 
     // Skip # comments
-    if (sql[pos] === '#') {
-      while (pos < sql.length && sql[pos] !== '\n') pos++
+    if (sql[position] === '#') {
+      while (position < sql.length && sql[position] !== '\n') position++
       continue
     }
 
     // Check for DELIMITER directive only at start of content or start of a new line
     // (never inside a string literal or comment, which are already skipped above)
-    const isLineStart = pos === 0 || sql[pos - 1] === '\n'
+    const isLineStart = position === 0 || sql[position - 1] === '\n'
     if (isLineStart) {
-      const remaining = sql.slice(pos)
+      const remaining = sql.slice(position)
       const delimMatch = remaining.match(/^DELIMITER\s+(\S+)/i)
       if (delimMatch) {
         // Push any pending statement before the DELIMITER line
-        const pending = sql.slice(stmtStart, pos).trim()
+        const pending = sql.slice(statementStart, position).trim()
         if (pending) {
-          results.push({ start: stmtStart, end: pos, sql: pending })
+          results.push({ start: statementStart, end: position, sql: pending })
         }
         delimiter = delimMatch[1]
-        const delimLineEnd = sql.indexOf('\n', pos)
-        pos = delimLineEnd === -1 ? sql.length : delimLineEnd + 1
-        stmtStart = pos
+        const delimLineEnd = sql.indexOf('\n', position)
+        position = delimLineEnd === -1 ? sql.length : delimLineEnd + 1
+        statementStart = position
         continue
       }
     }
 
     // Check for current delimiter
-    if (sql.startsWith(delimiter, pos)) {
-      const stmtEnd = pos + delimiter.length
-      const stmt = sql.slice(stmtStart, pos).trim()
-      if (stmt) {
-        results.push({ start: stmtStart, end: stmtEnd, sql: stmt })
+    if (sql.startsWith(delimiter, position)) {
+      const statementEnd = position + delimiter.length
+      const statement = sql.slice(statementStart, position).trim()
+      if (statement) {
+        results.push({ start: statementStart, end: statementEnd, sql: statement })
       }
-      pos = stmtEnd
+      position = statementEnd
       // Skip whitespace
-      while (pos < sql.length && /\s/.test(sql[pos])) pos++
-      stmtStart = pos
+      while (position < sql.length && /\s/.test(sql[position])) position++
+      statementStart = position
       continue
     }
 
-    pos++
+    position++
   }
 
   // Handle trailing statement without delimiter
-  const trailing = sql.slice(stmtStart).trim()
+  const trailing = sql.slice(statementStart).trim()
   if (trailing) {
-    results.push({ start: stmtStart, end: sql.length, sql: trailing })
+    results.push({ start: statementStart, end: sql.length, sql: trailing })
   }
 
   return results
@@ -127,13 +130,13 @@ export function findStatementAtCursor(
 ): StatementRange | null {
   // Find the last statement whose start <= cursor
   let best: StatementRange | null = null
-  for (const stmt of statements) {
-    if (stmt.start <= cursorOffset && cursorOffset <= stmt.end) {
-      best = stmt
+  for (const statement of statements) {
+    if (statement.start <= cursorOffset && cursorOffset <= statement.end) {
+      best = statement
       break
     }
-    if (stmt.start <= cursorOffset) {
-      best = stmt
+    if (statement.start <= cursorOffset) {
+      best = statement
     }
   }
   return best

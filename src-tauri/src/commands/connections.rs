@@ -92,10 +92,10 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
 
     if let Some(pw) = password {
         // Store password in OS secure storage/shared vault using the saved profile id
-        if let Err(e) = crate::credentials::store_password(&id, &pw) {
+        if let Err(error) = crate::credentials::store_password(&id, &pw) {
             // Rollback: delete the connection we just inserted
             let _ = connections::delete_connection(&conn, &id);
-            return Err(e);
+            return Err(error);
         }
     } else {
         // No password provided — clear keychain_ref so has_password is false
@@ -103,7 +103,7 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
             "UPDATE connections SET keychain_ref = NULL WHERE id = ?1",
             rusqlite::params![id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     }
 
     Ok(id)
@@ -184,7 +184,7 @@ pub fn update_connection_impl(
 pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> {
     let conn = lock_db(state)?;
     let has_password_marker = connections::get_keychain_ref(&conn, id)
-        .map_err(|e| e.to_string())?
+        .map_err(|error| error.to_string())?
         .is_some();
 
     // Credential/password removal targets an external secure store, so it stays
@@ -202,49 +202,49 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
     // The dynamic `..._vectors_<id>` virtual tables are not FK children of
     // `connections`, so they must be dropped explicitly here. If any step fails
     // the transaction rolls back, leaving the connection and its data intact.
-    let tx = conn.unchecked_transaction().map_err(|e| {
+    let tx = conn.unchecked_transaction().map_err(|error| {
         tracing::error!(
             connection_id = id,
-            error = %e,
+            error = %error,
             "failed to begin transaction for connection deletion"
         );
-        e.to_string()
+        error.to_string()
     })?;
 
-    if let Err(e) = crate::ai_memory::storage::delete_memories_for_connection(&tx, id) {
+    if let Err(error) = crate::ai_memory::storage::delete_memories_for_connection(&tx, id) {
         tracing::error!(
             connection_id = id,
-            error = %e,
+            error = %error,
             "failed to delete AI memories for connection during deletion; rolling back"
         );
-        return Err(e.to_string());
+        return Err(error.to_string());
     }
 
-    if let Err(e) = crate::schema_index::storage::drop_vec_table(&tx, id) {
+    if let Err(error) = crate::schema_index::storage::drop_vec_table(&tx, id) {
         tracing::error!(
             connection_id = id,
-            error = %e,
+            error = %error,
             "failed to drop schema-index vector table during deletion; rolling back"
         );
-        return Err(e.to_string());
+        return Err(error.to_string());
     }
 
-    if let Err(e) = connections::delete_connection(&tx, id) {
+    if let Err(error) = connections::delete_connection(&tx, id) {
         tracing::error!(
             connection_id = id,
-            error = %e,
+            error = %error,
             "failed to delete connection row during deletion; rolling back"
         );
-        return Err(e.to_string());
+        return Err(error.to_string());
     }
 
-    tx.commit().map_err(|e| {
+    tx.commit().map_err(|error| {
         tracing::error!(
             connection_id = id,
-            error = %e,
+            error = %error,
             "failed to commit connection deletion transaction"
         );
-        e.to_string()
+        error.to_string()
     })
 }
 

@@ -1,4 +1,5 @@
 import styles from './Slider.module.css'
+import { PERCENT_SCALE } from '../../lib/units'
 
 export interface SliderProps {
   min: number
@@ -21,7 +22,7 @@ export function Slider({
   disabled = false,
   className,
 }: SliderProps): React.JSX.Element {
-  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0
+  const percent = max > min ? ((value - min) / (max - min)) * PERCENT_SCALE : 0
 
   return (
     <div className={`${styles.wrapper}${className ? ` ${className}` : ''}`}>
@@ -34,9 +35,9 @@ export function Slider({
           step={step}
           value={value}
           disabled={disabled}
-          onChange={(e) => onChange(Number(e.target.value))}
+          onChange={(event) => onChange(Number(event.target.value))}
           className={styles.input}
-          style={{ '--slider-value': `${pct}%` } as React.CSSProperties}
+          style={{ '--slider-value': `${percent}%` } as React.CSSProperties}
           aria-label={label ?? 'Slider'}
           aria-valuenow={value}
           aria-valuemin={min}

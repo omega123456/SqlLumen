@@ -183,10 +183,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       openTab({
         type: 'object-editor',
         label: `${OBJECT_TYPE_LABELS[objectType]}: ${objectName}`,
-        connectionId,
-        databaseName,
-        objectName,
-        objectType,
+        connectionId: connectionId,
+        databaseName: databaseName,
+        objectName: objectName,
+        objectType: objectType,
         mode: 'alter',
       })
     },
@@ -199,10 +199,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       openTab({
         type: 'object-editor',
         label: CREATE_LABELS[objectType],
-        connectionId,
-        databaseName,
+        connectionId: connectionId,
+        databaseName: databaseName,
         objectName: placeholderName,
-        objectType,
+        objectType: objectType,
         mode: 'create',
       })
     },
@@ -291,10 +291,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         invalidateSchemaMetadataCache(connectionId)
         void refreshAll(connectionId)
         showSuccessToast('Database renamed', `${renameDbTarget} → ${newName}`)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setRenameError(msg)
-        showErrorToast('Failed to rename database', msg)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setRenameError(message)
+        showErrorToast('Failed to rename database', message)
       } finally {
         setRenameLoading(false)
       }
@@ -329,10 +329,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
           `[object-browser-actions] Schema index rebuild after drop failed: ${String(error)}`
         )
       })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setConfirmError(msg)
-      showErrorToast('Failed to drop database', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setConfirmError(message)
+      showErrorToast('Failed to drop database', message)
     } finally {
       setConfirmLoading(false)
     }
@@ -357,10 +357,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
           `[object-browser-actions] Schema index invalidation after drop failed: ${String(error)}`
         )
       })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setConfirmError(msg)
-      showErrorToast('Failed to drop table', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setConfirmError(message)
+      showErrorToast('Failed to drop table', message)
     } finally {
       setConfirmLoading(false)
     }
@@ -377,10 +377,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       setTruncateTableConfirm(null)
       void refreshCategory(connectionId, db, 'table')
       showSuccessToast('Table truncated', `${db}.${tbl}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setConfirmError(msg)
-      showErrorToast('Failed to truncate table', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setConfirmError(message)
+      showErrorToast('Failed to truncate table', message)
     } finally {
       setConfirmLoading(false)
     }
@@ -395,26 +395,26 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         await renameTable(connectionId, renameTableOpen.db, renameTableOpen.table, newName)
         updateTabObject(connectionId, renameTableOpen.db, renameTableOpen.table, newName)
         const db = renameTableOpen.db
-        const prev = renameTableOpen.table
+        const previous = renameTableOpen.table
         setRenameTableOpen(null)
         void refreshCategory(connectionId, db, 'table')
-        showSuccessToast('Table renamed', `${prev} → ${newName}`)
+        showSuccessToast('Table renamed', `${previous} → ${newName}`)
 
         // Invalidate schema index for the old table name, then trigger a full
         // rebuild so the new table name is discovered and indexed.
-        invalidateSchemaIndex(connectionId, [`${db}.${prev}`])
+        invalidateSchemaIndex(connectionId, [`${db}.${previous}`])
           .then(() => buildSchemaIndex(connectionId))
-          .catch((err) => {
-            const message = err instanceof Error ? err.message : String(err)
+          .catch((error) => {
+            const message = error instanceof Error ? error.message : String(error)
             logFrontend(
               'warn',
               `[useObjectBrowserActions] schema index rebuild after rename failed: ${message}`
             )
           })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setRenameError(msg)
-        showErrorToast('Failed to rename table', msg)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        setRenameError(message)
+        showErrorToast('Failed to rename table', message)
       } finally {
         setRenameLoading(false)
       }
@@ -458,11 +458,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       }
       const typeLabel = OBJECT_TYPE_LABELS[objectType]
       showSuccessToast(`${typeLabel} dropped`, `${databaseName}.${objectName}`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setConfirmError(msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setConfirmError(message)
       const typeLabel = dropObjectConfirm.objectType
-      showErrorToast(`Failed to drop ${typeLabel}`, msg)
+      showErrorToast(`Failed to drop ${typeLabel}`, message)
     } finally {
       setConfirmLoading(false)
     }

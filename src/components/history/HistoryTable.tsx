@@ -93,9 +93,9 @@ export function HistoryTable({
                 className={isSelected ? styles.rowSelected : undefined}
                 onClick={() => onSelectEntry(entry.id)}
                 onDoubleClick={() => onOpenInEditor(entry)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
                     onSelectEntry(entry.id)
                   }
                 }}
@@ -121,8 +121,8 @@ export function HistoryTable({
                     size="sm"
                     iconOnly
                     className={styles.openButton}
-                    onClick={(e) => {
-                      e.stopPropagation()
+                    onClick={(event) => {
+                      event.stopPropagation()
                       onOpenInEditor(entry)
                     }}
                     aria-label="Open in editor"
@@ -150,7 +150,7 @@ export function HistoryTable({
             placeholder="Search queries"
             aria-label="Search queries"
             value={search}
-            onChange={(e) => setSearch(connectionId, e.target.value)}
+            onChange={(event) => setSearch(connectionId, event.target.value)}
             data-testid="history-search"
           />
         </div>

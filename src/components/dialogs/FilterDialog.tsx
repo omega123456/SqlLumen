@@ -110,21 +110,21 @@ export function FilterDialog({
   const defaultColumn = columns.length > 0 ? columns[0] : ''
 
   const handleAdd = useCallback(() => {
-    setConditions((prev) => [
-      ...prev,
+    setConditions((previous) => [
+      ...previous,
       { column: defaultColumn, operator: DEFAULT_OPERATOR, value: '' },
     ])
   }, [defaultColumn])
 
   const handleRemove = useCallback((index: number) => {
-    setConditions((prev) => prev.filter((_, i) => i !== index))
+    setConditions((previous) => previous.filter((_, conditionIndex) => conditionIndex !== index))
   }, [])
 
   const handleChange = useCallback((index: number, field: keyof FilterCondition, value: string) => {
-    setConditions((prev) =>
-      prev.map((c, i) => {
-        if (i !== index) return c
-        const updated = { ...c, [field]: value }
+    setConditions((previous) =>
+      previous.map((condition, conditionIndex) => {
+        if (conditionIndex !== index) return condition
+        const updated = { ...condition, [field]: value }
         // Clear value when switching to a nullary operator
         if (field === 'operator' && NULLARY_OPERATORS.has(value)) {
           updated.value = ''
@@ -151,7 +151,7 @@ export function FilterDialog({
   )
 
   const columnDropdownOptions: DropdownOption[] = useMemo(
-    () => columns.map((col) => ({ value: col, label: col })),
+    () => columns.map((column) => ({ value: column, label: column })),
     [columns]
   )
 
@@ -211,30 +211,30 @@ export function FilterDialog({
             <>
               {/* Condition rows */}
               <div className={styles.rows} data-testid="filter-rows">
-                {conditions.map((cond, idx) => {
+                {conditions.map((cond, index) => {
                   const isNullary = NULLARY_OPERATORS.has(cond.operator)
                   return (
-                    <div className={styles.row} key={idx} data-testid="filter-row">
+                    <div className={styles.row} key={index} data-testid="filter-row">
                       {/* Column */}
                       <Dropdown
-                        id={`filter-column-${idx}`}
-                        ariaLabel={`Column for condition ${idx + 1}`}
+                        id={`filter-column-${index}`}
+                        ariaLabel={`Column for condition ${index + 1}`}
                         options={columnDropdownOptions}
                         value={cond.column}
-                        onChange={(v) => handleChange(idx, 'column', v)}
-                        data-testid={`filter-column-select-${idx}`}
+                        onChange={(value) => handleChange(index, 'column', value)}
+                        data-testid={`filter-column-select-${index}`}
                         className={styles.dropdownWrapper}
                         triggerClassName={styles.columnSelect}
                       />
 
                       {/* Operator */}
                       <Dropdown
-                        id={`filter-operator-${idx}`}
-                        ariaLabel={`Operator for condition ${idx + 1}`}
+                        id={`filter-operator-${index}`}
+                        ariaLabel={`Operator for condition ${index + 1}`}
                         options={OPERATOR_DROPDOWN_OPTIONS}
                         value={cond.operator}
-                        onChange={(v) => handleChange(idx, 'operator', v)}
-                        data-testid={`filter-operator-select-${idx}`}
+                        onChange={(value) => handleChange(index, 'operator', value)}
+                        data-testid={`filter-operator-select-${index}`}
                         className={styles.dropdownWrapper}
                         triggerClassName={styles.operatorSelect}
                       />
@@ -242,16 +242,16 @@ export function FilterDialog({
                       {/* Value */}
                       <TextInput
                         ref={(element) => {
-                          valueInputRefs.current[idx] = element
+                          valueInputRefs.current[index] = element
                         }}
                         variant="bare"
                         type="text"
                         className={`ui-field-chrome ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
                         value={cond.value}
-                        onChange={(e) => handleChange(idx, 'value', e.target.value)}
+                        onChange={(event) => handleChange(index, 'value', event.target.value)}
                         disabled={isNullary}
                         placeholder={isNullary ? 'n/a' : ''}
-                        aria-label={`Value for condition ${idx + 1}`}
+                        aria-label={`Value for condition ${index + 1}`}
                         data-testid="filter-value-input"
                       />
 
@@ -259,8 +259,8 @@ export function FilterDialog({
                       <Button
                         variant="bare"
                         className={styles.removeButton}
-                        onClick={() => handleRemove(idx)}
-                        aria-label={`Remove condition ${idx + 1}`}
+                        onClick={() => handleRemove(index)}
+                        aria-label={`Remove condition ${index + 1}`}
                         data-testid="filter-remove-button"
                       >
                         <X size={14} weight="bold" />

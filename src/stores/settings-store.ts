@@ -103,7 +103,9 @@ export const SETTINGS_VALIDATORS: Record<string, (value: string) => string | nul
 
 /** Returns all default keys for a given section. */
 function keysForSection(section: SettingsSection): string[] {
-  return Object.keys(SETTINGS_DEFAULTS).filter((k) => sectionForKey(k) === section)
+  return Object.keys(SETTINGS_DEFAULTS).filter(
+    (settingKey) => sectionForKey(settingKey) === section
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -215,8 +217,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     if (errors.length > 0) {
       // Keep failed entries in pendingChanges
       const remaining: Record<string, string> = {}
-      for (const k of errors) {
-        remaining[k] = state.pendingChanges[k]
+      for (const settingKey of errors) {
+        remaining[settingKey] = state.pendingChanges[settingKey]
       }
       const updatedSettings = { ...state.settings }
       for (const [key, value] of entries) {
@@ -297,9 +299,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
  * whenever `pendingChanges` or `settings` changes the resolved value.
  */
 export function useSettingValue(key: string): string {
-  return useSettingsStore((s) => {
-    if (key in s.pendingChanges) return s.pendingChanges[key]
-    if (key in s.settings) return s.settings[key]
+  return useSettingsStore((state) => {
+    if (key in state.pendingChanges) return state.pendingChanges[key]
+    if (key in state.settings) return state.settings[key]
     return SETTINGS_DEFAULTS[key] ?? ''
   })
 }

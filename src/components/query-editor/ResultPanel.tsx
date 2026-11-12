@@ -45,7 +45,7 @@ import type {
   ForeignKeyColumnInfo,
   TableDataColumnMeta,
 } from '../../types/schema'
-import { colIndexFromKey } from '../../lib/col-key-utils'
+import { columnIndexFromKey } from '../../lib/col-key-utils'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
 import styles from './ResultPanel.module.css'
@@ -99,24 +99,24 @@ export function ResultPanel({
   )
 
   // Individual action selectors — stable references that never change
-  const requestNavigationAction = useQueryStore((s) => s.requestNavigationAction)
-  const sortResults = useQueryStore((s) => s.sortResults)
-  const setSelectedRow = useQueryStore((s) => s.setSelectedRow)
-  const startEditingRow = useQueryStore((s) => s.startEditingRow)
-  const updateCellValue = useQueryStore((s) => s.updateCellValue)
-  const syncCellValue = useQueryStore((s) => s.syncCellValue)
-  const saveCurrentRow = useQueryStore((s) => s.saveCurrentRow)
-  const confirmNavigation = useQueryStore((s) => s.confirmNavigation)
-  const cancelNavigation = useQueryStore((s) => s.cancelNavigation)
-  const discardCurrentRow = useQueryStore((s) => s.discardCurrentRow)
-  const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
-  const applyQueryFilters = useQueryStore((s) => s.applyQueryFilters)
-  const retryExpiredResult = useQueryStore((s) => s.retryExpiredResult)
-  const openExportDialog = useQueryStore((s) => s.openExportDialog)
-  const retryResultWindow = useQueryStore((s) => s.retryResultWindow)
-  const retryViewChange = useQueryStore((s) => s.retryViewChange)
-  const beginRowAction = useQueryStore((s) => s.beginRowAction)
-  const markResultsExpired = useQueryStore((s) => s.markResultsExpired)
+  const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
+  const sortResults = useQueryStore((state) => state.sortResults)
+  const setSelectedRow = useQueryStore((state) => state.setSelectedRow)
+  const startEditingRow = useQueryStore((state) => state.startEditingRow)
+  const updateCellValue = useQueryStore((state) => state.updateCellValue)
+  const syncCellValue = useQueryStore((state) => state.syncCellValue)
+  const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
+  const confirmNavigation = useQueryStore((state) => state.confirmNavigation)
+  const cancelNavigation = useQueryStore((state) => state.cancelNavigation)
+  const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
+  const closeExportDialog = useQueryStore((state) => state.closeExportDialog)
+  const applyQueryFilters = useQueryStore((state) => state.applyQueryFilters)
+  const retryExpiredResult = useQueryStore((state) => state.retryExpiredResult)
+  const openExportDialog = useQueryStore((state) => state.openExportDialog)
+  const retryResultWindow = useQueryStore((state) => state.retryResultWindow)
+  const retryViewChange = useQueryStore((state) => state.retryViewChange)
+  const beginRowAction = useQueryStore((state) => state.beginRowAction)
+  const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
 
   // Read from active result
   const resultStatus = activeResult.resultStatus
@@ -163,10 +163,10 @@ export function ResultPanel({
   // Filter state
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
   const filterModel: FilterCondition[] = activeResult.filterModel ?? EMPTY_FILTER_MODEL
-  const filterColumns = useMemo(() => columns.map((c) => c.name), [columns])
+  const filterColumns = useMemo(() => columns.map((column) => column.name), [columns])
   const selectedCell = activeResult?.selectedCell ?? null
 
-  const showSuccess = useToastStore((s) => s.showSuccess)
+  const showSuccess = useToastStore((state) => state.showSuccess)
 
   // Wrap sort handler with navigation action guard (handles pending edits)
   const handleSortChanged = useCallback(
@@ -289,8 +289,8 @@ export function ResultPanel({
   // Determine if editing is active (used to disable filter buttons)
   const isEditingActive = activeResult?.editState !== null && activeResult?.editState !== undefined
 
-  const [fkLookupOpen, setFkLookupOpen] = useState(false)
-  const [fkLookupContext, setFkLookupContext] = useState<{
+  const [foreignKeyLookupOpen, setForeignKeyLookupOpen] = useState(false)
+  const [foreignKeyLookupContext, setForeignKeyLookupContext] = useState<{
     columnKey: string
     sourceColumn: string
     currentValue: unknown
@@ -303,8 +303,8 @@ export function ResultPanel({
     queueMicrotask(() => {
       if (exportDialogOpen) closeExportDialog(tabId)
       setIsFilterDialogOpen(false)
-      setFkLookupOpen(false)
-      setFkLookupContext(null)
+      setForeignKeyLookupOpen(false)
+      setForeignKeyLookupContext(null)
     })
   }, [closeExportDialog, exportDialogOpen, isActive, tabId])
 
@@ -315,7 +315,7 @@ export function ResultPanel({
 
   const resolveResultForeignKey = useCallback(
     (columnKey: string) => {
-      const resultColumnIndex = colIndexFromKey(columnKey)
+      const resultColumnIndex = columnIndexFromKey(columnKey)
       if (resultColumnIndex < 0) return null
       const sourceColumnName = editColumnBindings.get(resultColumnIndex)
       if (!sourceColumnName) return null
@@ -326,7 +326,7 @@ export function ResultPanel({
     [editColumnBindings, resultForeignKeyLookup]
   )
 
-  const handleFkLookup = useCallback(
+  const handleForeignKeyLookup = useCallback(
     async (args: FkLookupArgs) => {
       const resolved = resolveResultForeignKey(args.columnKey)
       if (!resolved || !editMode) return
@@ -375,14 +375,14 @@ export function ResultPanel({
 
       handleRowSelected(rowIndex)
 
-      setFkLookupContext({
+      setForeignKeyLookupContext({
         columnKey: args.columnKey,
         sourceColumn: sourceColumnName,
         currentValue: args.currentValue,
-        foreignKey,
+        foreignKey: foreignKey,
         rowData: args.rowData,
       })
-      setFkLookupOpen(true)
+      setForeignKeyLookupOpen(true)
     },
     [
       resolveResultForeignKey,
@@ -396,15 +396,15 @@ export function ResultPanel({
     ]
   )
 
-  const handleFkApply = useCallback(
+  const handleForeignKeyApply = useCallback(
     (selectedValue: unknown) => {
-      if (!fkLookupContext) return
+      if (!foreignKeyLookupContext) return
 
-      const rowIndexRaw = fkLookupContext.rowData.__rowIdx
+      const rowIndexRaw = foreignKeyLookupContext.rowData.__rowIdx
       const rowIndex = typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
-      const resultColumnIndex = colIndexFromKey(fkLookupContext.columnKey)
+      const resultColumnIndex = columnIndexFromKey(foreignKeyLookupContext.columnKey)
       if (resultColumnIndex < 0) {
-        setFkLookupOpen(false)
+        setForeignKeyLookupOpen(false)
         return
       }
 
@@ -414,11 +414,11 @@ export function ResultPanel({
       const sameRow = currentEdit && editingRowIndex === rowIndex
 
       if (
-        selectedValue === fkLookupContext.currentValue &&
+        selectedValue === foreignKeyLookupContext.currentValue &&
         (!sameRow || currentEdit.modifiedColumns.size === 0)
       ) {
         handleRowSelected(rowIndex)
-        setFkLookupOpen(false)
+        setForeignKeyLookupOpen(false)
         return
       }
 
@@ -426,17 +426,17 @@ export function ResultPanel({
         startEditingRow(
           tabId,
           rowIndex,
-          cachedRowFromRowData(fkLookupContext.rowData, columns.length) ?? undefined
+          cachedRowFromRowData(foreignKeyLookupContext.rowData, columns.length) ?? undefined
         )
       }
 
       syncCellValue(tabId, resultColumnIndex, selectedValue)
       handleRowSelected(rowIndex)
-      setFkLookupOpen(false)
+      setForeignKeyLookupOpen(false)
     },
     [
       columns.length,
-      fkLookupContext,
+      foreignKeyLookupContext,
       tabId,
       editingRowIndex,
       handleRowSelected,
@@ -580,7 +580,7 @@ export function ResultPanel({
       />
       {columns.length > 0 && renderBands()}
       {columns.length > 0 ? (
-        <FkLookupProvider onFkLookup={handleFkLookup}>
+        <FkLookupProvider onFkLookup={handleForeignKeyLookup}>
           {viewMode === 'grid' && (
             <ResultGridView
               // Remount per result so the grid's internal checkbox selection
@@ -832,22 +832,22 @@ export function ResultPanel({
         />
       )}
 
-      {fkLookupOpen && fkLookupContext && editMode && (
+      {foreignKeyLookupOpen && foreignKeyLookupContext && editMode && (
         <FkLookupDialog
-          isOpen={fkLookupOpen}
-          onClose={() => setFkLookupOpen(false)}
-          onApply={handleFkApply}
+          isOpen={foreignKeyLookupOpen}
+          onClose={() => setForeignKeyLookupOpen(false)}
+          onApply={handleForeignKeyApply}
           connectionId={connectionId}
           database={
-            fkLookupContext.foreignKey.referencedDatabase ||
+            foreignKeyLookupContext.foreignKey.referencedDatabase ||
             activeResult.editTableMetadata?.[editMode]?.database ||
             ''
           }
           sourceTable={activeResult.editTableMetadata?.[editMode]?.table ?? editMode}
-          sourceColumn={fkLookupContext.sourceColumn}
-          currentValue={fkLookupContext.currentValue}
-          referencedTable={fkLookupContext.foreignKey.referencedTable}
-          referencedColumn={fkLookupContext.foreignKey.referencedColumn}
+          sourceColumn={foreignKeyLookupContext.sourceColumn}
+          currentValue={foreignKeyLookupContext.currentValue}
+          referencedTable={foreignKeyLookupContext.foreignKey.referencedTable}
+          referencedColumn={foreignKeyLookupContext.foreignKey.referencedColumn}
           isReadOnly={false}
         />
       )}

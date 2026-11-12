@@ -28,6 +28,8 @@ import { getMonacoThemeName } from '../../lib/monaco-theme'
 import { Button } from '../common/Button'
 import styles from './DiffOverlay.module.css'
 
+const HUNK_ZONE_ORDINAL_BASE = 500_000
+
 export interface DiffOverlayProps {
   originalSql: string
   proposedSql: string
@@ -78,9 +80,9 @@ function removeAllHunkViewZones(
     })
   }
 
-  const modEd = diffEditor.getModifiedEditor?.()
-  if (modEd && typeof modEd.changeViewZones === 'function') {
-    modEd.changeViewZones((accessor) => {
+  const modifiedEditor = diffEditor.getModifiedEditor?.()
+  if (modifiedEditor && typeof modifiedEditor.changeViewZones === 'function') {
+    modifiedEditor.changeViewZones((accessor) => {
       for (const id of zoneIdsRef.current.mod) {
         accessor.removeZone(id)
       }
@@ -105,9 +107,9 @@ function createAcceptHunkContentWidget(options: {
   dom.className = inlineClassName
   dom.textContent = 'Accept'
   dom.setAttribute('data-testid', testId)
-  dom.addEventListener('click', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
+  dom.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
     onAccept()
   })
 
@@ -121,7 +123,7 @@ function createAcceptHunkContentWidget(options: {
         return null
       }
       return {
-        position: { lineNumber, column: 1 },
+        position: { lineNumber: lineNumber, column: 1 },
         preference: [monaco.editor.ContentWidgetPositionPreference.ABOVE],
       }
     },
@@ -134,8 +136,8 @@ export function DiffOverlay({
   onAccept,
   onReject,
 }: DiffOverlayProps): React.JSX.Element {
-  const theme = useThemeStore((s) => s.theme)
-  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
+  const theme = useThemeStore((state) => state.theme)
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const monacoThemeName = getMonacoThemeName(theme, resolvedTheme === 'dark')
 
   const diffEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
@@ -151,13 +153,13 @@ export function DiffOverlay({
   const handleMount: DiffOnMount = useCallback(
     (editor) => {
       const origModel = monaco.editor.createModel(originalSql, 'sql')
-      const modModel = monaco.editor.createModel(proposedSql, 'sql')
+      const modifiedModel = monaco.editor.createModel(proposedSql, 'sql')
 
       originalModelRef.current = origModel
-      modifiedModelRef.current = modModel
+      modifiedModelRef.current = modifiedModel
       diffEditorRef.current = editor
 
-      editor.setModel({ original: origModel, modified: modModel })
+      editor.setModel({ original: origModel, modified: modifiedModel })
 
       // Listen for diff computation updates
       if (typeof editor.onDidUpdateDiff === 'function') {
@@ -192,10 +194,10 @@ export function DiffOverlay({
     return () => {
       const diffEditor = diffEditorRef.current
       if (diffEditor && typeof diffEditor.getModifiedEditor === 'function') {
-        const modEditor = diffEditor.getModifiedEditor()
-        if (typeof modEditor.removeContentWidget === 'function') {
-          for (const w of acceptWidgetsRef.current) {
-            modEditor.removeContentWidget(w)
+        const modifiedEditor = diffEditor.getModifiedEditor()
+        if (typeof modifiedEditor.removeContentWidget === 'function') {
+          for (const widget of acceptWidgetsRef.current) {
+            modifiedEditor.removeContentWidget(widget)
           }
         }
       }
@@ -215,12 +217,12 @@ export function DiffOverlay({
   /** Apply a single hunk from the modified model into the original. */
   const handleAcceptHunk = useCallback((change: LineChange) => {
     const origModel = originalModelRef.current
-    const modModel = modifiedModelRef.current
-    if (!origModel || !modModel) {
+    const modifiedModel = modifiedModelRef.current
+    if (!origModel || !modifiedModel) {
       return
     }
 
-    applyHunkToOriginal(change, origModel, modModel)
+    applyHunkToOriginal(change, origModel, modifiedModel)
     setHunksAccepted(true)
 
     // After editing the original model, the diff editor will recompute.
@@ -239,23 +241,23 @@ export function DiffOverlay({
    */
   useEffect(() => {
     const diffEditor = diffEditorRef.current
-    const modModel = modifiedModelRef.current
-    if (!diffEditor || !modModel) {
+    const modifiedModel = modifiedModelRef.current
+    if (!diffEditor || !modifiedModel) {
       return
     }
 
     const origEd = diffEditor.getOriginalEditor?.()
-    const modEd = diffEditor.getModifiedEditor?.()
+    const modifiedEditor = diffEditor.getModifiedEditor?.()
     if (!origEd || typeof origEd.changeViewZones !== 'function') {
       return
     }
-    if (!modEd || typeof modEd.changeViewZones !== 'function') {
+    if (!modifiedEditor || typeof modifiedEditor.changeViewZones !== 'function') {
       return
     }
 
-    for (const w of acceptWidgetsRef.current) {
-      if (typeof modEd.removeContentWidget === 'function') {
-        modEd.removeContentWidget(w)
+    for (const widget of acceptWidgetsRef.current) {
+      if (typeof modifiedEditor.removeContentWidget === 'function') {
+        modifiedEditor.removeContentWidget(widget)
       }
     }
     acceptWidgetsRef.current = []
@@ -264,13 +266,13 @@ export function DiffOverlay({
 
     type EligibleHunk = { index: number; change: LineChange }
     const eligible: EligibleHunk[] = []
-    for (let i = 0; i < lineChanges.length; i++) {
-      const change = lineChanges[i]
-      const modLine = change.modifiedStartLineNumber
-      if (modLine < 1 || modLine > modModel.getLineCount()) {
+    for (let index = 0; index < lineChanges.length; index++) {
+      const change = lineChanges[index]
+      const modifiedLine = change.modifiedStartLineNumber
+      if (modifiedLine < 1 || modifiedLine > modifiedModel.getLineCount()) {
         continue
       }
-      eligible.push({ index: i, change })
+      eligible.push({ index: index, change: change })
     }
 
     const nextOrig: string[] = []
@@ -286,54 +288,54 @@ export function DiffOverlay({
             heightInLines: 1,
             domNode: origWrap,
             suppressMouseDown: true,
-            ordinal: 500_000 + index,
+            ordinal: HUNK_ZONE_ORDINAL_BASE + index,
           })
         )
       }
     })
 
-    const nextMod: string[] = []
-    modEd.changeViewZones((modAccessor) => {
+    const nextModifiedZoneIds: string[] = []
+    modifiedEditor.changeViewZones((modifiedAccessor) => {
       for (const { index, change } of eligible) {
-        const modWrap = document.createElement('div')
-        modWrap.className = styles.hunkSpacerRow
-        modWrap.setAttribute('aria-hidden', 'true')
+        const modifiedSpacer = document.createElement('div')
+        modifiedSpacer.className = styles.hunkSpacerRow
+        modifiedSpacer.setAttribute('aria-hidden', 'true')
 
-        nextMod.push(
-          modAccessor.addZone({
+        nextModifiedZoneIds.push(
+          modifiedAccessor.addZone({
             afterLineNumber: modifiedViewZoneAfterLine(change),
             heightInLines: 1,
-            domNode: modWrap,
+            domNode: modifiedSpacer,
             suppressMouseDown: true,
-            ordinal: 500_000 + index,
+            ordinal: HUNK_ZONE_ORDINAL_BASE + index,
           })
         )
       }
     })
 
-    hunkZoneIdsRef.current = { orig: nextOrig, mod: nextMod }
+    hunkZoneIdsRef.current = { orig: nextOrig, mod: nextModifiedZoneIds }
 
-    if (typeof modEd.addContentWidget === 'function') {
+    if (typeof modifiedEditor.addContentWidget === 'function') {
       for (const { index, change } of eligible) {
         const widget = createAcceptHunkContentWidget({
           id: `ai-diff-accept-hunk-${index}`,
           testId: `hunk-accept-inline-${index}`,
-          change,
-          modifiedModel: modModel,
+          change: change,
+          modifiedModel: modifiedModel,
           inlineClassName: styles.inlineAccept,
           onAccept: () => {
             handleAcceptHunk(change)
           },
         })
-        modEd.addContentWidget(widget)
+        modifiedEditor.addContentWidget(widget)
         acceptWidgetsRef.current.push(widget)
       }
     }
 
     return () => {
-      for (const w of acceptWidgetsRef.current) {
-        if (typeof modEd.removeContentWidget === 'function') {
-          modEd.removeContentWidget(w)
+      for (const widget of acceptWidgetsRef.current) {
+        if (typeof modifiedEditor.removeContentWidget === 'function') {
+          modifiedEditor.removeContentWidget(widget)
         }
       }
       acceptWidgetsRef.current = []

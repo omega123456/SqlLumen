@@ -107,29 +107,29 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
         fetchErrorByConnection: { ...get().fetchErrorByConnection, [connectionId]: null },
         hasFetchedByConnection: { ...get().hasFetchedByConnection, [connectionId]: true },
       })
-    } catch (err) {
+    } catch (error) {
       // Stale guard on error path too
       if (get().fetchGenerationByConnection[connectionId] !== generation) return
 
-      const msg = err instanceof Error ? err.message : String(err)
+      const message = error instanceof Error ? error.message : String(error)
 
       set({
         isFetchingByConnection: {
           ...get().isFetchingByConnection,
           [connectionId]: false,
         },
-        fetchErrorByConnection: { ...get().fetchErrorByConnection, [connectionId]: msg },
+        fetchErrorByConnection: { ...get().fetchErrorByConnection, [connectionId]: message },
         hasFetchedByConnection: { ...get().hasFetchedByConnection, [connectionId]: true },
       })
 
       if (isManual) {
-        showErrorToast('Failed to fetch process list', msg)
+        showErrorToast('Failed to fetch process list', message)
       } else {
-        logFrontend('warn', `[processlist] Auto-refresh failed for ${connectionId}: ${msg}`)
+        logFrontend('warn', `[processlist] Auto-refresh failed for ${connectionId}: ${message}`)
         const lastToastAt = get().lastErrorToastAtByConnection[connectionId] ?? null
         const now = Date.now()
         if (lastToastAt === null || now - lastToastAt > ERROR_TOAST_COOLDOWN_MS) {
-          showErrorToast('Process list refresh failed', msg)
+          showErrorToast('Process list refresh failed', message)
           set({
             lastErrorToastAtByConnection: {
               ...get().lastErrorToastAtByConnection,

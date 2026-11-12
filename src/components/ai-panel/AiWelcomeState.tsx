@@ -26,16 +26,16 @@ export function AiWelcomeState({ onSuggestionClick }: AiWelcomeStateProps) {
         or optimizing queries
       </p>
       <div className={styles.chipGrid}>
-        {SUGGESTIONS.map((s) => (
+        {SUGGESTIONS.map((suggestion) => (
           <Button
-            key={s.label}
+            key={suggestion.label}
             variant="subtle"
             size="sm"
             className={styles.chip}
-            onClick={() => onSuggestionClick(s.text)}
+            onClick={() => onSuggestionClick(suggestion.text)}
             data-testid="ai-suggestion-chip"
           >
-            {s.label}
+            {suggestion.label}
           </Button>
         ))}
       </div>

@@ -25,8 +25,8 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   // Close popover on outside click — check both wrapper and portal
   useEffect(() => {
     if (!isOpen) return
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node
       if (
         wrapperRef.current &&
         !wrapperRef.current.contains(target) &&
@@ -74,8 +74,8 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
     setHexInput(next)
   }
 
-  const handleHexInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
+  const handleHexInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value
     setHexInput(value)
     if (/^#[0-9a-fA-F]{6}$/.test(value)) {
       onChange(value)

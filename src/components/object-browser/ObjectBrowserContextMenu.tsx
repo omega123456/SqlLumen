@@ -171,9 +171,9 @@ export function ObjectBrowserContextMenu({
   // Position the menu within the viewport after render
   useLayoutEffect(() => {
     if (!visible || !menuRef.current) return
-    const el = menuRef.current
-    const rect = el.getBoundingClientRect()
-    const pos = clampContextMenuPosition(
+    const element = menuRef.current
+    const rect = element.getBoundingClientRect()
+    const position = clampContextMenuPosition(
       x,
       y,
       rect.width,
@@ -181,8 +181,8 @@ export function ObjectBrowserContextMenu({
       window.innerWidth,
       window.innerHeight
     )
-    el.style.left = `${pos.x}px`
-    el.style.top = `${pos.y}px`
+    element.style.left = `${position.x}px`
+    element.style.top = `${position.y}px`
   }, [visible, x, y])
 
   if (!visible || !nodeId) return null
@@ -211,10 +211,10 @@ export function ObjectBrowserContextMenu({
     openTab({
       type: 'schema-info',
       label: nodeLabel,
-      connectionId,
-      databaseName,
+      connectionId: connectionId,
+      databaseName: databaseName,
       objectName: nodeLabel,
-      objectType,
+      objectType: objectType,
     })
     closeMenu()
   }
@@ -223,8 +223,8 @@ export function ObjectBrowserContextMenu({
     openTab({
       type: 'table-data',
       label: nodeLabel,
-      connectionId,
-      databaseName,
+      connectionId: connectionId,
+      databaseName: databaseName,
       objectName: nodeLabel,
       objectType: 'view' as ObjectType,
     })
@@ -262,32 +262,32 @@ export function ObjectBrowserContextMenu({
   // ---------------------------------------------------------------------------
 
   const entries: MenuEntry[] = buildMenuEntries({
-    nodeType,
-    databaseName,
+    nodeType: nodeType,
+    databaseName: databaseName,
     objectName: nodeLabel,
-    categoryType,
-    isReadOnly,
-    openSchemaInfoTab,
-    openViewDataTab,
-    copyName,
-    refreshNode,
-    onCreateDatabase,
-    onAlterDatabase,
-    onRenameDatabase,
-    onDropDatabase,
-    onDropTable,
-    onTruncateTable,
-    onRenameTable,
-    onDesignTable,
-    onCreateTable,
-    onAlterObject,
-    onDropObject,
-    onCreateObject,
-    onExecuteRoutine,
-    onExportDump,
-    onExportDdl,
-    onCopyToHost,
-    closeMenu,
+    categoryType: categoryType,
+    isReadOnly: isReadOnly,
+    openSchemaInfoTab: openSchemaInfoTab,
+    openViewDataTab: openViewDataTab,
+    copyName: copyName,
+    refreshNode: refreshNode,
+    onCreateDatabase: onCreateDatabase,
+    onAlterDatabase: onAlterDatabase,
+    onRenameDatabase: onRenameDatabase,
+    onDropDatabase: onDropDatabase,
+    onDropTable: onDropTable,
+    onTruncateTable: onTruncateTable,
+    onRenameTable: onRenameTable,
+    onDesignTable: onDesignTable,
+    onCreateTable: onCreateTable,
+    onAlterObject: onAlterObject,
+    onDropObject: onDropObject,
+    onCreateObject: onCreateObject,
+    onExecuteRoutine: onExecuteRoutine,
+    onExportDump: onExportDump,
+    onExportDdl: onExportDdl,
+    onCopyToHost: onCopyToHost,
+    closeMenu: closeMenu,
   })
 
   // Remove leading/trailing separators and consecutive separators
@@ -302,8 +302,8 @@ export function ObjectBrowserContextMenu({
       style={{ left: x, top: y }}
       role="menu"
       data-testid="object-browser-context-menu"
-      onMouseDown={(e) => {
-        e.preventDefault()
+      onMouseDown={(event) => {
+        event.preventDefault()
       }}
     >
       {cleanedEntries.map((entry) => {
@@ -785,9 +785,9 @@ function buildTableMenu(args: {
       },
       { key: 'sep-ro-1', separator: true },
       copyToHostMenuItem({
-        databaseName,
-        onCopyToHost,
-        closeMenu,
+        databaseName: databaseName,
+        onCopyToHost: onCopyToHost,
+        closeMenu: closeMenu,
         objectSelection: { category: 'tables', name: objectName },
       }),
       {
@@ -863,9 +863,9 @@ function buildTableMenu(args: {
       },
     },
     copyToHostMenuItem({
-      databaseName,
-      onCopyToHost,
-      closeMenu,
+      databaseName: databaseName,
+      onCopyToHost: onCopyToHost,
+      closeMenu: closeMenu,
       objectSelection: { category: 'tables', name: objectName },
     }),
     {
@@ -1175,10 +1175,10 @@ function buildRoutineMenu(args: {
         action: openSchemaInfoTab,
       },
       copyToHostMenuItem({
-        databaseName,
-        onCopyToHost,
-        closeMenu,
-        objectSelection: { category, name: objectName },
+        databaseName: databaseName,
+        onCopyToHost: onCopyToHost,
+        closeMenu: closeMenu,
+        objectSelection: { category: category, name: objectName },
       }),
       {
         key: 'copy-name',
@@ -1244,10 +1244,10 @@ function buildRoutineMenu(args: {
     },
     { key: 'sep-2', separator: true },
     copyToHostMenuItem({
-      databaseName,
-      onCopyToHost,
-      closeMenu,
-      objectSelection: { category, name: objectName },
+      databaseName: databaseName,
+      onCopyToHost: onCopyToHost,
+      closeMenu: closeMenu,
+      objectSelection: { category: category, name: objectName },
     }),
     {
       key: 'copy-name',
@@ -1308,10 +1308,10 @@ function buildTriggerEventMenu(args: {
         action: openSchemaInfoTab,
       },
       copyToHostMenuItem({
-        databaseName,
-        onCopyToHost,
-        closeMenu,
-        objectSelection: { category, name: objectName },
+        databaseName: databaseName,
+        onCopyToHost: onCopyToHost,
+        closeMenu: closeMenu,
+        objectSelection: { category: category, name: objectName },
       }),
       {
         key: 'copy-name',
@@ -1366,10 +1366,10 @@ function buildTriggerEventMenu(args: {
     },
     { key: 'sep-2', separator: true },
     copyToHostMenuItem({
-      databaseName,
-      onCopyToHost,
-      closeMenu,
-      objectSelection: { category, name: objectName },
+      databaseName: databaseName,
+      onCopyToHost: onCopyToHost,
+      closeMenu: closeMenu,
+      objectSelection: { category: category, name: objectName },
     }),
     {
       key: 'copy-name',

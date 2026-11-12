@@ -3,31 +3,31 @@ import { useShortcutStore, EDITOR_CONTEXT_ACTIONS, GLOBAL_ACTIONS } from '../sto
 import type { ShortcutBinding } from '../types/schema'
 
 /** Normalize a keyboard event into a ShortcutBinding for matching. */
-function eventToBinding(e: KeyboardEvent): ShortcutBinding {
+function eventToBinding(event: KeyboardEvent): ShortcutBinding {
   const modifiers: string[] = []
 
   // Treat both Ctrl and Meta as 'ctrl' (cross-platform: Cmd on macOS = Meta)
-  if (e.ctrlKey || e.metaKey) modifiers.push('ctrl')
-  if (e.shiftKey) modifiers.push('shift')
-  if (e.altKey) modifiers.push('alt')
+  if (event.ctrlKey || event.metaKey) modifiers.push('ctrl')
+  if (event.shiftKey) modifiers.push('shift')
+  if (event.altKey) modifiers.push('alt')
 
   // Normalize '+' (produced by Shift+=) to '=' and drop the shift modifier,
   // so both Cmd+= and Cmd+Shift+= match the zoom-in binding.
-  if (e.key === '+') {
-    const filteredModifiers = modifiers.filter((m) => m !== 'shift')
+  if (event.key === '+') {
+    const filteredModifiers = modifiers.filter((modifier) => modifier !== 'shift')
     return { key: '=', modifiers: filteredModifiers }
   }
 
-  return { key: e.key, modifiers }
+  return { key: event.key, modifiers: modifiers }
 }
 
 /** Check if two bindings match (case-insensitive key, sorted modifiers). */
-function bindingsMatch(a: ShortcutBinding, b: ShortcutBinding): boolean {
-  if (a.key.toLowerCase() !== b.key.toLowerCase()) return false
-  const aMods = [...a.modifiers].sort()
-  const bMods = [...b.modifiers].sort()
-  if (aMods.length !== bMods.length) return false
-  return aMods.every((mod, i) => mod === bMods[i])
+function bindingsMatch(left: ShortcutBinding, right: ShortcutBinding): boolean {
+  if (left.key.toLowerCase() !== right.key.toLowerCase()) return false
+  const leftModifiers = [...left.modifiers].sort()
+  const rightModifiers = [...right.modifiers].sort()
+  if (leftModifiers.length !== rightModifiers.length) return false
+  return leftModifiers.every((modifier, index) => modifier === rightModifiers[index])
 }
 
 /** Check if the active element is inside a Monaco editor. */
@@ -49,10 +49,10 @@ const INPUT_TAG_NAMES = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
  */
 export function useShortcut(): void {
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent): void {
-      const target = e.target as HTMLElement | null
+    function handleKeyDown(event: KeyboardEvent): void {
+      const target = event.target as HTMLElement | null
       const inMonaco = isInsideMonaco()
-      const pressed = eventToBinding(e)
+      const pressed = eventToBinding(event)
 
       const state = useShortcutStore.getState()
       const { shortcuts } = state
@@ -81,8 +81,8 @@ export function useShortcut(): void {
         return
       }
 
-      e.preventDefault()
-      e.stopPropagation()
+      event.preventDefault()
+      event.stopPropagation()
       state.dispatchAction(matchedActionId)
     }
 

@@ -12,6 +12,7 @@ import { useAiFeedbackStore } from './ai-feedback-store'
 import { showErrorToast } from './toast-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { estimateTokenCount } from '../lib/schema-ddl-compactor'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -51,12 +52,12 @@ function memoryKey(memory: Pick<AiMemory, 'scope' | 'id'>): string {
 function sortMemoriesByScope(memories: AiMemory[]): AiMemory[] {
   return memories
     .map((memory, index) => ({ memory, index }))
-    .sort((a, b) => {
+    .sort((left, right) => {
       const scopeDiff =
-        (MEMORY_SCOPE_ORDER[a.memory.scope] ?? MEMORY_SCOPE_ORDER.connection) -
-        (MEMORY_SCOPE_ORDER[b.memory.scope] ?? MEMORY_SCOPE_ORDER.connection)
+        (MEMORY_SCOPE_ORDER[left.memory.scope] ?? MEMORY_SCOPE_ORDER.connection) -
+        (MEMORY_SCOPE_ORDER[right.memory.scope] ?? MEMORY_SCOPE_ORDER.connection)
       if (scopeDiff !== 0) return scopeDiff
-      return a.index - b.index
+      return left.index - right.index
     })
     .map((entry) => entry.memory)
 }
@@ -224,6 +225,23 @@ When writing SQL, prefer clear, readable queries. Format your SQL code in markdo
 /** Cumulative token budget default for all schema-context messages in a conversation. */
 const CUMULATIVE_SCHEMA_TOKEN_BUDGET_DEFAULT = 30000
 
+const DATABASE_AND_TABLE_PART_COUNT = 2
+const RECENT_CONVERSATION_MESSAGE_LIMIT = 8
+const CONVERSATION_SNIPPET_MAX_CHARS = 200
+const DEFAULT_EXPANSION_MAX_QUERIES = 8
+const EXPANSION_MAX_QUERIES_CAP = 10
+const DEFAULT_RECENT_QUERY_WINDOW = 20
+const RECENCY_WEIGHT_DECAY_RANGE = 0.95
+const DEFAULT_RETRIEVAL_TOKEN_BUDGET = 6000
+const DEFAULT_TEMPERATURE = 0.3
+const DEFAULT_MAX_TOKENS = 2048
+const CHUNK_TYPE_SORT_ORDER: Record<string, number> = { table: 0, view: 1, fk: 3 }
+const OTHER_CHUNK_TYPE_SORT_ORDER = 2
+
+function chunkTypeSortOrder(chunkType: string): number {
+  return CHUNK_TYPE_SORT_ORDER[chunkType] ?? OTHER_CHUNK_TYPE_SORT_ORDER
+}
+
 function buildAttachedContextMessage(sql: string): string {
   return `The following SQL statement is the context for this conversation:\n\n\`\`\`sql\n${sql}\n\`\`\``
 }
@@ -298,10 +316,10 @@ export function extractTablesFromSql(sql: string): Array<{ dbName: string; table
   TABLE_NAME_REGEX.lastIndex = 0
   while ((match = TABLE_NAME_REGEX.exec(sql)) !== null) {
     const raw = match[1]
-    const parts = raw.split('.').map((p) => p.replace(/`/g, '').trim())
+    const parts = raw.split('.').map((part) => part.replace(/`/g, '').trim())
     let dbName = ''
     let tableName = ''
-    if (parts.length === 2) {
+    if (parts.length === DATABASE_AND_TABLE_PART_COUNT) {
       dbName = parts[0]
       tableName = parts[1]
     } else if (parts.length === 1) {
@@ -452,8 +470,8 @@ function parseExpansionResponse(
 
     // Extract queries array
     if (Array.isArray(payload.queries) && payload.queries.length > 0) {
-      for (const q of payload.queries) {
-        appendTrimmedQuery(q)
+      for (const query of payload.queries) {
+        appendTrimmedQuery(query)
       }
     }
 
@@ -594,10 +612,10 @@ export const useAiStore = create<AiState>()((set, get) => {
     const currentTab = get().tabs[tabId]
     if (!currentTab) return
 
-    const existingIdx = currentTab.messages.findIndex(
-      (m) => m.role === 'system' && !isPromptOnlyContextMessage(m)
+    const existingIndex = currentTab.messages.findIndex(
+      (message) => message.role === 'system' && !isPromptOnlyContextMessage(message)
     )
-    if (existingIdx >= 0) {
+    if (existingIndex >= 0) {
       // System prompt already exists — do nothing (immutable)
       return
     }
@@ -623,7 +641,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     if (!currentTab) return
 
     const nextMessages = [...currentTab.messages]
-    const userIndex = nextMessages.findIndex((m) => m.id === userMessageId)
+    const userIndex = nextMessages.findIndex((message) => message.id === userMessageId)
     if (userIndex < 0) return
 
     nextMessages.splice(userIndex, 0, message)
@@ -771,7 +789,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         const pollIntervalMs = 500
         let waited = 0
         while (waited < maxWaitMs) {
-          await new Promise((r) => setTimeout(r, pollIntervalMs))
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
           waited += pollIntervalMs
           const current = useSchemaIndexStore.getState().getStatusForSession(sessionId)
           if (!current || current.status !== 'building') break
@@ -801,7 +819,7 @@ export const useAiStore = create<AiState>()((set, get) => {
           `[ai-store] searching memories for context — sessionId=${sessionId} query="${userMessage}"`
         )
         const memoryResults = await searchMemories({
-          sessionId,
+          sessionId: sessionId,
           query: userMessage,
           k: 5,
         })
@@ -811,10 +829,10 @@ export const useAiStore = create<AiState>()((set, get) => {
           'debug',
           `[ai-store] memory search returned ${allMemories.length} result(s) — sessionId=${sessionId}`
         )
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logFrontend('debug', `[ai-store] memory retrieval failed (non-fatal) — error="${msg}"`)
-        logFrontend('warn', `[ai-store] Memory retrieval failed (non-fatal): ${msg}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logFrontend('debug', `[ai-store] memory retrieval failed (non-fatal) — error="${message}"`)
+        logFrontend('warn', `[ai-store] Memory retrieval failed (non-fatal): ${message}`)
       }
 
       // Dedup memories by ID (only novel ones produce memory-context messages)
@@ -828,11 +846,11 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (novelMemories.length > 0) {
         const memLines: string[] = []
         let usedTokens = 0
-        const headerTokens = Math.ceil('## User Notes (from memory)\n'.length / 4)
+        const headerTokens = estimateTokenCount('## User Notes (from memory)\n')
         usedTokens += headerTokens
         for (const mem of novelMemories) {
           const line = `- ${mem.content}`
-          const lineTokens = Math.ceil(line.length / 4)
+          const lineTokens = estimateTokenCount(line)
           if (usedTokens + lineTokens > MEMORY_TOKEN_BUDGET) break
           memLines.push(line)
           includedMemories.push(mem)
@@ -852,16 +870,21 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (tabState) {
         const recentMessages = tabState.messages
           .filter(
-            (m) => (m.role === 'user' || m.role === 'assistant') && !isPromptOnlyContextMessage(m)
+            (message) =>
+              (message.role === 'user' || message.role === 'assistant') &&
+              !isPromptOnlyContextMessage(message)
           )
-          .slice(-8) // last 4 turns = 8 messages max
-          .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+          .slice(-RECENT_CONVERSATION_MESSAGE_LIMIT)
+          .map(
+            (message) =>
+              `${message.role}: ${message.content.slice(0, CONVERSATION_SNIPPET_MAX_CHARS)}`
+          )
         if (recentMessages.length > 0) {
           conversationContext = recentMessages.join('\n')
         }
         // Augment with ALL memory content for better query expansion (not just novel)
         if (allMemories.length > 0) {
-          const memoryNotes = allMemories.map((m) => m.content).join('\n')
+          const memoryNotes = allMemories.map((memory) => memory.content).join('\n')
           conversationContext += `\n\nUser notes:\n${memoryNotes}`
           logFrontend(
             'debug',
@@ -879,10 +902,13 @@ export const useAiStore = create<AiState>()((set, get) => {
         const endpoint = getAiSetting('ai.endpoint')
         const model = getAiSetting('ai.model')
         const hydeEnabled = getAiSetting('ai.retrieval.hydeEnabled') !== 'false'
-        const maxQueries = parseInt(getAiSetting('ai.retrieval.expansionMaxQueries') || '8', 10)
-        const effectiveMaxQueries = Math.min(
-          isNaN(maxQueries) || maxQueries <= 0 ? 8 : maxQueries,
+        const maxQueries = parseInt(
+          getAiSetting('ai.retrieval.expansionMaxQueries') || String(DEFAULT_EXPANSION_MAX_QUERIES),
           10
+        )
+        const effectiveMaxQueries = Math.min(
+          isNaN(maxQueries) || maxQueries <= 0 ? DEFAULT_EXPANSION_MAX_QUERIES : maxQueries,
+          EXPANSION_MAX_QUERIES_CAP
         )
 
         logFrontend(
@@ -930,8 +956,8 @@ export const useAiStore = create<AiState>()((set, get) => {
             }
 
             const result = await aiQueryExpand({
-              endpoint,
-              model,
+              endpoint: endpoint,
+              model: model,
               systemPrompt: QUERY_EXPANSION_SYSTEM_PROMPT,
               userMessage: expandUserMessage,
               conversationContext: conversationContext || undefined,
@@ -970,10 +996,10 @@ export const useAiStore = create<AiState>()((set, get) => {
             `[ai-store] query expansion skipped — missing endpoint or model, using original user query`
           )
         }
-      } catch (err) {
+      } catch (error) {
         // Query expansion failed — fall back to original message
-        const msg = err instanceof Error ? err.message : String(err)
-        logFrontend('warn', `[ai-store] Query expansion fallback: ${msg}`)
+        const message = error instanceof Error ? error.message : String(error)
+        logFrontend('warn', `[ai-store] Query expansion fallback: ${message}`)
         logFrontend('debug', `[ai-store] falling back to original query: "${userMessage}"`)
       }
 
@@ -986,11 +1012,13 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       try {
         const recentQueryWindow = parseInt(
-          getAiSetting('ai.retrieval.recentQueryWindow') || '20',
+          getAiSetting('ai.retrieval.recentQueryWindow') || String(DEFAULT_RECENT_QUERY_WINDOW),
           10
         )
         const effectiveWindow =
-          isNaN(recentQueryWindow) || recentQueryWindow <= 0 ? 20 : recentQueryWindow
+          isNaN(recentQueryWindow) || recentQueryWindow <= 0
+            ? DEFAULT_RECENT_QUERY_WINDOW
+            : recentQueryWindow
 
         // Editor tables — from attached SQL context
         if (attachedSql) {
@@ -1000,10 +1028,10 @@ export const useAiStore = create<AiState>()((set, get) => {
 
         // Accepted tables — from feedback store
         const feedbackEntries = useAiFeedbackStore.getState().getAcceptedTables(sessionId)
-        hints.acceptedTables = feedbackEntries.map((e) => ({
-          dbName: e.dbName,
-          tableName: e.tableName,
-          weight: e.weight,
+        hints.acceptedTables = feedbackEntries.map((entry) => ({
+          dbName: entry.dbName,
+          tableName: entry.tableName,
+          weight: entry.weight,
         }))
 
         // Recent tables — placeholder: scan last N queries from query store history
@@ -1017,11 +1045,11 @@ export const useAiStore = create<AiState>()((set, get) => {
         }
         const recentSlice = allQueries.slice(0, effectiveWindow)
         const recentTableSet = new Map<string, number>()
-        for (let i = 0; i < recentSlice.length; i++) {
-          const tables = extractTablesFromSql(recentSlice[i])
-          const weight = 1.0 - (i / effectiveWindow) * 0.95 // decay from 1.0 to ~0.05
-          for (const t of tables) {
-            const key = `${t.dbName}.${t.tableName}`
+        for (let index = 0; index < recentSlice.length; index++) {
+          const tables = extractTablesFromSql(recentSlice[index])
+          const weight = 1.0 - (index / effectiveWindow) * RECENCY_WEIGHT_DECAY_RANGE
+          for (const table of tables) {
+            const key = `${table.dbName}.${table.tableName}`
             if (!recentTableSet.has(key) || (recentTableSet.get(key) ?? 0) < weight) {
               recentTableSet.set(key, weight)
             }
@@ -1038,9 +1066,9 @@ export const useAiStore = create<AiState>()((set, get) => {
           'debug',
           `[ai-store] assembled hints — recent=${hints.recentTables.length} editor=${hints.editorTables.length} accepted=${hints.acceptedTables.length}`
         )
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        logFrontend('warn', `[ai-store] hint assembly failed (non-fatal): ${msg}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logFrontend('warn', `[ai-store] hint assembly failed (non-fatal): ${message}`)
       }
 
       logFrontend(
@@ -1054,19 +1082,23 @@ export const useAiStore = create<AiState>()((set, get) => {
       logFrontend(
         'debug',
         `[ai-store] semantic search returned ${results.length} result(s): ${JSON.stringify(
-          results.map((r) => ({
-            chunkKey: r.chunkKey,
-            dbName: r.dbName,
-            tableName: r.tableName,
-            chunkType: r.chunkType,
-            score: r.score,
+          results.map((result) => ({
+            chunkKey: result.chunkKey,
+            dbName: result.dbName,
+            tableName: result.tableName,
+            chunkType: result.chunkType,
+            score: result.score,
           }))
         )}`
       )
 
       // Assemble DDL from results with headers, ordering, and token budget
-      const tokenBudget = parseInt(getAiSetting('ai.retrieval.tokenBudget') || '6000', 10)
-      const effectiveBudget = isNaN(tokenBudget) || tokenBudget <= 0 ? 6000 : tokenBudget
+      const tokenBudget = parseInt(
+        getAiSetting('ai.retrieval.tokenBudget') || String(DEFAULT_RETRIEVAL_TOKEN_BUDGET),
+        10
+      )
+      const effectiveBudget =
+        isNaN(tokenBudget) || tokenBudget <= 0 ? DEFAULT_RETRIEVAL_TOKEN_BUDGET : tokenBudget
 
       // Deduct fixed memory token reserve from the per-turn schema token budget
       const perTurnSchemaBudget = Math.max(effectiveBudget - MEMORY_TOKEN_BUDGET, 0)
@@ -1080,13 +1112,11 @@ export const useAiStore = create<AiState>()((set, get) => {
       const existingChunkKeys = get().tabs[tabId]?.providedChunkKeys ?? {}
 
       // Deterministic order: tables first, then views, then routines, by score desc
-      const sortedResults = [...results].sort((a, b) => {
-        const typeOrder = (ct: string) =>
-          ct === 'table' ? 0 : ct === 'view' ? 1 : ct === 'fk' ? 3 : 2
-        const aOrder = typeOrder(a.chunkType)
-        const bOrder = typeOrder(b.chunkType)
-        if (aOrder !== bOrder) return aOrder - bOrder
-        return b.score - a.score
+      const sortedResults = [...results].sort((left, right) => {
+        const leftOrder = chunkTypeSortOrder(left.chunkType)
+        const rightOrder = chunkTypeSortOrder(right.chunkType)
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder
+        return right.score - left.score
       })
 
       const seen = new Set<string>()
@@ -1105,7 +1135,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
         // Raw DDL only — no per-chunk headers or score annotations
         const block = result.ddlText
-        const blockTokens = Math.ceil(block.length / 4)
+        const blockTokens = estimateTokenCount(block)
 
         // Per-turn budget
         if (runningTokens + blockTokens > perTurnSchemaBudget && runningTokens > 0) {
@@ -1145,15 +1175,15 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       return {
         schemaDdl: ddl,
-        novelChunkKeys,
+        novelChunkKeys: novelChunkKeys,
         novelDdlTokens: runningTokens,
         novelMemories: includedMemories,
-        novelMemoryText,
+        novelMemoryText: novelMemoryText,
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', `[ai-store] Schema retrieval failed: ${msg}`)
-      showErrorToast('Schema retrieval failed', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', `[ai-store] Schema retrieval failed: ${message}`)
+      showErrorToast('Schema retrieval failed', message)
       if (get().tabs[tabId]) {
         patchTab(tabId, { isWaitingForIndex: false })
       }
@@ -1200,7 +1230,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         updated.push({
           id: crypto.randomUUID(),
           role: 'assistant',
-          content,
+          content: content,
           timestamp: Date.now(),
         })
       }
@@ -1247,7 +1277,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         content: novelMemoryText,
         timestamp: Date.now(),
         kind: 'memory-context',
-        memoryIds: novelMemories.map((m) => memoryKey(m)),
+        memoryIds: novelMemories.map((memory) => memoryKey(memory)),
       })
     }
 
@@ -1309,18 +1339,18 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     const currentMessages = get().tabs[tabId]?.messages ?? []
     const currentSystemPrompt = getCurrentSystemPrompt(tabId)
-    const ipcMessages: IpcAiMessage[] = currentMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
+    const ipcMessages: IpcAiMessage[] = currentMessages.map((message) => ({
+      role: message.role,
+      content: message.content,
     }))
 
     return {
       messages: ipcMessages,
-      endpoint,
-      model,
-      temperature: isNaN(temperature) ? 0.3 : temperature,
-      maxTokens: isNaN(maxTokens) ? 2048 : maxTokens,
-      streamId,
+      endpoint: endpoint,
+      model: model,
+      temperature: isNaN(temperature) ? DEFAULT_TEMPERATURE : temperature,
+      maxTokens: isNaN(maxTokens) ? DEFAULT_MAX_TOKENS : maxTokens,
+      streamId: streamId,
       previousResponseId: shouldReuseResponseChain(
         get().tabs[tabId],
         currentSystemPrompt,
@@ -1329,8 +1359,8 @@ export const useAiStore = create<AiState>()((set, get) => {
       )
         ? (get().tabs[tabId]?.previousResponseId ?? null)
         : null,
-      preferResponsesApi,
-      enableReasoning,
+      preferResponsesApi: preferResponsesApi,
+      enableReasoning: enableReasoning,
     }
   }
 
@@ -1370,7 +1400,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         error: null,
         isGenerating: true,
         activeStreamId: streamId,
-        connectionId,
+        connectionId: connectionId,
         previousResponseId: tab.previousResponseId,
         activeRequestEndpoint: '',
         activeRequestModel: '',
@@ -1428,9 +1458,9 @@ export const useAiStore = create<AiState>()((set, get) => {
           // Build and send the AI chat payload
           const payload = buildSendAiChatPayload(tabId, streamId, settings)
           await sendAiChat(payload)
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : String(err)
-          logFrontend('error', `[ai-store] AI chat failed: ${errorMsg}`)
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          logFrontend('error', `[ai-store] AI chat failed: ${errorMessage}`)
 
           if (get().tabs[tabId]) {
             // Clean up orphaned event listeners before resetting state
@@ -1438,7 +1468,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
             patchTab(tabId, {
               ...activeRequestResetFragment(),
-              error: errorMsg,
+              error: errorMessage,
             })
             // Restore the editor lock on failure
             get().restoreTabStatus(tabId)
@@ -1470,9 +1500,9 @@ export const useAiStore = create<AiState>()((set, get) => {
       callUnlistenSafely(tabId, tab)
 
       // Cancel the backend stream (fire-and-forget)
-      cancelAiStream(streamId).catch((err) => {
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        logFrontend('warn', `[ai-store] AI cancel failed: ${errorMsg}`)
+      cancelAiStream(streamId).catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        logFrontend('warn', `[ai-store] AI cancel failed: ${errorMessage}`)
       })
     },
 
@@ -1485,7 +1515,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Find the last user message
       const lastUserMessage = [...tab.messages]
         .reverse()
-        .find((m) => m.role === 'user' && !isPromptOnlyContextMessage(m))
+        .find((message) => message.role === 'user' && !isPromptOnlyContextMessage(message))
       if (!lastUserMessage) return
 
       const lastUserIndex = tab.messages.lastIndexOf(lastUserMessage)
@@ -1493,16 +1523,16 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Scan backwards from the user message to find contiguous context messages
       // from the same turn (schema-context, memory-context). Skip attached-context.
       const contextKinds = new Set<string>(['schema-context', 'memory-context', 'attached-context'])
-      let scanIdx = lastUserIndex - 1
+      let scanIndex = lastUserIndex - 1
       const indicesToRemove: number[] = []
-      while (scanIdx >= 0) {
-        const msg = tab.messages[scanIdx]
-        if (msg.kind && contextKinds.has(msg.kind)) {
-          if (msg.kind === 'schema-context' || msg.kind === 'memory-context') {
-            indicesToRemove.push(scanIdx)
+      while (scanIndex >= 0) {
+        const message = tab.messages[scanIndex]
+        if (message.kind && contextKinds.has(message.kind)) {
+          if (message.kind === 'schema-context' || message.kind === 'memory-context') {
+            indicesToRemove.push(scanIndex)
           }
           // Skip attached-context without removing or stopping
-          scanIdx--
+          scanIndex--
         } else {
           break // hit a non-context message (user or assistant)
         }
@@ -1511,20 +1541,20 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Collect chunk keys and memory IDs from removed context messages
       const removedChunkKeys: string[] = []
       const removedMemoryIds: string[] = []
-      for (const idx of indicesToRemove) {
-        const msg = tab.messages[idx]
-        if (msg.kind === 'schema-context' && msg.chunkKeys) {
-          removedChunkKeys.push(...msg.chunkKeys)
+      for (const index of indicesToRemove) {
+        const message = tab.messages[index]
+        if (message.kind === 'schema-context' && message.chunkKeys) {
+          removedChunkKeys.push(...message.chunkKeys)
         }
-        if (msg.kind === 'memory-context' && msg.memoryIds) {
-          removedMemoryIds.push(...msg.memoryIds)
+        if (message.kind === 'memory-context' && message.memoryIds) {
+          removedMemoryIds.push(...message.memoryIds)
         }
       }
 
       // Remove: context messages + user message + everything after
       const removeSet = new Set(indicesToRemove)
       const remainingMessages = tab.messages.filter(
-        (_, idx) => !removeSet.has(idx) && idx < lastUserIndex
+        (_, index) => !removeSet.has(index) && index < lastUserIndex
       )
 
       // Update dedup indices
@@ -1539,9 +1569,9 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Recompute cumulativeSchemaTokens from remaining schema-context messages
       let newCumulativeTokens = 0
-      for (const msg of remainingMessages) {
-        if (msg.kind === 'schema-context') {
-          newCumulativeTokens += Math.ceil(msg.content.length / 4)
+      for (const message of remainingMessages) {
+        if (message.kind === 'schema-context') {
+          newCumulativeTokens += estimateTokenCount(message.content)
         }
       }
 
@@ -1569,7 +1599,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       const messages = applyChunkToMessages(tab.messages, content, kind)
 
       patchTab(tabId, {
-        messages,
+        messages: messages,
         isGenerating: true,
         activeStreamId: streamId,
         ...(kind !== 'thinking' && { activeStreamHasAssistantOutput: true }),
@@ -1696,9 +1726,12 @@ export const useAiStore = create<AiState>()((set, get) => {
       }
 
       if (tab?.activeStreamId) {
-        cancelAiStream(tab.activeStreamId).catch((err) => {
-          const errorMsg = err instanceof Error ? err.message : String(err)
-          logFrontend('warn', `[ai-store] AI cancel during clearConversation failed: ${errorMsg}`)
+        cancelAiStream(tab.activeStreamId).catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          logFrontend(
+            'warn',
+            `[ai-store] AI cancel during clearConversation failed: ${errorMessage}`
+          )
         })
       }
 
@@ -1744,9 +1777,9 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (!queryTab) return
 
       // Only restore if the tab is currently in an AI lock state
-      const { tabStatus, prevTabStatus } = queryTab
+      const { tabStatus, prevTabStatus: previousTabStatus } = queryTab
       if (tabStatus === 'ai-pending' || tabStatus === 'ai-reviewing') {
-        useQueryStore.getState().setTabStatus(tabId, prevTabStatus)
+        useQueryStore.getState().setTabStatus(tabId, previousTabStatus)
       }
     },
 
@@ -1760,11 +1793,11 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Cancel any in-flight AI request before tearing down the tab
       if (tab?.activeStreamId) {
-        cancelAiStream(tab.activeStreamId).catch((err) => {
-          const errorMsg = err instanceof Error ? err.message : String(err)
+        cancelAiStream(tab.activeStreamId).catch((error) => {
+          const errorMessage = error instanceof Error ? error.message : String(error)
           logFrontend(
             'warn',
-            `[ai-store] AI cancel during cleanup for tab ${tabId} failed: ${errorMsg}`
+            `[ai-store] AI cancel during cleanup for tab ${tabId} failed: ${errorMessage}`
           )
         })
       }
@@ -1772,10 +1805,10 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (tab?._unlisten) {
         try {
           tab._unlisten()
-        } catch (err) {
+        } catch (error) {
           logFrontend(
             'warn',
-            `[ai-store] Error calling unlisten for tab ${tabId}: ${err instanceof Error ? err.message : String(err)}`
+            `[ai-store] Error calling unlisten for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`
           )
         }
       }

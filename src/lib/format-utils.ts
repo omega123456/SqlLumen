@@ -1,3 +1,4 @@
+import { MILLISECONDS_PER_SECOND } from './units'
 import { logParseFallback } from './app-log-commands'
 
 /** Formats an ISO timestamp for display in data tables (e.g., "Jan 5, 14:22"). */
@@ -32,7 +33,7 @@ export function formatShortDate(iso: string): string {
 /** Formats a Unix epoch-seconds timestamp as a short date with year (e.g., "Jun 15, 2025"). */
 export function formatFromEpochSeconds(ts: number): string {
   try {
-    return new Date(ts * 1000).toLocaleDateString(undefined, {
+    return new Date(ts * MILLISECONDS_PER_SECOND).toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
       year: 'numeric',

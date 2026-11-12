@@ -57,9 +57,12 @@ export async function bootstrapSchemaCache(
       hydrateFromSnapshot(snapshot, sessionId)
       hasHydratedSnapshot = true
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    logFrontend('warn', `[schema-cache-bootstrap] Failed to load persisted schema cache: ${msg}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logFrontend(
+      'warn',
+      `[schema-cache-bootstrap] Failed to load persisted schema cache: ${message}`
+    )
   }
 
   if (hasHydratedSnapshot) {
@@ -76,11 +79,11 @@ export async function bootstrapSchemaCache(
       if (freshSnapshot) {
         await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       logFrontend(
         'warn',
-        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${msg}`
+        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`
       )
     }
   } else {
@@ -92,11 +95,11 @@ export async function bootstrapSchemaCache(
       if (freshSnapshot) {
         await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       logFrontend(
         'warn',
-        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${msg}`
+        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`
       )
       // Still resolve (don't leave waiters hanging — cache will be in error state)
       resolveInitial()

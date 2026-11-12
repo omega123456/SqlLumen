@@ -91,10 +91,10 @@ export async function loadSessionState(): Promise<SessionState | null> {
         .join(' ')
     )
     return null
-  } catch (e) {
+  } catch (error) {
     logFrontend(
       'warn',
-      ['[session-restore] Failed to parse session state JSON:', e].map(String).join(' ')
+      ['[session-restore] Failed to parse session state JSON:', error].map(String).join(' ')
     )
     return null
   }

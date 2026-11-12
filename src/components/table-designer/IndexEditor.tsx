@@ -9,6 +9,10 @@ import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import styles from './IndexEditor.module.css'
+import { isEven } from '../../lib/units'
+
+const MAX_LISTED_COLUMN_LABELS = 2
+const FIRST_SECONDARY_INDEX_ROW_NUMBER = 2
 
 const INDEX_TYPE_DROPDOWN_OPTIONS: DropdownOption[] = [
   { value: 'UNIQUE', label: 'UNIQUE' },
@@ -32,7 +36,7 @@ function formatSelectedColumnsSummary(selectedOptions: DropdownOption[]): string
   if (count <= 0) {
     return 'Select columns'
   }
-  if (count <= 2) {
+  if (count <= MAX_LISTED_COLUMN_LABELS) {
     return selectedOptions.map((option) => option.label).join(', ')
   }
   return `${count} selected`
@@ -197,7 +201,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
               </tr>
 
               {visibleIndexes.map(({ index, storeIndex }, visibleIndex) => {
-                const displayIndex = visibleIndex + 2
+                const displayIndex = visibleIndex + FIRST_SECONDARY_INDEX_ROW_NUMBER
                 const isSelected = effectiveSelectedRow === storeIndex
                 const newRow = isNewIndex(tabState, index)
                 const nameError = tabState.validationErrors[`indexes.${storeIndex}.name`]
@@ -209,7 +213,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                     className={`${styles.row} ${
                       isSelected
                         ? styles.selectedRow
-                        : displayIndex % 2 === 0
+                        : isEven(displayIndex)
                           ? styles.evenRow
                           : styles.oddRow
                     } ${newRow ? styles.newRow : ''}`}
@@ -252,12 +256,12 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                           options={INDEX_TYPE_DROPDOWN_OPTIONS}
                           value={index.indexType}
                           data-testid={`index-type-${visibleIndex}`}
-                          onChange={(v) =>
+                          onChange={(value) =>
                             updateIndex(
                               tabId,
                               storeIndex,
                               'indexType',
-                              v as TableDesignerIndexDef['indexType']
+                              value as TableDesignerIndexDef['indexType']
                             )
                           }
                           triggerClassName={`${styles.cellSelect} ${
@@ -288,7 +292,9 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                             renderTriggerValue={formatSelectedColumnsSummary}
                             renderOptionLabel={(option) => <span>{option.label}</span>}
                             triggerClassName={`${styles.columnButton} ${styles.columnButtonFixed} ${
-                              index.columns.length > 2 ? styles.columnButtonSummary : ''
+                              index.columns.length > MAX_LISTED_COLUMN_LABELS
+                                ? styles.columnButtonSummary
+                                : ''
                             } ${columnsError ? styles.inputError : ''}`}
                             triggerProps={{
                               'aria-invalid': columnsError ? 'true' : 'false',

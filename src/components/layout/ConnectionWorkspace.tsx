@@ -61,15 +61,15 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
   // reuses the existing inactive-child cleanup and pause behavior throughout the
   // descendant tree (WorkspaceBody, WorkspaceTabPanel, grids, editors, polling).
   const visibleActiveWorkspaceTabId = isActive ? selectedWorkspaceTabId : null
-  const activeTab = tabs.find((t) => t.id === visibleActiveWorkspaceTabId) ?? null
+  const activeTab = tabs.find((tab) => tab.id === visibleActiveWorkspaceTabId) ?? null
 
   // Per-session stable panel ordering so retained DOM instances are preserved
   // across reorders independently of any other connection's workspace.
-  const [panelOrder, setPanelOrder] = useState<string[]>(() => tabs.map((t) => t.id))
-  const [prevTabs, setPrevTabs] = useState(tabs)
+  const [panelOrder, setPanelOrder] = useState<string[]>(() => tabs.map((tab) => tab.id))
+  const [previousTabs, setPreviousTabs] = useState(tabs)
 
   let nextPanelOrder = panelOrder
-  if (prevTabs !== tabs) {
+  if (previousTabs !== tabs) {
     nextPanelOrder = panelOrder.filter((tabId) => tabs.some((tab) => tab.id === tabId))
     const seenIds = new Set(nextPanelOrder)
     for (const tab of tabs) {
@@ -79,7 +79,7 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
       }
     }
     setPanelOrder(nextPanelOrder)
-    setPrevTabs(tabs)
+    setPreviousTabs(tabs)
   }
 
   const panelTabs = nextPanelOrder

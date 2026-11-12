@@ -76,7 +76,7 @@ impl<V> CacheGet<V> {
     /// Convenience: extract the entry if `Found` or `ReWarmed`, else `None`.
     pub fn into_entry(self) -> Option<Arc<CachedEntry<V>>> {
         match self {
-            Self::Found(e) | Self::ReWarmed(e) => Some(e),
+            Self::Found(entry) | Self::ReWarmed(entry) => Some(entry),
             _ => None,
         }
     }
@@ -380,9 +380,9 @@ where
                         }
 
                         let session_dir = spill_dir_for_listener.join(&session_id_for_listener);
-                        if let Err(e) = fs::create_dir_all(&session_dir) {
+                        if let Err(error) = fs::create_dir_all(&session_dir) {
                             tracing::warn!(
-                                error = %e,
+                                error = %error,
                                 connection_id = %job.connection_id,
                                 tab_id = %job.tab_id,
                                 generation = job.generation,
@@ -396,9 +396,9 @@ where
 
                         match rmp_serde::to_vec_named(&job.entry.value) {
                             Ok(bytes) => {
-                                if let Err(e) = fs::write(&path, &bytes) {
+                                if let Err(error) = fs::write(&path, &bytes) {
                                     tracing::warn!(
-                                        error = %e,
+                                        error = %error,
                                         path = %path.display(),
                                         "failed to write spill file"
                                     );
@@ -413,9 +413,9 @@ where
                                     );
                                 }
                             }
-                            Err(e) => {
+                            Err(error) => {
                                 tracing::warn!(
-                                    error = %e,
+                                    error = %error,
                                     connection_id = %job.connection_id,
                                     tab_id = %job.tab_id,
                                     generation = job.generation,
@@ -486,13 +486,13 @@ where
                         generation,
                         entry,
                     }));
-                if let Err(e) = send_result {
+                if let Err(error) = send_result {
                     let mut spillable = spillable_for_listener
                         .write()
                         .expect("spillable_removals lock poisoned");
                     spillable.remove(&marker);
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         key = ?key,
                         generation,
                         "failed to enqueue spill write job"
@@ -600,17 +600,17 @@ where
                         );
                         return CacheGet::ReWarmed(entry);
                     }
-                    Err(e) => {
+                    Err(error) => {
                         tracing::warn!(
-                            error = %e,
+                            error = %error,
                             path = %spill_path.display(),
                             "failed to deserialize spill file"
                         );
                     }
                 },
-                Err(e) => {
+                Err(error) => {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         path = %spill_path.display(),
                         "failed to read spill file"
                     );
@@ -669,7 +669,9 @@ where
                 .spillable_removals
                 .write()
                 .expect("spillable_removals lock poisoned");
-            spillable.retain(|(c, t, _)| !(c == &key.0 && t == &key.1));
+            spillable.retain(|(connection_id, tab_id, _)| {
+                !(connection_id == &key.0 && tab_id == &key.1)
+            });
         }
 
         {
@@ -744,7 +746,9 @@ where
                 .spillable_removals
                 .write()
                 .expect("spillable_removals lock poisoned");
-            spillable.retain(|(c, t, _)| !(c == &key.0 && t == &key.1));
+            spillable.retain(|(connection_id, tab_id, _)| {
+                !(connection_id == &key.0 && tab_id == &key.1)
+            });
         }
     }
 
@@ -857,19 +861,19 @@ where
                     gens.get(key).copied()
                 };
 
-                if let Some(g) = generation {
+                if let Some(expected_generation) = generation {
                     {
                         let mut spillable = self
                             .spillable_removals
                             .write()
                             .expect("spillable_removals lock poisoned");
-                        spillable.insert((key.0.clone(), key.1.clone(), g));
+                        spillable.insert((key.0.clone(), key.1.clone(), expected_generation));
                     }
 
                     tracing::info!(
                         connection_id = %key.0,
                         tab_id = %key.1,
-                        generation = g,
+                        generation = expected_generation,
                         "evicting entry due to RAM pressure"
                     );
 
@@ -896,7 +900,7 @@ where
 
     fn touch_lru(&self, key: &(String, String)) {
         let mut lru = self.lru_order.write().expect("lru_order lock poisoned");
-        lru.retain(|k| k != key);
+        lru.retain(|existing| existing != key);
         lru.push_back(key.clone());
         drop(lru);
 
@@ -909,7 +913,7 @@ where
 
     fn remove_from_lru(&self, key: &(String, String)) {
         let mut lru = self.lru_order.write().expect("lru_order lock poisoned");
-        lru.retain(|k| k != key);
+        lru.retain(|existing| existing != key);
     }
 
     fn remove_last_touched(&self, key: &(String, String)) {
@@ -938,10 +942,10 @@ where
         }
 
         let session_dir = self.spill_dir.join(&self.session_id);
-        if let Err(e) = fs::remove_dir_all(&session_dir) {
-            if e.kind() != std::io::ErrorKind::NotFound {
+        if let Err(error) = fs::remove_dir_all(&session_dir) {
+            if error.kind() != std::io::ErrorKind::NotFound {
                 tracing::warn!(
-                    error = %e,
+                    error = %error,
                     path = %session_dir.display(),
                     "failed to clean up spill directory on shutdown"
                 );
@@ -987,10 +991,10 @@ impl GenericCache<Vec<StoredResult>> {
         connection_id: &str,
         tab_id: &str,
         expected_invalidation_version: u64,
-        idx: usize,
+        index: usize,
         expected_query_id: Option<&str>,
         base_view_version: Option<u64>,
-        f: F,
+        operation: F,
     ) -> Result<SlotWrite<T>, String>
     where
         F: FnOnce(&mut StoredResult) -> Result<T, String>,
@@ -1021,11 +1025,11 @@ impl GenericCache<Vec<StoredResult>> {
             return Ok(SlotWrite::Invalidated);
         };
 
-        let Some(slot) = entry.value.get(idx) else {
+        let Some(slot) = entry.value.get(index) else {
             tracing::warn!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,
-                idx,
+                index,
                 "in-place slot update skipped: result slot index out of range"
             );
             return Ok(SlotWrite::Invalidated);
@@ -1042,8 +1046,8 @@ impl GenericCache<Vec<StoredResult>> {
         }
 
         let mut next = slot.clone();
-        let output = f(&mut next)?;
-        Arc::make_mut(&mut entry).value[idx] = next;
+        let output = operation(&mut next)?;
+        Arc::make_mut(&mut entry).value[index] = next;
         self.cache.insert(key, entry);
         Ok(SlotWrite::Applied(output))
     }

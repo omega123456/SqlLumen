@@ -18,6 +18,7 @@ import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import styles from './SqlDumpDialog.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
+import { PERCENT_SCALE } from '../../lib/units'
 const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 /** Polling interval for progress updates (ms). */
@@ -81,26 +82,26 @@ export default function SqlDumpDialog({
         // Initialize selection based on props
         const initial: Record<string, Set<string>> = {}
         if (initialDatabase) {
-          const db = dbs.find((d) => d.name === initialDatabase)
+          const db = dbs.find((database) => database.name === initialDatabase)
           if (db) {
             if (initialTable) {
               // Select just the one table
               initial[initialDatabase] = new Set([initialTable])
             } else {
               // Select all tables in this database
-              initial[initialDatabase] = new Set(db.tables.map((t) => t.name))
+              initial[initialDatabase] = new Set(db.tables.map((table) => table.name))
             }
           }
         }
         setSelectedTables(initial)
       })
-      .catch((err) => {
+      .catch((error) => {
         if (cancelled) return
-        const msg = err instanceof Error ? err.message : String(err)
-        setLoadError(msg)
+        const message = error instanceof Error ? error.message : String(error)
+        setLoadError(message)
         logFrontend(
           'error',
-          ['[sql-dump] Failed to load exportable objects:', msg].map(String).join(' ')
+          ['[sql-dump] Failed to load exportable objects:', message].map(String).join(' ')
         )
       })
       .finally(() => {
@@ -118,32 +119,32 @@ export default function SqlDumpDialog({
 
     const poll = () => {
       getDumpProgress(jobId)
-        .then((p) => {
-          setProgress(p)
-          if (p.status === 'completed') {
+        .then((progress) => {
+          setProgress(progress)
+          if (progress.status === 'completed') {
             setIsExporting(false)
             if (pollRef.current) clearInterval(pollRef.current)
             pollRef.current = null
             showSuccessToast('Export completed', `SQL dump saved to ${filePath}`)
             onClose()
-          } else if (p.status === 'cancelled') {
+          } else if (progress.status === 'cancelled') {
             setIsExporting(false)
             setCancelPending(false)
             if (pollRef.current) clearInterval(pollRef.current)
             pollRef.current = null
             setError(
-              `Export cancelled — ${p.tablesDone} of ${p.tablesTotal} tables were written to the file`
+              `Export cancelled — ${progress.tablesDone} of ${progress.tablesTotal} tables were written to the file`
             )
-          } else if (p.status === 'failed') {
+          } else if (progress.status === 'failed') {
             setIsExporting(false)
             if (pollRef.current) clearInterval(pollRef.current)
             pollRef.current = null
-            showErrorToast('Export failed', p.errorMessage ?? 'SQL dump failed')
-            setError(p.errorMessage ?? 'Export failed')
+            showErrorToast('Export failed', progress.errorMessage ?? 'SQL dump failed')
+            setError(progress.errorMessage ?? 'Export failed')
           }
         })
-        .catch((err) => {
-          logFrontend('error', ['[sql-dump] Failed to poll progress:', err].map(String).join(' '))
+        .catch((error) => {
+          logFrontend('error', ['[sql-dump] Failed to poll progress:', error].map(String).join(' '))
         })
     }
 
@@ -161,8 +162,8 @@ export default function SqlDumpDialog({
 
   // Toggle a single table
   const toggleTable = useCallback((dbName: string, tableName: string) => {
-    setSelectedTables((prev) => {
-      const copy = { ...prev }
+    setSelectedTables((previous) => {
+      const copy = { ...previous }
       const existing = copy[dbName] ? new Set(copy[dbName]) : new Set<string>()
       if (existing.has(tableName)) {
         existing.delete(tableName)
@@ -181,11 +182,11 @@ export default function SqlDumpDialog({
   // Toggle an entire database
   const toggleDatabase = useCallback(
     (dbName: string) => {
-      setSelectedTables((prev) => {
-        const copy = { ...prev }
-        const db = databases.find((d) => d.name === dbName)
-        if (!db) return prev
-        const allTableNames = db.tables.map((t) => t.name)
+      setSelectedTables((previous) => {
+        const copy = { ...previous }
+        const db = databases.find((database) => database.name === dbName)
+        if (!db) return previous
+        const allTableNames = db.tables.map((table) => table.name)
         const existing = copy[dbName]
         if (existing && existing.size === allTableNames.length) {
           // Deselect all
@@ -245,15 +246,15 @@ export default function SqlDumpDialog({
     const dbList: string[] = []
     for (const [dbName, tableSet] of Object.entries(selectedTables)) {
       if (tableSet.size === 0) continue
-      const db = databases.find((d) => d.name === dbName)
+      const db = databases.find((database) => database.name === dbName)
       const entries: DumpTableEntry[] = []
-      for (const objName of tableSet) {
-        const meta = db?.tables.find((t) => t.name === objName)
+      for (const objectName of tableSet) {
+        const meta = db?.tables.find((table) => table.name === objectName)
         if (!meta) {
           setIsExporting(false)
-          const msg = `Cannot export: metadata not found for "${objName}" in database "${dbName}"`
-          setError(msg)
-          logFrontend('error', `[sql-dump] ${msg}`)
+          const message = `Cannot export: metadata not found for "${objectName}" in database "${dbName}"`
+          setError(message)
+          logFrontend('error', `[sql-dump] ${message}`)
           return
         }
         entries.push({ name: meta.name, objectType: meta.objectType })
@@ -264,16 +265,16 @@ export default function SqlDumpDialog({
 
     try {
       const id = await startSqlDump({
-        connectionId,
-        filePath,
+        connectionId: connectionId,
+        filePath: filePath,
         databases: dbList,
-        tables,
-        options,
+        tables: tables,
+        options: options,
       })
       setJobId(id)
-    } catch (err) {
+    } catch (error) {
       setIsExporting(false)
-      setError(err instanceof Error ? err.message : String(err))
+      setError(error instanceof Error ? error.message : String(error))
     }
   }, [
     filePath,
@@ -293,16 +294,16 @@ export default function SqlDumpDialog({
     setCancelPending(true)
     try {
       await cancelDump(jobId, connectionId)
-    } catch (err) {
+    } catch (error) {
       setCancelPending(false)
-      logFrontend('error', ['[sql-dump] Failed to cancel export:', err].map(String).join(' '))
+      logFrontend('error', ['[sql-dump] Failed to cancel export:', error].map(String).join(' '))
     }
   }, [jobId, connectionId, cancelPending])
 
   // Progress percentage (table-level)
   const progressPercent = useMemo(() => {
     if (!progress || progress.tablesTotal === 0) return 0
-    return Math.round((progress.tablesDone / progress.tablesTotal) * 100)
+    return Math.round((progress.tablesDone / progress.tablesTotal) * PERCENT_SCALE)
   }, [progress])
 
   const canExport = filePath && hasSelection && !isExporting
@@ -345,7 +346,7 @@ export default function SqlDumpDialog({
                 <Checkbox
                   id="dump-include-structure"
                   checked={includeStructure}
-                  onChange={(e) => setIncludeStructure(e.target.checked)}
+                  onChange={(event) => setIncludeStructure(event.target.checked)}
                   data-testid="dump-include-structure"
                 />
                 <label htmlFor="dump-include-structure" className={styles.checkboxLabel}>
@@ -356,7 +357,7 @@ export default function SqlDumpDialog({
                 <Checkbox
                   id="dump-include-data"
                   checked={includeData}
-                  onChange={(e) => setIncludeData(e.target.checked)}
+                  onChange={(event) => setIncludeData(event.target.checked)}
                   data-testid="dump-include-data"
                 />
                 <label htmlFor="dump-include-data" className={styles.checkboxLabel}>
@@ -367,7 +368,7 @@ export default function SqlDumpDialog({
                 <Checkbox
                   id="dump-include-drop"
                   checked={includeDrop}
-                  onChange={(e) => setIncludeDrop(e.target.checked)}
+                  onChange={(event) => setIncludeDrop(event.target.checked)}
                   data-testid="dump-include-drop"
                 />
                 <label htmlFor="dump-include-drop" className={styles.checkboxLabel}>
@@ -378,7 +379,7 @@ export default function SqlDumpDialog({
                 <Checkbox
                   id="dump-use-transaction"
                   checked={useTransaction}
-                  onChange={(e) => setUseTransaction(e.target.checked)}
+                  onChange={(event) => setUseTransaction(event.target.checked)}
                   data-testid="dump-use-transaction"
                 />
                 <label htmlFor="dump-use-transaction" className={styles.checkboxLabel}>
@@ -422,8 +423,8 @@ export default function SqlDumpDialog({
                       <div className={styles.objectGroupHeader}>
                         <Checkbox
                           checked={allSelected}
-                          ref={(el) => {
-                            if (el) el.indeterminate = !!someSelected
+                          ref={(element) => {
+                            if (element) element.indeterminate = !!someSelected
                           }}
                           onChange={() => toggleDatabase(db.name)}
                           data-testid={`dump-db-${db.name}`}
@@ -464,7 +465,7 @@ export default function SqlDumpDialog({
                 type="text"
                 className={styles.destinationInput}
                 value={filePath}
-                onChange={(e) => setFilePath(e.target.value)}
+                onChange={(event) => setFilePath(event.target.value)}
                 placeholder="database_dump.sql"
                 data-testid="dump-file-path-input"
               />

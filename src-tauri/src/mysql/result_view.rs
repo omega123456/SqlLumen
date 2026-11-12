@@ -154,21 +154,31 @@ pub fn js_number_to_string(value: f64) -> String {
     // `{:e}` yields the shortest round-trip digits, e.g. "1.2345e-7".
     let sci = format!("{:e}", value.abs());
     let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
-    let digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let digits: String = mantissa
+        .chars()
+        .filter(|character| *character != '.')
+        .collect();
     let exponent: i32 = exponent.parse().unwrap_or(0);
-    let k = digits.len() as i32;
-    let n = exponent + 1;
+    let digit_count = digits.len() as i32;
+    let point_position = exponent + 1;
 
-    let body = if k <= n && n <= 21 {
-        format!("{digits}{}", "0".repeat((n - k) as usize))
-    } else if 0 < n && n <= 21 {
-        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
-    } else if -6 < n && n <= 0 {
-        format!("0.{}{digits}", "0".repeat((-n) as usize))
+    let body = if digit_count <= point_position && point_position <= 21 {
+        format!(
+            "{digits}{}",
+            "0".repeat((point_position - digit_count) as usize)
+        )
+    } else if 0 < point_position && point_position <= 21 {
+        format!(
+            "{}.{}",
+            &digits[..point_position as usize],
+            &digits[point_position as usize..]
+        )
+    } else if -6 < point_position && point_position <= 0 {
+        format!("0.{}{digits}", "0".repeat((-point_position) as usize))
     } else {
-        let exp_sign = if n - 1 < 0 { '-' } else { '+' };
-        let exp_abs = (n - 1).abs();
-        if k == 1 {
+        let exp_sign = if point_position - 1 < 0 { '-' } else { '+' };
+        let exp_abs = (point_position - 1).abs();
+        if digit_count == 1 {
             format!("{digits}e{exp_sign}{exp_abs}")
         } else {
             format!("{}.{}e{exp_sign}{exp_abs}", &digits[..1], &digits[1..])
@@ -185,17 +195,17 @@ pub fn js_number_to_string(value: f64) -> String {
 pub fn js_string(value: &Value) -> Cow<'_, str> {
     match value {
         Value::Null => Cow::Borrowed("null"),
-        Value::Bool(b) => Cow::Borrowed(if *b { "true" } else { "false" }),
-        Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Cow::Owned(js_number_to_string(i as f64))
-            } else if let Some(u) = n.as_u64() {
-                Cow::Owned(js_number_to_string(u as f64))
+        Value::Bool(boolean) => Cow::Borrowed(if *boolean { "true" } else { "false" }),
+        Value::Number(number) => {
+            if let Some(integer) = number.as_i64() {
+                Cow::Owned(js_number_to_string(integer as f64))
+            } else if let Some(unsigned) = number.as_u64() {
+                Cow::Owned(js_number_to_string(unsigned as f64))
             } else {
-                Cow::Owned(js_number_to_string(n.as_f64().unwrap_or(f64::NAN)))
+                Cow::Owned(js_number_to_string(number.as_f64().unwrap_or(f64::NAN)))
             }
         }
-        Value::String(s) => Cow::Borrowed(s.as_str()),
+        Value::String(text) => Cow::Borrowed(text.as_str()),
         Value::Array(items) => Cow::Owned(
             items
                 .iter()
@@ -211,9 +221,9 @@ pub fn js_string(value: &Value) -> Cow<'_, str> {
 }
 
 /// JavaScript `WhiteSpace` + `LineTerminator` (the set `String.prototype.trim` removes).
-fn is_js_whitespace(c: char) -> bool {
+fn is_js_whitespace(character: char) -> bool {
     matches!(
-        c,
+        character,
         '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
             ..='\u{200A}'
                 | '\u{2028}'
@@ -227,47 +237,47 @@ fn is_js_whitespace(c: char) -> bool {
 
 /// True when `s` is a JS `StrUnsignedDecimalLiteral` (digits with an optional
 /// fraction and exponent; at least one digit in the significand).
-fn is_js_unsigned_decimal(s: &str) -> bool {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    let int_start = i;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
+fn is_js_unsigned_decimal(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut position = 0;
+    let int_start = position;
+    while position < bytes.len() && bytes[position].is_ascii_digit() {
+        position += 1;
     }
-    let mut digits = i - int_start;
-    if i < bytes.len() && bytes[i] == b'.' {
-        i += 1;
-        let frac_start = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
+    let mut digits = position - int_start;
+    if position < bytes.len() && bytes[position] == b'.' {
+        position += 1;
+        let frac_start = position;
+        while position < bytes.len() && bytes[position].is_ascii_digit() {
+            position += 1;
         }
-        digits += i - frac_start;
+        digits += position - frac_start;
     }
     if digits == 0 {
         return false;
     }
-    if i < bytes.len() && (bytes[i] == b'e' || bytes[i] == b'E') {
-        i += 1;
-        if i < bytes.len() && (bytes[i] == b'+' || bytes[i] == b'-') {
-            i += 1;
+    if position < bytes.len() && (bytes[position] == b'e' || bytes[position] == b'E') {
+        position += 1;
+        if position < bytes.len() && (bytes[position] == b'+' || bytes[position] == b'-') {
+            position += 1;
         }
-        let exp_start = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
+        let exp_start = position;
+        while position < bytes.len() && bytes[position].is_ascii_digit() {
+            position += 1;
         }
-        if i == exp_start {
+        if position == exp_start {
             return false;
         }
     }
-    i == bytes.len()
+    position == bytes.len()
 }
 
 /// JavaScript `Number(string)` (`StringToNumber`): trims JS whitespace, `""`
 /// becomes `0`, `0x`/`0o`/`0b` prefixes parse, `Infinity` parses (callers then
 /// reject it as non-finite), and anything else that isn't a decimal literal is
 /// `NaN`.
-pub fn js_string_to_number(s: &str) -> f64 {
-    let trimmed = s.trim_matches(is_js_whitespace);
+pub fn js_string_to_number(text: &str) -> f64 {
+    let trimmed = text.trim_matches(is_js_whitespace);
     if trimmed.is_empty() {
         return 0.0;
     }
@@ -280,11 +290,11 @@ pub fn js_string_to_number(s: &str) -> f64 {
     };
     if let Some(radix) = radix {
         let body = &trimmed[2..];
-        if body.is_empty() || !body.chars().all(|c| c.is_digit(radix)) {
+        if body.is_empty() || !body.chars().all(|character| character.is_digit(radix)) {
             return f64::NAN;
         }
-        return body.chars().fold(0.0, |acc, c| {
-            acc * radix as f64 + c.to_digit(radix).unwrap_or(0) as f64
+        return body.chars().fold(0.0, |acc, character| {
+            acc * radix as f64 + character.to_digit(radix).unwrap_or(0) as f64
         });
     }
     let (sign, unsigned) = match trimmed.as_bytes()[0] {
@@ -300,7 +310,7 @@ pub fn js_string_to_number(s: &str) -> f64 {
     }
     unsigned
         .parse::<f64>()
-        .map(|v| sign * v)
+        .map(|magnitude| sign * magnitude)
         .unwrap_or(f64::NAN)
 }
 
@@ -312,23 +322,23 @@ pub fn js_string_to_number(s: &str) -> f64 {
 pub fn js_number(value: &Value) -> f64 {
     match value {
         Value::Null => 0.0,
-        Value::Bool(b) => {
-            if *b {
+        Value::Bool(boolean) => {
+            if *boolean {
                 1.0
             } else {
                 0.0
             }
         }
-        Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
-        Value::String(s) => js_string_to_number(s),
+        Value::Number(number) => number.as_f64().unwrap_or(f64::NAN),
+        Value::String(text) => js_string_to_number(text),
         Value::Array(_) => js_string_to_number(&js_string(value)),
         Value::Object(_) => f64::NAN,
     }
 }
 
 /// JS relational string comparison (UTF-16 code-unit order).
-fn js_string_cmp(a: &str, b: &str) -> Ordering {
-    a.encode_utf16().cmp(b.encode_utf16())
+fn js_string_cmp(left: &str, right: &str) -> Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
 }
 
 /// True for columns the frontend normalizes as TINYINT / boolean aliases.
@@ -343,9 +353,9 @@ pub fn is_tinyint_boolean_alias(data_type: &str) -> bool {
 /// booleans and one-character strings with code 0 or 1 become numbers.
 pub fn normalize_tinyint_value(value: &Value) -> Cow<'_, Value> {
     match value {
-        Value::Bool(b) => Cow::Owned(Value::from(u8::from(*b))),
-        Value::String(s) => {
-            let mut chars = s.encode_utf16();
+        Value::Bool(boolean) => Cow::Owned(Value::from(u8::from(*boolean))),
+        Value::String(text) => {
+            let mut chars = text.encode_utf16();
             match (chars.next(), chars.next()) {
                 (Some(code @ (0 | 1)), None) => Cow::Owned(Value::from(code)),
                 _ => Cow::Borrowed(value),
@@ -455,7 +465,7 @@ pub fn like_pattern_to_regex(pattern: &str) -> Result<Regex, String> {
         }
     }
     source.push('$');
-    Regex::new(&source).map_err(|e| format!("Invalid LIKE pattern: {e}"))
+    Regex::new(&source).map_err(|error| format!("Invalid LIKE pattern: {error}"))
 }
 
 fn compile_filter(
@@ -478,7 +488,7 @@ fn compile_filter(
             let number = if condition.value.is_empty() {
                 None
             } else {
-                Some(js_string_to_number(&condition.value)).filter(|n| n.is_finite())
+                Some(js_string_to_number(&condition.value)).filter(|number| number.is_finite())
             };
             FilterTest::Compare {
                 op,
@@ -533,7 +543,7 @@ pub fn resolve_spec(
     columns: &[ColumnMeta],
     mode: SpecMode,
 ) -> Result<ResolvedSpec, String> {
-    let position = |name: &str| columns.iter().position(|c| c.name == name);
+    let position = |name: &str| columns.iter().position(|column| column.name == name);
 
     let mut effective = ResultViewSpec::default();
     let mut sort = None;
@@ -563,9 +573,9 @@ pub fn resolve_spec(
                 filters.push(compiled);
                 effective.filters.push(condition.clone());
             }
-            Err(e) if mode == SpecMode::Strict => return Err(e),
-            Err(e) => {
-                tracing::warn!(error = %e, column = %condition.column, "dropping filter condition from re-run view spec");
+            Err(error) if mode == SpecMode::Strict => return Err(error),
+            Err(error) => {
+                tracing::warn!(error = %error, column = %condition.column, "dropping filter condition from re-run view spec");
             }
         }
     }
@@ -589,16 +599,16 @@ pub fn build_view(
         return None;
     }
     let mut indices: Vec<u32> = (0..rows.len() as u32)
-        .filter(|i| !tombstones.contains(i))
-        .filter(|&i| {
-            let row = &rows[i as usize];
-            resolved.filters.iter().all(|f| f.matches(row))
+        .filter(|row_index| !tombstones.contains(row_index))
+        .filter(|&row_index| {
+            let row = &rows[row_index as usize];
+            resolved.filters.iter().all(|filter| filter.matches(row))
         })
         .collect();
     if let Some((column, direction)) = resolved.sort {
-        indices.sort_by(|&a, &b| {
-            let va = rows[a as usize].get(column).unwrap_or(&Value::Null);
-            let vb = rows[b as usize].get(column).unwrap_or(&Value::Null);
+        indices.sort_by(|&left, &right| {
+            let va = rows[left as usize].get(column).unwrap_or(&Value::Null);
+            let vb = rows[right as usize].get(column).unwrap_or(&Value::Null);
             let ordering = compare_json_values(va, vb);
             match direction {
                 SortDirection::Asc => ordering,
@@ -616,7 +626,7 @@ pub async fn apply_initial_view(
     mut stored: StoredResult,
     spec: Option<ResultViewSpec>,
 ) -> Result<StoredResult, String> {
-    let Some(spec) = spec.filter(|s| !s.is_empty()) else {
+    let Some(spec) = spec.filter(|spec_text| !spec_text.is_empty()) else {
         return Ok(stored);
     };
     tokio::task::spawn_blocking(move || {
@@ -626,9 +636,9 @@ pub async fn apply_initial_view(
         Ok(stored)
     })
     .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "initial view build task failed");
-        format!("View build task failed: {e}")
+    .map_err(|error| {
+        tracing::error!(error = %error, "initial view build task failed");
+        format!("View build task failed: {error}")
     })?
 }
 
@@ -654,7 +664,7 @@ pub fn slice_window(stored: &StoredResult, offset: usize, limit: usize) -> Resul
     };
     let rows = base_indices
         .iter()
-        .map(|&i| Arc::clone(&stored.rows[i as usize]))
+        .map(|&row_index| Arc::clone(&stored.rows[row_index as usize]))
         .collect();
     ResultWindow {
         offset,
@@ -674,7 +684,7 @@ pub fn view_rows(stored: &StoredResult) -> Vec<SharedRow> {
     match &stored.view {
         Some(view) => view
             .iter()
-            .map(|&i| Arc::clone(&stored.rows[i as usize]))
+            .map(|&row_index| Arc::clone(&stored.rows[row_index as usize]))
             .collect(),
         None => (*stored.rows).clone(),
     }
@@ -815,8 +825,8 @@ pub fn commit_result_view(
             Ok(slot.clone())
         },
     )?;
-    let slot = map_slot_write(outcome).inspect_err(|e| {
-        tracing::debug!(connection_id = %connection_id, tab_id = %tab_id, error = %e, "set_result_view write refused");
+    let slot = map_slot_write(outcome).inspect_err(|error| {
+        tracing::debug!(connection_id = %connection_id, tab_id = %tab_id, error = %error, "set_result_view write refused");
     })?;
     Ok(SetResultViewResult {
         view_version: slot.view_version,
@@ -902,14 +912,21 @@ pub fn remove_result_rows_impl(
 
     let row_count = slot.rows.len() as u32;
     let mut tombstones = (*slot.tombstones).clone();
-    tombstones.extend(base_indices.iter().copied().filter(|&i| i < row_count));
+    tombstones.extend(
+        base_indices
+            .iter()
+            .copied()
+            .filter(|&row_index| row_index < row_count),
+    );
     let view: Vec<u32> = match &slot.view {
         Some(view) => view
             .iter()
             .copied()
-            .filter(|i| !tombstones.contains(i))
+            .filter(|row_index| !tombstones.contains(row_index))
             .collect(),
-        None => (0..row_count).filter(|i| !tombstones.contains(i)).collect(),
+        None => (0..row_count)
+            .filter(|row_index| !tombstones.contains(row_index))
+            .collect(),
     };
     let tombstones = Arc::new(tombstones);
     let view = Arc::new(view);

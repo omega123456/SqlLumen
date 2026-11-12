@@ -42,14 +42,14 @@ pub fn bfs_related(
     let mut edges_used: u32 = 0;
 
     // Seed the BFS
-    for (i, (db, tbl)) in seeds.iter().enumerate() {
+    for (seed_index, (db, tbl)) in seeds.iter().enumerate() {
         let key = (db.clone(), tbl.clone());
         if visited.insert(key) {
-            queue.push_back((db.clone(), tbl.clone(), 0, i));
+            queue.push_back((db.clone(), tbl.clone(), 0, seed_index));
         }
     }
 
-    while let Some((db, tbl, current_hop, seed_idx)) = queue.pop_front() {
+    while let Some((db, tbl, current_hop, seed_index)) = queue.pop_front() {
         if current_hop >= depth {
             continue;
         }
@@ -70,7 +70,7 @@ pub fn bfs_related(
             .query_map(params![connection_id, db, tbl], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
             })?
-            .filter_map(|r| r.ok())
+            .filter_map(|row| row.ok())
             .collect();
 
         for (n_db, n_tbl) in neighbors {
@@ -85,9 +85,9 @@ pub fn bfs_related(
                     db_name: n_db.clone(),
                     table_name: n_tbl.clone(),
                     hop: next_hop,
-                    seed_index: seed_idx,
+                    seed_index,
                 });
-                queue.push_back((n_db, n_tbl, next_hop, seed_idx));
+                queue.push_back((n_db, n_tbl, next_hop, seed_index));
             }
         }
     }

@@ -47,9 +47,11 @@ function parseMaxRows(value: string): number | null {
 }
 
 export function ResultsSettings() {
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
-  const validateSetting = useSettingsStore((s) => s.validateSetting)
-  const maxRowsError = useSettingsStore((s) => s.validationErrors['results.maxRows'] ?? null)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const validateSetting = useSettingsStore((state) => state.validateSetting)
+  const maxRowsError = useSettingsStore(
+    (state) => state.validationErrors['results.maxRows'] ?? null
+  )
 
   const rowLimit = useSettingValue('results.pageSize')
   const maxRows = useSettingValue('results.maxRows')
@@ -75,7 +77,7 @@ export function ResultsSettings() {
             min={10}
             max={10000}
             value={rowLimit}
-            onChange={(e) => setPendingChange('results.pageSize', e.target.value)}
+            onChange={(event) => setPendingChange('results.pageSize', event.target.value)}
             aria-describedby="settings-page-size-help"
             data-testid="settings-page-size"
             style={{ width: 120 }}
@@ -106,7 +108,7 @@ export function ResultsSettings() {
                 ? 'settings-max-rows-help settings-max-rows-error'
                 : 'settings-max-rows-help'
             }
-            onChange={(e) => setPendingChange('results.maxRows', e.target.value)}
+            onChange={(event) => setPendingChange('results.maxRows', event.target.value)}
             onBlur={() => validateSetting('results.maxRows')}
             data-testid="settings-max-rows"
             style={{ width: 120 }}
@@ -132,7 +134,7 @@ export function ResultsSettings() {
           <TextInput
             id="settings-null-display"
             value={nullDisplay}
-            onChange={(e) => setPendingChange('results.nullDisplay', e.target.value)}
+            onChange={(event) => setPendingChange('results.nullDisplay', event.target.value)}
             data-testid="settings-null-display"
             style={{ width: 200 }}
           />

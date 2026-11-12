@@ -9,6 +9,10 @@ import { HistoryDetailPanel } from './HistoryDetailPanel'
 import type { TimeRange } from './HistoryFilterPanel'
 import type { HistoryEntry, HistoryTab as HistoryTabType } from '../../types/schema'
 import styles from './HistoryTab.module.css'
+import { MILLISECONDS_PER_DAY } from '../../lib/units'
+
+const DAYS_PER_WEEK = 7
+const DAYS_PER_MONTH_RANGE = 30
 
 /** Stable default references to avoid infinite re-render from useSyncExternalStore. */
 const EMPTY_ENTRIES: HistoryEntry[] = []
@@ -20,9 +24,9 @@ export interface HistoryTabProps {
 
 /** Time range durations in milliseconds. */
 const RANGE_MS: Record<Exclude<TimeRange, 'all'>, number> = {
-  '24h': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
-  '30d': 30 * 24 * 60 * 60 * 1000,
+  '24h': MILLISECONDS_PER_DAY,
+  '7d': DAYS_PER_WEEK * MILLISECONDS_PER_DAY,
+  '30d': DAYS_PER_MONTH_RANGE * MILLISECONDS_PER_DAY,
 }
 
 /**
@@ -76,7 +80,7 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
 
   // Find the selected entry from the current list
   const selectedEntry = useMemo(
-    () => entries.find((e) => e.id === selectedEntryId) ?? null,
+    () => entries.find((entry) => entry.id === selectedEntryId) ?? null,
     [entries, selectedEntryId]
   )
 

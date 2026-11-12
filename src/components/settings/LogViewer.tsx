@@ -120,10 +120,10 @@ export function LogViewer() {
   const paginationProps = {
     currentPage: page,
     pageSize: PAGE_SIZE,
-    totalPages,
+    totalPages: totalPages,
     onPageSizeChange: () => {},
-    onPrevPage: () => setPage((p) => Math.max(1, p - 1)),
-    onNextPage: () => setPage((p) => Math.min(totalPages, p + 1)),
+    onPrevPage: () => setPage((currentPage) => Math.max(1, currentPage - 1)),
+    onNextPage: () => setPage((currentPage) => Math.min(totalPages, currentPage + 1)),
     onPageSubmit: handlePageSubmit,
     disabled: isLoading,
     showPageSize: false,

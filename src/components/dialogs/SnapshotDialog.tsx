@@ -21,16 +21,16 @@ type ConfirmState =
   | null
 
 export function SnapshotDialog() {
-  const isDialogOpen = useSnapshotStore((s) => s.isDialogOpen)
-  const snapshots = useSnapshotStore((s) => s.snapshots)
-  const selectedSnapshotId = useSnapshotStore((s) => s.selectedSnapshotId)
-  const isBusy = useSnapshotStore((s) => s.isBusy)
-  const isRestoring = useSnapshotStore((s) => s.isRestoring)
-  const closeDialog = useSnapshotStore((s) => s.closeDialog)
-  const selectSnapshot = useSnapshotStore((s) => s.selectSnapshot)
-  const createManualSnapshot = useSnapshotStore((s) => s.createManualSnapshot)
-  const restoreSnapshot = useSnapshotStore((s) => s.restoreSnapshot)
-  const deleteSnapshot = useSnapshotStore((s) => s.deleteSnapshot)
+  const isDialogOpen = useSnapshotStore((state) => state.isDialogOpen)
+  const snapshots = useSnapshotStore((state) => state.snapshots)
+  const selectedSnapshotId = useSnapshotStore((state) => state.selectedSnapshotId)
+  const isBusy = useSnapshotStore((state) => state.isBusy)
+  const isRestoring = useSnapshotStore((state) => state.isRestoring)
+  const closeDialog = useSnapshotStore((state) => state.closeDialog)
+  const selectSnapshot = useSnapshotStore((state) => state.selectSnapshot)
+  const createManualSnapshot = useSnapshotStore((state) => state.createManualSnapshot)
+  const restoreSnapshot = useSnapshotStore((state) => state.restoreSnapshot)
+  const deleteSnapshot = useSnapshotStore((state) => state.deleteSnapshot)
 
   const [confirm, setConfirm] = useState<ConfirmState>(null)
 
@@ -42,16 +42,16 @@ export function SnapshotDialog() {
     if (selectedSnapshotId == null) {
       return
     }
-    const snapshot = snapshots.find((s) => s.id === selectedSnapshotId)
+    const snapshot = snapshots.find((summary) => summary.id === selectedSnapshotId)
     if (!snapshot) {
       return
     }
     const unsavedCount = useConnectionStore.getState().connectionsWithUnsavedEdits().length
-    setConfirm({ kind: 'restore', snapshot, unsavedCount })
+    setConfirm({ kind: 'restore', snapshot: snapshot, unsavedCount: unsavedCount })
   }, [selectedSnapshotId, snapshots])
 
   const handleDeleteClick = useCallback((snapshot: SnapshotSummary) => {
-    setConfirm({ kind: 'delete', snapshot })
+    setConfirm({ kind: 'delete', snapshot: snapshot })
   }, [])
 
   const handleConfirm = useCallback(async () => {
@@ -73,28 +73,28 @@ export function SnapshotDialog() {
   }, [confirm, createManualSnapshot, restoreSnapshot, deleteSnapshot])
 
   const handleListKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (snapshots.length === 0) {
         return
       }
-      const currentIndex = snapshots.findIndex((s) => s.id === selectedSnapshotId)
+      const currentIndex = snapshots.findIndex((summary) => summary.id === selectedSnapshotId)
 
       const selectAt = (index: number) => {
         const clamped = Math.max(0, Math.min(snapshots.length - 1, index))
         selectSnapshot(snapshots[clamped].id)
       }
 
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
         selectAt(currentIndex < 0 ? 0 : currentIndex + 1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
         selectAt(currentIndex < 0 ? snapshots.length - 1 : currentIndex - 1)
-      } else if (e.key === 'Home') {
-        e.preventDefault()
+      } else if (event.key === 'Home') {
+        event.preventDefault()
         selectAt(0)
-      } else if (e.key === 'End') {
-        e.preventDefault()
+      } else if (event.key === 'End') {
+        event.preventDefault()
         selectAt(snapshots.length - 1)
       }
     },
@@ -172,8 +172,8 @@ export function SnapshotDialog() {
                     className={styles.deleteButton}
                     aria-label={`Delete snapshot from ${timestamp}`}
                     data-testid={`snapshot-delete-${snapshot.id}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
+                    onClick={(event) => {
+                      event.stopPropagation()
                       handleDeleteClick(snapshot)
                     }}
                   >

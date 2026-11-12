@@ -15,6 +15,9 @@ import type {
 } from '../types/schema'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../lib/sql-utils'
+
+const DDL_REGENERATE_DEBOUNCE_MS = 300
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const ddlRequestVersions: Record<string, number> = {}
 const INTEGER_TYPES_WITH_DEFAULT_DISPLAY_LENGTH = new Set([
@@ -60,27 +63,32 @@ export interface TableDesignerStore {
   loadSchema: (tabId: string) => Promise<void>
   updateColumn: (
     tabId: string,
-    colIndex: number,
+    columnIndex: number,
     field: keyof TableDesignerColumnDef,
     value: unknown
   ) => void
   addColumn: (tabId: string) => void
-  deleteColumn: (tabId: string, colIndex: number) => void
+  deleteColumn: (tabId: string, columnIndex: number) => void
   reorderColumn: (tabId: string, fromIndex: number, toIndex: number) => void
   updateIndex: (
     tabId: string,
-    idxIndex: number,
+    indexPosition: number,
     field: keyof TableDesignerIndexDef,
     value: unknown
   ) => void
   addIndex: (tabId: string) => void
-  deleteIndex: (tabId: string, idxIndex: number) => void
+  deleteIndex: (tabId: string, indexPosition: number) => void
   updateForeignKey: {
-    (tabId: string, fkIndex: number, field: keyof TableDesignerForeignKeyDef, value: unknown): void
-    (tabId: string, fkIndex: number, field: string, value: unknown): void
+    (
+      tabId: string,
+      foreignKeyIndex: number,
+      field: keyof TableDesignerForeignKeyDef,
+      value: unknown
+    ): void
+    (tabId: string, foreignKeyIndex: number, field: string, value: unknown): void
   }
   addForeignKey: (tabId: string) => void
-  deleteForeignKey: (tabId: string, fkIndex: number) => void
+  deleteForeignKey: (tabId: string, foreignKeyIndex: number) => void
   updateProperties: (tabId: string, field: keyof TableDesignerProperties, value: unknown) => void
   updateTableName: (tabId: string, name: string) => void
   regenerateDdl: (tabId: string) => Promise<void>
@@ -124,17 +132,19 @@ function normalizeForComparison(value: unknown): unknown {
   if (value && typeof value === 'object') {
     return Object.keys(value as Record<string, unknown>)
       .sort()
-      .reduce<Record<string, unknown>>((acc, key) => {
-        acc[key] = normalizeForComparison((value as Record<string, unknown>)[key])
-        return acc
+      .reduce<Record<string, unknown>>((accumulator, key) => {
+        accumulator[key] = normalizeForComparison((value as Record<string, unknown>)[key])
+        return accumulator
       }, {})
   }
 
   return value
 }
 
-function schemasEqual<T>(a: T, b: T): boolean {
-  return JSON.stringify(normalizeForComparison(a)) === JSON.stringify(normalizeForComparison(b))
+function schemasEqual<T>(left: T, right: T): boolean {
+  return (
+    JSON.stringify(normalizeForComparison(left)) === JSON.stringify(normalizeForComparison(right))
+  )
 }
 
 function canonicalizeColumn(column: TableDesignerColumnDef): TableDesignerColumnDef {
@@ -185,15 +195,16 @@ function validateColumns(columns: TableDesignerColumnDef[]): Record<string, stri
   const errors: Record<string, string> = {}
   const names = new Set<string>()
 
-  columns.forEach((col, i) => {
-    if (!col.name) {
-      errors[`columns.${i}.name`] = 'Column name is required'
-    } else if (col.name.length > 64) {
-      errors[`columns.${i}.name`] = 'Column name must not exceed 64 characters'
-    } else if (names.has(col.name.toLowerCase())) {
-      errors[`columns.${i}.name`] = 'Duplicate column name'
+  columns.forEach((column, columnIndex) => {
+    if (!column.name) {
+      errors[`columns.${columnIndex}.name`] = 'Column name is required'
+    } else if (column.name.length > MYSQL_IDENTIFIER_MAX_LENGTH) {
+      errors[`columns.${columnIndex}.name`] =
+        `Column name must not exceed ${MYSQL_IDENTIFIER_MAX_LENGTH} characters`
+    } else if (names.has(column.name.toLowerCase())) {
+      errors[`columns.${columnIndex}.name`] = 'Duplicate column name'
     } else {
-      names.add(col.name.toLowerCase())
+      names.add(column.name.toLowerCase())
     }
   })
 
@@ -204,7 +215,7 @@ function validateIndexes(indexes: TableDesignerIndexDef[]): Record<string, strin
   const errors: Record<string, string> = {}
   const names = new Map<string, number[]>()
 
-  indexes.forEach((index, i) => {
+  indexes.forEach((index, position) => {
     if (index.indexType === 'PRIMARY') {
       return
     }
@@ -212,12 +223,12 @@ function validateIndexes(indexes: TableDesignerIndexDef[]): Record<string, strin
     const normalizedName = index.name.trim().toLowerCase()
     if (normalizedName !== '') {
       const existing = names.get(normalizedName) ?? []
-      existing.push(i)
+      existing.push(position)
       names.set(normalizedName, existing)
     }
 
     if (index.columns.length === 0) {
-      errors[`indexes.${i}.columns`] = 'At least one column required'
+      errors[`indexes.${position}.columns`] = 'At least one column required'
     }
   })
 
@@ -301,10 +312,10 @@ function createDefaultTabState(
   objectName: string
 ): TableDesignerTabState {
   return {
-    connectionId,
-    databaseName,
-    objectName,
-    mode,
+    connectionId: connectionId,
+    databaseName: databaseName,
+    objectName: objectName,
+    mode: mode,
     originalSchema: null,
     currentSchema: createBlankSchema(),
     isDirty: false,
@@ -371,7 +382,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
     debounceTimers[tabId] = setTimeout(() => {
       delete debounceTimers[tabId]
       void get().regenerateDdl(tabId)
-    }, 300)
+    }, DDL_REGENERATE_DEBOUNCE_MS)
   }
 
   const mutateSchema = (
@@ -490,14 +501,14 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       }
     },
 
-    updateColumn: (tabId, colIndex, field, value) => {
+    updateColumn: (tabId, columnIndex, field, value) => {
       mutateSchema(tabId, (tab) => {
-        if (colIndex < 0 || colIndex >= tab.currentSchema.columns.length) {
+        if (columnIndex < 0 || columnIndex >= tab.currentSchema.columns.length) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        const column = schema.columns[colIndex]
+        const column = schema.columns[columnIndex]
         const previousType = column.type
         const oldName = column.name
 
@@ -552,7 +563,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         }
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(
             mergeColumnValidationErrors(tab.validationErrors, schema.columns),
             schema.indexes
@@ -577,7 +588,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         })
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(
             mergeColumnValidationErrors(tab.validationErrors, schema.columns),
             schema.indexes
@@ -586,14 +597,14 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       })
     },
 
-    deleteColumn: (tabId, colIndex) => {
+    deleteColumn: (tabId, columnIndex) => {
       mutateSchema(tabId, (tab) => {
-        if (colIndex < 0 || colIndex >= tab.currentSchema.columns.length) {
+        if (columnIndex < 0 || columnIndex >= tab.currentSchema.columns.length) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        const [removedColumn] = schema.columns.splice(colIndex, 1)
+        const [removedColumn] = schema.columns.splice(columnIndex, 1)
         if (!removedColumn) {
           return null
         }
@@ -610,7 +621,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         )
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(
             mergeColumnValidationErrors(tab.validationErrors, schema.columns),
             schema.indexes
@@ -641,7 +652,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         schema.columns.splice(toIndex, 0, moved)
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(
             mergeColumnValidationErrors(tab.validationErrors, schema.columns),
             schema.indexes
@@ -650,17 +661,17 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       })
     },
 
-    updateIndex: (tabId, idxIndex, field, value) => {
+    updateIndex: (tabId, indexPosition, field, value) => {
       mutateSchema(tabId, (tab) => {
-        if (idxIndex < 0 || idxIndex >= tab.currentSchema.indexes.length) {
+        if (indexPosition < 0 || indexPosition >= tab.currentSchema.indexes.length) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        ;(schema.indexes[idxIndex][field] as unknown) = value
+        ;(schema.indexes[indexPosition][field] as unknown) = value
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(tab.validationErrors, schema.indexes),
         }
       })
@@ -676,36 +687,36 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         })
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(tab.validationErrors, schema.indexes),
         }
       })
     },
 
-    deleteIndex: (tabId, idxIndex) => {
+    deleteIndex: (tabId, indexPosition) => {
       mutateSchema(tabId, (tab) => {
-        if (idxIndex < 0 || idxIndex >= tab.currentSchema.indexes.length) {
+        if (indexPosition < 0 || indexPosition >= tab.currentSchema.indexes.length) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        schema.indexes.splice(idxIndex, 1)
+        schema.indexes.splice(indexPosition, 1)
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeIndexValidationErrors(tab.validationErrors, schema.indexes),
         }
       })
     },
 
-    updateForeignKey: (tabId, fkIndex, field, value) => {
+    updateForeignKey: (tabId, foreignKeyIndex, field, value) => {
       mutateSchema(tabId, (tab) => {
-        if (fkIndex < 0 || fkIndex >= tab.currentSchema.foreignKeys.length) {
+        if (foreignKeyIndex < 0 || foreignKeyIndex >= tab.currentSchema.foreignKeys.length) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        ;(schema.foreignKeys[fkIndex] as unknown as Record<string, unknown>)[field] = value
+        ;(schema.foreignKeys[foreignKeyIndex] as unknown as Record<string, unknown>)[field] = value
 
         return { schema }
       })
@@ -729,14 +740,14 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       })
     },
 
-    deleteForeignKey: (tabId, fkIndex) => {
+    deleteForeignKey: (tabId, foreignKeyIndex) => {
       mutateSchema(tabId, (tab) => {
-        if (fkIndex < 0 || fkIndex >= tab.currentSchema.foreignKeys.length) {
+        if (foreignKeyIndex < 0 || foreignKeyIndex >= tab.currentSchema.foreignKeys.length) {
           return null
         }
 
         const schema = cloneValue(tab.currentSchema)
-        schema.foreignKeys.splice(fkIndex, 1)
+        schema.foreignKeys.splice(foreignKeyIndex, 1)
 
         return { schema }
       })
@@ -757,7 +768,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         schema.tableName = name
 
         return {
-          schema,
+          schema: schema,
           validationErrors: mergeTableNameValidationError(tab.validationErrors, name),
         }
       })
@@ -848,7 +859,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
         const nextTab: TableDesignerTabState = {
           ...existing,
-          currentSchema,
+          currentSchema: currentSchema,
           validationErrors: {},
           ddl: '',
           ddlError: null,

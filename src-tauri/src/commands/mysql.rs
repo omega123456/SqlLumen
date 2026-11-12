@@ -110,10 +110,10 @@ fn health_monitor_token(
 async fn fetch_server_version(pool: &sqlx::MySqlPool) -> String {
     query_log::log_outgoing_sql("SELECT VERSION()");
     let row = sqlx::query("SELECT VERSION()").fetch_one(pool).await.ok();
-    if let Some(ref r) = row {
-        query_log::log_mysql_rows(std::slice::from_ref(r));
+    if let Some(ref found_row) = row {
+        query_log::log_mysql_rows(std::slice::from_ref(found_row));
     }
-    row.and_then(|r| r.try_get::<String, _>(0).ok())
+    row.and_then(|found_row| found_row.try_get::<String, _>(0).ok())
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
@@ -166,15 +166,15 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
     let start = Instant::now();
 
     let pool = match pool::create_pool(&params).await {
-        Ok(p) => p,
-        Err(e) => {
+        Ok(created_pool) => created_pool,
+        Err(error) => {
             return TestConnectionResult {
                 success: false,
                 server_version: None,
                 auth_method: None,
                 ssl_status: None,
                 connection_time_ms: None,
-                error_message: Some(format!("Connection failed: {e}")),
+                error_message: Some(format!("Connection failed: {error}")),
             };
         }
     };
@@ -201,11 +201,11 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
             query_log::log_mysql_rows(std::slice::from_ref(&row));
             row.try_get::<String, _>(1).ok()
         })
-        .map(|s| {
-            if s.is_empty() {
+        .map(|cipher| {
+            if cipher.is_empty() {
                 "Not using SSL".to_string()
             } else {
-                s
+                cipher
             }
         });
 
@@ -289,7 +289,7 @@ pub async fn open_connection_impl(
     // Create pool
     let pool = pool::create_pool(&params)
         .await
-        .map_err(|e| format!("Failed to connect: {e}"))?;
+        .map_err(|error| format!("Failed to connect: {error}"))?;
 
     // Get server version
     let server_version = fetch_server_version(&pool).await;
@@ -355,7 +355,7 @@ pub async fn open_connection_impl(
 
     let pool = create_pool(&params)
         .await
-        .map_err(|e| format!("Failed to connect: {e}"))?;
+        .map_err(|error| format!("Failed to connect: {error}"))?;
 
     pool.close().await;
 

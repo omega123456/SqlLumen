@@ -3,7 +3,28 @@ import { getSetting, setSetting } from '../lib/tauri-commands'
 import { logFrontend } from '../lib/app-log-commands'
 import { setWebviewZoom } from '../lib/window-commands'
 
-export const ZOOM_LEVELS = [70, 80, 90, 100, 110, 125, 150, 175, 200] as const
+interface ZoomLevelRange {
+  first: number
+  last: number
+  step: number
+}
+
+const FINE_ZOOM_RANGE: ZoomLevelRange = { first: 70, last: 110, step: 10 }
+const COARSE_ZOOM_RANGE: ZoomLevelRange = { first: 125, last: 200, step: 25 }
+
+function zoomLevelsIn(range: ZoomLevelRange): number[] {
+  const levels: number[] = []
+  for (let level = range.first; level <= range.last; level += range.step) {
+    levels.push(level)
+  }
+  return levels
+}
+
+export const ZOOM_LEVELS: readonly number[] = [
+  ...zoomLevelsIn(FINE_ZOOM_RANGE),
+  ...zoomLevelsIn(COARSE_ZOOM_RANGE),
+]
+export const DEFAULT_ZOOM_LEVEL = 100
 
 function applyZoomToDOM(level: number): void {
   setWebviewZoom(level).catch((error: unknown) => {
@@ -32,7 +53,7 @@ async function persistZoom(level: number): Promise<void> {
 }
 
 export const useZoomStore = create<ZoomState>()((set, get) => ({
-  zoomLevel: 100,
+  zoomLevel: DEFAULT_ZOOM_LEVEL,
   previewSnapshot: null,
 
   initialize: async () => {
@@ -49,8 +70,8 @@ export const useZoomStore = create<ZoomState>()((set, get) => ({
     } catch {
       logFrontend('warn', '[zoom-store] Failed to read zoom setting, using default')
     }
-    applyZoomToDOM(100)
-    set({ zoomLevel: 100 })
+    applyZoomToDOM(DEFAULT_ZOOM_LEVEL)
+    set({ zoomLevel: DEFAULT_ZOOM_LEVEL })
   },
 
   setZoom: async (level: number) => {
@@ -76,7 +97,7 @@ export const useZoomStore = create<ZoomState>()((set, get) => ({
 
   zoomIn: async () => {
     const { zoomLevel } = get()
-    const next = ZOOM_LEVELS.find((l) => l > zoomLevel)
+    const next = ZOOM_LEVELS.find((level) => level > zoomLevel)
     if (next !== undefined) {
       applyZoomToDOM(next)
       set({ zoomLevel: next, previewSnapshot: null })
@@ -86,17 +107,17 @@ export const useZoomStore = create<ZoomState>()((set, get) => ({
 
   zoomOut: async () => {
     const { zoomLevel } = get()
-    const prev = [...ZOOM_LEVELS].reverse().find((l) => l < zoomLevel)
-    if (prev !== undefined) {
-      applyZoomToDOM(prev)
-      set({ zoomLevel: prev, previewSnapshot: null })
-      await persistZoom(prev)
+    const previous = [...ZOOM_LEVELS].reverse().find((level) => level < zoomLevel)
+    if (previous !== undefined) {
+      applyZoomToDOM(previous)
+      set({ zoomLevel: previous, previewSnapshot: null })
+      await persistZoom(previous)
     }
   },
 
   resetZoom: async () => {
-    applyZoomToDOM(100)
-    set({ zoomLevel: 100, previewSnapshot: null })
-    await persistZoom(100)
+    applyZoomToDOM(DEFAULT_ZOOM_LEVEL)
+    set({ zoomLevel: DEFAULT_ZOOM_LEVEL, previewSnapshot: null })
+    await persistZoom(DEFAULT_ZOOM_LEVEL)
   },
 }))

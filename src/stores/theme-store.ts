@@ -29,7 +29,7 @@ function applyTheme(theme: Theme): ResolvedTheme {
 
 // Internal helper — resolve theme, apply to DOM, update state
 function applyThemeState(theme: Theme, set: (partial: Partial<ThemeState>) => void): void {
-  set({ theme, resolvedTheme: applyTheme(theme) })
+  set({ theme: theme, resolvedTheme: applyTheme(theme) })
 }
 
 interface ThemeState {

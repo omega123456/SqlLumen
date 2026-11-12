@@ -7,11 +7,18 @@ import type {
 import { stripLeadingSqlComments } from './sql-utils'
 import { coerceValueForColumn } from '../stores/table-data-store'
 
+const BACKTICK_PAIR_LENGTH = 2
+const COMMENT_MARKER_LENGTH = 2
+const SELECT_KEYWORD_LENGTH = 'SELECT'.length
+const DATABASE_AND_TABLE_PART_COUNT = 2
+const DATABASE_TABLE_AND_COLUMN_PART_COUNT = 3
+const TABLE_AND_COLUMN_PART_COUNT = 2
+
 export type QueryEditColumnBindings = Map<number, string>
 
 function normalizeIdentifier(identifier: string): string {
   const trimmed = identifier.trim()
-  if (trimmed.length >= 2 && trimmed.startsWith('`') && trimmed.endsWith('`')) {
+  if (trimmed.length >= BACKTICK_PAIR_LENGTH && trimmed.startsWith('`') && trimmed.endsWith('`')) {
     return trimmed.slice(1, -1).replace(/``/g, '`')
   }
   return trimmed
@@ -22,14 +29,14 @@ function splitQualifiedIdentifier(identifier: string): string[] {
   let current = ''
   let inBackticks = false
 
-  for (let i = 0; i < identifier.length; i++) {
-    const char = identifier[i]
+  for (let charIndex = 0; charIndex < identifier.length; charIndex++) {
+    const char = identifier[charIndex]
 
     if (char === '`') {
       current += char
-      if (inBackticks && identifier[i + 1] === '`') {
+      if (inBackticks && identifier[charIndex + 1] === '`') {
         current += '`'
-        i++
+        charIndex++
         continue
       }
       inBackticks = !inBackticks
@@ -62,13 +69,13 @@ function extractTopLevelSelectList(sql: string): string | null {
   let inBacktick = false
   let selectStart = -1
 
-  for (let i = 0; i < trimmed.length; i++) {
-    const char = trimmed[i]
-    const next = trimmed[i + 1] ?? ''
+  for (let charIndex = 0; charIndex < trimmed.length; charIndex++) {
+    const char = trimmed[charIndex]
+    const next = trimmed[charIndex + 1] ?? ''
 
     if (inSingle) {
       if (char === '\\') {
-        i++
+        charIndex++
       } else if (char === "'") {
         inSingle = false
       }
@@ -77,7 +84,7 @@ function extractTopLevelSelectList(sql: string): string | null {
 
     if (inDouble) {
       if (char === '\\') {
-        i++
+        charIndex++
       } else if (char === '"') {
         inDouble = false
       }
@@ -86,7 +93,7 @@ function extractTopLevelSelectList(sql: string): string | null {
 
     if (inBacktick) {
       if (char === '`' && next === '`') {
-        i++
+        charIndex++
       } else if (char === '`') {
         inBacktick = false
       }
@@ -109,23 +116,23 @@ function extractTopLevelSelectList(sql: string): string | null {
     }
 
     if (char === '/' && next === '*') {
-      const end = trimmed.indexOf('*/', i + 2)
+      const end = trimmed.indexOf('*/', charIndex + COMMENT_MARKER_LENGTH)
       if (end === -1) return null
-      i = end + 1
+      charIndex = end + 1
       continue
     }
 
     if (char === '-' && next === '-') {
-      const end = trimmed.indexOf('\n', i + 2)
+      const end = trimmed.indexOf('\n', charIndex + COMMENT_MARKER_LENGTH)
       if (end === -1) return null
-      i = end
+      charIndex = end
       continue
     }
 
     if (char === '#') {
-      const end = trimmed.indexOf('\n', i + 1)
+      const end = trimmed.indexOf('\n', charIndex + 1)
       if (end === -1) return null
-      i = end
+      charIndex = end
       continue
     }
 
@@ -141,15 +148,15 @@ function extractTopLevelSelectList(sql: string): string | null {
 
     if (depth !== 0) continue
 
-    const remaining = trimmed.slice(i)
+    const remaining = trimmed.slice(charIndex)
     if (selectStart === -1 && /^SELECT\b/i.test(remaining)) {
-      selectStart = i + 6
-      i += 5
+      selectStart = charIndex + SELECT_KEYWORD_LENGTH
+      charIndex += SELECT_KEYWORD_LENGTH - 1
       continue
     }
 
     if (selectStart !== -1 && /^FROM\b/i.test(remaining)) {
-      return trimmed.slice(selectStart, i).trim()
+      return trimmed.slice(selectStart, charIndex).trim()
     }
   }
 
@@ -164,15 +171,15 @@ function splitTopLevelSelectItems(selectList: string): string[] {
   let inDouble = false
   let inBacktick = false
 
-  for (let i = 0; i < selectList.length; i++) {
-    const char = selectList[i]
-    const next = selectList[i + 1] ?? ''
+  for (let index = 0; index < selectList.length; index++) {
+    const char = selectList[index]
+    const next = selectList[index + 1] ?? ''
 
     if (inSingle) {
       current += char
       if (char === '\\') {
         current += next
-        i++
+        index++
       } else if (char === "'") {
         inSingle = false
       }
@@ -183,7 +190,7 @@ function splitTopLevelSelectItems(selectList: string): string[] {
       current += char
       if (char === '\\') {
         current += next
-        i++
+        index++
       } else if (char === '"') {
         inDouble = false
       }
@@ -194,7 +201,7 @@ function splitTopLevelSelectItems(selectList: string): string[] {
       current += char
       if (char === '`' && next === '`') {
         current += next
-        i++
+        index++
       } else if (char === '`') {
         inBacktick = false
       }
@@ -220,29 +227,29 @@ function splitTopLevelSelectItems(selectList: string): string[] {
     }
 
     if (char === '/' && next === '*') {
-      const end = selectList.indexOf('*/', i + 2)
+      const end = selectList.indexOf('*/', index + COMMENT_MARKER_LENGTH)
       if (end === -1) {
         break
       }
-      i = end + 1
+      index = end + 1
       continue
     }
 
     if (char === '-' && next === '-') {
-      const end = selectList.indexOf('\n', i + 2)
+      const end = selectList.indexOf('\n', index + COMMENT_MARKER_LENGTH)
       if (end === -1) {
         break
       }
-      i = end
+      index = end
       continue
     }
 
     if (char === '#') {
-      const end = selectList.indexOf('\n', i + 1)
+      const end = selectList.indexOf('\n', index + 1)
       if (end === -1) {
         break
       }
-      i = end
+      index = end
       continue
     }
 
@@ -289,7 +296,7 @@ function matchesTableTarget(
     )
   }
 
-  if (qualifierParts.length === 2) {
+  if (qualifierParts.length === DATABASE_AND_TABLE_PART_COUNT) {
     return (
       qualifierParts[0].toLowerCase() === targetTable.database.toLowerCase() &&
       qualifierParts[1].toLowerCase() === targetTable.table.toLowerCase()
@@ -328,7 +335,7 @@ function buildAliasMapFromSql(
       continue
     }
 
-    if (target.length === 2) {
+    if (target.length === DATABASE_AND_TABLE_PART_COUNT) {
       map.set(alias, { database: target[0], table: target[1] })
     }
   }
@@ -351,7 +358,7 @@ function buildProjectionBindings(
   if (items.length === 0) return new Map()
 
   const targetColumnLookup = new Map(
-    targetTable.columns.map((col) => [col.name.toLowerCase(), col.name])
+    targetTable.columns.map((column) => [column.name.toLowerCase(), column.name])
   )
   const aliasMap = buildAliasMapFromSql(queryTablesInOrder, sql)
   const bindings: QueryEditColumnBindings = new Map()
@@ -411,7 +418,7 @@ function buildProjectionBindings(
       if (resultIndex >= resultColumns.length) return new Map()
       const parts = splitQualifiedIdentifier(directColumnMatch[1])
 
-      if (parts.length === 3) {
+      if (parts.length === DATABASE_TABLE_AND_COLUMN_PART_COUNT) {
         if (
           parts[0].toLowerCase() === targetTable.database.toLowerCase() &&
           parts[1].toLowerCase() === targetTable.table.toLowerCase()
@@ -421,7 +428,7 @@ function buildProjectionBindings(
             bindings.set(resultIndex, boundName)
           }
         }
-      } else if (parts.length === 2) {
+      } else if (parts.length === TABLE_AND_COLUMN_PART_COUNT) {
         if (matchesTableTarget([parts[0]], targetTable, aliasMap)) {
           const boundName = targetColumnLookup.get(parts[1].toLowerCase())
           if (boundName) {
@@ -514,7 +521,7 @@ export function buildQueryEditColumnBindings(
 ): QueryEditColumnBindings {
   const bindings: QueryEditColumnBindings = new Map()
   const tableColumnLookup = new Map(
-    targetTable.columns.map((col) => [col.name.toLowerCase(), col.name])
+    targetTable.columns.map((column) => [column.name.toLowerCase(), column.name])
   )
 
   const projectionBindings = buildProjectionBindings(
@@ -529,15 +536,15 @@ export function buildQueryEditColumnBindings(
 
   if (projectionBindings.size === 0 && canUseDirectNameFallback(sql, queryTablesInOrder)) {
     const ambiguousNames = findAmbiguousColumns(resultColumns)
-    for (let i = 0; i < resultColumns.length; i++) {
-      const resultNameLower = resultColumns[i].name.toLowerCase()
+    for (let columnIndex = 0; columnIndex < resultColumns.length; columnIndex++) {
+      const resultNameLower = resultColumns[columnIndex].name.toLowerCase()
       if (ambiguousNames.has(resultNameLower)) {
         continue
       }
 
       const boundName = tableColumnLookup.get(resultNameLower)
       if (boundName) {
-        bindings.set(i, boundName)
+        bindings.set(columnIndex, boundName)
       }
     }
   }
@@ -559,8 +566,8 @@ export function buildBoundColumnIndexMap(bindings: QueryEditColumnBindings): Map
  */
 export function findAmbiguousColumns(columns: ColumnMeta[]): Set<string> {
   const counts = new Map<string, number>()
-  for (const col of columns) {
-    const lower = col.name.toLowerCase()
+  for (const column of columns) {
+    const lower = column.name.toLowerCase()
     counts.set(lower, (counts.get(lower) ?? 0) + 1)
   }
   const ambiguous = new Set<string>()
@@ -589,41 +596,41 @@ export function buildEditableColumnMap(
   const hasExplicitBindings = columnBindings !== undefined
 
   // Build lookup from lowercased table column name → meta
-  const tableColLookup = new Map<string, TableDataColumnMeta>()
+  const tableColumnLookup = new Map<string, TableDataColumnMeta>()
   for (const tc of tableColumns) {
-    tableColLookup.set(tc.name.toLowerCase(), tc)
+    tableColumnLookup.set(tc.name.toLowerCase(), tc)
   }
 
-  for (let i = 0; i < resultColumns.length; i++) {
-    const boundName = columnBindings?.get(i)
+  for (let columnIndex = 0; columnIndex < resultColumns.length; columnIndex++) {
+    const boundName = columnBindings?.get(columnIndex)
     if (hasExplicitBindings && !boundName) {
-      map.set(i, false)
+      map.set(columnIndex, false)
       continue
     }
-    const resultColNameLower = resultColumns[i].name.toLowerCase()
-    const colNameLower = boundName?.toLowerCase() ?? resultColNameLower
+    const resultColumnNameLower = resultColumns[columnIndex].name.toLowerCase()
+    const columnNameLower = boundName?.toLowerCase() ?? resultColumnNameLower
 
     // Ambiguous columns can't be reliably mapped to a single source unless
     // we have an explicit projection binding for this result index.
-    if (!boundName && ambiguousNames.has(resultColNameLower)) {
-      map.set(i, false)
+    if (!boundName && ambiguousNames.has(resultColumnNameLower)) {
+      map.set(columnIndex, false)
       continue
     }
 
     // Must match a column in the target table
-    const tableCol = tableColLookup.get(colNameLower)
-    if (!tableCol) {
-      map.set(i, false)
+    const tableColumn = tableColumnLookup.get(columnNameLower)
+    if (!tableColumn) {
+      map.set(columnIndex, false)
       continue
     }
 
     // Binary/blob columns aren't editable inline
-    if (tableCol.isBinary) {
-      map.set(i, false)
+    if (tableColumn.isBinary) {
+      map.set(columnIndex, false)
       continue
     }
 
-    map.set(i, true)
+    map.set(columnIndex, true)
   }
 
   return map
@@ -634,32 +641,34 @@ export function buildEditableColumnMap(
  * in the result set.
  */
 export function validateKeyColumnsPresent(
-  pkColumns: string[],
+  primaryKeyColumns: string[],
   resultColumns: ColumnMeta[],
   ambiguousNames: Set<string>,
   boundColumnIndexMap?: Map<string, number>
 ): { valid: boolean; missingColumns: string[] } {
   if (boundColumnIndexMap) {
-    const missingColumns = pkColumns.filter((pk) => !boundColumnIndexMap.has(pk.toLowerCase()))
+    const missingColumns = primaryKeyColumns.filter(
+      (primaryKey) => !boundColumnIndexMap.has(primaryKey.toLowerCase())
+    )
     return {
       valid: missingColumns.length === 0,
-      missingColumns,
+      missingColumns: missingColumns,
     }
   }
 
-  const resultColNamesLower = new Set(resultColumns.map((c) => c.name.toLowerCase()))
+  const resultColumnNamesLower = new Set(resultColumns.map((column) => column.name.toLowerCase()))
   const missingColumns: string[] = []
 
-  for (const pk of pkColumns) {
-    const pkLower = pk.toLowerCase()
-    if (!resultColNamesLower.has(pkLower) || ambiguousNames.has(pkLower)) {
-      missingColumns.push(pk)
+  for (const primaryKey of primaryKeyColumns) {
+    const primaryKeyLower = primaryKey.toLowerCase()
+    if (!resultColumnNamesLower.has(primaryKeyLower) || ambiguousNames.has(primaryKeyLower)) {
+      missingColumns.push(primaryKey)
     }
   }
 
   return {
     valid: missingColumns.length === 0,
-    missingColumns,
+    missingColumns: missingColumns,
   }
 }
 
@@ -672,7 +681,7 @@ export function buildRowEditState(
   row: unknown[],
   resultColumns: ColumnMeta[],
   editableMap: Map<number, boolean>,
-  pkColumnNames: string[],
+  primaryKeyColumnNames: string[],
   columnBindings?: QueryEditColumnBindings,
   boundColumnIndexMap?: Map<string, number>
 ): RowEditState {
@@ -680,28 +689,30 @@ export function buildRowEditState(
   const currentValues: Record<string, unknown> = {}
   const rowKey: Record<string, unknown> = {}
 
-  for (let i = 0; i < resultColumns.length; i++) {
-    const colName = columnBindings?.get(i) ?? resultColumns[i].name
-    if (editableMap.get(i)) {
-      originalValues[colName] = row[i]
-      currentValues[colName] = row[i]
+  for (let columnIndex = 0; columnIndex < resultColumns.length; columnIndex++) {
+    const columnName = columnBindings?.get(columnIndex) ?? resultColumns[columnIndex].name
+    if (editableMap.get(columnIndex)) {
+      originalValues[columnName] = row[columnIndex]
+      currentValues[columnName] = row[columnIndex]
     }
   }
 
   // Build rowKey from PK columns (always populated, regardless of editability)
-  for (const pkCol of pkColumnNames) {
-    const idx =
-      boundColumnIndexMap?.get(pkCol.toLowerCase()) ??
-      resultColumns.findIndex((c) => c.name.toLowerCase() === pkCol.toLowerCase())
-    if (idx !== -1) {
-      rowKey[pkCol] = row[idx]
+  for (const primaryKeyColumn of primaryKeyColumnNames) {
+    const index =
+      boundColumnIndexMap?.get(primaryKeyColumn.toLowerCase()) ??
+      resultColumns.findIndex(
+        (column) => column.name.toLowerCase() === primaryKeyColumn.toLowerCase()
+      )
+    if (index !== -1) {
+      rowKey[primaryKeyColumn] = row[index]
     }
   }
 
   return {
-    rowKey,
-    originalValues,
-    currentValues,
+    rowKey: rowKey,
+    originalValues: originalValues,
+    currentValues: currentValues,
     modifiedColumns: new Set<string>(),
     isNewRow: false,
   }
@@ -714,31 +725,35 @@ export function buildRowEditState(
  */
 export function buildUpdatePayload(
   editState: RowEditState,
-  pkColumnNames: string[],
+  primaryKeyColumnNames: string[],
   columns?: TableDataColumnMeta[]
 ): {
   pkColumns: string[]
   originalPkValues: Record<string, unknown>
   updatedValues: Record<string, unknown>
 } {
-  const columnsByName = columns ? new Map(columns.map((c) => [c.name, c])) : undefined
+  const columnsByName = columns
+    ? new Map(columns.map((column) => [column.name, column]))
+    : undefined
 
-  const originalPkValues: Record<string, unknown> = {}
-  for (const pk of pkColumnNames) {
-    originalPkValues[pk] = editState.rowKey[pk]
+  const originalPrimaryKeyValues: Record<string, unknown> = {}
+  for (const primaryKey of primaryKeyColumnNames) {
+    originalPrimaryKeyValues[primaryKey] = editState.rowKey[primaryKey]
   }
 
   const updatedValues: Record<string, unknown> = {}
-  for (const col of editState.modifiedColumns) {
-    const rawValue = editState.currentValues[col]
-    const colMeta = columnsByName?.get(col)
-    updatedValues[col] = colMeta ? coerceValueForColumn(rawValue, colMeta.dataType) : rawValue
+  for (const column of editState.modifiedColumns) {
+    const rawValue = editState.currentValues[column]
+    const columnMeta = columnsByName?.get(column)
+    updatedValues[column] = columnMeta
+      ? coerceValueForColumn(rawValue, columnMeta.dataType)
+      : rawValue
   }
 
   return {
-    pkColumns: pkColumnNames,
-    originalPkValues,
-    updatedValues,
+    pkColumns: primaryKeyColumnNames,
+    originalPkValues: originalPrimaryKeyValues,
+    updatedValues: updatedValues,
   }
 }
 

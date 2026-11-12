@@ -13,6 +13,7 @@ import { create } from 'zustand'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { hasTauriApis } from '../lib/tauri-env'
+import { MILLISECONDS_PER_DAY, MILLISECONDS_PER_SECOND, TWO_DIGIT_WIDTH } from '../lib/units'
 import { showErrorToast } from './toast-store'
 import {
   createSessionSnapshot,
@@ -40,6 +41,11 @@ import { useSettingsStore } from './settings-store'
 
 /** Hidden settings marker (not in SETTINGS_DEFAULTS) recording the last periodic snapshot time. */
 const LAST_PERIODIC_AT_KEY = 'snapshots.lastPeriodicAt'
+const DEFAULT_SNAPSHOTS_TO_KEEP = 10
+const SUNDAY_UTC_DAY = 0
+const ISO_SUNDAY_WEEKDAY = 7
+const ISO_THURSDAY_WEEKDAY = 4
+const DAYS_PER_WEEK = 7
 
 /** Scheduler tick interval (1 minute). */
 export const SNAPSHOT_CHECK_INTERVAL_MS = 60_000
@@ -95,8 +101,8 @@ function computeSnapshotMetadata(): SnapshotMetadata {
 
   return {
     connectionCount: summary.length,
-    tabCount,
-    summary,
+    tabCount: tabCount,
+    summary: summary,
   }
 }
 
@@ -105,23 +111,24 @@ function computeSnapshotMetadata(): SnapshotMetadata {
 // ---------------------------------------------------------------------------
 
 /** True when both dates fall on the same UTC calendar day. */
-function isSameUtcDay(a: Date, b: Date): boolean {
+function isSameUtcDay(left: Date, right: Date): boolean {
   return (
-    a.getUTCFullYear() === b.getUTCFullYear() &&
-    a.getUTCMonth() === b.getUTCMonth() &&
-    a.getUTCDate() === b.getUTCDate()
+    left.getUTCFullYear() === right.getUTCFullYear() &&
+    left.getUTCMonth() === right.getUTCMonth() &&
+    left.getUTCDate() === right.getUTCDate()
   )
 }
 
 /** ISO-8601 week key (`YYYY-WW`) for a date, computed in UTC. */
 function isoWeekKey(date: Date): string {
-  // Copy and shift to the Thursday of the current ISO week.
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
-  const dayNum = d.getUTCDay() === 0 ? 7 : d.getUTCDay()
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
-  return `${d.getUTCFullYear()}-${String(weekNo).padStart(2, '0')}`
+  const thursday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+  const utcDay = thursday.getUTCDay()
+  const isoWeekday = utcDay === SUNDAY_UTC_DAY ? ISO_SUNDAY_WEEKDAY : utcDay
+  thursday.setUTCDate(thursday.getUTCDate() + ISO_THURSDAY_WEEKDAY - isoWeekday)
+  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1))
+  const dayOfYear = (thursday.getTime() - yearStart.getTime()) / MILLISECONDS_PER_DAY + 1
+  const weekNumber = Math.ceil(dayOfYear / DAYS_PER_WEEK)
+  return `${thursday.getUTCFullYear()}-${String(weekNumber).padStart(TWO_DIGIT_WIDTH, '0')}`
 }
 
 /** Planned storage format for `snapshots.lastPeriodicAt`: Unix epoch seconds as a decimal string. */
@@ -135,12 +142,12 @@ function parseEpochSeconds(marker: string | null): Date | null {
     return null
   }
 
-  const date = new Date(seconds * 1000)
+  const date = new Date(seconds * MILLISECONDS_PER_SECOND)
   return Number.isNaN(date.getTime()) ? null : date
 }
 
 function toEpochSeconds(date: Date): string {
-  return String(Math.floor(date.getTime() / 1000))
+  return String(Math.floor(date.getTime() / MILLISECONDS_PER_SECOND))
 }
 
 function buildRecoveryState(
@@ -237,7 +244,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
   getKeep: (): number => {
     const value = useSettingsStore.getState().getSetting('snapshots.keep')
     const parsed = Number.parseInt(value, 10)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 10
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SNAPSHOTS_TO_KEEP
   },
 
   openDialog: async (): Promise<void> => {
@@ -254,9 +261,9 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
     try {
       const snapshots = await listSessionSnapshots()
       set({ snapshots })
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showErrorToast('Failed to load snapshots', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Failed to load snapshots', message)
     } finally {
       set({ isLoading: false })
     }
@@ -276,13 +283,13 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
         connectionCount: metadata.connectionCount,
         tabCount: metadata.tabCount,
         summaryJson: JSON.stringify(metadata.summary),
-        stateJson,
+        stateJson: stateJson,
         keep: get().getKeep(),
       })
       await get().loadSnapshots()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showErrorToast('Failed to create snapshot', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Failed to create snapshot', message)
     } finally {
       set({ isBusy: false })
     }
@@ -311,13 +318,13 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
         connectionCount: metadata.connectionCount,
         tabCount: metadata.tabCount,
         summaryJson: JSON.stringify(metadata.summary),
-        stateJson,
+        stateJson: stateJson,
         keep: get().getKeep(),
       })
       return id
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      logFrontend('error', `[snapshot] Failed to create ${trigger} snapshot: ${msg}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', `[snapshot] Failed to create ${trigger} snapshot: ${message}`)
       return null
     } finally {
       set({ isBusy: false })
@@ -332,9 +339,9 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       if (get().selectedSnapshotId === id) {
         set({ selectedSnapshotId: null })
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      showErrorToast('Failed to delete snapshot', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Failed to delete snapshot', message)
     } finally {
       set({ isBusy: false })
     }
@@ -373,9 +380,9 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       let parsedState: SessionState
       try {
         parsedState = JSON.parse(stateJson) as SessionState
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        logFrontend('error', `[snapshot] Failed to parse snapshot ${id} state: ${msg}`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logFrontend('error', `[snapshot] Failed to parse snapshot ${id} state: ${message}`)
         showErrorToast('Restore failed', 'This snapshot is corrupted and cannot be restored.')
         return
       }
@@ -455,10 +462,10 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
 
       // 6. Close the dialog on success.
       get().closeDialog()
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      logFrontend('error', `[snapshot] Failed to restore snapshot ${id}: ${msg}`)
-      showErrorToast('Restore failed', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', `[snapshot] Failed to restore snapshot ${id}: ${message}`)
+      showErrorToast('Restore failed', message)
     } finally {
       set({ isBusy: false, isRestoring: false })
     }
@@ -491,9 +498,9 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       if (id != null) {
         await setSetting(LAST_PERIODIC_AT_KEY, toEpochSeconds(now))
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      logFrontend('error', `[snapshot] Periodic check failed: ${msg}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', `[snapshot] Periodic check failed: ${message}`)
     }
   },
 

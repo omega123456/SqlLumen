@@ -147,7 +147,7 @@ export const useCommandPaletteRecentsStore = create<CommandPaletteRecentsState>(
       [profileId]: nextProfileRecents,
     }
 
-    set({ recentsByProfile, isInitialized: true })
+    set({ recentsByProfile: recentsByProfile, isInitialized: true })
     persistRecents(recentsByProfile)
   },
 }))

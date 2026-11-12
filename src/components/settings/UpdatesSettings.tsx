@@ -72,23 +72,23 @@ function buildPendingWorkSummary(): PendingWorkSummary {
 
   return {
     hasWork: items.length > 0,
-    items,
+    items: items,
   }
 }
 
 export function UpdatesSettings() {
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
-  const closeSettingsDialog = useSettingsStore((s) => s.closeDialog)
-  const status = useUpdateStore((s) => s.status)
-  const availableVersion = useUpdateStore((s) => s.availableVersion)
-  const downloadProgress = useUpdateStore((s) => s.downloadProgress)
-  const errorMessage = useUpdateStore((s) => s.errorMessage)
-  const checkForUpdate = useUpdateStore((s) => s.checkForUpdate)
-  const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall)
-  const restartApp = useUpdateStore((s) => s.restartApp)
-  const readyToFinishAction = useUpdateStore((s) => s.readyToFinishAction)
-  const readyToFinishCta = useUpdateStore((s) => s.readyToFinishCta)
-  const readyToFinishMessage = useUpdateStore((s) => s.readyToFinishMessage)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const closeSettingsDialog = useSettingsStore((state) => state.closeDialog)
+  const status = useUpdateStore((state) => state.status)
+  const availableVersion = useUpdateStore((state) => state.availableVersion)
+  const downloadProgress = useUpdateStore((state) => state.downloadProgress)
+  const errorMessage = useUpdateStore((state) => state.errorMessage)
+  const checkForUpdate = useUpdateStore((state) => state.checkForUpdate)
+  const downloadAndInstall = useUpdateStore((state) => state.downloadAndInstall)
+  const restartApp = useUpdateStore((state) => state.restartApp)
+  const readyToFinishAction = useUpdateStore((state) => state.readyToFinishAction)
+  const readyToFinishCta = useUpdateStore((state) => state.readyToFinishCta)
+  const readyToFinishMessage = useUpdateStore((state) => state.readyToFinishMessage)
   const checkInterval = useSettingValue('updates.checkInterval')
 
   const [appVersion, setAppVersion] = useState('Loading…')

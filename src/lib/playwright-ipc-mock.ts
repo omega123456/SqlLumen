@@ -139,7 +139,7 @@ function emitMockEvent(eventName: string, payload: unknown): void {
   if (!internals?.runCallback) return
 
   for (const id of ids) {
-    internals.runCallback(id, { event: eventName, payload })
+    internals.runCallback(id, { event: eventName, payload: payload })
   }
 }
 
@@ -151,7 +151,7 @@ function scheduleAiContentStream(streamId: string, startDelayMs: number): void {
   let delay = startDelayMs
   for (const chunk of splitAiResponseIntoChunks(getStaticFixture('aiChat').responseText)) {
     setTimeout(() => {
-      emitMockEvent('ai-stream-chunk', { streamId, content: chunk, kind: 'content' })
+      emitMockEvent('ai-stream-chunk', { streamId: streamId, content: chunk, kind: 'content' })
     }, delay)
     delay += AI_STREAM_CHUNK_INTERVAL_MS
   }
@@ -163,7 +163,11 @@ function scheduleAiContentStream(streamId: string, startDelayMs: number): void {
 function scheduleAiThinkingStream(streamId: string): void {
   const thinkingText = getStaticFixture('aiChat').thinkingText
   setTimeout(() => {
-    emitMockEvent('ai-stream-chunk', { streamId, content: thinkingText, kind: 'thinking' })
+    emitMockEvent('ai-stream-chunk', {
+      streamId: streamId,
+      content: thinkingText,
+      kind: 'thinking',
+    })
   }, AI_STREAM_START_DELAY_MS)
   scheduleAiContentStream(streamId, AI_STREAM_START_DELAY_MS + AI_THINKING_LEAD_MS)
 }
@@ -187,11 +191,11 @@ interface PlaywrightUpdateOverride {
 }
 
 function getPlaywrightUpdateOverride(): PlaywrightUpdateOverride | undefined {
-  const w = globalThis as typeof globalThis & {
+  const playwrightGlobals = globalThis as typeof globalThis & {
     __PLAYWRIGHT_UPDATE_OVERRIDE__?: PlaywrightUpdateOverride
   }
 
-  return w.__PLAYWRIGHT_UPDATE_OVERRIDE__
+  return playwrightGlobals.__PLAYWRIGHT_UPDATE_OVERRIDE__
 }
 
 function getMockUpdateMetadata(): Record<string, unknown> | null {
@@ -231,27 +235,30 @@ function emitUpdaterDownload(
 }
 
 function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
-  const w = globalThis as typeof globalThis & {
+  const playwrightGlobals = globalThis as typeof globalThis & {
     __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
   }
 
-  return w.__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
+  return playwrightGlobals.__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
 }
 
 function getCommandPaletteRecentsValue(): string {
-  const w = globalThis as typeof globalThis & {
+  const playwrightGlobals = globalThis as typeof globalThis & {
     __PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__?: string
   }
 
-  return w.__PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__ ?? getCommandPaletteRecentsFixture()
+  return (
+    playwrightGlobals.__PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__ ??
+    getCommandPaletteRecentsFixture()
+  )
 }
 
 function getSchemaMetadataDelayMs(): number {
-  const w = globalThis as typeof globalThis & {
+  const playwrightGlobals = globalThis as typeof globalThis & {
     __PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__?: number
   }
 
-  const candidate = w.__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__
+  const candidate = playwrightGlobals.__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__
   return typeof candidate === 'number' && candidate > 0 ? candidate : 0
 }
 
@@ -270,8 +277,8 @@ async function maybeDelaySchemaMetadata(): Promise<void> {
  * IPC handler for `mockIPC` when the app runs under Playwright (VITE_PLAYWRIGHT).
  * Returns stable, deterministic data so UI flows and visual snapshots do not flap.
  */
-export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unknown>): unknown {
-  switch (cmd) {
+export function playwrightIpcMockHandler(command: string, args?: Record<string, unknown>): unknown {
+  switch (command) {
     // --- Tauri event system (captures listener callback IDs for AI streaming) ---
     case 'plugin:event|listen': {
       const eventName = args?.event as string | undefined
@@ -290,8 +297,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       if (eventName && typeof eventId === 'number') {
         const ids = eventListenerCallbackIds.get(eventName)
         if (ids) {
-          const idx = ids.indexOf(eventId)
-          if (idx !== -1) ids.splice(idx, 1)
+          const index = ids.indexOf(eventId)
+          if (index !== -1) ids.splice(index, 1)
         }
       }
       return null
@@ -701,7 +708,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'kill_queries': {
       const ids = (args as Record<string, unknown>)?.ids as number[] | undefined
-      return (ids ?? []).map((id: number) => ({ id, success: true, error: null }))
+      return (ids ?? []).map((id: number) => ({ id: id, success: true, error: null }))
     }
 
     // --- Query History & Favorites (Phase 9.3) ---

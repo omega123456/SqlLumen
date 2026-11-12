@@ -10,6 +10,10 @@ const TOKEN_WARNING_THRESHOLD = 8000
 /** Approximate characters per token for estimation. */
 const CHARS_PER_TOKEN = 4
 
+export function estimateTokenCount(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN)
+}
+
 export interface SchemaCompactionResult {
   ddl: string
   estimatedTokens: number
@@ -54,10 +58,10 @@ export function compactSchemaDdl(
 
   for (const [dbName, dbTables] of Object.entries(tables)) {
     for (const table of dbTables) {
-      const colKey = `${dbName}.${table.name}`
-      const cols = columns[colKey] ?? []
-      const tableIndexes = indexes[colKey] ?? []
-      const tableFks = foreignKeys[colKey] ?? []
+      const columnKey = `${dbName}.${table.name}`
+      const tableColumns = columns[columnKey] ?? []
+      const tableIndexes = indexes[columnKey] ?? []
+      const tableForeignKeys = foreignKeys[columnKey] ?? []
 
       const quotedDb = quoteIdentifier(dbName)
       const quotedTable = quoteIdentifier(table.name)
@@ -65,25 +69,27 @@ export function compactSchemaDdl(
       const parts: string[] = []
 
       // Column definitions
-      for (const col of cols) {
-        parts.push(`${quoteIdentifier(col.name)} ${col.dataType}`)
+      for (const column of tableColumns) {
+        parts.push(`${quoteIdentifier(column.name)} ${column.dataType}`)
       }
 
       // Non-PRIMARY indexes
-      for (const idx of tableIndexes) {
-        if (idx.name === 'PRIMARY') continue
-        const prefix = idx.isUnique ? 'UNIQUE INDEX' : 'INDEX'
-        const idxCols = idx.columns.map((c) => quoteIdentifier(c)).join(', ')
-        parts.push(`${prefix} ${quoteIdentifier(idx.name)} (${idxCols})`)
+      for (const index of tableIndexes) {
+        if (index.name === 'PRIMARY') continue
+        const prefix = index.isUnique ? 'UNIQUE INDEX' : 'INDEX'
+        const indexColumns = index.columns
+          .map((columnName) => quoteIdentifier(columnName))
+          .join(', ')
+        parts.push(`${prefix} ${quoteIdentifier(index.name)} (${indexColumns})`)
       }
 
       // Foreign key constraints
-      for (const fk of tableFks) {
-        const refDb = quoteIdentifier(fk.referencedDatabase)
-        const refTable = quoteIdentifier(fk.referencedTable)
-        const refCol = quoteIdentifier(fk.referencedColumn)
+      for (const foreignKey of tableForeignKeys) {
+        const refDb = quoteIdentifier(foreignKey.referencedDatabase)
+        const refTable = quoteIdentifier(foreignKey.referencedTable)
+        const refColumn = quoteIdentifier(foreignKey.referencedColumn)
         parts.push(
-          `CONSTRAINT ${quoteIdentifier(fk.name)} FOREIGN KEY (${quoteIdentifier(fk.columnName)}) REFERENCES ${refDb}.${refTable}(${refCol}) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate}`
+          `CONSTRAINT ${quoteIdentifier(foreignKey.name)} FOREIGN KEY (${quoteIdentifier(foreignKey.columnName)}) REFERENCES ${refDb}.${refTable}(${refColumn}) ON DELETE ${foreignKey.onDelete} ON UPDATE ${foreignKey.onUpdate}`
         )
       }
 
@@ -92,7 +98,7 @@ export function compactSchemaDdl(
   }
 
   const ddl = statements.join('\n')
-  const estimatedTokens = Math.ceil(ddl.length / CHARS_PER_TOKEN)
+  const estimatedTokens = estimateTokenCount(ddl)
   const warning = estimatedTokens > TOKEN_WARNING_THRESHOLD
 
   return { ddl, estimatedTokens, warning }

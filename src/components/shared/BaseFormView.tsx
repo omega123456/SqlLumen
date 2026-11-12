@@ -169,40 +169,40 @@ export function BaseFormView({
   }, [ensureEditing])
 
   const handleInputChange = useCallback(
-    (colKey: string, value: unknown) => {
+    (columnKey: string, value: unknown) => {
       ensureEditing()
-      onUpdateCell?.(colKey, value)
+      onUpdateCell?.(columnKey, value)
     },
     [ensureEditing, onUpdateCell]
   )
 
   const handleNullToggle = useCallback(
-    (col: GridColumnDescriptor, colIdx: number) => {
+    (column: GridColumnDescriptor, columnIndex: number) => {
       if (!currentRow) return
       ensureEditing()
 
       // Determine current value for this column
-      const currentVal =
-        editState && col.key in editState.currentValues
-          ? editState.currentValues[col.key]
-          : currentRow[colIdx]
+      const currentValue =
+        editState && column.key in editState.currentValues
+          ? editState.currentValues[column.key]
+          : currentRow[columnIndex]
 
-      if (currentVal === null) {
+      if (currentValue === null) {
         // Toggling NULL off — set an appropriate default value
-        const temporalType = getTemporalColumnType(col.dataType)
+        const temporalType = getTemporalColumnType(column.dataType)
         if (temporalType) {
-          onUpdateCell?.(col.key, getTodayMysqlString(temporalType))
-        } else if (col.enumValues && col.enumValues.length > 0) {
-          onUpdateCell?.(col.key, col.enumValues[0])
-        } else if (isJsonSqlType(col.dataType)) {
-          onUpdateCell?.(col.key, getJsonFormDefaultValue(currentRow[colIdx]))
+          onUpdateCell?.(column.key, getTodayMysqlString(temporalType))
+        } else if (column.enumValues && column.enumValues.length > 0) {
+          onUpdateCell?.(column.key, column.enumValues[0])
+        } else if (isJsonSqlType(column.dataType)) {
+          onUpdateCell?.(column.key, getJsonFormDefaultValue(currentRow[columnIndex]))
         } else {
-          onUpdateCell?.(col.key, '')
+          onUpdateCell?.(column.key, '')
         }
       } else {
         // Toggling NULL on — close picker if it's open for this field
-        setOpenPickerState((prev) => (prev?.field === col.key ? null : prev))
-        onUpdateCell?.(col.key, null)
+        setOpenPickerState((previous) => (previous?.field === column.key ? null : previous))
+        onUpdateCell?.(column.key, null)
       }
     },
     [currentRow, ensureEditing, editState, onUpdateCell, setOpenPickerState]
@@ -212,8 +212,11 @@ export function BaseFormView({
     const { displayValue: text } = formatCellValue(value)
     try {
       await writeClipboardText(text)
-    } catch (err) {
-      logFrontend('error', ['[base-form-view] clipboard write failed:', err].map(String).join(' '))
+    } catch (error) {
+      logFrontend(
+        'error',
+        ['[base-form-view] clipboard write failed:', error].map(String).join(' ')
+      )
     }
   }, [])
 
@@ -292,15 +295,15 @@ export function BaseFormView({
 
       {/* Form fields (prototype `.p-form .rows`) */}
       <div className={styles.formRows}>
-        {columns.map((col, colIdx) => (
+        {columns.map((column, columnIndex) => (
           <FormField
-            key={col.key}
-            col={col}
-            colIdx={colIdx}
+            key={column.key}
+            col={column}
+            colIdx={columnIndex}
             currentRow={currentRow}
             currentRowData={currentRowData}
             editState={editState}
-            isModified={modifiedKeys.has(col.key)}
+            isModified={modifiedKeys.has(column.key)}
             hasEditCapability={hasEditCapability}
             openPickerState={openPickerState}
             inputFocusedRef={inputFocusedRef}
@@ -338,8 +341,8 @@ interface FormFieldProps {
   onSetOpenPickerState: (state: { field: string; anchorEl: HTMLElement } | null) => void
   onEnsureEditing: () => void
   onInputFocus: () => void
-  onInputChange: (colKey: string, value: unknown) => void
-  onNullToggle: (col: GridColumnDescriptor, colIdx: number) => void
+  onInputChange: (columnKey: string, value: unknown) => void
+  onNullToggle: (column: GridColumnDescriptor, columnIndex: number) => void
   onCopy: (value: unknown) => void
   workspaceTabId?: string
   onBlobView?: (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => void
@@ -348,8 +351,8 @@ interface FormFieldProps {
 }
 
 function FormField({
-  col,
-  colIdx,
+  col: column,
+  colIdx: columnIndex,
   currentRow,
   currentRowData,
   editState,
@@ -370,59 +373,62 @@ function FormField({
 }: FormFieldProps) {
   // Determine the value to display (edit state overlays raw row data)
   const rawValue =
-    editState && col.key in editState.currentValues
-      ? editState.currentValues[col.key]
-      : currentRow[colIdx]
+    editState && column.key in editState.currentValues
+      ? editState.currentValues[column.key]
+      : currentRow[columnIndex]
 
   const valueCellRef = useRef<HTMLDivElement>(null)
   const isNull = isNullish(rawValue)
-  const isBlobField = col.isBinary
-  const temporalType = getTemporalColumnType(col.dataType)
-  const isEditable = col.editable && hasEditCapability && !isBlobField
+  const isBlobField = column.isBinary
+  const temporalType = getTemporalColumnType(column.dataType)
+  const isEditable = column.editable && hasEditCapability && !isBlobField
   const isTemporalEditable = temporalType !== null && isEditable
-  const isEnumEditable = !!(col.enumValues && col.enumValues.length > 0) && isEditable
-  const isJsonColumn = isJsonSqlType(col.dataType)
+  const isEnumEditable = !!(column.enumValues && column.enumValues.length > 0) && isEditable
+  const isJsonColumn = isJsonSqlType(column.dataType)
 
   const enumDropdownOptions: DropdownOption[] = useMemo(() => {
     const out: DropdownOption[] = []
-    if (col.isNullable) {
+    if (column.isNullable) {
       out.push({ value: ENUM_NULL_SENTINEL, label: 'NULL' })
     }
-    for (const ev of col.enumValues ?? []) {
+    for (const ev of column.enumValues ?? []) {
       out.push({ value: ev, label: ev })
     }
     return out
-  }, [col.enumValues, col.isNullable])
+  }, [column.enumValues, column.isNullable])
   const isFieldReadonly = !isEditable
 
   // Label suffix — PK takes priority over UK
   let labelSuffix = ''
-  if (col.isPrimaryKey) labelSuffix = '(Primary Key)'
-  else if (col.isUniqueKey) labelSuffix = '(Unique Key)'
+  if (column.isPrimaryKey) labelSuffix = '(Primary Key)'
+  else if (column.isUniqueKey) labelSuffix = '(Unique Key)'
 
   // Lock icon: non-editable column in edit mode with active editState
   const showLock =
-    !col.editable && !col.blobViewerEditable && hasEditCapability && editState !== null
-  const showFkTrigger = !!(col.foreignKey && currentRowData)
-  const inFieldButtonCount = Number(isTemporalEditable) + Number(showFkTrigger)
+    !column.editable && !column.blobViewerEditable && hasEditCapability && editState !== null
+  const showForeignKeyTrigger = !!(column.foreignKey && currentRowData)
+  const inFieldButtonCount = Number(isTemporalEditable) + Number(showForeignKeyTrigger)
   const hasInFieldButtons = inFieldButtonCount > 0
 
   return (
-    <div className={styles.fieldGroup} data-testid={`form-field-${col.displayName}`}>
+    <div className={styles.fieldGroup} data-testid={`form-field-${column.displayName}`}>
       {/* Label cell (prototype `.p-form label`) */}
       <div className={styles.fieldLabelCell}>
         <span className={styles.fieldLabel}>
           {isModified && (
-            <span className={styles.modifiedDot} data-testid={`modified-dot-${col.displayName}`} />
+            <span
+              className={styles.modifiedDot}
+              data-testid={`modified-dot-${column.displayName}`}
+            />
           )}
           {showLock && (
             <LockIcon
               size={12}
               className={styles.lockIcon}
-              data-testid={`lock-icon-${col.displayName}`}
+              data-testid={`lock-icon-${column.displayName}`}
             />
           )}
-          {col.displayName}
+          {column.displayName}
         </span>
         {labelSuffix && <span className={styles.fieldLabelSuffix}>{labelSuffix}</span>}
       </div>
@@ -435,16 +441,19 @@ function FormField({
       >
         {isBlobField ? (
           <div className={styles.fieldBlobRow}>
-            <div className={styles.fieldBlobReadonly} data-testid={`form-input-${col.displayName}`}>
+            <div
+              className={styles.fieldBlobReadonly}
+              data-testid={`form-input-${column.displayName}`}
+            >
               {getBlobFieldDisplayValue(rawValue)}
             </div>
             {onBlobView && (
               <Button
                 size="sm"
-                onClick={() => onBlobView(col, currentRowData)}
+                onClick={() => onBlobView(column, currentRowData)}
                 disabled={blobViewDisabled}
                 title={blobViewDisabled ? blobViewDisabledReason : undefined}
-                data-testid={`btn-blob-view-${col.displayName}`}
+                data-testid={`btn-blob-view-${column.displayName}`}
               >
                 <EyeIcon size={16} />
                 View/Edit
@@ -458,28 +467,31 @@ function FormField({
             }
             isEditable={isEditable}
             isNull={isNull}
-            onChange={(nextValue) => onInputChange(col.key, nextValue)}
-            testId={`form-input-${col.displayName}`}
+            onChange={(nextValue) => onInputChange(column.key, nextValue)}
+            testId={`form-input-${column.displayName}`}
           />
         ) : isFieldReadonly ? (
-          <div className={styles.fieldInputReadonly} data-testid={`form-input-${col.displayName}`}>
+          <div
+            className={styles.fieldInputReadonly}
+            data-testid={`form-input-${column.displayName}`}
+          >
             {formatCellValue(rawValue).displayValue}
           </div>
         ) : isEnumEditable ? (
           <Dropdown
-            id={`form-enum-${col.key}`}
-            ariaLabel={col.displayName}
+            id={`form-enum-${column.key}`}
+            ariaLabel={column.displayName}
             options={enumDropdownOptions}
             value={isNull ? ENUM_NULL_SENTINEL : displayValue(rawValue)}
             onChange={(nextValue) => {
               if (nextValue === ENUM_NULL_SENTINEL) {
                 onEnsureEditing()
-                onInputChange(col.key, null)
+                onInputChange(column.key, null)
                 return
               }
-              onInputChange(col.key, nextValue)
+              onInputChange(column.key, nextValue)
             }}
-            data-testid={`form-input-${col.displayName}`}
+            data-testid={`form-input-${column.displayName}`}
             triggerClassName={[
               isModified ? tiStyles.formFieldModified : '',
               isNull ? tiStyles.formFieldNull : '',
@@ -503,34 +515,34 @@ function FormField({
               // Track focus state for temporal first-click-open
               if (isTemporalEditable) {
                 setTimeout(() => {
-                  inputFocusedRef.current[col.key] = true
+                  inputFocusedRef.current[column.key] = true
                 }, 0)
               }
             }}
             onBlur={() => {
               if (isTemporalEditable) {
-                inputFocusedRef.current[col.key] = false
+                inputFocusedRef.current[column.key] = false
               }
             }}
             onClick={
               isTemporalEditable
-                ? (e) => {
+                ? (event) => {
                     // Don't open picker when the field is NULL
                     if (isNull) {
                       return
                     }
                     // Open picker only on the click that first grants focus
-                    if (!inputFocusedRef.current[col.key]) {
+                    if (!inputFocusedRef.current[column.key]) {
                       onSetOpenPickerState({
-                        field: col.key,
-                        anchorEl: valueCellRef.current ?? e.currentTarget,
+                        field: column.key,
+                        anchorEl: valueCellRef.current ?? event.currentTarget,
                       })
                     }
                   }
                 : undefined
             }
-            onChange={(e) => onInputChange(col.key, e.target.value)}
-            data-testid={`form-input-${col.displayName}`}
+            onChange={(event) => onInputChange(column.key, event.target.value)}
+            data-testid={`form-input-${column.displayName}`}
           />
         )}
         {hasInFieldButtons && (
@@ -541,14 +553,14 @@ function FormField({
                 size="sm"
                 iconOnly
                 disabled={isNull}
-                onClick={(e) => {
+                onClick={(event) => {
                   if (isNull) return
                   onSetOpenPickerState({
-                    field: col.key,
-                    anchorEl: valueCellRef.current ?? e.currentTarget,
+                    field: column.key,
+                    anchorEl: valueCellRef.current ?? event.currentTarget,
                   })
                 }}
-                data-testid={`calendar-btn-${col.displayName}`}
+                data-testid={`calendar-btn-${column.displayName}`}
                 aria-label={temporalType === 'TIME' ? 'Open time picker' : 'Open date picker'}
               >
                 {temporalType === 'TIME' ? (
@@ -559,10 +571,10 @@ function FormField({
               </Button>
             )}
 
-            {showFkTrigger && currentRowData && col.foreignKey && (
+            {showForeignKeyTrigger && currentRowData && column.foreignKey && (
               <FkLookupTriggerButton
-                foreignKey={col.foreignKey}
-                columnKey={col.key}
+                foreignKey={column.foreignKey}
+                columnKey={column.key}
                 currentValue={rawValue}
                 rowData={currentRowData}
                 className={styles.fieldFkButton}
@@ -579,19 +591,19 @@ function FormField({
           size="sm"
           iconOnly
           onClick={() => onCopy(rawValue)}
-          title={`Copy ${col.displayName}`}
-          aria-label={`Copy ${col.displayName}`}
-          data-testid={`btn-copy-${col.displayName}`}
+          title={`Copy ${column.displayName}`}
+          aria-label={`Copy ${column.displayName}`}
+          data-testid={`btn-copy-${column.displayName}`}
         >
           <CopySimpleIcon size={16} />
         </Button>
-        {col.isNullable && isEditable && (
+        {column.isNullable && isEditable && (
           <Button
             variant="subtle"
             size="sm"
             className={`${styles.fieldNullBtn} ${isNull ? styles.fieldNullBtnActive : ''}`}
-            onClick={() => onNullToggle(col, colIdx)}
-            data-testid={`btn-null-${col.displayName}`}
+            onClick={() => onNullToggle(column, columnIndex)}
+            data-testid={`btn-null-${column.displayName}`}
           >
             {isNull ? 'Set value' : 'Set NULL'}
           </Button>
@@ -599,14 +611,14 @@ function FormField({
       </div>
 
       {/* Date/time picker popup (rendered via portal) */}
-      {openPickerState?.field === col.key && temporalType && (
+      {openPickerState?.field === column.key && temporalType && (
         <DateTimePicker
           value={isNullish(rawValue) ? null : displayValue(rawValue)}
           columnType={temporalType}
           disabled={isNull}
           anchorEl={openPickerState.anchorEl}
-          onApply={(val) => {
-            onInputChange(col.key, val)
+          onApply={(value) => {
+            onInputChange(column.key, value)
             onSetOpenPickerState(null)
           }}
           onCancel={() => onSetOpenPickerState(null)}
@@ -616,7 +628,10 @@ function FormField({
 
       {/* Modified indicator note */}
       {isModified && (
-        <div className={styles.fieldModifiedNote} data-testid={`modified-note-${col.displayName}`}>
+        <div
+          className={styles.fieldModifiedNote}
+          data-testid={`modified-note-${column.displayName}`}
+        >
           <InfoIcon size={14} weight="fill" />
           <span>Unsaved change detected</span>
         </div>

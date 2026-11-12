@@ -20,26 +20,26 @@ pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
     let worksheet = workbook.add_worksheet();
     worksheet
         .set_name("Query Results")
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
     let bold = Format::new().set_bold();
     let mut current_row: u32 = 0;
 
     if include_headers {
-        for (col_idx, col_name) in columns.iter().enumerate() {
+        for (column_index, col_name) in columns.iter().enumerate() {
             worksheet
-                .write_string_with_format(current_row, col_idx as u16, col_name, &bold)
-                .map_err(|e| e.to_string())?;
+                .write_string_with_format(current_row, column_index as u16, col_name, &bold)
+                .map_err(|error| error.to_string())?;
         }
         worksheet
             .set_freeze_panes(1, 0)
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
         current_row += 1;
     }
 
     for row in rows.iter().map(AsRef::as_ref) {
-        for (col_idx, val) in row.iter().enumerate() {
-            write_xlsx_cell(worksheet, current_row, col_idx as u16, val)?;
+        for (column_index, value) in row.iter().enumerate() {
+            write_xlsx_cell(worksheet, current_row, column_index as u16, value)?;
         }
         current_row += 1;
     }
@@ -48,20 +48,25 @@ pub fn write_xlsx<R: AsRef<[serde_json::Value]>>(
     let col_widths: Vec<f64> = columns
         .iter()
         .enumerate()
-        .map(|(col_idx, col_name)| {
-            xlsx_column_width(col_name, rows.iter().map(|row| row.as_ref().get(col_idx)))
+        .map(|(column_index, col_name)| {
+            xlsx_column_width(
+                col_name,
+                rows.iter().map(|row| row.as_ref().get(column_index)),
+            )
         })
         .collect();
 
-    for (col_idx, width) in col_widths.iter().enumerate() {
+    for (column_index, width) in col_widths.iter().enumerate() {
         worksheet
-            .set_column_width(col_idx as u16, *width)
-            .map_err(|e| e.to_string())?;
+            .set_column_width(column_index as u16, *width)
+            .map_err(|error| error.to_string())?;
     }
 
-    workbook.save(file_path).map_err(|e| e.to_string())?;
+    workbook
+        .save(file_path)
+        .map_err(|error| error.to_string())?;
 
-    let metadata = std::fs::metadata(file_path).map_err(|e| e.to_string())?;
+    let metadata = std::fs::metadata(file_path).map_err(|error| error.to_string())?;
     Ok(metadata.len())
 }
 
@@ -72,35 +77,35 @@ pub fn write_xlsx_cell(
     worksheet: &mut Worksheet,
     row: u32,
     col: u16,
-    val: &serde_json::Value,
+    value: &serde_json::Value,
 ) -> Result<(), String> {
-    match val {
+    match value {
         serde_json::Value::Null => {} // empty cell
-        serde_json::Value::Number(n) => {
-            if let Some(f) = n.as_f64() {
+        serde_json::Value::Number(number) => {
+            if let Some(float) = number.as_f64() {
                 worksheet
-                    .write_number(row, col, f)
-                    .map_err(|e| e.to_string())?;
+                    .write_number(row, col, float)
+                    .map_err(|error| error.to_string())?;
             } else {
                 worksheet
-                    .write_string(row, col, n.to_string())
-                    .map_err(|e| e.to_string())?;
+                    .write_string(row, col, number.to_string())
+                    .map_err(|error| error.to_string())?;
             }
         }
-        serde_json::Value::String(s) => {
+        serde_json::Value::String(text) => {
             worksheet
-                .write_string(row, col, s)
-                .map_err(|e| e.to_string())?;
+                .write_string(row, col, text)
+                .map_err(|error| error.to_string())?;
         }
-        serde_json::Value::Bool(b) => {
+        serde_json::Value::Bool(boolean) => {
             worksheet
-                .write_boolean(row, col, *b)
-                .map_err(|e| e.to_string())?;
+                .write_boolean(row, col, *boolean)
+                .map_err(|error| error.to_string())?;
         }
         _ => {
             worksheet
-                .write_string(row, col, val.to_string())
-                .map_err(|e| e.to_string())?;
+                .write_string(row, col, value.to_string())
+                .map_err(|error| error.to_string())?;
         }
     }
     Ok(())
@@ -116,8 +121,8 @@ pub fn xlsx_column_width<'a>(
     let max_data_len = cells.fold(0usize, |acc, cell| {
         let cell_len = match cell {
             Some(serde_json::Value::Null) | None => 0,
-            Some(serde_json::Value::String(s)) => s.len(),
-            Some(val) => val.to_string().len(),
+            Some(serde_json::Value::String(text)) => text.len(),
+            Some(value) => value.to_string().len(),
         };
         acc.max(cell_len)
     });

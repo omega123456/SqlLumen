@@ -32,7 +32,7 @@ import { logFrontend } from '../lib/app-log-commands'
 import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
 import {
   blobPlaceholder,
-  convertBinaryPkValuesToEnvelopes,
+  convertBinaryPrimaryKeyValuesToEnvelopes,
   isBlobEnvelope,
 } from '../lib/blob-utils'
 import type { BlobEnvelope } from '../types/schema'
@@ -41,17 +41,29 @@ import type { BlobEnvelope } from '../types/schema'
 // ---------------------------------------------------------------------------
 
 const RESET_SCROLL_CELL = { scrollRow: 0 as const, scrollCol: 0 as const }
+const BASE64_BYTES_PER_GROUP = 3
+const BASE64_CHARS_PER_GROUP = 4
+const BASE64_DOUBLE_PADDING = '=='
+const BASE64_SINGLE_PADDING = '='
+
+function base64PaddingLength(base64: string): number {
+  if (base64.endsWith(BASE64_DOUBLE_PADDING)) return BASE64_DOUBLE_PADDING.length
+  if (base64.endsWith(BASE64_SINGLE_PADDING)) return BASE64_SINGLE_PADDING.length
+  return 0
+}
 
 /** Compare two row keys for equality using JSON-based comparison. */
 function isSameRowKey(
-  a: Record<string, unknown> | null,
-  b: Record<string, unknown> | null
+  left: Record<string, unknown> | null,
+  right: Record<string, unknown> | null
 ): boolean {
-  if (a === null || b === null) return a === b
-  const aKeys = Object.keys(a).sort()
-  const bKeys = Object.keys(b).sort()
+  if (left === null || right === null) return left === right
+  const aKeys = Object.keys(left).sort()
+  const bKeys = Object.keys(right).sort()
   if (aKeys.length !== bKeys.length) return false
-  return aKeys.every((k, i) => k === bKeys[i] && JSON.stringify(a[k]) === JSON.stringify(b[k]))
+  return aKeys.every(
+    (key, index) => key === bKeys[index] && JSON.stringify(left[key]) === JSON.stringify(right[key])
+  )
 }
 
 /**
@@ -67,10 +79,10 @@ function findRowIndexByKey(
   if ('__tempId' in rowKey) return -1
 
   return rows.findIndex((row) => {
-    for (const [keyCol, keyVal] of Object.entries(rowKey)) {
-      const colIdx = columns.findIndex((c) => c.name === keyCol)
-      if (colIdx === -1) return false
-      if (JSON.stringify(row[colIdx]) !== JSON.stringify(keyVal)) return false
+    for (const [keyColumn, keyValue] of Object.entries(rowKey)) {
+      const columnIndex = columns.findIndex((column) => column.name === keyColumn)
+      if (columnIndex === -1) return false
+      if (JSON.stringify(row[columnIndex]) !== JSON.stringify(keyValue)) return false
     }
     return true
   })
@@ -78,7 +90,7 @@ function findRowIndexByKey(
 
 function getRowKeyFromData(
   rowData: Record<string, unknown>,
-  pkColumns: string[],
+  primaryKeyColumns: string[],
   options: { includeRowIndexFallback?: boolean } = {}
 ): Record<string, unknown> {
   if ('__tempId' in rowData) {
@@ -94,8 +106,8 @@ function getRowKeyFromData(
   }
 
   const key: Record<string, unknown> = {}
-  for (const col of pkColumns) {
-    key[col] = rowData[col]
+  for (const column of primaryKeyColumns) {
+    key[column] = rowData[column]
   }
   if (
     options.includeRowIndexFallback === true &&
@@ -147,8 +159,8 @@ function appendDraftRow(
     editState: {
       ...updatedTab.editState,
       isNewRow: true,
-      tempId,
-      modifiedColumns,
+      tempId: tempId,
+      modifiedColumns: modifiedColumns,
     },
   })
 }
@@ -212,7 +224,7 @@ function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
 function createResidentRowState(isActive = false): FrontendRowResidencyState {
   return {
     status: 'resident',
-    isActive,
+    isActive: isActive,
     inactiveSince: null,
   }
 }
@@ -259,12 +271,15 @@ function buildInsertPayload(
   editState: RowEditState
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {}
-  for (const col of columns) {
-    if (!editState.modifiedColumns.has(col.name)) {
+  for (const column of columns) {
+    if (!editState.modifiedColumns.has(column.name)) {
       continue
     }
-    if (editState.currentValues[col.name] !== undefined) {
-      values[col.name] = coerceValueForColumn(editState.currentValues[col.name], col.dataType)
+    if (editState.currentValues[column.name] !== undefined) {
+      values[column.name] = coerceValueForColumn(
+        editState.currentValues[column.name],
+        column.dataType
+      )
     }
   }
   return values
@@ -328,29 +343,35 @@ export type BuildUpdatePayloadResult =
  */
 function buildUpdatePayload(
   editState: RowEditState,
-  pkColumns: string[],
+  primaryKeyColumns: string[],
   columns: TableDataColumnMeta[]
 ): BuildUpdatePayloadResult {
-  const columnsByName = new Map(columns.map((c) => [c.name, c]))
+  const columnsByName = new Map(columns.map((column) => [column.name, column]))
 
   const updatedValues: Record<string, unknown> = {}
-  for (const col of editState.modifiedColumns) {
-    const colMeta = columnsByName.get(col)
-    const rawValue = editState.currentValues[col]
-    updatedValues[col] = colMeta ? coerceValueForColumn(rawValue, colMeta.dataType) : rawValue
+  for (const column of editState.modifiedColumns) {
+    const columnMeta = columnsByName.get(column)
+    const rawValue = editState.currentValues[column]
+    updatedValues[column] = columnMeta
+      ? coerceValueForColumn(rawValue, columnMeta.dataType)
+      : rawValue
   }
 
-  const originalPkValues: Record<string, unknown> = {}
-  for (const pkCol of pkColumns) {
-    originalPkValues[pkCol] = editState.originalValues[pkCol]
+  const originalPrimaryKeyValues: Record<string, unknown> = {}
+  for (const primaryKeyColumn of primaryKeyColumns) {
+    originalPrimaryKeyValues[primaryKeyColumn] = editState.originalValues[primaryKeyColumn]
   }
 
-  const converted = convertBinaryPkValuesToEnvelopes(pkColumns, columns, originalPkValues)
+  const converted = convertBinaryPrimaryKeyValuesToEnvelopes(
+    primaryKeyColumns,
+    columns,
+    originalPrimaryKeyValues
+  )
   if (!converted.ok) {
     return { ok: false, error: converted.error }
   }
 
-  return { ok: true, originalPkValues: converted.values, updatedValues }
+  return { ok: true, originalPkValues: converted.values, updatedValues: updatedValues }
 }
 
 /**
@@ -366,8 +387,11 @@ function reconcileSavedBlobValue(value: unknown): unknown {
   let byteLength = 0
   if (typeof envelope.base64 === 'string') {
     const base64 = envelope.base64
-    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-    byteLength = Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
+    const padding = base64PaddingLength(base64)
+    const decodedLength = Math.floor(
+      (base64.length * BASE64_BYTES_PER_GROUP) / BASE64_CHARS_PER_GROUP
+    )
+    byteLength = Math.max(0, decodedLength - padding)
   }
   return blobPlaceholder(byteLength)
 }
@@ -380,7 +404,7 @@ function applyInsertedRow(
 ): unknown[][] {
   const returnedMap = Object.fromEntries(insertedData)
   const newRow = normalizeTinyIntRows(columns, [
-    columns.map((col) => reconcileSavedBlobValue(returnedMap[col.name] ?? null)),
+    columns.map((column) => reconcileSavedBlobValue(returnedMap[column.name] ?? null)),
   ])[0]
   const newRows = [...rows]
   newRows[newRows.length - 1] = newRow
@@ -411,18 +435,18 @@ function applyUpdatedRow(
   columns: TableDataColumnMeta[],
   editState: RowEditState
 ): unknown[][] {
-  const rowIdx = findRowIndexByKey(rows, columns, editState.rowKey)
-  if (rowIdx === -1) return rows
+  const rowIndex = findRowIndexByKey(rows, columns, editState.rowKey)
+  if (rowIndex === -1) return rows
 
   const newRows = [...rows]
-  const updatedRow = [...newRows[rowIdx]]
-  for (const [colName, value] of Object.entries(editState.currentValues)) {
-    const colIdx = columns.findIndex((c) => c.name === colName)
-    if (colIdx !== -1) {
-      updatedRow[colIdx] = reconcileSavedBlobValue(value)
+  const updatedRow = [...newRows[rowIndex]]
+  for (const [columnName, value] of Object.entries(editState.currentValues)) {
+    const columnIndex = columns.findIndex((column) => column.name === columnName)
+    if (columnIndex !== -1) {
+      updatedRow[columnIndex] = reconcileSavedBlobValue(value)
     }
   }
-  newRows[rowIdx] = updatedRow
+  newRows[rowIndex] = updatedRow
   return newRows
 }
 
@@ -453,9 +477,9 @@ function createDefaultTabState(
     executionTimeMs: 0,
     rowResidency: createResidentRowState(false),
     rowsEvictedAt: null,
-    connectionId,
-    database,
-    table,
+    connectionId: connectionId,
+    database: database,
+    table: table,
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
@@ -548,7 +572,7 @@ export interface TableDataStore {
   openExportDialog: (tabId: string) => void
   closeExportDialog: (tabId: string) => void
 
-  setScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => void
+  setScrollCell: (tabId: string, scrollRow: number, scrollColumn: number) => void
 
   requestNavigationAction: (tabId: string, action: () => void) => void
   confirmNavigationSave: (tabId: string) => Promise<void>
@@ -635,11 +659,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     const syncParams = {
       connectionId: latestTab.connectionId,
-      tabId,
+      tabId: tabId,
       database: latestTab.database,
       table: latestTab.table,
       columns: latestTab.columns,
-      rows,
+      rows: rows,
       currentPage: latestTab.currentPage,
       pageSize: latestTab.pageSize,
       primaryKey: latestTab.primaryKey,
@@ -711,7 +735,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         delete newTabs[tabId]
         delete columnJumpRequests[tabId]
         delete highlightedColumnByTab[tabId]
-        return { tabs: newTabs, columnJumpRequests, highlightedColumnByTab }
+        return {
+          tabs: newTabs,
+          columnJumpRequests: columnJumpRequests,
+          highlightedColumnByTab: highlightedColumnByTab,
+        }
       })
     },
 
@@ -732,11 +760,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
       // Fire FK metadata fetch in parallel (fire-and-forget)
       getTableForeignKeys(tab.connectionId, tab.database, tab.table)
-        .then((fkInfos) => {
+        .then((foreignKeyInfos) => {
           // Guard: tab may have been cleaned up during the async call
           if (!get().tabs[tabId]) return
 
-          patchTab(tabId, { foreignKeys: mapSingleColumnForeignKeys(fkInfos) })
+          patchTab(tabId, { foreignKeys: mapSingleColumnForeignKeys(foreignKeyInfos) })
         })
         .catch((error: unknown) => {
           const errorMessage = error instanceof Error ? error.message : String(error)
@@ -764,10 +792,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       try {
         const result = await fetchTableDataCmd({
           connectionId: tab.connectionId,
-          tabId,
+          tabId: tabId,
           database: tab.database,
           table: tab.table,
-          page,
+          page: page,
           pageSize: tab.pageSize,
           sortColumn: tab.sort?.column,
           sortDirection: tab.sort?.direction,
@@ -804,7 +832,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         if (!isStillVisible) {
           get().markTableDataSurfaceInactive(tabId)
         }
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return
 
         // When the user cancelled the in-flight query, the backend KILL surfaces
@@ -813,9 +841,9 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         patchTab(tabId, {
           error: wasCancelled
             ? 'Query cancelled by user'
-            : err instanceof Error
-              ? err.message
-              : String(err),
+            : error instanceof Error
+              ? error.message
+              : String(error),
           isLoading: false,
           isCancelling: false,
         })
@@ -843,10 +871,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           // No running query was found (it likely already finished).
           patchTab(tabId, { isCancelling: false })
         }
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return
         patchTab(tabId, { isCancelling: false })
-        showErrorToast('Cancel failed', err instanceof Error ? err.message : String(err))
+        showErrorToast('Cancel failed', error instanceof Error ? error.message : String(error))
       }
     },
 
@@ -961,7 +989,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       try {
         const restored = await restoreTableDataCacheCmd({
           connectionId: tab.connectionId,
-          tabId,
+          tabId: tabId,
           database: tab.database,
           table: tab.table,
         })
@@ -1013,13 +1041,13 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     startEditing: (tabId, rowKey, currentValues) => {
       const editState: RowEditState = {
-        rowKey,
+        rowKey: rowKey,
         originalValues: JSON.parse(JSON.stringify(currentValues)),
         currentValues: { ...currentValues },
         modifiedColumns: new Set<string>(),
         isNewRow: false,
       }
-      patchTab(tabId, { editState, saveError: null })
+      patchTab(tabId, { editState: editState, saveError: null })
     },
 
     // ------ updateCellValue ------
@@ -1051,19 +1079,19 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab) return
 
-      const colIdx = tab.columns.findIndex((c) => c.name === column)
-      if (colIdx < 0) return
+      const columnIndex = tab.columns.findIndex((candidate) => candidate.name === column)
+      if (columnIndex < 0) return
 
-      const pkColumns = tab.primaryKey?.keyColumns ?? []
-      const rowKey = getRowKeyFromData(rowData, pkColumns)
+      const primaryKeyColumns = tab.primaryKey?.keyColumns ?? []
+      const rowKey = getRowKeyFromData(rowData, primaryKeyColumns)
 
       // Ensure row editing has started for this row, seeding the baseline values
       // from the current row data so unrelated columns are not marked dirty.
       const currentEditState = get().tabs[tabId]?.editState ?? null
       if (!currentEditState || !isSameRowKey(currentEditState.rowKey, rowKey)) {
         const baseline: Record<string, unknown> = {}
-        for (const col of tab.columns) {
-          baseline[col.name] = rowData[col.name]
+        for (const column of tab.columns) {
+          baseline[column.name] = rowData[column.name]
         }
         get().startEditing(tabId, rowKey, baseline)
       }
@@ -1075,24 +1103,24 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       // `[BLOB - N bytes*]` placeholder for the staged cell.
       const latestTab = get().tabs[tabId]
       if (!latestTab) return
-      let rowIdx = findRowIndexByKey(latestTab.rows, latestTab.columns, rowKey)
+      let rowIndex = findRowIndexByKey(latestTab.rows, latestTab.columns, rowKey)
       // Draft rows are keyed by `__tempId` (no PK match) — locate them via the
       // positional `__rowIndex` the grid carries, falling back to the last row.
-      if (rowIdx < 0 && '__tempId' in rowKey) {
+      if (rowIndex < 0 && '__tempId' in rowKey) {
         const rowIndexHint = rowData.__rowIndex
-        rowIdx =
+        rowIndex =
           typeof rowIndexHint === 'number' &&
           rowIndexHint >= 0 &&
           rowIndexHint < latestTab.rows.length
             ? rowIndexHint
             : latestTab.rows.length - 1
       }
-      if (rowIdx < 0) return
+      if (rowIndex < 0) return
 
       const nextRows = [...latestTab.rows]
-      const nextRow = [...nextRows[rowIdx]]
-      nextRow[colIdx] = envelope
-      nextRows[rowIdx] = nextRow
+      const nextRow = [...nextRows[rowIndex]]
+      nextRow[columnIndex] = envelope
+      nextRows[rowIndex] = nextRow
       patchTab(tabId, { rows: nextRows })
     },
 
@@ -1102,17 +1130,17 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab || !rowData) return
 
-      const colIdx = tab.columns.findIndex((c) => c.name === column)
-      if (colIdx < 0) return
+      const columnIndex = tab.columns.findIndex((candidate) => candidate.name === column)
+      if (columnIndex < 0) return
 
       const rowKey = rowKeyOverride ?? getRowKeyFromData(rowData, tab.primaryKey?.keyColumns ?? [])
-      const rowIdx = findRowIndexByKey(tab.rows, tab.columns, rowKey)
-      if (rowIdx < 0) return
+      const rowIndex = findRowIndexByKey(tab.rows, tab.columns, rowKey)
+      if (rowIndex < 0) return
 
       const nextRows = [...tab.rows]
-      const nextRow = [...nextRows[rowIdx]]
-      nextRow[colIdx] = value
-      nextRows[rowIdx] = nextRow
+      const nextRow = [...nextRows[rowIndex]]
+      nextRow[columnIndex] = value
+      nextRows[rowIndex] = nextRow
 
       const isPrimaryKeyColumn = tab.primaryKey?.keyColumns.includes(column) ?? false
       const nextRowKey =
@@ -1172,7 +1200,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             connectionId: tab.connectionId,
             database: tab.database,
             table: tab.table,
-            values,
+            values: values,
             pkInfo: primaryKey,
           })
 
@@ -1196,11 +1224,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             { preserveActiveState: true }
           )
           return true
-        } catch (err) {
+        } catch (error) {
           if (!get().tabs[tabId]) return false
 
           patchTab(tabId, {
-            saveError: err instanceof Error ? err.message : String(err),
+            saveError: error instanceof Error ? error.message : String(error),
           })
           return false
         }
@@ -1215,15 +1243,15 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             patchTab(tabId, { saveError: payload.error })
             return false
           }
-          const { originalPkValues, updatedValues } = payload
+          const { originalPkValues: originalPrimaryKeyValues, updatedValues } = payload
 
           await updateTableRowCmd({
             connectionId: tab.connectionId,
             database: tab.database,
             table: tab.table,
             primaryKeyColumns: primaryKey.keyColumns,
-            originalPkValues,
-            updatedValues,
+            originalPkValues: originalPrimaryKeyValues,
+            updatedValues: updatedValues,
           })
 
           if (!get().tabs[tabId]) return true
@@ -1240,11 +1268,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             { preserveActiveState: true }
           )
           return true
-        } catch (err) {
+        } catch (error) {
           if (!get().tabs[tabId]) return false
 
           patchTab(tabId, {
-            saveError: err instanceof Error ? err.message : String(err),
+            saveError: error instanceof Error ? error.message : String(error),
           })
           return false
         }
@@ -1274,17 +1302,17 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       } else {
         // Restore original values in the row, then clear editState
         const editState = tab.editState
-        const rowIdx = findRowIndexByKey(tab.rows, tab.columns, editState.rowKey)
-        if (rowIdx !== -1) {
+        const rowIndex = findRowIndexByKey(tab.rows, tab.columns, editState.rowKey)
+        if (rowIndex !== -1) {
           const newRows = [...tab.rows]
-          const restoredRow = [...newRows[rowIdx]]
-          for (const [colName, value] of Object.entries(editState.originalValues)) {
-            const colIdx = tab.columns.findIndex((c) => c.name === colName)
-            if (colIdx !== -1) {
-              restoredRow[colIdx] = value
+          const restoredRow = [...newRows[rowIndex]]
+          for (const [columnName, value] of Object.entries(editState.originalValues)) {
+            const columnIndex = tab.columns.findIndex((column) => column.name === columnName)
+            if (columnIndex !== -1) {
+              restoredRow[columnIndex] = value
             }
           }
-          newRows[rowIdx] = restoredRow
+          newRows[rowIndex] = restoredRow
 
           const restoredSelectedRowKey =
             tab.selectedRowKey && isSameRowKey(tab.selectedRowKey, editState.rowKey)
@@ -1327,10 +1355,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       if (!tab?.selectedRowKey || !tab.primaryKey || tab.editState?.isNewRow) return
       if ('__tempId' in tab.selectedRowKey) return
 
-      const rowIdx = findRowIndexByKey(tab.rows, tab.columns, tab.selectedRowKey)
-      if (rowIdx === -1) return
+      const rowIndex = findRowIndexByKey(tab.rows, tab.columns, tab.selectedRowKey)
+      if (rowIndex === -1) return
 
-      const sourceRow = tab.rows[rowIdx]
+      const sourceRow = tab.rows[rowIndex]
       const clonedRow = tab.columns.map((column, index) => {
         if (tab.primaryKey?.keyColumns.includes(column.name)) {
           return null
@@ -1368,7 +1396,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
       // Send a transformed copy so binary PK values bind as bytes; keep the
       // original hex `rowKey` for the post-delete findRowIndexByKey lookup (C5).
-      const converted = convertBinaryPkValuesToEnvelopes(
+      const converted = convertBinaryPrimaryKeyValuesToEnvelopes(
         tab.primaryKey.keyColumns,
         tab.columns,
         rowKey
@@ -1390,10 +1418,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
         if (!get().tabs[tabId]) return
 
-        const rowIdx = findRowIndexByKey(tab.rows, tab.columns, rowKey)
-        if (rowIdx !== -1) {
+        const rowIndex = findRowIndexByKey(tab.rows, tab.columns, rowKey)
+        if (rowIndex !== -1) {
           const newRows = [...tab.rows]
-          newRows.splice(rowIdx, 1)
+          newRows.splice(rowIndex, 1)
           await syncPatchedTableDataCache('delete', tabId, newRows)
           markTableDataResident(
             tabId,
@@ -1405,11 +1433,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             { preserveActiveState: true }
           )
         }
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return
 
         patchTab(tabId, {
-          error: err instanceof Error ? err.message : String(err),
+          error: error instanceof Error ? error.message : String(error),
         })
       }
     },
@@ -1448,7 +1476,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
         // Send a transformed copy; keep the original hex `rowKey` for the
         // post-delete findRowIndexByKey lookup (C5).
-        const converted = convertBinaryPkValuesToEnvelopes(
+        const converted = convertBinaryPrimaryKeyValuesToEnvelopes(
           tab.primaryKey.keyColumns,
           tab.columns,
           rowKey
@@ -1471,10 +1499,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           const latest = get().tabs[tabId]
           if (!latest) return deletedCount
 
-          const rowIdx = findRowIndexByKey(latest.rows, latest.columns, rowKey)
-          if (rowIdx !== -1) {
+          const rowIndex = findRowIndexByKey(latest.rows, latest.columns, rowKey)
+          if (rowIndex !== -1) {
             const newRows = [...latest.rows]
-            newRows.splice(rowIdx, 1)
+            newRows.splice(rowIndex, 1)
             await syncPatchedTableDataCache('delete', tabId, newRows)
             markTableDataResident(
               tabId,
@@ -1483,10 +1511,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             )
           }
           deletedCount += 1
-        } catch (err) {
+        } catch (error) {
           if (!get().tabs[tabId]) return deletedCount
           patchTab(tabId, {
-            error: err instanceof Error ? err.message : String(err),
+            error: error instanceof Error ? error.message : String(error),
           })
           break
         }
@@ -1524,7 +1552,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         columnJumpRequests: {
           ...state.columnJumpRequests,
           [tabId]: {
-            columnKey,
+            columnKey: columnKey,
             nonce: (state.columnJumpRequests[tabId]?.nonce ?? 0) + 1,
           },
         },
@@ -1538,7 +1566,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         const columnJumpRequests = { ...state.columnJumpRequests }
         delete columnJumpRequests[tabId]
         return {
-          columnJumpRequests,
+          columnJumpRequests: columnJumpRequests,
           highlightedColumnByTab: {
             ...state.highlightedColumnByTab,
             [tabId]: request.columnKey,
@@ -1587,8 +1615,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ setScrollCell ------
 
-    setScrollCell: (tabId, scrollRow, scrollCol) => {
-      patchTab(tabId, { scrollRow, scrollCol })
+    setScrollCell: (tabId, scrollRow, scrollColumn) => {
+      patchTab(tabId, { scrollRow: scrollRow, scrollCol: scrollColumn })
     },
 
     // ------ requestNavigationAction ------

@@ -1,4 +1,4 @@
-import { buildTableColLookup, colKey } from './col-key-utils'
+import { buildTableColumnLookup, columnKey } from './col-key-utils'
 import { buildForeignKeyLookup } from './foreign-key-utils'
 import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../types/schema'
 
@@ -25,7 +25,7 @@ export interface ResolvedQueryResultColumn {
 function buildFallbackTableColumnMeta(boundName: string, dataType: string): TableDataColumnMeta {
   return {
     name: boundName,
-    dataType,
+    dataType: dataType,
     isNullable: true,
     isPrimaryKey: false,
     isUniqueKey: false,
@@ -45,23 +45,23 @@ export function resolveQueryResultColumns({
   editForeignKeys,
   editColumnBindings,
 }: ResolveQueryResultColumnsArgs): ResolvedQueryResultColumn[] {
-  const tableColLookup = buildTableColLookup(editTableColumns)
+  const tableColumnLookup = buildTableColumnLookup(editTableColumns)
   const foreignKeyLookup = buildForeignKeyLookup(editForeignKeys)
 
   return resultColumns.map((resultColumn, index) => {
     const boundName = editColumnBindings.get(index) ?? resultColumn.name
-    const lookupTableMeta = tableColLookup.get(boundName.toLowerCase())
+    const lookupTableMeta = tableColumnLookup.get(boundName.toLowerCase())
     const editable =
       editMode !== null && editableColumnMap.size > 0
         ? (editableColumnMap.get(index) ?? false)
         : false
 
     return {
-      key: colKey(index),
+      key: columnKey(index),
       displayName: resultColumn.name,
       dataType: resultColumn.dataType,
-      boundName,
-      editable,
+      boundName: boundName,
+      editable: editable,
       tableColumnMeta: lookupTableMeta,
       effectiveTableMeta:
         lookupTableMeta ?? buildFallbackTableColumnMeta(boundName, resultColumn.dataType),

@@ -87,15 +87,15 @@ function createDefaultConnectionIndexState(): ConnectionIndexState {
 /** Resolve all sessions for a profile, apply an update to each connection state. */
 function updateSessionsForProfile(
   get: () => SchemaIndexStore,
-  set: (fn: (state: SchemaIndexStore) => Partial<SchemaIndexStore>) => void,
+  set: (updater: (state: SchemaIndexStore) => Partial<SchemaIndexStore>) => void,
   profileId: string,
-  update: (conn: ConnectionIndexState) => ConnectionIndexState
+  update: (connection: ConnectionIndexState) => ConnectionIndexState
 ): void {
   const sessions = get().profileToSessions[profileId] ?? []
   if (sessions.length === 0) return
 
-  set((s) => {
-    const newConnections = { ...s.connections }
+  set((state) => {
+    const newConnections = { ...state.connections }
     for (const sid of sessions) {
       newConnections[sid] = update(newConnections[sid] ?? createDefaultConnectionIndexState())
     }
@@ -128,10 +128,10 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         event.payload.tablesDone,
         event.payload.tablesTotal
       )
-    }).catch((err) => {
+    }).catch((error) => {
       logFrontend(
         'error',
-        ['[schema-index-store] Failed to listen for schema-index-progress:', err]
+        ['[schema-index-store] Failed to listen for schema-index-progress:', error]
           .map(String)
           .join(' ')
       )
@@ -142,10 +142,10 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       (event) => {
         get()._handleComplete(event.payload.profileId)
       }
-    ).catch((err) => {
+    ).catch((error) => {
       logFrontend(
         'error',
-        ['[schema-index-store] Failed to listen for schema-index-complete:', err]
+        ['[schema-index-store] Failed to listen for schema-index-complete:', error]
           .map(String)
           .join(' ')
       )
@@ -153,10 +153,12 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
 
     listen<{ profileId: string; error: string }>('schema-index-error', (event) => {
       get()._handleError(event.payload.profileId, event.payload.error)
-    }).catch((err) => {
+    }).catch((error) => {
       logFrontend(
         'error',
-        ['[schema-index-store] Failed to listen for schema-index-error:', err].map(String).join(' ')
+        ['[schema-index-store] Failed to listen for schema-index-error:', error]
+          .map(String)
+          .join(' ')
       )
     })
   }
@@ -167,24 +169,24 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     if (settingsUnsub) return
 
     // Subscribe to settings store for ai.embeddingModel changes
-    let prevEmbeddingModel = useSettingsStore.getState().getSetting('ai.embeddingModel')
+    let previousEmbeddingModel = useSettingsStore.getState().getSetting('ai.embeddingModel')
 
     settingsUnsub = useSettingsStore.subscribe((state) => {
       const currentModel = state.getSetting('ai.embeddingModel')
-      if (currentModel !== prevEmbeddingModel) {
-        prevEmbeddingModel = currentModel
+      if (currentModel !== previousEmbeddingModel) {
+        previousEmbeddingModel = currentModel
 
         // Trigger rebuild for all active sessions
         const store = get()
         const allSessions = Object.keys(store.sessionToProfile)
         for (const sessionId of allSessions) {
-          store.triggerBuild(sessionId).catch((err) => {
-            const msg = err instanceof Error ? err.message : String(err)
+          store.triggerBuild(sessionId).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error)
             logFrontend(
               'error',
               [
                 `[schema-index-store] Failed to rebuild index for session ${sessionId} after model change:`,
-                msg,
+                message,
               ]
                 .map(String)
                 .join(' ')
@@ -227,24 +229,24 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       getIndexStatus(sessionId)
         .then((status) => {
           set((state) => {
-            const conn = state.connections[sessionId]
-            if (!conn) return state
+            const connection = state.connections[sessionId]
+            if (!connection) return state
             return {
               connections: {
                 ...state.connections,
                 [sessionId]: {
-                  ...conn,
+                  ...connection,
                   status: status.status,
                 },
               },
             }
           })
         })
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err)
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error)
           logFrontend(
             'warn',
-            `[schema-index-store] Failed to get initial index status for ${sessionId}: ${msg}`
+            `[schema-index-store] Failed to get initial index status for ${sessionId}: ${message}`
           )
         })
     },
@@ -261,7 +263,9 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         delete newSessionToProfile[sessionId]
 
         const newProfileToSessions = { ...state.profileToSessions }
-        const sessions = (newProfileToSessions[profileId] ?? []).filter((s) => s !== sessionId)
+        const sessions = (newProfileToSessions[profileId] ?? []).filter(
+          (otherSessionId) => otherSessionId !== sessionId
+        )
         if (sessions.length === 0) {
           delete newProfileToSessions[profileId]
         } else {
@@ -295,18 +299,21 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       const siblingSessionIds = state.profileToSessions[profileId] ?? []
       for (const sid of siblingSessionIds) {
         if (sid === sessionId) continue
-        const siblingConn = state.connections[sid]
-        if (siblingConn && (siblingConn.status === 'building' || siblingConn.status === 'ready')) {
-          set((s) => ({
+        const siblingConnection = state.connections[sid]
+        if (
+          siblingConnection &&
+          (siblingConnection.status === 'building' || siblingConnection.status === 'ready')
+        ) {
+          set((state) => ({
             connections: {
-              ...s.connections,
+              ...state.connections,
               [sessionId]: {
-                ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
-                status: siblingConn.status,
-                phase: siblingConn.phase,
-                tablesDone: siblingConn.tablesDone,
-                tablesTotal: siblingConn.tablesTotal,
-                lastBuildTimestamp: siblingConn.lastBuildTimestamp,
+                ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
+                status: siblingConnection.status,
+                phase: siblingConnection.phase,
+                tablesDone: siblingConnection.tablesDone,
+                tablesTotal: siblingConnection.tablesTotal,
+                lastBuildTimestamp: siblingConnection.lastBuildTimestamp,
               },
             },
           }))
@@ -314,11 +321,11 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         }
       }
 
-      set((s) => ({
+      set((state) => ({
         connections: {
-          ...s.connections,
+          ...state.connections,
           [sessionId]: {
-            ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
+            ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
             status: 'building' as const,
             phase: null,
             tablesDone: 0,
@@ -334,22 +341,22 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         // The backend may have returned early (e.g. not_configured) without emitting events.
         try {
           const realStatus = await getIndexStatus(sessionId)
-          set((s) => {
-            const conn = s.connections[sessionId]
-            if (!conn) return s
+          set((state) => {
+            const connection = state.connections[sessionId]
+            if (!connection) return state
             // Only update if we're still in 'building' — events may have already updated it
-            if (conn.status === 'building' || conn.status === 'stale') {
+            if (connection.status === 'building' || connection.status === 'stale') {
               return {
                 connections: {
-                  ...s.connections,
+                  ...state.connections,
                   [sessionId]: {
-                    ...conn,
+                    ...connection,
                     status: realStatus.status,
                   },
                 },
               }
             }
-            return s
+            return state
           })
         } catch (error) {
           logFrontend(
@@ -357,21 +364,21 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
             `[schema-index-store] Index status check failed; waiting for index events: ${String(error)}`
           )
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         logFrontend(
           'error',
-          ['[schema-index-store] Failed to trigger build:', msg].map(String).join(' ')
+          ['[schema-index-store] Failed to trigger build:', message].map(String).join(' ')
         )
-        logFrontend('error', `[schema-index-store] Build failed for ${sessionId}: ${msg}`)
+        logFrontend('error', `[schema-index-store] Build failed for ${sessionId}: ${message}`)
 
-        set((s) => ({
+        set((state) => ({
           connections: {
-            ...s.connections,
+            ...state.connections,
             [sessionId]: {
-              ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
+              ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
               status: 'error' as const,
-              error: msg,
+              error: message,
             },
           },
         }))
@@ -384,11 +391,11 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         return
       }
 
-      set((s) => ({
+      set((state) => ({
         connections: {
-          ...s.connections,
+          ...state.connections,
           [sessionId]: {
-            ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
+            ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
             status: 'building' as const,
             phase: null,
             tablesDone: 0,
@@ -404,22 +411,22 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         // The backend may have returned early (e.g. not_configured) without emitting events.
         try {
           const realStatus = await getIndexStatus(sessionId)
-          set((s) => {
-            const conn = s.connections[sessionId]
-            if (!conn) return s
+          set((state) => {
+            const connection = state.connections[sessionId]
+            if (!connection) return state
             // Only update if we're still in 'building' — events may have already updated it
-            if (conn.status === 'building' || conn.status === 'stale') {
+            if (connection.status === 'building' || connection.status === 'stale') {
               return {
                 connections: {
-                  ...s.connections,
+                  ...state.connections,
                   [sessionId]: {
-                    ...conn,
+                    ...connection,
                     status: realStatus.status,
                   },
                 },
               }
             }
-            return s
+            return state
           })
         } catch (error) {
           logFrontend(
@@ -427,21 +434,24 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
             `[schema-index-store] Index status check failed; waiting for index events: ${String(error)}`
           )
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         logFrontend(
           'error',
-          ['[schema-index-store] Failed to force rebuild:', msg].map(String).join(' ')
+          ['[schema-index-store] Failed to force rebuild:', message].map(String).join(' ')
         )
-        logFrontend('error', `[schema-index-store] Force rebuild failed for ${sessionId}: ${msg}`)
+        logFrontend(
+          'error',
+          `[schema-index-store] Force rebuild failed for ${sessionId}: ${message}`
+        )
 
-        set((s) => ({
+        set((state) => ({
           connections: {
-            ...s.connections,
+            ...state.connections,
             [sessionId]: {
-              ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
+              ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
               status: 'error' as const,
-              error: msg,
+              error: message,
             },
           },
         }))
@@ -451,13 +461,13 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     triggerInvalidation: async (sessionId, tables) => {
       try {
         await invalidateSchemaIndex(sessionId, tables)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         logFrontend(
           'error',
-          ['[schema-index-store] Failed to invalidate index:', msg].map(String).join(' ')
+          ['[schema-index-store] Failed to invalidate index:', message].map(String).join(' ')
         )
-        logFrontend('warn', `[schema-index-store] Invalidation failed for ${sessionId}: ${msg}`)
+        logFrontend('warn', `[schema-index-store] Invalidation failed for ${sessionId}: ${message}`)
       }
     },
 
@@ -466,18 +476,18 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     },
 
     _handleProgress: (profileId, phase, tablesDone, tablesTotal) => {
-      updateSessionsForProfile(get, set, profileId, (conn) => ({
-        ...conn,
+      updateSessionsForProfile(get, set, profileId, (connection) => ({
+        ...connection,
         status: 'building',
-        phase,
-        tablesDone,
-        tablesTotal,
+        phase: phase,
+        tablesDone: tablesDone,
+        tablesTotal: tablesTotal,
       }))
     },
 
     _handleComplete: (profileId) => {
-      updateSessionsForProfile(get, set, profileId, (conn) => ({
-        ...conn,
+      updateSessionsForProfile(get, set, profileId, (connection) => ({
+        ...connection,
         status: 'ready',
         phase: null,
         lastBuildTimestamp: Date.now(),
@@ -485,11 +495,11 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     },
 
     _handleError: (profileId, error) => {
-      updateSessionsForProfile(get, set, profileId, (conn) => ({
-        ...conn,
+      updateSessionsForProfile(get, set, profileId, (connection) => ({
+        ...connection,
         status: 'error',
         phase: null,
-        error,
+        error: error,
       }))
     },
   }

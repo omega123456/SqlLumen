@@ -69,7 +69,7 @@ export function registerModelConnection(
   tabType?: TabType
 ): void {
   modelConnections.set(uri, {
-    connectionId,
+    connectionId: connectionId,
     tabId: tabId ?? '',
     tabType: tabType ?? 'query-editor',
   })
@@ -140,15 +140,21 @@ function applyQuoting(item: QuotedItem, raw: string, quoteIdentifiers: boolean):
  * context (e.g. cursor inside WHERE, SELECT-list, HAVING, ON).
  */
 function hasColumnContext(suggestions: Suggestions): boolean {
-  return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.COLUMN)
+  return suggestions.syntax.some(
+    (suggestion) => suggestion.syntaxContextType === EntityContextType.COLUMN
+  )
 }
 
 function hasTableContext(suggestions: Suggestions): boolean {
-  return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.TABLE)
+  return suggestions.syntax.some(
+    (suggestion) => suggestion.syntaxContextType === EntityContextType.TABLE
+  )
 }
 
 function hasFunctionContext(suggestions: Suggestions): boolean {
-  return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.FUNCTION)
+  return suggestions.syntax.some(
+    (suggestion) => suggestion.syntaxContextType === EntityContextType.FUNCTION
+  )
 }
 
 function getCurrentWordPrefix(model: editor.IReadOnlyModel, position: Position): string {
@@ -336,12 +342,15 @@ function keywordItem(kw: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionI
   }
 }
 
-function builtinFunctionItem(fn: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
+function builtinFunctionItem(
+  functionName: string,
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): ICompletionItem {
   return {
-    label: fn,
+    label: functionName,
     kind: languages.CompletionItemKind.Function,
-    insertText: fn,
-    sortText: `${sortPrefix}${fn}`,
+    insertText: functionName,
+    sortText: `${sortPrefix}${functionName}`,
   }
 }
 
@@ -350,13 +359,13 @@ function pushBuiltinFunctions(
   seenLabels: Set<string> | null,
   sortPrefix = SORT_PREFIX_NEUTRAL
 ): void {
-  for (const fn of SQL_BUILTIN_FUNCTIONS) {
-    if (seenLabels && seenLabels.has(`fn:${fn}`)) {
+  for (const functionName of SQL_BUILTIN_FUNCTIONS) {
+    if (seenLabels && seenLabels.has(`fn:${functionName}`)) {
       continue
     }
 
-    seenLabels?.add(`fn:${fn}`)
-    items.push(builtinFunctionItem(fn, sortPrefix))
+    seenLabels?.add(`fn:${functionName}`)
+    items.push(builtinFunctionItem(functionName, sortPrefix))
   }
 }
 
@@ -375,13 +384,13 @@ function pushFallbackKeywordsAndFunctions(
     items.push(keywordItem(kw, sortPrefix))
   }
 
-  for (const fn of SQL_BUILTIN_FUNCTIONS) {
-    if (seenLabels.has(fn)) {
+  for (const functionName of SQL_BUILTIN_FUNCTIONS) {
+    if (seenLabels.has(functionName)) {
       continue
     }
 
-    seenLabels.add(fn)
-    items.push(builtinFunctionItem(fn, sortPrefix))
+    seenLabels.add(functionName)
+    items.push(builtinFunctionItem(functionName, sortPrefix))
   }
 }
 
@@ -461,14 +470,14 @@ function pushScopedColumns(
   for (const db of databases) {
     const tables = cache.tables[db] ?? []
     for (const table of tables) {
-      const cols = cache.columns[`${db}.${table.name}`] ?? []
-      for (const col of cols) {
-        if (seenLabels.has(`col:${col.name}`)) {
+      const columns = cache.columns[`${db}.${table.name}`] ?? []
+      for (const column of columns) {
+        if (seenLabels.has(`col:${column.name}`)) {
           continue
         }
 
-        seenLabels.add(`col:${col.name}`)
-        items.push(columnItem(col.name, sortPrefix, quoteIdentifiers))
+        seenLabels.add(`col:${column.name}`)
+        items.push(columnItem(column.name, sortPrefix, quoteIdentifiers))
       }
     }
   }
@@ -543,17 +552,17 @@ function tableItem(
 }
 
 function columnItem(
-  colName: string,
+  columnName: string,
   sortPrefix = SORT_PREFIX_NEUTRAL,
   quoteIdentifiers = false
 ): QuotedItem {
   return applyQuoting(
     {
-      label: colName,
+      label: columnName,
       kind: languages.CompletionItemKind.Field,
-      sortText: `${sortPrefix}${colName}`,
+      sortText: `${sortPrefix}${columnName}`,
     },
-    colName,
+    columnName,
     quoteIdentifiers
   )
 }
@@ -588,7 +597,7 @@ function snippetToItem(
   return {
     label: { label: snippet.label, description: snippet.description },
     kind: languages.CompletionItemKind.Snippet,
-    insertText,
+    insertText: insertText,
     insertTextRules: languages.CompletionItemInsertTextRule.InsertAsSnippet,
     sortText: `${sortPrefix}${snippet.label}`,
   }
@@ -801,9 +810,9 @@ export const completionService: CompletionService = async (
   }
 
   for (const syntaxSuggestion of suggestions.syntax) {
-    const ctxType = syntaxSuggestion.syntaxContextType
+    const contextType = syntaxSuggestion.syntaxContextType
 
-    if (ctxType === EntityContextType.DATABASE) {
+    if (contextType === EntityContextType.DATABASE) {
       pushDatabases(
         cache.databases,
         items,
@@ -811,7 +820,7 @@ export const completionService: CompletionService = async (
         inCallStatementContext ? callSchemaSortPrefix : schemaSortPrefix,
         quoteIdentifiers
       )
-    } else if (ctxType === EntityContextType.TABLE) {
+    } else if (contextType === EntityContextType.TABLE) {
       pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix, quoteIdentifiers)
 
       if (selectedDatabase) {
@@ -824,7 +833,7 @@ export const completionService: CompletionService = async (
           quoteIdentifiers
         )
       }
-    } else if (ctxType === EntityContextType.COLUMN) {
+    } else if (contextType === EntityContextType.COLUMN) {
       // Try to scope columns by tables in the current caret statement
       const scopedTables = findTablesInCaretStatement(
         entities,
@@ -877,7 +886,7 @@ export const completionService: CompletionService = async (
           )
         }
       }
-    } else if (ctxType === EntityContextType.FUNCTION) {
+    } else if (contextType === EntityContextType.FUNCTION) {
       pushBuiltinFunctions(items, seenLabels, schemaSortPrefix)
       pushScopedRoutines(
         cache,
@@ -888,7 +897,7 @@ export const completionService: CompletionService = async (
         'FUNCTION',
         quoteIdentifiers
       )
-    } else if (ctxType === EntityContextType.PROCEDURE) {
+    } else if (contextType === EntityContextType.PROCEDURE) {
       if (!inCallStatementContext) {
         const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
 
@@ -984,8 +993,8 @@ function handleDotNotation(
   // 1. Check entity-based alias map first (case-insensitive)
   const aliasResolution = aliasMap.get(prefixLower)
   if (aliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
-    const cols = cache.columns[`${aliasResolution.database}.${aliasResolution.table}`] ?? []
-    return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+    const columns = cache.columns[`${aliasResolution.database}.${aliasResolution.table}`] ?? []
+    return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
   }
 
   // 1b. Text-based alias fallback: when the parser doesn't provide entities,
@@ -994,8 +1003,9 @@ function handleDotNotation(
   const textAliasMap = buildAliasMapFromText(currentStatementText, resolutionDatabase)
   const textAliasResolution = textAliasMap.get(prefixLower)
   if (textAliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
-    const cols = cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
-    return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+    const columns =
+      cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
+    return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
   }
 
   // 2. Check if it's a database name → suggest that db's tables
@@ -1052,9 +1062,9 @@ function handleDotNotation(
   //    When unqualified, prefer resolutionDatabase to avoid picking a
   //    same-named table from the wrong database.
   if (qualifiedDb) {
-    const cols = cache.columns[`${qualifiedDb}.${tablePart}`] ?? []
-    if (cols.length > 0) {
-      return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+    const columns = cache.columns[`${qualifiedDb}.${tablePart}`] ?? []
+    if (columns.length > 0) {
+      return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
     }
 
     return null
@@ -1065,10 +1075,10 @@ function handleDotNotation(
 
   for (const db of searchOrder) {
     const tables = cache.tables[db] ?? []
-    const matchedTable = tables.find((t) => t.name.toLowerCase() === prefixLower)
+    const matchedTable = tables.find((table) => table.name.toLowerCase() === prefixLower)
     if (matchedTable) {
-      const cols = cache.columns[`${db}.${matchedTable.name}`] ?? []
-      return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+      const columns = cache.columns[`${db}.${matchedTable.name}`] ?? []
+      return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
     }
   }
 
@@ -1117,7 +1127,7 @@ function parseTableRefText(text: string): TableRef | null {
 
   const table = stripQuotes(text.trim())
   if (!table) return null
-  return { database: null, table }
+  return { database: null, table: table }
 }
 
 function findTablesInStatementText(
@@ -1160,11 +1170,11 @@ function addColumnsForTable(
 ): void {
   if (tableRef.database) {
     // Exact lookup: database is known
-    const cols = cache.columns[`${tableRef.database}.${tableRef.table}`] ?? []
-    for (const col of cols) {
-      if (!seenLabels.has(`col:${col.name}`)) {
-        seenLabels.add(`col:${col.name}`)
-        items.push(columnItem(col.name, sortPrefix, quoteIdentifiers))
+    const columns = cache.columns[`${tableRef.database}.${tableRef.table}`] ?? []
+    for (const column of columns) {
+      if (!seenLabels.has(`col:${column.name}`)) {
+        seenLabels.add(`col:${column.name}`)
+        items.push(columnItem(column.name, sortPrefix, quoteIdentifiers))
       }
     }
   } else {
@@ -1177,13 +1187,15 @@ function addColumnsForTable(
 
     for (const db of searchOrder) {
       const tables = cache.tables[db] ?? []
-      const matchedTable = tables.find((t) => t.name.toLowerCase() === tableRef.table.toLowerCase())
+      const matchedTable = tables.find(
+        (table) => table.name.toLowerCase() === tableRef.table.toLowerCase()
+      )
       if (matchedTable) {
-        const cols = cache.columns[`${db}.${matchedTable.name}`] ?? []
-        for (const col of cols) {
-          if (!seenLabels.has(`col:${col.name}`)) {
-            seenLabels.add(`col:${col.name}`)
-            items.push(columnItem(col.name, sortPrefix, quoteIdentifiers))
+        const columns = cache.columns[`${db}.${matchedTable.name}`] ?? []
+        for (const column of columns) {
+          if (!seenLabels.has(`col:${column.name}`)) {
+            seenLabels.add(`col:${column.name}`)
+            items.push(columnItem(column.name, sortPrefix, quoteIdentifiers))
           }
         }
       }

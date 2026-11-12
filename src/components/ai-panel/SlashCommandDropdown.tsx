@@ -23,19 +23,19 @@ export function SlashCommandDropdown({
       className={styles.dropdown}
       data-testid="slash-command-dropdown"
     >
-      {commands.map((cmd, i) => (
+      {commands.map((command, index) => (
         <div
-          key={cmd.name}
+          key={command.name}
           role="option"
-          id={`slash-cmd-${cmd.name}`}
-          aria-selected={i === highlightedIndex}
-          className={`${styles.item} ${i === highlightedIndex ? styles.itemHighlighted : ''}`}
-          data-testid={`slash-command-item-${cmd.name}`}
-          onClick={() => onSelect(cmd)}
-          onMouseEnter={() => onHighlightChange(i)}
+          id={`slash-cmd-${command.name}`}
+          aria-selected={index === highlightedIndex}
+          className={`${styles.item} ${index === highlightedIndex ? styles.itemHighlighted : ''}`}
+          data-testid={`slash-command-item-${command.name}`}
+          onClick={() => onSelect(command)}
+          onMouseEnter={() => onHighlightChange(index)}
         >
-          <span className={styles.commandName}>/{cmd.name}</span>
-          <span className={styles.commandDescription}>{cmd.description}</span>
+          <span className={styles.commandName}>/{command.name}</span>
+          <span className={styles.commandDescription}>{command.description}</span>
         </div>
       ))}
     </div>

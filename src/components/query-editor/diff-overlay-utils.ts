@@ -24,7 +24,7 @@ export interface LineChange {
 export function applyHunkToOriginal(
   change: LineChange,
   origModel: monaco.editor.ITextModel,
-  modModel: monaco.editor.ITextModel
+  modifiedModel: monaco.editor.ITextModel
 ): void {
   const {
     modifiedStartLineNumber,
@@ -37,11 +37,11 @@ export function applyHunkToOriginal(
   if (modifiedEndLineNumber === 0) {
     newText = ''
   } else {
-    newText = modModel.getValueInRange({
+    newText = modifiedModel.getValueInRange({
       startLineNumber: modifiedStartLineNumber,
       startColumn: 1,
       endLineNumber: modifiedEndLineNumber,
-      endColumn: modModel.getLineMaxColumn(modifiedEndLineNumber),
+      endColumn: modifiedModel.getLineMaxColumn(modifiedEndLineNumber),
     })
   }
 
@@ -49,12 +49,12 @@ export function applyHunkToOriginal(
   if (originalEndLineNumber === 0) {
     const lineCount = origModel.getLineCount()
     if (originalStartLineNumber >= lineCount) {
-      const lastCol = origModel.getLineMaxColumn(lineCount)
+      const lastColumn = origModel.getLineMaxColumn(lineCount)
       targetRange = {
         startLineNumber: lineCount,
-        startColumn: lastCol,
+        startColumn: lastColumn,
         endLineNumber: lineCount,
-        endColumn: lastCol,
+        endColumn: lastColumn,
       }
       newText = '\n' + newText
     } else {
@@ -76,10 +76,10 @@ export function applyHunkToOriginal(
         endColumn: 1,
       }
     } else if (originalStartLineNumber > 1) {
-      const prevLineMaxCol = origModel.getLineMaxColumn(originalStartLineNumber - 1)
+      const previousLineMaxColumn = origModel.getLineMaxColumn(originalStartLineNumber - 1)
       targetRange = {
         startLineNumber: originalStartLineNumber - 1,
-        startColumn: prevLineMaxCol,
+        startColumn: previousLineMaxColumn,
         endLineNumber: originalEndLineNumber,
         endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
       }
@@ -152,7 +152,7 @@ export function buildDiffState(
 
   return {
     visible: true,
-    originalSql,
+    originalSql: originalSql,
     proposedSql: originalSql.trimEnd().endsWith(';') ? trimmedSql : trimmedSql.replace(/;$/, ''),
     originalRange: range,
   }
@@ -166,14 +166,14 @@ export function buildDiffState(
 export function computeUpdatedRange(originalRange: PlainRange, finalSql: string): PlainRange {
   const lines = finalSql.split('\n')
   const newEndLine = originalRange.startLineNumber + lines.length - 1
-  const newEndCol =
+  const newEndColumn =
     lines.length === 1
       ? originalRange.startColumn + finalSql.length
       : lines[lines.length - 1].length + 1
   return {
     ...originalRange,
     endLineNumber: newEndLine,
-    endColumn: newEndCol,
+    endColumn: newEndColumn,
   }
 }
 

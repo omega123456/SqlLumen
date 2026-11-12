@@ -128,7 +128,9 @@ function ScrollableTabBar({
       if (!atStart && rect.left < left - 1) start++
       else if (!atEnd && rect.right > right + 1) end++
     }
-    setHidden((prev) => (prev[0] === start && prev[1] === end ? prev : [start, end]))
+    setHidden((previous) =>
+      previous[0] === start && previous[1] === end ? previous : [start, end]
+    )
   }
 
   useLayoutEffect(sync)
@@ -144,11 +146,11 @@ function ScrollableTabBar({
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return undefined
-    const onWheel = (e: WheelEvent) => {
-      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return
+    const onWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
       if (viewport.scrollWidth <= viewport.clientWidth) return
-      e.preventDefault()
-      viewport.scrollLeft += e.deltaY
+      event.preventDefault()
+      viewport.scrollLeft += event.deltaY
     }
     viewport.addEventListener('wheel', onWheel, { passive: false })
     return () => viewport.removeEventListener('wheel', onWheel)
@@ -330,48 +332,48 @@ export function UnderlineTab({
       .filter(Boolean)
       .join(' ')
 
-    const onLabelKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-      onKeyDown?.(e as KeyboardEvent<HTMLElement>)
-      if (e.key !== 'Enter' && e.key !== ' ') {
+    const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+      onKeyDown?.(event as KeyboardEvent<HTMLElement>)
+      if (event.key !== 'Enter' && event.key !== ' ') {
         return
       }
-      e.preventDefault()
+      event.preventDefault()
       handleSelect?.()
     }
 
-    const onContainerDragStart = (e: DragEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) {
+    const onContainerDragStart = (event: DragEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
         return
       }
-      onDragStart?.(e as DragEvent<HTMLElement>)
+      onDragStart?.(event as DragEvent<HTMLElement>)
     }
 
-    const onContainerDragOver = (e: DragEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) {
+    const onContainerDragOver = (event: DragEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
         return
       }
-      onDragOver?.(e as DragEvent<HTMLElement>)
+      onDragOver?.(event as DragEvent<HTMLElement>)
     }
 
-    const onContainerDragEnd = (e: DragEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) {
+    const onContainerDragEnd = (event: DragEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
         return
       }
-      onDragEnd?.(e as DragEvent<HTMLElement>)
+      onDragEnd?.(event as DragEvent<HTMLElement>)
     }
 
-    const onContainerDrop = (e: DragEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) {
+    const onContainerDrop = (event: DragEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
         return
       }
-      onDrop?.(e as DragEvent<HTMLElement>)
+      onDrop?.(event as DragEvent<HTMLElement>)
     }
 
-    const onContainerPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) {
+    const onContainerPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
         return
       }
-      onPointerDown?.(e as PointerEvent<HTMLElement>)
+      onPointerDown?.(event as PointerEvent<HTMLElement>)
     }
 
     return (
@@ -391,8 +393,8 @@ export function UnderlineTab({
         draggable={draggable}
         onMouseDown={
           onAuxClick
-            ? (e) => {
-                if (e.button === 1) e.preventDefault()
+            ? (event) => {
+                if (event.button === 1) event.preventDefault()
               }
             : undefined
         }
@@ -466,8 +468,8 @@ export function UnderlineTab({
       draggable={draggable}
       onMouseDown={
         onAuxClick
-          ? (e) => {
-              if (e.button === 1) e.preventDefault()
+          ? (event) => {
+              if (event.button === 1) event.preventDefault()
             }
           : undefined
       }

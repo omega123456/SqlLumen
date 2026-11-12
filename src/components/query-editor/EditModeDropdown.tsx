@@ -50,12 +50,12 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
   const tableOptions = useMemo(() => {
     if (detectedTables.length === 0) return []
 
-    const databases = new Set(detectedTables.map((t) => t.database))
+    const databases = new Set(detectedTables.map((table) => table.database))
     const needsPrefix = databases.size > 1
 
-    return detectedTables.map((t) => ({
-      value: `${t.database}.${t.table}`,
-      label: needsPrefix ? `${t.database}.${t.table}` : t.table,
+    return detectedTables.map((table) => ({
+      value: `${table.database}.${table.table}`,
+      label: needsPrefix ? `${table.database}.${table.table}` : table.table,
     }))
   }, [detectedTables])
 
@@ -80,7 +80,7 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
   const editModeOptions: DropdownOption[] = useMemo(
     () => [
       { value: '', label: 'Read only' },
-      ...tableOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+      ...tableOptions.map((option) => ({ value: option.value, label: option.label })),
     ],
     [tableOptions]
   )

@@ -7,6 +7,11 @@ import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import styles from './InfoCellPopover.module.css'
 
+const ANCHOR_GAP_PX = 4
+const VIEWPORT_MARGIN_PX = 8
+const APPROXIMATE_POPOVER_WIDTH_PX = 480
+const APPROXIMATE_POPOVER_HEIGHT_PX = 320
+
 export interface InfoCellPopoverProps {
   sql: string | null
   anchorEl?: HTMLElement | null
@@ -20,19 +25,16 @@ export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCell
   const position = useMemo(() => {
     const rect = anchorRect ?? anchorEl?.getBoundingClientRect()
     if (!rect) return { top: 0, left: 0 }
-    let top = rect.bottom + 4
+    let top = rect.bottom + ANCHOR_GAP_PX
     let left = rect.left
-    // Approximate popover size for initial positioning; refined via CSS max-width/max-height
-    const popoverWidth = 480
-    const popoverHeight = 320
-    const vh = window.innerHeight
-    if (top + popoverHeight > vh - 8) {
-      top = rect.top - popoverHeight - 4
+    const viewportHeight = window.innerHeight
+    if (top + APPROXIMATE_POPOVER_HEIGHT_PX > viewportHeight - VIEWPORT_MARGIN_PX) {
+      top = rect.top - APPROXIMATE_POPOVER_HEIGHT_PX - ANCHOR_GAP_PX
     }
-    if (left + popoverWidth > window.innerWidth - 8) {
-      left = window.innerWidth - 8 - popoverWidth
+    if (left + APPROXIMATE_POPOVER_WIDTH_PX > window.innerWidth - VIEWPORT_MARGIN_PX) {
+      left = window.innerWidth - VIEWPORT_MARGIN_PX - APPROXIMATE_POPOVER_WIDTH_PX
     }
-    return { top: Math.max(8, top), left: Math.max(8, left) }
+    return { top: Math.max(VIEWPORT_MARGIN_PX, top), left: Math.max(VIEWPORT_MARGIN_PX, left) }
   }, [anchorEl, anchorRect])
 
   const isOpen = (anchorEl != null || anchorRect != null) && sql != null

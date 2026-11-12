@@ -56,6 +56,7 @@ import styles from './WorkspaceTabs.module.css'
 const TAB_ICON_SIZE = 16
 const TAB_ICON_WEIGHT = 'regular'
 const POINTER_DRAG_THRESHOLD_PX = 4
+const MOVE_ONE_SLOT_RIGHT_INSERT_OFFSET = 2
 
 // ---------------------------------------------------------------------------
 // Types
@@ -217,13 +218,15 @@ export function WorkspaceTabRail({
   const [renameDraft, setRenameDraft] = useState('')
 
   // The tab IDs visible in this rail (in order)
-  const visibleTabIds = useMemo(() => tabs.map((t) => t.id), [tabs])
+  const visibleTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
 
   // The context menu tab's index within the visible group (for move enabled/disabled state)
   const contextMenuVisibleIndex = contextMenu
     ? visibleTabIds.findIndex((id) => id === contextMenu.tabId)
     : -1
-  const contextMenuTab = contextMenu ? (tabs.find((t) => t.id === contextMenu.tabId) ?? null) : null
+  const contextMenuTab = contextMenu
+    ? (tabs.find((tab) => tab.id === contextMenu.tabId) ?? null)
+    : null
   const revealBinding = useShortcutStore(
     (state) => state.shortcuts['reveal-in-object-browser'] ?? null
   )
@@ -251,14 +254,14 @@ export function WorkspaceTabRail({
   // ---------------------------------------------------------------------------
 
   const focusWorkspaceTab = (tabId: string): boolean => {
-    const tabEl = railRef.current?.querySelector<HTMLElement>(
+    const tabElement = railRef.current?.querySelector<HTMLElement>(
       `[data-testid="workspace-tab-${tabId}"]`
     )
-    if (!tabEl) {
+    if (!tabElement) {
       return false
     }
-    const labelButton = tabEl.querySelector<HTMLElement>('[role="button"],button')
-    ;(labelButton ?? tabEl).focus()
+    const labelButton = tabElement.querySelector<HTMLElement>('[role="button"],button')
+    ;(labelButton ?? tabElement).focus()
     return true
   }
 
@@ -302,8 +305,8 @@ export function WorkspaceTabRail({
       if (!firstVisibleId) {
         return 0
       }
-      const fullIdx = allMovableTabIds.indexOf(firstVisibleId)
-      return fullIdx >= 0 ? fullIdx : 0
+      const fullIndex = allMovableTabIds.indexOf(firstVisibleId)
+      return fullIndex >= 0 ? fullIndex : 0
     }
 
     if (subsetInsertIndex >= visibleTabIds.length) {
@@ -312,15 +315,15 @@ export function WorkspaceTabRail({
       if (!lastVisibleId) {
         return allMovableTabIds.length
       }
-      const fullIdx = allMovableTabIds.indexOf(lastVisibleId)
-      return fullIdx >= 0 ? fullIdx + 1 : allMovableTabIds.length
+      const fullIndex = allMovableTabIds.indexOf(lastVisibleId)
+      return fullIndex >= 0 ? fullIndex + 1 : allMovableTabIds.length
     }
 
     // Insert between subset[subsetInsertIndex-1] and subset[subsetInsertIndex].
     // We want to place the tab right before subset[subsetInsertIndex] in the full list.
     const beforeId = visibleTabIds[subsetInsertIndex]
-    const fullIdx = allMovableTabIds.indexOf(beforeId)
-    return fullIdx >= 0 ? fullIdx : subsetInsertIndex
+    const fullIndex = allMovableTabIds.indexOf(beforeId)
+    return fullIndex >= 0 ? fullIndex : subsetInsertIndex
   }
 
   // ---------------------------------------------------------------------------
@@ -382,7 +385,7 @@ export function WorkspaceTabRail({
     event.preventDefault()
     clearPointerDrag()
     pointerDragRef.current = {
-      tabId,
+      tabId: tabId,
       dragging: false,
       startX: event.clientX,
       startY: event.clientY,
@@ -415,8 +418,8 @@ export function WorkspaceTabRail({
       const draggingIndex = visibleTabIds.findIndex((id) => id === dragState.tabId)
       const targetIndex = visibleTabIds.findIndex((id) => id === hoveredTab.tabId)
       const target = computeHorizontalTabReorderTarget({
-        draggingIndex,
-        targetIndex,
+        draggingIndex: draggingIndex,
+        targetIndex: targetIndex,
         pointerClientX: moveEvent.clientX,
         targetRect: hoveredTab.rect,
       })
@@ -477,18 +480,18 @@ export function WorkspaceTabRail({
 
   const openTabContextMenu = (
     tabId: string,
-    x: number,
-    y: number,
+    pointerX: number,
+    pointerY: number,
     anchor: Element | null,
     invokerTabId: string
   ) => {
     dispatchDismissAll()
     setContextMenu({
-      tabId,
-      x,
-      y,
+      tabId: tabId,
+      x: pointerX,
+      y: pointerY,
       portalRoot: getContextMenuPortalRoot(anchor),
-      invokerTabId,
+      invokerTabId: invokerTabId,
     })
   }
 
@@ -562,8 +565,9 @@ export function WorkspaceTabRail({
               onRequestMoveTab(contextMenu.tabId, 'right')
               return
             }
-            // Translate: move one slot right in the visible group → full list
-            const fullInsert = translateSubsetInsertIndex(contextMenuVisibleIndex + 2)
+            const fullInsert = translateSubsetInsertIndex(
+              contextMenuVisibleIndex + MOVE_ONE_SLOT_RIGHT_INSERT_OFFSET
+            )
             reorderWorkspaceTab(connectionId, contextMenu.tabId, fullInsert)
           },
         },
@@ -633,35 +637,35 @@ export function WorkspaceTabRail({
           requestActivateTab(tab.id)
         }}
         onPointerDown={(event) => startPointerDrag(tab.id, isPinned, event)}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          openTabContextMenu(tab.id, e.clientX, e.clientY, e.currentTarget, tab.id)
+        onContextMenu={(event) => {
+          event.preventDefault()
+          openTabContextMenu(tab.id, event.clientX, event.clientY, event.currentTarget, tab.id)
         }}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowUp') {
-            e.preventDefault()
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowUp') {
+            event.preventDefault()
             onFocusGroupRail?.()
             return
           }
-          if (e.key === 'F2') {
-            e.preventDefault()
+          if (event.key === 'F2') {
+            event.preventDefault()
             startRename(tab.id)
             return
           }
-          if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) {
+          if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
             return
           }
-          e.preventDefault()
-          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-          openTabContextMenu(tab.id, rect.left, rect.bottom, e.currentTarget, tab.id)
+          event.preventDefault()
+          const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+          openTabContextMenu(tab.id, rect.left, rect.bottom, event.currentTarget, tab.id)
         }}
         dragging={isDragSource}
         dropIndicator={dropIndicator}
         onAuxClick={
           !isPinned
-            ? (e) => {
-                if (e.button !== 1) return
-                e.preventDefault()
+            ? (event) => {
+                if (event.button !== 1) return
+                event.preventDefault()
                 closeTab(connectionId, tab.id)
               }
             : undefined
@@ -675,9 +679,9 @@ export function WorkspaceTabRail({
               draggable={false}
               data-tab-drag-ignore="true"
               tabIndex={-1}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation()
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
                 closeTab(connectionId, tab.id)
               }}
             >
@@ -688,8 +692,8 @@ export function WorkspaceTabRail({
       >
         <span
           className={styles.tabLabelRoot}
-          onDoubleClick={(e) => {
-            e.stopPropagation()
+          onDoubleClick={(event) => {
+            event.stopPropagation()
             startRename(tab.id)
           }}
         >
@@ -702,10 +706,10 @@ export function WorkspaceTabRail({
               data-testid="workspace-tab-rename-input"
               data-tab-drag-ignore="true"
               aria-label={`Rename ${tab.label}`}
-              onChange={(e) => setRenameDraft(e.target.value)}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              onContextMenu={(e) => e.stopPropagation()}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.stopPropagation()}
               onBlur={() => {
                 if (skipNextRenameBlurCommitRef.current) {
                   skipNextRenameBlurCommitRef.current = false
@@ -713,16 +717,16 @@ export function WorkspaceTabRail({
                 }
                 stopRename(tab.id, true)
               }}
-              onKeyDown={(e) => {
-                e.stopPropagation()
-                if (e.key === 'Enter') {
-                  e.preventDefault()
+              onKeyDown={(event) => {
+                event.stopPropagation()
+                if (event.key === 'Enter') {
+                  event.preventDefault()
                   skipNextRenameBlurCommitRef.current = true
                   stopRename(tab.id, true)
                   return
                 }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
+                if (event.key === 'Escape') {
+                  event.preventDefault()
                   skipNextRenameBlurCommitRef.current = true
                   stopRename(tab.id, false)
                 }

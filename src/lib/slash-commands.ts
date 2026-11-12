@@ -72,14 +72,14 @@ export async function executeRemember(
   }
 
   try {
-    const memory = await saveMemory({ sessionId, content: trimmed, scope: resolved })
+    const memory = await saveMemory({ sessionId: sessionId, content: trimmed, scope: resolved })
     showSuccessToast('Memory saved')
-    return { type: 'saved', memory }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    logFrontend('error', `[slash-commands] /remember failed: ${msg}`)
-    showErrorToast('Failed to save memory', msg)
-    throw err
+    return { type: 'saved', memory: memory }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logFrontend('error', `[slash-commands] /remember failed: ${message}`)
+    showErrorToast('Failed to save memory', message)
+    throw error
   }
 }
 
@@ -111,9 +111,9 @@ export function listCommands(): SlashCommand[] {
 
 export function filterCommands(prefix: string): SlashCommand[] {
   const lower = prefix.toLowerCase()
-  return SLASH_COMMANDS.filter((cmd) => cmd.name.toLowerCase().startsWith(lower))
+  return SLASH_COMMANDS.filter((command) => command.name.toLowerCase().startsWith(lower))
 }
 
 export function findCommand(name: string): SlashCommand | undefined {
-  return SLASH_COMMANDS.find((cmd) => cmd.name === name)
+  return SLASH_COMMANDS.find((command) => command.name === name)
 }

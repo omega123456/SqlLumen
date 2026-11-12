@@ -36,8 +36,8 @@ function normalizedUpperType(dataType: string): string {
 }
 
 export function isWrappableTextSqlType(dataType: string): boolean {
-  const u = normalizedUpperType(dataType)
-  return WRAPPABLE_TEXT_TYPE_PREFIXES.some((prefix) => u.startsWith(prefix))
+  const upperType = normalizedUpperType(dataType)
+  return WRAPPABLE_TEXT_TYPE_PREFIXES.some((prefix) => upperType.startsWith(prefix))
 }
 
 export function isJsonSqlType(dataType: string): boolean {
@@ -45,8 +45,12 @@ export function isJsonSqlType(dataType: string): boolean {
 }
 
 export function isStringishPrimarySqlType(dataType: string): boolean {
-  const u = normalizedUpperType(dataType)
-  return u.startsWith('VARCHAR') || u.startsWith('CHAR') || isWrappableTextSqlType(u)
+  const upperType = normalizedUpperType(dataType)
+  return (
+    upperType.startsWith('VARCHAR') ||
+    upperType.startsWith('CHAR') ||
+    isWrappableTextSqlType(upperType)
+  )
 }
 
 /**
@@ -59,9 +63,12 @@ export function isStringishPrimarySqlType(dataType: string): boolean {
 export function getGridCellClass(
   columnName: string,
   dataType: string,
-  pkColumnNames?: string[]
+  primaryKeyColumnNames?: string[]
 ): string {
-  if ((pkColumnNames && pkColumnNames.includes(columnName)) || isNumericSqlType(dataType)) {
+  if (
+    (primaryKeyColumnNames && primaryKeyColumnNames.includes(columnName)) ||
+    isNumericSqlType(dataType)
+  ) {
     return 'td-cell-mono-muted'
   }
   if (getTemporalColumnType(dataType)) {
@@ -77,6 +84,24 @@ export function getGridCellClass(
 }
 
 const AUTO_WIDTH_MAX = 560
+
+export const DEFAULT_COLUMN_WIDTH_PX = 150
+export const HEADER_ICON_WIDTH_PX = 14
+
+interface NullabilityWidths {
+  nullable: number
+  notNull: number
+}
+
+function widthForNullability(widths: NullabilityWidths, isNullable: boolean): number {
+  return isNullable ? widths.nullable : widths.notNull
+}
+
+const DATETIME_AUTO_MIN_WIDTH: NullabilityWidths = { nullable: 300, notNull: 260 }
+const DATETIME_AUTO_PADDING: NullabilityWidths = { nullable: 104, notNull: 72 }
+const DATE_AUTO_MIN_WIDTH: NullabilityWidths = { nullable: 250, notNull: 220 }
+const TIME_AUTO_MIN_WIDTH: NullabilityWidths = { nullable: 230, notNull: 200 }
+const DATE_OR_TIME_AUTO_PADDING: NullabilityWidths = { nullable: 96, notNull: 64 }
 
 /**
  * Maximum number of rows to sample when computing auto-sized column widths.
@@ -117,27 +142,27 @@ function getColumnWidthSizing(dataType: string, isNullable = false): ColumnWidth
   if (upperType.startsWith('DATETIME') || upperType.startsWith('TIMESTAMP')) {
     return {
       defaultWidth: 180,
-      autoMinWidth: isNullable ? 300 : 260,
+      autoMinWidth: widthForNullability(DATETIME_AUTO_MIN_WIDTH, isNullable),
       autoCharPx: 9,
-      autoPaddingPx: isNullable ? 104 : 72,
+      autoPaddingPx: widthForNullability(DATETIME_AUTO_PADDING, isNullable),
     }
   }
 
   if (upperType.startsWith('DATE')) {
     return {
       defaultWidth: 120,
-      autoMinWidth: isNullable ? 250 : 220,
+      autoMinWidth: widthForNullability(DATE_AUTO_MIN_WIDTH, isNullable),
       autoCharPx: 9,
-      autoPaddingPx: isNullable ? 96 : 64,
+      autoPaddingPx: widthForNullability(DATE_OR_TIME_AUTO_PADDING, isNullable),
     }
   }
 
   if (upperType.startsWith('TIME')) {
     return {
       defaultWidth: 120,
-      autoMinWidth: isNullable ? 230 : 200,
+      autoMinWidth: widthForNullability(TIME_AUTO_MIN_WIDTH, isNullable),
       autoCharPx: 9,
-      autoPaddingPx: isNullable ? 96 : 64,
+      autoPaddingPx: widthForNullability(DATE_OR_TIME_AUTO_PADDING, isNullable),
     }
   }
 
@@ -223,8 +248,8 @@ export function getAutoSizedColumnWidth(
   let maxTextLength = 0
   const sampleCount = Math.min(rows.length, AUTO_SIZE_SAMPLE_LIMIT)
 
-  for (let i = 0; i < sampleCount; i++) {
-    const row = rows[i]
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+    const row = rows[sampleIndex]
     const value = row[columnIndex]
     const textLength = stringifyGridValue(value).length
     if (textLength > maxTextLength) {

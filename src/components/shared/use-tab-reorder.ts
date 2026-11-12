@@ -1,3 +1,5 @@
+import { HALF_DIVISOR } from '../../lib/units'
+
 export type TabDropIndicator = 'before' | 'after'
 
 export interface HorizontalTabReorderTarget {
@@ -24,7 +26,7 @@ export function computeHorizontalTabReorderTarget(
     return null
   }
 
-  const midpoint = targetRect.left + targetRect.width / 2
+  const midpoint = targetRect.left + targetRect.width / HALF_DIVISOR
   const indicator: TabDropIndicator = pointerClientX < midpoint ? 'before' : 'after'
   const insertIndex = indicator === 'before' ? targetIndex : targetIndex + 1
 

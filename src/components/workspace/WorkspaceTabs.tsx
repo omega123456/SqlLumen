@@ -76,9 +76,9 @@ export function WorkspaceTabs({
   )
 
   const visibleNonPinnedTabs = tabs.filter(
-    (t) =>
-      !isPinnedWorkspaceTab(t) &&
-      !(hideTableDataTabs && t.type === 'table-data' && t.parentQueryTabId !== undefined)
+    (tab) =>
+      !isPinnedWorkspaceTab(tab) &&
+      !(hideTableDataTabs && tab.type === 'table-data' && tab.parentQueryTabId !== undefined)
   )
   const pinnedTabs = tabs.filter(isPinnedWorkspaceTab)
   const stackGroups = useMemo(
@@ -110,7 +110,10 @@ export function WorkspaceTabs({
     stackGroups.find((group) => group.key === shownStackKey)?.tabs ?? EMPTY_TABS
 
   const allMovableTabIds = useMemo(
-    () => tabs.filter((t) => t.type !== 'history' && t.type !== 'processlist').map((t) => t.id),
+    () =>
+      tabs
+        .filter((tab) => tab.type !== 'history' && tab.type !== 'processlist')
+        .map((tab) => tab.id),
     [tabs]
   )
 
@@ -131,10 +134,10 @@ export function WorkspaceTabs({
       return
     }
     activeTabIdRef.current = activeTabId
-    const tabEl = memberRowRef.current?.querySelector<HTMLElement>(
+    const tabElement = memberRowRef.current?.querySelector<HTMLElement>(
       `[data-testid="workspace-tab-${activeTabId}"]`
     )
-    tabEl?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    tabElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeTabId, connectionActive, shownStackKey])
 
   const activateStack = (stackKey: ReturnType<typeof getWorkspaceStackKeyForTab>) => {
@@ -177,11 +180,11 @@ export function WorkspaceTabs({
     }
 
     requestAnimationFrame(() => {
-      const tabEl = workspaceRootRef.current?.querySelector<HTMLElement>(
+      const tabElement = workspaceRootRef.current?.querySelector<HTMLElement>(
         `[data-testid="workspace-tab-${targetTabId}"]`
       )
-      const labelButton = tabEl?.querySelector<HTMLElement>('[role="button"],button')
-      ;(labelButton ?? tabEl)?.focus()
+      const labelButton = tabElement?.querySelector<HTMLElement>('[role="button"],button')
+      ;(labelButton ?? tabElement)?.focus()
     })
   }
 

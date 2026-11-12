@@ -103,7 +103,11 @@ pub fn append_no_think_directive(content: &str) -> String {
 
 /// Find the last user message in a slice and append the `/no_think` directive.
 pub fn apply_no_think_to_last_user_message(messages: &mut [ApiMessage]) {
-    if let Some(msg) = messages.iter_mut().rev().find(|m| m.role == "user") {
+    if let Some(msg) = messages
+        .iter_mut()
+        .rev()
+        .find(|message| message.role == "user")
+    {
         msg.content = append_no_think_directive(&msg.content);
     }
 }
@@ -113,7 +117,10 @@ pub fn apply_no_think_to_last_user_message(messages: &mut [ApiMessage]) {
 /// No-op if `messages` is missing, not an array, or has no user message with
 /// string content.
 pub fn apply_no_think_to_json_messages(body: &mut serde_json::Map<String, serde_json::Value>) {
-    let messages = match body.get_mut("messages").and_then(|v| v.as_array_mut()) {
+    let messages = match body
+        .get_mut("messages")
+        .and_then(|value| value.as_array_mut())
+    {
         Some(arr) => arr,
         None => return,
     };
@@ -121,10 +128,10 @@ pub fn apply_no_think_to_json_messages(body: &mut serde_json::Map<String, serde_
     if let Some(msg) = messages
         .iter_mut()
         .rev()
-        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        .find(|message| message.get("role").and_then(|role| role.as_str()) == Some("user"))
     {
         if let Some(obj) = msg.as_object_mut() {
-            if let Some(content) = obj.get("content").and_then(|c| c.as_str()) {
+            if let Some(content) = obj.get("content").and_then(|content| content.as_str()) {
                 let updated = append_no_think_directive(content);
                 obj.insert("content".to_string(), serde_json::Value::String(updated));
             }
@@ -231,7 +238,7 @@ pub fn extract_responses_error_message(json: &serde_json::Value) -> Option<Strin
 
 pub fn extract_responses_delta_text(json: &serde_json::Value) -> String {
     json.get("delta")
-        .and_then(|v| v.as_str())
+        .and_then(|value| value.as_str())
         .map(ToString::to_string)
         .unwrap_or_default()
 }
@@ -240,9 +247,9 @@ pub fn extract_reasoning_text_from_parts(parts: &[serde_json::Value]) -> String 
     let mut text = String::new();
 
     for part in parts {
-        let part_type = part.get("type").and_then(|v| v.as_str());
+        let part_type = part.get("type").and_then(|value| value.as_str());
         if matches!(part_type, Some("summary_text") | Some("reasoning_text")) {
-            if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+            if let Some(value) = part.get("text").and_then(|value| value.as_str()) {
                 text.push_str(value);
             }
         }
@@ -252,24 +259,24 @@ pub fn extract_reasoning_text_from_parts(parts: &[serde_json::Value]) -> String 
 }
 
 pub fn extract_reasoning_text_from_item(item: &serde_json::Value) -> String {
-    if item.get("type").and_then(|v| v.as_str()) != Some("reasoning") {
+    if item.get("type").and_then(|value| value.as_str()) != Some("reasoning") {
         return String::new();
     }
 
     let mut text = String::new();
 
-    if let Some(summary) = item.get("summary").and_then(|v| v.as_array()) {
+    if let Some(summary) = item.get("summary").and_then(|value| value.as_array()) {
         text.push_str(&extract_reasoning_text_from_parts(summary));
     }
 
-    if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+    if let Some(content) = item.get("content").and_then(|value| value.as_array()) {
         for part in content {
-            let part_type = part.get("type").and_then(|v| v.as_str());
+            let part_type = part.get("type").and_then(|value| value.as_str());
             if matches!(
                 part_type,
                 Some("summary_text") | Some("reasoning_text") | Some("text")
             ) {
-                if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                if let Some(value) = part.get("text").and_then(|value| value.as_str()) {
                     text.push_str(value);
                 }
             }
@@ -282,14 +289,14 @@ pub fn extract_reasoning_text_from_item(item: &serde_json::Value) -> String {
 pub fn extract_responses_reasoning_text(json: &serde_json::Value) -> String {
     let mut text = String::new();
 
-    if let Some(delta) = json.get("delta").and_then(|v| v.as_str()) {
+    if let Some(delta) = json.get("delta").and_then(|value| value.as_str()) {
         text.push_str(delta);
     }
 
     if let Some(part) = json.get("part") {
-        if let Some(part_type) = part.get("type").and_then(|v| v.as_str()) {
+        if let Some(part_type) = part.get("type").and_then(|value| value.as_str()) {
             if matches!(part_type, "summary_text" | "reasoning_text") {
-                if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                if let Some(value) = part.get("text").and_then(|value| value.as_str()) {
                     text.push_str(value);
                 }
             }
@@ -300,14 +307,14 @@ pub fn extract_responses_reasoning_text(json: &serde_json::Value) -> String {
         text.push_str(&extract_reasoning_text_from_item(item));
     }
 
-    if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
+    if let Some(output) = json.get("output").and_then(|value| value.as_array()) {
         for item in output {
             text.push_str(&extract_reasoning_text_from_item(item));
         }
     }
 
     if let Some(response) = json.get("response") {
-        if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+        if let Some(output) = response.get("output").and_then(|value| value.as_array()) {
             for item in output {
                 text.push_str(&extract_reasoning_text_from_item(item));
             }
@@ -325,11 +332,11 @@ fn should_treat_content_part_as_visible_text(json: &serde_json::Value) -> bool {
 }
 
 fn extract_text_from_response_part(part: &serde_json::Value, allowed_types: &[&str]) -> String {
-    let part_type = part.get("type").and_then(|v| v.as_str());
+    let part_type = part.get("type").and_then(|value| value.as_str());
     if part_type.is_some_and(|value| allowed_types.contains(&value)) {
         return part
             .get("text")
-            .and_then(|v| v.as_str())
+            .and_then(|value| value.as_str())
             .map(ToString::to_string)
             .unwrap_or_default();
     }
@@ -338,13 +345,13 @@ fn extract_text_from_response_part(part: &serde_json::Value, allowed_types: &[&s
 }
 
 fn extract_text_from_message_item(item: &serde_json::Value) -> String {
-    if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+    if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
         return String::new();
     }
 
     let mut text = String::new();
 
-    if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+    if let Some(content) = item.get("content").and_then(|value| value.as_array()) {
         for part in content {
             if let Some(value) = part.as_str() {
                 text.push_str(value);
@@ -375,7 +382,7 @@ pub fn extract_responses_reasoning_text_for_event(
                 String::new()
             } else {
                 json.get("text")
-                    .and_then(|v| v.as_str())
+                    .and_then(|value| value.as_str())
                     .map(ToString::to_string)
                     .unwrap_or_else(|| extract_responses_reasoning_text(json))
             }
@@ -410,7 +417,7 @@ pub fn extract_responses_content_text_for_event(
         }
         Some("response.output_text.done") if !already_streamed_output => json
             .get("text")
-            .and_then(|v| v.as_str())
+            .and_then(|value| value.as_str())
             .map(ToString::to_string)
             .unwrap_or_default(),
         Some("response.content_part.done")
@@ -444,7 +451,7 @@ pub fn extract_responses_final_text(json: &serde_json::Value) -> String {
                         continue;
                     }
 
-                    if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                    if let Some(value) = part.get("text").and_then(|value| value.as_str()) {
                         text.push_str(value);
                     }
                 }
@@ -453,20 +460,21 @@ pub fn extract_responses_final_text(json: &serde_json::Value) -> String {
         }
     }
 
-    if let Some(value) = json.get("text").and_then(|v| v.as_str()) {
+    if let Some(value) = json.get("text").and_then(|value| value.as_str()) {
         text.push_str(value);
     }
 
     if let Some(response) = json.get("response") {
-        if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+        if let Some(output) = response.get("output").and_then(|value| value.as_array()) {
             for item in output {
                 // Skip reasoning output items — they are not answer text
-                if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+                if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
                     continue;
                 }
-                if let Some(content_parts) = item.get("content").and_then(|v| v.as_array()) {
+                if let Some(content_parts) = item.get("content").and_then(|value| value.as_array())
+                {
                     for part in content_parts {
-                        if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                        if let Some(value) = part.get("text").and_then(|value| value.as_str()) {
                             text.push_str(value);
                         }
                     }
@@ -475,15 +483,15 @@ pub fn extract_responses_final_text(json: &serde_json::Value) -> String {
         }
     }
 
-    if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
+    if let Some(output) = json.get("output").and_then(|value| value.as_array()) {
         for item in output {
             // Skip reasoning output items — they are not answer text
-            if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+            if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
                 continue;
             }
-            if let Some(content_parts) = item.get("content").and_then(|v| v.as_array()) {
+            if let Some(content_parts) = item.get("content").and_then(|value| value.as_array()) {
                 for part in content_parts {
-                    if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                    if let Some(value) = part.get("text").and_then(|value| value.as_str()) {
                         text.push_str(value);
                     }
                 }
@@ -562,7 +570,7 @@ pub fn merge_responses_event_type<'a>(
     sse_event_type: Option<&'a str>,
     json: &'a serde_json::Value,
 ) -> Option<&'a str> {
-    sse_event_type.or_else(|| json.get("type").and_then(|v| v.as_str()))
+    sse_event_type.or_else(|| json.get("type").and_then(|value| value.as_str()))
 }
 
 pub fn is_chat_completions_style_payload(json: &serde_json::Value) -> bool {
@@ -580,16 +588,16 @@ pub fn responses_input_items(request: &AiChatRequest) -> Vec<ResponsesInputItem>
         return items;
     }
 
-    let mut start_idx = 0;
-    for (idx, message) in request.messages.iter().enumerate().rev() {
+    let mut start_index = 0;
+    for (index, message) in request.messages.iter().enumerate().rev() {
         if message.role == "assistant" {
-            start_idx = idx + 1;
+            start_index = index + 1;
             break;
         }
     }
 
     let mut incremental_items = Vec::new();
-    for message in &request.messages[start_idx..] {
+    for message in &request.messages[start_index..] {
         if message.role != "assistant" {
             incremental_items.push(ResponsesInputItem::from(message));
         }
@@ -660,15 +668,15 @@ pub async fn stream_chat_completion<R: Runtime>(
         Ok(()) => {
             tracing::info!(stream_id = %stream_id, "AI stream completed");
         }
-        Err(e) => {
+        Err(error) => {
             // Only emit error if not cancelled — cancellation is expected/normal.
             if !cancellation_token.is_cancelled() {
-                tracing::error!(stream_id = %stream_id, error = %e, "AI stream error");
+                tracing::error!(stream_id = %stream_id, error = %error, "AI stream error");
                 let _ = app_handle.emit(
                     "ai-stream-error",
                     StreamErrorEvent {
                         stream_id: stream_id.clone(),
-                        error: e.clone(),
+                        error: error.clone(),
                     },
                 );
             }
@@ -717,7 +725,7 @@ async fn stream_chat_inner<R: Runtime>(
         .build()
     {
         Ok(client) => client,
-        Err(e) => return Err(format!("Failed to create HTTP client: {e}")),
+        Err(error) => return Err(format!("Failed to create HTTP client: {error}")),
     };
 
     let chat_url = normalise_to_chat_completions_url(&request.endpoint);
@@ -734,7 +742,7 @@ async fn stream_chat_inner<R: Runtime>(
                 Err("Stream cancelled".to_string())
             }
             result = client.post(chat_url).json(api_request).send() => {
-                result.map_err(|e| format!("HTTP request failed: {e}"))
+                result.map_err(|error| format!("HTTP request failed: {error}"))
             }
         }
     }
@@ -893,22 +901,22 @@ async fn stream_chat_inner<R: Runtime>(
                         Ok(SseParsed::Skip) => {
                             // Empty, comment, or event lines — skip
                         }
-                        Err(e) => {
-                            tracing::error!(stream_id = %stream_id, error = %e, "SSE parse error");
+                        Err(error) => {
+                            tracing::error!(stream_id = %stream_id, error = %error, "SSE parse error");
                             flush_both_buffers(
                                 app_handle,
                                 stream_id,
                                 &mut thinking_buffer,
                                 &mut buffer,
                             );
-                            return Err(e);
+                            return Err(error);
                         }
                     }
                 }
             }
-            Some(Err(e)) => {
+            Some(Err(error)) => {
                 flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
-                return Err(format!("Stream read error: {e}"));
+                return Err(format!("Stream read error: {error}"));
             }
             None => {
                 // EOF — process any remaining buffered content (last line without trailing newline)
@@ -956,15 +964,15 @@ async fn stream_chat_inner<R: Runtime>(
                         Ok(SseParsed::Skip) => {
                             // Empty or comment — nothing to do
                         }
-                        Err(e) => {
-                            tracing::error!(stream_id = %stream_id, error = %e, "SSE parse error on residual buffer");
+                        Err(error) => {
+                            tracing::error!(stream_id = %stream_id, error = %error, "SSE parse error on residual buffer");
                             flush_both_buffers(
                                 app_handle,
                                 stream_id,
                                 &mut thinking_buffer,
                                 &mut buffer,
                             );
-                            return Err(e);
+                            return Err(error);
                         }
                     }
                 }
@@ -1067,13 +1075,13 @@ fn process_responses_payload<R: Runtime>(
 
     if let Some(id) = json
         .get("response")
-        .and_then(|r| r.get("id"))
-        .and_then(|v| v.as_str())
+        .and_then(|response| response.get("id"))
+        .and_then(|value| value.as_str())
     {
         state.response_id = Some(id.to_string());
-    } else if let Some(id) = json.get("response_id").and_then(|v| v.as_str()) {
+    } else if let Some(id) = json.get("response_id").and_then(|value| value.as_str()) {
         state.response_id = Some(id.to_string());
-    } else if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
+    } else if let Some(id) = json.get("id").and_then(|value| value.as_str()) {
         if id.starts_with("resp_") {
             state.response_id = Some(id.to_string());
         }
@@ -1184,7 +1192,7 @@ async fn stream_responses_completion<R: Runtime>(
                 Err(ResponsesStreamError::new("Stream cancelled", false))
             }
             result = client.post(responses_url).json(api_request).send() => {
-                result.map_err(|e| ResponsesStreamError::new(format!("HTTP request failed: {e}"), true))
+                result.map_err(|error| ResponsesStreamError::new(format!("HTTP request failed: {error}"), true))
             }
         }
     }
@@ -1195,9 +1203,9 @@ async fn stream_responses_completion<R: Runtime>(
         .build()
     {
         Ok(client) => client,
-        Err(e) => {
+        Err(error) => {
             return Err(ResponsesStreamError::new(
-                format!("Failed to create HTTP client: {e}"),
+                format!("Failed to create HTTP client: {error}"),
                 false,
             ))
         }
@@ -1298,9 +1306,9 @@ async fn stream_responses_completion<R: Runtime>(
 
                     if let Some(data) = trimmed.strip_prefix("data:") {
                         let json: serde_json::Value =
-                            serde_json::from_str(data.trim()).map_err(|e| {
+                            serde_json::from_str(data.trim()).map_err(|error| {
                                 ResponsesStreamError::new(
-                                    format!("Failed to parse SSE JSON: {e}"),
+                                    format!("Failed to parse SSE JSON: {error}"),
                                     !stream_state.saw_valid_responses_payload,
                                 )
                             })?;
@@ -1328,7 +1336,7 @@ async fn stream_responses_completion<R: Runtime>(
                     }
                 }
             }
-            Some(Err(e)) => {
+            Some(Err(error)) => {
                 flush_both_buffers(
                     app_handle,
                     stream_id,
@@ -1336,7 +1344,7 @@ async fn stream_responses_completion<R: Runtime>(
                     &mut stream_state.content_buffer,
                 );
                 return Err(ResponsesStreamError::new(
-                    format!("Stream read error: {e}"),
+                    format!("Stream read error: {error}"),
                     !stream_state.saw_valid_responses_payload,
                 ));
             }
@@ -1344,9 +1352,9 @@ async fn stream_responses_completion<R: Runtime>(
                 let trimmed = line_buffer.trim();
                 if let Some(data) = trimmed.strip_prefix("data:") {
                     let json: serde_json::Value =
-                        serde_json::from_str(data.trim()).map_err(|e| {
+                        serde_json::from_str(data.trim()).map_err(|error| {
                             ResponsesStreamError::new(
-                                format!("Failed to parse SSE JSON: {e}"),
+                                format!("Failed to parse SSE JSON: {error}"),
                                 !stream_state.saw_valid_responses_payload,
                             )
                         })?;

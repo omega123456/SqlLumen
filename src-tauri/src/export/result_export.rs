@@ -189,9 +189,13 @@ fn write_jobs(
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn update_job(jobs: &ResultExportJobs, job_id: &str, f: impl FnOnce(&mut ResultExportJobProgress)) {
+fn update_job(
+    jobs: &ResultExportJobs,
+    job_id: &str,
+    update: impl FnOnce(&mut ResultExportJobProgress),
+) {
     if let Some(job) = write_jobs(jobs).get_mut(job_id) {
-        f(job);
+        update(job);
     }
 }
 
@@ -537,7 +541,7 @@ impl ExportPipeline {
             .ok_or_else(|| "The query returned no result set to export.".to_string())?;
         let summary = sink.finish()?;
         std::fs::rename(&self.temp_path, &self.target_path)
-            .map_err(|e| format!("Failed to save the export file: {e}"))?;
+            .map_err(|error| format!("Failed to save the export file: {error}"))?;
         Ok(summary)
     }
 
@@ -854,12 +858,12 @@ async fn stream_rerun(
     let columns: Vec<String> = result
         .columns_ref()
         .iter()
-        .map(|c| c.name_str().to_string())
+        .map(|column| column.name_str().to_string())
         .collect();
     let col_types: Vec<_> = result
         .columns_ref()
         .iter()
-        .map(|c| (c.column_type(), c.flags()))
+        .map(|column| (column.column_type(), column.flags()))
         .collect();
 
     let mut failure: Option<String> = None;

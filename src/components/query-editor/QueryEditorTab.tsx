@@ -114,7 +114,7 @@ export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
   }, [tab.id])
 
   /** When the workspace AI chat opens/closes or the split is dragged, relayout Monaco. */
-  const isPanelOpen = useAiStore((s) => s.tabs[tab.id]?.isPanelOpen ?? false)
+  const isPanelOpen = useAiStore((state) => state.tabs[tab.id]?.isPanelOpen ?? false)
   useEffect(() => {
     if (!isActive) return
     editorRef.current?.layout()

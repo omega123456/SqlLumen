@@ -111,10 +111,10 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
           setLoading(false)
         }
       })
-      .catch((err: unknown) => {
+      .catch((error: unknown) => {
         if (!cancelled) {
           loadedKeyRef.current = requestKey
-          setError(err instanceof Error ? err.message : String(err))
+          setError(error instanceof Error ? error.message : String(error))
           setLoading(false)
         }
       })

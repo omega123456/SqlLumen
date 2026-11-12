@@ -11,8 +11,8 @@ export interface QueryWorkspaceAiRailProps {
 
 /** Fixed icon column on the right; opens the resizable AI chat panel. */
 export function QueryWorkspaceAiRail({ tab }: QueryWorkspaceAiRailProps) {
-  const openPanel = useAiStore((s) => s.openPanel)
-  const status = useQueryStore((s) => s.tabs[tab.id]?.tabStatus ?? 'idle')
+  const openPanel = useAiStore((state) => state.openPanel)
+  const status = useQueryStore((state) => state.tabs[tab.id]?.tabStatus ?? 'idle')
   const isDisabled = status === 'running' || status === 'ai-pending' || status === 'ai-reviewing'
 
   return (

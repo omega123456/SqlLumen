@@ -31,7 +31,7 @@ pub fn list_history_impl(
         .unwrap_or_else(|| connection_id.to_string());
     let conn = lock_db(state)?;
     history::list_history(&conn, &resolved_id, page, page_size, search, since)
-        .map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -61,7 +61,7 @@ pub async fn list_history(
 
 pub fn delete_history_entry_impl(state: &AppState, id: i64) -> Result<bool, String> {
     let conn = lock_db(state)?;
-    history::delete_history(&conn, id).map_err(|e| e.to_string())
+    history::delete_history(&conn, id).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -78,7 +78,7 @@ pub fn clear_history_impl(state: &AppState, connection_id: &str) -> Result<i64, 
         .get_profile_id(connection_id)
         .unwrap_or_else(|| connection_id.to_string());
     let conn = lock_db(state)?;
-    history::clear_history(&conn, &resolved_id).map_err(|e| e.to_string())
+    history::clear_history(&conn, &resolved_id).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]

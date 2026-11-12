@@ -115,13 +115,13 @@ impl ConnectionRegistry {
     /// Get a cheap Arc clone of the pool for the given connection ID.
     pub fn get_pool(&self, id: &str) -> Option<MySqlPool> {
         let map = self.entries.read().expect("registry lock poisoned");
-        map.get(id).map(|e| e.pool.clone())
+        map.get(id).map(|entry| entry.pool.clone())
     }
 
     /// Get the current status of a connection.
     pub fn get_status(&self, id: &str) -> Option<ConnectionStatus> {
         let map = self.entries.read().expect("registry lock poisoned");
-        map.get(id).map(|e| e.status.clone())
+        map.get(id).map(|entry| entry.status.clone())
     }
 
     /// Update the status of an existing connection.
@@ -143,7 +143,7 @@ impl ConnectionRegistry {
     /// Get a clone of the stored connection params for reconnection.
     pub fn get_connection_params(&self, id: &str) -> Option<StoredConnectionParams> {
         let map = self.entries.read().expect("registry lock poisoned");
-        map.get(id).map(|e| e.connection_params.clone())
+        map.get(id).map(|entry| entry.connection_params.clone())
     }
 
     /// Update the stored default database for an active connection.
@@ -159,8 +159,8 @@ impl ConnectionRegistry {
     pub fn remove(&self, id: &str) -> Option<RegistryEntry> {
         let mut map = self.entries.write().expect("registry lock poisoned");
         let entry = map.remove(id);
-        if let Some(ref e) = entry {
-            e.cancellation_token.cancel();
+        if let Some(ref removed) = entry {
+            removed.cancellation_token.cancel();
         }
         entry
     }
@@ -175,14 +175,14 @@ impl ConnectionRegistry {
     /// Returns `false` if the connection ID is not in the registry.
     pub fn is_read_only(&self, id: &str) -> bool {
         let map = self.entries.read().expect("registry lock poisoned");
-        map.get(id).map(|e| e.read_only).unwrap_or(false)
+        map.get(id).map(|entry| entry.read_only).unwrap_or(false)
     }
 
     /// Get the saved profile id for a runtime session id.
     /// Returns `None` if the connection is not in the registry.
     pub fn get_profile_id(&self, session_id: &str) -> Option<String> {
         let map = self.entries.read().expect("registry lock poisoned");
-        map.get(session_id).map(|e| e.profile_id.clone())
+        map.get(session_id).map(|entry| entry.profile_id.clone())
     }
 
     /// List live sessions in deterministic runtime-id order.
@@ -198,7 +198,7 @@ impl ConnectionRegistry {
                 session_database: entry.connection_params.default_database.clone(),
             })
             .collect::<Vec<_>>();
-        sessions.sort_by(|a, b| a.session_id.cmp(&b.session_id));
+        sessions.sort_by(|left, right| left.session_id.cmp(&right.session_id));
         sessions
     }
 
@@ -214,12 +214,12 @@ impl ConnectionRegistry {
     pub fn get_pool_by_profile(&self, profile_id: &str) -> Option<MySqlPool> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.values()
-            .find(|e| {
-                e.profile_id == profile_id
-                    && e.status == ConnectionStatus::Connected
-                    && !e.read_only
+            .find(|entry| {
+                entry.profile_id == profile_id
+                    && entry.status == ConnectionStatus::Connected
+                    && !entry.read_only
             })
-            .map(|e| e.pool.clone())
+            .map(|entry| entry.pool.clone())
     }
 }
 

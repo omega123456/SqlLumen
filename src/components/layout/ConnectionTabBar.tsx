@@ -117,23 +117,24 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
   const sessionIds = tabs.map((connection) => connection.id)
   const contextMenuTabIndex = contextMenu ? sessionIds.indexOf(contextMenu.sessionId) : -1
   const tabsByProfileId = new Map<string, typeof tabs>()
-  for (const c of tabs) {
-    const pid = c.profile.id
+  for (const connection of tabs) {
+    const pid = connection.profile.id
     const list = tabsByProfileId.get(pid) ?? []
-    list.push(c)
+    list.push(connection)
     tabsByProfileId.set(pid, list)
   }
-  const tabDisplayName = (c: (typeof tabs)[0]) => {
-    const baseName = c.profile.name.trim() !== '' ? c.profile.name.trim() : 'Unnamed connection'
-    const list = tabsByProfileId.get(c.profile.id) ?? []
+  const tabDisplayName = (connection: (typeof tabs)[0]) => {
+    const baseName =
+      connection.profile.name.trim() !== '' ? connection.profile.name.trim() : 'Unnamed connection'
+    const list = tabsByProfileId.get(connection.profile.id) ?? []
     if (list.length <= 1) {
       return baseName
     }
-    const idx = list.findIndex((x) => x.id === c.id) + 1
-    if (idx === 1) {
+    const index = list.findIndex((otherConnection) => otherConnection.id === connection.id) + 1
+    if (index === 1) {
       return baseName
     }
-    return `${baseName} (${idx})`
+    return `${baseName} (${index})`
   }
 
   const handleConfirmCloseConnection = async () => {
@@ -151,14 +152,14 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
   }
 
   const focusConnectionTab = (sessionId: string): boolean => {
-    const tabEl = document.querySelector<HTMLElement>(
+    const tabElement = document.querySelector<HTMLElement>(
       `[data-testid="connection-session-tab-${sessionId}"]`
     )
-    if (!tabEl) {
+    if (!tabElement) {
       return false
     }
-    const labelButton = tabEl.querySelector<HTMLElement>('[role="button"],button')
-    ;(labelButton ?? tabEl).focus()
+    const labelButton = tabElement.querySelector<HTMLElement>('[role="button"],button')
+    ;(labelButton ?? tabElement).focus()
     return true
   }
 
@@ -173,17 +174,17 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
 
   const openTabContextMenu = (
     sessionId: string,
-    x: number,
-    y: number,
+    pointerX: number,
+    pointerY: number,
     anchor: Element | null,
     invokerTabId: string
   ) => {
     dispatchDismissAll()
     setContextMenu({
-      sessionId,
-      x,
-      y,
-      invokerTabId,
+      sessionId: sessionId,
+      x: pointerX,
+      y: pointerY,
+      invokerTabId: invokerTabId,
       portalRoot: getContextMenuPortalRoot(anchor),
     })
   }
@@ -271,8 +272,8 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
       const draggingIndex = sessionIds.indexOf(dragState.tabId)
       const targetIndex = sessionIds.indexOf(hoveredTab.sessionId)
       const target = computeHorizontalTabReorderTarget({
-        draggingIndex,
-        targetIndex,
+        draggingIndex: draggingIndex,
+        targetIndex: targetIndex,
         pointerClientX: moveEvent.clientX,
         targetRect: hoveredTab.rect,
       })
@@ -314,61 +315,75 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     >
       {tabs.length > 0 && (
         <UnderlineTabBar variant="document" className={styles.connectionTabRail}>
-          {tabs.map((conn) => {
-            const isActive = conn.id === activeTabId
-            const displayName = tabDisplayName(conn)
+          {tabs.map((connection) => {
+            const isActive = connection.id === activeTabId
+            const displayName = tabDisplayName(connection)
             return (
               <UnderlineTab
-                key={conn.id}
+                key={connection.id}
                 variant="document"
-                data-testid={`connection-session-tab-${conn.id}`}
+                data-testid={`connection-session-tab-${connection.id}`}
                 active={isActive}
                 className={styles.connectionTab}
                 onSelect={() => {
                   if (suppressNextSelectRef.current) {
                     return
                   }
-                  switchTab(conn.id)
+                  switchTab(connection.id)
                 }}
-                onPointerDown={(event) => startPointerDrag(conn.id, event)}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  openTabContextMenu(conn.id, e.clientX, e.clientY, e.currentTarget, conn.id)
+                onPointerDown={(event) => startPointerDrag(connection.id, event)}
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  openTabContextMenu(
+                    connection.id,
+                    event.clientX,
+                    event.clientY,
+                    event.currentTarget,
+                    connection.id
+                  )
                 }}
-                onKeyDown={(e) => {
-                  if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) {
+                onKeyDown={(event) => {
+                  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
                     return
                   }
-                  e.preventDefault()
-                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                  openTabContextMenu(conn.id, rect.left, rect.bottom, e.currentTarget, conn.id)
+                  event.preventDefault()
+                  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+                  openTabContextMenu(
+                    connection.id,
+                    rect.left,
+                    rect.bottom,
+                    event.currentTarget,
+                    connection.id
+                  )
                 }}
-                dragging={draggingTabId === conn.id}
-                dropIndicator={dropTarget?.tabId === conn.id ? dropTarget.indicator : undefined}
-                onAuxClick={(e) => {
-                  if (e.button !== 1) return
-                  e.preventDefault()
+                dragging={draggingTabId === connection.id}
+                dropIndicator={
+                  dropTarget?.tabId === connection.id ? dropTarget.indicator : undefined
+                }
+                onAuxClick={(event) => {
+                  if (event.button !== 1) return
+                  event.preventDefault()
                   setPendingConnectionClose({
-                    id: conn.id,
-                    displayName,
-                    hostPort: `${conn.profile.host}:${conn.profile.port}`,
+                    id: connection.id,
+                    displayName: displayName,
+                    hostPort: `${connection.profile.host}:${connection.profile.port}`,
                   })
                 }}
-                title={`${displayName} (${conn.profile.host}:${conn.profile.port})${
-                  conn.profile.readOnly ? ' — Read-only' : ''
+                title={`${displayName} (${connection.profile.host}:${connection.profile.port})${
+                  connection.profile.readOnly ? ' — Read-only' : ''
                 }`}
                 prefix={
                   <>
-                    {conn.profile.color ? (
+                    {connection.profile.color ? (
                       <span
                         className={styles.colorMarker}
-                        style={{ backgroundColor: conn.profile.color }}
-                        data-testid={`connection-color-marker-${conn.id}`}
+                        style={{ backgroundColor: connection.profile.color }}
+                        data-testid={`connection-color-marker-${connection.id}`}
                         aria-hidden
                       />
                     ) : null}
-                    <ConnectionStatusIndicator status={conn.status} size={8} />
-                    {conn.profile.readOnly ? (
+                    <ConnectionStatusIndicator status={connection.status} size={8} />
+                    {connection.profile.readOnly ? (
                       <LockIcon
                         className={styles.readOnlyIcon}
                         size={12}
@@ -385,9 +400,9 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                     aria-label={`Close ${displayName}`}
                     draggable={false}
                     data-tab-drag-ignore="true"
-                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseDown={(event) => event.stopPropagation()}
                     onClick={() => {
-                      void closeConnection(conn.id)
+                      void closeConnection(connection.id)
                     }}
                   >
                     <XIcon size={16} weight="regular" />

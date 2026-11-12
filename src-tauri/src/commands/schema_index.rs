@@ -63,9 +63,11 @@ fn read_setting(
     db: &std::sync::Arc<Mutex<rusqlite::Connection>>,
     key: &str,
 ) -> Result<String, String> {
-    let conn = db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let conn = db
+        .lock()
+        .map_err(|error| format!("DB lock error: {error}"))?;
     settings::get_setting(&conn, key)
-        .map_err(|e| format!("Failed to read setting '{key}': {e}"))?
+        .map_err(|error| format!("Failed to read setting '{key}': {error}"))?
         .ok_or_else(String::new) // return empty string error for "not set"
         .or(Ok(String::new()))
 }
@@ -76,7 +78,9 @@ fn read_setting(
 fn read_embedding_endpoint(
     db: &std::sync::Arc<Mutex<rusqlite::Connection>>,
 ) -> Result<String, String> {
-    let conn = db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let conn = db
+        .lock()
+        .map_err(|error| format!("DB lock error: {error}"))?;
     crate::ai_memory::resolve_embedding_endpoint(&conn)
 }
 
@@ -97,7 +101,7 @@ pub async fn force_rebuild_schema_index_impl(
         let map = state
             .session_profile_map
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         map.contains_key(&session_id)
     };
 
@@ -107,7 +111,7 @@ pub async fn force_rebuild_schema_index_impl(
             let mut map = state
                 .session_profile_map
                 .lock()
-                .map_err(|e| format!("Lock error: {e}"))?;
+                .map_err(|error| format!("Lock error: {error}"))?;
             map.insert(session_id.clone(), profile_id.clone());
         }
 
@@ -116,7 +120,7 @@ pub async fn force_rebuild_schema_index_impl(
             let mut counts = state
                 .session_ref_counts
                 .lock()
-                .map_err(|e| format!("Lock error: {e}"))?;
+                .map_err(|error| format!("Lock error: {error}"))?;
             let count = counts.entry(profile_id.clone()).or_insert(0);
             *count += 1;
         }
@@ -127,7 +131,7 @@ pub async fn force_rebuild_schema_index_impl(
         let mut tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         if let Some(old_token) = tokens.remove(&profile_id) {
             tracing::info!(
                 profile_id = %profile_id,
@@ -140,9 +144,13 @@ pub async fn force_rebuild_schema_index_impl(
 
     // Wipe all existing chunks and vectors for this profile
     {
-        let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
-        storage::delete_all_chunks(&conn, &profile_id)
-            .map_err(|e| format!("Failed to delete chunks for profile '{profile_id}': {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock error: {error}"))?;
+        storage::delete_all_chunks(&conn, &profile_id).map_err(|error| {
+            format!("Failed to delete chunks for profile '{profile_id}': {error}")
+        })?;
     }
     tracing::info!(
         profile_id = %profile_id,
@@ -170,7 +178,7 @@ pub async fn force_rebuild_schema_index_impl(
         let mut tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         tokens.insert(profile_id.clone(), token.clone());
     }
 
@@ -234,10 +242,10 @@ pub async fn force_rebuild_schema_index_impl(
                 );
                 let _ = app_handle.emit("schema-index-complete", &build_result);
             }
-            Err(err) => {
+            Err(error) => {
                 tracing::error!(
                     profile_id = %profile_id_clone,
-                    error = %err,
+                    error = %error,
                     failed_at = %Utc::now().to_rfc3339(),
                     "Schema index force rebuild failed"
                 );
@@ -254,7 +262,7 @@ pub async fn force_rebuild_schema_index_impl(
                     "schema-index-error",
                     &IndexErrorPayload {
                         profile_id: profile_id_clone.clone(),
-                        error: err,
+                        error,
                     },
                 );
             }
@@ -281,7 +289,7 @@ pub async fn force_rebuild_schema_index_impl(
         let mut tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         if let Some(old_token) = tokens.remove(&profile_id) {
             old_token.cancel();
         }
@@ -289,9 +297,13 @@ pub async fn force_rebuild_schema_index_impl(
 
     // Wipe all existing chunks and vectors for this profile
     {
-        let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
-        storage::delete_all_chunks(&conn, &profile_id)
-            .map_err(|e| format!("Failed to delete chunks for profile '{profile_id}': {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock error: {error}"))?;
+        storage::delete_all_chunks(&conn, &profile_id).map_err(|error| {
+            format!("Failed to delete chunks for profile '{profile_id}': {error}")
+        })?;
     }
 
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
@@ -323,7 +335,7 @@ pub async fn build_schema_index_impl(
         let map = state
             .session_profile_map
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         map.contains_key(&session_id)
     };
 
@@ -333,7 +345,7 @@ pub async fn build_schema_index_impl(
             let mut map = state
                 .session_profile_map
                 .lock()
-                .map_err(|e| format!("Lock error: {e}"))?;
+                .map_err(|error| format!("Lock error: {error}"))?;
             map.insert(session_id.clone(), profile_id.clone());
         }
 
@@ -342,7 +354,7 @@ pub async fn build_schema_index_impl(
             let mut counts = state
                 .session_ref_counts
                 .lock()
-                .map_err(|e| format!("Lock error: {e}"))?;
+                .map_err(|error| format!("Lock error: {error}"))?;
             let count = counts.entry(profile_id.clone()).or_insert(0);
             *count += 1;
         }
@@ -353,7 +365,7 @@ pub async fn build_schema_index_impl(
         let tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         if tokens.contains_key(&profile_id) {
             tracing::info!(
                 session_id = %session_id,
@@ -386,7 +398,7 @@ pub async fn build_schema_index_impl(
         let mut tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         tokens.insert(profile_id.clone(), token.clone());
     }
 
@@ -450,10 +462,10 @@ pub async fn build_schema_index_impl(
                 );
                 let _ = app_handle.emit("schema-index-complete", &build_result);
             }
-            Err(err) => {
+            Err(error) => {
                 tracing::error!(
                     profile_id = %profile_id_clone,
-                    error = %err,
+                    error = %error,
                     failed_at = %Utc::now().to_rfc3339(),
                     "Schema index build failed"
                 );
@@ -471,7 +483,7 @@ pub async fn build_schema_index_impl(
                     "schema-index-error",
                     &IndexErrorPayload {
                         profile_id: profile_id_clone.clone(),
-                        error: err,
+                        error,
                     },
                 );
             }
@@ -495,7 +507,7 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
         let map = state
             .session_profile_map
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         map.contains_key(&session_id)
     };
 
@@ -505,7 +517,7 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
             let mut map = state
                 .session_profile_map
                 .lock()
-                .map_err(|e| format!("Lock error: {e}"))?;
+                .map_err(|error| format!("Lock error: {error}"))?;
             map.insert(session_id.clone(), profile_id.clone());
         }
 
@@ -514,7 +526,7 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
             let mut counts = state
                 .session_ref_counts
                 .lock()
-                .map_err(|e| format!("Lock error: {e}"))?;
+                .map_err(|error| format!("Lock error: {error}"))?;
             let count = counts.entry(profile_id.clone()).or_insert(0);
             *count += 1;
         }
@@ -525,7 +537,7 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
         let tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         if tokens.contains_key(&profile_id) {
             return Ok(());
         }
@@ -591,32 +603,32 @@ pub async fn semantic_search_impl(
     // Read retrieval settings
     let top_k: usize = read_setting(&state.db, "ai.retrieval.topKPerQuery")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|text| text.parse().ok())
         .unwrap_or(30);
     let top_n: usize = read_setting(&state.db, "ai.retrieval.topN")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|text| text.parse().ok())
         .unwrap_or(20);
-    let fk_fanout_cap: usize = read_setting(&state.db, "ai.retrieval.fkFanoutCap")
+    let foreign_key_fanout_cap: usize = read_setting(&state.db, "ai.retrieval.fkFanoutCap")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|text| text.parse().ok())
         .unwrap_or(30);
     let lexical_weight: f64 = read_setting(&state.db, "ai.retrieval.lexicalWeight")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|text| text.parse().ok())
         .unwrap_or(0.2);
     let rerank_enabled: bool = read_setting(&state.db, "ai.retrieval.rerankEnabled")
         .ok()
-        .map(|s| s == "true")
+        .map(|text| text == "true")
         .unwrap_or(false);
     let graph_depth: u32 = read_setting(&state.db, "ai.retrieval.graphDepth")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|text| text.parse().ok())
         .unwrap_or(2)
         .clamp(1, 3);
     let feedback_boost: f64 = read_setting(&state.db, "ai.retrieval.feedbackBoost")
         .ok()
-        .and_then(|s| s.parse().ok())
+        .and_then(|text| text.parse().ok())
         .unwrap_or(0.15);
 
     tracing::debug!(
@@ -632,13 +644,13 @@ pub async fn semantic_search_impl(
     let mut uncached_texts: Vec<String> = Vec::new();
 
     // Check cache for each query
-    for (i, q) in queries.iter().enumerate() {
-        if let Some(cached_vec) = state.embedding_cache.get(&embedding_model, q) {
+    for (index, query) in queries.iter().enumerate() {
+        if let Some(cached_vec) = state.embedding_cache.get(&embedding_model, query) {
             query_vectors.push(cached_vec);
         } else {
             query_vectors.push(Vec::new()); // placeholder
-            uncached_indices.push(i);
-            uncached_texts.push(q.clone());
+            uncached_indices.push(index);
+            uncached_texts.push(query.clone());
         }
     }
 
@@ -652,14 +664,14 @@ pub async fn semantic_search_impl(
             None,
         )
         .await
-        .map_err(|e| format!("Embedding failed: {e}"))?;
+        .map_err(|error| format!("Embedding failed: {error}"))?;
 
-        for (j, idx) in uncached_indices.iter().enumerate() {
-            query_vectors[*idx] = new_embeddings[j].clone();
+        for (uncached_position, index) in uncached_indices.iter().enumerate() {
+            query_vectors[*index] = new_embeddings[uncached_position].clone();
             state.embedding_cache.insert(
                 &embedding_model,
-                &queries[*idx],
-                new_embeddings[j].clone(),
+                &queries[*index],
+                new_embeddings[uncached_position].clone(),
             );
         }
     }
@@ -667,18 +679,21 @@ pub async fn semantic_search_impl(
     tracing::debug!(
         profile_id = %profile_id,
         vector_count = query_vectors.len(),
-        vector_dims = query_vectors.first().map(|v| v.len()).unwrap_or(0),
+        vector_dims = query_vectors.first().map(|vector| vector.len()).unwrap_or(0),
         "semantic_search: embedding complete"
     );
 
     let mut results = {
-        let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock error: {error}"))?;
 
         let search_config = SearchConfigExt {
             base: search::SearchConfig {
                 top_k_per_query: top_k,
                 top_n_results: top_n,
-                max_fk_chunks: fk_fanout_cap,
+                max_fk_chunks: foreign_key_fanout_cap,
                 lexical_weight,
             },
             graph_depth,
@@ -702,7 +717,7 @@ pub async fn semantic_search_impl(
             &query_vectors,
             &search_config,
         )
-        .map_err(|e| format!("Search failed: {e}"))?
+        .map_err(|error| format!("Search failed: {error}"))?
     };
 
     // Re-rank BEFORE graph expansion (if enabled)
@@ -728,21 +743,24 @@ pub async fn semantic_search_impl(
 
     // Graph expansion AFTER re-rank
     if graph_depth > 0 && !results.is_empty() {
-        let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock error: {error}"))?;
         results = search::apply_graph_expansion(
             &conn,
             &profile_id,
             results,
             graph_depth,
-            fk_fanout_cap as u32,
+            foreign_key_fanout_cap as u32,
         )
-        .map_err(|e| format!("Graph expansion failed: {e}"))?;
+        .map_err(|error| format!("Graph expansion failed: {error}"))?;
     }
 
     tracing::debug!(
         profile_id = %profile_id,
         result_count = results.len(),
-        top_results = ?results.iter().take(5).map(|r| (format!("{}.{}", r.db_name, r.table_name), &r.chunk_type, r.score)).collect::<Vec<_>>(),
+        top_results = ?results.iter().take(5).map(|result| (format!("{}.{}", result.db_name, result.table_name), &result.chunk_type, result.score)).collect::<Vec<_>>(),
         "semantic_search: complete"
     );
 
@@ -789,7 +807,7 @@ pub fn get_index_status_impl(
     // 1. Resolve session → profile
     let profile_id = match state.session_profile_map.lock() {
         Ok(map) => map.get(&session_id).cloned(),
-        Err(e) => return Err(format!("Lock error: {e}")),
+        Err(error) => return Err(format!("Lock error: {error}")),
     };
 
     // Also try the registry if session_profile_map doesn't have it
@@ -834,7 +852,7 @@ pub fn get_index_status_impl(
         let tokens = state
             .index_build_tokens
             .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+            .map_err(|error| format!("Lock error: {error}"))?;
         if tokens.contains_key(&profile_id) {
             return Ok(IndexStatusResponse {
                 status: "building".to_string(),
@@ -846,10 +864,13 @@ pub fn get_index_status_impl(
     }
 
     // 4. Check schema_index_meta for this profile
-    let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock error: {error}"))?;
 
     let meta = storage::get_index_meta(&conn, &profile_id)
-        .map_err(|e| format!("Failed to get index meta: {e}"))?;
+        .map_err(|error| format!("Failed to get index meta: {error}"))?;
 
     match meta {
         None => Ok(IndexStatusResponse {
@@ -858,9 +879,9 @@ pub fn get_index_status_impl(
             tables_total: None,
             error: None,
         }),
-        Some(m) => {
+        Some(meta) => {
             // 5. If model changed, it's stale
-            if m.model_id != embedding_model {
+            if meta.model_id != embedding_model {
                 return Ok(IndexStatusResponse {
                     status: "stale".to_string(),
                     tables_done: None,
@@ -871,7 +892,7 @@ pub fn get_index_status_impl(
 
             // 6. Return the stored status
             Ok(IndexStatusResponse {
-                status: m.status.as_str().to_string(),
+                status: meta.status.as_str().to_string(),
                 tables_done: None,
                 tables_total: None,
                 error: None,
@@ -901,12 +922,12 @@ pub async fn invalidate_schema_index_impl(
     // Parse "db_name.table_name" strings
     let parsed_tables: Vec<(String, String)> = tables
         .iter()
-        .filter_map(|t| {
-            let parts: Vec<&str> = t.splitn(2, '.').collect();
+        .filter_map(|qualified_table| {
+            let parts: Vec<&str> = qualified_table.splitn(2, '.').collect();
             if parts.len() == 2 {
                 Some((parts[0].to_string(), parts[1].to_string()))
             } else {
-                tracing::warn!(table = %t, "Invalid table format, expected 'db_name.table_name'");
+                tracing::warn!(table = %qualified_table, "Invalid table format, expected 'db_name.table_name'");
                 None
             }
         })
@@ -961,10 +982,10 @@ pub async fn invalidate_schema_index_impl(
                     "schema_index invalidate: partial rebuild and follow-up incremental build completed"
                 );
             }
-            Err(err) => {
+            Err(error) => {
                 tracing::error!(
                     profile_id = %profile_id,
-                    error = %err,
+                    error = %error,
                     failed_at = %Utc::now().to_rfc3339(),
                     "Schema index partial rebuild failed"
                 );
@@ -972,7 +993,7 @@ pub async fn invalidate_schema_index_impl(
                     "schema-index-error",
                     &IndexErrorPayload {
                         profile_id: profile_id.clone(),
-                        error: err,
+                        error,
                     },
                 );
             }
@@ -1000,19 +1021,22 @@ pub fn list_indexed_tables_impl(
 ) -> Result<Vec<IndexedTableInfo>, String> {
     let profile_id = resolve_session_profile(state, &session_id)?;
 
-    let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock error: {error}"))?;
 
     let chunks = storage::list_chunks(&conn, &profile_id)
-        .map_err(|e| format!("Failed to list chunks: {e}"))?;
+        .map_err(|error| format!("Failed to list chunks: {error}"))?;
 
     let results = chunks
         .into_iter()
-        .map(|c| IndexedTableInfo {
-            db_name: c.db_name,
-            table_name: c.table_name,
-            chunk_type: c.chunk_type.as_str().to_string(),
-            embedded_at: c.embedded_at,
-            model_id: c.model_id,
+        .map(|chunk| IndexedTableInfo {
+            db_name: chunk.db_name,
+            table_name: chunk.table_name,
+            chunk_type: chunk.chunk_type.as_str().to_string(),
+            embedded_at: chunk.embedded_at,
+            model_id: chunk.model_id,
         })
         .collect();
 

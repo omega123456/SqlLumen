@@ -28,8 +28,11 @@ pub fn write_json<W: Write, R: AsRef<[serde_json::Value]>>(
 /// Shared by the slice writer and the streaming writer.
 pub fn json_row_object(columns: &[String], row: &[serde_json::Value]) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
-    for (i, col) in columns.iter().enumerate() {
-        let value = row.get(i).cloned().unwrap_or(serde_json::Value::Null);
+    for (column_index, col) in columns.iter().enumerate() {
+        let value = row
+            .get(column_index)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         obj.insert(col.clone(), value);
     }
     serde_json::Value::Object(obj)

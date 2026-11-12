@@ -21,40 +21,40 @@ export function IndexesPanel({ indexes }: IndexesPanelProps) {
             </tr>
           </thead>
           <tbody>
-            {indexes.map((idx) => (
-              <tr key={idx.name} className={styles.row}>
+            {indexes.map((index) => (
+              <tr key={index.name} className={styles.row}>
                 <td className={styles.td}>
                   <span className={styles.indexName}>
-                    {idx.name === 'PRIMARY' && (
+                    {index.name === 'PRIMARY' && (
                       <span className={styles.primaryBadge} aria-label="Primary key">
                         &#x2713;
                       </span>
                     )}
-                    {idx.isUnique && idx.name !== 'PRIMARY' && (
+                    {index.isUnique && index.name !== 'PRIMARY' && (
                       <span className={styles.uniqueBadge}>UNI</span>
                     )}
-                    {idx.name}
+                    {index.name}
                   </span>
                 </td>
                 <td className={styles.td}>
-                  <span className={styles.indexType}>{idx.indexType}</span>
+                  <span className={styles.indexType}>{index.indexType}</span>
                 </td>
                 <td className={styles.td}>
                   <span className={styles.cardinality}>
-                    {idx.cardinality != null ? idx.cardinality.toLocaleString() : '—'}
+                    {index.cardinality != null ? index.cardinality.toLocaleString() : '—'}
                   </span>
                 </td>
                 <td className={styles.td}>
                   <span className={styles.columnPills}>
-                    {idx.columns.map((col) => (
-                      <span key={col} className={styles.columnPill}>
-                        {col}
+                    {index.columns.map((column) => (
+                      <span key={column} className={styles.columnPill}>
+                        {column}
                       </span>
                     ))}
                   </span>
                 </td>
                 <td className={styles.td}>
-                  <span className={styles.visible}>{idx.isVisible ? 'Yes' : 'No'}</span>
+                  <span className={styles.visible}>{index.isVisible ? 'Yes' : 'No'}</span>
                 </td>
               </tr>
             ))}

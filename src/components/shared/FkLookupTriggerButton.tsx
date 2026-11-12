@@ -36,21 +36,21 @@ export function FkLookupTriggerButton({
   className,
   onBeforeLookup,
 }: FkLookupTriggerButtonProps) {
-  const fkLookup = useFkLookup()
+  const foreignKeyLookup = useFkLookup()
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
+  const handleMouseDown = (event: React.MouseEvent) => {
+    event.stopPropagation()
+    event.preventDefault()
   }
 
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleClick = (event: React.MouseEvent) => {
+    event.stopPropagation()
     onBeforeLookup?.()
-    fkLookup?.onFkLookup({
-      columnKey,
-      currentValue,
-      foreignKey,
-      rowData,
+    foreignKeyLookup?.onFkLookup({
+      columnKey: columnKey,
+      currentValue: currentValue,
+      foreignKey: foreignKey,
+      rowData: rowData,
       source: 'editor-trigger',
     })
   }

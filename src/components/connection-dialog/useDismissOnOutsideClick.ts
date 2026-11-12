@@ -23,15 +23,15 @@ export function useDismissOnOutsideClick(
   useEffect(() => {
     if (!active) return
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+    const handleMouseDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
         onDismissRef.current()
       }
     }
 
     const handleKeyDown = options?.closeOnEscape
-      ? (e: KeyboardEvent) => {
-          if (e.key === 'Escape') onDismissRef.current()
+      ? (event: KeyboardEvent) => {
+          if (event.key === 'Escape') onDismissRef.current()
         }
       : undefined
 

@@ -16,7 +16,13 @@ pub const VEC_SCHEMA_VERSION: u32 = 2;
 /// non-alphanumeric characters with underscores.
 pub fn sanitize_table_name(id: &str) -> String {
     id.chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -239,7 +245,7 @@ pub fn get_chunk_by_key(
     })?;
     match rows.next() {
         Some(Ok(meta)) => Ok(Some(meta)),
-        Some(Err(e)) => Err(e),
+        Some(Err(error)) => Err(error),
         None => Ok(None),
     }
 }
@@ -299,7 +305,7 @@ pub fn get_index_meta(conn: &Connection, connection_id: &str) -> Result<Option<I
     })?;
     match rows.next() {
         Some(Ok(meta)) => Ok(Some(meta)),
-        Some(Err(e)) => Err(e),
+        Some(Err(error)) => Err(error),
         None => Ok(None),
     }
 }
@@ -330,12 +336,12 @@ fn ensure_vec_schema_version_column(conn: &Connection) -> Result<()> {
     );
     match res {
         Ok(_) => Ok(()),
-        Err(e) => {
-            let msg = e.to_string();
+        Err(error) => {
+            let msg = error.to_string();
             if msg.contains("duplicate column name") {
                 Ok(())
             } else {
-                Err(e)
+                Err(error)
             }
         }
     }

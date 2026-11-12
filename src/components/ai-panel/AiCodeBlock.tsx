@@ -5,6 +5,8 @@ import { splitStatements } from '../query-editor/sql-parser-utils'
 import styles from './AiCodeBlock.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
+
+const COPIED_FEEDBACK_DURATION_MS = 2000
 export interface AiCodeBlockProps {
   language?: string
   children: ReactNode
@@ -60,9 +62,9 @@ export function AiCodeBlock({
       const text = getTextContent()
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch (err) {
-      logFrontend('error', ['[ai-panel] Failed to copy code:', err].map(String).join(' '))
+      setTimeout(() => setCopied(false), COPIED_FEEDBACK_DURATION_MS)
+    } catch (error) {
+      logFrontend('error', ['[ai-panel] Failed to copy code:', error].map(String).join(' '))
     }
   }, [getTextContent])
 

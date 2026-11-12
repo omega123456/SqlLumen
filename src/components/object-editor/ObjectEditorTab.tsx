@@ -40,11 +40,11 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
     const existing = useObjectEditorStore.getState().tabs[tabId]
     if (!existing) {
       initTab(tabId, {
-        connectionId,
+        connectionId: connectionId,
         database: databaseName,
-        objectName,
-        objectType,
-        mode,
+        objectName: objectName,
+        objectType: objectType,
+        mode: mode,
       })
       void loadBody(tabId)
     }

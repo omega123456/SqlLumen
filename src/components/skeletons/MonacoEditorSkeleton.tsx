@@ -7,8 +7,8 @@ export default function MonacoEditorSkeleton() {
     <div className={styles.root} aria-hidden="true">
       <div className={`${styles.gutter} shimmerBlock`} />
       <div className={styles.codeArea}>
-        {LINE_WIDTHS.map((width, i) => (
-          <div key={i} className={`${styles.codeLine} shimmerBlock`} style={{ width }} />
+        {LINE_WIDTHS.map((width, index) => (
+          <div key={index} className={`${styles.codeLine} shimmerBlock`} style={{ width }} />
         ))}
       </div>
     </div>

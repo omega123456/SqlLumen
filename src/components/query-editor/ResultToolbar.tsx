@@ -51,6 +51,8 @@ import type { ViewMode, StatusType } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import styles from './ResultToolbar.module.css'
 
+const ERROR_PREVIEW_MAX_LENGTH = 200
+
 interface ResultToolbarProps {
   tabId: string
   connectionId: string
@@ -74,11 +76,11 @@ export interface DeleteDialogCopy {
 
 /** The three-tier delete dialog copy (wireframe 7). */
 function getDeleteDialogCopy(count: number, tableName: string): DeleteDialogCopy {
-  const n = formatCount(count)
+  const formattedCount = formatCount(count)
   if (count > MAX_BULK_DELETE_ROWS) {
     return {
       title: 'Too many rows to delete at once',
-      message: `You have ${n} rows checked. You can delete up to ${formatCount(
+      message: `You have ${formattedCount} rows checked. You can delete up to ${formatCount(
         MAX_BULK_DELETE_ROWS
       )} rows at a time. Uncheck some rows, then try again.`,
       confirmLabel: 'OK',
@@ -99,8 +101,8 @@ function getDeleteDialogCopy(count: number, tableName: string): DeleteDialogCopy
   }
   return {
     title: 'Delete rows',
-    message: `Delete ${n} rows from ${tableName}?`,
-    confirmLabel: `Delete ${n} rows`,
+    message: `Delete ${formattedCount} rows from ${tableName}?`,
+    confirmLabel: `Delete ${formattedCount} rows`,
     warningText:
       count > BULK_DELETE_WARNING_ROWS
         ? "This can't be undone. Deleting more than 1,000 rows can take a while. If a row fails, rows already deleted stay deleted."
@@ -159,7 +161,7 @@ export function ResultToolbar({
   const checkedRanges = useMemo(
     () =>
       activeResult.checkedViewVersion === activeResult.viewVersion
-        ? [...activeResult.checkedRanges].sort((a, b) => a[0] - b[0])
+        ? [...activeResult.checkedRanges].sort((left, right) => left[0] - right[0])
         : [],
     [activeResult.checkedRanges, activeResult.checkedViewVersion, activeResult.viewVersion]
   )
@@ -167,7 +169,9 @@ export function ResultToolbar({
   const isRowActionPending = rowActionProgress !== null
 
   const truncatedError =
-    errorMessage && errorMessage.length > 200 ? errorMessage.slice(0, 200) + '…' : errorMessage
+    errorMessage && errorMessage.length > ERROR_PREVIEW_MAX_LENGTH
+      ? errorMessage.slice(0, ERROR_PREVIEW_MAX_LENGTH) + '…'
+      : errorMessage
 
   const hasResults = status === 'success'
   const showActionProgress = rowActionProgress?.visible === true
@@ -185,7 +189,7 @@ export function ResultToolbar({
   // the numeric affected-rows count.
   const rowCount = formatRowCountParts({
     viewRowCount: activeResult.viewRowCount,
-    totalRows,
+    totalRows: totalRows,
     isFiltered: filterModel.length > 0,
     truncated: activeResult.truncated,
     autoLimitApplied: activeResult.autoLimitApplied,

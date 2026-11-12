@@ -20,10 +20,13 @@ import type {
 import { saveSessionState, loadSessionState } from '../lib/session-restore-commands'
 import { listOpenConnectionSessions } from '../lib/connection-commands'
 import { hasTauriApis } from '../lib/tauri-env'
+import { MILLISECONDS_PER_MINUTE } from '../lib/units'
 import type { WorkspaceTab } from '../types/schema'
 import type { OpenConnectionSession } from '../types/connection'
 
-export const SESSION_AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000
+const SESSION_AUTOSAVE_INTERVAL_MINUTES = 5
+export const SESSION_AUTOSAVE_INTERVAL_MS =
+  SESSION_AUTOSAVE_INTERVAL_MINUTES * MILLISECONDS_PER_MINUTE
 
 interface CloseRequestedEvent {
   preventDefault: () => void
@@ -146,10 +149,10 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
       }
 
       await get().restoreFromState(state)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      set({ restoreError: msg, hasIncompleteRestore: true })
-      logFrontend('error', `[session-restore] Failed to load saved session: ${msg}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      set({ restoreError: message, hasIncompleteRestore: true })
+      logFrontend('error', `[session-restore] Failed to load saved session: ${message}`)
       showErrorToast('Session restore failed', 'The saved workspace was retained.')
     }
   },
@@ -190,29 +193,29 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
         () => null
       )
 
-      for (const [savedIndex, connState] of state.connections.entries()) {
+      for (const [savedIndex, connectionState] of state.connections.entries()) {
         try {
-          const existingSession = sessionsByProfile.get(connState.profileId)?.shift()
+          const existingSession = sessionsByProfile.get(connectionState.profileId)?.shift()
           if (existingSession) {
             claimedSessionIds.add(existingSession.sessionId)
           }
           const sessionId = existingSession
             ? attachExistingSession(existingSession)
-            : await connectByProfileId(connState.profileId)
+            : await connectByProfileId(connectionState.profileId)
           if (!sessionId) {
             continue
           }
 
-          await restoreConnectionTabs(sessionId, connState)
+          await restoreConnectionTabs(sessionId, connectionState)
           restoredSessionIdsBySavedIndex[savedIndex] = sessionId
           restoredCount += 1
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
           logFrontend(
             'error',
-            `[session-restore] Failed to restore connection ${connState.profileId}: ${msg}`
+            `[session-restore] Failed to restore connection ${connectionState.profileId}: ${message}`
           )
-          showErrorToast('Session restore failed', `Could not reconnect: ${msg}`)
+          showErrorToast('Session restore failed', `Could not reconnect: ${message}`)
         }
       }
 
@@ -239,13 +242,13 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
           `[session-restore] Restored ${restoredCount} of ${state.connections.length} saved connections. Automatic persistence is paused; the saved workspace was retained.`
         )
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       logFrontend(
         'error',
-        `[session-restore] Restoration stopped: ${msg}. Automatic persistence is paused; the saved workspace was retained.`
+        `[session-restore] Restoration stopped: ${message}. Automatic persistence is paused; the saved workspace was retained.`
       )
-      set({ restoreError: msg, hasIncompleteRestore: true })
+      set({ restoreError: message, hasIncompleteRestore: true })
       showErrorToast('Session restore failed', 'The saved workspace was retained.')
     } finally {
       if (beganRestore) {
@@ -271,15 +274,17 @@ async function runSaveSessionQueue(): Promise<void> {
     try {
       const state = buildSessionState()
       await saveSessionState(state)
-    } catch (e) {
-      error = e instanceof Error ? e : new Error(String(e))
-      const msg = error.message
-      logFrontend('error', `[session-restore] Failed to save session state: ${msg}`)
+    } catch (caughtError) {
+      error = caughtError instanceof Error ? caughtError : new Error(String(caughtError))
+      const message = error.message
+      logFrontend('error', `[session-restore] Failed to save session state: ${message}`)
     }
 
     saveSessionCompletedRequestId = requestId
 
-    for (const completedRequestId of [...saveSessionWaiters.keys()].sort((a, b) => a - b)) {
+    for (const completedRequestId of [...saveSessionWaiters.keys()].sort(
+      (left, right) => left - right
+    )) {
       if (completedRequestId > requestId) {
         continue
       }
@@ -336,22 +341,22 @@ export function buildSessionState(): SessionState {
 
     // Find the active tab index in the serialized list
     if (activeTabId) {
-      const idx = serializedTabs.findIndex((st) => st.tabId === activeTabId)
-      if (idx >= 0) {
-        activeTabIndex = idx
+      const index = serializedTabs.findIndex((st) => st.tabId === activeTabId)
+      if (index >= 0) {
+        activeTabIndex = index
       }
     }
 
     connections.push({
-      profileId,
-      activeTabIndex,
+      profileId: profileId,
+      activeTabIndex: activeTabIndex,
       tabs: serializedTabs,
     })
   }
 
   return {
     version: 1,
-    connections,
+    connections: connections,
     activeConnectionIndex: activeConnectionIndex >= 0 ? activeConnectionIndex : undefined,
   }
 }
@@ -421,7 +426,7 @@ async function connectByProfileId(profileId: string): Promise<string | null> {
   const store = useConnectionStore.getState()
 
   // Check if the profile exists in saved connections
-  const profile = store.savedConnections.find((c) => c.id === profileId)
+  const profile = store.savedConnections.find((connection) => connection.id === profileId)
   if (!profile) {
     logFrontend(
       'warn',
@@ -470,7 +475,7 @@ function attachExistingSession(session: OpenConnectionSession): string | null {
  */
 async function restoreConnectionTabs(
   sessionId: string,
-  connState: SessionConnectionState
+  connectionState: SessionConnectionState
 ): Promise<void> {
   const workspaceStore = useWorkspaceStore.getState()
   const queryStore = useQueryStore.getState()
@@ -480,9 +485,11 @@ async function restoreConnectionTabs(
   const savedToRuntimeTabId = new Map<string, string>()
   const queryBottomPanelSelections = new Map<string, string>()
   const savedActiveTabState =
-    connState.activeTabIndex >= 0 ? (connState.tabs[connState.activeTabIndex] ?? null) : null
+    connectionState.activeTabIndex >= 0
+      ? (connectionState.tabs[connectionState.activeTabIndex] ?? null)
+      : null
 
-  for (const tabState of connState.tabs) {
+  for (const tabState of connectionState.tabs) {
     if (tabState.type !== 'query-editor') {
       continue
     }
@@ -504,8 +511,8 @@ async function restoreConnectionTabs(
     }
   }
 
-  for (let i = 0; i < connState.tabs.length; i++) {
-    const tabState = connState.tabs[i]
+  for (let tabIndex = 0; tabIndex < connectionState.tabs.length; tabIndex++) {
+    const tabState = connectionState.tabs[tabIndex]
     let restoredTabId: string | null = null
 
     switch (tabState.type) {
@@ -539,10 +546,10 @@ async function restoreConnectionTabs(
         })
         const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
         const created = allTabs.find(
-          (t) =>
-            t.type === 'schema-info' &&
-            t.databaseName === tabState.databaseName &&
-            t.objectName === tabState.objectName
+          (tab) =>
+            tab.type === 'schema-info' &&
+            tab.databaseName === tabState.databaseName &&
+            tab.objectName === tabState.objectName
         )
         restoredTabId = created?.id ?? null
         if (restoredTabId) {
@@ -553,7 +560,7 @@ async function restoreConnectionTabs(
       case 'history': {
         workspaceStore.openHistoryTab(sessionId, false)
         const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
-        const created = allTabs.find((t) => t.type === 'history')
+        const created = allTabs.find((tab) => tab.type === 'history')
         restoredTabId = created?.id ?? null
         if (restoredTabId) {
           savedToRuntimeTabId.set(tabState.tabId, restoredTabId)
@@ -564,14 +571,14 @@ async function restoreConnectionTabs(
       }
     }
 
-    if (i === connState.activeTabIndex && restoredTabId) {
+    if (tabIndex === connectionState.activeTabIndex && restoredTabId) {
       activeTabId = restoredTabId
     }
   }
 
   useWorkspaceStore.setState((state) => {
     const runtimeTabs = state.tabsByConnection[sessionId] ?? []
-    const orderedRuntimeTabIds = connState.tabs
+    const orderedRuntimeTabIds = connectionState.tabs
       .map((savedTab) => savedToRuntimeTabId.get(savedTab.tabId) ?? null)
       .filter((tabId): tabId is string => tabId != null)
 
@@ -585,7 +592,7 @@ async function restoreConnectionTabs(
         return tab
       }
 
-      const savedTableTab = connState.tabs.find(
+      const savedTableTab = connectionState.tabs.find(
         (savedTab): savedTab is Extract<SessionTabState, { type: 'table-data' }> =>
           savedTab.type === 'table-data' && savedToRuntimeTabId.get(savedTab.tabId) === tab.id
       )
@@ -722,10 +729,10 @@ export async function registerCloseHandler(): Promise<void> {
       event.preventDefault()
       try {
         await useSessionRestoreStore.getState().saveSession({ throwOnError: true })
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         showErrorToast('Session save failed', 'Could not save the current session before closing.')
-        logFrontend('error', `[session-restore] Error saving session on close: ${msg}`)
+        logFrontend('error', `[session-restore] Error saving session on close: ${message}`)
         return
       }
 
@@ -734,17 +741,17 @@ export async function registerCloseHandler(): Promise<void> {
       for (const hook of preCloseHooks) {
         try {
           await hook()
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          logFrontend('error', `[session-restore] Pre-close hook failed: ${msg}`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          logFrontend('error', `[session-restore] Pre-close hook failed: ${message}`)
         }
       }
 
       await appWindow.destroy()
     })
     closeHandlerRegistered = true
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    logFrontend('warn', `[session-restore] Failed to register close handler: ${msg}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logFrontend('warn', `[session-restore] Failed to register close handler: ${message}`)
   }
 }

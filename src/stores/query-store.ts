@@ -89,7 +89,7 @@ import { isBlobEnvelope } from '../lib/blob-utils'
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
 /** Default row-limit fallback used when settings have not been loaded (e.g. in tests). */
-const FALLBACK_ROW_LIMIT = 1000
+export const FALLBACK_ROW_LIMIT = 1000
 
 /**
  * Read the default row limit from the settings store.
@@ -211,6 +211,8 @@ export interface RowActionProgress {
 
 /** Maximum checked rows a single bulk delete accepts (wireframe 7). */
 export const MAX_BULK_DELETE_ROWS = 10_000
+const VIEW_REFRESH_WINDOW_ROWS = 1000
+const EDIT_ANALYSIS_ERROR_TOAST_DURATION_MS = 10_000
 /** Above this many checked rows the delete dialog warns about duration (wireframe 7). */
 export const BULK_DELETE_WARNING_ROWS = 1_000
 /** Rows the text view renders at most (the rest needs export). */
@@ -507,8 +509,8 @@ const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
  */
 export function getActiveResult(tab: TabQueryState | undefined): SingleResultState {
   if (!tab || tab.results.length === 0) return DEFAULT_RESULT_STATE
-  const idx = Math.min(tab.activeResultIndex, tab.results.length - 1)
-  return tab.results[idx] ?? DEFAULT_RESULT_STATE
+  const index = Math.min(tab.activeResultIndex, tab.results.length - 1)
+  return tab.results[index] ?? DEFAULT_RESULT_STATE
 }
 
 /**
@@ -517,7 +519,9 @@ export function getActiveResult(tab: TabQueryState | undefined): SingleResultSta
  */
 export function hasAnyUnsavedEdits(tab: TabQueryState | undefined): boolean {
   if (!tab) return false
-  return tab.results.some((r) => r.editState !== null && r.editState.modifiedColumns.size > 0)
+  return tab.results.some(
+    (result) => result.editState !== null && result.editState.modifiedColumns.size > 0
+  )
 }
 
 /**
@@ -618,7 +622,7 @@ function windowMetaFromResponse(
   return {
     fields: {
       viewRowCount: response.viewRowCount ?? response.totalRows,
-      viewVersion,
+      viewVersion: viewVersion,
       latestKnownViewVersion: viewVersion,
       truncated: response.truncated ?? false,
       rowCeiling: response.rowCeiling ?? 0,
@@ -639,14 +643,14 @@ function seedResultFromResponse(
 ): void {
   const { fields, window } = windowMetaFromResponse(response)
   seedResultWindow({
-    connectionId,
-    tabId,
-    resultIndex,
+    connectionId: connectionId,
+    tabId: tabId,
+    resultIndex: resultIndex,
     queryId: response.queryId,
     viewVersion: fields.viewVersion,
     viewRowCount: fields.viewRowCount,
     columns: response.columns,
-    window,
+    window: window,
   })
 }
 
@@ -667,7 +671,7 @@ function buildEditBindingContext(
   )
 
   return {
-    columnBindings,
+    columnBindings: columnBindings,
     boundColumnIndexMap: buildBoundColumnIndexMap(columnBindings),
   }
 }
@@ -734,7 +738,7 @@ function buildSingleResultFromItem(
   return {
     ...DEFAULT_RESULT_STATE,
     ...windowMetaFromResponse(item).fields,
-    resultStatus,
+    resultStatus: resultStatus,
     columns: item.columns,
     totalRows: item.totalRows,
     executionTimeMs: item.executionTimeMs,
@@ -749,7 +753,7 @@ function buildSingleResultFromItem(
     isAnalyzed: false,
     rowResidency: {
       status: 'resident',
-      isActive,
+      isActive: isActive,
       inactiveSince: isActive ? null : Date.now(),
     },
   }
@@ -904,7 +908,7 @@ interface QueryState {
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
 
   /** Persist the scroll position (cell indices) for the active result. */
-  setResultScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => void
+  setResultScrollCell: (tabId: string, scrollRow: number, scrollColumn: number) => void
 
   /** Apply filter conditions to a query result (filtering runs in Rust). */
   applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => void
@@ -1136,10 +1140,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
   /** Cancel a backend job without waiting (tab closed, start raced a close). */
   const cancelExportJobInBackground = (jobId: string, context: string) => {
-    cancelResultExportCmd(jobId).catch((err: unknown) => {
+    cancelResultExportCmd(jobId).catch((error: unknown) => {
       logFrontend(
         'error',
-        [`[query-store] cancelResultExport failed (${context}):`, err].map(String).join(' ')
+        [`[query-store] cancelResultExport failed (${context}):`, error].map(String).join(' ')
       )
     })
   }
@@ -1175,7 +1179,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       showErrorToast('Export failed', error ?? undefined)
     }
     if (isExportDialogOpenForTab(tabId)) {
-      patchExportJob(tabId, { status: progress.status, progress, error, cancelRequested: false })
+      patchExportJob(tabId, {
+        status: progress.status,
+        progress: progress,
+        error: error,
+        cancelRequested: false,
+      })
     } else {
       dropExportJob(tabId)
     }
@@ -1186,9 +1195,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     let progress: ResultExportProgress
     try {
       progress = await getResultExportProgressCmd(jobId)
-    } catch (err) {
+    } catch (error) {
       if (get().exportJobs[tabId]?.jobId !== jobId) return
-      const message = err instanceof Error ? err.message : String(err)
+      const message = error instanceof Error ? error.message : String(error)
       logFrontend('error', `[query-store] getResultExportProgress failed: ${message}`)
       finishExportJob(tabId, {
         status: 'failed',
@@ -1244,8 +1253,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     if (!tab || !result?.queryId) return null
     return {
       connectionId: getResultSurface(tabId, resultIndex)?.slot.connectionId || tab.connectionId,
-      tabId,
-      resultIndex,
+      tabId: tabId,
+      resultIndex: resultIndex,
       queryId: result.queryId,
     }
   }
@@ -1420,13 +1429,18 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     const slot = slotFor(tabId, resultIndex)
     if (!result || !slot) return
     try {
-      const window = await fetchResultWindowCmd(slot, result.latestKnownViewVersion, 0, 1000)
+      const window = await fetchResultWindowCmd(
+        slot,
+        result.latestKnownViewVersion,
+        0,
+        VIEW_REFRESH_WINDOW_ROWS
+      )
       if (get().tabs[tabId]?.results[resultIndex]?.queryId !== slot.queryId) return
       paintView(tabId, resultIndex, spec, {
         viewVersion: window.viewVersion,
         viewRowCount: window.viewRowCount,
         totalRows: get().tabs[tabId]?.results[resultIndex]?.totalRows ?? result.totalRows,
-        window,
+        window: window,
       })
     } catch (error) {
       if (get().tabs[tabId]?.results[resultIndex]?.queryId !== slot.queryId) return
@@ -1480,7 +1494,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const slot = slotFor(tabId, resultIndex)
       try {
         if (!slot) throw new Error('Result is no longer available')
-        const window = await fetchResultWindowCmd(slot, result.latestKnownViewVersion, 0, 1000)
+        const window = await fetchResultWindowCmd(
+          slot,
+          result.latestKnownViewVersion,
+          0,
+          VIEW_REFRESH_WINDOW_ROWS
+        )
         if (get().tabs[tabId]?.results[resultIndex]?.queryId !== slot.queryId) return
         paintView(
           tabId,
@@ -1490,7 +1509,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             viewVersion: window.viewVersion,
             viewRowCount: window.viewRowCount,
             totalRows: result.totalRows,
-            window,
+            window: window,
           },
           errorPatch
         )
@@ -1553,12 +1572,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       return result
     }
 
-    const pkColumns = tableInfo.primaryKey?.keyColumns ?? []
+    const primaryKeyColumns = tableInfo.primaryKey?.keyColumns ?? []
     const baseEditState = buildRowEditState(
       row,
       result.columns,
       result.editableColumnMap,
-      pkColumns,
+      primaryKeyColumns,
       result.editColumnBindings,
       result.editBoundColumnIndexMap
     )
@@ -1570,7 +1589,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     )
 
     patchResultByIndex(tabId, resultIndex, {
-      editState,
+      editState: editState,
       editingRowIndex: rowIndex,
       editingBaseIndex: cached.baseIndex >= 0 ? cached.baseIndex : null,
       saveError: null,
@@ -1663,9 +1682,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     resultIndex?: number
   ): Promise<Record<string, QueryTableEditInfo> | null> => {
     const generation = ++_analysisGeneration
-    const rIdx = resultIndex ?? getActiveIndex(tabId)
+    const targetResultIndex = resultIndex ?? getActiveIndex(tabId)
 
-    patchResultByIndex(tabId, rIdx, { isAnalyzingQuery: true })
+    patchResultByIndex(tabId, targetResultIndex, { isAnalyzingQuery: true })
     try {
       const raw = await analyzeQueryForEditCmd(connectionId, sql)
       const tables = Array.isArray(raw) ? raw : []
@@ -1673,42 +1692,42 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       // Guard: tab closed or a newer query has replaced this one
       const currentTab = get().tabs[tabId]
       if (!currentTab) return null
-      const currentResult = currentTab.results[rIdx]
+      const currentResult = currentTab.results[targetResultIndex]
       if (!currentResult) return null
       if (expectedQueryId !== null && currentResult.queryId !== expectedQueryId) {
         // Stale response — only clear flag if no newer analysis has started
         if (generation === _analysisGeneration) {
-          patchResultByIndex(tabId, rIdx, { isAnalyzingQuery: false })
+          patchResultByIndex(tabId, targetResultIndex, { isAnalyzingQuery: false })
         }
         return null
       }
 
       const metadata: Record<string, QueryTableEditInfo> = {}
-      for (const t of tables) {
-        metadata[compositeTableKey(t.database, t.table)] = t
+      for (const table of tables) {
+        metadata[compositeTableKey(table.database, table.table)] = table
       }
 
-      patchResultByIndex(tabId, rIdx, {
+      patchResultByIndex(tabId, targetResultIndex, {
         editTableMetadata: metadata,
         isAnalyzingQuery: false,
         isAnalyzed: true,
       })
 
       return metadata
-    } catch (err) {
+    } catch (error) {
       const currentTab = get().tabs[tabId]
       if (!currentTab) return null
-      const currentResult = currentTab.results[rIdx]
+      const currentResult = currentTab.results[targetResultIndex]
       if (!currentResult) return null
       if (expectedQueryId !== null && currentResult.queryId !== expectedQueryId) {
         // Stale error — only clear flag if no newer analysis has started
         if (generation === _analysisGeneration) {
-          patchResultByIndex(tabId, rIdx, { isAnalyzingQuery: false })
+          patchResultByIndex(tabId, targetResultIndex, { isAnalyzingQuery: false })
         }
         return null
       }
-      patchResultByIndex(tabId, rIdx, { isAnalyzingQuery: false })
-      throw err
+      patchResultByIndex(tabId, targetResultIndex, { isAnalyzingQuery: false })
+      throw error
     }
   }
 
@@ -1736,7 +1755,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     // Clear edit state
     get().clearEditState(tabId)
 
-    patchTab(tabId, { wasCancelled: false, connectionId })
+    patchTab(tabId, { wasCancelled: false, connectionId: connectionId })
     clearExpiredFlags(tabId)
     beginExecution(tabId)
 
@@ -1765,7 +1784,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       patchTab(tabId, {
         tabStatus: tabLevelStatus,
-        results,
+        results: results,
         activeResultIndex: 0,
         activeBottomPanelItem: { type: 'result' },
         wasCancelled: false,
@@ -1789,28 +1808,28 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         isEditableSelectSql(results[0].lastExecutedSql)
       ) {
         _runAnalysis(tabId, connectionId, results[0].lastExecutedSql!, results[0].queryId, 0).catch(
-          (err) => {
+          (error) => {
             logFrontend(
               'error',
-              ['[query-edit] analyze_query_for_edit failed (multi):', err].map(String).join(' ')
+              ['[query-edit] analyze_query_for_edit failed (multi):', error].map(String).join(' ')
             )
           }
         )
       }
-    } catch (err) {
+    } catch (error) {
       if (!get().tabs[tabId]) return
 
       const wasCancelled = get().tabs[tabId]?.wasCancelled ?? false
       const errorMessage = wasCancelled
         ? 'Query cancelled by user'
-        : err instanceof Error
-          ? err.message
-          : String(err)
+        : error instanceof Error
+          ? error.message
+          : String(error)
 
       const errorResult: SingleResultState = {
         ...DEFAULT_RESULT_STATE,
         resultStatus: 'error',
-        errorMessage,
+        errorMessage: errorMessage,
       }
 
       patchTab(tabId, {
@@ -1893,10 +1912,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     })
 
     if (reResult.columns.length > 0 && isEditableSelectSql(sql)) {
-      _runAnalysis(tabId, connectionId, sql, reResult.queryId, resultIndex).catch((err) => {
+      _runAnalysis(tabId, connectionId, sql, reResult.queryId, resultIndex).catch((error) => {
         logFrontend(
           'error',
-          ['[query-edit] analyze_query_for_edit failed (re-exec):', err].map(String).join(' ')
+          ['[query-edit] analyze_query_for_edit failed (re-exec):', error].map(String).join(' ')
         )
       })
     }
@@ -1911,12 +1930,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     modifiedColumns: Set<string>
     insertEligibleColumns: Set<string>
   } => {
-    const pkColumns = new Set(
+    const primaryKeyColumns = new Set(
       tableInfo.primaryKey?.keyColumns.map((column) => column.toLowerCase()) ?? []
     )
     const row = result.columns.map((column, index) => {
       const boundColumnName = result.editColumnBindings.get(index) ?? column.name
-      if (pkColumns.has(boundColumnName.toLowerCase())) {
+      if (primaryKeyColumns.has(boundColumnName.toLowerCase())) {
         return null
       }
       return sourceRow[index] ?? null
@@ -2006,11 +2025,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         result.lastExecutedSql!,
         execResult.queryId,
         resultIndex
-      ).catch((err) => {
+      ).catch((error) => {
         void logFrontend(
           'warn',
           `[query-edit] analyze_query_for_edit failed (insert re-exec): ${
-            err instanceof Error ? err.message : String(err)
+            error instanceof Error ? error.message : String(error)
           }`
         )
       })
@@ -2063,7 +2082,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       cancelAllResultLifecycleTimers(tabId, currentState?.results.length ?? 0)
 
       // Reset cancel flags at start
-      patchTab(tabId, { wasCancelled: false, connectionId })
+      patchTab(tabId, { wasCancelled: false, connectionId: connectionId })
       clearExpiredFlags(tabId)
 
       // Set running status
@@ -2135,33 +2154,33 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Fire-and-forget background query analysis
         // Only for SELECT/WITH queries with columns
         if (result.columns.length > 0 && isEditableSelectSql(sql)) {
-          _runAnalysis(tabId, connectionId, sql, result.queryId, 0).catch((err) => {
+          _runAnalysis(tabId, connectionId, sql, result.queryId, 0).catch((error) => {
             logFrontend(
               'error',
-              ['[query-edit] analyze_query_for_edit failed:', err].map(String).join(' ')
+              ['[query-edit] analyze_query_for_edit failed:', error].map(String).join(' ')
             )
             showErrorToast(
               'Edit mode analysis failed',
-              err instanceof Error ? err.message : String(err),
-              10_000
+              error instanceof Error ? error.message : String(error),
+              EDIT_ANALYSIS_ERROR_TOAST_DURATION_MS
             )
           })
         }
-      } catch (err) {
+      } catch (error) {
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
 
         const wasCancelled = get().tabs[tabId]?.wasCancelled ?? false
         const errorMessage = wasCancelled
           ? 'Query cancelled by user'
-          : err instanceof Error
-            ? err.message
-            : String(err)
+          : error instanceof Error
+            ? error.message
+            : String(error)
 
         const errorResult: SingleResultState = {
           ...DEFAULT_RESULT_STATE,
           resultStatus: 'error',
-          errorMessage,
+          errorMessage: errorMessage,
         }
 
         patchTab(tabId, {
@@ -2326,7 +2345,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         }
         const anchorRow = Math.min(result.scrollRow, Math.max(0, result.viewRowCount - 1))
         const windowStart = Math.floor(anchorRow / RESULT_PAGE_SIZE) * RESULT_PAGE_SIZE
-        const window = await fetchResultWindowCmd(slot, result.viewVersion, windowStart, 1000)
+        const window = await fetchResultWindowCmd(
+          slot,
+          result.viewVersion,
+          windowStart,
+          VIEW_REFRESH_WINDOW_ROWS
+        )
 
         if (!get().tabs[tabId]) return
         const latestResult = get().tabs[tabId]?.results[targetIndex] ?? result
@@ -2337,7 +2361,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           viewVersion: window.viewVersion,
           viewRowCount: window.viewRowCount,
           columns: latestResult.columns,
-          window,
+          window: window,
         })
         const latestResidency = latestResult.rowResidency
 
@@ -2415,10 +2439,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 newResult.lastExecutedSql,
                 newResult.queryId,
                 index
-              ).catch((err) => {
+              ).catch((error) => {
                 logFrontend(
                   'error',
-                  ['[query-edit] deferred analysis failed:', err].map(String).join(' ')
+                  ['[query-edit] deferred analysis failed:', error].map(String).join(' ')
                 )
               })
             }
@@ -2463,10 +2487,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             newResult.lastExecutedSql,
             newResult.queryId,
             index
-          ).catch((err) => {
+          ).catch((error) => {
             logFrontend(
               'error',
-              ['[query-edit] deferred analysis failed:', err].map(String).join(' ')
+              ['[query-edit] deferred analysis failed:', error].map(String).join(' ')
             )
           })
         }
@@ -2513,10 +2537,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       dropViewTrackers(tabId)
       rowActionCancels.delete(tabId)
       // Fire-and-forget eviction
-      evictResultsCmd(connectionId, tabId).catch((err) => {
+      evictResultsCmd(connectionId, tabId).catch((error) => {
         logFrontend(
           'error',
-          ['[query-store] evictResults failed (cleanupTab):', err].map(String).join(' ')
+          ['[query-store] evictResults failed (cleanupTab):', error].map(String).join(' ')
         )
       })
       set((state) => {
@@ -2535,10 +2559,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         dropTabResultWindows(id)
         dropViewTrackers(id)
         rowActionCancels.delete(id)
-        evictResultsCmd(connectionId, id).catch((err) => {
+        evictResultsCmd(connectionId, id).catch((error) => {
           logFrontend(
             'error',
-            ['[query-store] evictResults failed (cleanupConnection):', err].map(String).join(' ')
+            ['[query-store] evictResults failed (cleanupConnection):', error].map(String).join(' ')
           )
         })
       }
@@ -2581,10 +2605,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
               )
             }
           })
-          .catch((err) => {
+          .catch((error) => {
             logFrontend(
               'error',
-              ['[query-store] saveCurrentRow failed while switching to text view:', err]
+              ['[query-store] saveCurrentRow failed while switching to text view:', error]
                 .map(String)
                 .join(' ')
             )
@@ -2642,10 +2666,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
 
       const keyColumns = tableInfo.primaryKey.keyColumns
-      const keyColIndices = keyColumns.map(
+      const keyColumnIndices = keyColumns.map(
         (column) => result.editBoundColumnIndexMap.get(column.toLowerCase()) ?? -1
       )
-      if (keyColIndices.some((index) => index < 0)) {
+      if (keyColumnIndices.some((index) => index < 0)) {
         showErrorToast(
           'Delete failed',
           `Result set does not contain the key columns (${keyColumns.join(', ')}).`
@@ -2668,9 +2692,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         for (const range of result.checkedRanges) {
           targets.push(...(await readViewRange(tabId, resultIndex, range)))
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (isResultsExpiredError(err)) {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (isResultsExpiredError(error)) {
           markTabResultsExpired(tabId)
           return 0
         }
@@ -2689,22 +2713,22 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           action.finish()
           return deletedBaseIndices.length
         }
-        const pkValues: Record<string, unknown> = {}
-        keyColumns.forEach((column, i) => {
-          pkValues[column] = target.row[keyColIndices[i]]
+        const primaryKeyValues: Record<string, unknown> = {}
+        keyColumns.forEach((column, columnIndex) => {
+          primaryKeyValues[column] = target.row[keyColumnIndices[columnIndex]]
         })
         try {
           await deleteTableRowCmd({
-            connectionId,
+            connectionId: connectionId,
             database: tableInfo.database,
             table: tableInfo.table,
             pkColumns: keyColumns,
-            pkValues,
+            pkValues: primaryKeyValues,
           })
           deletedBaseIndices.push(target.baseIndex)
           action.update(deletedBaseIndices.length)
-        } catch (err) {
-          failureMessage = err instanceof Error ? err.message : String(err)
+        } catch (error) {
+          failureMessage = error instanceof Error ? error.message : String(error)
           showErrorToast('Delete failed', failureMessage)
           break
         }
@@ -2725,10 +2749,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         if (!slot) throw new Error('Result is no longer available')
         try {
           return await removeResultRowsCmd(slot, baseVersion, deletedBaseIndices)
-        } catch (err) {
-          const current = parseSupersededVersion(err)
+        } catch (error) {
+          const current = parseSupersededVersion(error)
           if (current !== null && attempt === 0) return removeRows(current, 1)
-          throw err
+          throw error
         }
       }
       try {
@@ -2763,8 +2787,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             deletePatch
           )
         }
-      } catch (refreshErr) {
-        const errorMessage = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+      } catch (refreshError) {
+        const errorMessage =
+          refreshError instanceof Error ? refreshError.message : String(refreshError)
         logFrontend(
           'warn',
           `[query-store] remove_result_rows failed after deleting ${deletedCount} rows: ${errorMessage}`
@@ -2811,11 +2836,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         patchResultByIndex(tabId, resultIndex, { rowActionProgress: progress })
       }
       const snapshot = (): RowActionProgress => ({
-        verb,
-        done,
-        total,
+        verb: verb,
+        done: done,
+        total: total,
         cancellable: onCancel !== undefined,
-        visible,
+        visible: visible,
       })
       if (onCancel) rowActionCancels.set(tabId, onCancel)
       patchProgress(snapshot())
@@ -2875,12 +2900,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchResultByIndex(tabId, resultIndex, { selectedCell: cell })
     },
 
-    setResultScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => {
+    setResultScrollCell: (tabId: string, scrollRow: number, scrollColumn: number) => {
       const resultIndex = getActiveIndex(tabId)
       const result = get().tabs[tabId]?.results[resultIndex]
       if (!result) return
-      if (result.scrollRow === scrollRow && result.scrollCol === scrollCol) return
-      patchResultByIndex(tabId, resultIndex, { scrollRow, scrollCol })
+      if (result.scrollRow === scrollRow && result.scrollCol === scrollColumn) return
+      patchResultByIndex(tabId, resultIndex, { scrollRow: scrollRow, scrollCol: scrollColumn })
     },
 
     applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => {
@@ -2924,12 +2949,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           [tabId]: {
             ...request,
             jobId: null,
-            queryId,
+            queryId: queryId,
             status: 'running',
             progress: null,
             cancelRequested: false,
             error: null,
-            startToken,
+            startToken: startToken,
           },
         },
       }))
@@ -2940,16 +2965,16 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       try {
         jobId = await startResultExportCmd({
           connectionId: request.connectionId,
-          tabId,
+          tabId: tabId,
           resultIndex: request.resultIndex,
-          queryId,
+          queryId: queryId,
           format: request.format,
           filePath: request.filePath,
           includeHeaders: request.includeHeaders,
           tableName: request.tableName,
         })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         if (!isStillThisJob()) {
           logFrontend(
             'info',
@@ -2990,8 +3015,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (job.jobId === null) return
       try {
         await cancelResultExportCmd(job.jobId)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
         if (get().exportJobs[tabId]?.jobId === job.jobId) {
           patchExportJob(tabId, { cancelRequested: false })
         }
@@ -3080,7 +3105,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           }
           patchResultByIndex(tabId, resultIndex, {
             resultStatus: 'error',
-            errorMessage,
+            errorMessage: errorMessage,
           })
         }
       } else {
@@ -3125,10 +3150,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
           if (execResult.columns.length > 0 && isEditableSelectSql(result.lastExecutedSql)) {
             _runAnalysis(tabId, connectionId, result.lastExecutedSql!, execResult.queryId, 0).catch(
-              (err) => {
+              (error) => {
                 logFrontend(
                   'error',
-                  ['[query-edit] analyze_query_for_edit failed (page re-exec):', err]
+                  ['[query-edit] analyze_query_for_edit failed (page re-exec):', error]
                     .map(String)
                     .join(' ')
                 )
@@ -3150,7 +3175,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
           patchResultByIndex(tabId, 0, {
             resultStatus: 'error',
-            errorMessage,
+            errorMessage: errorMessage,
           })
           patchTab(tabId, {
             tabStatus: 'error',
@@ -3182,12 +3207,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         } else {
           patchTab(tabId, { isCancelling: false, wasCancelled: false })
         }
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return
 
         patchTab(tabId, { isCancelling: false, wasCancelled: false })
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        showErrorToast('Cancel failed', errorMsg)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        showErrorToast('Cancel failed', errorMessage)
       }
     },
 
@@ -3232,12 +3257,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           )
           if (!metadata) return // stale or tab closed
           tableInfo = metadata[tableName]
-        } catch (err) {
+        } catch (error) {
           logFrontend(
             'error',
-            ['[query-store] setEditMode analyze_query_for_edit failed:', err].map(String).join(' ')
+            ['[query-store] setEditMode analyze_query_for_edit failed:', error]
+              .map(String)
+              .join(' ')
           )
-          showErrorToast('Edit mode failed', err instanceof Error ? err.message : String(err))
+          showErrorToast('Edit mode failed', error instanceof Error ? error.message : String(error))
           return
         }
       }
@@ -3292,13 +3319,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Warn only for selected-table columns that remain ambiguous after binding
       if (ambiguous.size > 0) {
-        const keyColsLower = new Set(tableInfo.primaryKey.keyColumns.map((k) => k.toLowerCase()))
+        const keyColumnsLower = new Set(
+          tableInfo.primaryKey.keyColumns.map((keyColumn) => keyColumn.toLowerCase())
+        )
         const nonKeyAmbiguous = tableInfo.columns
           .map((column) => column.name)
           .filter((columnName) => {
             const lower = columnName.toLowerCase()
             return (
-              ambiguous.has(lower) && !keyColsLower.has(lower) && !boundColumnIndexMap.has(lower)
+              ambiguous.has(lower) && !keyColumnsLower.has(lower) && !boundColumnIndexMap.has(lower)
             )
           })
         if (nonKeyAmbiguous.length > 0) {
@@ -3341,12 +3370,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const row = cached.row
 
       const tableInfo = result.editTableMetadata[result.editMode]
-      const pkColumns = tableInfo.primaryKey?.keyColumns ?? []
+      const primaryKeyColumns = tableInfo.primaryKey?.keyColumns ?? []
       const editState = buildRowEditState(
         row,
         result.columns,
         result.editableColumnMap,
-        pkColumns,
+        primaryKeyColumns,
         result.editColumnBindings,
         result.editBoundColumnIndexMap
       )
@@ -3404,12 +3433,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
       // The draft is a virtual row right after the last view row.
       const draftRowIndex = result.viewRowCount
-      const pkColumns = tableInfo.primaryKey.keyColumns
+      const primaryKeyColumns = tableInfo.primaryKey.keyColumns
       const editState = buildRowEditState(
         clonedRow,
         result.columns,
         result.editableColumnMap,
-        pkColumns,
+        primaryKeyColumns,
         result.editColumnBindings,
         result.editBoundColumnIndexMap
       )
@@ -3429,8 +3458,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         editState: {
           ...editState,
           isNewRow: true,
-          modifiedColumns,
-          insertEligibleColumns,
+          modifiedColumns: modifiedColumns,
+          insertEligibleColumns: insertEligibleColumns,
         },
         saveError: null,
         isStale: false,
@@ -3555,9 +3584,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       const tableInfo = result.editTableMetadata[result.editMode]
       if (!tableInfo?.primaryKey) {
-        const msg = 'No primary key info available'
-        patchResultByIndex(tabId, resultIndex, { saveError: msg })
-        showErrorToast('Save failed', msg)
+        const message = 'No primary key info available'
+        patchResultByIndex(tabId, resultIndex, { saveError: message })
+        showErrorToast('Save failed', message)
         return false
       }
 
@@ -3569,7 +3598,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             connectionId: result.editConnectionId!,
             database: tableInfo.database,
             table: tableInfo.table,
-            values,
+            values: values,
             pkInfo: tableInfo.primaryKey,
           })
 
@@ -3606,7 +3635,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 result
               )
             }
-          } catch (refreshErr) {
+          } catch (refreshError) {
             if (!get().tabs[tabId]) return true
 
             patchResultByIndex(tabId, resultIndex, {
@@ -3614,7 +3643,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             })
 
             const errorMessage =
-              refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+              refreshError instanceof Error ? refreshError.message : String(refreshError)
             showErrorToast(
               'Refresh failed',
               `Row inserted successfully, but the query result could not be refreshed: ${errorMessage}`
@@ -3624,21 +3653,21 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
           showSuccessToast('Row saved', 'Changes saved successfully.')
           return true
-        } catch (err) {
+        } catch (error) {
           if (!get().tabs[tabId]) return false
 
-          const errorMsg = err instanceof Error ? err.message : String(err)
-          patchResultByIndex(tabId, resultIndex, { saveError: errorMsg })
-          showErrorToast('Save failed', errorMsg)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          patchResultByIndex(tabId, resultIndex, { saveError: errorMessage })
+          showErrorToast('Save failed', errorMessage)
           return false
         }
       }
 
-      const { pkColumns, originalPkValues, updatedValues } = buildUpdatePayload(
-        result.editState,
-        tableInfo.primaryKey.keyColumns,
-        tableInfo.columns
-      )
+      const {
+        pkColumns,
+        originalPkValues: originalPrimaryKeyValues,
+        updatedValues,
+      } = buildUpdatePayload(result.editState, tableInfo.primaryKey.keyColumns, tableInfo.columns)
 
       try {
         await updateTableRowCmd({
@@ -3646,8 +3675,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           database: tableInfo.database,
           table: tableInfo.table,
           primaryKeyColumns: pkColumns,
-          originalPkValues,
-          updatedValues,
+          originalPkValues: originalPrimaryKeyValues,
+          updatedValues: updatedValues,
         })
 
         if (!get().tabs[tabId]) return true
@@ -3659,11 +3688,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const baseIndex = result.editingBaseIndex
         const queryId = result.queryId
         const displayUpdates: Record<number, unknown> = {}
-        for (const colName of result.editState.modifiedColumns) {
-          const colIdx = result.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
-          if (colIdx !== -1) {
-            displayUpdates[colIdx] = toDisplayedQueryCellValue(
-              result.editState.currentValues[colName]
+        for (const columnName of result.editState.modifiedColumns) {
+          const columnIndex = result.editBoundColumnIndexMap.get(columnName.toLowerCase()) ?? -1
+          if (columnIndex !== -1) {
+            displayUpdates[columnIndex] = toDisplayedQueryCellValue(
+              result.editState.currentValues[columnName]
             )
           }
         }
@@ -3680,9 +3709,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
               queryId,
               resultIndex
             )
-          } catch (cacheErr) {
+          } catch (cacheError) {
             const cacheErrorMessage =
-              cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
+              cacheError instanceof Error ? cacheError.message : String(cacheError)
             if (cacheErrorMessage.includes('Results were refreshed')) {
               // A re-run replaced the result while the save ran: the new result
               // came from the database, so there is nothing to patch.
@@ -3694,7 +3723,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             } else {
               logFrontend(
                 'warn',
-                ['[query-store] Result cache sync failed:', cacheErr].map(String).join(' ')
+                ['[query-store] Result cache sync failed:', cacheError].map(String).join(' ')
               )
               if (cacheErrorMessage.includes('results_expired')) {
                 markTabResultsExpired(tabId)
@@ -3724,12 +3753,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         })
         showSuccessToast('Row saved', 'Changes saved successfully.')
         return true
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return false
 
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        patchResultByIndex(tabId, resultIndex, { saveError: errorMsg })
-        showErrorToast('Save failed', errorMsg)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        patchResultByIndex(tabId, resultIndex, { saveError: errorMessage })
+        showErrorToast('Save failed', errorMessage)
         return false
       }
     },
@@ -3842,8 +3871,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const connectionId = tab.connectionId
       if (!connectionId) return
 
-      const prevStatus = tab.tabStatus
-      const shouldShowRestoringState = prevStatus !== 'success'
+      const previousStatus = tab.tabStatus
+      const shouldShowRestoringState = previousStatus !== 'success'
       if (shouldShowRestoringState) {
         patchTab(tabId, { tabStatus: 'restoring' })
       }
@@ -3855,16 +3884,16 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             markTabResultsExpired(tabId)
           }
           if (shouldShowRestoringState) {
-            patchTab(tabId, { tabStatus: prevStatus })
+            patchTab(tabId, { tabStatus: previousStatus })
           }
         })
-        .catch((err) => {
+        .catch((error) => {
           if (shouldShowRestoringState) {
-            patchTab(tabId, { tabStatus: prevStatus })
+            patchTab(tabId, { tabStatus: previousStatus })
           }
           logFrontend(
             'warn',
-            ['[query-store] validateActiveTabResults failed:', err].map(String).join(' ')
+            ['[query-store] validateActiveTabResults failed:', error].map(String).join(' ')
           )
         })
     },
@@ -3911,10 +3940,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (!get().tabs[tabId]) return
           patchTab(tabId, { tabStatus: 'success' })
           finalizeExecution(tabId)
-        } catch (err) {
+        } catch (error) {
           logFrontend(
             'warn',
-            ['[query-store] retryExpiredResult re-execution failed:', err].map(String).join(' ')
+            ['[query-store] retryExpiredResult re-execution failed:', error].map(String).join(' ')
           )
           if (get().tabs[tabId]) {
             patchTab(tabId, { tabStatus: 'error' })
@@ -3932,10 +3961,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         } else {
           await executeQueryPlan(get(), connectionId, tabId, plan)
         }
-      } catch (err) {
+      } catch (error) {
         logFrontend(
           'warn',
-          ['[query-store] retryExpiredResult re-execution failed:', err].map(String).join(' ')
+          ['[query-store] retryExpiredResult re-execution failed:', error].map(String).join(' ')
         )
       }
 

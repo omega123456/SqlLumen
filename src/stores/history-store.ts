@@ -64,7 +64,7 @@ interface HistoryState {
   pageSize: number
 
   // Actions
-  loadHistory: (connectionId: string, opts?: LoadHistoryOptions) => Promise<void>
+  loadHistory: (connectionId: string, options?: LoadHistoryOptions) => Promise<void>
   loadMore: (connectionId: string) => Promise<void>
   deleteEntry: (connectionId: string, id: number) => Promise<void>
   clearAll: (connectionId: string) => Promise<void>
@@ -90,14 +90,14 @@ const INITIAL_STATE = {
 export const useHistoryStore = create<HistoryState>()((set, get) => ({
   ...INITIAL_STATE,
 
-  loadHistory: async (connectionId: string, opts: LoadHistoryOptions = {}) => {
+  loadHistory: async (connectionId: string, options: LoadHistoryOptions = {}) => {
     const state = get()
-    const append = opts.append ?? false
-    const page = opts.page ?? state.pageByConnection[connectionId] ?? 1
+    const append = options.append ?? false
+    const page = options.page ?? state.pageByConnection[connectionId] ?? 1
     const search =
-      opts.search !== undefined ? opts.search : (state.searchByConnection[connectionId] ?? '')
+      options.search !== undefined ? options.search : (state.searchByConnection[connectionId] ?? '')
     const since =
-      opts.since !== undefined ? opts.since : (state.sinceByConnection[connectionId] ?? null)
+      options.since !== undefined ? options.since : (state.sinceByConnection[connectionId] ?? null)
     const requestSeq = nextRequestSeq(connectionId)
     const isStale = () => latestRequestSeq[connectionId] !== requestSeq
 
@@ -141,9 +141,9 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
           [connectionId]: false,
         },
       })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[history-store] loadHistory failed:', err].map(String).join(' '))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', ['[history-store] loadHistory failed:', error].map(String).join(' '))
       if (isStale()) return
       if (append) {
         // Keep the already-loaded rows visible; surface the failure as a toast.
@@ -153,11 +153,11 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
             [connectionId]: false,
           },
         })
-        showErrorToast('Failed to load more history', msg)
+        showErrorToast('Failed to load more history', message)
       } else {
         set({
           isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
-          errorByConnection: { ...get().errorByConnection, [connectionId]: msg },
+          errorByConnection: { ...get().errorByConnection, [connectionId]: message },
         })
       }
     }
@@ -175,10 +175,10 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       const state = get()
       const page = state.pageByConnection[connectionId] ?? 1
       await get().loadHistory(connectionId, { page })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[history-store] deleteEntry failed:', err].map(String).join(' '))
-      showErrorToast('Failed to delete history entry', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', ['[history-store] deleteEntry failed:', error].map(String).join(' '))
+      showErrorToast('Failed to delete history entry', message)
     }
   },
 
@@ -191,10 +191,10 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
         pageByConnection: { ...get().pageByConnection, [connectionId]: 1 },
       })
       showSuccessToast('History cleared', `Removed ${count} entries`)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[history-store] clearAll failed:', err].map(String).join(' '))
-      showErrorToast('Failed to clear history', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', ['[history-store] clearAll failed:', error].map(String).join(' '))
+      showErrorToast('Failed to clear history', message)
     }
   },
 
@@ -207,7 +207,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     searchDebounceTimers[connectionId] = setTimeout(() => {
       delete searchDebounceTimers[connectionId]
       // A new search resets the load-more window back to the first page.
-      void get().loadHistory(connectionId, { page: 1, search })
+      void get().loadHistory(connectionId, { page: 1, search: search })
     }, HISTORY_SEARCH_DEBOUNCE_MS)
   },
 

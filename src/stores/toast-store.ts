@@ -19,9 +19,9 @@ const MAX_VISIBLE = 5
 const timeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
 function clearScheduled(id: string) {
-  const t = timeouts.get(id)
-  if (t) {
-    clearTimeout(t)
+  const timeout = timeouts.get(id)
+  if (timeout) {
+    clearTimeout(timeout)
     timeouts.delete(id)
   }
 }
@@ -44,11 +44,11 @@ function pushToast(set: ToastSetter, get: ToastGetter, item: ToastItem): string 
     return { toasts: next }
   })
   const id = item.id
-  const t = setTimeout(() => {
+  const timeout = setTimeout(() => {
     timeouts.delete(id)
     get().dismiss(id)
   }, item.durationMs)
-  timeouts.set(id, t)
+  timeouts.set(id, timeout)
   return id
 }
 
@@ -65,7 +65,13 @@ export const useToastStore = create<ToastState>()((set, get) => ({
 
   showSuccess: (title, message, durationMs = SUCCESS_TOAST_DURATION_MS) => {
     const id = crypto.randomUUID()
-    const item: ToastItem = { id, variant: 'success', title, message, durationMs }
+    const item: ToastItem = {
+      id: id,
+      variant: 'success',
+      title: title,
+      message: message,
+      durationMs: durationMs,
+    }
     return pushToast(set, get, item)
   },
 
@@ -73,7 +79,13 @@ export const useToastStore = create<ToastState>()((set, get) => ({
     const logLine = message ? `${title}: ${message}` : title
     logFrontend('error', logLine)
     const id = crypto.randomUUID()
-    const item: ToastItem = { id, variant: 'error', title, message, durationMs }
+    const item: ToastItem = {
+      id: id,
+      variant: 'error',
+      title: title,
+      message: message,
+      durationMs: durationMs,
+    }
     return pushToast(set, get, item)
   },
 
@@ -81,13 +93,19 @@ export const useToastStore = create<ToastState>()((set, get) => ({
     const logLine = message ? `${title}: ${message}` : title
     logFrontend('warn', logLine)
     const id = crypto.randomUUID()
-    const item: ToastItem = { id, variant: 'warning', title, message, durationMs }
+    const item: ToastItem = {
+      id: id,
+      variant: 'warning',
+      title: title,
+      message: message,
+      durationMs: durationMs,
+    }
     return pushToast(set, get, item)
   },
 
   dismiss: (id) => {
     clearScheduled(id)
-    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }))
+    set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }))
   },
 }))
 

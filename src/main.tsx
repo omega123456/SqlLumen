@@ -75,7 +75,7 @@ import('monaco-editor').then(configureMonaco).catch(logBootstrapFailure)
 async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
   if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
-    mockIPC((cmd, args) => playwrightIpcMockHandler(cmd, args as Record<string, unknown>))
+    mockIPC((command, args) => playwrightIpcMockHandler(command, args as Record<string, unknown>))
 
     // Expose stores for E2E tests to programmatically open tabs / toasts
     const { useWorkspaceStore } = await import('./stores/workspace-store')

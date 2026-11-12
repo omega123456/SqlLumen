@@ -33,9 +33,9 @@ export const useAiMemoryStore = create<AiMemoryState>()((set) => ({
   reembedStatus: {},
 
   setReembedStatus: (ownerKey, status) => {
-    set((s) => ({
+    set((state) => ({
       reembedStatus: {
-        ...s.reembedStatus,
+        ...state.reembedStatus,
         [ownerKey]: status,
       },
     }))
@@ -77,6 +77,7 @@ export function initAiMemoryStore(): void {
 // ---------------------------------------------------------------------------
 
 const resetTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+const REEMBED_STATUS_RESET_DELAY_MS = 2000
 
 function cancelResetTimer(ownerKey: string): void {
   if (resetTimers[ownerKey]) {
@@ -93,10 +94,10 @@ function initEventListeners(): void {
 
     if (phase === 'embedding') {
       cancelResetTimer(ownerKey)
-      useAiMemoryStore.setState((s) => ({
+      useAiMemoryStore.setState((state) => ({
         reembedStatus: {
-          ...s.reembedStatus,
-          [ownerKey]: { status: 'running', done, total },
+          ...state.reembedStatus,
+          [ownerKey]: { status: 'running', done: done, total: total },
         },
       }))
     } else if (phase === 'error') {
@@ -105,9 +106,9 @@ function initEventListeners(): void {
         'warn',
         `[ai-memory-store] Re-embed error for owner ${ownerKey}: ${event.payload.error ?? 'unknown'}`
       )
-      useAiMemoryStore.setState((s) => ({
+      useAiMemoryStore.setState((state) => ({
         reembedStatus: {
-          ...s.reembedStatus,
+          ...state.reembedStatus,
           [ownerKey]: { status: 'idle', done: 0, total: 0 },
         },
       }))
@@ -115,13 +116,13 @@ function initEventListeners(): void {
       cancelResetTimer(ownerKey)
       resetTimers[ownerKey] = setTimeout(() => {
         delete resetTimers[ownerKey]
-        useAiMemoryStore.setState((s) => ({
+        useAiMemoryStore.setState((state) => ({
           reembedStatus: {
-            ...s.reembedStatus,
+            ...state.reembedStatus,
             [ownerKey]: { status: 'idle', done: 0, total: 0 },
           },
         }))
-      }, 2000)
+      }, REEMBED_STATUS_RESET_DELAY_MS)
     }
   }).catch((error: unknown) => {
     logFrontend(
@@ -134,15 +135,16 @@ function initEventListeners(): void {
 function initModelChangeSubscription(): void {
   // Seed prevModel from current state so the first subscription fire (hydration)
   // is correctly detected as "no change" rather than hitting a null guard.
-  let prevModel: string | null = useSettingsStore.getState().settings?.['ai.embeddingModel'] ?? null
+  let previousModel: string | null =
+    useSettingsStore.getState().settings?.['ai.embeddingModel'] ?? null
 
   unsubscribeModelChange = useSettingsStore.subscribe((state) => {
     const currentModel = state.settings?.['ai.embeddingModel'] ?? null
 
-    if (currentModel === prevModel) return
+    if (currentModel === previousModel) return
 
-    const oldModel = prevModel
-    prevModel = currentModel
+    const oldModel = previousModel
+    previousModel = currentModel
 
     // Only trigger re-embed when both old and new models are known non-null values
     if (!currentModel || oldModel === null) return
@@ -153,8 +155,8 @@ function initModelChangeSubscription(): void {
     void (async () => {
       try {
         await reembedAllMemories()
-      } catch (err) {
-        logFrontend('error', `[ai-memory-store] Re-embed failed: ${err}`)
+      } catch (error) {
+        logFrontend('error', `[ai-memory-store] Re-embed failed: ${error}`)
       }
     })()
   })

@@ -4,8 +4,10 @@ import { X, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
 import { useToastStore, type ToastItem } from '../../stores/toast-store'
 import styles from './ToastViewport.module.css'
 
-function variantClass(v: ToastItem['variant']) {
-  switch (v) {
+const TOAST_ICON_SIZE = 24
+
+function variantClass(variant: ToastItem['variant']) {
+  switch (variant) {
     case 'error':
       return styles.toastError
     case 'success':
@@ -15,8 +17,8 @@ function variantClass(v: ToastItem['variant']) {
   }
 }
 
-function iconWellClass(v: ToastItem['variant']) {
-  switch (v) {
+function iconWellClass(variant: ToastItem['variant']) {
+  switch (variant) {
     case 'error':
       return `${styles.iconWell} ${styles.iconWellError}`
     case 'success':
@@ -26,8 +28,8 @@ function iconWellClass(v: ToastItem['variant']) {
   }
 }
 
-function progressClass(v: ToastItem['variant']) {
-  switch (v) {
+function progressClass(variant: ToastItem['variant']) {
+  switch (variant) {
     case 'error':
       return `${styles.progressFill} ${styles.progressError}`
     case 'success':
@@ -38,7 +40,7 @@ function progressClass(v: ToastItem['variant']) {
 }
 
 function ToastIcon({ variant }: { variant: ToastItem['variant'] }) {
-  const common = { size: 24 as const, weight: 'fill' as const }
+  const common = { size: TOAST_ICON_SIZE, weight: 'fill' as const }
   switch (variant) {
     case 'success':
       return <CheckCircle {...common} aria-hidden />
@@ -90,8 +92,8 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: strin
 }
 
 export function ToastViewport() {
-  const toasts = useToastStore((s) => s.toasts)
-  const dismiss = useToastStore((s) => s.dismiss)
+  const toasts = useToastStore((state) => state.toasts)
+  const dismiss = useToastStore((state) => state.dismiss)
 
   if (toasts.length === 0) {
     return null

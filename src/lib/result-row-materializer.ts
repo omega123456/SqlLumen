@@ -13,7 +13,7 @@
  *   (`-1` for the virtual clone-draft row).
  */
 
-import { colKey } from './col-key-utils'
+import { columnKey } from './col-key-utils'
 
 /** Row data shape: col_0, col_1, ... plus __rowIdx / __baseIdx for stable identification. */
 export type ResultRow = Record<string, unknown>
@@ -47,11 +47,11 @@ export function materializeRow(
   row: readonly unknown[],
   columnCount: number
 ): ResultRow {
-  const obj: ResultRow = { __rowIdx: position, __baseIdx: baseIndex }
-  for (let i = 0; i < columnCount; i++) {
-    obj[colKey(i)] = row[i] ?? null
+  const object: ResultRow = { __rowIdx: position, __baseIdx: baseIndex }
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+    object[columnKey(columnIndex)] = row[columnIndex] ?? null
   }
-  return obj
+  return object
 }
 
 /**
@@ -64,8 +64,8 @@ export function toCachedRow(
 ): { row: unknown[]; baseIndex: number } {
   const baseIndex = typeof rowData.__baseIdx === 'number' ? rowData.__baseIdx : -1
   return {
-    row: Array.from({ length: columnCount }, (_, index) => rowData[colKey(index)] ?? null),
-    baseIndex,
+    row: Array.from({ length: columnCount }, (_, index) => rowData[columnKey(index)] ?? null),
+    baseIndex: baseIndex,
   }
 }
 

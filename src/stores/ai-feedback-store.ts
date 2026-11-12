@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { MILLISECONDS_PER_MINUTE } from '../lib/units'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,8 +31,8 @@ interface AiFeedbackState {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Entries older than this are discarded. */
-const EXPIRY_MS = 30 * 60 * 1000 // 30 minutes
+const EXPIRY_MINUTES = 30
+const EXPIRY_MS = EXPIRY_MINUTES * MILLISECONDS_PER_MINUTE
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -66,16 +67,21 @@ export const useAiFeedbackStore = create<AiFeedbackState>()((set, get) => ({
     set((state) => {
       // Build a Map for O(1) dedup/merge
       const map = new Map<string, AcceptedEntry>()
-      for (const e of state.entries) {
-        map.set(entryKey(e.connectionId, e.dbName, e.tableName), e)
+      for (const entry of state.entries) {
+        map.set(entryKey(entry.connectionId, entry.dbName, entry.tableName), entry)
       }
-      for (const t of tables) {
-        const key = entryKey(connectionId, t.dbName, t.tableName)
+      for (const table of tables) {
+        const key = entryKey(connectionId, table.dbName, table.tableName)
         const existing = map.get(key)
         if (existing) {
           map.set(key, { ...existing, lastSeenAt: now })
         } else {
-          map.set(key, { dbName: t.dbName, tableName: t.tableName, connectionId, lastSeenAt: now })
+          map.set(key, {
+            dbName: table.dbName,
+            tableName: table.tableName,
+            connectionId: connectionId,
+            lastSeenAt: now,
+          })
         }
       }
       return { entries: Array.from(map.values()) }
@@ -85,18 +91,18 @@ export const useAiFeedbackStore = create<AiFeedbackState>()((set, get) => ({
   getAcceptedTables: (connectionId) => {
     const now = Date.now()
     return get()
-      .entries.filter((e) => e.connectionId === connectionId && !isExpired(e, now))
-      .map((e) => ({
-        dbName: e.dbName,
-        tableName: e.tableName,
-        weight: computeWeight(e, now),
+      .entries.filter((entry) => entry.connectionId === connectionId && !isExpired(entry, now))
+      .map((entry) => ({
+        dbName: entry.dbName,
+        tableName: entry.tableName,
+        weight: computeWeight(entry, now),
       }))
   },
 
   cleanup: () => {
     const now = Date.now()
     set((state) => ({
-      entries: state.entries.filter((e) => !isExpired(e, now)),
+      entries: state.entries.filter((entry) => !isExpired(entry, now)),
     }))
   },
 }))

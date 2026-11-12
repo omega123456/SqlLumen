@@ -683,7 +683,7 @@ fn test_table_copy_source_counts_rows_for_live_progress_totals() {
         "table copy should count exact source rows for rowsTotal progress"
     );
     assert!(
-        source.contains("begin_object(p, object_type, &name, rows_total);"),
+        source.contains("begin_object(progress, object_type, &name, rows_total);"),
         "table copy should pass the counted rows_total into progress when object work begins"
     );
 }

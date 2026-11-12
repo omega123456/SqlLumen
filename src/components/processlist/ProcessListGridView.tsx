@@ -8,6 +8,11 @@ import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
 
+const FALLBACK_HEADER_HEIGHT_PX = 32
+const FALLBACK_ROW_HEIGHT_PX = 28
+const FALLBACK_INFO_COLUMN_WIDTH_PX = 260
+const FALLBACK_INFO_ANCHOR = { x: 320, y: 200, width: FALLBACK_INFO_COLUMN_WIDTH_PX, height: 36 }
+
 type GridRow = ProcessRow & Record<string, unknown>
 type ProcessListPlaywrightApi = {
   openInfoPopover?: (connectionId: string, rowIndex: number) => boolean
@@ -107,16 +112,20 @@ export interface ProcessListGridViewProps {
 
 export function ProcessListGridView({ connectionId, isActive = true }: ProcessListGridViewProps) {
   const gridRef = useRef<GridHandle | null>(null)
-  const rows = useProcessListStore((s) => s.rowsByConnection[connectionId] ?? EMPTY_PROCESS_ROWS)
+  const rows = useProcessListStore(
+    (state) => state.rowsByConnection[connectionId] ?? EMPTY_PROCESS_ROWS
+  )
   const selectedIds = useProcessListStore(
-    (s) => s.selectedIdsByConnection[connectionId] ?? EMPTY_SET
+    (state) => state.selectedIdsByConnection[connectionId] ?? EMPTY_SET
   )
   const excludeIdleConnections = useProcessListStore(
-    (s) => s.excludeIdleConnectionsByConnection[connectionId] ?? true
+    (state) => state.excludeIdleConnectionsByConnection[connectionId] ?? true
   )
-  const sortColumn = useProcessListStore((s) => s.sortColumnByConnection[connectionId] ?? null)
-  const setSortColumn = useProcessListStore((s) => s.setSortColumn)
-  const setSelectedIds = useProcessListStore((s) => s.setSelectedIds)
+  const sortColumn = useProcessListStore(
+    (state) => state.sortColumnByConnection[connectionId] ?? null
+  )
+  const setSortColumn = useProcessListStore((state) => state.setSortColumn)
+  const setSelectedIds = useProcessListStore((state) => state.setSelectedIds)
 
   const [popoverSql, setPopoverSql] = useState<string | null>(null)
   const [popoverAnchorRect, setPopoverAnchorRect] = useState<DOMRect | null>(null)
@@ -131,16 +140,16 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     const sortedRows = [...visibleRows] as GridRow[]
     if (sortColumn) {
       const { columnKey, direction } = sortColumn
-      sortedRows.sort((a, b) => {
-        const aVal = a[columnKey as keyof ProcessRow]
-        const bVal = b[columnKey as keyof ProcessRow]
-        if (aVal == null && bVal == null) return 0
-        if (aVal == null) return direction === 'ASC' ? -1 : 1
-        if (bVal == null) return direction === 'ASC' ? 1 : -1
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return direction === 'ASC' ? aVal - bVal : bVal - aVal
+      sortedRows.sort((left, right) => {
+        const leftValue = left[columnKey as keyof ProcessRow]
+        const rightValue = right[columnKey as keyof ProcessRow]
+        if (leftValue == null && rightValue == null) return 0
+        if (leftValue == null) return direction === 'ASC' ? -1 : 1
+        if (rightValue == null) return direction === 'ASC' ? 1 : -1
+        if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+          return direction === 'ASC' ? leftValue - rightValue : rightValue - leftValue
         }
-        const cmp = String(aVal).localeCompare(String(bVal))
+        const cmp = String(leftValue).localeCompare(String(rightValue))
         return direction === 'ASC' ? cmp : -cmp
       })
     }
@@ -153,7 +162,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
   const handleSortChange = useCallback(
     (column: string | null, direction: 'ASC' | 'DESC' | null) => {
       if (column && direction) {
-        setSortColumn(connectionId, { columnKey: column, direction })
+        setSortColumn(connectionId, { columnKey: column, direction: direction })
       } else {
         setSortColumn(connectionId, null)
       }
@@ -186,8 +195,10 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     const rowMarkerWidth = parseFloat(host.dataset.rowMarkerWidth ?? '0') || 0
     const hostRect = host.getBoundingClientRect()
     const rootStyles = getComputedStyle(document.documentElement)
-    const headerHeight = parseFloat(rootStyles.getPropertyValue('--grid-header-height')) || 32
-    const rowHeight = parseFloat(rootStyles.getPropertyValue('--grid-row-height')) || 28
+    const headerHeight =
+      parseFloat(rootStyles.getPropertyValue('--grid-header-height')) || FALLBACK_HEADER_HEIGHT_PX
+    const rowHeight =
+      parseFloat(rootStyles.getPropertyValue('--grid-row-height')) || FALLBACK_ROW_HEIGHT_PX
     const columnStart =
       rowMarkerWidth +
       columnWidths.slice(0, infoColumnIndex).reduce((sum, next) => sum + next, 0) -
@@ -196,7 +207,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     return new DOMRect(
       hostRect.x + columnStart,
       hostRect.y + headerHeight + rowIndex * rowHeight - scroller.scrollTop,
-      columnWidths[infoColumnIndex] ?? 260,
+      columnWidths[infoColumnIndex] ?? FALLBACK_INFO_COLUMN_WIDTH_PX,
       rowHeight
     )
   }, [])
@@ -207,7 +218,15 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
       const info = row?.info
       if (typeof info !== 'string' || info.length === 0) return false
       setPopoverSql(info)
-      setPopoverAnchorRect(computeInfoAnchorRect(rowIndex) ?? new DOMRect(320, 200, 260, 36))
+      setPopoverAnchorRect(
+        computeInfoAnchorRect(rowIndex) ??
+          new DOMRect(
+            FALLBACK_INFO_ANCHOR.x,
+            FALLBACK_INFO_ANCHOR.y,
+            FALLBACK_INFO_ANCHOR.width,
+            FALLBACK_INFO_ANCHOR.height
+          )
+      )
       return true
     },
     [computeInfoAnchorRect, gridRows]
@@ -250,9 +269,9 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
   }, [connectionId, openInfoPopoverForRow])
 
   const handleCellValueChange = useCallback(
-    (rowIdx: number, columnKey: string, value: unknown) => {
+    (rowIndex: number, columnKey: string, value: unknown) => {
       if (columnKey !== PROCESSLIST_SELECTED_COLUMN_KEY) return
-      const row = gridRows[rowIdx]
+      const row = gridRows[rowIndex]
       if (!row) return
       const nextSelectedIds = new Set(selectedIds)
       if (value === true) {

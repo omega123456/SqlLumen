@@ -240,10 +240,10 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   useImperativeHandle(
     ref,
     () => ({
-      scrollToCell: (pos, axis = 'both') => {
-        editorRef.current?.scrollTo(pos.idx ?? 0, pos.rowIdx ?? 0, axis)
+      scrollToCell: (position, axis = 'both') => {
+        editorRef.current?.scrollTo(position.idx ?? 0, position.rowIdx ?? 0, axis)
       },
-      selectCell: (pos, options) => {
+      selectCell: (position, options) => {
         const enableEditor = typeof options === 'object' ? options.enableEditor === true : false
         const shouldFocusCell =
           typeof options === 'object' ? options.shouldFocusCell !== false : options !== false
@@ -251,13 +251,13 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           columns: CompactSelection.empty(),
           rows: CompactSelection.empty(),
           current: {
-            cell: [pos.idx, pos.rowIdx],
-            range: { x: pos.idx, y: pos.rowIdx, width: 1, height: 1 },
+            cell: [position.idx, position.rowIdx],
+            range: { x: position.idx, y: position.rowIdx, width: 1, height: 1 },
             rangeStack: [],
           },
         }
         handleSelectionChange(nextSelection)
-        editorRef.current?.scrollTo(pos.idx, pos.rowIdx, 'both')
+        editorRef.current?.scrollTo(position.idx, position.rowIdx, 'both')
         if (shouldFocusCell) editorRef.current?.focus()
         if (enableEditor) openSelectedCellEditor()
       },
@@ -265,15 +265,17 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
         return hostRef.current
       },
       updateCells: (cells) => {
-        editorRef.current?.updateCells(cells.map(([col, row]) => ({ cell: [col, row] as Item })))
+        editorRef.current?.updateCells(
+          cells.map(([column, row]) => ({ cell: [column, row] as Item }))
+        )
       },
     }),
     [handleSelectionChange, openSelectedCellEditor]
   )
 
   const handleColumnResize = useCallback(
-    (_column: GlideGridColumn, newSize: number, colIndex: number) => {
-      onColumnResize?.(colIndex, newSize)
+    (_column: GlideGridColumn, newSize: number, columnIndex: number) => {
+      onColumnResize?.(columnIndex, newSize)
     },
     [onColumnResize]
   )

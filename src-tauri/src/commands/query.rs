@@ -290,7 +290,7 @@ pub async fn reexecute_single_result(
                 },
             );
         }
-        Err(e) => {
+        Err(error) => {
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
@@ -301,7 +301,7 @@ pub async fn reexecute_single_result(
                     row_count: Some(0),
                     affected_rows: Some(0),
                     success: false,
-                    error_message: Some(e.clone()),
+                    error_message: Some(error.clone()),
                 },
             );
         }

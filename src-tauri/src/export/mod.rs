@@ -25,13 +25,13 @@ impl ExportFormat {
     ///
     /// Accepts both the kebab-case serde names (`"sql-insert"`) and the
     /// short names used by the table-data export path (`"sql"`).
-    pub fn from_format_str(s: &str) -> Result<Self, String> {
-        match s {
+    pub fn from_format_str(format: &str) -> Result<Self, String> {
+        match format {
             "csv" => Ok(Self::Csv),
             "json" => Ok(Self::Json),
             "xlsx" => Ok(Self::Xlsx),
             "sql" | "sql-insert" => Ok(Self::SqlInsert),
-            _ => Err(format!("Unknown export format: '{s}'")),
+            _ => Err(format!("Unknown export format: '{format}'")),
         }
     }
 }
@@ -67,24 +67,24 @@ pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
     let bytes_written = match options.format {
         ExportFormat::Csv => {
             let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|e| format!("Failed to create file: {e}"))?;
+                .map_err(|error| format!("Failed to create file: {error}"))?;
             csv_writer::write_csv(&mut file, columns, rows, options.include_headers)
-                .map_err(|e| format!("Failed to write CSV: {e}"))?;
+                .map_err(|error| format!("Failed to write CSV: {error}"))?;
             file.flush()
-                .map_err(|e| format!("Failed to flush file: {e}"))?;
+                .map_err(|error| format!("Failed to flush file: {error}"))?;
             std::fs::metadata(&options.file_path)
-                .map_err(|e| format!("Failed to read file size: {e}"))?
+                .map_err(|error| format!("Failed to read file size: {error}"))?
                 .len()
         }
         ExportFormat::Json => {
             let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|e| format!("Failed to create file: {e}"))?;
+                .map_err(|error| format!("Failed to create file: {error}"))?;
             json_writer::write_json(&mut file, columns, rows, options.include_headers)
-                .map_err(|e| format!("Failed to write JSON: {e}"))?;
+                .map_err(|error| format!("Failed to write JSON: {error}"))?;
             file.flush()
-                .map_err(|e| format!("Failed to flush file: {e}"))?;
+                .map_err(|error| format!("Failed to flush file: {error}"))?;
             std::fs::metadata(&options.file_path)
-                .map_err(|e| format!("Failed to read file size: {e}"))?
+                .map_err(|error| format!("Failed to read file size: {error}"))?
                 .len()
         }
         ExportFormat::Xlsx => {
@@ -93,7 +93,7 @@ pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
         ExportFormat::SqlInsert => {
             let table_name = options.table_name.as_deref().unwrap_or("exported_results");
             let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|e| format!("Failed to create file: {e}"))?;
+                .map_err(|error| format!("Failed to create file: {error}"))?;
             sql_writer::write_sql(
                 &mut file,
                 columns,
@@ -101,11 +101,11 @@ pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
                 options.include_headers,
                 table_name,
             )
-            .map_err(|e| format!("Failed to write SQL: {e}"))?;
+            .map_err(|error| format!("Failed to write SQL: {error}"))?;
             file.flush()
-                .map_err(|e| format!("Failed to flush file: {e}"))?;
+                .map_err(|error| format!("Failed to flush file: {error}"))?;
             std::fs::metadata(&options.file_path)
-                .map_err(|e| format!("Failed to read file size: {e}"))?
+                .map_err(|error| format!("Failed to read file size: {error}"))?
                 .len()
         }
     };

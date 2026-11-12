@@ -3,7 +3,9 @@ import { TextInput } from '../common/TextInput'
 import { Slider } from '../common/Slider'
 import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
-import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
+import { useSettingsStore, useSettingValue, SETTINGS_DEFAULTS } from '../../stores/settings-store'
+
+const DEFAULT_LINE_HEIGHT = parseFloat(SETTINGS_DEFAULTS['editor.lineHeight'])
 
 const FONT_FAMILY_OPTIONS = [
   { value: 'JetBrains Mono', label: 'JetBrains Mono' },
@@ -14,11 +16,11 @@ const FONT_FAMILY_OPTIONS = [
 ]
 
 export function EditorSettings() {
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
 
   const fontFamily = useSettingValue('editor.fontFamily')
   const fontSize = useSettingValue('editor.fontSize')
-  const lineHeight = parseFloat(useSettingValue('editor.lineHeight')) || 1.6
+  const lineHeight = parseFloat(useSettingValue('editor.lineHeight')) || DEFAULT_LINE_HEIGHT
   const wordWrap = useSettingValue('editor.wordWrap') === 'true'
   const minimap = useSettingValue('editor.minimap') === 'true'
   const lineNumbers = useSettingValue('editor.lineNumbers') === 'true'
@@ -56,7 +58,7 @@ export function EditorSettings() {
             min={8}
             max={32}
             value={fontSize}
-            onChange={(e) => setPendingChange('editor.fontSize', e.target.value)}
+            onChange={(event) => setPendingChange('editor.fontSize', event.target.value)}
             data-testid="settings-font-size"
             style={{ width: 120 }}
           />

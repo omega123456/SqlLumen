@@ -38,17 +38,21 @@ pub enum EmbeddingError {
 impl fmt::Display for EmbeddingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EmbeddingError::ClientBuild(e) => write!(f, "Failed to create HTTP client: {e}"),
-            EmbeddingError::HttpRequest(e) => write!(f, "Embedding HTTP request failed: {e}"),
+            EmbeddingError::ClientBuild(error) => {
+                write!(f, "Failed to create HTTP client: {error}")
+            }
+            EmbeddingError::HttpRequest(error) => {
+                write!(f, "Embedding HTTP request failed: {error}")
+            }
             EmbeddingError::HttpStatus { status, body } => {
                 write!(f, "Embedding HTTP {status}: {body}")
             }
-            EmbeddingError::ParseError(e) => {
-                write!(f, "Failed to parse embedding response: {e}")
+            EmbeddingError::ParseError(error) => {
+                write!(f, "Failed to parse embedding response: {error}")
             }
             EmbeddingError::EmptyResponse => write!(f, "Embedding response contained no data"),
-            EmbeddingError::RetriesExhausted(e) => {
-                write!(f, "Embedding retries exhausted: {e}")
+            EmbeddingError::RetriesExhausted(error) => {
+                write!(f, "Embedding retries exhausted: {error}")
             }
         }
     }
@@ -126,7 +130,7 @@ pub async fn embed_texts_with_timeout(
                 let dims = response
                     .data
                     .first()
-                    .map(|d| d.embedding.len())
+                    .map(|datum| datum.embedding.len())
                     .unwrap_or(0);
                 tracing::debug!(
                     model = %model,
@@ -144,26 +148,26 @@ pub async fn embed_texts_with_timeout(
                 // Reset batch size for next chunk
                 batch_size = MAX_BATCH_SIZE.min(texts.len() - offset);
             }
-            Err(e) if is_retryable_status(&e) => {
+            Err(error) if is_retryable_status(&error) => {
                 tracing::warn!(
                     model = %model,
                     offset,
                     batch_len,
-                    error = %e,
+                    error = %error,
                     "embed_texts: retryable HTTP error — halving batch size and retrying"
                 );
                 if batch_size <= 1 {
-                    return Err(EmbeddingError::RetriesExhausted(e.to_string()));
+                    return Err(EmbeddingError::RetriesExhausted(error.to_string()));
                 }
                 // Halve batch size and retry (up to MAX_RETRIES times from the same offset)
                 let mut retries = 0;
                 let mut current_batch_size = batch_size / 2;
-                let mut last_err = e;
+                let mut last_error = error;
 
                 loop {
                     retries += 1;
                     if retries > MAX_RETRIES {
-                        return Err(EmbeddingError::RetriesExhausted(last_err.to_string()));
+                        return Err(EmbeddingError::RetriesExhausted(last_error.to_string()));
                     }
 
                     let retry_end = (offset + current_batch_size).min(texts.len());
@@ -196,45 +200,45 @@ pub async fn embed_texts_with_timeout(
                             batch_size = current_batch_size;
                             break;
                         }
-                        Err(retry_err) if is_retryable_status(&retry_err) => {
+                        Err(retry_error) if is_retryable_status(&retry_error) => {
                             tracing::warn!(
                                 model = %model,
                                 offset,
                                 attempt = retries,
                                 current_batch_size,
-                                error = %retry_err,
+                                error = %retry_error,
                                 "embed_texts: retry batch still retryable — halving further"
                             );
                             if current_batch_size <= 1 {
                                 return Err(EmbeddingError::RetriesExhausted(
-                                    retry_err.to_string(),
+                                    retry_error.to_string(),
                                 ));
                             }
                             current_batch_size /= 2;
                             if current_batch_size == 0 {
                                 current_batch_size = 1;
                             }
-                            last_err = retry_err;
+                            last_error = retry_error;
                         }
-                        Err(retry_err) => return Err(retry_err),
+                        Err(retry_error) => return Err(retry_error),
                     }
                 }
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
                     model = %model,
                     offset,
                     batch_len,
-                    error = %e,
+                    error = %error,
                     "embed_texts: non-retryable embedding HTTP error"
                 );
-                return Err(e);
+                return Err(error);
             }
         }
     }
 
     // Sort by original index and return just the vectors
-    all_embeddings.sort_by_key(|(idx, _)| *idx);
+    all_embeddings.sort_by_key(|(index, _)| *index);
     tracing::debug!(
         model = %model,
         output_vectors = all_embeddings.len(),
@@ -289,7 +293,7 @@ async fn send_embedding_request(
         .json(&body)
         .send()
         .await
-        .map_err(|e| EmbeddingError::HttpRequest(e.to_string()))?;
+        .map_err(|error| EmbeddingError::HttpRequest(error.to_string()))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -313,15 +317,15 @@ async fn send_embedding_request(
     let api_response: EmbeddingApiResponse = response
         .json()
         .await
-        .map_err(|e| EmbeddingError::ParseError(e.to_string()))?;
+        .map_err(|error| EmbeddingError::ParseError(error.to_string()))?;
 
     Ok(api_response)
 }
 
 /// Check whether an error is a retryable HTTP 400/413 status.
-fn is_retryable_status(err: &EmbeddingError) -> bool {
+fn is_retryable_status(error: &EmbeddingError) -> bool {
     matches!(
-        err,
+        error,
         EmbeddingError::HttpStatus { status, .. } if *status == 400 || *status == 413
     )
 }

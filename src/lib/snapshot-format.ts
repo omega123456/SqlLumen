@@ -7,6 +7,7 @@
  */
 
 import type { SnapshotConnectionSummary, SnapshotTrigger } from './session-snapshot-commands'
+import { TWO_DIGIT_WIDTH } from './units'
 
 /** Display labels for each snapshot trigger. */
 const TRIGGER_LABELS: Record<SnapshotTrigger, string> = {
@@ -49,8 +50,8 @@ export function formatSnapshotTimestamp(createdAt: string): string {
   const month = MONTH_NAMES[date.getMonth()]
   const day = date.getDate()
   const year = date.getFullYear()
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(TWO_DIGIT_WIDTH, '0')
+  const minutes = String(date.getMinutes()).padStart(TWO_DIGIT_WIDTH, '0')
   return `${month} ${day}, ${year} · ${hours}:${minutes}`
 }
 

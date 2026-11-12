@@ -14,6 +14,8 @@ import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import { logParseFallback } from '../../../lib/app-log-commands'
 import styles from './MemorySection.module.css'
 
+const AUTO_COLLAPSE_MEMORY_COUNT = 5
+
 export interface MemorySectionProps {
   /** Stable identifier used for test ids and drop targeting. */
   sectionKey: string
@@ -109,8 +111,8 @@ function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null 
 }
 
 function hasMemoryDragType(dataTransfer: DataTransfer): boolean {
-  for (let i = 0; i < dataTransfer.types.length; i += 1) {
-    if (dataTransfer.types[i] === MEMORY_DRAG_MIME_TYPE) return true
+  for (let typeIndex = 0; typeIndex < dataTransfer.types.length; typeIndex += 1) {
+    if (dataTransfer.types[typeIndex] === MEMORY_DRAG_MIME_TYPE) return true
   }
   return false
 }
@@ -136,7 +138,9 @@ export function MemorySection({
   onDrop,
   children,
 }: MemorySectionProps) {
-  const [collapsed, setCollapsed] = useState(() => collapsible && memories.length > 5)
+  const [collapsed, setCollapsed] = useState(
+    () => collapsible && memories.length > AUTO_COLLAPSE_MEMORY_COUNT
+  )
   const [addOpen, setAddOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
@@ -231,7 +235,7 @@ export function MemorySection({
           }`}
           aria-expanded={!collapsed}
           data-testid={`ai-memory-section-toggle-${sectionKey}`}
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => setCollapsed((isCollapsed) => !isCollapsed)}
         >
           <span className={styles.chevron}>
             {collapsed ? <CaretRightIcon size={14} /> : <CaretDownIcon size={14} />}

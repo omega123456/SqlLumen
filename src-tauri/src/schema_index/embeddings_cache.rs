@@ -85,10 +85,10 @@ impl EmbeddingCache {
             let lru_key = inner
                 .map
                 .iter()
-                .min_by_key(|(_, e)| e.last_used)
-                .map(|(k, _)| k.clone());
-            if let Some(k) = lru_key {
-                inner.map.remove(&k);
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(key, _)| key.clone());
+            if let Some(key) = lru_key {
+                inner.map.remove(&key);
             }
         }
 

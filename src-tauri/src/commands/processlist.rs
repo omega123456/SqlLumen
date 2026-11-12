@@ -55,7 +55,7 @@ pub async fn get_processlist_impl(
     let rows = sqlx::raw_sql(sql)
         .fetch_all(&pool)
         .await
-        .map_err(|e| format!("Failed to fetch process list: {e}"))?;
+        .map_err(|error| format!("Failed to fetch process list: {error}"))?;
     crate::mysql::query_log::log_mysql_rows(&rows);
 
     let mut result = Vec::with_capacity(rows.len());
@@ -70,11 +70,11 @@ pub async fn get_processlist_impl(
     for row in &rows {
         let id: u64 = row
             .try_get::<u64, _>("Id")
-            .or_else(|_| row.try_get::<i64, _>("Id").map(|v| v as u64))
-            .map_err(|e| format!("Failed to read Id column: {e}"))?;
+            .or_else(|_| row.try_get::<i64, _>("Id").map(|value| value as u64))
+            .map_err(|error| format!("Failed to read Id column: {error}"))?;
         let time: i64 = row
             .try_get::<i64, _>("Time")
-            .or_else(|_| row.try_get::<i32, _>("Time").map(|v| v as i64))
+            .or_else(|_| row.try_get::<i32, _>("Time").map(|value| value as i64))
             .unwrap_or(0);
 
         result.push(ProcessRow {
@@ -151,13 +151,13 @@ pub async fn kill_queries_impl(
                     error: None,
                 }
             }
-            Err(e) => {
-                crate::mysql::query_log::log_execute_error(&e);
-                tracing::warn!(id, error = %e, "Failed to kill query");
+            Err(error) => {
+                crate::mysql::query_log::log_execute_error(&error);
+                tracing::warn!(id, error = %error, "Failed to kill query");
                 KillResult {
                     id,
                     success: false,
-                    error: Some(e.to_string()),
+                    error: Some(error.to_string()),
                 }
             }
         };

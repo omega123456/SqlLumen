@@ -66,12 +66,12 @@ type FileOut = CountingWriter<BufWriter<File>>;
 
 /// Map an I/O (or CSV) error to the user-facing message for `context`.
 fn io_err<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> String {
-    move |e| format!("{context}: {e}")
+    move |error| format!("{context}: {error}")
 }
 
 /// Map an XLSX writer error to a message.
-fn xlsx_err(e: rust_xlsxwriter::XlsxError) -> String {
-    format!("Failed to write XLSX: {e}")
+fn xlsx_err(error: rust_xlsxwriter::XlsxError) -> String {
+    format!("Failed to write XLSX: {error}")
 }
 
 fn create_file(path: &Path) -> Result<FileOut, String> {
@@ -104,9 +104,9 @@ impl XlsxSink {
         let mut next_row = 0;
         if include_headers {
             let bold = Format::new().set_bold();
-            for (col_idx, col_name) in columns.iter().enumerate() {
+            for (column_index, col_name) in columns.iter().enumerate() {
                 worksheet
-                    .write_string_with_format(0, col_idx as u16, col_name, &bold)
+                    .write_string_with_format(0, column_index as u16, col_name, &bold)
                     .map_err(xlsx_err)?;
             }
             worksheet.set_freeze_panes(1, 0).map_err(xlsx_err)?;
@@ -145,11 +145,13 @@ impl XlsxSink {
             return Ok(());
         };
         let worksheet = self.workbook.worksheet_from_index(0).map_err(xlsx_err)?;
-        for (col_idx, col_name) in self.columns.iter().enumerate() {
-            let width =
-                xlsx_writer::xlsx_column_width(col_name, sample.iter().map(|row| row.get(col_idx)));
+        for (column_index, col_name) in self.columns.iter().enumerate() {
+            let width = xlsx_writer::xlsx_column_width(
+                col_name,
+                sample.iter().map(|row| row.get(column_index)),
+            );
             worksheet
-                .set_column_width(col_idx as u16, width)
+                .set_column_width(column_index as u16, width)
                 .map_err(xlsx_err)?;
         }
         for row in &sample {
@@ -160,8 +162,8 @@ impl XlsxSink {
 
     fn write_sheet_row(&mut self, row: &[serde_json::Value]) -> Result<(), String> {
         let worksheet = self.workbook.worksheet_from_index(0).map_err(xlsx_err)?;
-        for (col_idx, val) in row.iter().enumerate() {
-            xlsx_writer::write_xlsx_cell(worksheet, self.next_row, col_idx as u16, val)?;
+        for (column_index, value) in row.iter().enumerate() {
+            xlsx_writer::write_xlsx_cell(worksheet, self.next_row, column_index as u16, value)?;
         }
         self.next_row += 1;
         Ok(())
@@ -349,7 +351,7 @@ fn write_json_row<W: Write>(
 ) -> io::Result<()> {
     let pretty = serde_json::to_vec_pretty(object).map_err(io::Error::other)?;
     out.write_all(if first { b"[\n  " } else { b",\n  " })?;
-    let mut lines = pretty.split(|&b| b == b'\n');
+    let mut lines = pretty.split(|&byte| byte == b'\n');
     if let Some(line) = lines.next() {
         out.write_all(line)?;
     }

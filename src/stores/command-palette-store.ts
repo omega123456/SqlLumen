@@ -18,13 +18,13 @@ export const useCommandPaletteStore = create<CommandPaletteState>()((set) => ({
     set((state) => ({
       isOpen: true,
       openInstance: state.openInstance + 1,
-      scopeToTable,
+      scopeToTable: scopeToTable,
     })),
   close: () => set({ isOpen: false }),
   toggle: (scopeToTable = false) =>
     set((state) =>
       state.isOpen
         ? { isOpen: false }
-        : { isOpen: true, openInstance: state.openInstance + 1, scopeToTable }
+        : { isOpen: true, openInstance: state.openInstance + 1, scopeToTable: scopeToTable }
     ),
 }))

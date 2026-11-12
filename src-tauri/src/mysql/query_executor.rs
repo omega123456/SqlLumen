@@ -257,12 +257,12 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
 
     while let Some((_, ch)) = iter.next() {
         // Check for block comment start `/*`
-        if ch == '/' && iter.peek().map(|&(_, c)| c) == Some('*') {
+        if ch == '/' && iter.peek().map(|&(_, character)| character) == Some('*') {
             iter.next(); // consume '*'
                          // Check if it's an executable comment `/*!` or hint `/*+`
             if iter
                 .peek()
-                .map(|&(_, c)| c == '!' || c == '+')
+                .map(|&(_, character)| character == '!' || character == '+')
                 .unwrap_or(false)
             {
                 let (_, special) = iter.next().unwrap(); // safe: peek above confirmed element exists
@@ -270,19 +270,19 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
                 result.push('/');
                 result.push('*');
                 result.push(special);
-                while let Some((_, c)) = iter.next() {
-                    if c == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
+                while let Some((_, character)) = iter.next() {
+                    if character == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
                         result.push('*');
                         result.push('/');
                         iter.next(); // consume '/'
                         break;
                     }
-                    result.push(c);
+                    result.push(character);
                 }
             } else {
                 // Standard block comment — skip until `*/`
-                while let Some((_, c)) = iter.next() {
-                    if c == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
+                while let Some((_, character)) = iter.next() {
+                    if character == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
                         iter.next(); // consume '/'
                         break;
                     }
@@ -292,14 +292,18 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
             }
         }
         // Line comment `--`
-        else if ch == '-' && iter.peek().map(|&(_, c)| c) == Some('-') {
+        else if ch == '-' && iter.peek().map(|&(_, character)| character) == Some('-') {
             iter.next(); // consume second '-'
                          // Skip until end of line
-            while iter.peek().map(|&(_, c)| c != '\n').unwrap_or(false) {
+            while iter
+                .peek()
+                .map(|&(_, character)| character != '\n')
+                .unwrap_or(false)
+            {
                 iter.next();
             }
             // Keep the newline if present
-            if iter.peek().map(|&(_, c)| c) == Some('\n') {
+            if iter.peek().map(|&(_, character)| character) == Some('\n') {
                 iter.next(); // consume '\n'
                 result.push('\n');
             }
@@ -307,10 +311,14 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
         // Hash comment `#`
         else if ch == '#' {
             // Skip until end of line
-            while iter.peek().map(|&(_, c)| c != '\n').unwrap_or(false) {
+            while iter
+                .peek()
+                .map(|&(_, character)| character != '\n')
+                .unwrap_or(false)
+            {
                 iter.next();
             }
-            if iter.peek().map(|&(_, c)| c) == Some('\n') {
+            if iter.peek().map(|&(_, character)| character) == Some('\n') {
                 iter.next(); // consume '\n'
                 result.push('\n');
             }
@@ -319,16 +327,16 @@ pub fn strip_non_executable_comments(sql: &str) -> String {
         else if ch == '\'' || ch == '"' || ch == '`' {
             let quote = ch;
             result.push(ch);
-            while let Some((_, c)) = iter.next() {
-                if c == '\\' {
-                    result.push(c);
+            while let Some((_, character)) = iter.next() {
+                if character == '\\' {
+                    result.push(character);
                     if let Some((_, escaped)) = iter.next() {
                         result.push(escaped);
                     }
                     continue;
                 }
-                result.push(c);
-                if c == quote {
+                result.push(character);
+                if character == quote {
                     break;
                 }
             }
@@ -348,12 +356,12 @@ pub fn get_first_keyword(sql: &str) -> String {
     // Handle executable comments: /*!50001 keyword ... */
     if let Some(inner) = trimmed.strip_prefix("/*!") {
         // Skip optional version number (digits)
-        let after_version = inner.trim_start_matches(|c: char| c.is_ascii_digit());
+        let after_version = inner.trim_start_matches(|character: char| character.is_ascii_digit());
         let after_ws = after_version.trim_start();
         // Extract first word
         let first_word: String = after_ws
             .chars()
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .take_while(|character| character.is_alphanumeric() || *character == '_')
             .collect();
         if !first_word.is_empty() {
             return first_word.to_uppercase();
@@ -375,67 +383,67 @@ pub fn get_first_keyword(sql: &str) -> String {
 pub fn find_with_main_keyword(sql: &str) -> String {
     let chars: Vec<char> = sql.chars().collect();
     let len = chars.len();
-    let mut i = 0;
+    let mut position = 0;
     let mut depth: i32 = 0;
 
     // Skip leading whitespace
-    while i < len && chars[i].is_whitespace() {
-        i += 1;
+    while position < len && chars[position].is_whitespace() {
+        position += 1;
     }
 
     // Skip past "WITH" keyword
-    let remaining: String = chars[i..].iter().collect();
+    let remaining: String = chars[position..].iter().collect();
     if remaining.to_uppercase().starts_with("WITH") {
-        i += 4;
+        position += 4;
     } else {
         return String::new();
     }
 
-    while i < len {
+    while position < len {
         // Skip string literals
-        if chars[i] == '\'' || chars[i] == '"' || chars[i] == '`' {
-            let quote = chars[i];
-            i += 1;
-            while i < len {
-                if chars[i] == '\\' && i + 1 < len {
-                    i += 2;
+        if chars[position] == '\'' || chars[position] == '"' || chars[position] == '`' {
+            let quote = chars[position];
+            position += 1;
+            while position < len {
+                if chars[position] == '\\' && position + 1 < len {
+                    position += 2;
                     continue;
                 }
-                if chars[i] == quote {
-                    i += 1;
+                if chars[position] == quote {
+                    position += 1;
                     break;
                 }
-                i += 1;
+                position += 1;
             }
             continue;
         }
 
-        if chars[i] == '(' {
+        if chars[position] == '(' {
             depth += 1;
-            i += 1;
+            position += 1;
             continue;
         }
-        if chars[i] == ')' {
+        if chars[position] == ')' {
             if depth > 0 {
                 depth -= 1;
             }
-            i += 1;
+            position += 1;
             continue;
         }
 
-        if depth == 0 && chars[i].is_alphabetic() {
-            let start = i;
-            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
-                i += 1;
+        if depth == 0 && chars[position].is_alphabetic() {
+            let start = position;
+            while position < len && (chars[position].is_alphanumeric() || chars[position] == '_') {
+                position += 1;
             }
-            let word: String = chars[start..i].iter().collect();
+            let word: String = chars[start..position].iter().collect();
             let upper_word = word.to_uppercase();
             match upper_word.as_str() {
                 "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "REPLACE" => return upper_word,
                 _ => continue,
             }
         } else {
-            i += 1;
+            position += 1;
         }
     }
 
@@ -447,55 +455,56 @@ pub fn find_with_main_keyword(sql: &str) -> String {
 pub fn has_top_level_limit(sql: &str) -> bool {
     let chars: Vec<char> = sql.chars().collect();
     let len = chars.len();
-    let mut i = 0;
+    let mut position = 0;
     let mut depth: i32 = 0;
 
-    while i < len {
+    while position < len {
         // Skip string literals
-        if chars[i] == '\'' || chars[i] == '"' || chars[i] == '`' {
-            let quote = chars[i];
-            i += 1;
-            while i < len {
-                if chars[i] == '\\' && i + 1 < len {
-                    i += 2;
+        if chars[position] == '\'' || chars[position] == '"' || chars[position] == '`' {
+            let quote = chars[position];
+            position += 1;
+            while position < len {
+                if chars[position] == '\\' && position + 1 < len {
+                    position += 2;
                     continue;
                 }
-                if chars[i] == quote {
-                    i += 1;
+                if chars[position] == quote {
+                    position += 1;
                     break;
                 }
-                i += 1;
+                position += 1;
             }
             continue;
         }
 
-        if chars[i] == '(' {
+        if chars[position] == '(' {
             depth += 1;
-            i += 1;
+            position += 1;
             continue;
         }
-        if chars[i] == ')' {
+        if chars[position] == ')' {
             if depth > 0 {
                 depth -= 1;
             }
-            i += 1;
+            position += 1;
             continue;
         }
 
         // At depth 0, look for LIMIT keyword (case-insensitive, word boundary)
-        if depth == 0 && i + 4 < len && chars[i].eq_ignore_ascii_case(&'L') {
-            let word: String = chars[i..i + 5].iter().collect();
+        if depth == 0 && position + 4 < len && chars[position].eq_ignore_ascii_case(&'L') {
+            let word: String = chars[position..position + 5].iter().collect();
             if word.eq_ignore_ascii_case("LIMIT") {
-                let before_ok = i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_');
-                let after_ok =
-                    i + 5 >= len || !(chars[i + 5].is_alphanumeric() || chars[i + 5] == '_');
+                let before_ok = position == 0
+                    || !(chars[position - 1].is_alphanumeric() || chars[position - 1] == '_');
+                let after_ok = position + 5 >= len
+                    || !(chars[position + 5].is_alphanumeric() || chars[position + 5] == '_');
                 if before_ok && after_ok {
                     return true;
                 }
             }
         }
 
-        i += 1;
+        position += 1;
     }
 
     false
@@ -507,17 +516,17 @@ pub fn has_multiple_statements(sql: &str) -> bool {
     let stripped = strip_non_executable_comments(sql);
     let mut quote: Option<char> = None;
     let mut chars = stripped.char_indices();
-    while let Some((i, ch)) = chars.next() {
+    while let Some((position, ch)) = chars.next() {
         match quote {
             Some(_) if ch == '\\' => {
                 chars.next();
             }
-            Some(q) if ch == q => quote = None,
+            Some(open_quote) if ch == open_quote => quote = None,
             Some(_) => {}
             None if matches!(ch, '\'' | '"' | '`') => quote = Some(ch),
             None if ch == ';' => {
-                return !stripped[i + 1..]
-                    .trim_matches(|c: char| c == ';' || c.is_whitespace())
+                return !stripped[position + 1..]
+                    .trim_matches(|character: char| character == ';' || character.is_whitespace())
                     .is_empty();
             }
             None => {}
@@ -571,7 +580,7 @@ pub fn has_locking_clause(sql: &str) -> bool {
         }
     };
     let skip_line = |chars: &mut std::iter::Peekable<std::str::Chars<'_>>| {
-        while chars.peek().is_some_and(|&c| c != '\n') {
+        while chars.peek().is_some_and(|&character| character != '\n') {
             chars.next();
         }
     };
@@ -579,10 +588,10 @@ pub fn has_locking_clause(sql: &str) -> bool {
         if matches!(ch, '\'' | '"' | '`') {
             flush(&mut word, &mut tokens);
             tokens.push(None);
-            while let Some(c) = chars.next() {
-                if c == '\\' && ch != '`' {
+            while let Some(character) = chars.next() {
+                if character == '\\' && ch != '`' {
                     chars.next();
-                } else if c == ch {
+                } else if character == ch {
                     if chars.peek() == Some(&ch) {
                         chars.next();
                     } else {
@@ -599,7 +608,7 @@ pub fn has_locking_clause(sql: &str) -> bool {
             ahead.next();
             if ahead
                 .peek()
-                .is_none_or(|c| c.is_whitespace() || c.is_control())
+                .is_none_or(|character| character.is_whitespace() || character.is_control())
             {
                 flush(&mut word, &mut tokens);
                 tokens.push(None);
@@ -613,18 +622,21 @@ pub fn has_locking_clause(sql: &str) -> bool {
             chars.next();
             flush(&mut word, &mut tokens);
             tokens.push(None);
-            if chars.peek().is_some_and(|&c| c == '!' || c == '+') {
+            if chars
+                .peek()
+                .is_some_and(|&character| character == '!' || character == '+')
+            {
                 // Executable comment or hint: scan its contents; the closing
                 // `*/` is ordinary punctuation.
                 chars.next();
                 continue;
             }
             let mut previous = '\0';
-            for c in chars.by_ref() {
-                if previous == '*' && c == '/' {
+            for character in chars.by_ref() {
+                if previous == '*' && character == '/' {
                     break;
                 }
-                previous = c;
+                previous = character;
             }
         } else if ch.is_alphanumeric() || ch == '_' || ch == '$' {
             word.push(ch);
@@ -637,10 +649,15 @@ pub fn has_locking_clause(sql: &str) -> bool {
     }
     flush(&mut word, &mut tokens);
 
-    let is = |i: usize, kw: &str| tokens.get(i).and_then(|t| t.as_deref()) == Some(kw);
-    (0..tokens.len()).any(|i| {
-        (is(i, "FOR") && (is(i + 1, "UPDATE") || is(i + 1, "SHARE")))
-            || (is(i, "LOCK") && is(i + 1, "IN") && is(i + 2, "SHARE") && is(i + 3, "MODE"))
+    let is = |token_index: usize, kw: &str| {
+        tokens.get(token_index).and_then(|token| token.as_deref()) == Some(kw)
+    };
+    (0..tokens.len()).any(|token_index| {
+        (is(token_index, "FOR") && (is(token_index + 1, "UPDATE") || is(token_index + 1, "SHARE")))
+            || (is(token_index, "LOCK")
+                && is(token_index + 1, "IN")
+                && is(token_index + 2, "SHARE")
+                && is(token_index + 3, "MODE"))
     })
 }
 
@@ -771,12 +788,12 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
 // ── Row decoding ───────────────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
-fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, i: usize) -> Option<String> {
-    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(i) {
+fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, column_index: usize) -> Option<String> {
+    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(column_index) {
         return value;
     }
 
-    row.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+    row.try_get_unchecked::<Option<Vec<u8>>, _>(column_index)
         .ok()
         .flatten()
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -937,7 +954,7 @@ pub async fn cancel_query_impl(
     let mut conn = tokio::time::timeout(std::time::Duration::from_secs(5), pool.acquire())
         .await
         .map_err(|_| "Cancel timed out waiting for a pool connection".to_string())?
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
     let kill_sql = format!("KILL QUERY {}", thread_id);
     tracing::debug!(
@@ -950,7 +967,7 @@ pub async fn cancel_query_impl(
     let result = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
         .execute(&mut *conn)
         .await
-        .map_err(|e| format!("Failed to cancel query: {e}"))?;
+        .map_err(|error| format!("Failed to cancel query: {error}"))?;
     crate::mysql::query_log::log_execute_result(&result);
 
     Ok(true)
@@ -1035,7 +1052,7 @@ pub async fn fetch_schema_metadata_impl(
             let rows = sqlx::query(sqlx::AssertSqlSafe(db_sql.as_str()))
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| format!("Failed to fetch databases: {e}"))?;
+                .map_err(|error| format!("Failed to fetch databases: {error}"))?;
             crate::mysql::query_log::log_mysql_rows(&rows);
             Ok::<_, String>(rows)
         },
@@ -1044,7 +1061,7 @@ pub async fn fetch_schema_metadata_impl(
             let rows = sqlx::query(sqlx::AssertSqlSafe(table_sql.as_str()))
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| format!("Failed to fetch tables: {e}"))?;
+                .map_err(|error| format!("Failed to fetch tables: {error}"))?;
             crate::mysql::query_log::log_mysql_rows(&rows);
             Ok::<_, String>(rows)
         },
@@ -1053,7 +1070,7 @@ pub async fn fetch_schema_metadata_impl(
             let rows = sqlx::query(sqlx::AssertSqlSafe(col_sql.as_str()))
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| format!("Failed to fetch columns: {e}"))?;
+                .map_err(|error| format!("Failed to fetch columns: {error}"))?;
             crate::mysql::query_log::log_mysql_rows(&rows);
             Ok::<_, String>(rows)
         },
@@ -1062,7 +1079,7 @@ pub async fn fetch_schema_metadata_impl(
             let rows = sqlx::query(sqlx::AssertSqlSafe(routine_sql.as_str()))
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| format!("Failed to fetch routines: {e}"))?;
+                .map_err(|error| format!("Failed to fetch routines: {error}"))?;
             crate::mysql::query_log::log_mysql_rows(&rows);
             Ok::<_, String>(rows)
         },
@@ -1089,12 +1106,12 @@ pub async fn fetch_schema_metadata_impl(
         let row_count: u64 = row
             .try_get::<Option<i64>, _>(4)
             .unwrap_or(None)
-            .map(|v| v as u64)
+            .map(|value| value as u64)
             .unwrap_or(0);
         let data_size: u64 = row
             .try_get::<Option<i64>, _>(5)
             .unwrap_or(None)
-            .map(|v| v as u64)
+            .map(|value| value as u64)
             .unwrap_or(0);
         tables.entry(schema).or_default().push(TableInfo {
             name,
@@ -1229,9 +1246,9 @@ pub async fn fetch_schema_metadata_full_impl(
         async {
             query_all_foreign_keys_batch(&pool, &db_names)
                 .await
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|error| {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         "failed to fetch foreign keys batch"
                     );
                     HashMap::new()
@@ -1240,9 +1257,9 @@ pub async fn fetch_schema_metadata_full_impl(
         async {
             query_all_indexes_batch(&pool, &db_names)
                 .await
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|error| {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         "failed to fetch indexes batch"
                     );
                     HashMap::new()
@@ -1251,9 +1268,9 @@ pub async fn fetch_schema_metadata_full_impl(
         async {
             query_all_views_batch(&pool, &db_names)
                 .await
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|error| {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         "failed to fetch views batch"
                     );
                     HashMap::new()
@@ -1262,9 +1279,9 @@ pub async fn fetch_schema_metadata_full_impl(
         async {
             query_all_triggers_batch(&pool, &db_names)
                 .await
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|error| {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         "failed to fetch triggers batch"
                     );
                     HashMap::new()
@@ -1305,25 +1322,26 @@ pub async fn fetch_schema_metadata_full_impl(
 }
 
 pub fn read_file_impl(path: &str) -> Result<String, String> {
-    let p = std::path::Path::new(path);
-    let metadata =
-        std::fs::metadata(p).map_err(|e| format!("Failed to read file metadata: {e}"))?;
+    let file_path = std::path::Path::new(path);
+    let metadata = std::fs::metadata(file_path)
+        .map_err(|error| format!("Failed to read file metadata: {error}"))?;
     if metadata.len() > 50 * 1024 * 1024 {
         return Err("File exceeds the 50 MB limit".to_string());
     }
-    let bytes = std::fs::read(p).map_err(|e| format!("Failed to read file: {e}"))?;
+    let bytes =
+        std::fs::read(file_path).map_err(|error| format!("Failed to read file: {error}"))?;
     String::from_utf8(bytes).map_err(|_| "File is not valid UTF-8".to_string())
 }
 
 pub fn write_file_impl(path: &str, content: &str) -> Result<(), String> {
-    let p = std::path::Path::new(path);
-    if let Some(parent) = p.parent() {
+    let file_path = std::path::Path::new(path);
+    if let Some(parent) = file_path.parent() {
         if !parent.as_os_str().is_empty() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directories: {e}"))?;
+                .map_err(|error| format!("Failed to create directories: {error}"))?;
         }
     }
-    std::fs::write(p, content).map_err(|e| format!("Failed to write file: {e}"))
+    std::fs::write(file_path, content).map_err(|error| format!("Failed to write file: {error}"))
 }
 
 // ── Sort helpers ───────────────────────────────────────────────────────────────
@@ -1335,11 +1353,14 @@ pub fn write_file_impl(path: &str, content: &str) -> Result<(), String> {
 /// - Two `Number` values are compared as f64.
 /// - Two `String` values are compared lexicographically.
 /// - Mixed types (or booleans / arrays / objects) fall back to `to_string()` comparison.
-pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
+pub fn compare_json_values(
+    left: &serde_json::Value,
+    right: &serde_json::Value,
+) -> std::cmp::Ordering {
     use serde_json::Value;
     use std::cmp::Ordering;
 
-    match (a, b) {
+    match (left, right) {
         (Value::Null, Value::Null) => Ordering::Equal,
         (Value::Null, _) => Ordering::Greater, // NULLs sort LAST in ASC
         (_, Value::Null) => Ordering::Less,
@@ -1354,8 +1375,8 @@ pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std:
 
         // Mixed types: compare as strings
         _ => {
-            let sa = a.to_string();
-            let sb = b.to_string();
+            let sa = left.to_string();
+            let sb = right.to_string();
             sa.cmp(&sb)
         }
     }
@@ -1392,7 +1413,7 @@ pub async fn analyze_query_for_edit_impl(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     let params = state.registry.get_connection_params(connection_id);
-    let default_database = params.and_then(|p| p.default_database);
+    let default_database = params.and_then(|params| params.default_database);
 
     // Fallback: if no default database stored in registry, query the MySQL
     // session's current database via SELECT DATABASE().
@@ -1405,17 +1426,17 @@ pub async fn analyze_query_for_edit_impl(
                     tracing::debug!(database = %db, "analyze_query_for_edit: resolved current database via SELECT DATABASE()");
                     Some(db)
                 }
-                Err(e) => {
+                Err(error) => {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         "analyze_query_for_edit: SELECT DATABASE() returned non-string (NULL?)"
                     );
                     None
                 }
             },
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
-                    error = %e,
+                    error = %error,
                     "analyze_query_for_edit: SELECT DATABASE() query failed"
                 );
                 None
@@ -1453,11 +1474,11 @@ pub async fn analyze_query_for_edit_impl(
                     &table_ref.table,
                 )
                 .await
-                .unwrap_or_else(|e| {
+                .unwrap_or_else(|error| {
                     tracing::warn!(
                         table = %table_ref.table,
                         database = %database,
-                        error = %e,
+                        error = %error,
                         "analyze_query_for_edit: foreign key lookup failed; continuing without FK metadata"
                     );
                     vec![]
@@ -1478,11 +1499,11 @@ pub async fn analyze_query_for_edit_impl(
                     foreign_keys,
                 });
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
                     table = %table_ref.table,
                     database = %database,
-                    error = %e,
+                    error = %error,
                     "analyze_query_for_edit: skipping table due to metadata fetch failure"
                 );
                 continue;
@@ -1559,10 +1580,10 @@ pub fn update_result_cell_impl(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
-    let idx = result_index.unwrap_or(0);
-    if idx >= entry.value.len() {
+    let resolved_index = result_index.unwrap_or(0);
+    if resolved_index >= entry.value.len() {
         return Err(format!(
-            "Result index {idx} out of range (total: {})",
+            "Result index {resolved_index} out of range (total: {})",
             entry.value.len()
         ));
     }
@@ -1572,7 +1593,7 @@ pub fn update_result_cell_impl(
         connection_id,
         tab_id,
         expected_invalidation_version,
-        idx,
+        resolved_index,
         Some(query_id),
         None,
         |slot| {
@@ -1582,7 +1603,7 @@ pub fn update_result_cell_impl(
                     slot.rows.len()
                 )
             })?;
-            if u32::try_from(row_index).is_ok_and(|i| slot.tombstones.contains(&i)) {
+            if u32::try_from(row_index).is_ok_and(|index| slot.tombstones.contains(&index)) {
                 return Err(format!(
                     "Row {row_index} was deleted from this result and can't be updated"
                 ));
@@ -1714,7 +1735,7 @@ fn replace_reexecuted_slot(
     stored: StoredResult,
 ) -> Result<(), String> {
     let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
-        Some(e) => e,
+        Some(found) => found,
         None => {
             tracing::warn!(
                 tab_id,

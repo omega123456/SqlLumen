@@ -52,23 +52,28 @@ fn run_with_runner(
     db_label: &str,
     runner: impl Fn() -> refinery::Runner,
 ) -> std::result::Result<Vec<i32>, String> {
-    let history_exists = table_exists(conn, "refinery_schema_history")
-        .map_err(|e| map_err(db_label, "checking refinery_schema_history existence", e))?;
+    let history_exists = table_exists(conn, "refinery_schema_history").map_err(|error| {
+        map_err(
+            db_label,
+            "checking refinery_schema_history existence",
+            error,
+        )
+    })?;
     let legacy_exists = table_exists(conn, "_migrations")
-        .map_err(|e| map_err(db_label, "checking legacy _migrations existence", e))?;
+        .map_err(|error| map_err(db_label, "checking legacy _migrations existence", error))?;
 
     // Cutover seed: only when refinery has never tracked this DB but the legacy
     // custom runner did. Records migrations 1..=K in refinery_schema_history
     // without executing their SQL (refinery computes the checksums itself).
     if !history_exists && legacy_exists {
         let watermark = legacy_watermark(conn)
-            .map_err(|e| map_err(db_label, "reading legacy migration watermark", e))?;
-        if let Some(k) = watermark {
+            .map_err(|error| map_err(db_label, "reading legacy migration watermark", error))?;
+        if let Some(version) = watermark {
             runner()
                 .set_grouped(true)
-                .set_target(Target::FakeVersion(k))
+                .set_target(Target::FakeVersion(version))
                 .run(conn)
-                .map_err(|e| map_err(db_label, "seeding refinery history (fake run)", e))?;
+                .map_err(|error| map_err(db_label, "seeding refinery history (fake run)", error))?;
         }
     }
 
@@ -76,19 +81,19 @@ fn run_with_runner(
     // seed. Idempotent and crash-safe via IF EXISTS.
     if legacy_exists {
         conn.execute_batch("DROP TABLE IF EXISTS _migrations;")
-            .map_err(|e| map_err(db_label, "dropping legacy _migrations table", e))?;
+            .map_err(|error| map_err(db_label, "dropping legacy _migrations table", error))?;
     }
 
     // Real, non-grouped run: applies remaining migrations with per-migration
     // commits so post-migration VACUUM hooks (illegal in a transaction) work.
     let report = runner()
         .run(conn)
-        .map_err(|e| map_err(db_label, "running migrations", e))?;
+        .map_err(|error| map_err(db_label, "running migrations", error))?;
 
     Ok(report
         .applied_migrations()
         .iter()
-        .map(|m| m.version())
+        .map(|migration| migration.version())
         .collect())
 }
 
@@ -113,9 +118,12 @@ fn legacy_watermark(conn: &Connection) -> Result<Option<i32>> {
     let mut max: Option<i32> = None;
     for name in rows {
         let name = name?;
-        let prefix: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
-        if let Ok(v) = prefix.parse::<i32>() {
-            max = Some(max.map_or(v, |m| m.max(v)));
+        let prefix: String = name
+            .chars()
+            .take_while(|character| character.is_ascii_digit())
+            .collect();
+        if let Ok(value) = prefix.parse::<i32>() {
+            max = Some(max.map_or(value, |current_max| current_max.max(value)));
         }
     }
     Ok(max)
@@ -123,7 +131,7 @@ fn legacy_watermark(conn: &Connection) -> Result<Option<i32>> {
 
 /// Log an underlying refinery/rusqlite failure with operation context and
 /// return a Display-able `String` error for the caller.
-fn map_err(db_label: &str, op: &str, err: impl std::fmt::Display) -> String {
-    tracing::error!(db = db_label, operation = op, error = %err, "database migration failure");
-    format!("{db_label} migration error during {op}: {err}")
+fn map_err(db_label: &str, op: &str, error: impl std::fmt::Display) -> String {
+    tracing::error!(db = db_label, operation = op, error = %error, "database migration failure");
+    format!("{db_label} migration error during {op}: {error}")
 }

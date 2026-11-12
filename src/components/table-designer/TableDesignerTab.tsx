@@ -158,11 +158,11 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
 
     // Invalidate schema index for the modified table (fire-and-forget)
     const qualifiedName = `${databaseName}.${latestTableName}`
-    invalidateSchemaIndex(connectionId, [qualifiedName]).catch((err) => {
-      const msg = err instanceof Error ? err.message : String(err)
+    invalidateSchemaIndex(connectionId, [qualifiedName]).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
       logFrontend(
         'error',
-        ['[table-designer] Schema index invalidation failed:', msg].map(String).join(' ')
+        ['[table-designer] Schema index invalidation failed:', message].map(String).join(' ')
       )
     })
 

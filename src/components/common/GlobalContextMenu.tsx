@@ -24,15 +24,15 @@ interface OpenState {
 }
 
 function contentEditableHasSelection(host: HTMLElement): boolean {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
     return false
   }
-  const r = sel.getRangeAt(0)
-  if (!host.contains(r.commonAncestorContainer)) {
+  const range = selection.getRangeAt(0)
+  if (!host.contains(range.commonAncestorContainer)) {
     return false
   }
-  return !r.collapsed
+  return !range.collapsed
 }
 
 async function runCut(
@@ -90,10 +90,10 @@ async function runPaste(
     const text = await readClipboardText()
     const start = textSelection?.start ?? field.selectionStart ?? 0
     const end = textSelection?.end ?? field.selectionEnd ?? 0
-    const v = field.value
-    field.value = v.slice(0, start) + text + v.slice(end)
-    const pos = start + text.length
-    field.setSelectionRange(pos, pos)
+    const fieldValue = field.value
+    field.value = fieldValue.slice(0, start) + text + fieldValue.slice(end)
+    const position = start + text.length
+    field.setSelectionRange(position, position)
     field.dispatchEvent(new Event('input', { bubbles: true }))
     field.dispatchEvent(new Event('change', { bubbles: true }))
     return
@@ -106,19 +106,19 @@ async function runPaste(
     if (!text) {
       return
     }
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0) {
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) {
       return
     }
-    const range = sel.getRangeAt(0)
+    const range = selection.getRangeAt(0)
     if (!field.contains(range.commonAncestorContainer)) {
       return
     }
     range.deleteContents()
     range.insertNode(document.createTextNode(text))
     range.collapse(false)
-    sel.removeAllRanges()
-    sel.addRange(range)
+    selection.removeAllRanges()
+    selection.addRange(range)
     field.dispatchEvent(new Event('input', { bubbles: true }))
   }
 }
@@ -133,18 +133,18 @@ function menuFlags(
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     const start = textSelection?.start ?? field.selectionStart ?? 0
     const end = textSelection?.end ?? field.selectionEnd ?? 0
-    const hasSel = Math.abs(end - start) > 0
+    const hasSelection = Math.abs(end - start) > 0
     return {
-      canCopy: hasSel,
-      canCut: hasSel && !readOnly,
+      canCopy: hasSelection,
+      canCut: hasSelection && !readOnly,
       canPaste: !readOnly,
     }
   }
 
-  const hasSel = contentEditableHasSelection(field)
+  const hasSelection = contentEditableHasSelection(field)
   return {
-    canCopy: hasSel,
-    canCut: hasSel,
+    canCopy: hasSelection,
+    canCut: hasSelection,
     canPaste: true,
   }
 }
@@ -167,17 +167,17 @@ export function GlobalContextMenu() {
     if (!open || !menuRef.current) {
       return
     }
-    const el = menuRef.current
-    const rect = el.getBoundingClientRect()
-    const pos = positionContextMenuInPortal(
+    const element = menuRef.current
+    const rect = element.getBoundingClientRect()
+    const position = positionContextMenuInPortal(
       open.portalRoot,
       open.x,
       open.y,
       rect.width,
       rect.height
     )
-    el.style.left = `${pos.x}px`
-    el.style.top = `${pos.y}px`
+    element.style.left = `${position.x}px`
+    element.style.top = `${position.y}px`
   }, [open])
 
   // Listen for dismiss-all events dispatched by other context menus
@@ -192,20 +192,20 @@ export function GlobalContextMenu() {
   }, [])
 
   useEffect(() => {
-    const onContextMenu = (e: MouseEvent) => {
-      e.preventDefault()
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault()
 
-      if (isInsideDisabledTextControl(e.target)) {
-        e.stopPropagation()
+      if (isInsideDisabledTextControl(event.target)) {
+        event.stopPropagation()
         return
       }
 
-      const field = resolveEditableFieldFromTarget(e.target)
+      const field = resolveEditableFieldFromTarget(event.target)
       if (!field) {
         return
       }
 
-      e.stopPropagation()
+      event.stopPropagation()
 
       // Dismiss any other open context menus before opening this one
       dispatchDismissAll()
@@ -218,11 +218,11 @@ export function GlobalContextMenu() {
         }
       }
       setOpen({
-        x: e.clientX,
-        y: e.clientY,
-        field,
+        x: event.clientX,
+        y: event.clientY,
+        field: field,
         portalRoot: getContextMenuPortalRoot(field),
-        textSelection,
+        textSelection: textSelection,
       })
     }
 
@@ -238,10 +238,10 @@ export function GlobalContextMenu() {
 
   const { canCopy, canCut, canPaste } = menuFlags(open.field, open.textSelection)
 
-  const handleAction = (fn: () => Promise<void>) => {
+  const handleAction = (action: () => Promise<void>) => {
     void (async () => {
       try {
-        await fn()
+        await action()
       } catch (error) {
         logFrontend('warn', `[global-context-menu] Clipboard action failed: ${String(error)}`)
       } finally {
@@ -261,8 +261,8 @@ export function GlobalContextMenu() {
       }}
       role="menu"
       data-testid="global-context-menu"
-      onMouseDown={(e) => {
-        e.preventDefault()
+      onMouseDown={(event) => {
+        event.preventDefault()
       }}
     >
       <button

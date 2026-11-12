@@ -10,8 +10,8 @@ const BOOTSTRAP_FAILURE_PREFIX = '[bootstrap]'
  * Use for operational / user-visible failures — not console alone.
  */
 export function logFrontend(level: FrontendLogLevel, message: string): void {
-  invoke('log_frontend', { level, message }).catch((err: unknown) => {
-    console.error(LOG_DELIVERY_FAILURE_PREFIX, err)
+  invoke('log_frontend', { level, message }).catch((error: unknown) => {
+    console.error(LOG_DELIVERY_FAILURE_PREFIX, error)
   })
 }
 

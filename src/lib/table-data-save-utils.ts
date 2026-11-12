@@ -12,25 +12,25 @@ export function getTemporalValidationResult(
 ): TemporalValidationResult | null {
   if (!editState) return null
 
-  for (const colName of editState.modifiedColumns) {
-    const col = columns.find((candidate) => candidate.name === colName)
-    if (!col) continue
+  for (const columnName of editState.modifiedColumns) {
+    const column = columns.find((candidate) => candidate.name === columnName)
+    if (!column) continue
 
-    const temporalType = getTemporalColumnType(col.dataType)
+    const temporalType = getTemporalColumnType(column.dataType)
     if (!temporalType) continue
 
-    const value = editState.currentValues[colName]
+    const value = editState.currentValues[columnName]
     if (value === null || value === undefined) continue
     if (typeof value === 'string' && value.trim() === '') {
       return {
-        columnName: colName,
+        columnName: columnName,
         error: `Invalid ${temporalType} value. Expected format: ${TEMPORAL_CONFIGS[temporalType].format}`,
       }
     }
 
     const error = validateTemporalValue(String(value), temporalType)
     if (error) {
-      return { columnName: colName, error }
+      return { columnName: columnName, error: error }
     }
   }
 

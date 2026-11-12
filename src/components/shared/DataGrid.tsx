@@ -38,7 +38,7 @@ function toGlideColumn<TRow>(column: GridColumn<TRow>): GlideColumn {
   return {
     id: column.key,
     title: typeof column.name === 'string' ? column.name : column.key,
-    width: typeof column.width === 'number' ? column.width : 150,
+    width: typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH_PX,
   }
 }
 
@@ -50,8 +50,8 @@ function DataGridInner<R extends Record<string, unknown>>(
   const glideColumns = columns.map(toGlideColumn)
 
   const fallbackGetCellContent = useCallback(
-    ([colIndex, rowIndex]: Item): GridCell => {
-      const column = columns[colIndex]
+    ([columnIndex, rowIndex]: Item): GridCell => {
+      const column = columns[columnIndex]
       const row = rows[rowIndex]
       return {
         kind: 'text',
@@ -96,3 +96,4 @@ export type {
   GridRowsChangeData,
   GridSortColumn,
 } from './glide/glide-grid-types'
+import { DEFAULT_COLUMN_WIDTH_PX } from '../../lib/grid-column-style'

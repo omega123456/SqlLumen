@@ -7,6 +7,9 @@ import { UPDATE_INTERVAL_MS } from '../lib/update-intervals'
 import { useSettingsStore } from './settings-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { PERCENT_SCALE } from '../lib/units'
+
+const UP_TO_DATE_STATUS_RESET_DELAY_MS = 5_000
 type UpdateStatus =
   'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'ready-to-finish' | 'error'
 
@@ -129,7 +132,7 @@ function scheduleUpToDateReset(set: (partial: Partial<UpdateState>) => void): vo
         ...getPlatformState(currentState.currentPlatform, null),
       }
     })
-  }, 5_000)
+  }, UP_TO_DATE_STATUS_RESET_DELAY_MS)
 }
 
 interface UpdateState {
@@ -291,7 +294,10 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
         if (event.event === 'Progress') {
           downloaded += event.data.chunkLength
           if (contentLength && contentLength > 0) {
-            const percent = Math.min(100, Math.round((downloaded / contentLength) * 100))
+            const percent = Math.min(
+              PERCENT_SCALE,
+              Math.round((downloaded / contentLength) * PERCENT_SCALE)
+            )
             set({ downloadProgress: percent })
           }
           return

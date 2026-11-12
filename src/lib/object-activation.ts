@@ -31,11 +31,11 @@ export function openObjectDefaultTab(
 
   openTab({
     type: tabType,
-    connectionId,
+    connectionId: connectionId,
     databaseName: database,
     objectName: name,
-    objectType,
-    label,
+    objectType: objectType,
+    label: label,
   })
 }
 

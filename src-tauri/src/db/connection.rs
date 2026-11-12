@@ -6,9 +6,9 @@ use std::path::PathBuf;
 pub fn open_database(db_path: PathBuf) -> Result<Connection> {
     // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
+        std::fs::create_dir_all(parent).map_err(|error| {
             rusqlite::Error::InvalidParameterName(format!(
-                "Failed to create database directory '{}': {e}",
+                "Failed to create database directory '{}': {error}",
                 parent.display()
             ))
         })?;

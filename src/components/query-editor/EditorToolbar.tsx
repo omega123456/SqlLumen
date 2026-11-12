@@ -55,7 +55,7 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
     requestNavigationAction(tabId, () => {
       const statements = splitStatements(content)
       const filteredStatements = statements
-        .map((stmt) => stmt.sql.trim())
+        .map((statement) => statement.sql.trim())
         .filter((sql) => sql.length > 0)
         .filter((sql) => !/^DELIMITER\s/i.test(sql))
 
@@ -77,10 +77,10 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         await writeFile(path, content)
         setFilePath(tabId, path)
       }
-    } catch (err) {
+    } catch (error) {
       logFrontend(
         'warn',
-        ['[editor-toolbar] save or save dialog failed:', err].map(String).join(' ')
+        ['[editor-toolbar] save or save dialog failed:', error].map(String).join(' ')
       )
     } finally {
       setIsSaving(false)
@@ -107,10 +107,10 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
           useQueryStore.getState().setFilePath(newTabId, path)
         }
       }
-    } catch (err) {
+    } catch (error) {
       logFrontend(
         'warn',
-        ['[editor-toolbar] open file or open dialog failed:', err].map(String).join(' ')
+        ['[editor-toolbar] open file or open dialog failed:', error].map(String).join(' ')
       )
     } finally {
       setIsOpening(false)
@@ -123,8 +123,8 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
     try {
       const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })
       setContent(tabId, formatted)
-    } catch (err) {
-      logFrontend('warn', ['[editor-toolbar] format SQL failed:', err].map(String).join(' '))
+    } catch (error) {
+      logFrontend('warn', ['[editor-toolbar] format SQL failed:', error].map(String).join(' '))
     }
   }
 
@@ -139,10 +139,10 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
       if (path) {
         useImportDialogStore.getState().openImportDialog(connectionId, path)
       }
-    } catch (err) {
+    } catch (error) {
       logFrontend(
         'warn',
-        ['[editor-toolbar] import SQL file picker failed:', err].map(String).join(' ')
+        ['[editor-toolbar] import SQL file picker failed:', error].map(String).join(' ')
       )
     }
   }

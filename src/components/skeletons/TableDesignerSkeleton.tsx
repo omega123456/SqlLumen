@@ -1,6 +1,6 @@
 import styles from './TableDesignerSkeleton.module.css'
 
-const TAB_WIDTHS = [70, 65, 100, 120, 85]
+const TAB_WIDTHS = ['70px', '65px', '100px', '120px', '85px']
 const CELL_INNER_WIDTHS = [
   ['80%', '70%', '60%', '75%'],
   ['65%', '85%', '50%', '90%'],
@@ -20,16 +20,16 @@ export default function TableDesignerSkeleton() {
         <div className={`${styles.headerButton} shimmerBlock`} />
       </div>
       <div className={styles.tabBar}>
-        {TAB_WIDTHS.map((w, i) => (
-          <div key={i} className={`${styles.tabPill} shimmerBlock`} style={{ width: w }} />
+        {TAB_WIDTHS.map((width, index) => (
+          <div key={index} className={`${styles.tabPill} shimmerBlock`} style={{ width: width }} />
         ))}
       </div>
       <div className={styles.grid}>
         <div className={`${styles.gridHeaderRow} shimmerBlock`} />
-        {CELL_INNER_WIDTHS.map((row, ri) => (
-          <div key={ri} className={styles.gridRow}>
-            {row.map((cellWidth, ci) => (
-              <div key={ci} className={`${styles.gridCell} ${CELL_CLASSES[ci]}`}>
+        {CELL_INNER_WIDTHS.map((row, rowIndex) => (
+          <div key={rowIndex} className={styles.gridRow}>
+            {row.map((cellWidth, cellIndex) => (
+              <div key={cellIndex} className={`${styles.gridCell} ${CELL_CLASSES[cellIndex]}`}>
                 <div className={`${styles.cellBlock} shimmerBlock`} style={{ width: cellWidth }} />
               </div>
             ))}

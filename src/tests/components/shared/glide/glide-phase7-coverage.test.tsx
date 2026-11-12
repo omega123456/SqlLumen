@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { GridCellKind } from '@glideapps/glide-data-grid'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  buildFkCell,
+  buildForeignKeyCell,
   classifyCellValue,
   formatBlobDisplayValue,
 } from '../../../../components/shared/glide/glide-cell-content'
@@ -37,7 +37,7 @@ describe('Glide phase 7 coverage helpers', () => {
       highlightedColumnKey: 'avatar',
     })
     expect(flags).toMatchObject({ isBlob: true, isReadOnly: true, isHighlightedColumn: true })
-    const fkCell = buildFkCell('42', flags)
+    const fkCell = buildForeignKeyCell('42', flags)
     expect(fkCell.kind).toBe(GridCellKind.Text)
   })
 

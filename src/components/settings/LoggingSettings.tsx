@@ -16,7 +16,7 @@ const LOG_LEVEL_OPTIONS = [
 ]
 
 export function LoggingSettings() {
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
 
   const logLevel = useSettingValue('log.level')
 
@@ -28,8 +28,8 @@ export function LoggingSettings() {
       .then((info) => {
         if (!cancelled) setAppInfo(info)
       })
-      .catch((err) => {
-        logFrontend('error', ['[settings] Failed to load app info:', err].map(String).join(' '))
+      .catch((error) => {
+        logFrontend('error', ['[settings] Failed to load app info:', error].map(String).join(' '))
       })
     return () => {
       cancelled = true

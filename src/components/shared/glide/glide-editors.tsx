@@ -17,6 +17,31 @@ import {
 } from '../grid-cell-editors'
 import type { GridEditorType } from '../grid-column-editor-utils'
 
+const EDITOR_WIDTH_TO_MARKER_RATIO = 3
+const FALLBACK_VIEWPORT_HEIGHT_PX = 800
+
+interface OverlayHeightLimits {
+  minimumPx: number
+  maximumPx: number
+  viewportShare: number
+}
+
+const MULTILINE_OVERLAY_HEIGHT: OverlayHeightLimits = {
+  minimumPx: 132,
+  maximumPx: 500,
+  viewportShare: 0.5,
+}
+const JSON_OVERLAY_HEIGHT: OverlayHeightLimits = {
+  minimumPx: 200,
+  maximumPx: 400,
+  viewportShare: 0.45,
+}
+
+function clampOverlayHeight(viewportHeight: number, limits: OverlayHeightLimits): number {
+  const preferredHeight = Math.floor(viewportHeight * limits.viewportShare)
+  return Math.max(limits.minimumPx, Math.min(limits.maximumPx, preferredHeight))
+}
+
 export interface CustomEditorProps {
   target: Rectangle
   value: GridCell
@@ -89,7 +114,7 @@ function getExpandedEditorWidth(targetWidth: number, markerCount: number): numbe
 
   const markerWidth =
     markerCount * MARKER_SLOT_WIDTH + Math.max(0, markerCount - 1) * MARKER_GAP_WIDTH
-  const ratioWidth = Math.ceil(markerWidth * 3)
+  const ratioWidth = Math.ceil(markerWidth * EDITOR_WIDTH_TO_MARKER_RATIO)
   const contentWidth = Math.max(targetWidth, ratioWidth, MIN_FIELD_WIDTH + markerWidth)
 
   return contentWidth
@@ -100,18 +125,16 @@ export function computeRequestedEditorWidth(targetWidth: number, markerCount: nu
 }
 
 function getViewportHeight(): number {
-  if (typeof window === 'undefined') return 800
-  return window.innerHeight > 0 ? window.innerHeight : 800
+  if (typeof window === 'undefined') return FALLBACK_VIEWPORT_HEIGHT_PX
+  return window.innerHeight > 0 ? window.innerHeight : FALLBACK_VIEWPORT_HEIGHT_PX
 }
 
 function getPreferredMultilineOverlayHeight(_: Rectangle): number {
-  const viewportHeight = getViewportHeight()
-  return Math.max(132, Math.min(500, Math.floor(viewportHeight * 0.5)))
+  return clampOverlayHeight(getViewportHeight(), MULTILINE_OVERLAY_HEIGHT)
 }
 
 function getPreferredJsonOverlayHeight(_: Rectangle): number {
-  const viewportHeight = getViewportHeight()
-  return Math.max(200, Math.min(400, Math.floor(viewportHeight * 0.45)))
+  return clampOverlayHeight(getViewportHeight(), JSON_OVERLAY_HEIGHT)
 }
 
 function applyInitialInputValue(value: GridCell, initialInputValue: string | undefined): GridCell {

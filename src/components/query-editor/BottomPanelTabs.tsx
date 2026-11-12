@@ -58,14 +58,14 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
     const resultItems = results.map((result, index) => ({
       id: `result-${queryTabId}-${index}`,
       kind: 'result' as const,
-      index,
+      index: index,
       label: `Result ${index + 1}`,
-      result,
+      result: result,
     }))
     const tableItems = tableDataTabs.map((tab) => ({
       id: `table-${tab.id}`,
       kind: 'table-data' as const,
-      tab,
+      tab: tab,
       label: tab.label,
     }))
     return [...resultItems, ...tableItems]

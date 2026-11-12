@@ -111,17 +111,17 @@ pub fn list_history(
     // search/since filters compose without a combinatorial explosion of SQL.
     let mut where_clause = String::from("WHERE connection_id = ?1");
     let mut filter_params: Vec<Value> = vec![Value::Text(connection_id.to_string())];
-    let mut next_idx = 2;
+    let mut next_index = 2;
 
     if let Some(term) = search {
-        where_clause.push_str(&format!(" AND sql_text LIKE ?{next_idx}"));
+        where_clause.push_str(&format!(" AND sql_text LIKE ?{next_index}"));
         filter_params.push(Value::Text(format!("%{term}%")));
-        next_idx += 1;
+        next_index += 1;
     }
     if let Some(cutoff) = since {
-        where_clause.push_str(&format!(" AND timestamp >= ?{next_idx}"));
+        where_clause.push_str(&format!(" AND timestamp >= ?{next_index}"));
         filter_params.push(Value::Text(cutoff.to_string()));
-        next_idx += 1;
+        next_index += 1;
     }
 
     let count_sql = format!("SELECT COUNT(*) FROM query_history {where_clause}");
@@ -137,8 +137,8 @@ pub fn list_history(
          {where_clause}
          ORDER BY timestamp DESC
          LIMIT ?{limit_idx} OFFSET ?{offset_idx}",
-        limit_idx = next_idx,
-        offset_idx = next_idx + 1,
+        limit_idx = next_index,
+        offset_idx = next_index + 1,
     );
     let mut list_params = filter_params;
     list_params.push(Value::Integer(page_size));

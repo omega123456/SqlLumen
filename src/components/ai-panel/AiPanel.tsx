@@ -27,20 +27,23 @@ export interface AiPanelProps {
 
 export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
   const [suggestionText, setSuggestionText] = useState<string | undefined>(undefined)
-  const isWaitingForIndex = useAiStore((s) => s.tabs[tabId]?.isWaitingForIndex ?? false)
+  const isWaitingForIndex = useAiStore((state) => state.tabs[tabId]?.isWaitingForIndex ?? false)
   const profileId = useConnectionStore(
-    (s) => (connectionId ? s.activeConnections[connectionId]?.profile?.id : undefined) ?? null
+    (state) =>
+      (connectionId ? state.activeConnections[connectionId]?.profile?.id : undefined) ?? null
   )
-  const reembedStatus = useAiMemoryStore((s) =>
-    profileId ? s.reembedStatus[profileId] : undefined
+  const reembedStatus = useAiMemoryStore((state) =>
+    profileId ? state.reembedStatus[profileId] : undefined
   )
   const isReembedding = reembedStatus?.status === 'running'
 
   const aiEnabled = useSettingsStore(
-    (s) => (s.pendingChanges['ai.enabled'] ?? s.settings['ai.enabled'] ?? 'false') === 'true'
+    (state) =>
+      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
   )
   const embeddingModel = useSettingsStore(
-    (s) => s.pendingChanges['ai.embeddingModel'] ?? s.settings['ai.embeddingModel'] ?? ''
+    (state) =>
+      state.pendingChanges['ai.embeddingModel'] ?? state.settings['ai.embeddingModel'] ?? ''
   )
 
   const handleTriggerDiff = onTriggerDiff

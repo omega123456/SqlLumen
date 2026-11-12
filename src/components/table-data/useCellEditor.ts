@@ -85,8 +85,8 @@ export function useCellEditor(
   params: CellEditorParams,
   callbacks: CellEditorCallbacks
 ): CellEditorResult {
-  const col = params.columnMeta
-  const temporalType = getTemporalColumnType(col.dataType)
+  const columnMeta = params.columnMeta
+  const temporalType = getTemporalColumnType(columnMeta.dataType)
 
   const { row, column, onRowChange } = params
   const fieldName = column.key

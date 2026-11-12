@@ -9,8 +9,8 @@ export function useSystemTheme(): ResolvedTheme {
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
-    const handleChange = (e: MediaQueryListEvent) => {
-      setSystemTheme(e.matches ? 'dark' : 'light')
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSystemTheme(event.matches ? 'dark' : 'light')
     }
 
     mediaQuery.addEventListener('change', handleChange)

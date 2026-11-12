@@ -347,7 +347,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     (rowIndex: number, cellKey: EditableCellKey): ActiveCell | null => {
       for (let nextRowIndex = rowIndex + 1; nextRowIndex < columns.length; nextRowIndex += 1) {
         if (isCellFocusable(nextRowIndex, cellKey)) {
-          return { rowIndex: nextRowIndex, cellKey }
+          return { rowIndex: nextRowIndex, cellKey: cellKey }
         }
       }
 
@@ -498,12 +498,12 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   }
 
   // Returns true if this cell is currently in active edit mode
-  const isActiveCellFn = (rowIndex: number, cellKey: string) =>
+  const isActiveCell = (rowIndex: number, cellKey: string) =>
     activeCell?.rowIndex === rowIndex && activeCell?.cellKey === cellKey
 
   // Returns the CSS class (active or inactive) for a cell input
   const getCellInputClass = (rowIndex: number, cellKey: string) =>
-    isActiveCellFn(rowIndex, cellKey) ? styles.activeInput : styles.inactiveInput
+    isActiveCell(rowIndex, cellKey) ? styles.activeInput : styles.inactiveInput
 
   const handleAddColumn = () => {
     addColumn(tabId)
@@ -711,7 +711,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       )
                       rowDrag.to = to
                       setDrag((current) =>
-                        current?.to === to ? current : { from: rowDrag.from, to, rowHeight }
+                        current?.to === to
+                          ? current
+                          : { from: rowDrag.from, to: to, rowHeight: rowHeight }
                       )
                     }}
                     onPointerUp={(event) => finishRowDrag(event.currentTarget, true)}
@@ -851,8 +853,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               event.stopPropagation()
                             },
                           }}
-                          onChange={(v) => {
-                            const nextSignedness = v === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
+                          onChange={(value) => {
+                            const nextSignedness = value === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
                             updateColumn(
                               tabId,
                               columnIndex,

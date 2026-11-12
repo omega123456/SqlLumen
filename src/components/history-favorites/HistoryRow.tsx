@@ -8,6 +8,7 @@ import { formatTableTimestamp } from '../../lib/format-utils'
 import type { HistoryEntry } from '../../types/schema'
 import { Button } from '../common/Button'
 import styles from './HistoryRow.module.css'
+import { MILLISECONDS_PER_SECOND } from '../../lib/units'
 
 export interface HistoryRowProps {
   entry: HistoryEntry
@@ -16,8 +17,8 @@ export interface HistoryRowProps {
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(1)}s`
+  if (ms < MILLISECONDS_PER_SECOND) return `${ms}ms`
+  return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)}s`
 }
 
 export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
@@ -47,8 +48,8 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
   }, [entry.sqlText, entry.connectionId, openDialog])
 
   const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
       deleteEntry(connectionId, entry.id)
     },
     [deleteEntry, connectionId, entry.id]
@@ -80,8 +81,8 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
           variant="bare"
           className={styles.actionButton}
           title="Copy to editor"
-          onClick={(e) => {
-            e.stopPropagation()
+          onClick={(event) => {
+            event.stopPropagation()
             handleCopyToEditor()
           }}
           data-testid="history-row-copy"
@@ -92,8 +93,8 @@ export function HistoryRow({ entry, connectionId }: HistoryRowProps) {
           variant="bare"
           className={styles.actionButton}
           title="Save as favorite"
-          onClick={(e) => {
-            e.stopPropagation()
+          onClick={(event) => {
+            event.stopPropagation()
             handleSaveAsFavorite()
           }}
           data-testid="history-row-favorite"

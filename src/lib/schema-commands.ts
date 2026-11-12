@@ -90,8 +90,8 @@ export async function createDatabase(
   collation?: string
 ): Promise<void> {
   return invoke<void>('create_database', {
-    connectionId,
-    name,
+    connectionId: connectionId,
+    name: name,
     charset: charset ?? null,
     collation: collation ?? null,
   })
@@ -110,8 +110,8 @@ export async function alterDatabase(
   collation?: string
 ): Promise<void> {
   return invoke<void>('alter_database', {
-    connectionId,
-    name,
+    connectionId: connectionId,
+    name: name,
     charset: charset ?? null,
     collation: collation ?? null,
   })

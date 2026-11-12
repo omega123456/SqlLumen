@@ -1,3 +1,5 @@
+import { MILLISECONDS_PER_SECOND, SECONDS_PER_HOUR, SECONDS_PER_MINUTE } from './units'
+
 /**
  * Formats a duration in milliseconds into a compact human-readable string.
  * Examples:
@@ -11,10 +13,10 @@
  *   -100   → "0s"
  */
 export function formatElapsedTime(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
+  const totalSeconds = Math.max(0, Math.floor(ms / MILLISECONDS_PER_SECOND))
+  const hours = Math.floor(totalSeconds / SECONDS_PER_HOUR)
+  const minutes = Math.floor((totalSeconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
+  const seconds = totalSeconds % SECONDS_PER_MINUTE
 
   if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
   if (minutes > 0) return `${minutes}m ${seconds}s`

@@ -8,8 +8,8 @@ fn escape_identifier(name: &str) -> String {
 }
 
 /// Escape a SQL string value: double single-quotes and escape backslashes.
-fn escape_string_value(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('\'', "''")
+fn escape_string_value(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('\'', "''")
 }
 
 /// Write query results as SQL INSERT statements to the given writer.
@@ -59,7 +59,7 @@ pub fn sql_insert_prefix(table_name: &str, columns: &[String]) -> String {
     let escaped_table = escape_identifier(table_name);
     let col_list: String = columns
         .iter()
-        .map(|c| format!("`{}`", escape_identifier(c)))
+        .map(|column| format!("`{}`", escape_identifier(column)))
         .collect::<Vec<_>>()
         .join(", ");
     format!("INSERT INTO `{escaped_table}` ({col_list}) VALUES (")
@@ -73,23 +73,23 @@ pub fn write_sql_row<W: Write>(
     row: &[serde_json::Value],
 ) -> io::Result<()> {
     writer.write_all(prefix.as_bytes())?;
-    for (i, val) in row.iter().enumerate() {
-        if i > 0 {
+    for (column_index, value) in row.iter().enumerate() {
+        if column_index > 0 {
             write!(writer, ", ")?;
         }
-        match val {
+        match value {
             serde_json::Value::Null => write!(writer, "NULL")?,
-            serde_json::Value::String(s) => {
-                let escaped = escape_string_value(s);
+            serde_json::Value::String(text) => {
+                let escaped = escape_string_value(text);
                 write!(writer, "'{escaped}'")?;
             }
-            serde_json::Value::Number(n) => write!(writer, "{n}")?,
-            serde_json::Value::Bool(b) => {
-                write!(writer, "{}", if *b { 1 } else { 0 })?;
+            serde_json::Value::Number(number) => write!(writer, "{number}")?,
+            serde_json::Value::Bool(boolean) => {
+                write!(writer, "{}", if *boolean { 1 } else { 0 })?;
             }
             _ => {
-                let s = val.to_string();
-                let escaped = escape_string_value(&s);
+                let text = value.to_string();
+                let escaped = escape_string_value(&text);
                 write!(writer, "'{escaped}'")?;
             }
         }

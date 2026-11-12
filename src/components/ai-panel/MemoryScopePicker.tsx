@@ -50,24 +50,29 @@ export function MemoryScopePicker({
 }: MemoryScopePickerProps) {
   const options = useMemo(
     () =>
-      BASE_OPTIONS.map((opt) => ({
-        ...opt,
-        disabled: opt.scope === 'group' && !hasGroup,
+      BASE_OPTIONS.map((option) => ({
+        ...option,
+        disabled: option.scope === 'group' && !hasGroup,
       })),
     [hasGroup]
   )
 
   const enabledIndices = useMemo(
-    () => options.map((opt, i) => (opt.disabled ? -1 : i)).filter((i) => i >= 0),
+    () =>
+      options.map((option, index) => (option.disabled ? -1 : index)).filter((index) => index >= 0),
     [options]
   )
 
   const initialIndex = useMemo(() => {
-    const fromDefault = options.findIndex((opt) => opt.scope === defaultScope && !opt.disabled)
+    const fromDefault = options.findIndex(
+      (option) => option.scope === defaultScope && !option.disabled
+    )
     if (fromDefault >= 0) {
       return fromDefault
     }
-    const connectionIndex = options.findIndex((opt) => opt.scope === 'connection' && !opt.disabled)
+    const connectionIndex = options.findIndex(
+      (option) => option.scope === 'connection' && !option.disabled
+    )
     if (connectionIndex >= 0) {
       return connectionIndex
     }
@@ -85,21 +90,21 @@ export function MemoryScopePicker({
       if (enabledIndices.length === 0) {
         return
       }
-      const currentPos = enabledIndices.indexOf(highlightedIndex)
-      const start = currentPos === -1 ? 0 : currentPos
-      const nextPos = (start + delta + enabledIndices.length) % enabledIndices.length
-      setHighlightedIndex(enabledIndices[nextPos]!)
+      const currentPosition = enabledIndices.indexOf(highlightedIndex)
+      const start = currentPosition === -1 ? 0 : currentPosition
+      const nextPosition = (start + delta + enabledIndices.length) % enabledIndices.length
+      setHighlightedIndex(enabledIndices[nextPosition]!)
     },
     [enabledIndices, highlightedIndex]
   )
 
   const selectIndex = useCallback(
     (index: number) => {
-      const opt = options[index]
-      if (!opt || opt.disabled) {
+      const option = options[index]
+      if (!option || option.disabled) {
         return
       }
-      onSelect(opt.scope)
+      onSelect(option.scope)
     },
     [options, onSelect]
   )
@@ -120,23 +125,23 @@ export function MemoryScopePicker({
     // preventing it from immediately bubbling to `document` and auto-selecting
     // the highlighted option.
     const attachedAt = performance.now()
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.timeStamp <= attachedAt) {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.timeStamp <= attachedAt) {
         return
       }
-      const h = handlersRef.current
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        h.moveHighlight(1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        h.moveHighlight(-1)
-      } else if (e.key === 'Enter') {
-        e.preventDefault()
-        h.selectIndex(h.highlightedIndex)
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        h.onCancel()
+      const handlers = handlersRef.current
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        handlers.moveHighlight(1)
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        handlers.moveHighlight(-1)
+      } else if (event.key === 'Enter') {
+        event.preventDefault()
+        handlers.selectIndex(handlers.highlightedIndex)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        handlers.onCancel()
       }
     }
 
@@ -157,34 +162,34 @@ export function MemoryScopePicker({
       <div className={styles.header} aria-hidden>
         Save memory to:
       </div>
-      {options.map((opt, i) => {
-        const IconComponent = opt.icon
-        const isHighlighted = i === highlightedIndex
+      {options.map((option, index) => {
+        const IconComponent = option.icon
+        const isHighlighted = index === highlightedIndex
         return (
           <div
-            key={opt.scope}
+            key={option.scope}
             role="option"
-            id={`memory-scope-${opt.scope}`}
-            aria-selected={isHighlighted && !opt.disabled}
-            aria-disabled={opt.disabled || undefined}
+            id={`memory-scope-${option.scope}`}
+            aria-selected={isHighlighted && !option.disabled}
+            aria-disabled={option.disabled || undefined}
             className={[
               styles.option,
-              isHighlighted && !opt.disabled ? styles.optionHighlighted : '',
-              opt.disabled ? styles.optionDisabled : '',
+              isHighlighted && !option.disabled ? styles.optionHighlighted : '',
+              option.disabled ? styles.optionDisabled : '',
             ]
               .filter(Boolean)
               .join(' ')}
-            data-testid={`memory-scope-option-${opt.scope}`}
-            onClick={() => selectIndex(i)}
+            data-testid={`memory-scope-option-${option.scope}`}
+            onClick={() => selectIndex(index)}
             onMouseEnter={() => {
-              if (!opt.disabled) {
-                setHighlightedIndex(i)
+              if (!option.disabled) {
+                setHighlightedIndex(index)
               }
             }}
           >
             <IconComponent size={16} className={styles.optionIcon} aria-hidden />
-            <span className={styles.optionLabel}>{opt.label}</span>
-            {opt.disabled && (
+            <span className={styles.optionLabel}>{option.label}</span>
+            {option.disabled && (
               <span className={styles.optionCaption} data-testid="memory-scope-no-group-caption">
                 no group
               </span>

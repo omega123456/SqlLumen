@@ -30,9 +30,9 @@ export function AiDiffBridgeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const triggerDiff = useCallback((tabId: string, proposedSql: string, range: PlainRange) => {
-    const h = handlersRef.current[tabId]
-    if (h) {
-      h(proposedSql, range)
+    const handler = handlersRef.current[tabId]
+    if (handler) {
+      handler(proposedSql, range)
     }
   }, [])
 
@@ -42,16 +42,16 @@ export function AiDiffBridgeProvider({ children }: { children: ReactNode }) {
 }
 
 export function useRegisterAiDiffHandler(tabId: string, handler: AiDiffHandler | undefined) {
-  const ctx = useContext(AiDiffBridgeContext)
+  const context = useContext(AiDiffBridgeContext)
   useEffect(() => {
-    if (!ctx || !handler) {
+    if (!context || !handler) {
       return
     }
-    ctx.registerHandler(tabId, handler)
+    context.registerHandler(tabId, handler)
     return () => {
-      ctx.registerHandler(tabId, null)
+      context.registerHandler(tabId, null)
     }
-  }, [ctx, tabId, handler])
+  }, [context, tabId, handler])
 }
 
 export function useAiDiffTrigger(): (
@@ -59,9 +59,9 @@ export function useAiDiffTrigger(): (
   proposedSql: string,
   range: PlainRange
 ) => void {
-  const ctx = useContext(AiDiffBridgeContext)
-  if (!ctx) {
+  const context = useContext(AiDiffBridgeContext)
+  if (!context) {
     return () => {}
   }
-  return ctx.triggerDiff
+  return context.triggerDiff
 }

@@ -27,16 +27,18 @@ export interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
-  const activeSection = useSettingsStore((s) => s.activeSection)
-  const setActiveSection = useSettingsStore((s) => s.setActiveSection)
-  const isDirty = useSettingsStore((s) => s.isDirty)
-  const hasValidationErrors = useSettingsStore((s) => Object.keys(s.validationErrors).length > 0)
-  const loadSettings = useSettingsStore((s) => s.loadSettings)
-  const save = useSettingsStore((s) => s.save)
-  const discard = useSettingsStore((s) => s.discard)
-  const resetSection = useSettingsStore((s) => s.resetSection)
-  const revertPreview = useThemeStore((s) => s.revertPreview)
-  const dialogSection = useSettingsStore((s) => s.dialogSection)
+  const activeSection = useSettingsStore((state) => state.activeSection)
+  const setActiveSection = useSettingsStore((state) => state.setActiveSection)
+  const isDirty = useSettingsStore((state) => state.isDirty)
+  const hasValidationErrors = useSettingsStore(
+    (state) => Object.keys(state.validationErrors).length > 0
+  )
+  const loadSettings = useSettingsStore((state) => state.loadSettings)
+  const save = useSettingsStore((state) => state.save)
+  const discard = useSettingsStore((state) => state.discard)
+  const resetSection = useSettingsStore((state) => state.resetSection)
+  const revertPreview = useThemeStore((state) => state.revertPreview)
+  const dialogSection = useSettingsStore((state) => state.dialogSection)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
 

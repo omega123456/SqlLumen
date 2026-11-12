@@ -72,11 +72,11 @@ export function AlterDatabaseDialog({
             },
           })
         }
-      } catch (err) {
+      } catch (error) {
         if (!cancelled) {
-          const msg = err instanceof Error ? err.message : String(err)
-          patchDialogState({ detailsError: msg })
-          showErrorToast('Failed to load database', msg)
+          const message = error instanceof Error ? error.message : String(error)
+          patchDialogState({ detailsError: message })
+          showErrorToast('Failed to load database', message)
         }
       } finally {
         if (!cancelled) {
@@ -116,10 +116,10 @@ export function AlterDatabaseDialog({
         encoding.collation || undefined
       )
       onSuccess()
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      patchDialogState({ submitError: msg })
-      showErrorToast('Failed to alter database', msg)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      patchDialogState({ submitError: message })
+      showErrorToast('Failed to alter database', message)
     } finally {
       patchDialogState({ isSubmitting: false })
     }
@@ -152,10 +152,10 @@ export function AlterDatabaseDialog({
 
   const collationOptions: DropdownOption[] = [
     { value: '', label: 'Default' },
-    ...encoding.filteredCollations.map((c) => ({
-      value: c.name,
-      label: c.name,
-      description: c.isDefault ? 'default' : undefined,
+    ...encoding.filteredCollations.map((collation) => ({
+      value: collation.name,
+      label: collation.name,
+      description: collation.isDefault ? 'default' : undefined,
     })),
   ]
 

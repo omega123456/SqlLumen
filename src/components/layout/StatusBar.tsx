@@ -12,6 +12,10 @@ import { formatRowCountParts } from '../../lib/format-row-count'
 import { Button } from '../common/Button'
 import styles from './StatusBar.module.css'
 
+const READY_FLASH_DURATION_MS = 2000
+const STATUS_FLASH_DURATION_MS = 3000
+const FLASH_FADE_OUT_MS = 500
+
 const statusLabel: Record<string, string> = {
   connected: 'Connected',
   reconnecting: 'Reconnecting...',
@@ -19,27 +23,27 @@ const statusLabel: Record<string, string> = {
 }
 
 export function StatusBar() {
-  const activeConnections = useConnectionStore((s) => s.activeConnections)
-  const connectionTabId = useConnectionStore((s) => s.activeTabId)
-  const updateStatus = useUpdateStore((s) => s.status)
-  const openSettingsDialog = useSettingsStore((s) => s.openDialog)
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
+  const connectionTabId = useConnectionStore((state) => state.activeTabId)
+  const updateStatus = useUpdateStore((state) => state.status)
+  const openSettingsDialog = useSettingsStore((state) => state.openDialog)
 
   // Active workspace tab ID for the current connection
-  const activeWorkspaceTabId = useWorkspaceStore((s) =>
-    connectionTabId ? (s.activeTabByConnection[connectionTabId] ?? null) : null
+  const activeWorkspaceTabId = useWorkspaceStore((state) =>
+    connectionTabId ? (state.activeTabByConnection[connectionTabId] ?? null) : null
   )
 
   // Check the type of the active workspace tab
-  const activeWorkspaceTabType = useWorkspaceStore((s) => {
+  const activeWorkspaceTabType = useWorkspaceStore((state) => {
     if (!connectionTabId || !activeWorkspaceTabId) return null
-    const tabs = s.tabsByConnection[connectionTabId]
-    return tabs?.find((t) => t.id === activeWorkspaceTabId)?.type ?? null
+    const tabs = state.tabsByConnection[connectionTabId]
+    return tabs?.find((tab) => tab.id === activeWorkspaceTabId)?.type ?? null
   })
 
-  const activeTableDataTabId = useWorkspaceStore((s) => {
+  const activeTableDataTabId = useWorkspaceStore((state) => {
     if (!connectionTabId || !activeWorkspaceTabId) return null
 
-    const tabs = s.tabsByConnection[connectionTabId] ?? []
+    const tabs = state.tabsByConnection[connectionTabId] ?? []
     const activeTab = tabs.find((tab) => tab.id === activeWorkspaceTabId) ?? null
     if (!activeTab) return null
 
@@ -60,30 +64,30 @@ export function StatusBar() {
   })
 
   // Get query state for the active workspace tab — read from active result
-  const queryState = useQueryStore((s) =>
-    activeWorkspaceTabId ? (s.tabs[activeWorkspaceTabId] ?? null) : null
+  const queryState = useQueryStore((state) =>
+    activeWorkspaceTabId ? (state.tabs[activeWorkspaceTabId] ?? null) : null
   )
-  const activeResultState = useQueryStore((s) =>
-    activeWorkspaceTabId ? getActiveResult(s.tabs[activeWorkspaceTabId]) : null
+  const activeResultState = useQueryStore((state) =>
+    activeWorkspaceTabId ? getActiveResult(state.tabs[activeWorkspaceTabId]) : null
   )
-  const activeTableDataState = useTableDataStore((s) =>
-    activeTableDataTabId ? (s.tabs[activeTableDataTabId] ?? null) : null
+  const activeTableDataState = useTableDataStore((state) =>
+    activeTableDataTabId ? (state.tabs[activeTableDataTabId] ?? null) : null
   )
 
   // Schema index status for the active connection session
-  const indexState = useSchemaIndexStore((s) =>
-    connectionTabId ? s.connections[connectionTabId] : undefined
+  const indexState = useSchemaIndexStore((state) =>
+    connectionTabId ? state.connections[connectionTabId] : undefined
   )
   const indexStatus = indexState?.status
 
   // Flash logic — show brief completion/error indicators after status transitions.
   const [flashType, setFlashType] = useState<'ready' | 'error' | null>(null)
   const [fadingOut, setFadingOut] = useState(false)
-  const prevStatusRef = useRef<string | undefined>(undefined)
+  const previousStatusRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
-    const prevStatus = prevStatusRef.current
-    prevStatusRef.current = indexStatus
+    const previousStatus = previousStatusRef.current
+    previousStatusRef.current = indexStatus
 
     let frame: number | undefined
     let flashTimer: ReturnType<typeof setTimeout> | undefined
@@ -91,19 +95,20 @@ export function StatusBar() {
 
     if (
       (indexStatus === 'ready' || indexStatus === 'error') &&
-      prevStatus !== undefined &&
-      prevStatus !== indexStatus
+      previousStatus !== undefined &&
+      previousStatus !== indexStatus
     ) {
       frame = requestAnimationFrame(() => {
         setFlashType(indexStatus)
         setFadingOut(false)
-        const duration = indexStatus === 'ready' ? 2000 : 3000
+        const duration =
+          indexStatus === 'ready' ? READY_FLASH_DURATION_MS : STATUS_FLASH_DURATION_MS
         flashTimer = setTimeout(() => {
           setFadingOut(true)
           fadeTimer = setTimeout(() => {
             setFlashType(null)
             setFadingOut(false)
-          }, 500)
+          }, FLASH_FADE_OUT_MS)
         }, duration)
       })
     } else if (indexStatus === 'building') {

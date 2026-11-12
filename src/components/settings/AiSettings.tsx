@@ -62,31 +62,31 @@ function ModelCategorySection({
           role="radiogroup"
           aria-labelledby={labelId}
         >
-          {models.map((m) => (
-            <div key={m.id} className={styles.cardWrapper}>
+          {models.map((model) => (
+            <div key={model.id} className={styles.cardWrapper}>
               <ElevatedSurface
-                className={`${styles.modelCard}${selectedModelId === m.id ? ` ${styles.modelCardSelected}` : ''}`}
-                onClick={() => onSelectModel(m.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    onSelectModel(m.id)
+                className={`${styles.modelCard}${selectedModelId === model.id ? ` ${styles.modelCardSelected}` : ''}`}
+                onClick={() => onSelectModel(model.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onSelectModel(model.id)
                   }
                 }}
                 tabIndex={0}
                 role="radio"
-                aria-checked={selectedModelId === m.id}
-                data-testid={`ai-model-card-${m.id}`}
-                title={m.name ?? m.id}
+                aria-checked={selectedModelId === model.id}
+                data-testid={`ai-model-card-${model.id}`}
+                title={model.name ?? model.id}
               >
-                {m.name ?? m.id}
+                {model.name ?? model.id}
               </ElevatedSurface>
-              {selectedModelId === m.id && (
+              {selectedModelId === model.id && (
                 <CheckIcon
                   size={14}
                   weight="bold"
                   className={styles.cardCheckmark}
-                  data-testid={`ai-model-check-${m.id}`}
+                  data-testid={`ai-model-check-${model.id}`}
                 />
               )}
             </div>
@@ -113,7 +113,7 @@ const REMEMBER_SCOPE_OPTIONS = [
 // ---------------------------------------------------------------------------
 
 export function AiSettings() {
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
 
   const aiEnabled = useSettingValue('ai.enabled') === 'true'
   const endpoint = useSettingValue('ai.endpoint')
@@ -125,14 +125,14 @@ export function AiSettings() {
   const enableReasoning = useSettingValue('ai.enableReasoning') !== 'false'
   const preferResponsesApi = useSettingValue('ai.preferResponsesApi') === 'true'
   const rememberScopeRaw = useSettingValue('ai.rememberScope')
-  const rememberScope = REMEMBER_SCOPE_OPTIONS.some((o) => o.value === rememberScopeRaw)
+  const rememberScope = REMEMBER_SCOPE_OPTIONS.some((option) => option.value === rememberScopeRaw)
     ? rememberScopeRaw
     : 'connection'
 
   // Retrieval settings
   const topKPerQuery = useSettingValue('ai.retrieval.topKPerQuery')
   const topN = useSettingValue('ai.retrieval.topN')
-  const fkFanoutCap = useSettingValue('ai.retrieval.fkFanoutCap')
+  const foreignKeyFanoutCap = useSettingValue('ai.retrieval.fkFanoutCap')
   const lexicalWeight = useSettingValue('ai.retrieval.lexicalWeight')
   const rerankEnabled = useSettingValue('ai.retrieval.rerankEnabled')
   const tokenBudget = useSettingValue('ai.retrieval.tokenBudget')
@@ -152,9 +152,9 @@ export function AiSettings() {
 
   // Subscribe to the schema index store so the Force Reindex button reflects
   // builds triggered from anywhere (other tabs, settings changes, etc.).
-  const connections = useSchemaIndexStore((s) => s.connections)
+  const connections = useSchemaIndexStore((state) => state.connections)
   const buildingConnections: ConnectionIndexState[] = Object.values(connections).filter(
-    (c) => c.status === 'building'
+    (indexState) => indexState.status === 'building'
   )
   const isBuilding = buildingConnections.length > 0
 
@@ -211,14 +211,16 @@ export function AiSettings() {
   const embeddingUrl = embeddingEndpoint.trim()
   const hasEmbeddingUrl = embeddingUrl.length > 0
 
-  const chatModels = chatFetch.models.filter((m) => m.category === 'chat' || !m.category)
+  const chatModels = chatFetch.models.filter(
+    (model) => model.category === 'chat' || !model.category
+  )
 
   // When an embedding URL is set, drive the embedding grid from its dedicated
   // fetch (including uncategorised models, since that server may not categorise).
   // When blank, fall back to the chat-fetch embedding-category models.
   const embeddingModels = hasEmbeddingUrl
-    ? embeddingFetch.models.filter((m) => m.category === 'embedding' || !m.category)
-    : chatFetch.models.filter((m) => m.category === 'embedding')
+    ? embeddingFetch.models.filter((model) => model.category === 'embedding' || !model.category)
+    : chatFetch.models.filter((model) => model.category === 'embedding')
 
   // Render the category grids once either fetch has produced models, or when an
   // embedding URL is set (so its scoped loading/empty state has a place to live).
@@ -257,7 +259,7 @@ export function AiSettings() {
             <TextInput
               id="settings-ai-endpoint"
               value={endpoint}
-              onChange={(e) => setPendingChange('ai.endpoint', e.target.value)}
+              onChange={(event) => setPendingChange('ai.endpoint', event.target.value)}
               placeholder="http://localhost:11434/v1"
               disabled={!aiEnabled}
               data-testid="settings-ai-endpoint"
@@ -272,7 +274,7 @@ export function AiSettings() {
             <TextInput
               id="settings-ai-embedding-endpoint"
               value={embeddingEndpoint}
-              onChange={(e) => setPendingChange('ai.embeddingEndpoint', e.target.value)}
+              onChange={(event) => setPendingChange('ai.embeddingEndpoint', event.target.value)}
               placeholder={chatUrl || 'http://localhost:11434/v1'}
               disabled={!aiEnabled}
               data-testid="settings-ai-embedding-endpoint"
@@ -381,7 +383,7 @@ export function AiSettings() {
                 max={2}
                 step="0.1"
                 value={temperature}
-                onChange={(e) => setPendingChange('ai.temperature', e.target.value)}
+                onChange={(event) => setPendingChange('ai.temperature', event.target.value)}
                 disabled={!aiEnabled}
                 data-testid="settings-ai-temperature"
                 className={styles.compactFieldInput}
@@ -397,7 +399,7 @@ export function AiSettings() {
                 min={1}
                 max={128000}
                 value={maxTokens}
-                onChange={(e) => setPendingChange('ai.maxTokens', e.target.value)}
+                onChange={(event) => setPendingChange('ai.maxTokens', event.target.value)}
                 disabled={!aiEnabled}
                 data-testid="settings-ai-max-tokens"
                 className={styles.compactFieldInput}
@@ -453,7 +455,7 @@ export function AiSettings() {
                 testId: 'settings-ai-retrieval-fk-fanout',
                 min: 0,
                 max: 200,
-                value: fkFanoutCap,
+                value: foreignKeyFanoutCap,
               },
               {
                 settingKey: 'ai.retrieval.lexicalWeight',
@@ -474,21 +476,21 @@ export function AiSettings() {
                 max: 100000,
                 value: tokenBudget,
               },
-            ].map((s) => (
-              <div key={s.settingKey} className={styles.compactField}>
-                <label htmlFor={s.id} className={styles.fieldLabel}>
-                  {s.label}
+            ].map((setting) => (
+              <div key={setting.settingKey} className={styles.compactField}>
+                <label htmlFor={setting.id} className={styles.fieldLabel}>
+                  {setting.label}
                 </label>
                 <TextInput
-                  id={s.id}
+                  id={setting.id}
                   type="number"
-                  min={s.min}
-                  max={s.max}
-                  step={s.step}
-                  value={s.value}
-                  onChange={(e) => setPendingChange(s.settingKey, e.target.value)}
+                  min={setting.min}
+                  max={setting.max}
+                  step={setting.step}
+                  value={setting.value}
+                  onChange={(event) => setPendingChange(setting.settingKey, event.target.value)}
                   disabled={!aiEnabled}
-                  data-testid={s.testId}
+                  data-testid={setting.testId}
                   className={styles.compactFieldInput}
                 />
               </div>
@@ -549,21 +551,21 @@ export function AiSettings() {
                 max: 100,
                 value: recentQueryWindow,
               },
-            ].map((s) => (
-              <div key={s.settingKey} className={styles.compactField}>
-                <label htmlFor={s.id} className={styles.fieldLabel}>
-                  {s.label}
+            ].map((setting) => (
+              <div key={setting.settingKey} className={styles.compactField}>
+                <label htmlFor={setting.id} className={styles.fieldLabel}>
+                  {setting.label}
                 </label>
                 <TextInput
-                  id={s.id}
+                  id={setting.id}
                   type="number"
-                  min={s.min}
-                  max={s.max}
-                  step={s.step}
-                  value={s.value}
-                  onChange={(e) => setPendingChange(s.settingKey, e.target.value)}
+                  min={setting.min}
+                  max={setting.max}
+                  step={setting.step}
+                  value={setting.value}
+                  onChange={(event) => setPendingChange(setting.settingKey, event.target.value)}
                   disabled={!aiEnabled}
-                  data-testid={s.testId}
+                  data-testid={setting.testId}
                   className={styles.compactFieldInput}
                 />
               </div>

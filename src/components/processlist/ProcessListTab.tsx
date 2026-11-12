@@ -17,15 +17,15 @@ export default function ProcessListTab({
   workspaceTabId,
   isActive = true,
 }: ProcessListTabProps) {
-  const fetchProcessList = useProcessListStore((s) => s.fetchProcessList)
+  const fetchProcessList = useProcessListStore((state) => state.fetchProcessList)
   const refreshIntervalMs = useProcessListStore(
-    (s) => s.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
+    (state) => state.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
   )
   const isConfirmDialogOpen = useProcessListStore(
-    (s) => s.isConfirmDialogOpenByConnection[connectionId] ?? false
+    (state) => state.isConfirmDialogOpenByConnection[connectionId] ?? false
   )
   const isSummaryDialogOpen = useProcessListStore(
-    (s) => s.isSummaryDialogOpenByConnection[connectionId] ?? false
+    (state) => state.isSummaryDialogOpenByConnection[connectionId] ?? false
   )
   // Refresh immediately whenever the tab is opened or brought into focus, instead of
   // waiting for the next auto-refresh tick

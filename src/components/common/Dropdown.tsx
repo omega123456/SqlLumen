@@ -97,7 +97,7 @@ const FLYOUT_GAP = 4
 const FLYOUT_MIN_WIDTH = 140
 
 function indexOfValue(options: DropdownOption[], value: string): number {
-  return options.findIndex((o) => o.value === value)
+  return options.findIndex((option) => option.value === value)
 }
 
 function getScrollParents(node: HTMLElement | null): (HTMLElement | Window)[] {
@@ -145,12 +145,12 @@ function DropdownChrome({
   closeListbox,
   updatePlacement,
 }: DropdownChromeProps) {
-  const prevOpenRef = useRef(open)
+  const previousOpenRef = useRef(open)
   const scrollParentsRef = useRef<Set<EventTarget> | null>(null)
 
   useEffect(() => {
-    if (prevOpenRef.current !== open) {
-      prevOpenRef.current = open
+    if (previousOpenRef.current !== open) {
+      previousOpenRef.current = open
       onOpenChange?.(open)
     }
   }, [open, onOpenChange])
@@ -292,14 +292,14 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       if (isMultiSelect(props)) {
         return props.value
           .map((selectedValue) => indexOfValue(options, selectedValue))
-          .filter((idx) => idx >= 0)
+          .filter((index) => index >= 0)
       }
 
-      return [indexOfValue(options, props.value)].filter((idx) => idx >= 0)
+      return [indexOfValue(options, props.value)].filter((index) => index >= 0)
     }, [options, props])
 
     const selectedOptions = useMemo(
-      () => selectedIndices.map((idx) => options[idx]!).filter(Boolean),
+      () => selectedIndices.map((index) => options[index]!).filter(Boolean),
       [options, selectedIndices]
     )
 
@@ -381,22 +381,22 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       const triggerRect = trigger.getBoundingClientRect()
       const vw = window.innerWidth
       const vh = window.innerHeight
-      const m = VIEWPORT_MARGIN
+      const margin = VIEWPORT_MARGIN
 
       let left = triggerRect.left
       let width = Math.max(triggerRect.width, minPanelWidth)
-      if (left < m) {
-        width -= m - left
-        left = m
+      if (left < margin) {
+        width -= margin - left
+        left = margin
       }
-      if (left + width > vw - m) {
-        left = Math.max(m, vw - m - width)
-        width = Math.min(width, vw - 2 * m)
+      if (left + width > vw - margin) {
+        left = Math.max(margin, vw - margin - width)
+        width = Math.min(width, vw - margin - margin)
       }
 
       const desiredHeight = Math.min(panel.scrollHeight || MAX_DROPDOWN_HEIGHT, MAX_DROPDOWN_HEIGHT)
-      const availableBelow = Math.max(0, vh - m - FLYOUT_GAP - triggerRect.bottom)
-      const availableAbove = Math.max(0, triggerRect.top - m - FLYOUT_GAP)
+      const availableBelow = Math.max(0, vh - margin - FLYOUT_GAP - triggerRect.bottom)
+      const availableAbove = Math.max(0, triggerRect.top - margin - FLYOUT_GAP)
       const nextPlacement: DropdownPlacement =
         availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
       const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
@@ -413,14 +413,14 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       if (nextPlacement === 'bottom') {
         setDropdownLayout({
           left: leftValue,
-          width,
+          width: width,
           top: topValue,
           bottom: null,
         })
       } else {
         setDropdownLayout({
           left: leftValue,
-          width,
+          width: width,
           top: null,
           bottom: bottomValue,
         })
@@ -486,12 +486,12 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
 
             onListKeyDown?.(event)
           }}
-          onBlur={(e) => {
+          onBlur={(event) => {
             if (!focusListOnOpen) {
               return
             }
 
-            if (isWithinDropdownTarget(e.relatedTarget)) {
+            if (isWithinDropdownTarget(event.relatedTarget)) {
               return
             }
 
@@ -500,15 +500,15 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           data-placement={placement}
           style={listboxStyle}
         >
-          {options.map((opt, idx) => (
+          {options.map((option, index) => (
             <ListboxOption
               as="li"
-              key={`${opt.value}-${idx}`}
-              id={`${listboxId}-option-${idx}`}
-              value={opt.value}
-              disabled={opt.disabled}
-              aria-label={opt.label}
-              data-testid={dataTestId ? `${dataTestId}-option-${opt.value}` : undefined}
+              key={`${option.value}-${index}`}
+              id={`${listboxId}-option-${index}`}
+              value={option.value}
+              disabled={option.disabled}
+              aria-label={option.label}
+              data-testid={dataTestId ? `${dataTestId}-option-${option.value}` : undefined}
               className={({ selected, focus, disabled: optionDisabled }) =>
                 [
                   'ui-dropdown__option',
@@ -536,15 +536,15 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                     <span className="ui-dropdown__option-row">
                       <span className="ui-dropdown__option-content">
                         {renderOptionLabel ? (
-                          renderOptionLabel(opt, {
-                            selected,
+                          renderOptionLabel(option, {
+                            selected: selected,
                             highlighted: focus,
                           })
                         ) : (
                           <>
-                            <span>{opt.label}</span>
-                            {opt.description ? (
-                              <span className="ui-dropdown__meta">{opt.description}</span>
+                            <span>{option.label}</span>
+                            {option.description ? (
+                              <span className="ui-dropdown__meta">{option.description}</span>
                             ) : null}
                           </>
                         )}
@@ -552,15 +552,15 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                       <Check className="ui-dropdown__check" size={16} weight="bold" aria-hidden />
                     </span>
                   ) : renderOptionLabel ? (
-                    renderOptionLabel(opt, {
-                      selected,
+                    renderOptionLabel(option, {
+                      selected: selected,
                       highlighted: focus,
                     })
                   ) : (
                     <>
-                      <span>{opt.label}</span>
-                      {opt.description ? (
-                        <span className="ui-dropdown__meta">{opt.description}</span>
+                      <span>{option.label}</span>
+                      {option.description ? (
+                        <span className="ui-dropdown__meta">{option.description}</span>
                       ) : null}
                     </>
                   )}
@@ -602,17 +602,17 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                   data-panel-placement={open ? placement : undefined}
                   data-testid={dataTestId}
                   {...triggerRest}
-                  onClick={(e) => {
-                    triggerOnClick?.(e)
+                  onClick={(event) => {
+                    triggerOnClick?.(event)
                   }}
                   onFocus={onTriggerFocus}
-                  onBlur={(e) => {
-                    onTriggerBlur?.(e)
-                    if (e.defaultPrevented || !open || focusListOnOpen) {
+                  onBlur={(event) => {
+                    onTriggerBlur?.(event)
+                    if (event.defaultPrevented || !open || focusListOnOpen) {
                       return
                     }
 
-                    if (isWithinDropdownTarget(e.relatedTarget)) {
+                    if (isWithinDropdownTarget(event.relatedTarget)) {
                       return
                     }
 
@@ -665,17 +665,17 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                 data-panel-placement={open ? placement : undefined}
                 data-testid={dataTestId}
                 {...triggerRest}
-                onClick={(e) => {
-                  triggerOnClick?.(e)
+                onClick={(event) => {
+                  triggerOnClick?.(event)
                 }}
                 onFocus={onTriggerFocus}
-                onBlur={(e) => {
-                  onTriggerBlur?.(e)
-                  if (e.defaultPrevented || !open || focusListOnOpen) {
+                onBlur={(event) => {
+                  onTriggerBlur?.(event)
+                  if (event.defaultPrevented || !open || focusListOnOpen) {
                     return
                   }
 
-                  if (isWithinDropdownTarget(e.relatedTarget)) {
+                  if (isWithinDropdownTarget(event.relatedTarget)) {
                     return
                   }
 

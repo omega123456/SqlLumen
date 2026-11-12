@@ -32,6 +32,8 @@ import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
 import styles from './SavedConnectionsList.module.css'
 
+const ERROR_AUTO_CLEAR_MS = 5000
+
 // --- Simplification 6: pure helper to build grouped/sorted sections ---
 
 interface ConnectionSection {
@@ -45,7 +47,7 @@ function buildConnectionSections(
   savedConnections: SavedConnection[],
   connectionGroups: ConnectionGroup[]
 ): ConnectionSection[] {
-  const sortedGroups = [...connectionGroups].sort((a, b) => a.sortOrder - b.sortOrder)
+  const sortedGroups = [...connectionGroups].sort((left, right) => left.sortOrder - right.sortOrder)
 
   const connectionsByGroup = new Map<string | null, SavedConnection[]>()
   for (const group of sortedGroups) {
@@ -53,18 +55,18 @@ function buildConnectionSections(
   }
   connectionsByGroup.set(null, [])
 
-  for (const conn of savedConnections) {
-    const bucket = connectionsByGroup.get(conn.groupId)
+  for (const connection of savedConnections) {
+    const bucket = connectionsByGroup.get(connection.groupId)
     if (bucket) {
-      bucket.push(conn)
+      bucket.push(connection)
     } else {
       // Group was deleted or doesn't exist — treat as ungrouped
-      connectionsByGroup.get(null)!.push(conn)
+      connectionsByGroup.get(null)!.push(connection)
     }
   }
 
-  for (const [, conns] of connectionsByGroup) {
-    conns.sort((a, b) => a.name.localeCompare(b.name))
+  for (const [, connections] of connectionsByGroup) {
+    connections.sort((left, right) => left.name.localeCompare(right.name))
   }
 
   const sections: ConnectionSection[] = sortedGroups.map((group) => ({
@@ -115,7 +117,7 @@ type EditingGroupState =
 
 interface GroupInlineInputProps {
   value: string
-  onChange: (val: string) => void
+  onChange: (value: string) => void
   onCommit: () => void
   onCancel: () => void
   placeholder?: string
@@ -146,12 +148,12 @@ function GroupInlineInput({
       type="text"
       className={`ui-field-chrome ${styles.renameInput}`}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
           onCommit()
-        } else if (e.key === 'Escape') {
+        } else if (event.key === 'Escape') {
           onCancel()
         }
       }}
@@ -186,9 +188,9 @@ export function SavedConnectionsList({
   onDuplicateConnection,
   selectedConnectionId,
 }: SavedConnectionsListProps) {
-  const savedConnections = useConnectionStore((s) => s.savedConnections)
-  const connectionGroups = useConnectionStore((s) => s.connectionGroups)
-  const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
+  const savedConnections = useConnectionStore((state) => state.savedConnections)
+  const connectionGroups = useConnectionStore((state) => state.connectionGroups)
+  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const [editingGroup, setEditingGroup] = useState<EditingGroupState>(null)
@@ -221,48 +223,48 @@ export function SavedConnectionsList({
     if (!contextMenu || !contextMenuRef.current) {
       return
     }
-    const el = contextMenuRef.current
-    const rect = el.getBoundingClientRect()
-    const pos = positionContextMenuInPortal(
+    const element = contextMenuRef.current
+    const rect = element.getBoundingClientRect()
+    const position = positionContextMenuInPortal(
       contextMenu.portalRoot,
       contextMenu.x,
       contextMenu.y,
       rect.width,
       rect.height
     )
-    el.style.left = `${pos.x}px`
-    el.style.top = `${pos.y}px`
+    element.style.left = `${position.x}px`
+    element.style.top = `${position.y}px`
   }, [contextMenu])
 
   // Auto-clear error after 5 seconds
   useEffect(() => {
     if (!error) return
-    const timer = setTimeout(() => setError(null), 5000)
+    const timer = setTimeout(() => setError(null), ERROR_AUTO_CLEAR_MS)
     return () => clearTimeout(timer)
   }, [error])
 
-  const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string) => {
-    e.preventDefault()
-    const anchor = e.currentTarget as Element
+  const handleGroupContextMenu = useCallback((event: React.MouseEvent, groupId: string) => {
+    event.preventDefault()
+    const anchor = event.currentTarget as Element
     setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
+      x: event.clientX,
+      y: event.clientY,
       portalRoot: getContextMenuPortalRoot(anchor),
       type: 'group',
-      groupId,
+      groupId: groupId,
     })
   }, [])
 
   const handleConnectionContextMenu = useCallback(
-    (e: React.MouseEvent, connection: SavedConnection) => {
-      e.preventDefault()
-      const anchor = e.currentTarget as Element
+    (event: React.MouseEvent, connection: SavedConnection) => {
+      event.preventDefault()
+      const anchor = event.currentTarget as Element
       setContextMenu({
-        x: e.clientX,
-        y: e.clientY,
+        x: event.clientX,
+        y: event.clientY,
         portalRoot: getContextMenuPortalRoot(anchor),
         type: 'connection',
-        connection,
+        connection: connection,
       })
     },
     []
@@ -279,9 +281,9 @@ export function SavedConnectionsList({
   const handleRenameGroup = useCallback(
     (groupId: string) => {
       setContextMenu(null)
-      const group = connectionGroups.find((g) => g.id === groupId)
+      const group = connectionGroups.find((connectionGroup) => connectionGroup.id === groupId)
       if (group) {
-        setEditingGroup({ mode: 'rename', groupId, value: group.name })
+        setEditingGroup({ mode: 'rename', groupId: groupId, value: group.name })
       }
     },
     [connectionGroups]
@@ -301,10 +303,10 @@ export function SavedConnectionsList({
         await createConnectionGroup(trimmedName)
         await fetchSavedConnections()
         showSuccessToast('Group created', trimmedName)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to create group'
-        setError(msg)
-        showErrorToast('Failed to create group', msg)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to create group'
+        setError(message)
+        showErrorToast('Failed to create group', message)
       }
     } else {
       // mode === 'rename'
@@ -313,10 +315,10 @@ export function SavedConnectionsList({
           await updateConnectionGroup(editingGroup.groupId, trimmedName)
           await fetchSavedConnections()
           showSuccessToast('Group renamed', trimmedName)
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Failed to rename group'
-          setError(msg)
-          showErrorToast('Failed to rename group', msg)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to rename group'
+          setError(message)
+          showErrorToast('Failed to rename group', message)
         }
       }
       setEditingGroup(null)
@@ -339,10 +341,10 @@ export function SavedConnectionsList({
         await deleteConnectionGroup(groupId)
         await fetchSavedConnections()
         showSuccessToast('Group deleted')
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to delete group'
-        setError(msg)
-        showErrorToast('Failed to delete group', msg)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to delete group'
+        setError(message)
+        showErrorToast('Failed to delete group', message)
       }
     },
     [fetchSavedConnections]
@@ -352,42 +354,42 @@ export function SavedConnectionsList({
     setEditingGroup({ mode: 'create', value: '' })
   }, [])
 
-  const renderConnectionItem = (conn: SavedConnection) => {
-    const isSelected = conn.id === selectedConnectionId
-    const titleText = conn.name.trim() ? conn.name : conn.host
-    const showSubtitle = Boolean(conn.name.trim())
+  const renderConnectionItem = (connection: SavedConnection) => {
+    const isSelected = connection.id === selectedConnectionId
+    const titleText = connection.name.trim() ? connection.name : connection.host
+    const showSubtitle = Boolean(connection.name.trim())
     return (
       <div
-        key={conn.id}
+        key={connection.id}
         className={`${styles.connectionItem} ${isSelected ? styles.connectionItemSelected : ''}`}
-        onClick={() => onSelectConnection(conn)}
-        onContextMenu={(e) => handleConnectionContextMenu(e, conn)}
+        onClick={() => onSelectConnection(connection)}
+        onContextMenu={(event) => handleConnectionContextMenu(event, connection)}
         role="button"
         data-testid="connection-list-item"
         tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onSelectConnection(conn)
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onSelectConnection(connection)
           }
         }}
       >
         <span className={styles.connectionTitle}>
           <span
             className={styles.colorDot}
-            style={{ backgroundColor: conn.color ?? 'var(--outline)' }}
+            style={{ backgroundColor: connection.color ?? 'var(--outline)' }}
           />
           <span className={styles.connectionName}>{titleText}</span>
         </span>
-        {showSubtitle && <span className={styles.connectionHost}>{conn.host}</span>}
+        {showSubtitle && <span className={styles.connectionHost}>{connection.host}</span>}
         <div className={styles.itemActions}>
           <IconButton
             size="sm"
             title="Duplicate connection"
             aria-label={`Duplicate ${titleText}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDuplicateConnection(conn)
+            onClick={(event) => {
+              event.stopPropagation()
+              handleDuplicateConnection(connection)
             }}
           >
             <Copy size={16} weight="regular" />
@@ -409,7 +411,7 @@ export function SavedConnectionsList({
             className={styles.searchInput}
             placeholder="Filter connections"
             value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
+            onChange={(event) => setFilterText(event.target.value)}
             data-testid="connection-filter-input"
             aria-label="Filter connections"
           />
@@ -464,11 +466,11 @@ export function SavedConnectionsList({
                 className={styles.groupHeader}
                 onContextMenu={
                   isGroupSection
-                    ? (e) => {
-                        if (isEditableFieldElement(e.target)) {
+                    ? (event) => {
+                        if (isEditableFieldElement(event.target)) {
                           return
                         }
-                        handleGroupContextMenu(e, section.groupId!)
+                        handleGroupContextMenu(event, section.groupId!)
                       }
                     : undefined
                 }
@@ -476,8 +478,10 @@ export function SavedConnectionsList({
                 {isRenaming ? (
                   <GroupInlineInput
                     value={editingGroup!.value}
-                    onChange={(val) =>
-                      setEditingGroup((prev) => (prev ? { ...prev, value: val } : null))
+                    onChange={(value) =>
+                      setEditingGroup((previous) =>
+                        previous ? { ...previous, value: value } : null
+                      )
                     }
                     onCommit={() => void commitEditing()}
                     onCancel={cancelEditing}
@@ -497,8 +501,8 @@ export function SavedConnectionsList({
             <div className={styles.groupHeader}>
               <GroupInlineInput
                 value={editingGroup.value}
-                onChange={(val) =>
-                  setEditingGroup((prev) => (prev ? { ...prev, value: val } : null))
+                onChange={(value) =>
+                  setEditingGroup((previous) => (previous ? { ...previous, value: value } : null))
                 }
                 onCommit={() => void commitEditing()}
                 onCancel={cancelEditing}

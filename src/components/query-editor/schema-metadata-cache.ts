@@ -190,12 +190,12 @@ export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadata
   }
 
   // Sanitize foreignKeys (keyed by "db.table")
-  for (const [key, fkList] of Object.entries(data.foreignKeys)) {
+  for (const [key, foreignKeyList] of Object.entries(data.foreignKeys)) {
     const separatorIndex = key.indexOf('.')
     if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
       continue
     }
-    if (!Array.isArray(fkList)) {
+    if (!Array.isArray(foreignKeyList)) {
       continue
     }
 
@@ -205,22 +205,22 @@ export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadata
       continue
     }
 
-    const validFks = fkList.filter(isNamedEntry)
-    if (validFks.length === 0) {
+    const validForeignKeys = foreignKeyList.filter(isNamedEntry)
+    if (validForeignKeys.length === 0) {
       continue
     }
 
-    foreignKeys[`${database}.${table}`] = validFks
+    foreignKeys[`${database}.${table}`] = validForeignKeys
     databases.add(database)
   }
 
   // Sanitize indexes (keyed by "db.table")
-  for (const [key, idxList] of Object.entries(data.indexes)) {
+  for (const [key, indexList] of Object.entries(data.indexes)) {
     const separatorIndex = key.indexOf('.')
     if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
       continue
     }
-    if (!Array.isArray(idxList)) {
+    if (!Array.isArray(indexList)) {
       continue
     }
 
@@ -230,7 +230,7 @@ export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadata
       continue
     }
 
-    const validIndexes = idxList.filter(isNamedEntry)
+    const validIndexes = indexList.filter(isNamedEntry)
     if (validIndexes.length === 0) {
       continue
     }
@@ -241,13 +241,13 @@ export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadata
 
   return {
     databases: Array.from(databases),
-    tables,
-    views,
-    columns,
-    routines,
-    triggers,
-    foreignKeys,
-    indexes,
+    tables: tables,
+    views: views,
+    columns: columns,
+    routines: routines,
+    triggers: triggers,
+    foreignKeys: foreignKeys,
+    indexes: indexes,
   }
 }
 
@@ -303,7 +303,7 @@ export async function loadCache(connectionId: string): Promise<void> {
         lastRefreshAt: Date.now(),
       }
       cacheMap.set(connectionId, readyCache)
-    } catch (err) {
+    } catch (error) {
       // Check if cache was invalidated during the fetch (per-connection generation)
       if (getGeneration(connectionId) !== capturedGeneration) {
         return
@@ -312,7 +312,7 @@ export async function loadCache(connectionId: string): Promise<void> {
       const errorCache: SchemaCache = {
         ...emptyCache(),
         status: 'error',
-        error: err instanceof Error ? err.message : String(err),
+        error: error instanceof Error ? error.message : String(error),
       }
       cacheMap.set(connectionId, errorCache)
     }
@@ -373,20 +373,20 @@ export async function setupSchemaInvalidationListener(): Promise<(() => void) | 
       'schema-metadata-invalidated',
       (event) => {
         invalidateCache(event.payload.connectionId)
-        void refreshCacheInBackground(event.payload.connectionId).catch((err) => {
+        void refreshCacheInBackground(event.payload.connectionId).catch((error) => {
           logFrontend(
             'warn',
-            ['[schema-metadata-cache] Background refresh after schema invalidation failed:', err]
+            ['[schema-metadata-cache] Background refresh after schema invalidation failed:', error]
               .map(String)
               .join(' ')
           )
         })
       }
     )
-  } catch (err) {
+  } catch (error) {
     logFrontend(
       'warn',
-      ['[schema-metadata-cache] schema-metadata-invalidated listen failed:', err]
+      ['[schema-metadata-cache] schema-metadata-invalidated listen failed:', error]
         .map(String)
         .join(' ')
     )
@@ -454,7 +454,7 @@ export function filterTables(connectionId: string, database: string, prefix: str
   if (!cache || cache.status !== 'ready') return []
   const tables = cache.tables[database] ?? []
   const lowerPrefix = prefix.toLowerCase()
-  return tables.filter((t) => t.name.toLowerCase().startsWith(lowerPrefix))
+  return tables.filter((table) => table.name.toLowerCase().startsWith(lowerPrefix))
 }
 
 /**
@@ -469,9 +469,9 @@ export function filterColumns(
   const cache = cacheMap.get(connectionId)
   if (!cache || cache.status !== 'ready') return []
   const key = `${database}.${table}`
-  const cols = cache.columns[key] ?? []
+  const columns = cache.columns[key] ?? []
   const lowerPrefix = prefix.toLowerCase()
-  return cols.filter((c) => c.name.toLowerCase().startsWith(lowerPrefix))
+  return columns.filter((column) => column.name.toLowerCase().startsWith(lowerPrefix))
 }
 
 /**
@@ -486,7 +486,7 @@ export function filterRoutines(
   if (!cache || cache.status !== 'ready') return []
   const routines = cache.routines[database] ?? []
   const lowerPrefix = prefix.toLowerCase()
-  return routines.filter((r) => r.name.toLowerCase().startsWith(lowerPrefix))
+  return routines.filter((routine) => routine.name.toLowerCase().startsWith(lowerPrefix))
 }
 
 export function getSearchableObjects(connectionId: string): SearchableObject[] {
@@ -497,13 +497,13 @@ export function getSearchableObjects(connectionId: string): SearchableObject[] {
 
   for (const [database, tables] of Object.entries(cache.tables)) {
     for (const table of tables) {
-      searchableObjects.push({ database, objectType: 'table', name: table.name })
+      searchableObjects.push({ database: database, objectType: 'table', name: table.name })
     }
   }
 
   for (const [database, views] of Object.entries(cache.views)) {
     for (const view of views) {
-      searchableObjects.push({ database, objectType: 'view', name: view.name })
+      searchableObjects.push({ database: database, objectType: 'view', name: view.name })
     }
   }
 
@@ -511,16 +511,16 @@ export function getSearchableObjects(connectionId: string): SearchableObject[] {
     for (const routine of routines) {
       const normalizedType = routine.routineType.trim().toUpperCase()
       if (normalizedType === 'PROCEDURE') {
-        searchableObjects.push({ database, objectType: 'procedure', name: routine.name })
+        searchableObjects.push({ database: database, objectType: 'procedure', name: routine.name })
       } else if (normalizedType === 'FUNCTION') {
-        searchableObjects.push({ database, objectType: 'function', name: routine.name })
+        searchableObjects.push({ database: database, objectType: 'function', name: routine.name })
       }
     }
   }
 
   for (const [database, triggers] of Object.entries(cache.triggers)) {
     for (const trigger of triggers) {
-      searchableObjects.push({ database, objectType: 'trigger', name: trigger.name })
+      searchableObjects.push({ database: database, objectType: 'trigger', name: trigger.name })
     }
   }
 

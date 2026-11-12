@@ -103,7 +103,7 @@ async fn health_loop<R: Runtime>(
         };
 
         let pool = match pool {
-            Some(p) => p,
+            Some(active_pool) => active_pool,
             None => {
                 // Connection was removed from registry (closed). Stop monitoring.
                 return;
@@ -113,8 +113,8 @@ async fn health_loop<R: Runtime>(
         // Attempt to ping the server
         query_log::log_outgoing_sql("SELECT 1");
         let ping_result = sqlx::query("SELECT 1").execute(&pool).await;
-        if let Ok(ref r) = ping_result {
-            query_log::log_execute_result(r);
+        if let Ok(ref result) = ping_result {
+            query_log::log_execute_result(result);
         }
 
         if ping_result.is_ok() {
@@ -123,14 +123,14 @@ async fn health_loop<R: Runtime>(
         }
 
         // Ping failed — enter reconnection sequence.
-        let ping_err = ping_result.unwrap_err().to_string();
+        let ping_error = ping_result.unwrap_err().to_string();
 
         // Set status to Disconnected
         update_and_emit(
             app_handle,
             connection_id,
             ConnectionStatus::Disconnected,
-            Some(&ping_err),
+            Some(&ping_error),
         );
 
         // Enter reconnection loop
@@ -199,7 +199,7 @@ async fn reconnect_loop_impl<R: Runtime>(
         };
 
         let stored_params = match params {
-            Some(p) => p,
+            Some(active_pool) => active_pool,
             None => {
                 // Connection removed from registry while reconnecting
                 return false;
@@ -236,13 +236,13 @@ async fn reconnect_loop_impl<R: Runtime>(
                 update_and_emit(app_handle, connection_id, ConnectionStatus::Connected, None);
                 return true;
             }
-            Err(e) => {
+            Err(error) => {
                 // Reconnection failed — emit event and continue loop
                 emit_status(
                     app_handle,
                     connection_id,
                     "reconnecting",
-                    Some(&format!("Reconnection failed: {e}")),
+                    Some(&format!("Reconnection failed: {error}")),
                 );
 
                 attempt = attempt.saturating_add(1);
@@ -291,7 +291,7 @@ fn emit_status<R: Runtime>(
     let payload = ConnectionStatusChangedPayload {
         connection_id: connection_id.to_string(),
         status: status.to_string(),
-        message: message.map(|s| s.to_string()),
+        message: message.map(|text| text.to_string()),
     };
 
     // Fire-and-forget — don't block the health loop on event delivery failures.

@@ -87,7 +87,7 @@ pub async fn list_exportable_objects_impl(
     let rows = sqlx::query(metadata_query)
         .fetch_all(&pool)
         .await
-        .map_err(|e| format!("Failed to list exportable objects: {e}"))?;
+        .map_err(|error| format!("Failed to list exportable objects: {error}"))?;
 
     // Group rows by schema name, preserving deterministic ordering.
     let mut result: Vec<ExportableDatabase> = Vec::new();
@@ -161,7 +161,7 @@ pub async fn start_sql_dump_impl(
     let total_tables: usize = input
         .databases
         .iter()
-        .map(|db| input.tables.get(db).map(|t| t.len()).unwrap_or(0))
+        .map(|db| input.tables.get(db).map(|tables| tables.len()).unwrap_or(0))
         .sum();
 
     // Initialize progress
@@ -180,7 +180,7 @@ pub async fn start_sql_dump_impl(
     };
 
     {
-        let mut jobs = dump_jobs.write().map_err(|e| e.to_string())?;
+        let mut jobs = dump_jobs.write().map_err(|error| error.to_string())?;
         // Clean up stale terminal jobs (older than 5 minutes)
         cleanup_stale_dump_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
@@ -193,7 +193,9 @@ pub async fn start_sql_dump_impl(
     tokio::task::spawn_blocking(move || {
         let result = execute_dump(&pool, &input, &job_id_clone, &dump_jobs_arc);
 
-        let mut jobs = dump_jobs_arc.write().unwrap_or_else(|p| p.into_inner());
+        let mut jobs = dump_jobs_arc
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(&job_id_clone) {
             match result {
                 Ok(bytes) => {
@@ -206,12 +208,12 @@ pub async fn start_sql_dump_impl(
                     progress.current_table = None;
                     progress.completed_at = Some(std::time::SystemTime::now());
                 }
-                Err(err) => {
+                Err(error) => {
                     if progress.cancel_requested {
                         progress.status = DumpJobStatus::Cancelled;
                     } else {
                         progress.status = DumpJobStatus::Failed;
-                        progress.error_message = Some(err);
+                        progress.error_message = Some(error);
                     }
                     progress.current_table = None;
                     progress.completed_at = Some(std::time::SystemTime::now());
@@ -230,17 +232,18 @@ fn execute_dump(
     job_id: &str,
     dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
 ) -> Result<u64, String> {
-    let rt = tokio::runtime::Handle::try_current().map_err(|e| format!("No tokio runtime: {e}"))?;
+    let rt = tokio::runtime::Handle::try_current()
+        .map_err(|error| format!("No tokio runtime: {error}"))?;
 
     let mut file = std::fs::File::create(&input.file_path)
-        .map_err(|e| format!("Failed to create file '{}': {e}", input.file_path))?;
+        .map_err(|error| format!("Failed to create file '{}': {error}", input.file_path))?;
 
     // Get server version
     let server_version: String = rt.block_on(async {
         let row = sqlx::query("SELECT VERSION()")
             .fetch_one(pool)
             .await
-            .map_err(|e| format!("Failed to get server version: {e}"))?;
+            .map_err(|error| format!("Failed to get server version: {error}"))?;
         decode_mysql_text_cell(&row, 0)
     })?;
 
@@ -248,15 +251,15 @@ fn execute_dump(
     let header_db = input
         .databases
         .first()
-        .map(|s| s.as_str())
+        .map(|text| text.as_str())
         .unwrap_or("mysql");
 
     sql_dump::write_header(&mut file, header_db, &server_version)
-        .map_err(|e| format!("Failed to write header: {e}"))?;
+        .map_err(|error| format!("Failed to write header: {error}"))?;
 
     if input.options.use_transaction {
         sql_dump::write_transaction_start(&mut file)
-            .map_err(|e| format!("Failed to write transaction start: {e}"))?;
+            .map_err(|error| format!("Failed to write transaction start: {error}"))?;
     }
 
     let mut tables_done: usize = 0;
@@ -271,8 +274,8 @@ fn execute_dump(
 
             // USE database
             writeln!(file, "USE `{}`;", sql_dump::escape_identifier(db_name))
-                .map_err(|e| format!("Write error: {e}"))?;
-            writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+                .map_err(|error| format!("Write error: {error}"))?;
+            writeln!(file).map_err(|error| format!("Write error: {error}"))?;
 
             for entry in &entry_list {
                 let table_name = &entry.name;
@@ -280,7 +283,9 @@ fn execute_dump(
 
                 // Update progress
                 {
-                    let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                    let mut jobs = dump_jobs
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     if let Some(progress) = jobs.get_mut(job_id) {
                         progress.current_table = Some(format!("{}.{}", db_name, table_name));
                     }
@@ -290,31 +295,33 @@ fn execute_dump(
                 if input.options.include_structure {
                     let create_sql = if is_view {
                         rt.block_on(async {
-                            let q = format!(
+                            let query = format!(
                                 "SHOW CREATE VIEW `{}`.`{}`",
                                 sql_dump::escape_identifier(db_name),
                                 sql_dump::escape_identifier(table_name)
                             );
-                            let row = sqlx::query(sqlx::AssertSqlSafe(q.as_str()))
+                            let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
                                 .fetch_one(pool)
                                 .await
-                                .map_err(|e| {
-                                    format!("Failed to get CREATE VIEW for '{table_name}': {e}")
+                                .map_err(|error| {
+                                    format!("Failed to get CREATE VIEW for '{table_name}': {error}")
                                 })?;
                             decode_mysql_text_cell(&row, 1)
                         })?
                     } else {
                         rt.block_on(async {
-                            let q = format!(
+                            let query = format!(
                                 "SHOW CREATE TABLE `{}`.`{}`",
                                 sql_dump::escape_identifier(db_name),
                                 sql_dump::escape_identifier(table_name)
                             );
-                            let row = sqlx::query(sqlx::AssertSqlSafe(q.as_str()))
+                            let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
                                 .fetch_one(pool)
                                 .await
-                                .map_err(|e| {
-                                    format!("Failed to get CREATE TABLE for '{table_name}': {e}")
+                                .map_err(|error| {
+                                    format!(
+                                        "Failed to get CREATE TABLE for '{table_name}': {error}"
+                                    )
                                 })?;
                             decode_mysql_text_cell(&row, 1)
                         })?
@@ -327,7 +334,9 @@ fn execute_dump(
                         input.options.include_drop,
                         is_view,
                     )
-                    .map_err(|e| format!("Failed to write structure for '{table_name}': {e}"))?;
+                    .map_err(|error| {
+                        format!("Failed to write structure for '{table_name}': {error}")
+                    })?;
                 }
 
                 // Check for cancellation before starting data fetch
@@ -349,15 +358,17 @@ fn execute_dump(
                         let mut conn = pool
                             .acquire()
                             .await
-                            .map_err(|e| format!("Failed to acquire connection: {e}"))?;
+                            .map_err(|error| format!("Failed to acquire connection: {error}"))?;
 
                         let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
                             .fetch_one(&mut *conn)
                             .await
-                            .map_err(|e| format!("Failed to get connection ID: {e}"))?;
+                            .map_err(|error| format!("Failed to get connection ID: {error}"))?;
 
                         {
-                            let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                            let mut jobs = dump_jobs
+                                .write()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
                             if let Some(progress) = jobs.get_mut(job_id) {
                                 progress.mysql_thread_id = Some(thread_id);
                             }
@@ -368,15 +379,17 @@ fn execute_dump(
                             sqlx::query(sqlx::AssertSqlSafe(data_query.as_str())).fetch(&mut *conn);
 
                         // Extract column names from the first row
-                        let first_row = stream.try_next().await.map_err(|e| {
-                            format!("Failed to fetch data from '{table_name}': {e}")
+                        let first_row = stream.try_next().await.map_err(|error| {
+                            format!("Failed to fetch data from '{table_name}': {error}")
                         })?;
 
                         let first_row = match first_row {
                             Some(row) => row,
                             None => {
                                 // Clear thread ID — no longer running a query
-                                let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                                let mut jobs = dump_jobs
+                                    .write()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                                 if let Some(progress) = jobs.get_mut(job_id) {
                                     progress.mysql_thread_id = None;
                                 }
@@ -387,7 +400,7 @@ fn execute_dump(
                         let columns: Vec<String> = first_row
                             .columns()
                             .iter()
-                            .map(|c| c.name().to_string())
+                            .map(|column| column.name().to_string())
                             .collect();
 
                         // Chain the first row back with the rest of the stream
@@ -401,7 +414,7 @@ fn execute_dump(
                             &columns,
                             |row: &sqlx::mysql::MySqlRow| {
                                 (0..row.columns().len())
-                                    .map(|i| serialize_dump_value(row, i))
+                                    .map(|column_index| serialize_dump_value(row, column_index))
                                     .collect()
                             },
                             dump_jobs,
@@ -411,14 +424,17 @@ fn execute_dump(
 
                         // Clear thread ID — query is done
                         {
-                            let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                            let mut jobs = dump_jobs
+                                .write()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
                             if let Some(progress) = jobs.get_mut(job_id) {
                                 progress.mysql_thread_id = None;
                             }
                         }
 
-                        result
-                            .map_err(|e| format!("Failed to write data for '{table_name}': {e}"))?;
+                        result.map_err(|error| {
+                            format!("Failed to write data for '{table_name}': {error}")
+                        })?;
 
                         Ok::<_, String>(())
                     })?;
@@ -428,7 +444,9 @@ fn execute_dump(
 
                 // Update progress
                 {
-                    let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                    let mut jobs = dump_jobs
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     if let Some(progress) = jobs.get_mut(job_id) {
                         progress.tables_done = tables_done;
                         progress.rows_exported = 0;
@@ -448,32 +466,34 @@ fn execute_dump(
     // Always write transaction end + footer + flush, even after cancellation.
     // This ensures the dump file is well-formed (COMMIT, FK checks restored).
     // Propagate the first error encountered.
-    let mut first_err = table_loop_result.err();
+    let mut first_error = table_loop_result.err();
 
     if input.options.use_transaction {
-        if let Err(e) = sql_dump::write_transaction_end(&mut file) {
-            first_err.get_or_insert(format!("Failed to write transaction end: {e}"));
+        if let Err(error) = sql_dump::write_transaction_end(&mut file) {
+            first_error.get_or_insert(format!("Failed to write transaction end: {error}"));
         }
     }
 
-    if let Err(e) = sql_dump::write_footer(&mut file) {
-        first_err.get_or_insert(format!("Failed to write footer: {e}"));
+    if let Err(error) = sql_dump::write_footer(&mut file) {
+        first_error.get_or_insert(format!("Failed to write footer: {error}"));
     }
 
-    if let Err(e) = file.flush() {
-        first_err.get_or_insert(format!("Failed to flush file: {e}"));
+    if let Err(error) = file.flush() {
+        first_error.get_or_insert(format!("Failed to flush file: {error}"));
     }
 
-    if let Some(err) = first_err {
-        return Err(err);
+    if let Some(error) = first_error {
+        return Err(error);
     }
 
     let metadata = std::fs::metadata(&input.file_path)
-        .map_err(|e| format!("Failed to read file size: {e}"))?;
+        .map_err(|error| format!("Failed to read file size: {error}"))?;
 
     // Store the cancelled flag so the completion handler can check it
     if cancelled {
-        let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+        let mut jobs = dump_jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(job_id) {
             progress.cancel_requested = true;
         }
@@ -501,7 +521,7 @@ impl<'a> TableInsertWriter<'a> {
     ) -> Self {
         let col_list = columns
             .iter()
-            .map(|c| format!("`{}`", sql_dump::escape_identifier(c)))
+            .map(|column| format!("`{}`", sql_dump::escape_identifier(column)))
             .collect::<Vec<_>>()
             .join(", ");
         Self {
@@ -526,12 +546,15 @@ impl<'a> TableInsertWriter<'a> {
         }
 
         sql_dump::write_insert_batch(file, &self.escaped_table, &self.col_list, batch)
-            .map_err(|e| format!("Write error: {e}"))?;
+            .map_err(|error| format!("Write error: {error}"))?;
 
         let pos = file
             .stream_position()
-            .map_err(|e| format!("Seek error: {e}"))?;
-        let mut jobs = self.dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+            .map_err(|error| format!("Seek error: {error}"))?;
+        let mut jobs = self
+            .dump_jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(self.job_id) {
             progress.bytes_written = pos;
             progress.rows_exported = self.total_rows;
@@ -540,17 +563,17 @@ impl<'a> TableInsertWriter<'a> {
     }
 
     fn write_header<W: Write>(&mut self, file: &mut W) -> Result<(), String> {
-        writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
+        writeln!(file, "--").map_err(|error| format!("Write error: {error}"))?;
         writeln!(
             file,
             "-- Data for `{}`",
             sql_dump::escape_identifier(self.table_name)
         )
-        .map_err(|e| format!("Write error: {e}"))?;
-        writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
-        writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+        .map_err(|error| format!("Write error: {error}"))?;
+        writeln!(file, "--").map_err(|error| format!("Write error: {error}"))?;
+        writeln!(file).map_err(|error| format!("Write error: {error}"))?;
         writeln!(file, "LOCK TABLES `{}` WRITE;", self.escaped_table)
-            .map_err(|e| format!("Write error: {e}"))?;
+            .map_err(|error| format!("Write error: {error}"))?;
         self.header_written = true;
         Ok(())
     }
@@ -591,11 +614,11 @@ where
             let row = stream
                 .try_next()
                 .await
-                .map_err(|e| format!("Stream error for '{table_name}': {e}"))?;
+                .map_err(|error| format!("Stream error for '{table_name}': {error}"))?;
 
             match row {
-                Some(r) => {
-                    batch.push(serialize(&r));
+                Some(row) => {
+                    batch.push(serialize(&row));
 
                     if batch.len() >= INSERT_BATCH_SIZE {
                         insert_writer.flush_batch(file, &batch)?;
@@ -623,8 +646,8 @@ where
 
     // Always write UNLOCK if LOCK was written, regardless of success or error
     if insert_writer.header_written {
-        writeln!(file, "UNLOCK TABLES;").map_err(|e| format!("Write error: {e}"))?;
-        writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+        writeln!(file, "UNLOCK TABLES;").map_err(|error| format!("Write error: {error}"))?;
+        writeln!(file).map_err(|error| format!("Write error: {error}"))?;
     }
 
     loop_result
@@ -632,7 +655,7 @@ where
 
 /// Get progress of a dump job.
 pub fn get_dump_progress_impl(state: &AppState, job_id: &str) -> Result<DumpJobProgress, String> {
-    let mut jobs = state.dump_jobs.write().map_err(|e| e.to_string())?;
+    let mut jobs = state.dump_jobs.write().map_err(|error| error.to_string())?;
     // Lazy cleanup: remove terminal jobs older than 5 minutes
     cleanup_stale_dump_jobs(&mut jobs);
     jobs.get(job_id)
@@ -648,7 +671,7 @@ pub async fn cancel_dump_impl(
     connection_id: &str,
 ) -> Result<(), String> {
     let thread_id = {
-        let mut jobs = state.dump_jobs.write().map_err(|e| e.to_string())?;
+        let mut jobs = state.dump_jobs.write().map_err(|error| error.to_string())?;
         match jobs.get_mut(job_id) {
             Some(progress) => {
                 progress.cancel_requested = true;
@@ -667,9 +690,9 @@ pub async fn cancel_dump_impl(
         // Re-check that the thread ID is still active before issuing KILL QUERY
         // to avoid killing an unrelated query that reused the connection.
         let still_active = {
-            let jobs = state.dump_jobs.read().map_err(|e| e.to_string())?;
+            let jobs = state.dump_jobs.read().map_err(|error| error.to_string())?;
             jobs.get(job_id)
-                .and_then(|p| p.mysql_thread_id)
+                .and_then(|job| job.mysql_thread_id)
                 .map(|current_tid| current_tid == tid)
                 .unwrap_or(false)
         };
@@ -678,11 +701,11 @@ pub async fn cancel_dump_impl(
             let kill_sql = format!("KILL QUERY {}", tid);
             tracing::debug!(job_id, thread_id = tid, "cancel_dump: issuing KILL QUERY");
             crate::mysql::query_log::log_outgoing_sql(&kill_sql);
-            if let Err(e) = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
+            if let Err(error) = sqlx::query(sqlx::AssertSqlSafe(kill_sql.as_str()))
                 .execute(&pool)
                 .await
             {
-                tracing::warn!(job_id, error = %e, "KILL QUERY failed during dump cancel");
+                tracing::warn!(job_id, error = %error, "KILL QUERY failed during dump cancel");
             }
         }
     }
@@ -695,9 +718,11 @@ fn is_cancel_requested(
     dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
     job_id: &str,
 ) -> bool {
-    let jobs = dump_jobs.read().unwrap_or_else(|p| p.into_inner());
+    let jobs = dump_jobs
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     jobs.get(job_id)
-        .map(|p| p.cancel_requested)
+        .map(|job| job.cancel_requested)
         .unwrap_or(false)
 }
 
@@ -727,8 +752,8 @@ fn cleanup_stale_dump_jobs(jobs: &mut HashMap<String, DumpJobProgress>) {
 ///
 /// This avoids the old bug where every cell was read as `Option<String>` and
 /// then parsed back into a number (destroying leading zeros, failing on BLOBs, etc.).
-pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpValue {
-    let raw_value = match row.try_get_raw(i) {
+pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> SqlDumpValue {
+    let raw_value = match row.try_get_raw(column_index) {
         Ok(value) => value,
         Err(_) => return SqlDumpValue::Null,
     };
@@ -740,47 +765,47 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpVal
     let type_name = raw_value.type_info().name().to_uppercase();
 
     if crate::mysql::sqlx_type_names::is_sqlx_integer_type_name(&type_name) {
-        if let Ok(Some(v)) = row.try_get::<Option<i64>, _>(i) {
-            return SqlDumpValue::Int(v);
+        if let Ok(Some(value)) = row.try_get::<Option<i64>, _>(column_index) {
+            return SqlDumpValue::Int(value);
         }
-        if let Ok(Some(v)) = row.try_get::<Option<u64>, _>(i) {
-            return SqlDumpValue::UInt(v);
+        if let Ok(Some(value)) = row.try_get::<Option<u64>, _>(column_index) {
+            return SqlDumpValue::UInt(value);
         }
         // Fallback: read as string
-        if let Some(s) = decode_dump_string(row, i, &raw_value) {
-            return SqlDumpValue::Decimal(s);
+        if let Some(text) = decode_dump_string(row, column_index, &raw_value) {
+            return SqlDumpValue::Decimal(text);
         }
     }
 
     // Float/Double → emit as unquoted numbers
     if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
-        if let Ok(Some(v)) = row.try_get::<Option<f64>, _>(i) {
-            return SqlDumpValue::Float(v);
+        if let Ok(Some(value)) = row.try_get::<Option<f64>, _>(column_index) {
+            return SqlDumpValue::Float(value);
         }
     }
 
     // DECIMAL/NUMERIC → emit as unquoted numeric string (preserves precision)
     if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
-        if let Ok(Some(s)) = row.try_get::<Option<String>, _>(i) {
-            return SqlDumpValue::Decimal(s);
+        if let Ok(Some(text)) = row.try_get::<Option<String>, _>(column_index) {
+            return SqlDumpValue::Decimal(text);
         }
-        if let Some(s) = decode_dump_string(row, i, &raw_value) {
-            return SqlDumpValue::Decimal(s);
+        if let Some(text) = decode_dump_string(row, column_index, &raw_value) {
+            return SqlDumpValue::Decimal(text);
         }
     }
 
     // BIT type → emit as integer
     if type_name == "BIT" {
-        if let Ok(Some(v)) = row.try_get::<Option<u64>, _>(i) {
-            return SqlDumpValue::UInt(v);
+        if let Ok(Some(value)) = row.try_get::<Option<u64>, _>(column_index) {
+            return SqlDumpValue::UInt(value);
         }
         // Fallback: try as bytes and interpret
-        if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(i) {
-            let mut val: u64 = 0;
-            for b in &bytes {
-                val = (val << 8) | (*b as u64);
+        if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
+            let mut value: u64 = 0;
+            for byte in &bytes {
+                value = (value << 8) | (*byte as u64);
             }
-            return SqlDumpValue::UInt(val);
+            return SqlDumpValue::UInt(value);
         }
     }
 
@@ -790,11 +815,11 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpVal
         || type_name == "VARBINARY"
         || type_name == "GEOMETRY"
     {
-        if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(i) {
+        if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
             return SqlDumpValue::HexBytes(bytes);
         }
         tracing::warn!(
-            column_index = i,
+            column_index = column_index,
             column_type = %type_name,
             "Unrepresentable binary value in SQL dump, emitting NULL"
         );
@@ -806,22 +831,22 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpVal
         type_name.as_str(),
         "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
     ) {
-        if let Some(s) = serialize_dump_temporal(raw_value.clone()) {
-            return SqlDumpValue::QuotedString(s);
+        if let Some(text) = serialize_dump_temporal(raw_value.clone()) {
+            return SqlDumpValue::QuotedString(text);
         }
     }
 
     // Default: everything else (VARCHAR, TEXT, ENUM, SET, JSON, etc.) → quoted string
-    match row.try_get::<Option<String>, _>(i) {
-        Ok(Some(s)) => SqlDumpValue::QuotedString(s),
+    match row.try_get::<Option<String>, _>(column_index) {
+        Ok(Some(text)) => SqlDumpValue::QuotedString(text),
         Ok(None) => SqlDumpValue::Null,
         Err(_) => {
             // Last resort: try to decode raw bytes as UTF-8
-            if let Some(s) = decode_dump_string(row, i, &raw_value) {
-                SqlDumpValue::QuotedString(s)
+            if let Some(text) = decode_dump_string(row, column_index, &raw_value) {
+                SqlDumpValue::QuotedString(text)
             } else {
                 tracing::warn!(
-                    column_index = i,
+                    column_index = column_index,
                     column_type = %type_name,
                     "Undecodable value in SQL dump, emitting NULL"
                 );
@@ -834,15 +859,15 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, i: usize) -> SqlDumpVal
 /// Try multiple ways to decode a cell as a string (unchecked, then raw bytes).
 fn decode_dump_string(
     row: &sqlx::mysql::MySqlRow,
-    i: usize,
+    column_index: usize,
     raw: &MySqlValueRef<'_>,
 ) -> Option<String> {
     // Try unchecked string (bypasses type checking)
-    if let Ok(Some(s)) = row.try_get_unchecked::<Option<String>, _>(i) {
-        return Some(s);
+    if let Ok(Some(text)) = row.try_get_unchecked::<Option<String>, _>(column_index) {
+        return Some(text);
     }
     // Try unchecked bytes → lossy UTF-8
-    if let Ok(Some(bytes)) = row.try_get_unchecked::<Option<Vec<u8>>, _>(i) {
+    if let Ok(Some(bytes)) = row.try_get_unchecked::<Option<Vec<u8>>, _>(column_index) {
         return Some(String::from_utf8_lossy(&bytes).into_owned());
     }
     // Try decoding via Value trait
@@ -863,32 +888,36 @@ fn serialize_dump_temporal(value: MySqlValueRef<'_>) -> Option<String> {
     use sqlx::mysql::types::MySqlTime;
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<NaiveDateTime>() {
-        return Some(v.to_string());
+    if let Ok(value) = owned.try_decode::<NaiveDateTime>() {
+        return Some(value.to_string());
     }
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<DateTime<Utc>>() {
-        return Some(v.naive_utc().to_string());
+    if let Ok(value) = owned.try_decode::<DateTime<Utc>>() {
+        return Some(value.naive_utc().to_string());
     }
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<NaiveDate>() {
-        return Some(v.to_string());
+    if let Ok(value) = owned.try_decode::<NaiveDate>() {
+        return Some(value.to_string());
     }
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<MySqlTime>() {
-        let sign = if v.sign().is_negative() { "-" } else { "" };
-        let hours = v.hours();
-        return Some(if v.microseconds() == 0 {
-            format!("{sign}{hours:02}:{:02}:{:02}", v.minutes(), v.seconds())
+    if let Ok(value) = owned.try_decode::<MySqlTime>() {
+        let sign = if value.sign().is_negative() { "-" } else { "" };
+        let hours = value.hours();
+        return Some(if value.microseconds() == 0 {
+            format!(
+                "{sign}{hours:02}:{:02}:{:02}",
+                value.minutes(),
+                value.seconds()
+            )
         } else {
             format!(
                 "{sign}{hours:02}:{:02}:{:02}.{:06}",
-                v.minutes(),
-                v.seconds(),
-                v.microseconds()
+                value.minutes(),
+                value.seconds(),
+                value.microseconds()
             )
         });
     }
@@ -1026,7 +1055,7 @@ pub async fn start_sql_import_impl(
     };
 
     {
-        let mut jobs = import_jobs.write().map_err(|e| e.to_string())?;
+        let mut jobs = import_jobs.write().map_err(|error| error.to_string())?;
         // Clean up stale terminal jobs (older than 5 minutes)
         cleanup_stale_import_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
@@ -1051,15 +1080,17 @@ pub async fn start_sql_import_impl(
 
         // If the execution function itself returned an error (e.g. file read failure),
         // mark the job as failed.
-        if let Err(err) = result {
-            let mut jobs = import_jobs_arc.write().unwrap_or_else(|p| p.into_inner());
+        if let Err(error) = result {
+            let mut jobs = import_jobs_arc
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some(progress) = jobs.get_mut(&job_id_clone) {
                 if progress.status == ImportJobStatus::Running {
                     progress.status = ImportJobStatus::Failed;
                     progress.errors.push(crate::state::ImportError {
                         statement_index: 0,
                         sql_preview: String::new(),
-                        error_message: err,
+                        error_message: error,
                     });
                     progress.completed_at = Some(std::time::SystemTime::now());
                 }
@@ -1075,7 +1106,10 @@ pub fn get_import_progress_impl(
     state: &AppState,
     job_id: &str,
 ) -> Result<ImportJobProgress, String> {
-    let mut jobs = state.import_jobs.write().map_err(|e| e.to_string())?;
+    let mut jobs = state
+        .import_jobs
+        .write()
+        .map_err(|error| error.to_string())?;
     // Lazy cleanup: remove terminal jobs older than 5 minutes
     cleanup_stale_import_jobs(&mut jobs);
     jobs.get(job_id)
@@ -1102,7 +1136,10 @@ fn cleanup_stale_import_jobs(jobs: &mut HashMap<String, ImportJobProgress>) {
 
 /// Cancel an import job.
 pub fn cancel_import_impl(state: &AppState, job_id: &str) -> Result<(), String> {
-    let mut jobs = state.import_jobs.write().map_err(|e| e.to_string())?;
+    let mut jobs = state
+        .import_jobs
+        .write()
+        .map_err(|error| error.to_string())?;
     match jobs.get_mut(job_id) {
         Some(progress) => {
             progress.cancel_requested = true;

@@ -5,20 +5,23 @@ export function mapSingleColumnForeignKeys(
 ): ForeignKeyColumnInfo[] {
   if (!foreignKeys || foreignKeys.length === 0) return []
 
-  const mapped = foreignKeys.map((fk) => ({
-    columnName: fk.columnName,
-    referencedDatabase: fk.referencedDatabase,
-    referencedTable: fk.referencedTable,
-    referencedColumn: fk.referencedColumn,
-    constraintName: fk.name,
+  const mapped = foreignKeys.map((foreignKey) => ({
+    columnName: foreignKey.columnName,
+    referencedDatabase: foreignKey.referencedDatabase,
+    referencedTable: foreignKey.referencedTable,
+    referencedColumn: foreignKey.referencedColumn,
+    constraintName: foreignKey.name,
   }))
 
   const countByConstraint = new Map<string, number>()
-  for (const fk of mapped) {
-    countByConstraint.set(fk.constraintName, (countByConstraint.get(fk.constraintName) ?? 0) + 1)
+  for (const foreignKey of mapped) {
+    countByConstraint.set(
+      foreignKey.constraintName,
+      (countByConstraint.get(foreignKey.constraintName) ?? 0) + 1
+    )
   }
 
-  return mapped.filter((fk) => (countByConstraint.get(fk.constraintName) ?? 0) <= 1)
+  return mapped.filter((foreignKey) => (countByConstraint.get(foreignKey.constraintName) ?? 0) <= 1)
 }
 
 export function buildForeignKeyLookup(

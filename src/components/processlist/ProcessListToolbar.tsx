@@ -18,6 +18,9 @@ import { showErrorToast, showSuccessToast, showWarningToast } from '../../stores
 import type { KillResult } from '../../lib/processlist-commands'
 import styles from './ProcessListToolbar.module.css'
 
+const SQL_PREVIEW_MAX_LENGTH = 80
+const TRUNCATION_ELLIPSIS = '...'
+
 const emptySet = new Set<number>()
 const emptyRows: import('../../lib/processlist-commands').ProcessRow[] = []
 
@@ -40,7 +43,9 @@ const SHOW_ALL_FILTER_VALUE = 'show-all'
 
 function truncateSql(sql: string | null): string {
   if (!sql) return '(no active query)'
-  return sql.length > 80 ? sql.slice(0, 80) + '...' : sql
+  return sql.length > SQL_PREVIEW_MAX_LENGTH
+    ? sql.slice(0, SQL_PREVIEW_MAX_LENGTH) + TRUNCATION_ELLIPSIS
+    : sql
 }
 
 export interface ProcessListToolbarProps {
@@ -58,32 +63,35 @@ export function ProcessListToolbar({
   isActive = true,
   workspaceTabId,
 }: ProcessListToolbarProps) {
-  const rows = useProcessListStore((s) => s.rowsByConnection[connectionId] ?? emptyRows)
+  const rows = useProcessListStore((state) => state.rowsByConnection[connectionId] ?? emptyRows)
   const selectedIds = useProcessListStore(
-    (s) => s.selectedIdsByConnection[connectionId] ?? emptySet
+    (state) => state.selectedIdsByConnection[connectionId] ?? emptySet
   )
-  const isFetching = useProcessListStore((s) => s.isFetchingByConnection[connectionId] ?? false)
+  const isFetching = useProcessListStore(
+    (state) => state.isFetchingByConnection[connectionId] ?? false
+  )
   const refreshIntervalMs = useProcessListStore(
-    (s) => s.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
+    (state) => state.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
   )
   const excludeIdleConnections = useProcessListStore(
-    (s) => s.excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
+    (state) =>
+      state.excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
   )
   const lastRefreshedAt = useProcessListStore(
-    (s) => s.lastRefreshedAtByConnection[connectionId] ?? null
+    (state) => state.lastRefreshedAtByConnection[connectionId] ?? null
   )
   const isConfirmDialogOpen = useProcessListStore(
-    (s) => s.isConfirmDialogOpenByConnection[connectionId] ?? false
+    (state) => state.isConfirmDialogOpenByConnection[connectionId] ?? false
   )
-  const setRefreshInterval = useProcessListStore((s) => s.setRefreshInterval)
-  const setExcludeIdleConnections = useProcessListStore((s) => s.setExcludeIdleConnections)
-  const setConfirmDialogOpen = useProcessListStore((s) => s.setConfirmDialogOpen)
-  const setSummaryDialogOpen = useProcessListStore((s) => s.setSummaryDialogOpen)
-  const killSelectedProcesses = useProcessListStore((s) => s.killSelectedProcesses)
-  const setSelectedIds = useProcessListStore((s) => s.setSelectedIds)
-  const fetchProcessList = useProcessListStore((s) => s.fetchProcessList)
+  const setRefreshInterval = useProcessListStore((state) => state.setRefreshInterval)
+  const setExcludeIdleConnections = useProcessListStore((state) => state.setExcludeIdleConnections)
+  const setConfirmDialogOpen = useProcessListStore((state) => state.setConfirmDialogOpen)
+  const setSummaryDialogOpen = useProcessListStore((state) => state.setSummaryDialogOpen)
+  const killSelectedProcesses = useProcessListStore((state) => state.killSelectedProcesses)
+  const setSelectedIds = useProcessListStore((state) => state.setSelectedIds)
+  const fetchProcessList = useProcessListStore((state) => state.fetchProcessList)
 
-  const activeConnections = useConnectionStore((s) => s.activeConnections)
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
   const isReadOnly = activeConnections[connectionId]?.profile.readOnly ?? false
   const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
   const selectedCount = selectedIds.size
@@ -163,11 +171,11 @@ export function ProcessListToolbar({
       setKillResults(results)
       notifyKillResults(results)
       setSummaryDialogOpen(connectionId, true)
-    } catch (err) {
+    } catch (error) {
       if (!isMountedRef.current) return
 
-      const msg = err instanceof Error ? err.message : String(err)
-      showErrorToast('Kill failed', msg)
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Kill failed', message)
       setConfirmDialogOpen(connectionId, false)
     } finally {
       if (isMountedRef.current) {
@@ -206,7 +214,7 @@ export function ProcessListToolbar({
         Kill {selectedIds.size} process{selectedIds.size === 1 ? '' : 'es'}?
         <ul style={{ margin: '8px 0 0', paddingLeft: '20px', textAlign: 'left' }}>
           {[...selectedIds].map((id) => {
-            const row = rows.find((r) => r.id === id)
+            const row = rows.find((candidate) => candidate.id === id)
             const sql = row ? truncateSql(row.info) : '(no active query)'
             return (
               <li key={id}>

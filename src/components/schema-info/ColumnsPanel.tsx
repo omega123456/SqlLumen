@@ -27,19 +27,19 @@ export function ColumnsPanel({ columns }: ColumnsPanelProps) {
             </tr>
           </thead>
           <tbody>
-            {columns.map((col) => (
-              <tr key={col.name} className={styles.row}>
+            {columns.map((column) => (
+              <tr key={column.name} className={styles.row}>
                 <td className={styles.td}>
-                  <span className={styles.columnName}>{col.name}</span>
+                  <span className={styles.columnName}>{column.name}</span>
                 </td>
                 <td className={styles.td}>
-                  <span className={styles.dataType}>{col.dataType}</span>
+                  <span className={styles.dataType}>{column.dataType}</span>
                 </td>
-                <td className={styles.td}>{col.nullable ? 'Yes' : 'No'}</td>
+                <td className={styles.td}>{column.nullable ? 'Yes' : 'No'}</td>
                 <td className={styles.td}>
-                  {col.columnKey ? (
-                    <span className={`${styles.keyBadge} ${keyBadgeClass(col.columnKey)}`}>
-                      {col.columnKey}
+                  {column.columnKey ? (
+                    <span className={`${styles.keyBadge} ${keyBadgeClass(column.columnKey)}`}>
+                      {column.columnKey}
                     </span>
                   ) : (
                     <span className={styles.empty}>—</span>
@@ -47,14 +47,14 @@ export function ColumnsPanel({ columns }: ColumnsPanelProps) {
                 </td>
                 <td className={styles.td}>
                   <span
-                    className={col.defaultValue != null ? styles.defaultValue : styles.nullValue}
+                    className={column.defaultValue != null ? styles.defaultValue : styles.nullValue}
                   >
-                    {col.defaultValue != null ? col.defaultValue : 'NULL'}
+                    {column.defaultValue != null ? column.defaultValue : 'NULL'}
                   </span>
                 </td>
                 <td className={styles.td}>
-                  {col.extra ? (
-                    <span className={styles.extra}>{col.extra}</span>
+                  {column.extra ? (
+                    <span className={styles.extra}>{column.extra}</span>
                   ) : (
                     <span className={styles.empty}>—</span>
                   )}

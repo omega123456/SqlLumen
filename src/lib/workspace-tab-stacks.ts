@@ -84,7 +84,7 @@ export function groupWorkspaceTabsByStack(
     groups.get(stackKey)?.push(tab)
   }
 
-  return WORKSPACE_TAB_STACK_ORDER.map((key) => ({ key, tabs: groups.get(key) ?? [] })).filter(
+  return WORKSPACE_TAB_STACK_ORDER.map((key) => ({ key: key, tabs: groups.get(key) ?? [] })).filter(
     (group) => group.tabs.length > 0
   )
 }

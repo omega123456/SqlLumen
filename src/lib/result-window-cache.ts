@@ -29,6 +29,7 @@
 import { fetchResultWindow, type ResultSlotRef } from './query-commands'
 import { normalizeTinyIntRows } from './table-data-commands'
 import { logFrontend } from './app-log-commands'
+import { HALF_DIVISOR } from './units'
 import type { ColumnMeta, ResultWindow } from '../types/schema'
 
 /** Extra information passed to range listeners. */
@@ -55,7 +56,7 @@ export const RESULT_MAX_PAGES = 10
 /** Maximum rows per window or by-index request (enforced in Rust too). */
 export const RESULT_MAX_CHUNK_ROWS = 2000
 /** Rows prefetched on each side of the visible region. */
-export const RESULT_PREFETCH_ROWS = RESULT_PAGE_SIZE / 2
+export const RESULT_PREFETCH_ROWS = RESULT_PAGE_SIZE / HALF_DIVISOR
 /** Delay before a still-pending window is reported as "Loading rows …". */
 export const RESULT_LOADING_STATUS_DELAY_MS = 1000
 /** Maximum page fetches in flight per surface. */
@@ -212,19 +213,19 @@ function pageRange(surface: Surface, pageIndex: number): ViewRange {
 /** Split a window (which may span several pages) into whole or partial pages. */
 function storeWindow(surface: Surface, window: ResultWindow): void {
   const rows = normalizeRows(surface.columns, window.rows)
-  for (let i = 0; i < rows.length;) {
-    const position = window.offset + i
+  for (let rowIndex = 0; rowIndex < rows.length;) {
+    const position = window.offset + rowIndex
     const pageIndex = Math.floor(position / RESULT_PAGE_SIZE)
     const pageStart = pageIndex * RESULT_PAGE_SIZE
-    const take = Math.min(rows.length - i, pageStart + RESULT_PAGE_SIZE - position)
+    const take = Math.min(rows.length - rowIndex, pageStart + RESULT_PAGE_SIZE - position)
     if (position === pageStart) {
       surface.pages.set(pageIndex, {
-        rows: rows.slice(i, i + take),
-        baseIndices: window.baseIndices.slice(i, i + take),
+        rows: rows.slice(rowIndex, rowIndex + take),
+        baseIndices: window.baseIndices.slice(rowIndex, rowIndex + take),
         lastUsed: ++useCounter,
       })
     }
-    i += take
+    rowIndex += take
   }
 }
 
@@ -243,7 +244,7 @@ function evictPages(surface: Surface): void {
   }
   const candidates = [...surface.pages.entries()]
     .filter(([index]) => !protectedPages.has(index))
-    .sort((a, b) => a[1].lastUsed - b[1].lastUsed)
+    .sort((left, right) => left[1].lastUsed - right[1].lastUsed)
   for (const [index] of candidates) {
     if (surface.pages.size <= RESULT_MAX_PAGES) break
     surface.pages.delete(index)
@@ -355,7 +356,7 @@ export function getLoadedRow(
   const row = page.rows[offset]
   if (row === undefined) return undefined
   page.lastUsed = ++useCounter
-  return { row, baseIndex: page.baseIndices[offset] }
+  return { row: row, baseIndex: page.baseIndices[offset] }
 }
 
 /** The surface for `key`, or a stub that keeps listeners until the first seed. */
@@ -364,7 +365,7 @@ function surfaceForSubscription(key: string, tabId: string, resultIndex: number)
   if (!surface) {
     // Allow subscribing before the first seed: keep the listener on a stub.
     surface = {
-      slot: { connectionId: '', tabId, resultIndex, queryId: '' },
+      slot: { connectionId: '', tabId: tabId, resultIndex: resultIndex, queryId: '' },
       columns: [],
       viewVersion: 0,
       viewRowCount: 0,
@@ -594,7 +595,7 @@ function loadedRun(surface: Surface, start: number, end: number): CachedRow[] | 
     const offset = position % RESULT_PAGE_SIZE
     const row = page?.rows[offset]
     if (!page || row === undefined) return null
-    out.push({ row, baseIndex: page.baseIndices[offset] })
+    out.push({ row: row, baseIndex: page.baseIndices[offset] })
   }
   return out
 }
@@ -636,9 +637,9 @@ export async function readViewRange(
         throw new Error(`${VIEW_STALE_PREFIX} the result view changed while rows were loading`)
       }
       const rows = normalizeRows(surface.columns, response.rows)
-      rows.forEach((row, i) => out.push({ row, baseIndex: response.baseIndices[i] }))
+      rows.forEach((row, index) => out.push({ row: row, baseIndex: response.baseIndices[index] }))
     }
-    options.onProgress?.({ done: out.length, total })
+    options.onProgress?.({ done: out.length, total: total })
   }
   return out
 }

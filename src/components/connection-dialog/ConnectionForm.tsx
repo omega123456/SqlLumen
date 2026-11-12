@@ -27,6 +27,11 @@ import type {
 } from '../../types/connection'
 import styles from './ConnectionForm.module.css'
 
+const DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
+const DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 60
+const MIN_PORT = 1
+const MAX_PORT = 65535
+
 export interface ConnectionFormSeed {
   data: ConnectionFormData
   sourceHadPassword: boolean
@@ -88,8 +93,8 @@ function getDefaultFormData(): ConnectionFormData {
     color: null,
     groupId: null,
     readOnly: false,
-    connectTimeoutSecs: isNaN(timeout) ? 10 : timeout,
-    keepaliveIntervalSecs: isNaN(keepalive) ? 60 : keepalive,
+    connectTimeoutSecs: isNaN(timeout) ? DEFAULT_CONNECT_TIMEOUT_SECONDS : timeout,
+    keepaliveIntervalSecs: isNaN(keepalive) ? DEFAULT_KEEPALIVE_INTERVAL_SECONDS : keepalive,
   }
 }
 
@@ -108,7 +113,7 @@ function validate(data: ConnectionFormData): FormErrors {
   if (!data.username.trim()) {
     errors.username = 'Username is required'
   }
-  if (!data.port || data.port < 1 || data.port > 65535) {
+  if (!data.port || data.port < MIN_PORT || data.port > MAX_PORT) {
     errors.port = 'Port must be between 1 and 65535'
   }
   if (data.connectTimeoutSecs < 1) {
@@ -121,14 +126,14 @@ function validate(data: ConnectionFormData): FormErrors {
 }
 
 /** Build a failure TestConnectionResult from a caught error. */
-function buildErrorResult(err: unknown): TestConnectionResultType {
+function buildErrorResult(error: unknown): TestConnectionResultType {
   return {
     success: false,
     serverVersion: null,
     authMethod: null,
     sslStatus: null,
     connectionTimeMs: null,
-    errorMessage: err instanceof Error ? err.message : String(err),
+    errorMessage: error instanceof Error ? error.message : String(error),
   }
 }
 
@@ -136,7 +141,7 @@ interface SslFileFieldProps {
   id: string
   label: string
   value: string
-  onChange: (val: string) => void
+  onChange: (value: string) => void
   onBrowse: () => void
   disabled: boolean
   browseLabel: string
@@ -165,7 +170,7 @@ function SslFileField({
           variant="mono"
           className={styles.fileInputRowField}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
@@ -207,17 +212,17 @@ export function ConnectionForm({
   const [deleteConfirmError, setDeleteConfirmError] = useState<string | null>(null)
   const [dialogPortalRoot, setDialogPortalRoot] = useState<HTMLElement | null>(null)
 
-  const connectionGroups = useConnectionStore((s) => s.connectionGroups)
-  const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
+  const connectionGroups = useConnectionStore((state) => state.connectionGroups)
+  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
   const groupDropdownOptions = useMemo(
     () => [
       { value: '', label: 'Ungrouped' },
-      ...connectionGroups.map((g) => ({ value: g.id, label: g.name })),
+      ...connectionGroups.map((group) => ({ value: group.id, label: group.name })),
     ],
     [connectionGroups]
   )
-  const openConnection = useConnectionStore((s) => s.openConnection)
-  const closeDialog = useConnectionStore((s) => s.closeDialog)
+  const openConnection = useConnectionStore((state) => state.openConnection)
+  const closeDialog = useConnectionStore((state) => state.closeDialog)
 
   useEffect(() => {
     const dialog = rootRef.current?.closest('dialog')
@@ -277,10 +282,10 @@ export function ConnectionForm({
     field: K,
     value: ConnectionFormData[K]
   ) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+    setFormData((previous) => ({ ...previous, [field]: value }))
     if (errors[field]) {
-      setErrors((prev) => {
-        const next = { ...prev }
+      setErrors((previous) => {
+        const next = { ...previous }
         delete next[field]
         return next
       })
@@ -335,8 +340,8 @@ export function ConnectionForm({
       const useSavedPassword = hasSavedPassword && !clearSavedPassword && formData.password === ''
       const result = await testConnection(formData, useSavedPassword ? currentConnectionId : null)
       setTestResult(result)
-    } catch (err) {
-      const failure = buildErrorResult(err)
+    } catch (error) {
+      const failure = buildErrorResult(error)
       setTestResult(failure)
       showErrorToast('Connection test failed', failure.errorMessage ?? undefined)
     } finally {
@@ -365,8 +370,8 @@ export function ConnectionForm({
       setClearSavedPassword(false)
       await fetchSavedConnections()
       showSuccessToast('Connection saved', formData.name.trim() || undefined)
-    } catch (err) {
-      const failure = buildErrorResult(err)
+    } catch (error) {
+      const failure = buildErrorResult(error)
       setTestResult(failure)
       showErrorToast('Failed to save connection', failure.errorMessage ?? undefined)
     } finally {
@@ -395,8 +400,8 @@ export function ConnectionForm({
         await fetchSavedConnections()
       }
       setClearSavedPassword(false)
-    } catch (err) {
-      const failure = buildErrorResult(err)
+    } catch (error) {
+      const failure = buildErrorResult(error)
       setTestResult(failure)
       showErrorToast('Failed to save connection', failure.errorMessage ?? undefined)
       setPendingAction(null)
@@ -406,8 +411,8 @@ export function ConnectionForm({
     try {
       await openConnection(connectionId!)
       closeDialog()
-    } catch (err) {
-      const failure = buildErrorResult(err)
+    } catch (error) {
+      const failure = buildErrorResult(error)
       setTestResult(failure)
       /* openConnection already shows an error toast */
     } finally {
@@ -435,8 +440,8 @@ export function ConnectionForm({
       setDeleteConfirmOpen(false)
       onDeleteConnection?.(currentConnectionId)
       showSuccessToast('Connection deleted')
-    } catch (err) {
-      const failure = buildErrorResult(err)
+    } catch (error) {
+      const failure = buildErrorResult(error)
       setTestResult(failure)
       setDeleteConfirmError(failure.errorMessage ?? 'Failed to delete connection')
       showErrorToast('Failed to delete connection', failure.errorMessage ?? undefined)
@@ -463,8 +468,8 @@ export function ConnectionForm({
         <form
           className={styles.formInner}
           autoComplete="off"
-          onSubmit={(e) => {
-            e.preventDefault()
+          onSubmit={(event) => {
+            event.preventDefault()
           }}
         >
           <UnderlineTabBar className={styles.formTabBar} data-testid="connection-form-tabs">
@@ -504,7 +509,7 @@ export function ConnectionForm({
                   type="text"
                   invalid={!!errors.name}
                   value={formData.name}
-                  onChange={(e) => updateField('name', e.target.value)}
+                  onChange={(event) => updateField('name', event.target.value)}
                   placeholder="My production server"
                   autoFocus={nameAutoFocusRef.current}
                 />
@@ -522,7 +527,7 @@ export function ConnectionForm({
                     variant="mono"
                     invalid={!!errors.host}
                     value={formData.host}
-                    onChange={(e) => updateField('host', e.target.value)}
+                    onChange={(event) => updateField('host', event.target.value)}
                     placeholder="localhost"
                   />
                   {errors.host && <span className={styles.errorText}>{errors.host}</span>}
@@ -537,7 +542,7 @@ export function ConnectionForm({
                     variant="mono"
                     invalid={!!errors.port}
                     value={formData.port}
-                    onChange={(e) => updateField('port', parseInt(e.target.value, 10) || 0)}
+                    onChange={(event) => updateField('port', parseInt(event.target.value, 10) || 0)}
                     min={1}
                     max={65535}
                     placeholder="3306"
@@ -557,7 +562,7 @@ export function ConnectionForm({
                     variant="mono"
                     invalid={!!errors.username}
                     value={formData.username}
-                    onChange={(e) => updateField('username', e.target.value)}
+                    onChange={(event) => updateField('username', event.target.value)}
                     placeholder="root"
                   />
                   {errors.username && <span className={styles.errorText}>{errors.username}</span>}
@@ -572,8 +577,8 @@ export function ConnectionForm({
                       type={showPassword ? 'text' : 'password'}
                       passwordToggleGutter
                       value={formData.password}
-                      onChange={(e) => {
-                        updateField('password', e.target.value)
+                      onChange={(event) => {
+                        updateField('password', event.target.value)
                         if (clearSavedPassword) {
                           setClearSavedPassword(false)
                         }
@@ -584,7 +589,7 @@ export function ConnectionForm({
                     <IconButton
                       size="sm"
                       className={styles.passwordToggle}
-                      onClick={() => setShowPassword((prev) => !prev)}
+                      onClick={() => setShowPassword((previous) => !previous)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
@@ -599,8 +604,8 @@ export function ConnectionForm({
                     <label className={styles.label}>
                       <Checkbox
                         checked={clearSavedPassword}
-                        onChange={(e) => {
-                          const checked = e.target.checked
+                        onChange={(event) => {
+                          const checked = event.target.checked
                           setClearSavedPassword(checked)
                           if (checked && formData.password) {
                             updateField('password', '')
@@ -622,7 +627,7 @@ export function ConnectionForm({
                   type="text"
                   variant="mono"
                   value={formData.defaultDatabase ?? ''}
-                  onChange={(e) => updateField('defaultDatabase', e.target.value || null)}
+                  onChange={(event) => updateField('defaultDatabase', event.target.value || null)}
                   placeholder="mydb"
                 />
               </div>
@@ -640,7 +645,7 @@ export function ConnectionForm({
                   <Checkbox
                     id="ssl-enabled"
                     checked={formData.sslEnabled}
-                    onChange={(e) => updateField('sslEnabled', e.target.checked)}
+                    onChange={(event) => updateField('sslEnabled', event.target.checked)}
                     aria-label="Use SSL / TLS"
                   />
                 </div>
@@ -657,7 +662,7 @@ export function ConnectionForm({
                   id="ssl-ca"
                   label="CA certificate"
                   value={formData.sslCaPath ?? ''}
-                  onChange={(val) => updateField('sslCaPath', val || null)}
+                  onChange={(value) => updateField('sslCaPath', value || null)}
                   onBrowse={() => void handleBrowseFile('sslCaPath')}
                   disabled={!formData.sslEnabled}
                   browseLabel="Browse CA certificate"
@@ -667,7 +672,7 @@ export function ConnectionForm({
                   id="ssl-cert"
                   label="Client certificate"
                   value={formData.sslCertPath ?? ''}
-                  onChange={(val) => updateField('sslCertPath', val || null)}
+                  onChange={(value) => updateField('sslCertPath', value || null)}
                   onBrowse={() => void handleBrowseFile('sslCertPath')}
                   disabled={!formData.sslEnabled}
                   browseLabel="Browse client certificate"
@@ -677,7 +682,7 @@ export function ConnectionForm({
                   id="ssl-key"
                   label="Client key"
                   value={formData.sslKeyPath ?? ''}
-                  onChange={(val) => updateField('sslKeyPath', val || null)}
+                  onChange={(value) => updateField('sslKeyPath', value || null)}
                   onBrowse={() => void handleBrowseFile('sslKeyPath')}
                   disabled={!formData.sslEnabled}
                   browseLabel="Browse client key"
@@ -704,7 +709,7 @@ export function ConnectionForm({
                     listAriaLabel="Group"
                     options={groupDropdownOptions}
                     value={formData.groupId ?? ''}
-                    onChange={(v) => updateField('groupId', v || null)}
+                    onChange={(value) => updateField('groupId', value || null)}
                   />
                 </div>
                 <div className={styles.fieldGroup}>
@@ -716,7 +721,7 @@ export function ConnectionForm({
                     labelledBy="conn-access-label"
                     options={ACCESS_MODE_OPTIONS}
                     value={formData.readOnly ? 'ro' : 'rw'}
-                    onChange={(v) => updateField('readOnly', v === 'ro')}
+                    onChange={(value) => updateField('readOnly', value === 'ro')}
                   />
                 </div>
               </div>
@@ -745,8 +750,11 @@ export function ConnectionForm({
                       className={styles.numberField}
                       invalid={!!errors.connectTimeoutSecs}
                       value={formData.connectTimeoutSecs}
-                      onChange={(e) =>
-                        updateField('connectTimeoutSecs', parseInt(e.target.value, 10) || 10)
+                      onChange={(event) =>
+                        updateField(
+                          'connectTimeoutSecs',
+                          parseInt(event.target.value, 10) || DEFAULT_CONNECT_TIMEOUT_SECONDS
+                        )
                       }
                       min={1}
                       max={300}
@@ -769,8 +777,11 @@ export function ConnectionForm({
                       className={styles.numberField}
                       invalid={!!errors.keepaliveIntervalSecs}
                       value={formData.keepaliveIntervalSecs}
-                      onChange={(e) =>
-                        updateField('keepaliveIntervalSecs', parseInt(e.target.value, 10) || 60)
+                      onChange={(event) =>
+                        updateField(
+                          'keepaliveIntervalSecs',
+                          parseInt(event.target.value, 10) || DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+                        )
                       }
                       min={0}
                       max={3600}

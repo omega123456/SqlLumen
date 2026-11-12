@@ -11,6 +11,9 @@ import { Button } from '../common/Button'
 import type { HistoryEntry } from '../../types/schema'
 import dotStyles from '../shared/toolbar/toolbar-items.module.css'
 import styles from './HistoryDetailPanel.module.css'
+import { MILLISECONDS_PER_SECOND } from '../../lib/units'
+
+const COPIED_FEEDBACK_DURATION_MS = 1500
 
 export interface HistoryDetailPanelProps {
   entry: HistoryEntry | null
@@ -21,14 +24,14 @@ export interface HistoryDetailPanelProps {
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—'
-  if (ms < 1000) return `${ms} ms`
-  return `${(ms / 1000).toFixed(1)} s`
+  if (ms < MILLISECONDS_PER_SECOND) return `${ms} ms`
+  return `${(ms / MILLISECONDS_PER_SECOND).toFixed(1)} s`
 }
 
 function formatRows(entry: HistoryEntry): string {
   if (!entry.success) return '—'
-  const n = entry.rowCount ?? entry.affectedRows ?? 0
-  return `${n.toLocaleString()} ${n === 1 ? 'row' : 'rows'}`
+  const rowCount = entry.rowCount ?? entry.affectedRows ?? 0
+  return `${rowCount.toLocaleString()} ${rowCount === 1 ? 'row' : 'rows'}`
 }
 
 export function HistoryDetailPanel({
@@ -54,7 +57,7 @@ export function HistoryDetailPanel({
     if (!entry) return
     void navigator.clipboard.writeText(entry.sqlText).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      setTimeout(() => setCopied(false), COPIED_FEEDBACK_DURATION_MS)
     })
   }, [entry])
 

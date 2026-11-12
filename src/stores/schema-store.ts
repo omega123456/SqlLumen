@@ -16,8 +16,8 @@ import { logFrontend } from '../lib/app-log-commands'
  * Encode a string to base64, handling Unicode safely.
  * Uses `encodeURIComponent` → `unescape` → `btoa` pattern.
  */
-function toBase64(str: string): string {
-  return btoa(unescape(encodeURIComponent(str)))
+function toBase64(text: string): string {
+  return btoa(unescape(encodeURIComponent(text)))
 }
 
 /** Decode a base64 string, reversing the Unicode-safe encoding. */
@@ -104,9 +104,9 @@ function buildChildIndex(nodes: Record<string, TreeNode>): Record<string, string
   }
   // Sort children by label
   for (const parentId of Object.keys(index)) {
-    index[parentId].sort((a, b) => {
-      const nodeA = nodes[a]
-      const nodeB = nodes[b]
+    index[parentId].sort((left, right) => {
+      const nodeA = nodes[left]
+      const nodeB = nodes[right]
       if (!nodeA || !nodeB) return 0
       return nodeA.label.localeCompare(nodeB.label)
     })
@@ -155,20 +155,20 @@ interface SchemaState {
 // Helper: update a single connection's tree state immutably
 // ---------------------------------------------------------------------------
 
-function getConnState(state: SchemaState, connectionId: string): ConnectionTreeState {
+function getConnectionState(state: SchemaState, connectionId: string): ConnectionTreeState {
   return state.connectionStates[connectionId] || createDefaultConnectionState()
 }
 
-function setConnState(
+function setConnectionState(
   state: SchemaState,
   connectionId: string,
   patch: Partial<ConnectionTreeState>
 ): Pick<SchemaState, 'connectionStates'> {
-  const prev = getConnState(state, connectionId)
+  const previous = getConnectionState(state, connectionId)
   return {
     connectionStates: {
       ...state.connectionStates,
-      [connectionId]: { ...prev, ...patch },
+      [connectionId]: { ...previous, ...patch },
     },
   }
 }
@@ -183,32 +183,32 @@ function setConnState(
  */
 async function fetchChildren(
   get: () => SchemaState,
-  set: (fn: (state: SchemaState) => Partial<SchemaState>) => void,
+  set: (updater: (state: SchemaState) => Partial<SchemaState>) => void,
   connectionId: string,
   nodeId: string,
-  fetchFn: () => Promise<TreeNode[]>
+  fetchNodes: () => Promise<TreeNode[]>
 ): Promise<void> {
   // 1. Mark loading and capture generation
-  const connState = getConnState(get(), connectionId)
-  const gen = connState.loadGeneration
-  const newLoading = new Set(connState.loadingNodes)
+  const connectionState = getConnectionState(get(), connectionId)
+  const gen = connectionState.loadGeneration
+  const newLoading = new Set(connectionState.loadingNodes)
   newLoading.add(nodeId)
-  set((s) => setConnState(s, connectionId, { loadingNodes: newLoading }))
+  set((state) => setConnectionState(state, connectionId, { loadingNodes: newLoading }))
 
   try {
     // 2. Call fetchFn
-    const childNodes = await fetchFn()
+    const childNodes = await fetchNodes()
 
     // 3. Check connection still exists and generation matches after await
     const afterFetch = get()
-    const currentConn = afterFetch.connectionStates[connectionId]
-    if (!currentConn || currentConn.loadGeneration !== gen) {
+    const currentConnection = afterFetch.connectionStates[connectionId]
+    if (!currentConnection || currentConnection.loadGeneration !== gen) {
       return // Connection was closed or refreshed while we were fetching
     }
 
     // 4. Merge returned nodes into state
-    const freshConnState = getConnState(afterFetch, connectionId)
-    const newNodes = { ...freshConnState.nodes }
+    const freshConnectionState = getConnectionState(afterFetch, connectionId)
+    const newNodes = { ...freshConnectionState.nodes }
 
     for (const child of childNodes) {
       newNodes[child.id] = child
@@ -217,11 +217,11 @@ async function fetchChildren(
 
     // 5. Rebuild child index and clear loading
     const newChildIndex = buildChildIndex(newNodes)
-    const doneLoading = new Set(freshConnState.loadingNodes)
+    const doneLoading = new Set(freshConnectionState.loadingNodes)
     doneLoading.delete(nodeId)
 
-    set((s) =>
-      setConnState(s, connectionId, {
+    set((state) =>
+      setConnectionState(state, connectionId, {
         nodes: newNodes,
         childIdsByParentId: newChildIndex,
         loadingNodes: doneLoading,
@@ -229,12 +229,12 @@ async function fetchChildren(
     )
   } catch {
     // 6. Remove from loading on error (only if generation still matches)
-    const currentConn = get().connectionStates[connectionId]
-    if (!currentConn || currentConn.loadGeneration !== gen) return
-    const freshConnState = getConnState(get(), connectionId)
-    const doneLoading = new Set(freshConnState.loadingNodes)
+    const currentConnection = get().connectionStates[connectionId]
+    if (!currentConnection || currentConnection.loadGeneration !== gen) return
+    const freshConnectionState = getConnectionState(get(), connectionId)
+    const doneLoading = new Set(freshConnectionState.loadingNodes)
     doneLoading.delete(nodeId)
-    set((s) => setConnState(s, connectionId, { loadingNodes: doneLoading }))
+    set((state) => setConnectionState(state, connectionId, { loadingNodes: doneLoading }))
   }
 }
 
@@ -251,7 +251,7 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
   loadDatabases: async (connectionId: string) => {
     // Ensure connection state exists before capturing generation
     if (!get().connectionStates[connectionId]) {
-      set((s) => setConnState(s, connectionId, createDefaultConnectionState()))
+      set((state) => setConnectionState(state, connectionId, createDefaultConnectionState()))
     }
 
     // Capture generation before async call
@@ -279,7 +279,7 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
         mergedNodes[id] = existing
       } else {
         mergedNodes[id] = {
-          id,
+          id: id,
           label: dbName,
           type: 'database',
           parentId: null,
@@ -304,10 +304,10 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     const childIdsByParentId = buildChildIndex(mergedNodes)
 
     set((state) =>
-      setConnState(state, connectionId, {
+      setConnectionState(state, connectionId, {
         nodes: mergedNodes,
-        childIdsByParentId,
-        expandedNodes: getConnState(get(), connectionId).expandedNodes,
+        childIdsByParentId: childIdsByParentId,
+        expandedNodes: getConnectionState(get(), connectionId).expandedNodes,
         loadingNodes: new Set(),
       })
     )
@@ -317,15 +317,15 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
   loadChildren: async (connectionId: string, nodeId: string) => {
     const state = get()
-    const connState = getConnState(state, connectionId)
-    const node = connState.nodes[nodeId]
+    const connectionState = getConnectionState(state, connectionId)
+    const node = connectionState.nodes[nodeId]
     if (!node || node.isLoaded) return
 
     if (node.type === 'database') {
       // Create category children synchronously — no backend call
       const parsed = parseNodeId(nodeId)
       const dbName = parsed.database
-      const newNodes = { ...connState.nodes }
+      const newNodes = { ...connectionState.nodes }
 
       for (const cat of SCHEMA_CATEGORIES) {
         const catId = makeNodeId('category', dbName, cat.type)
@@ -343,7 +343,12 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
       newNodes[nodeId] = { ...node, isLoaded: true }
 
       const childIdsByParentId = buildChildIndex(newNodes)
-      set((s) => setConnState(s, connectionId, { nodes: newNodes, childIdsByParentId }))
+      set((state) =>
+        setConnectionState(state, connectionId, {
+          nodes: newNodes,
+          childIdsByParentId: childIdsByParentId,
+        })
+      )
       return
     }
 
@@ -354,18 +359,18 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
       await fetchChildren(get, set, connectionId, nodeId, async () => {
         const objectNames = await listSchemaObjects(connectionId, dbName, categoryType)
-        const objType = categoryType as TreeNode['type']
-        return objectNames.map((objName) => {
-          const objId = makeNodeId(objType, dbName, objName)
+        const objectType = categoryType as TreeNode['type']
+        return objectNames.map((objectName) => {
+          const objectId = makeNodeId(objectType, dbName, objectName)
           return {
-            id: objId,
-            label: objName,
-            type: objType,
+            id: objectId,
+            label: objectName,
+            type: objectType,
             parentId: nodeId,
-            hasChildren: objType === 'table',
+            hasChildren: objectType === 'table',
             isLoaded: false,
             databaseName: dbName,
-            objectName: objName,
+            objectName: objectName,
             metadata: { databaseName: dbName },
           }
         })
@@ -377,18 +382,18 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
       await fetchChildren(get, set, connectionId, nodeId, async () => {
         const columns = await listColumns(connectionId, dbName, tableName)
-        return columns.map((col) => {
-          const colId = makeNodeId('column', dbName, `${tableName}.${col.name}`)
+        return columns.map((column) => {
+          const columnId = makeNodeId('column', dbName, `${tableName}.${column.name}`)
           return {
-            id: colId,
-            label: col.name,
+            id: columnId,
+            label: column.name,
             type: 'column' as const,
             parentId: nodeId,
             hasChildren: false,
             isLoaded: true,
             databaseName: dbName,
-            objectName: col.name,
-            metadata: { columnType: col.dataType, databaseName: dbName },
+            objectName: column.name,
+            metadata: { columnType: column.dataType, databaseName: dbName },
           }
         })
       })
@@ -399,22 +404,22 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
   toggleExpand: (nodeId: string, connectionId: string) => {
     const state = get()
-    const connState = getConnState(state, connectionId)
-    const node = connState.nodes[nodeId]
+    const connectionState = getConnectionState(state, connectionId)
+    const node = connectionState.nodes[nodeId]
     if (!node || !node.hasChildren) return
 
-    const isExpanded = connState.expandedNodes.has(nodeId)
+    const isExpanded = connectionState.expandedNodes.has(nodeId)
 
     if (isExpanded) {
       // Collapse
-      const newExpanded = new Set(connState.expandedNodes)
+      const newExpanded = new Set(connectionState.expandedNodes)
       newExpanded.delete(nodeId)
-      set((s) => setConnState(s, connectionId, { expandedNodes: newExpanded }))
+      set((state) => setConnectionState(state, connectionId, { expandedNodes: newExpanded }))
     } else {
       // Expand
-      const newExpanded = new Set(connState.expandedNodes)
+      const newExpanded = new Set(connectionState.expandedNodes)
       newExpanded.add(nodeId)
-      set((s) => setConnState(s, connectionId, { expandedNodes: newExpanded }))
+      set((state) => setConnectionState(state, connectionId, { expandedNodes: newExpanded }))
 
       if (!node.isLoaded) {
         // Fire-and-forget the async load
@@ -426,54 +431,60 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
   // ------ ensurePathExpanded ------
 
   ensurePathExpanded: (connectionId: string, nodeId: string) => {
-    set((s) => {
-      const connState = getConnState(s, connectionId)
-      const newExpanded = new Set(connState.expandedNodes)
+    set((state) => {
+      const connectionState = getConnectionState(state, connectionId)
+      const newExpanded = new Set(connectionState.expandedNodes)
       let changed = false
-      let cur: string | null = nodeId
-      while (cur) {
-        const nd: TreeNode | undefined = connState.nodes[cur]
+      let current: string | null = nodeId
+      while (current) {
+        const nd: TreeNode | undefined = connectionState.nodes[current]
         if (!nd) break
-        if (nd.hasChildren && !newExpanded.has(cur)) {
-          newExpanded.add(cur)
+        if (nd.hasChildren && !newExpanded.has(current)) {
+          newExpanded.add(current)
           changed = true
         }
-        cur = nd.parentId
+        current = nd.parentId
       }
-      return changed ? setConnState(s, connectionId, { expandedNodes: newExpanded }) : s
+      return changed
+        ? setConnectionState(state, connectionId, { expandedNodes: newExpanded })
+        : state
     })
   },
 
   // ------ selectNode ------
 
   selectNode: (nodeId: string, connectionId: string) => {
-    set((s) => setConnState(s, connectionId, { selectedNodeId: nodeId }))
+    set((state) => setConnectionState(state, connectionId, { selectedNodeId: nodeId }))
   },
 
   // ------ requestReveal ------
 
   requestReveal: (connectionId: string, nodeId: string) => {
-    set((s) => ({
-      revealRequest: { connectionId, nodeId, seq: (s.revealRequest?.seq ?? 0) + 1 },
+    set((state) => ({
+      revealRequest: {
+        connectionId: connectionId,
+        nodeId: nodeId,
+        seq: (state.revealRequest?.seq ?? 0) + 1,
+      },
     }))
   },
 
   // ------ setFilter ------
 
   setFilter: (text: string, connectionId: string) => {
-    set((s) => setConnState(s, connectionId, { filterText: text }))
+    set((state) => setConnectionState(state, connectionId, { filterText: text }))
   },
 
   // ------ refreshDatabase ------
 
   refreshDatabase: async (connectionId: string, databaseName: string) => {
     const state = get()
-    const connState = getConnState(state, connectionId)
+    const connectionState = getConnectionState(state, connectionId)
     const dbNodeId = makeNodeId('database', databaseName, databaseName)
 
     // Remove all children of this database node and mark it as not loaded
     const newNodes: Record<string, TreeNode> = {}
-    for (const [id, node] of Object.entries(connState.nodes)) {
+    for (const [id, node] of Object.entries(connectionState.nodes)) {
       if (id === dbNodeId) {
         newNodes[id] = { ...node, isLoaded: false }
       } else {
@@ -487,7 +498,7 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
     // Keep the database expanded if it was, remove child nodes from expanded
     const newExpanded = new Set<string>()
-    for (const nid of connState.expandedNodes) {
+    for (const nid of connectionState.expandedNodes) {
       if (nid === dbNodeId) {
         // Keep the database node expanded
         newExpanded.add(nid)
@@ -501,7 +512,7 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
     // Clear loading state for nodes belonging to this database
     const newLoadingNodes = new Set<string>()
-    for (const nid of connState.loadingNodes) {
+    for (const nid of connectionState.loadingNodes) {
       const parsed = parseNodeId(nid)
       if (parsed.database !== databaseName) {
         newLoadingNodes.add(nid)
@@ -512,18 +523,18 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
     // Clear selectedNodeId if it points to a node that was removed
     const newSelectedNodeId =
-      connState.selectedNodeId && !newNodes[connState.selectedNodeId]
+      connectionState.selectedNodeId && !newNodes[connectionState.selectedNodeId]
         ? null
-        : connState.selectedNodeId
+        : connectionState.selectedNodeId
 
-    set((s) =>
-      setConnState(s, connectionId, {
+    set((state) =>
+      setConnectionState(state, connectionId, {
         nodes: newNodes,
-        childIdsByParentId,
+        childIdsByParentId: childIdsByParentId,
         expandedNodes: newExpanded,
         loadingNodes: newLoadingNodes,
         selectedNodeId: newSelectedNodeId,
-        loadGeneration: connState.loadGeneration + 1,
+        loadGeneration: connectionState.loadGeneration + 1,
       })
     )
 
@@ -536,11 +547,11 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
   // ------ refreshAll ------
 
   refreshAll: async (connectionId: string) => {
-    const current = getConnState(get(), connectionId)
+    const current = getConnectionState(get(), connectionId)
     // Preserve filterText and selectedNodeId; increment generation to invalidate in-flight requests
     const defaults = createDefaultConnectionState()
-    set((s) =>
-      setConnState(s, connectionId, {
+    set((state) =>
+      setConnectionState(state, connectionId, {
         ...defaults,
         filterText: current.filterText,
         selectedNodeId: current.selectedNodeId,
@@ -548,10 +559,10 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
       })
     )
     await get().loadDatabases(connectionId)
-    void invalidateMetadataCache(connectionId).catch((err) => {
+    void invalidateMetadataCache(connectionId).catch((error) => {
       logFrontend(
         'warn',
-        ['[schema-store] Failed to invalidate backend metadata cache during refreshAll:', err]
+        ['[schema-store] Failed to invalidate backend metadata cache during refreshAll:', error]
           .map(String)
           .join(' ')
       )
@@ -562,19 +573,19 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
   refreshCategory: async (connectionId: string, databaseName: string, categoryType: string) => {
     const state = get()
-    const connState = getConnState(state, connectionId)
+    const connectionState = getConnectionState(state, connectionId)
     const catNodeId = makeNodeId('category', databaseName, categoryType)
 
     // Check if category node exists
-    if (!connState.nodes[catNodeId]) return
+    if (!connectionState.nodes[catNodeId]) return
 
     // Remove all children (and grandchildren) of this category node
-    const childIds = connState.childIdsByParentId[catNodeId] || []
-    const newNodes = { ...connState.nodes }
+    const childIds = connectionState.childIdsByParentId[catNodeId] || []
+    const newNodes = { ...connectionState.nodes }
 
     for (const childId of childIds) {
       // Remove grandchildren (e.g., columns under tables)
-      const grandchildIds = connState.childIdsByParentId[childId] || []
+      const grandchildIds = connectionState.childIdsByParentId[childId] || []
       for (const gcId of grandchildIds) {
         delete newNodes[gcId]
       }
@@ -585,34 +596,34 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     newNodes[catNodeId] = { ...newNodes[catNodeId], isLoaded: false }
 
     // Clear loading state for category and its children
-    const newLoadingNodes = new Set(connState.loadingNodes)
+    const newLoadingNodes = new Set(connectionState.loadingNodes)
     newLoadingNodes.delete(catNodeId)
     for (const childId of childIds) {
       newLoadingNodes.delete(childId)
     }
 
     // Remove expanded state for children of this category (tables that were expanded)
-    const newExpanded = new Set(connState.expandedNodes)
+    const newExpanded = new Set(connectionState.expandedNodes)
     for (const childId of childIds) {
       newExpanded.delete(childId)
     }
 
     // Clear selectedNodeId if it points to a node that was removed
     const newSelectedNodeId =
-      connState.selectedNodeId && !newNodes[connState.selectedNodeId]
+      connectionState.selectedNodeId && !newNodes[connectionState.selectedNodeId]
         ? null
-        : connState.selectedNodeId
+        : connectionState.selectedNodeId
 
     const childIdsByParentId = buildChildIndex(newNodes)
 
-    set((s) =>
-      setConnState(s, connectionId, {
+    set((state) =>
+      setConnectionState(state, connectionId, {
         nodes: newNodes,
-        childIdsByParentId,
+        childIdsByParentId: childIdsByParentId,
         expandedNodes: newExpanded,
         loadingNodes: newLoadingNodes,
         selectedNodeId: newSelectedNodeId,
-        loadGeneration: connState.loadGeneration + 1,
+        loadGeneration: connectionState.loadGeneration + 1,
       })
     )
 

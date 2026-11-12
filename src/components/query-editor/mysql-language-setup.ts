@@ -29,7 +29,7 @@ if (!rootRules.includes(STAR_OPERATOR_RULE)) {
 
 setupLanguageFeatures(LanguageIdEnum.MYSQL, {
   completionItems: {
-    completionService,
+    completionService: completionService,
     triggerCharacters: [' ', '.', '('],
   },
   diagnostics: true,

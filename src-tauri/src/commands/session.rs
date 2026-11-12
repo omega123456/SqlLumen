@@ -52,7 +52,7 @@ pub async fn select_database_impl(
 
     let new_pool = pool::create_pool(&stored_params.to_connection_params(password))
         .await
-        .map_err(|e| format!("Failed to select database '{database_name}': {e}"))?;
+        .map_err(|error| format!("Failed to select database '{database_name}': {error}"))?;
 
     // Keep the query editor's session (and its variables) — just switch database.
     // Commit the pool and default database only once the session has switched, so

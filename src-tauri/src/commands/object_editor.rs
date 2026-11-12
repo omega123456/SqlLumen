@@ -134,7 +134,7 @@ pub fn parse_ddl_name(body: &str) -> Result<(Option<String>, String, String), St
     let re = Regex::new(
         r"(?i)CREATE\s+(?:OR\s+REPLACE\s+)?(?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?(\w+)\s+(?:(?:`((?:``|[^`])+)`|(\w+))\.)?(?:`((?:``|[^`])+)`|(\w+))",
     )
-    .map_err(|e| format!("Internal regex error: {e}"))?;
+    .map_err(|error| format!("Internal regex error: {error}"))?;
 
     let caps = re.captures(body.trim()).ok_or_else(|| {
         "Could not parse object name from DDL. Expected CREATE ... `name` or CREATE ... name syntax.".to_string()
@@ -148,12 +148,12 @@ pub fn parse_ddl_name(body: &str) -> Result<(Option<String>, String, String), St
 
     let db = caps
         .get(2)
-        .map(|m| unescape_backtick_identifier(m.as_str()))
-        .or_else(|| caps.get(3).map(|m| m.as_str().to_string()));
+        .map(|matched| unescape_backtick_identifier(matched.as_str()))
+        .or_else(|| caps.get(3).map(|matched| matched.as_str().to_string()));
     let name = caps
         .get(4)
-        .map(|m| unescape_backtick_identifier(m.as_str()))
-        .or_else(|| caps.get(5).map(|m| m.as_str().to_string()))
+        .map(|matched| unescape_backtick_identifier(matched.as_str()))
+        .or_else(|| caps.get(5).map(|matched| matched.as_str().to_string()))
         .ok_or("Could not extract object name from DDL")?;
 
     Ok((db, name, type_keyword))
@@ -170,7 +170,7 @@ pub fn validate_view_ddl_prefix(body: &str, mode: &str) -> Result<(), String> {
     match mode {
         "alter" => {
             let re = Regex::new(r"(?i)^\s*CREATE\s+OR\s+REPLACE\s+(?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+")
-                .map_err(|e| format!("Internal regex error: {e}"))?;
+                .map_err(|error| format!("Internal regex error: {error}"))?;
             if !re.is_match(trimmed) {
                 return Err(
                     "View DDL in alter mode must start with 'CREATE OR REPLACE VIEW'".to_string(),
@@ -179,7 +179,7 @@ pub fn validate_view_ddl_prefix(body: &str, mode: &str) -> Result<(), String> {
         }
         "create" => {
             let re_or_replace = Regex::new(r"(?i)^\s*CREATE\s+OR\s+REPLACE\s+")
-                .map_err(|e| format!("Internal regex error: {e}"))?;
+                .map_err(|error| format!("Internal regex error: {error}"))?;
             if re_or_replace.is_match(trimmed) {
                 return Err(
                     "View DDL in create mode must not use 'CREATE OR REPLACE VIEW' — use 'CREATE VIEW' instead"
@@ -187,7 +187,7 @@ pub fn validate_view_ddl_prefix(body: &str, mode: &str) -> Result<(), String> {
                 );
             }
             let re_create_view = Regex::new(r"(?i)^\s*CREATE\s+(?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?VIEW\s+")
-                .map_err(|e| format!("Internal regex error: {e}"))?;
+                .map_err(|error| format!("Internal regex error: {error}"))?;
             if !re_create_view.is_match(trimmed) {
                 return Err("View DDL in create mode must start with 'CREATE VIEW'".to_string());
             }
@@ -224,7 +224,7 @@ pub async fn get_object_body_impl(
         let re = Regex::new(
             r"(?i)^(\s*CREATE\s+)((?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?)VIEW\s+",
         )
-        .map_err(|e| format!("Internal regex error: {e}"))?;
+        .map_err(|error| format!("Internal regex error: {error}"))?;
         let normalized = re.replace(&ddl, "${1}OR REPLACE ${2}VIEW ").to_string();
         return Ok(normalized);
     }
@@ -310,7 +310,7 @@ pub async fn save_object_impl(
     // Acquire a single connection so that USE, DROP, and CREATE all run on
     // the same session.  With a pool, each `.execute(&pool)` may pick a
     // different connection, making the USE ineffective.
-    let mut conn = pool.acquire().await.map_err(|e| e.to_string())?;
+    let mut conn = pool.acquire().await.map_err(|error| error.to_string())?;
 
     // Set session database to ensure the object is created in the correct schema
     let use_sql = format!("USE {safe_db}");
@@ -337,9 +337,9 @@ pub async fn save_object_impl(
                     drop_succeeded: true,
                     saved_object_name: Some(parsed_name),
                 }),
-                Err(e) => Ok(SaveObjectResponse {
+                Err(error) => Ok(SaveObjectResponse {
                     success: false,
-                    error_message: Some(format!("CREATE failed after DROP: {e}")),
+                    error_message: Some(format!("CREATE failed after DROP: {error}")),
                     drop_succeeded: true,
                     saved_object_name: None,
                 }),
@@ -356,9 +356,9 @@ pub async fn save_object_impl(
                 drop_succeeded: false,
                 saved_object_name: Some(parsed_name),
             }),
-            Err(e) => Ok(SaveObjectResponse {
+            Err(error) => Ok(SaveObjectResponse {
                 success: false,
-                error_message: Some(format!("Failed to create {}: {e}", request.object_type)),
+                error_message: Some(format!("Failed to create {}: {error}", request.object_type)),
                 drop_succeeded: false,
                 saved_object_name: None,
             }),
@@ -374,9 +374,9 @@ pub async fn save_object_impl(
                 drop_succeeded: false,
                 saved_object_name: Some(parsed_name),
             }),
-            Err(e) => Ok(SaveObjectResponse {
+            Err(error) => Ok(SaveObjectResponse {
                 success: false,
-                error_message: Some(format!("Failed to alter view: {e}")),
+                error_message: Some(format!("Failed to alter view: {error}")),
                 drop_succeeded: false,
                 saved_object_name: None,
             }),
@@ -392,9 +392,9 @@ pub async fn save_object_impl(
                 drop_succeeded: false,
                 saved_object_name: Some(parsed_name),
             }),
-            Err(e) => Ok(SaveObjectResponse {
+            Err(error) => Ok(SaveObjectResponse {
                 success: false,
-                error_message: Some(format!("Failed to create view: {e}")),
+                error_message: Some(format!("Failed to create view: {error}")),
                 drop_succeeded: false,
                 saved_object_name: None,
             }),
@@ -484,7 +484,7 @@ pub async fn drop_object_impl(
     let safe_name = schema_queries::safe_identifier(object_name)?;
     let type_keyword = object_type_keyword(object_type)?;
     let sql = format!("DROP {type_keyword} IF EXISTS {safe_db}.{safe_name}");
-    let mut conn = pool.acquire().await.map_err(|e| e.to_string())?;
+    let mut conn = pool.acquire().await.map_err(|error| error.to_string())?;
     match execute_simple_sql(&mut conn, &sql).await {
         Ok(_) => Ok(()),
         Err(error) => Err(format!(
@@ -536,11 +536,11 @@ async fn get_routine_parameters_inner(
     };
     Ok(rows
         .into_iter()
-        .map(|r| RoutineParameter {
-            name: r.name,
-            data_type: r.data_type,
-            mode: r.mode,
-            ordinal_position: r.ordinal_position,
+        .map(|parameter| RoutineParameter {
+            name: parameter.name,
+            data_type: parameter.data_type,
+            mode: parameter.mode,
+            ordinal_position: parameter.ordinal_position,
         })
         .collect())
 }
@@ -736,7 +736,7 @@ pub async fn save_object(
                 },
             );
         }
-        Err(e) => {
+        Err(error) => {
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
@@ -747,7 +747,7 @@ pub async fn save_object(
                     row_count: Some(0),
                     affected_rows: Some(0),
                     success: false,
-                    error_message: Some(e.clone()),
+                    error_message: Some(error.clone()),
                 },
             );
         }

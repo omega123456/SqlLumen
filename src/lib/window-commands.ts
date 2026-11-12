@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { logFrontend } from './app-log-commands'
+import { PERCENT_SCALE } from './units'
 
 export type WindowBackdrop = 'mica' | 'solid'
 export type WindowThemePreference = 'light' | 'dark' | 'system'
@@ -14,7 +15,10 @@ export async function setWindowTheme(theme: 'light' | 'dark' | null): Promise<vo
  * scales the page's own px but not pointer or rect coordinates, so overlays drift.
  */
 export async function setWebviewZoom(level: number): Promise<void> {
-  await invoke<void>('plugin:webview|set_webview_zoom', { label: 'main', value: level / 100 })
+  await invoke<void>('plugin:webview|set_webview_zoom', {
+    label: 'main',
+    value: level / PERCENT_SCALE,
+  })
 }
 
 /** `mica` when the window got the Windows 11 backdrop, `solid` otherwise. */

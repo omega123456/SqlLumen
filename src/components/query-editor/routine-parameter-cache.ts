@@ -101,8 +101,8 @@ export async function getRoutineParameters(
       }
 
       // Separate return type row (ordinalPosition === 0) from parameter rows
-      const returnTypeRow = rows.find((r) => r.ordinalPosition === 0)
-      const parameterRows = rows.filter((r) => r.ordinalPosition > 0)
+      const returnTypeRow = rows.find((parameter) => parameter.ordinalPosition === 0)
+      const parameterRows = rows.filter((parameter) => parameter.ordinalPosition > 0)
 
       // Coerce routineType to the strict union
       const normalizedType: 'FUNCTION' | 'PROCEDURE' =
@@ -117,17 +117,17 @@ export async function getRoutineParameters(
 
       cacheMap.set(key, entry)
       return entry
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
       logFrontend(
         'error',
-        [`[routine-param-cache] Failed to fetch parameters for ${routineName}: ${msg}`]
+        [`[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`]
           .map(String)
           .join(' ')
       )
       logFrontend(
         'error',
-        `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${msg}`
+        `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`
       )
 
       // Do NOT cache the error — transient failures (network glitch, server
@@ -189,8 +189,8 @@ export function getCachedRoutineParameters(
     const key = makeCacheKey(connectionId, database, routineName, rt)
     if (cacheMap.has(key)) {
       anyFetched = true
-      const val = cacheMap.get(key)
-      if (val) return val
+      const value = cacheMap.get(key)
+      if (value) return value
     }
   }
   return anyFetched ? null : undefined

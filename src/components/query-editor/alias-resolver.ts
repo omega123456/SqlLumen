@@ -12,6 +12,8 @@ import type { EntityContext } from 'monaco-sql-languages'
 import { EntityContextType } from 'monaco-sql-languages'
 import { SQL_RESERVED_WORDS_SET } from './sql-keywords'
 
+const QUOTE_PAIR_LENGTH = 2
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -39,7 +41,7 @@ export type AliasMap = Map<string, AliasResolution> // lowercaseAlias -> { datab
  *   stripQuotes('users')    => 'users'
  */
 export function stripQuotes(identifier: string): string {
-  if (identifier.length < 2) return identifier
+  if (identifier.length < QUOTE_PAIR_LENGTH) return identifier
   const first = identifier[0]
   const last = identifier[identifier.length - 1]
   if (
@@ -84,7 +86,7 @@ function parseTableRef(rawText: string, activeDatabase: string | null): AliasRes
     const table = stripQuotes(rawText.trim())
     if (!table) return null
     if (!activeDatabase) return null
-    return { database: activeDatabase, table }
+    return { database: activeDatabase, table: table }
   }
 }
 
@@ -110,13 +112,13 @@ export function buildAliasMap(
 
   // 1. Filter to TABLE entities that have an alias defined
   const aliased = entities.filter(
-    (e) => e.entityContextType === EntityContextType.TABLE && e._alias
+    (entity) => entity.entityContextType === EntityContextType.TABLE && entity._alias
   )
   if (aliased.length === 0) return map
 
   // 2. Prefer entities in the statement containing the caret;
   //    fall back to all aliased entities if none have isContainCaret.
-  const caretEntities = aliased.filter((e) => e.belongStmt?.isContainCaret)
+  const caretEntities = aliased.filter((entity) => entity.belongStmt?.isContainCaret)
   const working = caretEntities.length > 0 ? caretEntities : aliased
 
   // 3. Build the map
@@ -185,7 +187,7 @@ export function buildAliasMapFromText(
     const aliasPart = match[2]
 
     const isQuotedAlias =
-      aliasPart.length >= 2 &&
+      aliasPart.length >= QUOTE_PAIR_LENGTH &&
       ((aliasPart.startsWith('`') && aliasPart.endsWith('`')) ||
         (aliasPart.startsWith('"') && aliasPart.endsWith('"')))
     const aliasText = stripQuotes(aliasPart).toLowerCase()

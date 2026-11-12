@@ -42,7 +42,7 @@ export interface BlobPastePopoverProps {
   /** Successful parse: hand the decoded bytes back to the dialog. */
   onApply: (bytes: Uint8Array) => void
   /** Parse failure: surface a human-readable message (parent toasts it). */
-  onError: (msg: string) => void
+  onError: (message: string) => void
   /** The Paste button the popover anchors to; focus returns here on close. */
   anchorRef: React.RefObject<HTMLElement | null>
 }
@@ -114,8 +114,8 @@ export function BlobPastePopover({
   // popover surface and its anchor button.
   useEffect(() => {
     if (!isOpen) return
-    const handlePointerDown = (e: MouseEvent) => {
-      const target = e.target as Node
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
       if (popoverRef.current?.contains(target)) return
       if (anchorRef.current?.contains(target)) return
       close()
@@ -137,35 +137,35 @@ export function BlobPastePopover({
   // Keep Escape from bubbling to the dialog's own Escape handler so it closes
   // only the popover while the popover is open.
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        e.preventDefault()
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        event.preventDefault()
         close()
         return
       }
 
-      if (e.key !== 'Tab') return
+      if (event.key !== 'Tab') return
 
       const focusable = focusableElements()
       if (focusable.length === 0) {
-        e.preventDefault()
+        event.preventDefault()
         return
       }
 
       const activeElement = document.activeElement
       const currentIndex = focusable.findIndex((element) => element === activeElement)
 
-      if (e.shiftKey) {
+      if (event.shiftKey) {
         if (currentIndex === 0 || currentIndex === -1) {
-          e.preventDefault()
+          event.preventDefault()
           focusable[focusable.length - 1]?.focus()
         }
         return
       }
 
       if (currentIndex === focusable.length - 1) {
-        e.preventDefault()
+        event.preventDefault()
         focusable[0]?.focus()
       }
     },
@@ -192,7 +192,7 @@ export function BlobPastePopover({
         variant="mono"
         rows={4}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(event) => setText(event.target.value)}
         placeholder="Paste base64 or hex"
         aria-label="Paste base64 or hex"
         data-testid="blob-paste-input"

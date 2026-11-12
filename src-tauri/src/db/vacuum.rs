@@ -63,7 +63,9 @@ fn get_last_vacuum_at(conn: &Connection) -> Result<u64> {
         )
         .optional()?;
 
-    Ok(raw.and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0))
+    Ok(raw
+        .and_then(|text| text.trim().parse::<u64>().ok())
+        .unwrap_or(0))
 }
 
 /// Update the `last_vacuum_at` row in `_vacuum_state` with the given timestamp.

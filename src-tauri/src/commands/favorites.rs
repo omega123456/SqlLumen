@@ -29,7 +29,7 @@ pub fn create_favorite_impl(
         input.connection_id = Some(resolved);
     }
     let conn = lock_db(state)?;
-    favorites::insert_favorite(&conn, &input).map_err(|e| e.to_string())
+    favorites::insert_favorite(&conn, &input).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -52,7 +52,7 @@ pub fn list_favorites_impl(
         .get_profile_id(connection_id)
         .unwrap_or_else(|| connection_id.to_string());
     let conn = lock_db(state)?;
-    favorites::list_favorites(&conn, &resolved_id).map_err(|e| e.to_string())
+    favorites::list_favorites(&conn, &resolved_id).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -79,7 +79,7 @@ pub fn update_favorite_impl(
         input.connection_id = Some(resolved);
     }
     let conn = lock_db(state)?;
-    favorites::update_favorite(&conn, id, &input).map_err(|e| e.to_string())
+    favorites::update_favorite(&conn, id, &input).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]
@@ -96,7 +96,7 @@ pub fn update_favorite(
 
 pub fn delete_favorite_impl(state: &AppState, id: i64) -> Result<bool, String> {
     let conn = lock_db(state)?;
-    favorites::delete_favorite(&conn, id).map_err(|e| e.to_string())
+    favorites::delete_favorite(&conn, id).map_err(|error| error.to_string())
 }
 
 #[cfg(not(coverage))]

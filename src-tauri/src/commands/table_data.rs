@@ -31,11 +31,13 @@ pub fn interpolate_sql_params(sql: &str, params: &[serde_json::Value]) -> String
             match param_iter.next() {
                 None => result.push('?'),
                 Some(serde_json::Value::Null) => result.push_str("NULL"),
-                Some(serde_json::Value::Bool(b)) => result.push_str(if *b { "1" } else { "0" }),
-                Some(serde_json::Value::Number(n)) => result.push_str(&n.to_string()),
-                Some(serde_json::Value::String(s)) => {
+                Some(serde_json::Value::Bool(boolean)) => {
+                    result.push_str(if *boolean { "1" } else { "0" })
+                }
+                Some(serde_json::Value::Number(number)) => result.push_str(&number.to_string()),
+                Some(serde_json::Value::String(text)) => {
                     result.push('\'');
-                    result.push_str(&s.replace('\'', "''"));
+                    result.push_str(&text.replace('\'', "''"));
                     result.push('\'');
                 }
                 Some(other) => {
@@ -73,9 +75,13 @@ pub fn build_select_sql(
     };
 
     let order_sql = match sort {
-        Some(s) => {
-            let safe_col = safe_identifier(&s.column).ok()?;
-            let dir = if s.direction == "desc" { "DESC" } else { "ASC" };
+        Some(sort_spec) => {
+            let safe_col = safe_identifier(&sort_spec.column).ok()?;
+            let dir = if sort_spec.direction == "desc" {
+                "DESC"
+            } else {
+                "ASC"
+            };
             format!(" ORDER BY {safe_col} {dir}")
         }
         None => String::new(),
@@ -180,7 +186,7 @@ pub async fn fetch_table_data(
             duration_ms: Some(
                 result
                     .as_ref()
-                    .map(|r| r.execution_time_ms as i64)
+                    .map(|result| result.execution_time_ms as i64)
                     .unwrap_or(0),
             ),
             row_count: None,
@@ -266,7 +272,7 @@ pub async fn update_table_row(
     database: String,
     table: String,
     primary_key_columns: Vec<String>,
-    original_pk_values: HashMap<String, serde_json::Value>,
+    original_primary_key_values: HashMap<String, serde_json::Value>,
     updated_values: HashMap<String, serde_json::Value>,
 ) -> Result<(), String> {
     if state.registry.is_read_only(&connection_id) {
@@ -283,11 +289,11 @@ pub async fn update_table_row(
     sorted_update_keys.sort();
     let set_cols: Vec<String> = sorted_update_keys
         .iter()
-        .map(|k| format!("`{k}` = ?"))
+        .map(|column_name| format!("`{column_name}` = ?"))
         .collect();
     let where_cols: Vec<String> = primary_key_columns
         .iter()
-        .map(|k| format!("`{k}` = ?"))
+        .map(|column_name| format!("`{column_name}` = ?"))
         .collect();
     let raw_sql = format!(
         "UPDATE `{database}`.`{table}` SET {} WHERE {}",
@@ -297,12 +303,12 @@ pub async fn update_table_row(
     // Collect params in the same order: SET values (sorted) then WHERE values (pk order)
     let mut history_params: Vec<serde_json::Value> = sorted_update_keys
         .iter()
-        .map(|k| updated_values[*k].clone())
+        .map(|column_name| updated_values[*column_name].clone())
         .collect();
-    for pk_col in &primary_key_columns {
+    for primary_key_column in &primary_key_columns {
         history_params.push(
-            original_pk_values
-                .get(pk_col)
+            original_primary_key_values
+                .get(primary_key_column)
                 .cloned()
                 .unwrap_or(serde_json::Value::Null),
         );
@@ -315,7 +321,7 @@ pub async fn update_table_row(
         &database,
         &table,
         &primary_key_columns,
-        &original_pk_values,
+        &original_primary_key_values,
         &updated_values,
     )
     .await;
@@ -350,7 +356,7 @@ pub async fn insert_table_row(
     database: String,
     table: String,
     values: HashMap<String, serde_json::Value>,
-    pk_info: table_data::PrimaryKeyInfo,
+    primary_key_info: table_data::PrimaryKeyInfo,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
     if state.registry.is_read_only(&connection_id) {
         return Err("Connection is read-only".to_string());
@@ -364,15 +370,20 @@ pub async fn insert_table_row(
     // Build a descriptive SQL text for history
     let mut sorted_keys: Vec<&String> = values.keys().collect();
     sorted_keys.sort();
-    let col_names: Vec<String> = sorted_keys.iter().map(|k| format!("`{k}`")).collect();
+    let col_names: Vec<String> = sorted_keys
+        .iter()
+        .map(|column_name| format!("`{column_name}`"))
+        .collect();
     let placeholders: Vec<&str> = vec!["?"; col_names.len()];
     let raw_sql = format!(
         "INSERT INTO `{database}`.`{table}` ({}) VALUES ({})",
         col_names.join(", "),
         placeholders.join(", ")
     );
-    let history_params: Vec<serde_json::Value> =
-        sorted_keys.iter().map(|k| values[*k].clone()).collect();
+    let history_params: Vec<serde_json::Value> = sorted_keys
+        .iter()
+        .map(|column_name| values[*column_name].clone())
+        .collect();
     let sql_text = interpolate_sql_params(&raw_sql, &history_params);
 
     let start = std::time::Instant::now();
@@ -383,7 +394,7 @@ pub async fn insert_table_row(
         &database,
         &table,
         &values,
-        &pk_info,
+        &primary_key_info,
     )
     .await;
 
@@ -416,8 +427,8 @@ pub async fn delete_table_row(
     connection_id: String,
     database: String,
     table: String,
-    pk_columns: Vec<String>,
-    pk_values: HashMap<String, serde_json::Value>,
+    primary_key_columns: Vec<String>,
+    primary_key_values: HashMap<String, serde_json::Value>,
 ) -> Result<(), String> {
     if state.registry.is_read_only(&connection_id) {
         return Err("Connection is read-only".to_string());
@@ -429,20 +440,34 @@ pub async fn delete_table_row(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     // Build a descriptive SQL text for history
-    let where_cols: Vec<String> = pk_columns.iter().map(|k| format!("`{k}` = ?")).collect();
+    let where_cols: Vec<String> = primary_key_columns
+        .iter()
+        .map(|column_name| format!("`{column_name}` = ?"))
+        .collect();
     let raw_sql = format!(
         "DELETE FROM `{database}`.`{table}` WHERE {}",
         where_cols.join(" AND ")
     );
-    let history_params: Vec<serde_json::Value> = pk_columns
+    let history_params: Vec<serde_json::Value> = primary_key_columns
         .iter()
-        .map(|k| pk_values.get(k).cloned().unwrap_or(serde_json::Value::Null))
+        .map(|column_name| {
+            primary_key_values
+                .get(column_name)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        })
         .collect();
     let sql_text = interpolate_sql_params(&raw_sql, &history_params);
 
     let start = std::time::Instant::now();
-    let result =
-        table_data::delete_table_row_impl(&pool, &database, &table, &pk_columns, &pk_values).await;
+    let result = table_data::delete_table_row_impl(
+        &pool,
+        &database,
+        &table,
+        &primary_key_columns,
+        &primary_key_values,
+    )
+    .await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
@@ -474,14 +499,14 @@ pub async fn fetch_blob_value(
     database: String,
     table: String,
     column: String,
-    pk_pairs: Vec<(String, serde_json::Value)>,
+    primary_key_pairs: Vec<(String, serde_json::Value)>,
 ) -> Result<table_data::BlobValueResponse, String> {
     let pool = state
         .registry
         .get_pool(&connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    table_data::fetch_blob_value_impl(&pool, &database, &table, &column, &pk_pairs).await
+    table_data::fetch_blob_value_impl(&pool, &database, &table, &column, &primary_key_pairs).await
 }
 
 #[tauri::command]
@@ -527,8 +552,8 @@ pub async fn export_table_data(
 
     // Build descriptive SQL for history — includes LIMIT if page/page_size are provided
     let limit_for_sql = match (page, page_size) {
-        (Some(p), Some(ps)) => {
-            let offset = (p.saturating_sub(1)) as u64 * ps as u64;
+        (Some(page_number), Some(ps)) => {
+            let offset = (page_number.saturating_sub(1)) as u64 * ps as u64;
             Some((ps, offset))
         }
         _ => None,

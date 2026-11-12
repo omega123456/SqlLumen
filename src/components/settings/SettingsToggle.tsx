@@ -32,7 +32,7 @@ export function SettingsToggle({
       <Switch
         id={id}
         checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
+        onChange={(event) => onChange(event.target.checked)}
         disabled={disabled}
       />
     </div>

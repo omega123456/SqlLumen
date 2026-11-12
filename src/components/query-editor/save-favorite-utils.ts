@@ -32,10 +32,10 @@ export function buildFavoriteDraft(sqlText: string, connectionId: string | null)
   return {
     id: 0,
     name: '',
-    sqlText,
+    sqlText: sqlText,
     description: null,
     category: null,
-    connectionId,
+    connectionId: connectionId,
     createdAt: '',
     updatedAt: '',
   }

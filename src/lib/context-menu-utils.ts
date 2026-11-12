@@ -16,28 +16,28 @@ const EDITABLE_INPUT_TYPES = new Set([
  * Keeps a fixed-position context menu inside the viewport.
  */
 export function clampContextMenuPosition(
-  x: number,
-  y: number,
+  requestedX: number,
+  requestedY: number,
   menuWidth: number,
   menuHeight: number,
-  viewportW: number,
-  viewportH: number,
+  viewportWidth: number,
+  viewportHeight: number,
   margin = 4
 ): { x: number; y: number } {
-  let nx = x
-  let ny = y
+  let clampedX = requestedX
+  let clampedY = requestedY
 
-  if (nx + menuWidth + margin > viewportW) {
-    nx = viewportW - menuWidth - margin
+  if (clampedX + menuWidth + margin > viewportWidth) {
+    clampedX = viewportWidth - menuWidth - margin
   }
-  if (ny + menuHeight + margin > viewportH) {
-    ny = viewportH - menuHeight - margin
+  if (clampedY + menuHeight + margin > viewportHeight) {
+    clampedY = viewportHeight - menuHeight - margin
   }
 
-  nx = Math.max(margin, nx)
-  ny = Math.max(margin, ny)
+  clampedX = Math.max(margin, clampedX)
+  clampedY = Math.max(margin, clampedY)
 
-  return { x: nx, y: ny }
+  return { x: clampedX, y: clampedY }
 }
 
 /**
@@ -50,9 +50,9 @@ export function getContextMenuPortalRoot(anchor: Element | null): HTMLElement {
     throw new Error('document is not available')
   }
   if (anchor) {
-    const d = anchor.closest('dialog')
-    if (d instanceof HTMLDialogElement && d.open) {
-      return d
+    const dialog = anchor.closest('dialog')
+    if (dialog instanceof HTMLDialogElement && dialog.open) {
+      return dialog
     }
   }
   return document.body
@@ -103,18 +103,18 @@ export function getContextMenuPositionMode(portalRoot: HTMLElement): 'fixed' | '
   return portalRoot === portalRoot.ownerDocument.body ? 'fixed' : 'absolute'
 }
 
-function isContentEditableField(el: HTMLElement): boolean {
-  const raw = el.getAttribute('contenteditable')
+function isContentEditableField(element: HTMLElement): boolean {
+  const raw = element.getAttribute('contenteditable')
   if (raw === 'false') {
     return false
   }
   if (raw === 'true' || raw === 'plaintext-only') {
     return true
   }
-  if (el.closest('[contenteditable="false"]')) {
+  if (element.closest('[contenteditable="false"]')) {
     return false
   }
-  return el.isContentEditable
+  return element.isContentEditable
 }
 
 /**
@@ -133,16 +133,16 @@ export function resolveEditableFieldFromTarget(target: EventTarget | null): HTML
     return null
   }
 
-  const startEl =
+  const startElement =
     target.nodeType === Node.TEXT_NODE
       ? (target.parentElement as Element | null)
       : (target as Element)
 
-  if (!startEl) {
+  if (!startElement) {
     return null
   }
 
-  const inputOrTextarea = startEl.closest('input, textarea')
+  const inputOrTextarea = startElement.closest('input, textarea')
   if (inputOrTextarea instanceof HTMLTextAreaElement) {
     if (inputOrTextarea.disabled) {
       return null
@@ -153,14 +153,14 @@ export function resolveEditableFieldFromTarget(target: EventTarget | null): HTML
     if (inputOrTextarea.disabled) {
       return null
     }
-    const t = inputOrTextarea.type.toLowerCase()
-    if (!EDITABLE_INPUT_TYPES.has(t)) {
+    const inputType = inputOrTextarea.type.toLowerCase()
+    if (!EDITABLE_INPUT_TYPES.has(inputType)) {
       return null
     }
     return inputOrTextarea
   }
 
-  const contentHost = startEl.closest('[contenteditable]')
+  const contentHost = startElement.closest('[contenteditable]')
   if (contentHost instanceof HTMLElement && isContentEditableField(contentHost)) {
     return contentHost
   }
@@ -175,9 +175,9 @@ export function isInsideDisabledTextControl(target: EventTarget | null): boolean
   if (!target || !(target instanceof Element)) {
     return false
   }
-  const el = target.closest('input, textarea')
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-    return el.disabled
+  const element = target.closest('input, textarea')
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    return element.disabled
   }
   return false
 }

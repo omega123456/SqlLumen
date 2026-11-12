@@ -24,14 +24,16 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
     let chars: Vec<char> = input.chars().collect();
     let len = chars.len();
-    let mut i = 0;
+    let mut position = 0;
 
-    while i < len {
-        let ch = chars[i];
+    while position < len {
+        let ch = chars[position];
 
         // --- Check for DELIMITER directive at the start of a line (or start of input) ---
-        if is_at_line_start(&chars, i) && remaining_starts_with_ci(&chars, i, "DELIMITER") {
-            let after = i + "DELIMITER".len();
+        if is_at_line_start(&chars, position)
+            && remaining_starts_with_ci(&chars, position, "DELIMITER")
+        {
+            let after = position + "DELIMITER".len();
             if after < len && chars[after].is_ascii_whitespace() {
                 // Flush any pending statement
                 let trimmed = current.trim().to_string();
@@ -41,20 +43,23 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
                 current.clear();
 
                 // Skip whitespace after DELIMITER keyword
-                let mut j = after;
-                while j < len
-                    && chars[j] != '\n'
-                    && chars[j] != '\r'
-                    && chars[j].is_ascii_whitespace()
+                let mut scan_position = after;
+                while scan_position < len
+                    && chars[scan_position] != '\n'
+                    && chars[scan_position] != '\r'
+                    && chars[scan_position].is_ascii_whitespace()
                 {
-                    j += 1;
+                    scan_position += 1;
                 }
 
                 // Read the new delimiter until end of line
                 let mut new_delim = String::new();
-                while j < len && chars[j] != '\n' && chars[j] != '\r' {
-                    new_delim.push(chars[j]);
-                    j += 1;
+                while scan_position < len
+                    && chars[scan_position] != '\n'
+                    && chars[scan_position] != '\r'
+                {
+                    new_delim.push(chars[scan_position]);
+                    scan_position += 1;
                 }
 
                 let new_delim = new_delim.trim().to_string();
@@ -63,67 +68,67 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
                 }
 
                 // Skip the newline
-                i = j;
-                if i < len && chars[i] == '\r' {
-                    i += 1;
+                position = scan_position;
+                if position < len && chars[position] == '\r' {
+                    position += 1;
                 }
-                if i < len && chars[i] == '\n' {
-                    i += 1;
+                if position < len && chars[position] == '\n' {
+                    position += 1;
                 }
                 continue;
             }
         }
 
         // --- Single-line comment: -- (followed by space or end) ---
-        if ch == '-' && i + 1 < len && chars[i + 1] == '-' {
+        if ch == '-' && position + 1 < len && chars[position + 1] == '-' {
             // MySQL requires space after -- for comment, but we're lenient
             // Skip to end of line
-            while i < len && chars[i] != '\n' {
-                i += 1;
+            while position < len && chars[position] != '\n' {
+                position += 1;
             }
             // Keep the newline in current to preserve formatting
-            if i < len {
-                current.push(chars[i]);
-                i += 1;
+            if position < len {
+                current.push(chars[position]);
+                position += 1;
             }
             continue;
         }
 
         // --- Single-line comment: # ---
         if ch == '#' {
-            while i < len && chars[i] != '\n' {
-                i += 1;
+            while position < len && chars[position] != '\n' {
+                position += 1;
             }
-            if i < len {
-                current.push(chars[i]);
-                i += 1;
+            if position < len {
+                current.push(chars[position]);
+                position += 1;
             }
             continue;
         }
 
         // --- Multi-line comment: /* ... */ ---
         // MySQL conditional comments /*!...*/ are preserved as executable SQL.
-        if ch == '/' && i + 1 < len && chars[i + 1] == '*' {
-            if i + 2 < len && chars[i + 2] == '!' {
+        if ch == '/' && position + 1 < len && chars[position + 1] == '*' {
+            if position + 2 < len && chars[position + 2] == '!' {
                 // Conditional comment /*!...*/ — treat content as executable SQL
-                i += 3; // skip /*!
-                while i < len {
-                    if chars[i] == '*' && i + 1 < len && chars[i + 1] == '/' {
-                        i += 2;
+                position += 3; // skip /*!
+                while position < len {
+                    if chars[position] == '*' && position + 1 < len && chars[position + 1] == '/' {
+                        position += 2;
                         break;
                     }
-                    current.push(chars[i]);
-                    i += 1;
+                    current.push(chars[position]);
+                    position += 1;
                 }
             } else {
                 // Regular block comment — skip entirely
-                i += 2; // skip /*
-                while i < len {
-                    if chars[i] == '*' && i + 1 < len && chars[i + 1] == '/' {
-                        i += 2;
+                position += 2; // skip /*
+                while position < len {
+                    if chars[position] == '*' && position + 1 < len && chars[position + 1] == '/' {
+                        position += 2;
                         break;
                     }
-                    i += 1;
+                    position += 1;
                 }
                 // Add a space to prevent token concatenation
                 current.push(' ');
@@ -134,29 +139,29 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         // --- String literal: single-quoted ---
         if ch == '\'' {
             current.push(ch);
-            i += 1;
-            while i < len {
-                let c = chars[i];
-                current.push(c);
-                if c == '\\' && i + 1 < len {
+            position += 1;
+            while position < len {
+                let character = chars[position];
+                current.push(character);
+                if character == '\\' && position + 1 < len {
                     // Escaped character
-                    i += 1;
-                    current.push(chars[i]);
-                    i += 1;
+                    position += 1;
+                    current.push(chars[position]);
+                    position += 1;
                     continue;
                 }
-                if c == '\'' {
+                if character == '\'' {
                     // Check for escaped quote ''
-                    if i + 1 < len && chars[i + 1] == '\'' {
-                        i += 1;
-                        current.push(chars[i]);
-                        i += 1;
+                    if position + 1 < len && chars[position + 1] == '\'' {
+                        position += 1;
+                        current.push(chars[position]);
+                        position += 1;
                         continue;
                     }
-                    i += 1;
+                    position += 1;
                     break;
                 }
-                i += 1;
+                position += 1;
             }
             continue;
         }
@@ -164,27 +169,27 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         // --- String literal: double-quoted ---
         if ch == '"' {
             current.push(ch);
-            i += 1;
-            while i < len {
-                let c = chars[i];
-                current.push(c);
-                if c == '\\' && i + 1 < len {
-                    i += 1;
-                    current.push(chars[i]);
-                    i += 1;
+            position += 1;
+            while position < len {
+                let character = chars[position];
+                current.push(character);
+                if character == '\\' && position + 1 < len {
+                    position += 1;
+                    current.push(chars[position]);
+                    position += 1;
                     continue;
                 }
-                if c == '"' {
-                    if i + 1 < len && chars[i + 1] == '"' {
-                        i += 1;
-                        current.push(chars[i]);
-                        i += 1;
+                if character == '"' {
+                    if position + 1 < len && chars[position + 1] == '"' {
+                        position += 1;
+                        current.push(chars[position]);
+                        position += 1;
                         continue;
                     }
-                    i += 1;
+                    position += 1;
                     break;
                 }
-                i += 1;
+                position += 1;
             }
             continue;
         }
@@ -192,40 +197,40 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         // --- Backtick-quoted identifier ---
         if ch == '`' {
             current.push(ch);
-            i += 1;
-            while i < len {
-                let c = chars[i];
-                current.push(c);
-                if c == '`' {
+            position += 1;
+            while position < len {
+                let character = chars[position];
+                current.push(character);
+                if character == '`' {
                     // Check for escaped backtick ``
-                    if i + 1 < len && chars[i + 1] == '`' {
-                        i += 1;
-                        current.push(chars[i]);
-                        i += 1;
+                    if position + 1 < len && chars[position + 1] == '`' {
+                        position += 1;
+                        current.push(chars[position]);
+                        position += 1;
                         continue;
                     }
-                    i += 1;
+                    position += 1;
                     break;
                 }
-                i += 1;
+                position += 1;
             }
             continue;
         }
 
         // --- Check for delimiter match ---
-        if remaining_starts_with(&chars, i, &delimiter) {
+        if remaining_starts_with(&chars, position, &delimiter) {
             let trimmed = current.trim().to_string();
             if !trimmed.is_empty() {
                 statements.push(trimmed);
             }
             current.clear();
-            i += delimiter.len();
+            position += delimiter.len();
             continue;
         }
 
         // --- Default: append character ---
         current.push(ch);
-        i += 1;
+        position += 1;
     }
 
     // Flush any remaining statement
@@ -260,19 +265,20 @@ pub fn execute_sql_import(
     db: &Arc<Mutex<rusqlite::Connection>>,
     connection_id: &str,
 ) -> Result<(), String> {
-    let rt = tokio::runtime::Handle::try_current().map_err(|e| format!("No tokio runtime: {e}"))?;
+    let rt = tokio::runtime::Handle::try_current()
+        .map_err(|error| format!("No tokio runtime: {error}"))?;
 
     let start_time = std::time::Instant::now();
 
     // Extract filename for logging
     let filename = std::path::Path::new(file_path)
         .file_name()
-        .and_then(|n| n.to_str())
+        .and_then(|name| name.to_str())
         .unwrap_or(file_path);
 
     // Read the file
     let content = std::fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read file '{}': {e}", file_path))?;
+        .map_err(|error| format!("Failed to read file '{}': {error}", file_path))?;
 
     // Parse statements
     let statements = parse_sql_statements(&content);
@@ -287,7 +293,9 @@ pub fn execute_sql_import(
 
     // Update total count
     {
-        let mut jobs = import_jobs.write().unwrap_or_else(|p| p.into_inner());
+        let mut jobs = import_jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(job_id) {
             progress.statements_total = statements.len();
         }
@@ -296,15 +304,19 @@ pub fn execute_sql_import(
     let mut tally = ImportTally::default();
     let mut statement_history_entries: Vec<NewHistoryEntry> = Vec::new();
 
-    for (idx, sql) in statements.iter().enumerate() {
+    for (index, sql) in statements.iter().enumerate() {
         // Check for cancellation
         {
-            let jobs = import_jobs.read().unwrap_or_else(|p| p.into_inner());
+            let jobs = import_jobs
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some(progress) = jobs.get(job_id) {
                 if progress.cancel_requested {
                     // Mark as cancelled and return
                     drop(jobs);
-                    let mut jobs = import_jobs.write().unwrap_or_else(|p| p.into_inner());
+                    let mut jobs = import_jobs
+                        .write()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     if let Some(progress) = jobs.get_mut(job_id) {
                         progress.status = ImportJobStatus::Cancelled;
                         progress.completed_at = Some(std::time::SystemTime::now());
@@ -347,7 +359,7 @@ pub fn execute_sql_import(
         };
         tracing::debug!(
             job_id = %job_id,
-            statement_index = idx,
+            statement_index = index,
             sql_preview = %sql_preview,
             "Executing import statement"
         );
@@ -363,9 +375,11 @@ pub fn execute_sql_import(
 
         // Update progress
         {
-            let mut jobs = import_jobs.write().unwrap_or_else(|p| p.into_inner());
+            let mut jobs = import_jobs
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some(progress) = jobs.get_mut(job_id) {
-                progress.statements_done = idx + 1;
+                progress.statements_done = index + 1;
                 tally.statements_executed += 1;
 
                 match &result {
@@ -382,18 +396,18 @@ pub fn execute_sql_import(
                             error_message: None,
                         });
                     }
-                    Err(err) => {
-                        let err_str = err.to_string();
+                    Err(error) => {
+                        let error_text = error.to_string();
                         tracing::warn!(
                             job_id = %job_id,
-                            statement_index = idx,
-                            error = %err_str,
+                            statement_index = index,
+                            error = %error_text,
                             sql_preview = %sql_preview,
                             "Import statement failed"
                         );
 
                         tally.error_count += 1;
-                        tally.last_error_message = Some(err_str.clone());
+                        tally.last_error_message = Some(error_text.clone());
 
                         let preview = if sql.len() > 120 {
                             format!("{}...", &sql[..120])
@@ -401,9 +415,9 @@ pub fn execute_sql_import(
                             sql.clone()
                         };
                         progress.errors.push(ImportError {
-                            statement_index: idx,
+                            statement_index: index,
                             sql_preview: preview,
-                            error_message: err_str,
+                            error_message: error_text,
                         });
 
                         if stop_on_error {
@@ -457,7 +471,9 @@ pub fn execute_sql_import(
 
     // Mark as completed
     {
-        let mut jobs = import_jobs.write().unwrap_or_else(|p| p.into_inner());
+        let mut jobs = import_jobs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(job_id) {
             if progress.status == ImportJobStatus::Running {
                 if progress.errors.is_empty() {
@@ -536,18 +552,18 @@ fn log_import_history(db: &Arc<Mutex<rusqlite::Connection>>, summary: ImportHist
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 /// Check if position `i` is at the start of a line (or start of input).
-fn is_at_line_start(chars: &[char], i: usize) -> bool {
-    if i == 0 {
+fn is_at_line_start(chars: &[char], position: usize) -> bool {
+    if position == 0 {
         return true;
     }
     // Check if the previous non-whitespace-on-same-line is a newline
-    let mut j = i;
-    while j > 0 {
-        j -= 1;
-        if chars[j] == '\n' || chars[j] == '\r' {
+    let mut scan_position = position;
+    while scan_position > 0 {
+        scan_position -= 1;
+        if chars[scan_position] == '\n' || chars[scan_position] == '\r' {
             return true;
         }
-        if !chars[j].is_ascii_whitespace() {
+        if !chars[scan_position].is_ascii_whitespace() {
             return false;
         }
     }
@@ -556,13 +572,13 @@ fn is_at_line_start(chars: &[char], i: usize) -> bool {
 }
 
 /// Case-insensitive prefix match at position `i`.
-fn remaining_starts_with_ci(chars: &[char], i: usize, pattern: &str) -> bool {
+fn remaining_starts_with_ci(chars: &[char], position: usize, pattern: &str) -> bool {
     let pat_chars: Vec<char> = pattern.chars().collect();
-    if i + pat_chars.len() > chars.len() {
+    if position + pat_chars.len() > chars.len() {
         return false;
     }
-    for (k, pc) in pat_chars.iter().enumerate() {
-        if !chars[i + k].eq_ignore_ascii_case(pc) {
+    for (offset, pc) in pat_chars.iter().enumerate() {
+        if !chars[position + offset].eq_ignore_ascii_case(pc) {
             return false;
         }
     }
@@ -570,13 +586,13 @@ fn remaining_starts_with_ci(chars: &[char], i: usize, pattern: &str) -> bool {
 }
 
 /// Exact prefix match at position `i`.
-fn remaining_starts_with(chars: &[char], i: usize, pattern: &str) -> bool {
+fn remaining_starts_with(chars: &[char], position: usize, pattern: &str) -> bool {
     let pat_chars: Vec<char> = pattern.chars().collect();
-    if i + pat_chars.len() > chars.len() {
+    if position + pat_chars.len() > chars.len() {
         return false;
     }
-    for (k, pc) in pat_chars.iter().enumerate() {
-        if chars[i + k] != *pc {
+    for (offset, pc) in pat_chars.iter().enumerate() {
+        if chars[position + offset] != *pc {
             return false;
         }
     }

@@ -86,12 +86,12 @@ interface ShortcutState {
 }
 
 /** Check if two bindings are the same key combo. */
-function bindingsMatch(a: ShortcutBinding, b: ShortcutBinding): boolean {
-  if (a.key.toLowerCase() !== b.key.toLowerCase()) return false
-  const aMods = [...a.modifiers].sort()
-  const bMods = [...b.modifiers].sort()
-  if (aMods.length !== bMods.length) return false
-  return aMods.every((mod, i) => mod === bMods[i])
+function bindingsMatch(left: ShortcutBinding, right: ShortcutBinding): boolean {
+  if (left.key.toLowerCase() !== right.key.toLowerCase()) return false
+  const leftModifiers = [...left.modifiers].sort()
+  const rightModifiers = [...right.modifiers].sort()
+  if (leftModifiers.length !== rightModifiers.length) return false
+  return leftModifiers.every((modifier, index) => modifier === rightModifiers[index])
 }
 
 /** Find an action ID that already uses a given binding (excluding `excludeActionId`). */

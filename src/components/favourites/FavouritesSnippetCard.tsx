@@ -22,25 +22,25 @@ export function FavouritesSnippetCard({
   onInsert,
 }: FavouritesSnippetCardProps) {
   const handleEdit = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
       onEdit()
     },
     [onEdit]
   )
 
   const handleInsert = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
+    (event: React.MouseEvent) => {
+      event.stopPropagation()
       onInsert()
     },
     [onInsert]
   )
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
+    (event: React.KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
         onSelect()
       }
     },

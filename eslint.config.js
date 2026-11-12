@@ -25,7 +25,7 @@ const CONFORMANCE_RULE_SCOPES = [
     rules: { 'no-console': 'error' },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: {
       'id-length': [
         'error',
@@ -34,7 +34,7 @@ const CONFORMANCE_RULE_SCOPES = [
     },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: {
       'no-magic-numbers': 'off',
       '@typescript-eslint/no-magic-numbers': [
@@ -53,7 +53,7 @@ const CONFORMANCE_RULE_SCOPES = [
     },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { 'object-shorthand': ['error', 'consistent'] },
   },
   {

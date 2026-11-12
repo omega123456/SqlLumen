@@ -41,7 +41,7 @@ function nullTokens(): { color: string; mono: string } {
   if (nullTokenCache === null || nullTokenCache.theme !== theme) {
     const styles = getComputedStyle(document.documentElement)
     nullTokenCache = {
-      theme,
+      theme: theme,
       color: styles.getPropertyValue('--td-null-text-color').trim(),
       mono: styles.getPropertyValue('--font-mono').trim(),
     }
@@ -153,10 +153,10 @@ export function classifyCellValue(
       : String(rawValue)
 
   return {
-    displayValue,
+    displayValue: displayValue,
     copyValue: displayValue,
-    isNull,
-    isBlob,
+    isNull: isNull,
+    isBlob: isBlob,
     isReadOnly: options.isReadOnly ?? false,
     isModified: options.isModified ?? false,
     isFkCell: options.isFkCell ?? false,
@@ -208,7 +208,7 @@ export function buildBlobCell(displayValue: string, copyValue = displayValue): G
   } satisfies TextCell
 }
 
-export function buildFkCell(
+export function buildForeignKeyCell(
   displayValue: string,
   flags: CellStateFlags,
   copyValue = displayValue

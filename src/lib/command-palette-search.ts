@@ -7,6 +7,9 @@ const SEARCH_KEYS = ['name'] as const
 const SEARCH_THRESHOLD = 0.4
 const RECENCY_SCORE_BOOST = 0.08
 const RECENT_RESULTS_LIMIT = 5
+const WILDCARD_SCORE_SCALE = 1000
+const RECENCY_BOOST_DECAY_PER_RANK = 0.01
+const MINIMUM_RECENCY_BOOST = 0.01
 
 export interface PaletteSearchFilters {
   database?: string | null
@@ -184,8 +187,9 @@ function findCandidateMatches(
         continue
       }
       const matchedChars = matchIndices.reduce((sum, [start, end]) => sum + (end - start + 1), 0)
-      // Earlier first match and fewer unmatched characters rank higher (lower is better).
-      const baseScore = (matchIndices[0][0] + (item.name.length - matchedChars)) / 1000
+      const firstMatchStart = matchIndices[0][0]
+      const unmatchedChars = item.name.length - matchedChars
+      const baseScore = (firstMatchStart + unmatchedChars) / WILDCARD_SCORE_SCALE
       candidates.push({ item, baseScore, matchIndices })
     }
     return candidates
@@ -222,14 +226,19 @@ export function searchPaletteObjects(
     .map((candidate) => {
       const recentRank = recentRankMap.get(makeObjectKey(candidate.item)) ?? null
       const recencyBoost =
-        recentRank === null ? 0 : Math.max(RECENCY_SCORE_BOOST - recentRank * 0.01, 0.01)
+        recentRank === null
+          ? 0
+          : Math.max(
+              RECENCY_SCORE_BOOST - recentRank * RECENCY_BOOST_DECAY_PER_RANK,
+              MINIMUM_RECENCY_BOOST
+            )
       const baseScore = candidate.baseScore
 
       return {
         ...candidate.item,
         score: Math.max(baseScore - recencyBoost, 0),
         matchIndices: candidate.matchIndices,
-        recentRank,
+        recentRank: recentRank,
         _baseScore: baseScore,
       }
     })

@@ -119,7 +119,7 @@ pub fn get_state_json(conn: &Connection, id: i64) -> Result<Option<String>> {
     match result {
         Ok(state) => Ok(Some(state)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e),
+        Err(error) => Err(error),
     }
 }
 

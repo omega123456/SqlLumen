@@ -25,7 +25,7 @@ export function buildExecuteTemplate(
   }
 
   // Sort by ordinal position
-  const sorted = [...parameters].sort((a, b) => a.ordinalPosition - b.ordinalPosition)
+  const sorted = [...parameters].sort((left, right) => left.ordinalPosition - right.ordinalPosition)
 
   const paramLines = sorted.map((param) => {
     const dataTypeLower = param.dataType.toLowerCase()

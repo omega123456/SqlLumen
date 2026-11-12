@@ -10,6 +10,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { formatElapsedTime } from '../../lib/elapsed-time'
 import { Button } from '../common/Button'
 import styles from './RunningIndicator.module.css'
+import { MILLISECONDS_PER_SECOND } from '../../lib/units'
 
 interface RunningIndicatorProps {
   connectionId: string
@@ -37,7 +38,7 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
     }
 
     const initialTimer = setTimeout(updateElapsed, 0)
-    const interval = setInterval(updateElapsed, 1000)
+    const interval = setInterval(updateElapsed, MILLISECONDS_PER_SECOND)
 
     return () => {
       clearTimeout(initialTimer)

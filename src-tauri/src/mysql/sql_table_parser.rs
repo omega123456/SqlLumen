@@ -42,59 +42,59 @@ pub fn extract_tables(sql: &str) -> Vec<TableReference> {
     let len = chars.len();
 
     let mut tables: Vec<TableReference> = Vec::new();
-    let mut i = 0;
+    let mut position = 0;
 
-    while i < len {
+    while position < len {
         // Skip string literals (single/double quotes)
-        if chars[i] == '\'' || chars[i] == '"' {
-            i = skip_quoted(&chars, i);
+        if chars[position] == '\'' || chars[position] == '"' {
+            position = skip_quoted(&chars, position);
             continue;
         }
 
         // Skip backtick-quoted identifiers (not relevant at this scan level unless
         // they happen to contain keywords; we handle them when extracting identifiers)
-        if chars[i] == '`' {
-            i = skip_backtick(&chars, i);
+        if chars[position] == '`' {
+            position = skip_backtick(&chars, position);
             continue;
         }
 
         // Track parenthesized groups — skip them entirely at top level
         // (subqueries, function calls, etc.)
-        if chars[i] == '(' {
-            i = skip_parenthesized(&chars, i);
+        if chars[position] == '(' {
+            position = skip_parenthesized(&chars, position);
             continue;
         }
 
         // Look for keywords at word boundary
-        if is_word_boundary_before(&chars, i) {
+        if is_word_boundary_before(&chars, position) {
             // Check for FROM keyword
-            if matches_keyword_at(&chars, i, "FROM") {
-                i += 4; // skip "FROM"
-                i = skip_whitespace(&chars, i);
+            if matches_keyword_at(&chars, position, "FROM") {
+                position += 4; // skip "FROM"
+                position = skip_whitespace(&chars, position);
                 // Parse comma-separated table list
-                i = parse_table_list(&chars, i, &mut tables);
+                position = parse_table_list(&chars, position, &mut tables);
                 continue;
             }
 
             // Check for JOIN keywords
             // Patterns: JOIN, INNER JOIN, LEFT JOIN, LEFT OUTER JOIN, RIGHT JOIN,
             // RIGHT OUTER JOIN, CROSS JOIN, NATURAL JOIN, STRAIGHT_JOIN
-            if let Some(after_join) = match_join_keyword(&chars, i) {
-                i = after_join;
-                i = skip_whitespace(&chars, i);
+            if let Some(after_join) = match_join_keyword(&chars, position) {
+                position = after_join;
+                position = skip_whitespace(&chars, position);
                 // Parse single table reference after JOIN
-                i = parse_single_table_ref(&chars, i, &mut tables);
+                position = parse_single_table_ref(&chars, position, &mut tables);
                 continue;
             }
 
             // Stop-keywords: WHERE, GROUP, HAVING, ORDER, LIMIT, UNION, EXCEPT,
             // INTERSECT, PROCEDURE, INTO, FOR, LOCK
-            if matches_any_stop_keyword(&chars, i) {
+            if matches_any_stop_keyword(&chars, position) {
                 break;
             }
         }
 
-        i += 1;
+        position += 1;
     }
 
     // Deduplicate
@@ -108,18 +108,18 @@ pub fn extract_tables(sql: &str) -> Vec<TableReference> {
 /// Get the first keyword (uppercased) from a trimmed SQL string.
 fn first_keyword_upper(sql: &str) -> String {
     sql.chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_')
+        .take_while(|character| character.is_alphanumeric() || *character == '_')
         .collect::<String>()
         .to_uppercase()
 }
 
 /// Check if position `i` is at a word boundary (start of string, or previous char is not alphanumeric/underscore).
-fn is_word_boundary_before(chars: &[char], i: usize) -> bool {
-    if i == 0 {
+fn is_word_boundary_before(chars: &[char], position: usize) -> bool {
+    if position == 0 {
         return true;
     }
-    let prev = chars[i - 1];
-    !(prev.is_alphanumeric() || prev == '_')
+    let previous = chars[position - 1];
+    !(previous.is_alphanumeric() || previous == '_')
 }
 
 /// Check if position after keyword end is a word boundary.
@@ -132,36 +132,36 @@ fn is_word_boundary_after(chars: &[char], end: usize) -> bool {
 }
 
 /// Check if a keyword matches at position `i` (case-insensitive), with word boundaries.
-fn matches_keyword_at(chars: &[char], i: usize, keyword: &str) -> bool {
+fn matches_keyword_at(chars: &[char], position: usize, keyword: &str) -> bool {
     let kw_len = keyword.len();
-    if i + kw_len > chars.len() {
+    if position + kw_len > chars.len() {
         return false;
     }
 
     // Compare characters case-insensitively
     let kw_chars: Vec<char> = keyword.chars().collect();
-    for j in 0..kw_len {
-        if !chars[i + j].eq_ignore_ascii_case(&kw_chars[j]) {
+    for offset in 0..kw_len {
+        if !chars[position + offset].eq_ignore_ascii_case(&kw_chars[offset]) {
             return false;
         }
     }
 
     // Check word boundaries
-    is_word_boundary_before(chars, i) && is_word_boundary_after(chars, i + kw_len)
+    is_word_boundary_before(chars, position) && is_word_boundary_after(chars, position + kw_len)
 }
 
 /// Try to match a JOIN keyword at position `i`. Returns the position after the keyword if matched.
 /// Handles: JOIN, INNER JOIN, LEFT [OUTER] JOIN, RIGHT [OUTER] JOIN, CROSS JOIN,
 /// NATURAL [LEFT|RIGHT] [OUTER] JOIN, STRAIGHT_JOIN
-fn match_join_keyword(chars: &[char], i: usize) -> Option<usize> {
+fn match_join_keyword(chars: &[char], position: usize) -> Option<usize> {
     // STRAIGHT_JOIN
-    if matches_keyword_at(chars, i, "STRAIGHT_JOIN") {
-        return Some(i + 13);
+    if matches_keyword_at(chars, position, "STRAIGHT_JOIN") {
+        return Some(position + 13);
     }
 
     // NATURAL [LEFT|RIGHT] [OUTER] JOIN
-    if matches_keyword_at(chars, i, "NATURAL") {
-        let mut pos = i + 7;
+    if matches_keyword_at(chars, position, "NATURAL") {
+        let mut pos = position + 7;
         pos = skip_whitespace(chars, pos);
         // Optional LEFT/RIGHT
         if matches_keyword_at(chars, pos, "LEFT") {
@@ -183,8 +183,8 @@ fn match_join_keyword(chars: &[char], i: usize) -> Option<usize> {
     }
 
     // INNER JOIN
-    if matches_keyword_at(chars, i, "INNER") {
-        let mut pos = i + 5;
+    if matches_keyword_at(chars, position, "INNER") {
+        let mut pos = position + 5;
         pos = skip_whitespace(chars, pos);
         if matches_keyword_at(chars, pos, "JOIN") {
             return Some(pos + 4);
@@ -193,8 +193,8 @@ fn match_join_keyword(chars: &[char], i: usize) -> Option<usize> {
     }
 
     // LEFT [OUTER] JOIN
-    if matches_keyword_at(chars, i, "LEFT") {
-        let mut pos = i + 4;
+    if matches_keyword_at(chars, position, "LEFT") {
+        let mut pos = position + 4;
         pos = skip_whitespace(chars, pos);
         if matches_keyword_at(chars, pos, "OUTER") {
             pos += 5;
@@ -207,8 +207,8 @@ fn match_join_keyword(chars: &[char], i: usize) -> Option<usize> {
     }
 
     // RIGHT [OUTER] JOIN
-    if matches_keyword_at(chars, i, "RIGHT") {
-        let mut pos = i + 5;
+    if matches_keyword_at(chars, position, "RIGHT") {
+        let mut pos = position + 5;
         pos = skip_whitespace(chars, pos);
         if matches_keyword_at(chars, pos, "OUTER") {
             pos += 5;
@@ -221,8 +221,8 @@ fn match_join_keyword(chars: &[char], i: usize) -> Option<usize> {
     }
 
     // CROSS JOIN
-    if matches_keyword_at(chars, i, "CROSS") {
-        let mut pos = i + 5;
+    if matches_keyword_at(chars, position, "CROSS") {
+        let mut pos = position + 5;
         pos = skip_whitespace(chars, pos);
         if matches_keyword_at(chars, pos, "JOIN") {
             return Some(pos + 4);
@@ -231,15 +231,15 @@ fn match_join_keyword(chars: &[char], i: usize) -> Option<usize> {
     }
 
     // Bare JOIN
-    if matches_keyword_at(chars, i, "JOIN") {
-        return Some(i + 4);
+    if matches_keyword_at(chars, position, "JOIN") {
+        return Some(position + 4);
     }
 
     None
 }
 
 /// Check if position matches any of the stop keywords that end the FROM/JOIN clause scanning.
-fn matches_any_stop_keyword(chars: &[char], i: usize) -> bool {
+fn matches_any_stop_keyword(chars: &[char], position: usize) -> bool {
     const STOP_KEYWORDS: &[&str] = &[
         "WHERE",
         "GROUP",
@@ -257,7 +257,7 @@ fn matches_any_stop_keyword(chars: &[char], i: usize) -> bool {
     ];
 
     for kw in STOP_KEYWORDS {
-        if matches_keyword_at(chars, i, kw) {
+        if matches_keyword_at(chars, position, kw) {
             return true;
         }
     }
@@ -265,18 +265,18 @@ fn matches_any_stop_keyword(chars: &[char], i: usize) -> bool {
 }
 
 /// Skip whitespace characters starting at position `i`, return new position.
-fn skip_whitespace(chars: &[char], mut i: usize) -> usize {
-    while i < chars.len() && chars[i].is_whitespace() {
-        i += 1;
+fn skip_whitespace(chars: &[char], mut position: usize) -> usize {
+    while position < chars.len() && chars[position].is_whitespace() {
+        position += 1;
     }
-    i
+    position
 }
 
 /// Skip a quoted string (single or double quote) starting at position `i`.
 /// Returns the position after the closing quote.
-fn skip_quoted(chars: &[char], i: usize) -> usize {
-    let quote = chars[i];
-    let mut pos = i + 1;
+fn skip_quoted(chars: &[char], position: usize) -> usize {
+    let quote = chars[position];
+    let mut pos = position + 1;
     while pos < chars.len() {
         if chars[pos] == '\\' && pos + 1 < chars.len() {
             pos += 2;
@@ -292,8 +292,8 @@ fn skip_quoted(chars: &[char], i: usize) -> usize {
 
 /// Skip a backtick-quoted identifier starting at position `i`.
 /// Returns the position after the closing backtick.
-fn skip_backtick(chars: &[char], i: usize) -> usize {
-    let mut pos = i + 1;
+fn skip_backtick(chars: &[char], position: usize) -> usize {
+    let mut pos = position + 1;
     while pos < chars.len() {
         if chars[pos] == '`' {
             // Check for escaped backtick (doubled)
@@ -311,9 +311,9 @@ fn skip_backtick(chars: &[char], i: usize) -> usize {
 /// Skip a parenthesized expression starting at position `i` (which must be '(').
 /// Handles nested parentheses and string/backtick literals within.
 /// Returns the position after the closing ')'.
-fn skip_parenthesized(chars: &[char], i: usize) -> usize {
+fn skip_parenthesized(chars: &[char], position: usize) -> usize {
     let mut depth = 1;
-    let mut pos = i + 1;
+    let mut pos = position + 1;
     while pos < chars.len() && depth > 0 {
         match chars[pos] {
             '\'' | '"' => {
@@ -335,37 +335,41 @@ fn skip_parenthesized(chars: &[char], i: usize) -> usize {
 
 /// Parse a comma-separated list of table references after FROM.
 /// Stops when encountering a JOIN keyword, a stop keyword, or end of input.
-fn parse_table_list(chars: &[char], mut i: usize, tables: &mut Vec<TableReference>) -> usize {
+fn parse_table_list(
+    chars: &[char],
+    mut position: usize,
+    tables: &mut Vec<TableReference>,
+) -> usize {
     loop {
-        i = skip_whitespace(chars, i);
+        position = skip_whitespace(chars, position);
 
-        if i >= chars.len() {
+        if position >= chars.len() {
             break;
         }
 
         // Check for parenthesized expression (could be subquery or join group)
-        if chars[i] == '(' {
+        if chars[position] == '(' {
             // Look ahead: is this a subquery?
-            let inner_start = skip_whitespace(chars, i + 1);
+            let inner_start = skip_whitespace(chars, position + 1);
             if is_subquery_start(chars, inner_start) {
                 // Skip the entire parenthesized subquery
-                i = skip_parenthesized(chars, i);
+                position = skip_parenthesized(chars, position);
                 // Skip optional alias after subquery
-                i = skip_alias(chars, i);
+                position = skip_alias(chars, position);
                 // Check for comma to continue
-                i = skip_whitespace(chars, i);
-                if i < chars.len() && chars[i] == ',' {
-                    i += 1;
+                position = skip_whitespace(chars, position);
+                if position < chars.len() && chars[position] == ',' {
+                    position += 1;
                     continue;
                 }
                 break;
             } else {
                 // Parenthesized join group — skip it (handle gracefully)
-                i = skip_parenthesized(chars, i);
-                i = skip_alias(chars, i);
-                i = skip_whitespace(chars, i);
-                if i < chars.len() && chars[i] == ',' {
-                    i += 1;
+                position = skip_parenthesized(chars, position);
+                position = skip_alias(chars, position);
+                position = skip_whitespace(chars, position);
+                if position < chars.len() && chars[position] == ',' {
+                    position += 1;
                     continue;
                 }
                 break;
@@ -373,25 +377,26 @@ fn parse_table_list(chars: &[char], mut i: usize, tables: &mut Vec<TableReferenc
         }
 
         // Check if we've hit a stop keyword or JOIN before reading a table
-        if is_word_boundary_before(chars, i)
-            && (matches_any_stop_keyword(chars, i) || match_join_keyword(chars, i).is_some())
+        if is_word_boundary_before(chars, position)
+            && (matches_any_stop_keyword(chars, position)
+                || match_join_keyword(chars, position).is_some())
         {
             break;
         }
 
         // Parse a single table reference
-        let before = i;
-        i = parse_single_table_ref(chars, i, tables);
-        if i == before {
+        let before = position;
+        position = parse_single_table_ref(chars, position, tables);
+        if position == before {
             // No progress — bail
             break;
         }
 
-        i = skip_whitespace(chars, i);
+        position = skip_whitespace(chars, position);
 
         // Check for comma to continue the list
-        if i < chars.len() && chars[i] == ',' {
-            i += 1;
+        if position < chars.len() && chars[position] == ',' {
+            position += 1;
             continue;
         }
 
@@ -399,57 +404,61 @@ fn parse_table_list(chars: &[char], mut i: usize, tables: &mut Vec<TableReferenc
         break;
     }
 
-    i
+    position
 }
 
 /// Check if position looks like the start of a subquery (SELECT keyword).
-fn is_subquery_start(chars: &[char], i: usize) -> bool {
-    matches_keyword_at(chars, i, "SELECT")
+fn is_subquery_start(chars: &[char], position: usize) -> bool {
+    matches_keyword_at(chars, position, "SELECT")
 }
 
 /// Parse a single table reference (possibly schema-qualified, possibly backtick-quoted).
 /// Adds the table to `tables` if found. Skips any alias.
 /// Returns the new position after the table ref and alias.
-fn parse_single_table_ref(chars: &[char], mut i: usize, tables: &mut Vec<TableReference>) -> usize {
-    i = skip_whitespace(chars, i);
+fn parse_single_table_ref(
+    chars: &[char],
+    mut position: usize,
+    tables: &mut Vec<TableReference>,
+) -> usize {
+    position = skip_whitespace(chars, position);
 
-    if i >= chars.len() {
-        return i;
+    if position >= chars.len() {
+        return position;
     }
 
     // Check for parenthesized expression (subquery in JOIN position)
-    if chars[i] == '(' {
-        let inner_start = skip_whitespace(chars, i + 1);
+    if chars[position] == '(' {
+        let inner_start = skip_whitespace(chars, position + 1);
         if is_subquery_start(chars, inner_start) {
             // Skip subquery — don't extract table
-            i = skip_parenthesized(chars, i);
-            i = skip_alias(chars, i);
-            return i;
+            position = skip_parenthesized(chars, position);
+            position = skip_alias(chars, position);
+            return position;
         }
         // Parenthesized join group — skip gracefully
-        i = skip_parenthesized(chars, i);
-        i = skip_alias(chars, i);
-        return i;
+        position = skip_parenthesized(chars, position);
+        position = skip_alias(chars, position);
+        return position;
     }
 
     // Read the first identifier (could be database or table)
-    let (first_ident, after_first) = read_identifier(chars, i);
+    let (first_ident, after_first) = read_identifier(chars, position);
     if first_ident.is_none() {
-        return i;
+        return position;
     }
     let first_ident = first_ident.unwrap();
-    i = after_first;
+    position = after_first;
 
     // Check for dot (schema.table)
-    if i < chars.len() && chars[i] == '.' {
-        i += 1; // skip dot
-        let (second_ident, after_second) = read_identifier(chars, i);
+    if position < chars.len() && chars[position] == '.' {
+        position += 1; // skip dot
+        let (second_ident, after_second) = read_identifier(chars, position);
         if let Some(table_name) = second_ident {
             tables.push(TableReference {
                 database: Some(first_ident),
                 table: table_name,
             });
-            i = after_second;
+            position = after_second;
         } else {
             // Dot but no table name — treat first_ident as table
             tables.push(TableReference {
@@ -466,21 +475,21 @@ fn parse_single_table_ref(chars: &[char], mut i: usize, tables: &mut Vec<TableRe
     }
 
     // Skip alias
-    i = skip_alias(chars, i);
+    position = skip_alias(chars, position);
 
-    i
+    position
 }
 
 /// Read an identifier (plain or backtick-quoted) at position `i`.
 /// Returns (Some(name), position_after) or (None, i) if no identifier found.
-fn read_identifier(chars: &[char], i: usize) -> (Option<String>, usize) {
-    if i >= chars.len() {
-        return (None, i);
+fn read_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
+    if position >= chars.len() {
+        return (None, position);
     }
 
-    if chars[i] == '`' {
+    if chars[position] == '`' {
         // Backtick-quoted identifier
-        let mut pos = i + 1;
+        let mut pos = position + 1;
         let mut name = String::new();
         while pos < chars.len() {
             if chars[pos] == '`' {
@@ -505,9 +514,9 @@ fn read_identifier(chars: &[char], i: usize) -> (Option<String>, usize) {
         } else {
             (Some(name), pos)
         }
-    } else if chars[i].is_alphabetic() || chars[i] == '_' {
+    } else if chars[position].is_alphabetic() || chars[position] == '_' {
         // Plain identifier
-        let mut pos = i;
+        let mut pos = position;
         let mut name = String::new();
         while pos < chars.len()
             && (chars[pos].is_alphanumeric() || chars[pos] == '_' || chars[pos] == '$')
@@ -521,38 +530,40 @@ fn read_identifier(chars: &[char], i: usize) -> (Option<String>, usize) {
             (Some(name), pos)
         }
     } else {
-        (None, i)
+        (None, position)
     }
 }
 
 /// Skip an optional alias (AS alias_name or just alias_name).
 /// Must be careful not to consume JOIN keywords or other SQL keywords as aliases.
-fn skip_alias(chars: &[char], mut i: usize) -> usize {
-    let saved = i;
-    i = skip_whitespace(chars, i);
+fn skip_alias(chars: &[char], mut position: usize) -> usize {
+    let saved = position;
+    position = skip_whitespace(chars, position);
 
-    if i >= chars.len() {
-        return i;
+    if position >= chars.len() {
+        return position;
     }
 
     // Check for ON keyword (after JOIN — not an alias)
-    if is_word_boundary_before(chars, i) && matches_keyword_at(chars, i, "ON") {
+    if is_word_boundary_before(chars, position) && matches_keyword_at(chars, position, "ON") {
         return saved;
     }
 
     // Check for AS keyword
-    if is_word_boundary_before(chars, i) && matches_keyword_at(chars, i, "AS") {
-        i += 2;
-        i = skip_whitespace(chars, i);
+    if is_word_boundary_before(chars, position) && matches_keyword_at(chars, position, "AS") {
+        position += 2;
+        position = skip_whitespace(chars, position);
         // Read alias name
-        let (_, after_alias) = read_identifier(chars, i);
+        let (_, after_alias) = read_identifier(chars, position);
         return after_alias;
     }
 
     // Check for implicit alias (next token is an identifier that is NOT a keyword)
-    if i < chars.len() && (chars[i] == '`' || chars[i].is_alphabetic() || chars[i] == '_') {
+    if position < chars.len()
+        && (chars[position] == '`' || chars[position].is_alphabetic() || chars[position] == '_')
+    {
         // Peek at the identifier
-        let (maybe_alias, after_alias) = read_identifier(chars, i);
+        let (maybe_alias, after_alias) = read_identifier(chars, position);
         if let Some(alias) = maybe_alias {
             let upper = alias.to_uppercase();
             // If it's a keyword, don't consume it as an alias
@@ -606,8 +617,8 @@ fn is_sql_keyword(word: &str) -> bool {
 /// Deduplicate table references in-place, preserving first occurrence order.
 fn deduplicate(tables: &mut Vec<TableReference>) {
     let mut seen: Vec<(Option<String>, String)> = Vec::new();
-    tables.retain(|t| {
-        let key = (t.database.clone(), t.table.clone());
+    tables.retain(|table| {
+        let key = (table.database.clone(), table.table.clone());
         if seen.contains(&key) {
             false
         } else {

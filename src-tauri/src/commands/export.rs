@@ -22,14 +22,18 @@ fn resolve_export_data(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
     let result_vec = &entry.value;
-    let idx = result_index.unwrap_or(0);
-    let stored = result_vec.get(idx).ok_or_else(|| {
+    let index = result_index.unwrap_or(0);
+    let stored = result_vec.get(index).ok_or_else(|| {
         format!(
-            "Result index {idx} out of range (total: {})",
+            "Result index {index} out of range (total: {})",
             result_vec.len()
         )
     })?;
-    let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
+    let cols: Vec<String> = stored
+        .columns
+        .iter()
+        .map(|column| column.name.clone())
+        .collect();
     Ok((cols, crate::mysql::result_view::view_rows(stored)))
 }
 
@@ -61,7 +65,7 @@ pub async fn export_results(
     // Write file in spawn_blocking to avoid blocking the async runtime
     tokio::task::spawn_blocking(move || export_with_data(&columns, &rows, options))
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|error| error.to_string())?
 }
 
 // ── Streaming full export of truncated results ────────────────────────────────

@@ -30,7 +30,7 @@ pub async fn ai_chat_impl<R: Runtime>(
         let mut map = state
             .ai_requests
             .lock()
-            .map_err(|e| format!("Failed to lock ai_requests: {e}"))?;
+            .map_err(|error| format!("Failed to lock ai_requests: {error}"))?;
         map.insert(stream_id.clone(), token.clone());
     }
 
@@ -54,7 +54,7 @@ pub fn ai_cancel_impl(state: &AppState, stream_id: String) -> Result<(), String>
     let mut map = state
         .ai_requests
         .lock()
-        .map_err(|e| format!("Failed to lock ai_requests: {e}"))?;
+        .map_err(|error| format!("Failed to lock ai_requests: {error}"))?;
 
     if let Some(token) = map.remove(&stream_id) {
         token.cancel();
@@ -118,10 +118,10 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
     if let Some(ref caps) = entry.capabilities {
         if let Some(obj) = caps.as_object() {
             // Some servers expose { "embedding": true } or { "type": "embedding" }
-            if obj.get("embedding").and_then(|v| v.as_bool()) == Some(true) {
+            if obj.get("embedding").and_then(|value| value.as_bool()) == Some(true) {
                 return "embedding".to_string();
             }
-            if let Some(cap_type) = obj.get("type").and_then(|v| v.as_str()) {
+            if let Some(cap_type) = obj.get("type").and_then(|value| value.as_str()) {
                 if cap_type.to_lowercase().contains("embed") {
                     return "embedding".to_string();
                 }
@@ -152,13 +152,13 @@ pub async fn list_ai_models_impl(endpoint_base: String) -> Result<AiModelsRespon
     let client = crate::http_client_builder()
         .timeout(LIST_MODELS_TIMEOUT)
         .build()
-        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+        .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
 
     let response = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to connect to model endpoint: {e}"))?;
+        .map_err(|error| format!("Failed to connect to model endpoint: {error}"))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -172,7 +172,7 @@ pub async fn list_ai_models_impl(endpoint_base: String) -> Result<AiModelsRespon
     let api_response: OpenAiModelsApiResponse = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse models response: {e}"))?;
+        .map_err(|error| format!("Failed to parse models response: {error}"))?;
 
     let models = api_response
         .data
@@ -212,7 +212,9 @@ pub async fn ai_query_expand_impl(
 
     // Build user message, optionally prepending conversation context.
     let effective_user_message = match &req.conversation_context {
-        Some(ctx) if !ctx.is_empty() => format!("{ctx}\n\nCurrent question: {}", req.user_message),
+        Some(context) if !context.is_empty() => {
+            format!("{context}\n\nCurrent question: {}", req.user_message)
+        }
         _ => req.user_message.clone(),
     };
 
@@ -245,7 +247,7 @@ pub async fn ai_query_expand_impl(
                 .connect_timeout(QUERY_EXPAND_CONNECT_TIMEOUT)
                 .pool_max_idle_per_host(0)
                 .build()
-                .map_err(|e| format!("Failed to create query expand retry client: {e}"))?;
+                .map_err(|error| format!("Failed to create query expand retry client: {error}"))?;
 
             send_query_expand_request(&retry_client, &req.endpoint, &body)
                 .await
@@ -274,11 +276,11 @@ pub async fn ai_query_expand_impl(
     let json: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse query expand response: {e}"))?;
+        .map_err(|error| format!("Failed to parse query expand response: {error}"))?;
 
     let text = json["choices"]
         .get(0)
-        .and_then(|c| c["message"]["content"].as_str())
+        .and_then(|choice| choice["message"]["content"].as_str())
         .unwrap_or("")
         .to_string();
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   drawBlobText,
-  drawFkEllipsis,
+  drawForeignKeyEllipsis,
   drawHighlightedColumnBackground,
   drawInfoAffordance,
   drawModifiedCellIndicator,
@@ -65,7 +65,7 @@ describe('glide-drawers', () => {
   })
   it('draws FK ellipsis', () => {
     const c = ctx()
-    drawFkEllipsis(c, { x: 0, y: 0, width: 30, height: 20 }, '#f00')
+    drawForeignKeyEllipsis(c, { x: 0, y: 0, width: 30, height: 20 }, '#f00')
     expect(c.fillText).toHaveBeenCalledWith('…', 22, 14)
   })
   it('draws NULL text', () => {

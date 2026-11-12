@@ -52,9 +52,9 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
   useLayoutEffect(() => {
     if (!visible || !menuRef.current) return
     const rect = menuRef.current.getBoundingClientRect()
-    const pos = positionContextMenuInPortal(portalRoot, x, y, rect.width, rect.height)
-    menuRef.current.style.left = `${pos.x}px`
-    menuRef.current.style.top = `${pos.y}px`
+    const position = positionContextMenuInPortal(portalRoot, x, y, rect.width, rect.height)
+    menuRef.current.style.left = `${position.x}px`
+    menuRef.current.style.top = `${position.y}px`
   }, [visible, x, y, portalRoot])
 
   if (!visible || items.length === 0) {
@@ -72,7 +72,7 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
         position: getContextMenuPositionMode(portalRoot),
       }}
       data-testid="tab-context-menu"
-      onMouseDown={(e) => e.preventDefault()}
+      onMouseDown={(event) => event.preventDefault()}
     >
       {items.map((item) => {
         const itemClass = [

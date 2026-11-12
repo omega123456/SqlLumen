@@ -4,7 +4,7 @@ import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useThemeStore } from '../../stores/theme-store'
-import { useZoomStore, ZOOM_LEVELS } from '../../stores/zoom-store'
+import { useZoomStore, ZOOM_LEVELS, DEFAULT_ZOOM_LEVEL } from '../../stores/zoom-store'
 import type { Theme } from '../../stores/theme-store'
 
 const THEME_OPTIONS = [
@@ -15,7 +15,7 @@ const THEME_OPTIONS = [
 
 const ZOOM_OPTIONS = ZOOM_LEVELS.map((level) => ({
   value: String(level),
-  label: level === 100 ? '100% (Default)' : `${level}%`,
+  label: level === DEFAULT_ZOOM_LEVEL ? `${DEFAULT_ZOOM_LEVEL}% (Default)` : `${level}%`,
 }))
 
 const SNAPSHOT_FREQUENCY_OPTIONS = [
@@ -33,8 +33,8 @@ const SNAPSHOT_KEEP_OPTIONS = [
 ]
 
 export function GeneralSettings() {
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
-  const previewTheme = useThemeStore((s) => s.previewTheme)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const previewTheme = useThemeStore((state) => state.previewTheme)
 
   const theme = useSettingValue('theme')
   const zoom = useSettingValue('appearance.zoom')
@@ -156,7 +156,7 @@ export function GeneralSettings() {
             min={1}
             max={120}
             value={connectionTimeout}
-            onChange={(e) => setPendingChange('connection.defaultTimeout', e.target.value)}
+            onChange={(event) => setPendingChange('connection.defaultTimeout', event.target.value)}
             data-testid="settings-connection-timeout"
             style={{ width: 120 }}
           />
@@ -174,7 +174,9 @@ export function GeneralSettings() {
             min={0}
             max={3600}
             value={keepalive}
-            onChange={(e) => setPendingChange('connection.defaultKeepalive', e.target.value)}
+            onChange={(event) =>
+              setPendingChange('connection.defaultKeepalive', event.target.value)
+            }
             data-testid="settings-keepalive"
             style={{ width: 120 }}
           />

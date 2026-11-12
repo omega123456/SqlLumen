@@ -142,7 +142,7 @@ pub async fn acquire(state: &AppState, connection_id: &str) -> Result<SessionGua
         let thread_id: u64 = conn
             .query_first::<u64, _>(sql)
             .await
-            .map_err(|e| format!("Failed to get connection ID: {e}"))?
+            .map_err(|error| format!("Failed to get connection ID: {error}"))?
             .ok_or_else(|| "CONNECTION_ID() returned NULL".to_string())?;
 
         *guard = Some(EditorSession { conn, thread_id });

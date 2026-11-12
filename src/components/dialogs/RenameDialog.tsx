@@ -3,6 +3,7 @@ import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
 import styles from './RenameDialog.module.css'
+import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../../lib/sql-utils'
 
 export interface RenameDialogProps {
   isOpen: boolean
@@ -33,7 +34,10 @@ export function RenameDialog({
   }, [currentName])
 
   const trimmedNew = newName.trim()
-  const isValid = trimmedNew.length > 0 && trimmedNew.length <= 64 && trimmedNew !== currentName
+  const isValid =
+    trimmedNew.length > 0 &&
+    trimmedNew.length <= MYSQL_IDENTIFIER_MAX_LENGTH &&
+    trimmedNew !== currentName
 
   const handleSubmit = useCallback(() => {
     if (!isValid || isLoading) return
@@ -77,8 +81,8 @@ export function RenameDialog({
           id="rename-new-name"
           type="text"
           value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          maxLength={64}
+          onChange={(event) => setNewName(event.target.value)}
+          maxLength={MYSQL_IDENTIFIER_MAX_LENGTH}
           autoFocus
           data-testid="rename-name-input"
         />

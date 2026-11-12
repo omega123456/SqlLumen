@@ -3,8 +3,8 @@ import type { ShortcutBinding } from '../types/schema'
 const IS_MAC = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.userAgent)
 
 /** Map internal modifier names to display labels. */
-function modifierLabel(mod: string): string {
-  switch (mod) {
+function modifierLabel(modifier: string): string {
+  switch (modifier) {
     case 'ctrl':
       return IS_MAC ? '⌘' : 'Ctrl'
     case 'shift':
@@ -12,7 +12,7 @@ function modifierLabel(mod: string): string {
     case 'alt':
       return IS_MAC ? '⌥' : 'Alt'
     default:
-      return mod
+      return modifier
   }
 }
 

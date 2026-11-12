@@ -1,9 +1,10 @@
+import { TWO_DIGIT_WIDTH } from './units'
 const IS_PLAYWRIGHT = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 const PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP = Date.parse('2025-01-01T12:00:00.000Z')
 
 function padTimeSegment(value: number): string {
-  return String(value).padStart(2, '0')
+  return String(value).padStart(TWO_DIGIT_WIDTH, '0')
 }
 
 function formatUtcTime(ts: number): string {

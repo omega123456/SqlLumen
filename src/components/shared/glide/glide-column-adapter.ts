@@ -3,8 +3,8 @@ import type { GridColumn } from './glide-grid-types'
 
 const DEFAULT_COLUMN_WIDTH = 150
 
-function readColumnTitle<TRow>(col: GridColumn<TRow>): string {
-  return typeof col.name === 'string' ? col.name : col.key
+function readColumnTitle<TRow>(column: GridColumn<TRow>): string {
+  return typeof column.name === 'string' ? column.name : column.key
 }
 
 function readColumnWidth(width: GridColumn<unknown>['width']): number {
@@ -16,11 +16,11 @@ function readColumnWidth(width: GridColumn<unknown>['width']): number {
   return DEFAULT_COLUMN_WIDTH
 }
 
-export function toGlideColumn<TRow>(col: GridColumn<TRow>, index: number): GlideGridColumn {
+export function toGlideColumn<TRow>(column: GridColumn<TRow>, index: number): GlideGridColumn {
   return {
-    id: col.key || String(index),
-    title: readColumnTitle(col),
-    width: readColumnWidth(col.width),
+    id: column.key || String(index),
+    title: readColumnTitle(column),
+    width: readColumnWidth(column.width),
   }
 }
 

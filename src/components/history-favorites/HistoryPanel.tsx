@@ -32,8 +32,8 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   const handleSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setSearch(connectionId, e.target.value)
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      setSearch(connectionId, event.target.value)
     },
     [setSearch, connectionId]
   )
@@ -42,7 +42,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
     clearAll(connectionId)
   }, [clearAll, connectionId])
 
-  const handlePrevPage = useCallback(() => {
+  const handlePreviousPage = useCallback(() => {
     if (page > 1) {
       setPage(connectionId, page - 1)
     }
@@ -113,7 +113,7 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
           <Button
             variant="subtle"
             size="sm"
-            onClick={handlePrevPage}
+            onClick={handlePreviousPage}
             disabled={page <= 1}
             data-testid="history-prev-page"
           >

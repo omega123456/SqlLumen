@@ -38,7 +38,7 @@ function getTabIcon(result: SingleResultState) {
 
 export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
   const tabState = useQueryStore((state) => state.tabs[tabId])
-  const setActiveResultIndex = useQueryStore((s) => s.setActiveResultIndex)
+  const setActiveResultIndex = useQueryStore((state) => state.setActiveResultIndex)
 
   const results = tabState?.results ?? []
   const activeResultIndex = tabState?.activeResultIndex ?? 0
@@ -65,19 +65,19 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
   )
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (event: React.KeyboardEvent) => {
       let targetIndex: number | null = null
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
         targetIndex = Math.min(activeResultIndex + 1, results.length - 1)
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault()
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
         targetIndex = Math.max(activeResultIndex - 1, 0)
-      } else if (e.key === 'Home') {
-        e.preventDefault()
+      } else if (event.key === 'Home') {
+        event.preventDefault()
         targetIndex = 0
-      } else if (e.key === 'End') {
-        e.preventDefault()
+      } else if (event.key === 'End') {
+        event.preventDefault()
         targetIndex = results.length - 1
       }
 
@@ -104,8 +104,8 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
             <Button
               variant="bare"
               key={index}
-              ref={(el) => {
-                tabRefs.current[index] = el
+              ref={(element) => {
+                tabRefs.current[index] = element
               }}
               role="tab"
               id={`result-tab-${tabId}-${index}`}

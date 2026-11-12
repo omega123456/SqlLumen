@@ -12,8 +12,8 @@ export function KeyCapBadge({ binding, className }: KeyCapBadgeProps) {
 
   return (
     <span className={`${styles.badge}${className ? ` ${className}` : ''}`}>
-      {parts.map((part, i) => (
-        <kbd key={i} className={styles.key}>
+      {parts.map((part, index) => (
+        <kbd key={index} className={styles.key}>
           {part}
         </kbd>
       ))}

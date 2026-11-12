@@ -18,6 +18,9 @@ import { hasMatchingDescendantInFilter, isNodeUnderFilterScope } from '../../lib
 import type { NodeType, TreeNode as TreeNodeData } from '../../types/schema'
 import styles from './TreeNode.module.css'
 
+const INDENT_PER_LEVEL_PX = 16
+const GUIDE_LINE_OFFSET_PX = 12
+
 /** Stable empty array used as fallback to avoid re-render loops from `[] !== []`. */
 const EMPTY_CHILDREN: string[] = []
 
@@ -347,7 +350,7 @@ export function TreeNode({
     }
   }
 
-  const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleRowClick = (event: React.MouseEvent<HTMLDivElement>) => {
     // A pinned database row scrolls back to its real position instead of toggling
     if (isPinned) {
       onRevealPinned?.(nodeId)
@@ -357,7 +360,7 @@ export function TreeNode({
     selectCurrentNode()
 
     if (isSingleClickActivatableNodeType(node.type)) {
-      if (e.detail === 1) {
+      if (event.detail === 1) {
         activateNode()
       }
       return
@@ -368,8 +371,8 @@ export function TreeNode({
     }
   }
 
-  const handleChevronClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleChevronClick = (event: React.MouseEvent) => {
+    event.stopPropagation()
     if (isPinned) {
       onRevealPinned?.(nodeId)
       return
@@ -378,8 +381,8 @@ export function TreeNode({
     collapseOrClearFilter()
   }
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    onContextMenu?.(e, nodeId)
+  const handleContextMenu = (event: React.MouseEvent) => {
+    onContextMenu?.(event, nodeId)
   }
 
   const handleDoubleClick = () => {
@@ -388,8 +391,8 @@ export function TreeNode({
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    switch (e.key) {
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    switch (event.key) {
       case 'Enter':
         selectCurrentNode()
         if (isKeyboardActivatableNodeType(node.type)) {
@@ -397,46 +400,46 @@ export function TreeNode({
         } else if (hasChildren) {
           collapseOrClearFilter()
         }
-        e.preventDefault()
+        event.preventDefault()
         break
       case 'ArrowRight':
         if (hasChildren && !isExpanded && !filterDrivesExpand) {
           toggleExpand(nodeId, connectionId)
-          e.preventDefault()
+          event.preventDefault()
         }
         break
       case 'ArrowLeft':
         if (hasChildren && (isExpanded || filterDrivesExpand)) {
           collapseOrClearFilter()
-          e.preventDefault()
+          event.preventDefault()
         }
         break
       case 'ArrowDown': {
-        e.preventDefault()
-        const tree = e.currentTarget.closest('[role="tree"]')
+        event.preventDefault()
+        const tree = event.currentTarget.closest('[role="tree"]')
         if (!tree) break
         const allItems = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
-        const currentIdx = allItems.indexOf(e.currentTarget as HTMLElement)
-        if (currentIdx >= 0 && currentIdx < allItems.length - 1) {
-          allItems[currentIdx + 1].focus()
+        const currentIndex = allItems.indexOf(event.currentTarget as HTMLElement)
+        if (currentIndex >= 0 && currentIndex < allItems.length - 1) {
+          allItems[currentIndex + 1].focus()
         }
         break
       }
       case 'ArrowUp': {
-        e.preventDefault()
-        const tree = e.currentTarget.closest('[role="tree"]')
+        event.preventDefault()
+        const tree = event.currentTarget.closest('[role="tree"]')
         if (!tree) break
         const allItems = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
-        const currentIdx = allItems.indexOf(e.currentTarget as HTMLElement)
-        if (currentIdx > 0) {
-          allItems[currentIdx - 1].focus()
+        const currentIndex = allItems.indexOf(event.currentTarget as HTMLElement)
+        if (currentIndex > 0) {
+          allItems[currentIndex - 1].focus()
         }
         break
       }
     }
   }
 
-  const indentPx = level * 16
+  const indentPx = level * INDENT_PER_LEVEL_PX
 
   const rowClassName = [styles.nodeRow, isSelected ? styles.nodeRowSelected : '']
     .filter(Boolean)
@@ -505,7 +508,7 @@ export function TreeNode({
 
   const children = showChildren && (
     <div className={styles.childrenContainer} role="group">
-      <div className={styles.guideLine} style={{ left: `${indentPx + 12}px` }} />
+      <div className={styles.guideLine} style={{ left: `${indentPx + GUIDE_LINE_OFFSET_PX}px` }} />
       {childIds.map((childId) => (
         <TreeNode
           key={childId}

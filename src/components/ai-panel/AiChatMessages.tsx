@@ -30,22 +30,22 @@ export function AiChatMessages({
   onSuggestionFill,
   onSqlAccepted,
 }: AiChatMessagesProps) {
-  const messages = useAiStore((s) => s.tabs[tabId]?.messages ?? EMPTY_MESSAGES)
-  const error = useAiStore((s) => s.tabs[tabId]?.error ?? null)
-  const isGenerating = useAiStore((s) => s.tabs[tabId]?.isGenerating ?? false)
+  const messages = useAiStore((state) => state.tabs[tabId]?.messages ?? EMPTY_MESSAGES)
+  const error = useAiStore((state) => state.tabs[tabId]?.error ?? null)
+  const isGenerating = useAiStore((state) => state.tabs[tabId]?.isGenerating ?? false)
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const [internalSuggestion, setInternalSuggestion] = useState('')
 
-  const hasAttachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext != null)
+  const hasAttachedContext = useAiStore((state) => state.tabs[tabId]?.attachedContext != null)
   const visibleMessages = messages.filter(
     (message) => !(message.kind && HIDDEN_PROMPT_ONLY_KINDS.has(message.kind))
   )
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    const el = scrollAnchorRef.current
-    if (el && typeof el.scrollIntoView === 'function') {
-      el.scrollIntoView({ behavior: 'smooth' })
+    const element = scrollAnchorRef.current
+    if (element && typeof element.scrollIntoView === 'function') {
+      element.scrollIntoView({ behavior: 'smooth' })
     }
   }, [visibleMessages])
 
@@ -75,9 +75,9 @@ export function AiChatMessages({
   )
 
   // Determine which is the last assistant message for streaming indicator
-  const lastAssistantIdx = (() => {
-    for (let i = visibleMessages.length - 1; i >= 0; i--) {
-      if (visibleMessages[i].role === 'assistant') return i
+  const lastAssistantIndex = (() => {
+    for (let index = visibleMessages.length - 1; index >= 0; index--) {
+      if (visibleMessages[index].role === 'assistant') return index
     }
     return -1
   })()
@@ -96,14 +96,14 @@ export function AiChatMessages({
 
       {error && <AiErrorBanner error={error} onRetry={connectionId ? handleRetry : undefined} />}
 
-      {visibleMessages.map((msg, idx) => {
-        const isLastAssistant = idx === lastAssistantIdx
+      {visibleMessages.map((message, index) => {
+        const isLastAssistant = index === lastAssistantIndex
         const isStreamingMessage = isLastAssistant && isGenerating
 
         return (
-          <div key={msg.id} className={styles.message}>
+          <div key={message.id} className={styles.message}>
             <AiMessageBubble
-              message={msg}
+              message={message}
               isStreaming={isStreamingMessage}
               onTriggerDiff={hasAttachedContext ? onTriggerDiff : undefined}
               onSqlAccepted={onSqlAccepted}

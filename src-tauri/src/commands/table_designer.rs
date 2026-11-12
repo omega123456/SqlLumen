@@ -124,8 +124,8 @@ fn decode_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String
     match row.try_get::<String, _>(column) {
         Ok(value) => Ok(value),
         Err(_) => {
-            let bytes: Vec<u8> = row.try_get(column).map_err(|err| {
-                format!("Failed to decode column '{column}' as UTF-8 text: {err}")
+            let bytes: Vec<u8> = row.try_get(column).map_err(|error| {
+                format!("Failed to decode column '{column}' as UTF-8 text: {error}")
             })?;
             Ok(String::from_utf8_lossy(&bytes).into_owned())
         }
@@ -138,8 +138,8 @@ fn decode_optional_text_cell_named(row: &MySqlRow, column: &str) -> Result<Optio
         Ok(value) => Ok(value),
         Err(_) => match row.try_get::<Option<Vec<u8>>, _>(column) {
             Ok(value) => Ok(value.map(|bytes| String::from_utf8_lossy(&bytes).into_owned())),
-            Err(err) => Err(format!(
-                "Failed to decode optional column '{column}' as UTF-8 text: {err}"
+            Err(error) => Err(format!(
+                "Failed to decode optional column '{column}' as UTF-8 text: {error}"
             )),
         },
     }
@@ -175,7 +175,7 @@ pub async fn load_table_for_designer_impl(
         .bind(table_name)
         .fetch_all(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
     let metadata_sql = table_designer::load_table_metadata_query();
     query_log::log_outgoing_sql_bound(metadata_sql, &binds);
@@ -184,7 +184,7 @@ pub async fn load_table_for_designer_impl(
         .bind(table_name)
         .fetch_optional(&pool)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|error| error.to_string())?
         .ok_or_else(|| format!("Table '{database}.{table_name}' was not found"))?;
 
     let indexes_sql = table_designer::load_indexes_query();
@@ -194,7 +194,7 @@ pub async fn load_table_for_designer_impl(
         .bind(table_name)
         .fetch_all(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
     let foreign_keys_sql = table_designer::load_foreign_keys_query();
     query_log::log_outgoing_sql_bound(foreign_keys_sql, &binds);
@@ -203,7 +203,7 @@ pub async fn load_table_for_designer_impl(
         .bind(table_name)
         .fetch_all(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
     let columns = column_rows
         .into_iter()
@@ -242,7 +242,9 @@ pub async fn load_table_for_designer_impl(
 
     for row in index_rows {
         let index_name = decode_text_cell_named(&row, "INDEX_NAME")?;
-        let non_unique: i64 = row.try_get("NON_UNIQUE").map_err(|e| e.to_string())?;
+        let non_unique: i64 = row
+            .try_get("NON_UNIQUE")
+            .map_err(|error| error.to_string())?;
         let column_name = decode_text_cell_named(&row, "COLUMN_NAME")?;
         let index_type = decode_text_cell_named(&row, "INDEX_TYPE")?;
 
@@ -258,10 +260,12 @@ pub async fn load_table_for_designer_impl(
             }
         } else {
             // flush the previous index (if any), then start a new one
-            if let Some((name, prev_non_unique, prev_index_type, columns)) = current_index.take() {
+            if let Some((name, previous_non_unique, previous_index_type, columns)) =
+                current_index.take()
+            {
                 indexes.push(DesignerIndexDef {
                     name: name.clone(),
-                    index_type: build_index_type(&name, prev_non_unique, &prev_index_type),
+                    index_type: build_index_type(&name, previous_non_unique, &previous_index_type),
                     columns,
                 });
             }
@@ -282,7 +286,7 @@ pub async fn load_table_for_designer_impl(
     let mut current_foreign_key_count = 0usize;
 
     for row in foreign_key_rows {
-        let fk_name = decode_text_cell_named(&row, "CONSTRAINT_NAME")?;
+        let foreign_key_name = decode_text_cell_named(&row, "CONSTRAINT_NAME")?;
         let source_column = decode_text_cell_named(&row, "COLUMN_NAME")?;
         let referenced_database = decode_text_cell_named(&row, "REFERENCED_TABLE_SCHEMA")?;
         let referenced_table = decode_text_cell_named(&row, "REFERENCED_TABLE_NAME")?;
@@ -291,7 +295,7 @@ pub async fn load_table_for_designer_impl(
         let on_update = decode_text_cell_named(&row, "UPDATE_RULE")?;
 
         match current_foreign_key.as_mut() {
-            Some(existing) if existing.name == fk_name => {
+            Some(existing) if existing.name == foreign_key_name => {
                 current_foreign_key_count += 1;
                 existing.is_composite = true;
             }
@@ -300,7 +304,7 @@ pub async fn load_table_for_designer_impl(
                     foreign_keys.push(existing);
                 }
                 current_foreign_key = Some(DesignerForeignKeyDef {
-                    name: fk_name,
+                    name: foreign_key_name,
                     source_column,
                     referenced_database,
                     referenced_table,
@@ -313,7 +317,7 @@ pub async fn load_table_for_designer_impl(
             }
             None => {
                 current_foreign_key = Some(DesignerForeignKeyDef {
-                    name: fk_name,
+                    name: foreign_key_name,
                     source_column,
                     referenced_database,
                     referenced_table,
@@ -486,7 +490,7 @@ pub async fn apply_table_ddl_impl(
     let result = sqlx::query(sqlx::AssertSqlSafe(ddl))
         .execute(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
     query_log::log_execute_result(&result);
 
     Ok(())

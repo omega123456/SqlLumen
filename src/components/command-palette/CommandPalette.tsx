@@ -32,6 +32,9 @@ import { PALETTE_KEYS } from './palette-keys'
 import { buildSlashOptions, TYPE_ALIASES } from './slash-options'
 import styles from './CommandPalette.module.css'
 
+const MAX_FILTER_PILLS = 2
+const QUERY_DEBOUNCE_MS = 80
+
 export interface CommandPaletteFilterPillValue {
   kind: 'database' | 'object-type' | 'table'
   value: string
@@ -88,7 +91,7 @@ function addOrReplacePill(
 ): CommandPaletteFilterPillValue[] {
   const withoutSameKind = pills.filter((pill) => pill.kind !== nextPill.kind)
   const withNewPill = [...withoutSameKind, nextPill]
-  return withNewPill.slice(-2)
+  return withNewPill.slice(-MAX_FILTER_PILLS)
 }
 
 function getSearchFilters(pills: ReadonlyArray<CommandPaletteFilterPillValue>) {
@@ -355,7 +358,7 @@ function CommandPaletteSession({
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setDebouncedQuery(query)
-    }, 80)
+    }, QUERY_DEBOUNCE_MS)
 
     return () => {
       window.clearTimeout(timeoutId)
@@ -392,7 +395,7 @@ function CommandPaletteSession({
 
     return getRecentPaletteResults(searchableObjects, {
       filters: getSearchFilters(pills),
-      recents,
+      recents: recents,
     })
   }, [columnObjects, pills, recents, searchableObjects, tablePill])
 
@@ -406,10 +409,10 @@ function CommandPaletteSession({
   const searchState = getSearchState({
     connectionId: activeConnectionId,
     query: debouncedQuery,
-    results,
-    recentResults,
+    results: results,
+    recentResults: recentResults,
     objects: searchableObjects,
-    isLoading,
+    isLoading: isLoading,
   })
   const activeResult = visibleResults.length === 0 ? null : visibleResults[clampedActiveIndex]
   const activeDescendantId =

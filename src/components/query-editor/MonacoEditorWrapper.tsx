@@ -11,7 +11,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useFavoritesStore } from '../../stores/favorites-store'
 import { resolveFavoriteSql, buildFavoriteDraft } from './save-favorite-utils'
-import { useSettingsStore } from '../../stores/settings-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { registerMonacoThemes, getMonacoThemeName } from '../../lib/monaco-theme'
 import { registerModelConnection, unregisterModelConnection } from './completion-service'
@@ -29,6 +29,9 @@ import './signature-help-provider'
 
 // Register CodeLens provider for Run + Ask AI per statement (side-effect import)
 import './codelens-provider'
+
+const DEFAULT_EDITOR_FONT_SIZE = Number(SETTINGS_DEFAULTS['editor.fontSize'])
+const DEFAULT_EDITOR_LINE_HEIGHT = Number(SETTINGS_DEFAULTS['editor.lineHeight'])
 
 interface MonacoEditorWrapperProps {
   tabId: string
@@ -289,8 +292,11 @@ export function MonacoEditorWrapper({
     }
 
     if (!isOverrideMode) {
-      cursorDisposable = editor.onDidChangeCursorPosition((e) => {
-        setCursorPosition(tabId, { lineNumber: e.position.lineNumber, column: e.position.column })
+      cursorDisposable = editor.onDidChangeCursorPosition((event) => {
+        setCursorPosition(tabId, {
+          lineNumber: event.position.lineNumber,
+          column: event.position.column,
+        })
       })
 
       selectionDisposable = editor.onDidChangeCursorSelection(() => {
@@ -334,8 +340,8 @@ export function MonacoEditorWrapper({
       // reflect the current editor content so that followup AI prompts
       // reference the latest text, not a stale snapshot.
       const aiTab = useAiStore.getState().tabs[tabId]
-      const ctx = aiTab?.attachedContext
-      if (ctx) {
+      const context = aiTab?.attachedContext
+      if (context) {
         const editorModel = editor.getModel()
         if (editorModel) {
           const fullContent = editorModel.getValue()
@@ -360,9 +366,9 @@ export function MonacoEditorWrapper({
     const findReplaceActionDisposable = editor.addAction({
       id: 'sqllumen.find-replace',
       label: 'Find and replace',
-      keybindings: [KeyMod.CtrlCmd, KeyMod.WinCtrl].flatMap((mod) => [
-        mod | KeyCode.KeyH,
-        mod | KeyMod.Shift | KeyCode.KeyR,
+      keybindings: [KeyMod.CtrlCmd, KeyMod.WinCtrl].flatMap((modifier) => [
+        modifier | KeyCode.KeyH,
+        modifier | KeyMod.Shift | KeyCode.KeyR,
       ]),
       run: (ed) => ed.getAction('editor.action.startFindReplaceAction')?.run(),
     })
@@ -400,8 +406,10 @@ export function MonacoEditorWrapper({
     () => ({
       ...STATIC_EDITOR_OPTIONS,
       readOnly: isReadOnly,
-      fontSize: editorFontSize || 14,
-      lineHeight: (editorFontSize || 14) * (editorLineHeight || 1.6),
+      fontSize: editorFontSize || DEFAULT_EDITOR_FONT_SIZE,
+      lineHeight:
+        (editorFontSize || DEFAULT_EDITOR_FONT_SIZE) *
+        (editorLineHeight || DEFAULT_EDITOR_LINE_HEIGHT),
       fontFamily: `'${editorFontFamily}', 'Fira Code', ui-monospace, monospace`,
       minimap: { enabled: editorMinimap },
       lineNumbers: editorLineNumbers ? ('on' as const) : ('off' as const),
@@ -421,11 +429,11 @@ export function MonacoEditorWrapper({
   // Stable identity: the library re-subscribes onDidChangeModelContent whenever onChange changes.
   const handleChange = useCallback(
     (value: string | undefined) => {
-      const v = value ?? ''
+      const editorValue = value ?? ''
       if (overrideOnChange) {
-        overrideOnChange(v)
+        overrideOnChange(editorValue)
       } else {
-        setContent(tabId, v)
+        setContent(tabId, editorValue)
       }
     },
     [overrideOnChange, setContent, tabId]

@@ -9,14 +9,14 @@ export interface MetadataCardProps {
 
 const MISSING_VALUE_LABEL = '—'
 
-function isInvalidDate(dateStr: string): boolean {
-  return Number.isNaN(new Date(dateStr).getTime())
+function isInvalidDate(dateText: string): boolean {
+  return Number.isNaN(new Date(dateText).getTime())
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return MISSING_VALUE_LABEL
-  if (isInvalidDate(dateStr)) return dateStr
-  return formatShortDate(dateStr)
+function formatDate(dateText: string | null): string {
+  if (!dateText) return MISSING_VALUE_LABEL
+  if (isInvalidDate(dateText)) return dateText
+  return formatShortDate(dateText)
 }
 
 export function MetadataCard({ metadata }: MetadataCardProps) {

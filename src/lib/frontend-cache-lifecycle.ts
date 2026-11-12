@@ -1,11 +1,14 @@
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../stores/settings-store'
+import { MILLISECONDS_PER_MINUTE, MILLISECONDS_PER_SECOND } from './units'
+
+const FALLBACK_CACHE_TTL_MINUTES = 30
 
 const DEFAULT_CACHE_TTL_SECONDS = Number.parseInt(SETTINGS_DEFAULTS['results.cacheTTL'] ?? '', 10)
 
 export const DEFAULT_FRONTEND_CACHE_TTL_MS =
   Number.isFinite(DEFAULT_CACHE_TTL_SECONDS) && DEFAULT_CACHE_TTL_SECONDS > 0
-    ? DEFAULT_CACHE_TTL_SECONDS * 1000
-    : 30 * 60 * 1000
+    ? DEFAULT_CACHE_TTL_SECONDS * MILLISECONDS_PER_SECOND
+    : FALLBACK_CACHE_TTL_MINUTES * MILLISECONDS_PER_MINUTE
 
 export interface FrontendCacheTimerApi {
   setTimeout: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>
@@ -21,7 +24,7 @@ function normalizeTtlMs(ttlSeconds: string | null | undefined): number {
   if (!Number.isFinite(parsedSeconds) || parsedSeconds <= 0) {
     return DEFAULT_FRONTEND_CACHE_TTL_MS
   }
-  return parsedSeconds * 1000
+  return parsedSeconds * MILLISECONDS_PER_SECOND
 }
 
 export function getEffectiveFrontendCacheTtlMs(): number {

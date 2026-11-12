@@ -8,6 +8,11 @@ use std::time::Duration;
 #[cfg(any(test, feature = "test-utils"))]
 type TestPoolFactory = fn(&ConnectionParams) -> Result<MySqlPool, sqlx::Error>;
 
+#[cfg(not(coverage))]
+const MIN_POOL_CONNECTIONS: u32 = 1;
+#[cfg(not(coverage))]
+const MAX_POOL_CONNECTIONS: u32 = 10;
+
 #[cfg(any(test, feature = "test-utils"))]
 static TEST_POOL_FACTORY: std::sync::Mutex<Option<TestPoolFactory>> = std::sync::Mutex::new(None);
 
@@ -95,8 +100,8 @@ pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::E
     let opts = build_connect_options(params);
 
     MySqlPoolOptions::new()
-        .min_connections(1)
-        .max_connections(10)
+        .min_connections(MIN_POOL_CONNECTIONS)
+        .max_connections(MAX_POOL_CONNECTIONS)
         .acquire_timeout(Duration::from_secs(params.connect_timeout_secs))
         .connect_with(opts)
         .await

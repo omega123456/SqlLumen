@@ -110,8 +110,8 @@ impl ChunkType {
     }
 
     /// Parse from the SQLite storage string.
-    pub fn from_storage_str(s: &str) -> Option<Self> {
-        match s {
+    pub fn from_storage_str(text: &str) -> Option<Self> {
+        match text {
             "table" => Some(ChunkType::Table),
             "fk" => Some(ChunkType::Fk),
             "view" => Some(ChunkType::View),
@@ -145,8 +145,8 @@ impl IndexStatus {
     }
 
     /// Parse from the SQLite storage string.
-    pub fn from_storage_str(s: &str) -> Option<Self> {
-        match s {
+    pub fn from_storage_str(text: &str) -> Option<Self> {
+        match text {
             "not_configured" => Some(IndexStatus::NotConfigured),
             "building" => Some(IndexStatus::Building),
             "ready" => Some(IndexStatus::Ready),

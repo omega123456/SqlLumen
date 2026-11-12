@@ -1,3 +1,10 @@
+export const MYSQL_IDENTIFIER_MAX_LENGTH = 64
+
+const BLOCK_COMMENT_OPEN = '/*'
+const EXECUTABLE_COMMENT_OPEN = '/*!'
+const BLOCK_COMMENT_DELIMITER_LENGTH = 2
+const EXECUTABLE_COMMENT_MARKERS = new Set(['!', '+'])
+
 /**
  * Shared SQL parsing utilities used by query-store and query-edit-utils.
  *
@@ -14,44 +21,44 @@
  * (`/*+ ... *\/`). These are treated as part of the SQL statement.
  */
 export function stripLeadingSqlComments(sql: string): string {
-  let s = sql
+  let remaining = sql
 
   while (true) {
-    s = s.trimStart()
-    if (s.startsWith('/*')) {
-      // Check if it's a MySQL executable comment (/*! or /*+) — preserve it
-      if (s.length > 2 && (s[2] === '!' || s[2] === '+')) {
+    remaining = remaining.trimStart()
+    if (remaining.startsWith(BLOCK_COMMENT_OPEN)) {
+      const markerAfterOpen = remaining[BLOCK_COMMENT_OPEN.length]
+      if (EXECUTABLE_COMMENT_MARKERS.has(markerAfterOpen)) {
         break
       }
       // Standard block comment — find the matching close. Support nested /* ... */
       let depth = 0
-      let i = 0
-      while (i < s.length) {
-        if (s[i] === '/' && s[i + 1] === '*') {
+      let scanIndex = 0
+      while (scanIndex < remaining.length) {
+        if (remaining[scanIndex] === '/' && remaining[scanIndex + 1] === '*') {
           depth++
-          i += 2
-        } else if (s[i] === '*' && s[i + 1] === '/') {
+          scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
+        } else if (remaining[scanIndex] === '*' && remaining[scanIndex + 1] === '/') {
           depth--
-          i += 2
+          scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
           if (depth === 0) break
         } else {
-          i++
+          scanIndex++
         }
       }
-      s = s.slice(i)
-    } else if (s.startsWith('--')) {
+      remaining = remaining.slice(scanIndex)
+    } else if (remaining.startsWith('--')) {
       // Line comment (-- style)
-      const newlineIdx = s.indexOf('\n')
-      s = newlineIdx === -1 ? '' : s.slice(newlineIdx + 1)
-    } else if (s.startsWith('#')) {
+      const newlineIndex = remaining.indexOf('\n')
+      remaining = newlineIndex === -1 ? '' : remaining.slice(newlineIndex + 1)
+    } else if (remaining.startsWith('#')) {
       // Line comment (# style)
-      const newlineIdx = s.indexOf('\n')
-      s = newlineIdx === -1 ? '' : s.slice(newlineIdx + 1)
+      const newlineIndex = remaining.indexOf('\n')
+      remaining = newlineIndex === -1 ? '' : remaining.slice(newlineIndex + 1)
     } else {
       break
     }
   }
-  return s
+  return remaining
 }
 
 /**
@@ -64,13 +71,13 @@ export function getFirstSqlKeyword(sql: string): string {
   const stripped = stripLeadingSqlComments(sql).trimStart()
 
   // Handle executable comments: /*!<optional-version-digits> keyword ... */
-  if (stripped.startsWith('/*!')) {
-    const inner = stripped.slice(3) // strip /*!
+  if (stripped.startsWith(EXECUTABLE_COMMENT_OPEN)) {
+    const inner = stripped.slice(EXECUTABLE_COMMENT_OPEN.length)
     // Skip optional version number (digits)
     const afterVersion = inner.replace(/^\d+/, '')
-    const afterWs = afterVersion.trimStart()
+    const afterWhitespace = afterVersion.trimStart()
     // Extract first word
-    const match = afterWs.match(/^[a-zA-Z_]\w*/)
+    const match = afterWhitespace.match(/^[a-zA-Z_]\w*/)
     if (match) {
       return match[0].toUpperCase()
     }

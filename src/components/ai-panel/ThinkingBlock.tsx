@@ -22,7 +22,7 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
 
   const handleToggle = () => {
     if (!isStreaming) {
-      setIsOpen((prev) => !prev)
+      setIsOpen((previous) => !previous)
     }
   }
 

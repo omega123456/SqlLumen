@@ -8,12 +8,12 @@ export function isNodeUnderFilterScope(
   scopeRootId: string,
   nodes: Record<string, TreeNode>
 ): boolean {
-  let cur: string | null = nodeId
-  while (cur) {
-    if (cur === scopeRootId) {
+  let current: string | null = nodeId
+  while (current) {
+    if (current === scopeRootId) {
       return true
     }
-    cur = nodes[cur]?.parentId ?? null
+    current = nodes[current]?.parentId ?? null
   }
   return false
 }
@@ -96,13 +96,13 @@ export function computeScopedFilterMatchIds(
     if (!node.label.toLowerCase().includes(lowerFilter)) {
       continue
     }
-    let cur: string | null = id
-    while (cur) {
-      matchIds.add(cur)
-      if (cur === scopeRootId) {
+    let current: string | null = id
+    while (current) {
+      matchIds.add(current)
+      if (current === scopeRootId) {
         break
       }
-      cur = nodes[cur]?.parentId ?? null
+      current = nodes[current]?.parentId ?? null
     }
   }
 

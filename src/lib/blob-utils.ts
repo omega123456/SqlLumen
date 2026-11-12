@@ -43,8 +43,8 @@ export function isBinaryDataType(dataType: string): boolean {
 export function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
   const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize)
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize)
     binary += String.fromCharCode(...chunk)
   }
   return btoa(binary)
@@ -54,8 +54,8 @@ export function bytesToBase64(bytes: Uint8Array): string {
 export function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index)
   }
   return bytes
 }
@@ -67,6 +67,34 @@ export function base64ToBytes(base64: string): Uint8Array {
 export type ParsePastedBytesResult = { ok: true; bytes: Uint8Array } | { ok: false; error: string }
 
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/
+const HEX_DIGITS_RE = /^[0-9a-fA-F]+$/
+const HEX_PREFIX_RE = /^0x/i
+const HEX_PREFIX_LENGTH = '0x'.length
+const HEX_RADIX = 16
+const HEX_DIGITS_PER_BYTE = 2
+const BASE64_CHARS_PER_QUANTUM = 4
+const BYTES_PER_BASE64_QUANTUM = 3
+const BASE64_PADDING_SUFFIXES = ['==', '=']
+
+function hasOddDigitCount(hexDigits: string): boolean {
+  return hexDigits.length % HEX_DIGITS_PER_BYTE !== 0
+}
+
+function hexDigitsToBytes(hexDigits: string): Uint8Array {
+  const bytes = new Uint8Array(hexDigits.length / HEX_DIGITS_PER_BYTE)
+  for (let byteIndex = 0; byteIndex < bytes.length; byteIndex++) {
+    const digitStart = byteIndex * HEX_DIGITS_PER_BYTE
+    bytes[byteIndex] = parseInt(
+      hexDigits.substring(digitStart, digitStart + HEX_DIGITS_PER_BYTE),
+      HEX_RADIX
+    )
+  }
+  return bytes
+}
+
+function isWholeBase64Quanta(base64: string): boolean {
+  return base64.length % BASE64_CHARS_PER_QUANTUM === 0
+}
 
 /**
  * Parse pasted text as either base64 or whitespace-tolerant hex into bytes.
@@ -84,19 +112,14 @@ export function parsePastedBytes(text: string): ParsePastedBytesResult {
   const stripped = trimmed.replace(/\s+/g, '')
 
   // Hex: only hex digits and whitespace.
-  if (/^[0-9a-fA-F]+$/.test(stripped)) {
-    if (stripped.length % 2 !== 0) {
+  if (HEX_DIGITS_RE.test(stripped)) {
+    if (hasOddDigitCount(stripped)) {
       return { ok: false, error: 'Hex input has an odd number of digits.' }
     }
-    const bytes = new Uint8Array(stripped.length / 2)
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = parseInt(stripped.substring(i * 2, i * 2 + 2), 16)
-    }
-    return { ok: true, bytes }
+    return { ok: true, bytes: hexDigitsToBytes(stripped) }
   }
 
-  // Base64: validate charset, decode.
-  if (BASE64_RE.test(stripped) && stripped.length % 4 === 0) {
+  if (BASE64_RE.test(stripped) && isWholeBase64Quanta(stripped)) {
     try {
       return { ok: true, bytes: base64ToBytes(stripped) }
     } catch {
@@ -120,21 +143,17 @@ export function parsePastedBytes(text: string): ParsePastedBytesResult {
  * so callers can abort rather than bind a corrupted/NULL value.
  */
 export function parseHexPrefixedBytes(hex: string): ParsePastedBytesResult {
-  const body = /^0x/i.test(hex) ? hex.slice(2) : hex
+  const body = HEX_PREFIX_RE.test(hex) ? hex.slice(HEX_PREFIX_LENGTH) : hex
   if (body.length === 0) {
     return { ok: true, bytes: new Uint8Array(0) }
   }
-  if (!/^[0-9a-fA-F]+$/.test(body)) {
+  if (!HEX_DIGITS_RE.test(body)) {
     return { ok: false, error: 'Hex input contains non-hex characters.' }
   }
-  if (body.length % 2 !== 0) {
+  if (hasOddDigitCount(body)) {
     return { ok: false, error: 'Hex input has an odd number of digits.' }
   }
-  const bytes = new Uint8Array(body.length / 2)
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(body.substring(i * 2, i * 2 + 2), 16)
-  }
-  return { ok: true, bytes }
+  return { ok: true, bytes: hexDigitsToBytes(body) }
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +171,18 @@ export interface HexDumpRow {
 }
 
 const HEX_ROW_WIDTH = 16
+const HEX_OFFSET_DIGITS = 8
+const FIRST_PRINTABLE_ASCII = 0x20
+const LAST_PRINTABLE_ASCII = 0x7e
+const NON_PRINTABLE_PLACEHOLDER = '.'
+
+function isPrintableAscii(byte: number): boolean {
+  return byte >= FIRST_PRINTABLE_ASCII && byte <= LAST_PRINTABLE_ASCII
+}
+
+function toHexDigits(value: number, digitCount: number): string {
+  return value.toString(HEX_RADIX).padStart(digitCount, '0')
+}
 
 /**
  * Format bytes as classic hex-dump rows: 16 bytes/row, an 8-digit offset, the
@@ -166,15 +197,15 @@ export function formatHexDump(bytes: Uint8Array): HexDumpRow[] {
     const hexBytes: string[] = []
     let ascii = ''
     const rowEnd = Math.min(rowStart + HEX_ROW_WIDTH, bytes.length)
-    for (let i = rowStart; i < rowEnd; i++) {
-      const byte = bytes[i]
-      hexBytes.push(byte.toString(16).padStart(2, '0'))
-      ascii += byte >= 0x20 && byte <= 0x7e ? String.fromCharCode(byte) : '.'
+    for (let index = rowStart; index < rowEnd; index++) {
+      const byte = bytes[index]
+      hexBytes.push(toHexDigits(byte, HEX_DIGITS_PER_BYTE))
+      ascii += isPrintableAscii(byte) ? String.fromCharCode(byte) : NON_PRINTABLE_PLACEHOLDER
     }
     rows.push({
-      offset: rowStart.toString(16).padStart(8, '0'),
-      hexBytes,
-      ascii,
+      offset: toHexDigits(rowStart, HEX_OFFSET_DIGITS),
+      hexBytes: hexBytes,
+      ascii: ascii,
     })
   }
   return rows
@@ -196,10 +227,10 @@ export function decodeUtf8BestEffort(bytes: Uint8Array): string {
 // Image MIME sniffing
 // ---------------------------------------------------------------------------
 
-function startsWith(bytes: Uint8Array, sig: number[], offset = 0): boolean {
-  if (bytes.length < offset + sig.length) return false
-  for (let i = 0; i < sig.length; i++) {
-    if (bytes[offset + i] !== sig[i]) return false
+function startsWith(bytes: Uint8Array, signature: number[], offset = 0): boolean {
+  if (bytes.length < offset + signature.length) return false
+  for (let index = 0; index < signature.length; index++) {
+    if (bytes[offset + index] !== signature[index]) return false
   }
   return true
 }
@@ -224,22 +255,35 @@ interface ClassifiedBlobType {
   dimensions: ((bytes: Uint8Array) => ImageDimensions | null) | null
 }
 
+function signatureFromHex(hexDigits: string): number[] {
+  return Array.from(hexDigitsToBytes(hexDigits))
+}
+
+const WEBP_FORMAT_TAG_OFFSET = 8
+
 const IMAGE_SIGNATURES: ByteSignature[] = [
   {
-    parts: [{ sig: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] }],
+    parts: [{ sig: signatureFromHex('89504e470d0a1a0a') }],
     mime: 'image/png',
     ext: '.png',
   },
-  { parts: [{ sig: [0xff, 0xd8, 0xff] }], mime: 'image/jpeg', ext: '.jpg' },
-  { parts: [{ sig: [0x47, 0x49, 0x46, 0x38] }], mime: 'image/gif', ext: '.gif' },
-  { parts: [{ sig: [0x42, 0x4d] }], mime: 'image/bmp', ext: '.bmp' },
+  { parts: [{ sig: signatureFromHex('ffd8ff') }], mime: 'image/jpeg', ext: '.jpg' },
+  { parts: [{ sig: signatureFromHex('47494638') }], mime: 'image/gif', ext: '.gif' },
+  { parts: [{ sig: signatureFromHex('424d') }], mime: 'image/bmp', ext: '.bmp' },
   {
-    // WebP: "RIFF"...."WEBP"
-    parts: [{ sig: [0x52, 0x49, 0x46, 0x46] }, { sig: [0x57, 0x45, 0x42, 0x50], offset: 8 }],
+    parts: [
+      { sig: signatureFromHex('52494646') },
+      { sig: signatureFromHex('57454250'), offset: WEBP_FORMAT_TAG_OFFSET },
+    ],
     mime: 'image/webp',
     ext: '.webp',
   },
 ]
+
+const PDF_SIGNATURE = signatureFromHex('25504446')
+const ZIP_SIGNATURE = signatureFromHex('504b0304')
+const GZIP_SIGNATURE = signatureFromHex('1f8b')
+const SVG_SNIFF_PREFIX_BYTES = 256
 
 function matchesSignature(bytes: Uint8Array, signature: ByteSignature): boolean {
   return signature.parts.every((part) => startsWith(bytes, part.sig, part.offset ?? 0))
@@ -281,7 +325,9 @@ export function sniffImageMime(bytes: Uint8Array): string | null {
 
 function looksLikeSvg(bytes: Uint8Array): boolean {
   // Inspect only a small prefix for textual XML/SVG markers.
-  const prefix = decodeUtf8BestEffort(bytes.subarray(0, 256)).trimStart().toLowerCase()
+  const prefix = decodeUtf8BestEffort(bytes.subarray(0, SVG_SNIFF_PREFIX_BYTES))
+    .trimStart()
+    .toLowerCase()
   return prefix.startsWith('<svg') || (prefix.startsWith('<?xml') && prefix.includes('<svg'))
 }
 
@@ -296,12 +342,9 @@ function looksLikeSvg(bytes: Uint8Array): boolean {
 export function detectBlobExtension(bytes: Uint8Array): string {
   const image = classifyImage(bytes)
   if (image?.ext) return image.ext
-  // PDF: "%PDF"
-  if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46])) return '.pdf'
-  // ZIP: "PK\x03\x04" (also covers ZIP-based formats)
-  if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) return '.zip'
-  // GZIP
-  if (startsWith(bytes, [0x1f, 0x8b])) return '.gz'
+  if (startsWith(bytes, PDF_SIGNATURE)) return '.pdf'
+  if (startsWith(bytes, ZIP_SIGNATURE)) return '.zip'
+  if (startsWith(bytes, GZIP_SIGNATURE)) return '.gz'
   return '.bin'
 }
 
@@ -315,149 +358,210 @@ export interface ImageDimensions {
   height: number
 }
 
-/** Read a big-endian unsigned 16-bit integer at `offset`, or `null` if short. */
+const UINT16_BYTE_LENGTH = 2
+const UINT24_BYTE_LENGTH = 3
+const UINT32_BYTE_LENGTH = 4
+const UINT16_VALUE_COUNT = 0x10000
+const LITTLE_ENDIAN = true
+const BIG_ENDIAN = false
+
+function fitsInBytes(bytes: Uint8Array, offset: number, byteLength: number): boolean {
+  return offset + byteLength <= bytes.length
+}
+
+function byteView(bytes: Uint8Array): DataView {
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+}
+
 function readU16BE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 2 > bytes.length) return null
-  return (bytes[offset] << 8) | bytes[offset + 1]
+  if (!fitsInBytes(bytes, offset, UINT16_BYTE_LENGTH)) return null
+  return byteView(bytes).getUint16(offset, BIG_ENDIAN)
 }
 
-/** Read a big-endian unsigned 32-bit integer at `offset`, or `null` if short. */
 function readU32BE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 4 > bytes.length) return null
-  return (
-    (bytes[offset] * 0x1000000 +
-      (bytes[offset + 1] << 16) +
-      (bytes[offset + 2] << 8) +
-      bytes[offset + 3]) >>>
-    0
-  )
+  if (!fitsInBytes(bytes, offset, UINT32_BYTE_LENGTH)) return null
+  return byteView(bytes).getUint32(offset, BIG_ENDIAN)
 }
 
-/** Read a little-endian signed 32-bit integer at `offset`, or `null` if short. */
 function readI32LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 4 > bytes.length) return null
-  return (
-    bytes[offset] |
-    (bytes[offset + 1] << 8) |
-    (bytes[offset + 2] << 16) |
-    (bytes[offset + 3] << 24) |
-    0
-  )
+  if (!fitsInBytes(bytes, offset, UINT32_BYTE_LENGTH)) return null
+  return byteView(bytes).getInt32(offset, LITTLE_ENDIAN)
 }
 
-/** Read a little-endian unsigned 16-bit integer at `offset`, or `null` if short. */
 function readU16LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 2 > bytes.length) return null
-  return bytes[offset] | (bytes[offset + 1] << 8)
+  if (!fitsInBytes(bytes, offset, UINT16_BYTE_LENGTH)) return null
+  return byteView(bytes).getUint16(offset, LITTLE_ENDIAN)
 }
 
-/** Read a little-endian unsigned 24-bit integer at `offset`, or `null` if short. */
 function readU24LE(bytes: Uint8Array, offset: number): number | null {
-  if (offset + 3 > bytes.length) return null
-  return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16)
+  if (!fitsInBytes(bytes, offset, UINT24_BYTE_LENGTH)) return null
+  const lowWord = byteView(bytes).getUint16(offset, LITTLE_ENDIAN)
+  const highByte = bytes[offset + UINT16_BYTE_LENGTH]
+  return lowWord + highByte * UINT16_VALUE_COUNT
 }
+
+function hasPositiveArea(width: number, height: number): boolean {
+  return width !== 0 && height !== 0
+}
+
+const PNG_WIDTH_OFFSET = 16
+const PNG_HEIGHT_OFFSET = 20
 
 function readPngDimensions(bytes: Uint8Array): ImageDimensions | null {
-  // PNG: 8-byte signature, then IHDR chunk: 4-byte length, "IHDR", width, height (both U32BE).
-  const width = readU32BE(bytes, 16)
-  const height = readU32BE(bytes, 20)
-  if (width === null || height === null || width === 0 || height === 0) return null
+  const width = readU32BE(bytes, PNG_WIDTH_OFFSET)
+  const height = readU32BE(bytes, PNG_HEIGHT_OFFSET)
+  if (width === null || height === null) return null
+  if (!hasPositiveArea(width, height)) return null
   return { width, height }
 }
 
 const JPEG_MARKER_SCAN_LIMIT = 4096
+const JPEG_START_OF_IMAGE_LENGTH = 2
+const JPEG_MARKER_LENGTH = 2
+const JPEG_MINIMUM_SEGMENT_LENGTH = 2
+const JPEG_MARKER_PREFIX = 0xff
+const JPEG_START_OF_IMAGE = 0xd8
+const JPEG_END_OF_IMAGE = 0xd9
+const JPEG_FIRST_RESTART = 0xd0
+const JPEG_LAST_RESTART = 0xd7
+const JPEG_TEMPORARY = 0x01
+const JPEG_FIRST_START_OF_FRAME = 0xc0
+const JPEG_LAST_START_OF_FRAME = 0xcf
+const JPEG_DEFINE_HUFFMAN_TABLE = 0xc4
+const JPEG_EXTENSION = 0xc8
+const JPEG_DEFINE_ARITHMETIC_CODING = 0xcc
+const JPEG_NON_FRAME_MARKERS_IN_FRAME_RANGE = new Set([
+  JPEG_DEFINE_HUFFMAN_TABLE,
+  JPEG_EXTENSION,
+  JPEG_DEFINE_ARITHMETIC_CODING,
+])
+const JPEG_FRAME_HEIGHT_OFFSET = 5
+const JPEG_FRAME_WIDTH_OFFSET = 7
+
+function isStandaloneJpegMarker(marker: number): boolean {
+  const isRestartMarker = marker >= JPEG_FIRST_RESTART && marker <= JPEG_LAST_RESTART
+  return (
+    marker === JPEG_START_OF_IMAGE ||
+    marker === JPEG_END_OF_IMAGE ||
+    isRestartMarker ||
+    marker === JPEG_TEMPORARY
+  )
+}
+
+function isJpegStartOfFrame(marker: number): boolean {
+  const isInFrameRange = marker >= JPEG_FIRST_START_OF_FRAME && marker <= JPEG_LAST_START_OF_FRAME
+  return isInFrameRange && !JPEG_NON_FRAME_MARKERS_IN_FRAME_RANGE.has(marker)
+}
 
 function readJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
-  // Walk JPEG segments starting after the SOI (0xFFD8) marker, looking for a
-  // Start-Of-Frame marker (SOF0–SOF15, excluding DHT/JPG/DAC at C4/C8/CC).
-  let offset = 2
+  let offset = JPEG_START_OF_IMAGE_LENGTH
   let scans = 0
   while (offset + 1 < bytes.length && scans < JPEG_MARKER_SCAN_LIMIT) {
     scans++
-    if (bytes[offset] !== 0xff) {
-      // Skip fill bytes / desync gracefully.
+    if (bytes[offset] !== JPEG_MARKER_PREFIX) {
       offset++
       continue
     }
     const marker = bytes[offset + 1]
-    // Skip standalone markers (padding 0xFF, RSTn, SOI/EOI/TEM) that carry no length.
-    if (marker === 0xff) {
+    if (marker === JPEG_MARKER_PREFIX) {
       offset++
       continue
     }
-    if (
-      marker === 0xd8 ||
-      marker === 0xd9 ||
-      (marker >= 0xd0 && marker <= 0xd7) ||
-      marker === 0x01
-    ) {
-      offset += 2
+    if (isStandaloneJpegMarker(marker)) {
+      offset += JPEG_MARKER_LENGTH
       continue
     }
-    const segmentLength = readU16BE(bytes, offset + 2)
-    if (segmentLength === null || segmentLength < 2) return null
-    const isSof =
-      marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
-    if (isSof) {
-      // SOF payload: precision (1 byte), height (U16BE), width (U16BE).
-      const height = readU16BE(bytes, offset + 5)
-      const width = readU16BE(bytes, offset + 7)
-      if (width === null || height === null || width === 0 || height === 0) return null
+    const segmentLength = readU16BE(bytes, offset + JPEG_MARKER_LENGTH)
+    if (segmentLength === null || segmentLength < JPEG_MINIMUM_SEGMENT_LENGTH) return null
+    if (isJpegStartOfFrame(marker)) {
+      const height = readU16BE(bytes, offset + JPEG_FRAME_HEIGHT_OFFSET)
+      const width = readU16BE(bytes, offset + JPEG_FRAME_WIDTH_OFFSET)
+      if (width === null || height === null) return null
+      if (!hasPositiveArea(width, height)) return null
       return { width, height }
     }
-    offset += 2 + segmentLength
+    offset += JPEG_MARKER_LENGTH + segmentLength
   }
   return null
 }
 
+const GIF_WIDTH_OFFSET = 6
+const GIF_HEIGHT_OFFSET = 8
+
 function readGifDimensions(bytes: Uint8Array): ImageDimensions | null {
-  // GIF logical screen descriptor: width (U16LE), height (U16LE) at offset 6.
-  const width = readU16LE(bytes, 6)
-  const height = readU16LE(bytes, 8)
-  if (width === null || height === null || width === 0 || height === 0) return null
+  const width = readU16LE(bytes, GIF_WIDTH_OFFSET)
+  const height = readU16LE(bytes, GIF_HEIGHT_OFFSET)
+  if (width === null || height === null) return null
+  if (!hasPositiveArea(width, height)) return null
   return { width, height }
 }
 
+const BMP_WIDTH_OFFSET = 18
+const BMP_HEIGHT_OFFSET = 22
+
 function readBmpDimensions(bytes: Uint8Array): ImageDimensions | null {
-  // BMP DIB header begins at offset 14; width/height are signed I32LE at 18/22.
-  const width = readI32LE(bytes, 18)
-  const height = readI32LE(bytes, 22)
-  if (width === null || height === null || width === 0 || height === 0) return null
-  // Height may be negative (top-down bitmap); report the absolute magnitude.
+  const width = readI32LE(bytes, BMP_WIDTH_OFFSET)
+  const height = readI32LE(bytes, BMP_HEIGHT_OFFSET)
+  if (width === null || height === null) return null
+  if (!hasPositiveArea(width, height)) return null
   return { width: Math.abs(width), height: Math.abs(height) }
 }
 
+const WEBP_FOURCC_OFFSET = 12
+const WEBP_FOURCC_LENGTH = 4
+const WEBP_FOURCC_END = WEBP_FOURCC_OFFSET + WEBP_FOURCC_LENGTH
+const WEBP_LOSSY_FOURCC = 'VP8 '
+const WEBP_LOSSLESS_FOURCC = 'VP8L'
+const WEBP_EXTENDED_FOURCC = 'VP8X'
+const WEBP_LOSSY_WIDTH_OFFSET = 26
+const WEBP_LOSSY_HEIGHT_OFFSET = 28
+const WEBP_LOSSLESS_SIGNATURE_OFFSET = 20
+const WEBP_LOSSLESS_SIGNATURE = 0x2f
+const WEBP_LOSSLESS_SIZE_OFFSET = 21
+const WEBP_LOSSLESS_SIZE_END = WEBP_LOSSLESS_SIZE_OFFSET + UINT32_BYTE_LENGTH
+const WEBP_LOSSLESS_HEIGHT_SHIFT = 14
+const WEBP_EXTENDED_WIDTH_OFFSET = 24
+const WEBP_EXTENDED_HEIGHT_OFFSET = 27
+const FOURTEEN_BIT_MASK = 0x3fff
+
+function readWebpLossyDimensions(bytes: Uint8Array): ImageDimensions | null {
+  const rawWidth = readU16LE(bytes, WEBP_LOSSY_WIDTH_OFFSET)
+  const rawHeight = readU16LE(bytes, WEBP_LOSSY_HEIGHT_OFFSET)
+  if (rawWidth === null || rawHeight === null) return null
+  const width = rawWidth & FOURTEEN_BIT_MASK
+  const height = rawHeight & FOURTEEN_BIT_MASK
+  if (!hasPositiveArea(width, height)) return null
+  return { width, height }
+}
+
+function readWebpLosslessDimensions(bytes: Uint8Array): ImageDimensions | null {
+  const isTruncated = bytes.length < WEBP_LOSSLESS_SIZE_END
+  if (isTruncated || bytes[WEBP_LOSSLESS_SIGNATURE_OFFSET] !== WEBP_LOSSLESS_SIGNATURE) return null
+  const packedSize = byteView(bytes).getUint32(WEBP_LOSSLESS_SIZE_OFFSET, LITTLE_ENDIAN)
+  const width = (packedSize & FOURTEEN_BIT_MASK) + 1
+  const height = ((packedSize >>> WEBP_LOSSLESS_HEIGHT_SHIFT) & FOURTEEN_BIT_MASK) + 1
+  return { width, height }
+}
+
+function readWebpExtendedDimensions(bytes: Uint8Array): ImageDimensions | null {
+  const width = readU24LE(bytes, WEBP_EXTENDED_WIDTH_OFFSET)
+  const height = readU24LE(bytes, WEBP_EXTENDED_HEIGHT_OFFSET)
+  if (width === null || height === null) return null
+  return { width: width + 1, height: height + 1 }
+}
+
+const WEBP_DIMENSION_READERS: Record<string, (bytes: Uint8Array) => ImageDimensions | null> = {
+  [WEBP_LOSSY_FOURCC]: readWebpLossyDimensions,
+  [WEBP_LOSSLESS_FOURCC]: readWebpLosslessDimensions,
+  [WEBP_EXTENDED_FOURCC]: readWebpExtendedDimensions,
+}
+
 function readWebpDimensions(bytes: Uint8Array): ImageDimensions | null {
-  // RIFF header occupies bytes 0..11; the WebP chunk FourCC starts at offset 12.
-  if (bytes.length < 16) return null
-  const fourCc = String.fromCharCode(bytes[12], bytes[13], bytes[14], bytes[15])
-  if (fourCc === 'VP8 ') {
-    // Lossy: frame tag (3 bytes) + start code, then width/height as U14LE at 26/28.
-    const w = readU16LE(bytes, 26)
-    const h = readU16LE(bytes, 28)
-    if (w === null || h === null) return null
-    const width = w & 0x3fff
-    const height = h & 0x3fff
-    if (width === 0 || height === 0) return null
-    return { width, height }
-  }
-  if (fourCc === 'VP8L') {
-    // Lossless: signature 0x2f at offset 20, then 14-bit (width-1)/height-1 packed.
-    if (bytes.length < 25 || bytes[20] !== 0x2f) return null
-    // The 4 bytes are little-endian; reconstruct as LE and unpack.
-    const le = bytes[21] | (bytes[22] << 8) | (bytes[23] << 16) | (bytes[24] << 24)
-    const width = (le & 0x3fff) + 1
-    const height = ((le >>> 14) & 0x3fff) + 1
-    return { width, height }
-  }
-  if (fourCc === 'VP8X') {
-    // Extended: 1 byte flags + 3 reserved at 20, then (width-1)/(height-1) as U24LE at 24/27.
-    const w = readU24LE(bytes, 24)
-    const h = readU24LE(bytes, 27)
-    if (w === null || h === null) return null
-    return { width: w + 1, height: h + 1 }
-  }
-  return null
+  if (bytes.length < WEBP_FOURCC_END) return null
+  const fourCc = String.fromCharCode(...bytes.subarray(WEBP_FOURCC_OFFSET, WEBP_FOURCC_END))
+  const readDimensions = WEBP_DIMENSION_READERS[fourCc]
+  if (!readDimensions) return null
+  return readDimensions(bytes)
 }
 
 /**
@@ -506,7 +610,7 @@ export function blobTypeLabel(bytes: Uint8Array): string {
 
 /** Build a `bytes` envelope wrapping the given base64 payload. */
 export function bytesEnvelope(base64: string): BlobEnvelope {
-  return { __sqllumen_blob__: true, kind: 'bytes', base64 }
+  return { __sqllumen_blob__: true, kind: 'bytes', base64: base64 }
 }
 
 /** Build a `null` envelope (stages SQL NULL). */
@@ -522,13 +626,13 @@ export function emptyEnvelope(): BlobEnvelope {
 /** Type guard: is `value` a well-formed blob envelope? */
 export function isBlobEnvelope(value: unknown): value is BlobEnvelope {
   if (typeof value !== 'object' || value === null) return false
-  const obj = value as Record<string, unknown>
-  if (obj.__sqllumen_blob__ !== true) return false
-  if (obj.kind !== 'bytes' && obj.kind !== 'null' && obj.kind !== 'empty') return false
-  if (obj.kind === 'bytes') {
-    return typeof obj.base64 === 'string'
+  const object = value as Record<string, unknown>
+  if (object.__sqllumen_blob__ !== true) return false
+  if (object.kind !== 'bytes' && object.kind !== 'null' && object.kind !== 'empty') return false
+  if (object.kind === 'bytes') {
+    return typeof object.base64 === 'string'
   }
-  return obj.base64 === undefined
+  return object.base64 === undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -536,6 +640,8 @@ export function isBlobEnvelope(value: unknown): value is BlobEnvelope {
 // ---------------------------------------------------------------------------
 
 const BYTE_UNITS = ['KB', 'MB', 'GB', 'TB'] as const
+const BYTES_PER_KILOBYTE = 1024
+const ONE_DECIMAL_PLACE_SCALE = 10
 
 /**
  * Format a byte count with a human-friendly unit (B, KB, MB, GB, TB).
@@ -548,14 +654,14 @@ const BYTE_UNITS = ['KB', 'MB', 'GB', 'TB'] as const
  */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  let value = bytes / 1024
+  if (bytes < BYTES_PER_KILOBYTE) return `${bytes} B`
+  let value = bytes / BYTES_PER_KILOBYTE
   let unitIndex = 0
-  while (value >= 1024 && unitIndex < BYTE_UNITS.length - 1) {
-    value /= 1024
+  while (value >= BYTES_PER_KILOBYTE && unitIndex < BYTE_UNITS.length - 1) {
+    value /= BYTES_PER_KILOBYTE
     unitIndex++
   }
-  const rounded = Math.round(value * 10) / 10
+  const rounded = Math.round(value * ONE_DECIMAL_PLACE_SCALE) / ONE_DECIMAL_PLACE_SCALE
   const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
   return `${text} ${BYTE_UNITS[unitIndex]}`
 }
@@ -566,8 +672,10 @@ export function formatBytes(bytes: number): string {
  */
 export function base64ByteLength(base64: string): number {
   if (base64.length === 0) return 0
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
+  const paddingSuffix = BASE64_PADDING_SUFFIXES.find((suffix) => base64.endsWith(suffix))
+  const padding = paddingSuffix?.length ?? 0
+  const quantumBytes = (base64.length * BYTES_PER_BASE64_QUANTUM) / BASE64_CHARS_PER_QUANTUM
+  return Math.max(0, Math.floor(quantumBytes) - padding)
 }
 
 // ---------------------------------------------------------------------------
@@ -602,28 +710,31 @@ export type ConvertBinaryPkValuesResult =
  * can abort rather than bind a corrupted/NULL value (C6); the input is never
  * mutated.
  */
-export function convertBinaryPkValuesToEnvelopes(
-  pkColumns: string[],
+export function convertBinaryPrimaryKeyValuesToEnvelopes(
+  primaryKeyColumns: string[],
   columns: TableDataColumnMeta[],
-  pkValues: Record<string, unknown>
+  primaryKeyValues: Record<string, unknown>
 ): ConvertBinaryPkValuesResult {
   const binaryColumns = new Set(
     columns.filter((column) => column.isBinary).map((column) => column.name)
   )
-  const result: Record<string, unknown> = { ...pkValues }
+  const result: Record<string, unknown> = { ...primaryKeyValues }
 
-  for (const pkColumn of pkColumns) {
-    if (!binaryColumns.has(pkColumn)) continue
-    const value = pkValues[pkColumn]
+  for (const primaryKeyColumn of primaryKeyColumns) {
+    if (!binaryColumns.has(primaryKeyColumn)) continue
+    const value = primaryKeyValues[primaryKeyColumn]
     // Already-enveloped (object), null, and non-string values pass through;
     // only hex display strings on binary columns are converted.
     if (typeof value !== 'string') continue
 
     const parsed = parseHexPrefixedBytes(value)
     if (!parsed.ok) {
-      return { ok: false, error: `Invalid binary primary key "${pkColumn}": ${parsed.error}` }
+      return {
+        ok: false,
+        error: `Invalid binary primary key "${primaryKeyColumn}": ${parsed.error}`,
+      }
     }
-    result[pkColumn] =
+    result[primaryKeyColumn] =
       parsed.bytes.length === 0 ? emptyEnvelope() : bytesEnvelope(bytesToBase64(parsed.bytes))
   }
 
@@ -642,23 +753,30 @@ export type BuildEnvelopedPkPairsResult =
  * order. Malformed binary-PK hex surfaces as an error result so the caller can
  * abort rather than fetch against a corrupted key; inputs are never mutated.
  */
-export function buildEnvelopedPkPairs(
-  pkColumns: string[],
+export function buildEnvelopedPrimaryKeyPairs(
+  primaryKeyColumns: string[],
   columns: TableDataColumnMeta[],
   rowData: Record<string, unknown>
 ): BuildEnvelopedPkPairsResult {
-  const rawPkValues: Record<string, unknown> = {}
-  for (const pkColumn of pkColumns) {
-    rawPkValues[pkColumn] = rowData[pkColumn]
+  const rawPrimaryKeyValues: Record<string, unknown> = {}
+  for (const primaryKeyColumn of primaryKeyColumns) {
+    rawPrimaryKeyValues[primaryKeyColumn] = rowData[primaryKeyColumn]
   }
 
-  const converted = convertBinaryPkValuesToEnvelopes(pkColumns, columns, rawPkValues)
+  const converted = convertBinaryPrimaryKeyValuesToEnvelopes(
+    primaryKeyColumns,
+    columns,
+    rawPrimaryKeyValues
+  )
   if (!converted.ok) {
     return { ok: false, error: converted.error }
   }
 
   return {
     ok: true,
-    pairs: pkColumns.map((pkColumn) => [pkColumn, converted.values[pkColumn]] as [string, unknown]),
+    pairs: primaryKeyColumns.map(
+      (primaryKeyColumn) =>
+        [primaryKeyColumn, converted.values[primaryKeyColumn]] as [string, unknown]
+    ),
   }
 }

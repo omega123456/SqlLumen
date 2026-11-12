@@ -77,9 +77,9 @@ pub fn escape_identifier(name: &str) -> String {
 /// Escape a SQL string value for use inside single quotes.
 ///
 /// Handles: single quotes, backslashes, null bytes, newlines, and carriage returns.
-pub fn escape_string_value(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 8);
-    for ch in s.chars() {
+pub fn escape_string_value(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    for ch in text.chars() {
         match ch {
             '\'' => out.push_str("''"),
             '\\' => out.push_str("\\\\"),
@@ -198,16 +198,16 @@ pub fn write_insert_batch<W: Write>(
     )?;
 
     let mut count: u64 = 0;
-    for (row_idx, row) in batch.iter().enumerate() {
-        if row_idx > 0 {
+    for (row_index, row) in batch.iter().enumerate() {
+        if row_index > 0 {
             write!(writer, ",")?;
         }
         write!(writer, "\n(")?;
-        for (col_idx, val) in row.iter().enumerate() {
-            if col_idx > 0 {
+        for (column_index, value) in row.iter().enumerate() {
+            if column_index > 0 {
                 write!(writer, ", ")?;
             }
-            write_value(writer, val)?;
+            write_value(writer, value)?;
         }
         write!(writer, ")")?;
         count += 1;
@@ -234,7 +234,7 @@ pub fn write_data_inserts<W: Write>(
     let escaped_table = escape_identifier(table_name);
     let col_list: String = columns
         .iter()
-        .map(|c| format!("`{}`", escape_identifier(c)))
+        .map(|column| format!("`{}`", escape_identifier(column)))
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -265,35 +265,35 @@ pub fn write_data_inserts<W: Write>(
 /// for a target pool and needs to measure each literal's serialized byte size
 /// for adaptive batching. Keeping a single source of truth guarantees the
 /// measured size matches the bytes actually sent.
-pub fn value_to_literal(val: &SqlDumpValue) -> String {
-    match val {
+pub fn value_to_literal(value: &SqlDumpValue) -> String {
+    match value {
         SqlDumpValue::Null => "NULL".to_string(),
-        SqlDumpValue::Int(n) => n.to_string(),
-        SqlDumpValue::UInt(n) => n.to_string(),
-        SqlDumpValue::Float(f) => {
-            if f.is_nan() || f.is_infinite() {
+        SqlDumpValue::Int(number) => number.to_string(),
+        SqlDumpValue::UInt(number) => number.to_string(),
+        SqlDumpValue::Float(float) => {
+            if float.is_nan() || float.is_infinite() {
                 "NULL".to_string()
             } else {
-                f.to_string()
+                float.to_string()
             }
         }
-        SqlDumpValue::Decimal(s) => s.clone(),
-        SqlDumpValue::QuotedString(s) => format!("'{}'", escape_string_value(s)),
+        SqlDumpValue::Decimal(text) => text.clone(),
+        SqlDumpValue::QuotedString(text) => format!("'{}'", escape_string_value(text)),
         SqlDumpValue::HexBytes(bytes) => {
             if bytes.is_empty() {
                 "0x".to_string()
             } else {
                 let mut out = String::with_capacity(2 + bytes.len() * 2);
                 out.push_str("0x");
-                for b in bytes {
+                for byte in bytes {
                     use std::fmt::Write as _;
-                    let _ = write!(out, "{:02X}", b);
+                    let _ = write!(out, "{:02X}", byte);
                 }
                 out
             }
         }
-        SqlDumpValue::Bool(b) => {
-            if *b {
+        SqlDumpValue::Bool(boolean) => {
+            if *boolean {
                 "1".to_string()
             } else {
                 "0".to_string()
@@ -304,13 +304,13 @@ pub fn value_to_literal(val: &SqlDumpValue) -> String {
 
 /// Serialized byte length of a single value's SQL literal (as produced by
 /// [`value_to_literal`]). Used by the copy engine's byte-budgeted batching.
-pub fn value_byte_len(val: &SqlDumpValue) -> usize {
-    value_to_literal(val).len()
+pub fn value_byte_len(value: &SqlDumpValue) -> usize {
+    value_to_literal(value).len()
 }
 
 /// Write a single SQL dump value with correct quoting and escaping.
-fn write_value<W: Write>(writer: &mut W, val: &SqlDumpValue) -> io::Result<()> {
-    write!(writer, "{}", value_to_literal(val))
+fn write_value<W: Write>(writer: &mut W, value: &SqlDumpValue) -> io::Result<()> {
+    write!(writer, "{}", value_to_literal(value))
 }
 
 /// Write transaction wrappers (SET AUTOCOMMIT=0 at start, COMMIT at end).

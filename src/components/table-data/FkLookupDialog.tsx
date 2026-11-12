@@ -20,11 +20,18 @@ import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
 import { evictTableData, fetchTableData } from '../../lib/table-data-commands'
 import { buildColumnDescriptors } from './table-data-grid-columns'
-import { AUTO_SIZE_SAMPLE_LIMIT, getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import {
+  AUTO_SIZE_SAMPLE_LIMIT,
+  DEFAULT_COLUMN_WIDTH_PX,
+  HEADER_ICON_WIDTH_PX,
+  getAutoSizedColumnWidth,
+} from '../../lib/grid-column-style'
 import type { GridColumnDescriptor, AutoSizeConfig } from '../../types/shared-data-view'
 import type { TableDataColumnMeta, PrimaryKeyInfo, FilterCondition } from '../../types/schema'
 import { logFrontend } from '../../lib/app-log-commands'
 import styles from './FkLookupDialog.module.css'
+
+const LOOKUP_PAGE_SIZE = 100
 
 // ---------------------------------------------------------------------------
 // Props
@@ -69,7 +76,7 @@ export function FkLookupDialog({
   const [columns, setColumns] = useState<TableDataColumnMeta[]>([])
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(100)
+  const [pageSize, setPageSize] = useState(LOOKUP_PAGE_SIZE)
   const [filterModel, setFilterModel] = useState<FilterCondition[]>([])
   const [sort, setSort] = useState<{ column: string; direction: 'ASC' | 'DESC' } | null>(null)
   const [primaryKey, setPrimaryKey] = useState<PrimaryKeyInfo | null>(null)
@@ -108,11 +115,11 @@ export function FkLookupDialog({
 
       try {
         const response = await fetchTableData({
-          connectionId,
+          connectionId: connectionId,
           tabId: cacheTabId,
-          database,
+          database: database,
           table: referencedTable,
-          page,
+          page: page,
           pageSize: size,
           sortColumn: sortInfo?.column,
           sortDirection: sortInfo?.direction?.toLowerCase(),
@@ -123,13 +130,13 @@ export function FkLookupDialog({
         if (loadRequestTokenRef.current !== thisToken) return // stale response
 
         // Transform rows from unknown[][] to Record<string, unknown>[]
-        const colNames = response.columns.map((c) => c.name)
-        const transformedRows = response.rows.map((row, idx) => {
-          const obj: Record<string, unknown> = { __rowIdx: idx }
-          colNames.forEach((name, i) => {
-            obj[name] = row[i] ?? null
+        const columnNames = response.columns.map((column) => column.name)
+        const transformedRows = response.rows.map((row, index) => {
+          const object: Record<string, unknown> = { __rowIdx: index }
+          columnNames.forEach((name, columnIndex) => {
+            object[name] = row[columnIndex] ?? null
           })
-          return obj
+          return object
         })
 
         setColumns(response.columns)
@@ -138,10 +145,10 @@ export function FkLookupDialog({
         setPageSize(response.pageSize)
         setPrimaryKey(response.primaryKey)
         setExecutionTimeMs(response.executionTimeMs)
-      } catch (err) {
+      } catch (error) {
         if (!mountedRef.current) return
         if (loadRequestTokenRef.current !== thisToken) return // stale error
-        setError(err instanceof Error ? err.message : String(err))
+        setError(error instanceof Error ? error.message : String(error))
         setRows([])
         setSelectedRowKey(null)
       } finally {
@@ -160,7 +167,7 @@ export function FkLookupDialog({
 
     return () => {
       evictTableData({
-        connectionId,
+        connectionId: connectionId,
         tabId: cacheTabId,
       }).catch((error: unknown) => {
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -174,7 +181,7 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
 
   const hasInitialized = useRef(false)
-  const prevParamsRef = useRef<string>('')
+  const previousParamsRef = useRef<string>('')
   // Suppress the reload effect from firing in the same render cycle as the
   // initial load. The initial load sets new state values (e.g. filterModel)
   // but the reload effect in the same render still sees stale state, causing
@@ -211,7 +218,7 @@ export function FkLookupDialog({
     setColumns([])
 
     // Pre-seed prevParamsRef so the reload effect doesn't double-fire
-    prevParamsRef.current = JSON.stringify({
+    previousParamsRef.current = JSON.stringify({
       filterModel: initialFilter,
       sort: initialSort,
       currentPage: initialPage,
@@ -238,8 +245,8 @@ export function FkLookupDialog({
     }
 
     const paramsKey = JSON.stringify({ filterModel, sort, currentPage, pageSize })
-    if (paramsKey === prevParamsRef.current) return
-    prevParamsRef.current = paramsKey
+    if (paramsKey === previousParamsRef.current) return
+    previousParamsRef.current = paramsKey
 
     void loadData(currentPage, pageSize, filterModel, sort)
   }, [isOpen, filterModel, sort, currentPage, pageSize, loadData])
@@ -253,21 +260,21 @@ export function FkLookupDialog({
   // Auto-size columns to fit header/data, mirroring TableDataGrid. Rows here are
   // keyed by column name, so the single-column proxy extracts row[col.key].
   const autoSizeConfig: AutoSizeConfig = useMemo(() => {
-    const colMetaByName = new Map<string, TableDataColumnMeta>()
-    for (const col of columns) colMetaByName.set(col.name, col)
+    const columnMetaByName = new Map<string, TableDataColumnMeta>()
+    for (const column of columns) columnMetaByName.set(column.name, column)
 
     return {
       enabled: true,
-      computeWidth: (col: GridColumnDescriptor) => {
-        const meta = colMetaByName.get(col.key)
-        if (!meta) return 150
+      computeWidth: (column: GridColumnDescriptor) => {
+        const meta = columnMetaByName.get(column.key)
+        if (!meta) return DEFAULT_COLUMN_WIDTH_PX
         const sampleCount = Math.min(rows.length, AUTO_SIZE_SAMPLE_LIMIT)
         const columnRows: unknown[][] = new Array(sampleCount)
-        for (let i = 0; i < sampleCount; i++) {
-          columnRows[i] = [rows[i][col.key]]
+        for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+          columnRows[sampleIndex] = [rows[sampleIndex][column.key]]
         }
-        const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0
-        return getAutoSizedColumnWidth(meta, 0, columnRows, col.key, headerIconWidthPx)
+        const headerIconWidthPx = column.foreignKey || !column.editable ? HEADER_ICON_WIDTH_PX : 0
+        return getAutoSizedColumnWidth(meta, 0, columnRows, column.key, headerIconWidthPx)
       },
     }
   }, [columns, rows])
@@ -293,16 +300,16 @@ export function FkLookupDialog({
   // Pagination handlers
   // ---------------------------------------------------------------------------
 
-  const handlePrevPage = useCallback(() => {
+  const handlePreviousPage = useCallback(() => {
     if (currentPage > 1) {
       setSelectedRowKey(null)
-      setCurrentPage((p) => p - 1)
+      setCurrentPage((currentPage) => currentPage - 1)
     }
   }, [currentPage])
 
   const handleNextPage = useCallback(() => {
     setSelectedRowKey(null)
-    setCurrentPage((p) => p + 1)
+    setCurrentPage((currentPage) => currentPage + 1)
   }, [])
 
   const handlePageSizeChange = useCallback((newSize: number) => {
@@ -342,7 +349,7 @@ export function FkLookupDialog({
   const computeRowKey = useCallback(
     (row: Record<string, unknown>) => {
       if (primaryKey && primaryKey.keyColumns.length > 0) {
-        return JSON.stringify(primaryKey.keyColumns.map((col) => row[col]))
+        return JSON.stringify(primaryKey.keyColumns.map((column) => row[column]))
       }
       // Fallback: use the synthetic __rowIdx field added during row transformation
       return String(row['__rowIdx'] ?? -1)
@@ -398,19 +405,21 @@ export function FkLookupDialog({
   useEffect(() => {
     if (!isOpen) return
 
-    const isInteractiveElement = (el: EventTarget | null): boolean => {
-      if (!(el instanceof HTMLElement)) return false
-      const tag = el.tagName.toLowerCase()
-      return ['button', 'input', 'select', 'textarea', 'a'].includes(tag) || el.isContentEditable
+    const isInteractiveElement = (element: EventTarget | null): boolean => {
+      if (!(element instanceof HTMLElement)) return false
+      const tag = element.tagName.toLowerCase()
+      return (
+        ['button', 'input', 'select', 'textarea', 'a'].includes(tag) || element.isContentEditable
+      )
     }
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter') return
       if (isFilterDialogOpen) return
       if (isReadOnly) return
       if (selectedRowKey === null) return
-      if (isInteractiveElement(e.target)) return
-      e.preventDefault()
+      if (isInteractiveElement(event.target)) return
+      event.preventDefault()
       handleApply()
     }
 
@@ -496,7 +505,7 @@ export function FkLookupDialog({
                   setSelectedRowKey(null)
                   setCurrentPage(page)
                 }}
-                onPrevPage={handlePrevPage}
+                onPrevPage={handlePreviousPage}
                 onNextPage={handleNextPage}
               />
             </div>
@@ -565,7 +574,7 @@ export function FkLookupDialog({
       <FilterDialog
         isOpen={isFilterDialogOpen}
         initialConditions={filterModel}
-        columns={columns.map((c) => c.name)}
+        columns={columns.map((column) => column.name)}
         onApply={handleFilterApply}
         onCancel={handleFilterCancel}
       />

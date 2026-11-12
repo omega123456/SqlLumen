@@ -23,6 +23,19 @@ const DIRECT_TABLE_MATCH_SCORE: f64 = 1.0;
 const IDENTIFIER_EXACT_MATCH_SCORE: f64 = 0.8;
 const DIRECT_TABLE_SEGMENT_MATCH_SCORE: f64 = 0.5;
 const IDENTIFIER_SEGMENT_MATCH_SCORE: f64 = 0.4;
+const PLURAL_MATCH_QUALITY: f64 = 0.95;
+const SEGMENT_PLURAL_MATCH_QUALITY: f64 = 0.9;
+const TABLE_PREFIX_BASE_QUALITY: f64 = 0.6;
+const SEGMENT_PREFIX_BASE_QUALITY: f64 = 0.5;
+const PREFIX_COVERAGE_QUALITY_RANGE: f64 = 0.3;
+const MIN_PREFIX_MATCH_CHARS: usize = 3;
+const MIN_PLURAL_WORD_CHARS: usize = 4;
+const MAX_RAW_IDF: f64 = 5.0;
+const FULL_WEIGHT_TOKEN_CHARS: f64 = 4.0;
+const CROSS_DATABASE_DUPLICATE_SCORE_RATIO: f64 = 0.05;
+const MIN_SCORE_DIVISOR: f64 = 1e-9;
+const EDITOR_TABLE_HINT_WEIGHT: f64 = 0.5;
+const GRAPH_HOP_SCORE_DECAY: f64 = 0.5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct QualifiedIdentifier {
@@ -278,7 +291,7 @@ pub fn multi_query_search(
     query_vectors: &[Vec<f32>],
     top_k_per_query: usize,
     top_n_results: usize,
-    max_fk_chunks: usize,
+    max_foreign_key_chunks: usize,
 ) -> Result<Vec<SearchResult>> {
     multi_query_search_with_query_texts(
         conn,
@@ -287,7 +300,7 @@ pub fn multi_query_search(
         query_vectors,
         top_k_per_query,
         top_n_results,
-        max_fk_chunks,
+        max_foreign_key_chunks,
     )
 }
 
@@ -300,7 +313,7 @@ pub fn multi_query_search_with_query_texts(
     query_vectors: &[Vec<f32>],
     top_k_per_query: usize,
     top_n_results: usize,
-    max_fk_chunks: usize,
+    max_foreign_key_chunks: usize,
 ) -> Result<Vec<SearchResult>> {
     multi_query_search_configured(
         conn,
@@ -310,7 +323,7 @@ pub fn multi_query_search_with_query_texts(
         &SearchConfig {
             top_k_per_query,
             top_n_results,
-            max_fk_chunks,
+            max_fk_chunks: max_foreign_key_chunks,
             lexical_weight: 0.2,
         },
     )
@@ -348,7 +361,7 @@ pub fn multi_query_search_configured(
 
     let vec_table = super::storage::vec_table_name(connection_id);
 
-    for (i, query_vec) in query_vectors.iter().enumerate() {
+    for (query_index, query_vec) in query_vectors.iter().enumerate() {
         let embedding_bytes = embedding_to_bytes(query_vec);
 
         let mut stmt = conn.prepare(&format!(
@@ -375,7 +388,12 @@ pub fn multi_query_search_configured(
         }
 
         // Sort by cosine score descending for rank assignment.
-        query_hits.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        query_hits.sort_by(|left, right| {
+            right
+                .1
+                .partial_cmp(&left.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Accumulate RRF scores: rrf_score(chunk) += 1 / (k + rank)
         for (rank_0, (chunk_id, _score)) in query_hits.iter().enumerate() {
@@ -385,9 +403,9 @@ pub fn multi_query_search_configured(
 
         tracing::debug!(
             connection_id = %connection_id,
-            query_index = i,
+            query_index = query_index,
             knn_hits = query_hits.len(),
-            "multi_query_search: step 1 — query vector {i} returned {} hit(s)",
+            "multi_query_search: step 1 — query vector {query_index} returned {} hit(s)",
             query_hits.len()
         );
     }
@@ -483,8 +501,16 @@ pub fn multi_query_search_configured(
         }
 
         // Find the top-3 scoring chunks to determine affinity databases
-        let mut score_vec: Vec<(i64, f64)> = best_scores.iter().map(|(&id, &s)| (id, s)).collect();
-        score_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut score_vec: Vec<(i64, f64)> = best_scores
+            .iter()
+            .map(|(&id, &score)| (id, score))
+            .collect();
+        score_vec.sort_by(|left, right| {
+            right
+                .1
+                .partial_cmp(&left.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let affinity_dbs: HashSet<String> = score_vec
             .iter()
             .take(3)
@@ -513,18 +539,20 @@ pub fn multi_query_search_configured(
 
     // ── Step 3: Sort by score desc (cosine as tiebreaker) ─────────────
     let mut deduped: Vec<(i64, f64)> = best_scores.into_iter().collect();
-    deduped.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
+    deduped.sort_by(|left, right| {
+        right
+            .1
+            .partial_cmp(&left.1)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
                 // Tiebreaker: higher cosine score wins
-                let cos_b = best_cosine.get(&b.0).copied().unwrap_or(0.0);
-                let cos_a = best_cosine.get(&a.0).copied().unwrap_or(0.0);
+                let cos_b = best_cosine.get(&right.0).copied().unwrap_or(0.0);
+                let cos_a = best_cosine.get(&left.0).copied().unwrap_or(0.0);
                 cos_b
                     .partial_cmp(&cos_a)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
-            .then_with(|| a.0.cmp(&b.0))
+            .then_with(|| left.0.cmp(&right.0))
     });
 
     let score_range = deduped
@@ -536,7 +564,7 @@ pub fn multi_query_search_configured(
         connection_id = %connection_id,
         sorted_count = deduped.len(),
         score_range = ?score_range,
-        top5 = ?deduped.iter().take(5).map(|(id, s)| (*id, *s)).collect::<Vec<_>>(),
+        top5 = ?deduped.iter().take(5).map(|(id, score)| (*id, *score)).collect::<Vec<_>>(),
         "multi_query_search: step 3 — sorted by score desc"
     );
 
@@ -570,19 +598,21 @@ pub fn multi_query_search_configured(
             )
             .ok();
 
-        if let Some(r) = result {
+        if let Some(candidate) = result {
             // Cross-database dedup: if same table_name already selected from a
             // DIFFERENT database with a similar score (within 5%), skip this duplicate
-            if let Some(&(existing_score, ref existing_db)) = selected_table_info.get(&r.table_name)
+            if let Some(&(existing_score, ref existing_db)) =
+                selected_table_info.get(&candidate.table_name)
             {
-                if existing_db != &r.db_name {
-                    let diff_ratio = (existing_score - r.score).abs() / existing_score.max(1e-9);
-                    if diff_ratio < 0.05 {
+                if existing_db != &candidate.db_name {
+                    let diff_ratio = (existing_score - candidate.score).abs()
+                        / existing_score.max(MIN_SCORE_DIVISOR);
+                    if diff_ratio < CROSS_DATABASE_DUPLICATE_SCORE_RATIO {
                         // Similar score from different db — skip this cross-db duplicate
                         tracing::debug!(
-                            table_name = %r.table_name,
-                            db_name = %r.db_name,
-                            score = r.score,
+                            table_name = %candidate.table_name,
+                            db_name = %candidate.db_name,
+                            score = candidate.score,
                             existing_score = existing_score,
                             existing_db = %existing_db,
                             "multi_query_search: step 4 — skipping cross-db duplicate"
@@ -592,9 +622,9 @@ pub fn multi_query_search_configured(
                 }
             }
             selected_table_info
-                .entry(r.table_name.clone())
-                .or_insert((r.score, r.db_name.clone()));
-            top_n.push(r);
+                .entry(candidate.table_name.clone())
+                .or_insert((candidate.score, candidate.db_name.clone()));
+            top_n.push(candidate);
             if top_n.len() >= config.top_n_results {
                 break;
             }
@@ -604,7 +634,7 @@ pub fn multi_query_search_configured(
     tracing::debug!(
         connection_id = %connection_id,
         top_n_count = top_n.len(),
-        top_n_results = ?top_n.iter().map(|r| (format!("{}.{}", r.db_name, r.table_name), &r.chunk_type, r.score)).collect::<Vec<_>>(),
+        top_n_results = ?top_n.iter().map(|result| (format!("{}.{}", result.db_name, result.table_name), &result.chunk_type, result.score)).collect::<Vec<_>>(),
         "multi_query_search: step 4 — top-N selected"
     );
 
@@ -641,9 +671,9 @@ pub fn multi_query_search_with_hints(
             hint.db_name.to_ascii_lowercase(),
             hint.table_name.to_ascii_lowercase(),
         );
-        let e = hint_weights.entry(key).or_insert(0.0);
-        if hint.weight > *e {
-            *e = hint.weight;
+        let weight = hint_weights.entry(key).or_insert(0.0);
+        if hint.weight > *weight {
+            *weight = hint.weight;
         }
     }
     for hint in &config.hints.accepted_tables {
@@ -651,9 +681,9 @@ pub fn multi_query_search_with_hints(
             hint.db_name.to_ascii_lowercase(),
             hint.table_name.to_ascii_lowercase(),
         );
-        let e = hint_weights.entry(key).or_insert(0.0);
-        if hint.weight > *e {
-            *e = hint.weight;
+        let weight = hint_weights.entry(key).or_insert(0.0);
+        if hint.weight > *weight {
+            *weight = hint.weight;
         }
     }
     for tref in &config.hints.editor_tables {
@@ -661,7 +691,7 @@ pub fn multi_query_search_with_hints(
             tref.db_name.to_ascii_lowercase(),
             tref.table_name.to_ascii_lowercase(),
         );
-        hint_weights.entry(key).or_insert(0.5);
+        hint_weights.entry(key).or_insert(EDITOR_TABLE_HINT_WEIGHT);
     }
 
     if !hint_weights.is_empty() && config.feedback_boost > 0.0 {
@@ -670,13 +700,14 @@ pub fn multi_query_search_with_hints(
                 result.db_name.to_ascii_lowercase(),
                 result.table_name.to_ascii_lowercase(),
             );
-            if let Some(&w) = hint_weights.get(&key) {
-                result.score += config.feedback_boost * w;
+            if let Some(&hint_weight) = hint_weights.get(&key) {
+                result.score += config.feedback_boost * hint_weight;
             }
         }
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
+        results.sort_by(|left, right| {
+            right
+                .score
+                .partial_cmp(&left.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
@@ -691,7 +722,7 @@ pub fn apply_graph_expansion(
     connection_id: &str,
     mut results: Vec<SearchResult>,
     graph_depth: u32,
-    max_fk_chunks: u32,
+    max_foreign_key_chunks: u32,
 ) -> Result<Vec<SearchResult>> {
     if graph_depth == 0 || results.is_empty() {
         return Ok(results);
@@ -703,20 +734,20 @@ pub fn apply_graph_expansion(
     // Track best-scoring db for each table_name to deduplicate cross-db seeds
     let mut best_seed_by_table: HashMap<String, (String, f64)> = HashMap::new();
 
-    for r in &results {
-        let key = (r.db_name.clone(), r.table_name.clone());
+    for result in &results {
+        let key = (result.db_name.clone(), result.table_name.clone());
         if seen_tables.insert(key.clone()) {
             // Check if we already have a seed for this table_name from another db
             let entry = best_seed_by_table
-                .entry(r.table_name.clone())
-                .or_insert_with(|| (r.db_name.clone(), r.score));
-            if r.score > entry.1 {
-                *entry = (r.db_name.clone(), r.score);
+                .entry(result.table_name.clone())
+                .or_insert_with(|| (result.db_name.clone(), result.score));
+            if result.score > entry.1 {
+                *entry = (result.db_name.clone(), result.score);
             }
         }
         let entry = seed_scores.entry(key).or_insert(0.0f64);
-        if r.score > *entry {
-            *entry = r.score;
+        if result.score > *entry {
+            *entry = result.score;
         }
     }
 
@@ -726,17 +757,24 @@ pub fn apply_graph_expansion(
         seeds.push(key);
     }
 
-    let graph_nodes = graph::bfs_related(conn, connection_id, &seeds, graph_depth, max_fk_chunks)?;
+    let graph_nodes = graph::bfs_related(
+        conn,
+        connection_id,
+        &seeds,
+        graph_depth,
+        max_foreign_key_chunks,
+    )?;
 
     if !graph_nodes.is_empty() {
-        let seen_chunk_ids: HashSet<i64> = results.iter().map(|r| r.chunk_id).collect();
+        let seen_chunk_ids: HashSet<i64> = results.iter().map(|result| result.chunk_id).collect();
 
         let mut graph_results: Vec<SearchResult> = Vec::new();
         for node in &graph_nodes {
             // Use seed_index to look up the originating seed's score
             let originating_seed = &seeds[node.seed_index];
             let originating_seed_score = seed_scores.get(originating_seed).copied().unwrap_or(0.0);
-            let decayed_score = originating_seed_score * 0.5f64.powi(node.hop as i32);
+            let decayed_score =
+                originating_seed_score * GRAPH_HOP_SCORE_DECAY.powi(node.hop as i32);
 
             let tbl_results = load_table_chunk(
                 conn,
@@ -779,7 +817,7 @@ pub fn multi_query_search_extended(
     let mut editor_seeds: Vec<(String, String)> = Vec::new();
     let seen_tables: HashSet<(String, String)> = results
         .iter()
-        .map(|r| (r.db_name.clone(), r.table_name.clone()))
+        .map(|result| (result.db_name.clone(), result.table_name.clone()))
         .collect();
     for tref in &config.hints.editor_tables {
         let key = (tref.db_name.clone(), tref.table_name.clone());
@@ -835,9 +873,9 @@ fn extract_direct_table_candidates(query_texts: &[String]) -> HashSet<QualifiedI
                 continue;
             }
 
-            let normalized = parse_qualified_identifier(
-                token.trim_matches(|c: char| c.is_ascii_punctuation() && c != '.' && c != '`'),
-            );
+            let normalized = parse_qualified_identifier(token.trim_matches(|character: char| {
+                character.is_ascii_punctuation() && character != '.' && character != '`'
+            }));
             if !normalized.table_name.is_empty() {
                 candidates.insert(normalized);
             }
@@ -950,26 +988,26 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
     }
     // Simple plural normalization: "brand" matches "brands" and vice versa
     if normalize_plural(table_name) == normalize_plural(token) {
-        return 0.95;
+        return PLURAL_MATCH_QUALITY;
     }
     // Token is a prefix of the table name (e.g. "rfx" → "rfxtracking")
     // Require at least 3 chars for prefix matching to avoid noise
-    if token.len() >= 3 && table_name.starts_with(token) {
+    if token.len() >= MIN_PREFIX_MATCH_CHARS && table_name.starts_with(token) {
         // Score proportional to how much of the table name is covered
         let coverage = token.len() as f64 / table_name.len() as f64;
-        return 0.6 + 0.3 * coverage; // range [0.6, 0.9]
+        return TABLE_PREFIX_BASE_QUALITY + PREFIX_COVERAGE_QUALITY_RANGE * coverage;
     }
     // Token is a prefix of a segment
     for segment in table_name.split('_') {
         if segment == token {
-            return 1.0; // exact segment match (handled by table_name_segment_matches too)
+            return 1.0;
         }
         if normalize_plural(segment) == normalize_plural(token) {
-            return 0.9;
+            return SEGMENT_PLURAL_MATCH_QUALITY;
         }
-        if token.len() >= 3 && segment.starts_with(token) {
+        if token.len() >= MIN_PREFIX_MATCH_CHARS && segment.starts_with(token) {
             let coverage = token.len() as f64 / segment.len() as f64;
-            return 0.5 + 0.3 * coverage;
+            return SEGMENT_PREFIX_BASE_QUALITY + PREFIX_COVERAGE_QUALITY_RANGE * coverage;
         }
     }
     0.0
@@ -977,7 +1015,7 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
 
 /// Naive plural normalization: strip trailing 's' if the word is long enough.
 fn normalize_plural(word: &str) -> &str {
-    if word.len() > 3 && word.ends_with('s') {
+    if word.len() >= MIN_PLURAL_WORD_CHARS && word.ends_with('s') {
         &word[..word.len() - 1]
     } else {
         word
@@ -990,7 +1028,11 @@ fn idf_weight(segment: &str, segment_df: &HashMap<String, usize>, total_tables: 
     let df = segment_df.get(segment).copied().unwrap_or(1).max(1);
     let raw_idf = (total_tables as f64 / df as f64).ln();
     // Normalize: cap at a reasonable max so IDF doesn't blow up scores
-    raw_idf.clamp(0.0, 5.0) / 5.0
+    raw_idf.clamp(0.0, MAX_RAW_IDF) / MAX_RAW_IDF
+}
+
+fn token_length_factor(token: &str) -> f64 {
+    (token.len() as f64 / FULL_WEIGHT_TOKEN_CHARS).min(1.0)
 }
 
 fn lexical_score_for_table(
@@ -1030,7 +1072,7 @@ fn lexical_score_for_table(
             } else {
                 idf_weight(token, segment_df, total_tables)
             };
-            let len_factor = (token.len() as f64 / 4.0).min(1.0);
+            let len_factor = token_length_factor(token);
             let score = IDENTIFIER_EXACT_MATCH_SCORE * quality * idf * len_factor;
             if score > best_fuzzy_score {
                 best_fuzzy_score = score;
@@ -1046,7 +1088,7 @@ fn lexical_score_for_table(
             } else {
                 idf_weight(&candidate.table_name, segment_df, total_tables)
             };
-            let len_factor = (candidate.table_name.len() as f64 / 4.0).min(1.0);
+            let len_factor = token_length_factor(&candidate.table_name);
             let score = DIRECT_TABLE_SEGMENT_MATCH_SCORE * quality * idf * len_factor;
             if score > best_fuzzy_score {
                 best_fuzzy_score = score;
@@ -1063,7 +1105,7 @@ fn lexical_score_for_table(
                 } else {
                     idf_weight(&candidate.table_name, segment_df, total_tables)
                 };
-                let len_factor = (candidate.table_name.len() as f64 / 4.0).min(1.0);
+                let len_factor = token_length_factor(&candidate.table_name);
                 return DIRECT_TABLE_SEGMENT_MATCH_SCORE * idf * len_factor;
             }
         }
@@ -1075,7 +1117,7 @@ fn lexical_score_for_table(
                 } else {
                     idf_weight(token, segment_df, total_tables)
                 };
-                let len_factor = (token.len() as f64 / 4.0).min(1.0);
+                let len_factor = token_length_factor(token);
                 return IDENTIFIER_SEGMENT_MATCH_SCORE * idf * len_factor;
             }
         }

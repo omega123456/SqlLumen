@@ -120,7 +120,7 @@ export interface CellClipboardEditArgs {
 
 export interface AutoSizeConfig {
   enabled: boolean
-  computeWidth: (col: GridColumnDescriptor, rows: readonly Record<string, unknown>[]) => number
+  computeWidth: (column: GridColumnDescriptor, rows: readonly Record<string, unknown>[]) => number
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ export interface BaseGridViewProps {
   getRowClass?: (row: Record<string, unknown>) => string | undefined
   selectedRowIndex?: number | null
   selectedCellPosition?: GridCellPosition | null
-  onSelectedCellChange?: (pos: GridCellPosition) => void
+  onSelectedCellChange?: (position: GridCellPosition) => void
   selectedRowClassName?: string
   isModifiedCell?: (rowData: Record<string, unknown>, columnKey: string) => boolean
   applyReadOnlyCellStyles?: boolean
@@ -165,9 +165,9 @@ export interface BaseGridViewProps {
   testId?: string
   isEditMode?: boolean
   editableColumnKeys?: ReadonlySet<string>
-  onCellValueChange?: (rowIdx: number, columnKey: string, newValue: unknown) => void
-  onRowChanging?: (fromRowIdx: number, toRowIdx: number) => Promise<boolean>
-  onScrollCellChange?: (scrollRow: number, scrollCol: number) => void
+  onCellValueChange?: (rowIndex: number, columnKey: string, newValue: unknown) => void
+  onRowChanging?: (fromRowIndex: number, toRowIndex: number) => Promise<boolean>
+  onScrollCellChange?: (scrollRow: number, scrollColumn: number) => void
   initialScrollCell?: { scrollRow: number; scrollCol: number }
   scrollToRowIndex?: number | null
   onFkCellAction?: (args: CellClickGuardArgs) => void | Promise<void>

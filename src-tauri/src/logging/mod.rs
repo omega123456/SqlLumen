@@ -42,8 +42,8 @@ fn env_filter_from_rust_log() -> Option<EnvFilter> {
 }
 
 /// Parse a `log.level` setting value into an `EnvFilter` (with `sqlx=warn`).
-pub fn parse_log_level_setting(s: &str) -> Option<EnvFilter> {
-    let level = s.trim().to_lowercase();
+pub fn parse_log_level_setting(setting: &str) -> Option<EnvFilter> {
+    let level = setting.trim().to_lowercase();
     let directive = match level.as_str() {
         "trace" => "trace,sqlx=warn",
         "debug" => "debug,sqlx=warn",
@@ -64,10 +64,10 @@ pub fn apply_log_level_from_settings(conn: &rusqlite::Connection, handle: &LogFi
         return;
     };
     if let Some(filter) = parse_log_level_setting(&raw) {
-        if let Err(e) = handle.reload(filter) {
+        if let Err(error) = handle.reload(filter) {
             tracing::warn!(
                 target: "sqllumen_lib::logging",
-                "failed to reload log filter from settings: {e}"
+                "failed to reload log filter from settings: {error}"
             );
         }
     }
@@ -78,14 +78,14 @@ pub fn reload_log_level_from_setting_value(handle: Option<&LogFilterReloadHandle
     if std::env::var("RUST_LOG").is_ok() {
         return;
     }
-    let Some(h) = handle else {
+    let Some(reload_handle) = handle else {
         return;
     };
     if let Some(filter) = parse_log_level_setting(value) {
-        if let Err(e) = h.reload(filter) {
+        if let Err(error) = reload_handle.reload(filter) {
             tracing::warn!(
                 target: "sqllumen_lib::logging",
-                "failed to reload log filter: {e}"
+                "failed to reload log filter: {error}"
             );
         }
     }
@@ -146,7 +146,7 @@ where
 {
     fn format_event(
         &self,
-        ctx: &FmtContext<'_, S, N>,
+        context: &FmtContext<'_, S, N>,
         mut writer: Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> std::fmt::Result {
@@ -162,7 +162,7 @@ where
         } else {
             write!(writer, "[{}] ", level.as_str())?;
         }
-        self.inner.format_event(ctx, writer, event)
+        self.inner.format_event(context, writer, event)
     }
 }
 

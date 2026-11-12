@@ -43,12 +43,12 @@ const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
 ]
 
 /** Check if two bindings are the same key combo. */
-function bindingsMatch(a: ShortcutBinding, b: ShortcutBinding): boolean {
-  if (a.key.toLowerCase() !== b.key.toLowerCase()) return false
-  const aMods = [...a.modifiers].sort()
-  const bMods = [...b.modifiers].sort()
-  if (aMods.length !== bMods.length) return false
-  return aMods.every((m, i) => m === bMods[i])
+function bindingsMatch(left: ShortcutBinding, right: ShortcutBinding): boolean {
+  if (left.key.toLowerCase() !== right.key.toLowerCase()) return false
+  const leftModifiers = [...left.modifiers].sort()
+  const rightModifiers = [...right.modifiers].sort()
+  if (leftModifiers.length !== rightModifiers.length) return false
+  return leftModifiers.every((modifier, index) => modifier === rightModifiers[index])
 }
 
 /** Find an action ID that already uses a given binding (excluding `excludeActionId`). */
@@ -96,9 +96,9 @@ function parsePendingShortcuts(
 }
 
 export function ShortcutsSettings() {
-  const liveShortcuts = useShortcutStore((s) => s.shortcuts)
-  const setPendingChange = useSettingsStore((s) => s.setPendingChange)
-  const pendingShortcuts = useSettingsStore((s) => s.pendingChanges['shortcuts'])
+  const liveShortcuts = useShortcutStore((state) => state.shortcuts)
+  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+  const pendingShortcuts = useSettingsStore((state) => state.pendingChanges['shortcuts'])
 
   const [workingShortcuts, setWorkingShortcuts] = useState<Record<string, ShortcutBinding>>(
     () => parsePendingShortcuts(pendingShortcuts) ?? { ...liveShortcuts }
@@ -187,26 +187,26 @@ export function ShortcutsSettings() {
 
   /** Handle keydown events during recording. */
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
+    (event: KeyboardEvent) => {
       if (!recordingActionId) return
 
       // Ignore lone modifier presses
-      if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) return
 
-      e.preventDefault()
-      e.stopPropagation()
+      event.preventDefault()
+      event.stopPropagation()
 
-      if (e.key === 'Escape') {
+      if (event.key === 'Escape') {
         cancelRecording()
         return
       }
 
       const modifiers: string[] = []
-      if (e.ctrlKey || e.metaKey) modifiers.push('ctrl')
-      if (e.shiftKey) modifiers.push('shift')
-      if (e.altKey) modifiers.push('alt')
+      if (event.ctrlKey || event.metaKey) modifiers.push('ctrl')
+      if (event.shiftKey) modifiers.push('shift')
+      if (event.altKey) modifiers.push('alt')
 
-      const binding: ShortcutBinding = { key: e.key, modifiers }
+      const binding: ShortcutBinding = { key: event.key, modifiers: modifiers }
       finishRecording(recordingActionId, binding)
     },
     [recordingActionId, cancelRecording, finishRecording]
@@ -227,10 +227,10 @@ export function ShortcutsSettings() {
     const def = DEFAULT_SHORTCUTS[actionId]
     if (!current || !def) return false
     if (current.key.toLowerCase() !== def.key.toLowerCase()) return true
-    const cMods = [...current.modifiers].sort()
-    const dMods = [...def.modifiers].sort()
-    if (cMods.length !== dMods.length) return true
-    return !cMods.every((m, i) => m === dMods[i])
+    const currentModifiers = [...current.modifiers].sort()
+    const defaultModifiers = [...def.modifiers].sort()
+    if (currentModifiers.length !== defaultModifiers.length) return true
+    return !currentModifiers.every((modifier, index) => modifier === defaultModifiers[index])
   }
 
   return (

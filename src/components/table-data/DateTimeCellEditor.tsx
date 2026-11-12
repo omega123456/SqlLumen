@@ -44,8 +44,8 @@ import styles from '../shared/BaseGridView.module.css'
 
 export default function DateTimeCellEditor(props: CellEditorParams & CellEditorCallbacks) {
   const { onClose } = props
-  const col = props.columnMeta
-  const temporalType: TemporalColumnType = getTemporalColumnType(col.dataType)
+  const column = props.columnMeta
+  const temporalType: TemporalColumnType = getTemporalColumnType(column.dataType)
 
   // Split props into editor params and callbacks for useCellEditor
   const editorParams: CellEditorParams = {
@@ -78,7 +78,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   const [pickerOpen, setPickerOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const pickerPopupRef = useRef<HTMLDivElement>(null)
-  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null)
+  const [anchorElement, setAnchorElement] = useState<HTMLDivElement | null>(null)
 
   // -----------------------------------------------------------------------
   // Focus management: attach a mousedown handler to the portal that calls
@@ -91,22 +91,22 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   useEffect(() => {
     if (!pickerOpen) return
 
-    const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
       const focusableSelector = 'input, button, select, textarea, [tabindex]:not([tabindex="-1"])'
       const isFocusable = target.matches(focusableSelector) || !!target.closest(focusableSelector)
       if (!isFocusable) {
-        e.preventDefault() // Keep focus on cell editor input
+        event.preventDefault() // Keep focus on cell editor input
       }
     }
 
-    const portalEl = pickerPopupRef.current
-    if (!portalEl) return
+    const portalElement = pickerPopupRef.current
+    if (!portalElement) return
 
-    portalEl.addEventListener('mousedown', handleMouseDown)
+    portalElement.addEventListener('mousedown', handleMouseDown)
 
     return () => {
-      portalEl.removeEventListener('mousedown', handleMouseDown)
+      portalElement.removeEventListener('mousedown', handleMouseDown)
     }
   }, [pickerOpen])
 
@@ -141,13 +141,13 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   }, [baseHandleToggleNull, isNull])
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') {
+    (event: React.KeyboardEvent) => {
+      if (event.key === 'Escape') {
         if (pickerOpen) {
           // First Escape: just close the picker, keep cell editing active.
           // stopPropagation prevents the DateTimePicker's document-level Escape
           // handler from also firing.
-          e.stopPropagation()
+          event.stopPropagation()
           setPickerOpen(false)
         } else {
           // Picker already closed (or was never open): cancel the cell edit
@@ -158,13 +158,13 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
         }
         return
       }
-      if (e.key === 'Tab' || e.key === 'Enter') {
+      if (event.key === 'Tab' || event.key === 'Enter') {
         // Commit and focus grid for navigation
         const fieldName = props.column.key
         const committedValue = isNull ? null : value
         props.onRowChange({ ...props.row, [fieldName]: committedValue }, true)
         props.onClose(true, true)
-        e.preventDefault()
+        event.preventDefault()
         return
       }
     },
@@ -172,8 +172,8 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   )
 
   const handlePickerApply = useCallback(
-    (val: string) => {
-      handleChange(val)
+    (value: string) => {
+      handleChange(value)
       setPickerOpen(false)
       onClose(true, false)
     },
@@ -215,7 +215,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   const IconComponent = temporalType === 'TIME' ? Clock : CalendarBlank
   const handleContainerRef = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node
-    setAnchorEl((current) => (current === node ? current : node))
+    setAnchorElement((current) => (current === node ? current : node))
   }, [])
 
   return (
@@ -230,8 +230,8 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
           variant="gridCell"
           className={sharedStyles.editorInput}
           value={displayValue}
-          onChange={(e) => handleChange(e.target.value)}
-          onBlur={(e) => handleInputBlur(e.relatedTarget)}
+          onChange={(event) => handleChange(event.target.value)}
+          onBlur={(event) => handleInputBlur(event.relatedTarget)}
           onKeyDown={handleKeyDown}
         />
       </div>
@@ -240,7 +240,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
           <Button
             variant="bare"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(event) => event.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
@@ -250,7 +250,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
         <Button
           variant="bare"
           className={styles.calendarBtn}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseDown={(event) => event.preventDefault()}
           onClick={handleCalendarClick}
           disabled={isNull}
           tabIndex={-1}
@@ -266,7 +266,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
           value={value}
           columnType={temporalType}
           disabled={isNull}
-          anchorEl={anchorEl}
+          anchorEl={anchorElement}
           popupRef={pickerPopupRef}
           onApply={handlePickerApply}
           onCancel={handlePickerCancel}

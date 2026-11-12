@@ -47,7 +47,7 @@ impl<S> Layer<S> for SqliteLogLayer
 where
     S: Subscriber,
 {
-    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+    fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
         let metadata = event.metadata();
         if metadata.target() == SQLITE_LAYER_TARGET {
             return;

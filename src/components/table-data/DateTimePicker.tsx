@@ -16,6 +16,7 @@ import DatePicker from 'react-datepicker'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { parseMysqlDate, formatMysqlDate, type TemporalColumnType } from '../../lib/date-utils'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
+import { HOURS_PER_DAY, MINUTES_PER_HOUR, SECONDS_PER_MINUTE } from '../../lib/units'
 import { TextInput } from '../common/TextInput'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { Button } from '../common/Button'
@@ -30,6 +31,9 @@ const POPUP_WIDTH_PX = 300
 const ANCHOR_GAP_PX = 4
 const VIEWPORT_EDGE_MARGIN_PX = 8
 const MINIMUM_LEFT_PX = 4
+const LAST_HOUR_OF_DAY = HOURS_PER_DAY - 1
+const LAST_MINUTE_OF_HOUR = MINUTES_PER_HOUR - 1
+const LAST_SECOND_OF_MINUTE = SECONDS_PER_MINUTE - 1
 
 interface PopupPosition {
   top: number
@@ -72,7 +76,14 @@ function parseTimeInput(input: string): { hours: number; minutes: number; second
   const hours = parseInt(match[1], 10)
   const minutes = parseInt(match[2], 10)
   const seconds = parseInt(match[3], 10)
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59 || seconds < 0 || seconds > 59) {
+  if (
+    hours < 0 ||
+    hours > LAST_HOUR_OF_DAY ||
+    minutes < 0 ||
+    minutes > LAST_MINUTE_OF_HOUR ||
+    seconds < 0 ||
+    seconds > LAST_SECOND_OF_MINUTE
+  ) {
     return null
   }
   return { hours, minutes, seconds }
@@ -107,8 +118,8 @@ function popupLeft(anchorRect: DOMRect): number {
   return Math.max(left, MINIMUM_LEFT_PX)
 }
 
-function computePopupPosition(anchorEl: HTMLElement): PopupPosition {
-  const anchorRect = anchorEl.getBoundingClientRect()
+function computePopupPosition(anchorElement: HTMLElement): PopupPosition {
+  const anchorRect = anchorElement.getBoundingClientRect()
   const flipUp = shouldFlipAbove(anchorRect)
   return { top: popupTop(anchorRect, flipUp), left: popupLeft(anchorRect), flipUp: flipUp }
 }
@@ -265,9 +276,9 @@ export function DateTimePicker({
   useEffect(() => {
     if (disabled) return
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
         onCancel()
       }
     }
@@ -310,11 +321,11 @@ export function DateTimePicker({
   )
 
   const handleTimeInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = e.target.value
-      setTimeInput(val)
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const value = event.target.value
+      setTimeInput(value)
 
-      const parsed = parseTimeInput(val)
+      const parsed = parseTimeInput(value)
       if (parsed) {
         const newDate = localDate ? new Date(localDate) : new Date()
         newDate.setHours(parsed.hours, parsed.minutes, parsed.seconds)

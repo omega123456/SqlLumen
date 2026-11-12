@@ -43,9 +43,9 @@ export function useFetchModels(url: string): UseFetchModelsResult {
       } else {
         setModels(result.models)
       }
-    } catch (err) {
+    } catch (error) {
       if (thisRequest !== fetchCounterRef.current) return // stale
-      setError(err instanceof Error ? err.message : 'Failed to fetch models')
+      setError(error instanceof Error ? error.message : 'Failed to fetch models')
     } finally {
       if (thisRequest === fetchCounterRef.current) {
         setLoading(false)

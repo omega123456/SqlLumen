@@ -57,14 +57,15 @@ fn lock_logs_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> 
 pub fn list_logs_impl(state: &AppState, page: i64, level: &str) -> Result<LogPage, String> {
     let filter = LogLevelFilter::parse(level)?;
     let conn = lock_logs_db(state)?;
-    log_store::list_logs(&conn, page, filter.threshold(), Utc::now()).map_err(|e| e.to_string())
+    log_store::list_logs(&conn, page, filter.threshold(), Utc::now())
+        .map_err(|error| error.to_string())
 }
 
 fn write_exported_logs_csv(
     file_path: &str,
     exported: &[log_store::LogEntry],
 ) -> Result<i64, String> {
-    let mut file = File::create(file_path).map_err(|e| e.to_string())?;
+    let mut file = File::create(file_path).map_err(|error| error.to_string())?;
     let columns = vec![
         "timestamp".to_string(),
         "level".to_string(),
@@ -80,7 +81,7 @@ fn write_exported_logs_csv(
             ]
         })
         .collect::<Vec<_>>();
-    write_csv(&mut file, &columns, &rows, true).map_err(|e| e.to_string())?;
+    write_csv(&mut file, &columns, &rows, true).map_err(|error| error.to_string())?;
 
     i64::try_from(exported.len()).map_err(|_| "exported row count overflow".to_string())
 }
@@ -95,7 +96,7 @@ pub fn export_logs_impl(
     let exported = {
         let conn = lock_logs_db(state)?;
         log_store::export_logs_in_range(&conn, &range.start_timestamp, &range.end_timestamp)
-            .map_err(|e| e.to_string())?
+            .map_err(|error| error.to_string())?
     };
 
     write_exported_logs_csv(file_path, &exported)
@@ -114,11 +115,11 @@ pub async fn list_logs(
     // `logs_db` is a single shared connection, so this lock serializes against log
     // ingestion for the duration of the query.
     tauri::async_runtime::spawn_blocking(move || {
-        let conn = logs_db.lock().map_err(|e| e.to_string())?;
-        log_store::list_logs(&conn, page, threshold, Utc::now()).map_err(|e| e.to_string())
+        let conn = logs_db.lock().map_err(|error| error.to_string())?;
+        log_store::list_logs(&conn, page, threshold, Utc::now()).map_err(|error| error.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(not(coverage))]
@@ -133,14 +134,14 @@ pub async fn export_logs(
     let logs_db = std::sync::Arc::clone(&state.logs_db);
     tauri::async_runtime::spawn_blocking(move || {
         let exported = {
-            let conn = logs_db.lock().map_err(|e| e.to_string())?;
+            let conn = logs_db.lock().map_err(|error| error.to_string())?;
             log_store::export_logs_in_range(&conn, &range.start_timestamp, &range.end_timestamp)
-                .map_err(|e| e.to_string())?
+                .map_err(|error| error.to_string())?
         };
         write_exported_logs_csv(&file_path, &exported)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|error| error.to_string())?
 }
 
 struct ExportRange {

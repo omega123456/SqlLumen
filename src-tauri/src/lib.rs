@@ -1,3 +1,5 @@
+#![warn(clippy::min_ident_chars)]
+
 pub mod ai;
 pub mod ai_memory;
 pub mod commands;
@@ -63,7 +65,7 @@ pub fn init_sqlite_vec() {
 pub fn resolved_app_data_dir(base: &Path) -> PathBuf {
     #[cfg(debug_assertions)]
     {
-        match base.file_name().and_then(|n| n.to_str()) {
+        match base.file_name().and_then(|name| name.to_str()) {
             Some(name) => base.with_file_name(format!("{name}-dev")),
             None => base.to_path_buf(),
         }
@@ -82,10 +84,10 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     init_sqlite_vec();
 
     let db_path = app_data_dir.join("sqllumen.db");
-    let mut conn =
-        open_database(db_path).map_err(|e| format!("failed to open SQLite database: {e}"))?;
-    let applied =
-        run_migrations(&mut conn).map_err(|e| format!("failed to run database migrations: {e}"))?;
+    let mut conn = open_database(db_path)
+        .map_err(|error| format!("failed to open SQLite database: {error}"))?;
+    let applied = run_migrations(&mut conn)
+        .map_err(|error| format!("failed to run database migrations: {error}"))?;
 
     // When the cascade-cleanup migration is first applied it rebuilds several
     // large tables, leaving freed pages behind. Reclaim that disk space with a
@@ -93,8 +95,8 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     // runner wraps each migration in one, so it must run here, after the loop.
     if applied.contains(&MIGRATION_CONNECTION_CASCADE_CLEANUP) {
         tracing::info!("migration 013 newly applied; running one-time VACUUM to reclaim space");
-        if let Err(e) = conn.execute_batch("VACUUM;") {
-            tracing::error!(error = ?e, "one-time VACUUM after migration 013 failed");
+        if let Err(error) = conn.execute_batch("VACUUM;") {
+            tracing::error!(error = ?error, "one-time VACUUM after migration 013 failed");
         }
     }
 
@@ -115,7 +117,7 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     // FK-off). PRAGMA foreign_keys is a no-op inside a transaction, so it is set
     // here, outside any transaction.
     conn.execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(|e| format!("failed to enable foreign key enforcement: {e}"))?;
+        .map_err(|error| format!("failed to enable foreign key enforcement: {error}"))?;
 
     Ok(conn)
 }
@@ -138,13 +140,13 @@ async fn run_vacuum_pass(
             .as_secs();
         match handle.lock() {
             Ok(conn) => {
-                if let Err(e) = crate::db::vacuum::vacuum_if_stale(&conn, now) {
-                    tracing::warn!(error = ?e, db = db_label, "incremental vacuum failed");
+                if let Err(error) = crate::db::vacuum::vacuum_if_stale(&conn, now) {
+                    tracing::warn!(error = ?error, db = db_label, "incremental vacuum failed");
                 }
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
-                    error = %e,
+                    error = %error,
                     db = db_label,
                     "failed to acquire db lock for incremental vacuum"
                 );
@@ -153,8 +155,8 @@ async fn run_vacuum_pass(
     })
     .await;
 
-    if let Err(e) = join_result {
-        tracing::warn!(error = %e, db = db_label, "vacuum maintenance task failed");
+    if let Err(error) = join_result {
+        tracing::warn!(error = %error, db = db_label, "vacuum maintenance task failed");
     }
 }
 
@@ -255,15 +257,15 @@ pub fn run() {
             // the log-writer thread opens its own connection, so migrations and
             // the conversion happen exactly once with no cross-connection race.
             let logs_conn = crate::logging::log_store::initialize_log_database(&log_db_path)
-                .map_err(|e| -> Box<dyn std::error::Error> {
-                    format!("failed to initialize log database: {e}").into()
+                .map_err(|error| -> Box<dyn std::error::Error> {
+                    format!("failed to initialize log database: {error}").into()
                 })?;
 
             let logging_init = crate::logging::init_logging(&log_db_path)
-                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
 
             let conn = initialize_database(&dir)
-                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
 
             if !logging_init.rust_log_env_set {
                 crate::logging::apply_log_level_from_settings(&conn, &logging_init.filter_reload);
@@ -273,16 +275,16 @@ pub fn run() {
             let cache_ttl_secs: u64 = crate::db::settings::get_setting(&conn, "results.cacheTTL")
                 .ok()
                 .flatten()
-                .and_then(|v| v.parse::<u64>().ok())
+                .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(1800);
 
             let spill_dir = resolved_app_data_dir(&base).join("sqllumen-spill");
 
             // Startup cleanup: wipe leftover spill files from previous sessions
             if spill_dir.exists() {
-                if let Err(e) = std::fs::remove_dir_all(&spill_dir) {
+                if let Err(error) = std::fs::remove_dir_all(&spill_dir) {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         path = %spill_dir.display(),
                         "failed to clean up spill directory on startup"
                     );
@@ -317,9 +319,9 @@ pub fn run() {
                         })
                         .await;
 
-                        if let Err(e) = join_result {
+                        if let Err(error) = join_result {
                             tracing::warn!(
-                                error = %e,
+                                error = %error,
                                 "cache maintenance task failed"
                             );
                         }
@@ -383,17 +385,17 @@ pub fn run() {
                                 );
                             }
                             Ok(_) => {} // nothing to prune
-                            Err(e) => {
+                            Err(error) => {
                                 tracing::warn!(
-                                    error = %e,
+                                    error = %error,
                                     "failed to prune history on startup"
                                 );
                             }
                         }
                     }
-                    Err(e) => {
+                    Err(error) => {
                         tracing::warn!(
-                            error = %e,
+                            error = %error,
                             "failed to acquire db lock for history pruning"
                         );
                     }

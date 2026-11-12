@@ -12,11 +12,11 @@ pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
         None => Ok(None),
         Some(json_value) => serde_json::from_str::<String>(&json_value)
             .map(Some)
-            .map_err(|e| {
+            .map_err(|error| {
                 rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
-                    Box::new(e),
+                    Box::new(error),
                 )
             }),
     })
@@ -45,8 +45,12 @@ pub fn get_all_settings(conn: &Connection) -> Result<HashMap<String, String>> {
     let mut map = HashMap::new();
     for row in rows {
         let (key, json_value) = row?;
-        let value: String = serde_json::from_str(&json_value).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
+        let value: String = serde_json::from_str(&json_value).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
         })?;
         map.insert(key, value);
     }

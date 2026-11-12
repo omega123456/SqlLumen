@@ -25,11 +25,11 @@ pub fn log_sqlx_describe(sql: &str) {
     tracing::debug!(target: TARGET, %sql, "mysql sqlx describe (column metadata)");
 }
 
-fn format_cell(row: &MySqlRow, i: usize) -> String {
-    let type_name = row.column(i).type_info().name().to_uppercase();
-    let raw_value = match row.try_get_raw(i) {
+fn format_cell(row: &MySqlRow, column_index: usize) -> String {
+    let type_name = row.column(column_index).type_info().name().to_uppercase();
+    let raw_value = match row.try_get_raw(column_index) {
         Ok(value) => value,
-        Err(e) => return format!("<decode_error: {e}>"),
+        Err(error) => return format!("<decode_error: {error}>"),
     };
 
     if raw_value.is_null() {
@@ -37,31 +37,31 @@ fn format_cell(row: &MySqlRow, i: usize) -> String {
     }
 
     if crate::mysql::sqlx_type_names::is_sqlx_integer_type_name(&type_name) {
-        if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
-            return format!("{v:?}");
+        if let Ok(value) = row.try_get::<Option<i64>, _>(column_index) {
+            return format!("{value:?}");
         }
-        if let Ok(v) = row.try_get::<Option<u64>, _>(i) {
-            return format!("{v:?}");
+        if let Ok(value) = row.try_get::<Option<u64>, _>(column_index) {
+            return format!("{value:?}");
         }
-        if let Ok(v) = row.try_get::<Option<String>, _>(i) {
-            return format!("{v:?}");
+        if let Ok(value) = row.try_get::<Option<String>, _>(column_index) {
+            return format!("{value:?}");
         }
     }
 
     if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
-        if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
-            return format!("{v:?}");
+        if let Ok(value) = row.try_get::<Option<f64>, _>(column_index) {
+            return format!("{value:?}");
         }
     }
 
     if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
-        if let Ok(v) = row.try_get::<Option<String>, _>(i) {
-            return format!("{v:?}");
+        if let Ok(value) = row.try_get::<Option<String>, _>(column_index) {
+            return format!("{value:?}");
         }
-        if let Some(v) =
-            decode_unchecked_string(row, i).or_else(|| decode_raw_string(raw_value.clone()))
+        if let Some(value) = decode_unchecked_string(row, column_index)
+            .or_else(|| decode_raw_string(raw_value.clone()))
         {
-            return format!("Some({v:?})");
+            return format!("Some({value:?})");
         }
     }
 
@@ -69,29 +69,32 @@ fn format_cell(row: &MySqlRow, i: usize) -> String {
         type_name.as_str(),
         "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
     ) {
-        if let Some(v) = decode_temporal_debug_value(raw_value) {
-            return format!("Some({v:?})");
+        if let Some(value) = decode_temporal_debug_value(raw_value) {
+            return format!("Some({value:?})");
         }
     }
 
     if type_name.contains("BLOB") || type_name == "BINARY" || type_name == "VARBINARY" {
-        if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
-            return format!("bytes(len={})", v.as_ref().map(|b| b.len()).unwrap_or(0));
+        if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
+            return format!(
+                "bytes(len={})",
+                value.as_ref().map(|bytes| bytes.len()).unwrap_or(0)
+            );
         }
     }
 
-    match row.try_get::<Option<String>, _>(i) {
-        Ok(v) => format!("{v:?}"),
-        Err(e) => format!("<decode_error: {e}>"),
+    match row.try_get::<Option<String>, _>(column_index) {
+        Ok(value) => format!("{value:?}"),
+        Err(error) => format!("<decode_error: {error}>"),
     }
 }
 
-fn decode_unchecked_string(row: &MySqlRow, i: usize) -> Option<String> {
-    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(i) {
+fn decode_unchecked_string(row: &MySqlRow, column_index: usize) -> Option<String> {
+    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(column_index) {
         return value;
     }
 
-    row.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+    row.try_get_unchecked::<Option<Vec<u8>>, _>(column_index)
         .ok()
         .flatten()
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -114,23 +117,23 @@ fn decode_temporal_debug_value(value: sqlx::mysql::MySqlValueRef<'_>) -> Option<
     use sqlx::mysql::types::MySqlTime;
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<NaiveDateTime>() {
-        return Some(v.to_string());
+    if let Ok(value) = owned.try_decode::<NaiveDateTime>() {
+        return Some(value.to_string());
     }
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<DateTime<Utc>>() {
-        return Some(v.naive_utc().to_string());
+    if let Ok(value) = owned.try_decode::<DateTime<Utc>>() {
+        return Some(value.naive_utc().to_string());
     }
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<NaiveDate>() {
-        return Some(v.to_string());
+    if let Ok(value) = owned.try_decode::<NaiveDate>() {
+        return Some(value.to_string());
     }
 
     let owned = sqlx::ValueRef::to_owned(&value);
-    if let Ok(v) = owned.try_decode::<MySqlTime>() {
-        return Some(format_mysql_time(v));
+    if let Ok(value) = owned.try_decode::<MySqlTime>() {
+        return Some(format_mysql_time(value));
     }
 
     sqlx::ValueRef::to_owned(&value).try_decode::<String>().ok()
@@ -158,10 +161,10 @@ fn format_mysql_time(value: sqlx::mysql::types::MySqlTime) -> String {
 
 fn format_mysql_row(row: &MySqlRow) -> String {
     let mut parts = Vec::new();
-    for i in 0..row.len() {
-        let name = row.column(i).name();
-        let val = format_cell(row, i);
-        parts.push(format!("{name}={val}"));
+    for column_index in 0..row.len() {
+        let name = row.column(column_index).name();
+        let value = format_cell(row, column_index);
+        parts.push(format!("{name}={value}"));
     }
     parts.join(", ")
 }
@@ -171,9 +174,9 @@ pub fn log_mysql_rows(rows: &[MySqlRow]) {
         return;
     }
     tracing::debug!(target: TARGET, row_count = rows.len(), "mysql result rows (pre-serialize)");
-    for (i, row) in rows.iter().enumerate() {
-        let s = format_mysql_row(row);
-        tracing::debug!(target: TARGET, row_index = i, row = %s, "mysql row");
+    for (row_index, row) in rows.iter().enumerate() {
+        let formatted = format_mysql_row(row);
+        tracing::debug!(target: TARGET, row_index = row_index, row = %formatted, "mysql row");
     }
 }
 
@@ -182,19 +185,19 @@ pub fn log_mysql_row(row: &MySqlRow) {
     log_mysql_rows(std::slice::from_ref(row));
 }
 
-pub fn log_execute_result(r: &sqlx::mysql::MySqlQueryResult) {
+pub fn log_execute_result(result: &sqlx::mysql::MySqlQueryResult) {
     tracing::debug!(
         target: TARGET,
-        rows_affected = r.rows_affected(),
-        last_insert_id = r.last_insert_id(),
+        rows_affected = result.rows_affected(),
+        last_insert_id = result.last_insert_id(),
         "mysql execute result",
     );
 }
 
-pub fn log_execute_error(e: &sqlx::Error) {
+pub fn log_execute_error(error: &sqlx::Error) {
     tracing::debug!(
         target: TARGET,
-        error = %e,
+        error = %error,
         "mysql execute error",
     );
 }
@@ -205,23 +208,23 @@ pub fn log_mysql_async_row(row_index: usize, row: &mysql_async::Row) {
     if !is_enabled() {
         return;
     }
-    let s = row
+    let formatted = row
         .columns_ref()
         .iter()
         .enumerate()
-        .map(|(idx, col)| {
-            let val = match row.as_ref(idx) {
+        .map(|(index, col)| {
+            let formatted_value = match row.as_ref(index) {
                 None | Some(mysql_async::Value::NULL) => "None".to_string(),
-                Some(mysql_async::Value::Bytes(b)) => {
-                    format!("Some({:?})", String::from_utf8_lossy(b))
+                Some(mysql_async::Value::Bytes(bytes)) => {
+                    format!("Some({:?})", String::from_utf8_lossy(bytes))
                 }
-                Some(v) => format!("Some({v:?})"),
+                Some(value) => format!("Some({value:?})"),
             };
-            format!("{}={val}", col.name_str())
+            format!("{}={formatted_value}", col.name_str())
         })
         .collect::<Vec<_>>()
         .join(", ");
-    tracing::debug!(target: TARGET, row_index, row = %s, "mysql row");
+    tracing::debug!(target: TARGET, row_index, row = %formatted, "mysql row");
 }
 
 /// Log the row count of a fully streamed `mysql_async` result set.
@@ -241,10 +244,10 @@ pub fn log_mysql_async_result(rows_affected: u64, last_insert_id: Option<u64>) {
     );
 }
 
-pub fn log_mysql_async_error(e: &mysql_async::Error) {
+pub fn log_mysql_async_error(error: &mysql_async::Error) {
     tracing::debug!(
         target: TARGET,
-        error = %e,
+        error = %error,
         "mysql execute error",
     );
 }

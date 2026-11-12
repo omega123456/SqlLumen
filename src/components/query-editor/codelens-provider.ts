@@ -33,8 +33,8 @@ import { useAiStore } from '../../stores/ai-store'
 export function offsetToLineNumber(text: string, offset: number): number {
   let line = 1
   const maxOffset = Math.min(offset, text.length)
-  for (let i = 0; i < maxOffset; i++) {
-    if (text[i] === '\n') line++
+  for (let index = 0; index < maxOffset; index++) {
+    if (text[index] === '\n') line++
   }
   return line
 }
@@ -45,8 +45,8 @@ export function offsetToLineNumber(text: string, offset: number): number {
 export function offsetToColumn(text: string, offset: number): number {
   let lastNewline = -1
   const maxOffset = Math.min(offset, text.length)
-  for (let i = 0; i < maxOffset; i++) {
-    if (text[i] === '\n') lastNewline = i
+  for (let index = 0; index < maxOffset; index++) {
+    if (text[index] === '\n') lastNewline = index
   }
   return offset - lastNewline
 }
@@ -62,7 +62,7 @@ export function offsetToColumn(text: string, offset: number): number {
 export function handleRunStatement(
   connectionId: string,
   tabId: string,
-  stmt: StatementRange
+  statement: StatementRange
 ): void {
   const queryState = useQueryStore.getState()
   const tabState = queryState.tabs[tabId]
@@ -75,7 +75,7 @@ export function handleRunStatement(
     return
   }
 
-  const sql = stmt.sql
+  const sql = statement.sql
   if (!sql.trim()) return
 
   queryState.requestNavigationAction(tabId, () => {
@@ -101,7 +101,7 @@ export function handleRunStatement(
 export function handleAskAi(
   _connectionId: string,
   tabId: string,
-  stmt: StatementRange,
+  statement: StatementRange,
   fullText: string
 ): void {
   const aiStore = useAiStore.getState()
@@ -115,25 +115,25 @@ export function handleAskAi(
   // covered by stmt.start..stmt.end.  This strips leading whitespace and
   // the trailing delimiter that splitStatements includes in the range but
   // NOT in stmt.sql.
-  const rawSegment = fullText.slice(stmt.start, stmt.end)
-  const sqlOffset = rawSegment.indexOf(stmt.sql)
-  const actualStart = stmt.start + (sqlOffset >= 0 ? sqlOffset : 0)
-  const actualEnd = actualStart + stmt.sql.length
+  const rawSegment = fullText.slice(statement.start, statement.end)
+  const sqlOffset = rawSegment.indexOf(statement.sql)
+  const actualStart = statement.start + (sqlOffset >= 0 ? sqlOffset : 0)
+  const actualEnd = actualStart + statement.sql.length
 
   // Compute the editor range for the statement
   const startLine = offsetToLineNumber(fullText, actualStart)
-  const startCol = offsetToColumn(fullText, actualStart)
+  const startColumn = offsetToColumn(fullText, actualStart)
   const endLine = offsetToLineNumber(fullText, actualEnd)
-  const endCol = offsetToColumn(fullText, actualEnd)
+  const endColumn = offsetToColumn(fullText, actualEnd)
 
   // Attach the statement as context
   aiStore.setAttachedContext(tabId, {
-    sql: stmt.sql,
+    sql: statement.sql,
     range: {
       startLineNumber: startLine,
-      startColumn: startCol,
+      startColumn: startColumn,
       endLineNumber: endLine,
-      endColumn: endCol,
+      endColumn: endColumn,
     },
   })
 }
@@ -152,10 +152,10 @@ export function provideCodeLenses(
   _unusedToken: CancellationToken
 ): monaco.languages.CodeLensList {
   void _unusedToken
-  const ctx = getModelContext(model.uri.toString())
+  const context = getModelContext(model.uri.toString())
 
   // No CodeLens in object-editor tabs or unregistered models
-  if (!ctx || ctx.tabType !== 'query-editor') {
+  if (!context || context.tabType !== 'query-editor') {
     return { lenses: [], dispose: () => {} }
   }
 
@@ -168,8 +168,8 @@ export function provideCodeLenses(
   const aiEnabled = useSettingsStore.getState().getSetting('ai.enabled') === 'true'
   const lenses: monaco.languages.CodeLens[] = []
 
-  for (const stmt of statements) {
-    const { lineNumber } = model.getPositionAt(stmt.start)
+  for (const statement of statements) {
+    const { lineNumber } = model.getPositionAt(statement.start)
     const lensRange = new monaco.Range(lineNumber, 1, lineNumber, 1)
 
     // "Run" CodeLens — always present
@@ -178,7 +178,7 @@ export function provideCodeLenses(
       command: {
         id: RUN_COMMAND_ID,
         title: '\u25B6 Run',
-        arguments: [ctx.connectionId, ctx.tabId, stmt],
+        arguments: [context.connectionId, context.tabId, statement],
       },
     })
 
@@ -189,13 +189,13 @@ export function provideCodeLenses(
         command: {
           id: ASK_AI_COMMAND_ID,
           title: '\u2726 Ask AI',
-          arguments: [ctx.connectionId, ctx.tabId, stmt, text],
+          arguments: [context.connectionId, context.tabId, statement, text],
         },
       })
     }
   }
 
-  return { lenses, dispose: () => {} }
+  return { lenses: lenses, dispose: () => {} }
 }
 
 // ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ const onDidChangeEmitter = new monaco.Emitter<monaco.languages.CodeLensProvider>
 
 const codeLensProvider: monaco.languages.CodeLensProvider = {
   onDidChange: onDidChangeEmitter.event,
-  provideCodeLenses,
+  provideCodeLenses: provideCodeLenses,
 }
 
 const disposable = monaco.languages.registerCodeLensProvider('mysql', codeLensProvider)
@@ -239,9 +239,9 @@ useSettingsStore.subscribe((state) => {
 
 monaco.editor.registerCommand(
   RUN_COMMAND_ID,
-  (_accessor: unknown, connectionId?: string, tabId?: string, stmt?: StatementRange) => {
-    if (connectionId && tabId && stmt) {
-      handleRunStatement(connectionId, tabId, stmt)
+  (_accessor: unknown, connectionId?: string, tabId?: string, statement?: StatementRange) => {
+    if (connectionId && tabId && statement) {
+      handleRunStatement(connectionId, tabId, statement)
     }
   }
 )
@@ -252,11 +252,11 @@ monaco.editor.registerCommand(
     _accessor: unknown,
     connectionId?: string,
     tabId?: string,
-    stmt?: StatementRange,
+    statement?: StatementRange,
     text?: string
   ) => {
-    if (connectionId && tabId && stmt && text) {
-      handleAskAi(connectionId, tabId, stmt, text)
+    if (connectionId && tabId && statement && text) {
+      handleAskAi(connectionId, tabId, statement, text)
     }
   }
 )

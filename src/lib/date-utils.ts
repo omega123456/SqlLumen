@@ -18,6 +18,8 @@ export type TemporalColumnType = 'DATE' | 'DATETIME' | 'TIMESTAMP' | 'TIME' | nu
 // Temporal configuration — single source of truth for format strings
 // ---------------------------------------------------------------------------
 
+const PARSE_REFERENCE_YEAR = 2000
+
 /** Configuration for a single MySQL temporal column type. */
 interface TemporalConfig {
   /** Human-readable format string (e.g., 'YYYY-MM-DD HH:mm:ss'). */
@@ -142,7 +144,7 @@ export function parseMysqlDate(value: string | null, type: TemporalColumnType): 
   if (type !== 'TIME' && isZeroDate(value)) return null
 
   const config = type !== null ? TEMPORAL_CONFIGS[type] : TEMPORAL_CONFIGS.DATETIME
-  const refDate = new Date(2000, 0, 1)
+  const referenceDate = new Date(PARSE_REFERENCE_YEAR, 0, 1)
 
   // Strip fractional seconds (e.g., ".123456"). The picker works at whole-second
   // precision; fractional seconds are truncated. Safe for all types — DATE values
@@ -150,8 +152,8 @@ export function parseMysqlDate(value: string | null, type: TemporalColumnType): 
   const cleaned = value.trim().replace(/\.\d+$/, '')
 
   // Try each parse format in order — first valid match wins.
-  for (const fmt of config.parseFormats) {
-    const parsed = parse(cleaned, fmt, refDate)
+  for (const parseFormat of config.parseFormats) {
+    const parsed = parse(cleaned, parseFormat, referenceDate)
     if (isValid(parsed)) return parsed
   }
 
@@ -170,8 +172,8 @@ export function formatMysqlDate(date: Date | null, type: TemporalColumnType): st
   if (date === null) return null
   if (!isValid(date)) return null
 
-  const formatStr = getMysqlFormatString(type)
-  return format(date, formatStr)
+  const formatPattern = getMysqlFormatString(type)
+  return format(date, formatPattern)
 }
 
 // ---------------------------------------------------------------------------
@@ -196,8 +198,8 @@ export function validateTemporalValue(
   // Try to parse — if parseMysqlDate returns null, it's invalid
   const parsed = parseMysqlDate(value, type)
   if (parsed === null) {
-    const formatStr = type ? TEMPORAL_CONFIGS[type].format : 'YYYY-MM-DD HH:mm:ss'
-    return `Invalid ${type ?? 'date'} value. Expected format: ${formatStr}`
+    const formatPattern = type ? TEMPORAL_CONFIGS[type].format : 'YYYY-MM-DD HH:mm:ss'
+    return `Invalid ${type ?? 'date'} value. Expected format: ${formatPattern}`
   }
   return null
 }

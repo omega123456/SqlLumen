@@ -44,8 +44,15 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat().format(value)
 }
 
+const SINGULAR_ROWS_WORD = 'row'
+const PLURAL_ROWS_WORD = 'rows'
+
 function rowsWord(count: number): string {
-  return count === 1 ? 'row' : 'rows'
+  return count === 1 ? SINGULAR_ROWS_WORD : PLURAL_ROWS_WORD
+}
+
+function totalRowsWord(input: RowCountInput): string {
+  return input.truncated ? PLURAL_ROWS_WORD : rowsWord(input.totalRows)
 }
 
 /** Split the row-count string into its count and trailing segment. */
@@ -53,19 +60,19 @@ export function formatRowCountParts(input: RowCountInput): RowCountParts {
   const total = `${formatCount(input.totalRows)}${input.truncated ? '+' : ''}`
   const count = input.isFiltered
     ? `${formatCount(input.viewRowCount)} of ${total} ${rowsWord(input.totalRows)}`
-    : `${total} ${rowsWord(input.truncated ? 2 : input.totalRows)}`
+    : `${total} ${totalRowsWord(input)}`
 
   if (input.truncated) {
-    return { count, segment: 'truncated', segmentKind: 'truncated' }
+    return { count: count, segment: 'truncated', segmentKind: 'truncated' }
   }
   if (input.autoLimitApplied && input.appliedRowLimit != null) {
     return {
-      count,
+      count: count,
       segment: `${formatCount(input.appliedRowLimit)}-row limit applied`,
       segmentKind: 'autoLimit',
     }
   }
-  return { count, segment: null, segmentKind: null }
+  return { count: count, segment: null, segmentKind: null }
 }
 
 /** "1,001–2,000"-style view-position range label (1-based, inclusive). */

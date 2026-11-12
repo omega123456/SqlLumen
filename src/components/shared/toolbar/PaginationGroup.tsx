@@ -17,7 +17,16 @@ import type {
 } from '../../../types/shared-data-view'
 import styles from './toolbar-items.module.css'
 
-const PAGE_SIZE_OPTIONS = [100, 500, 1000, 5000] as const
+const SMALL_PAGE_SIZE = 100
+const MEDIUM_PAGE_SIZE = 500
+const LARGE_PAGE_SIZE = 1000
+const HUGE_PAGE_SIZE = 5000
+const PAGE_SIZE_OPTIONS = [
+  SMALL_PAGE_SIZE,
+  MEDIUM_PAGE_SIZE,
+  LARGE_PAGE_SIZE,
+  HUGE_PAGE_SIZE,
+] as const
 
 export function PaginationGroup({
   currentPage,
@@ -51,7 +60,7 @@ export function PaginationGroup({
     [onPageSizeChange]
   )
 
-  const isPrevDisabled = disabled || currentPage <= 1
+  const isPreviousDisabled = disabled || currentPage <= 1
   const isNextDisabled =
     disabled || (paginationMode === 'known' ? currentPage >= knownTotalProps.totalPages : false)
 
@@ -88,7 +97,7 @@ export function PaginationGroup({
       <div className={styles.pagination}>
         {paginationMode === 'known' && showFirstLastButtons ? (
           <IconButton
-            disabled={isPrevDisabled}
+            disabled={isPreviousDisabled}
             onClick={() => knownTotalProps.onPageSubmit?.(1)}
             aria-label="First page"
             data-testid="pagination-first"
@@ -97,7 +106,7 @@ export function PaginationGroup({
           </IconButton>
         ) : null}
         <IconButton
-          disabled={isPrevDisabled}
+          disabled={isPreviousDisabled}
           onClick={onPrevPage}
           aria-label="Previous page"
           data-testid="pagination-prev"

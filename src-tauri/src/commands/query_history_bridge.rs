@@ -27,17 +27,17 @@ pub(crate) fn log_single_entry(db: &Arc<Mutex<Connection>>, entry: NewHistoryEnt
     tauri::async_runtime::spawn(async move {
         match db.lock() {
             Ok(conn) => {
-                if let Err(e) = history::insert_history(&conn, &entry) {
+                if let Err(error) = history::insert_history(&conn, &entry) {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         connection_id = %entry.connection_id,
                         "failed to insert query history entry"
                     );
                 }
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
-                    error = %e,
+                    error = %error,
                     "failed to acquire db lock for query history logging"
                 );
             }
@@ -78,17 +78,17 @@ pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHis
     tauri::async_runtime::spawn(async move {
         match db.lock() {
             Ok(conn) => {
-                if let Err(e) = history::insert_history_batch(&conn, &entries) {
+                if let Err(error) = history::insert_history_batch(&conn, &entries) {
                     tracing::warn!(
-                        error = %e,
+                        error = %error,
                         count = entries.len(),
                         "failed to batch-insert query history entries"
                     );
                 }
             }
-            Err(e) => {
+            Err(error) => {
                 tracing::warn!(
-                    error = %e,
+                    error = %error,
                     "failed to acquire db lock for batch query history logging"
                 );
             }
@@ -110,7 +110,7 @@ pub(crate) fn resolve_connection_context(
     let database_name = state
         .registry
         .get_connection_params(session_id)
-        .and_then(|p| p.default_database);
+        .and_then(|params| params.default_database);
     (connection_id, database_name)
 }
 
@@ -173,22 +173,22 @@ pub async fn execute_query_bridge(
     };
 
     match &result {
-        Ok(r) => {
+        Ok(result) => {
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
                     connection_id,
                     database_name,
                     sql_text: sql.to_string(),
-                    duration_ms: Some(r.total_time_ms as i64),
-                    row_count: Some(r.total_rows as i64),
-                    affected_rows: Some(r.affected_rows as i64),
+                    duration_ms: Some(result.total_time_ms as i64),
+                    row_count: Some(result.total_rows as i64),
+                    affected_rows: Some(result.affected_rows as i64),
                     success: true,
                     error_message: None,
                 },
             );
         }
-        Err(e) => {
+        Err(error) => {
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
@@ -199,7 +199,7 @@ pub async fn execute_query_bridge(
                     row_count: Some(0),
                     affected_rows: Some(0),
                     success: false,
-                    error_message: Some(e.clone()),
+                    error_message: Some(error.clone()),
                 },
             );
         }
@@ -257,7 +257,7 @@ pub async fn execute_multi_query_bridge(
                 .collect();
             log_batch_entries(&state.db, entries);
         }
-        Err(e) => {
+        Err(error) => {
             // Top-level error — we don't have per-statement results.
             // Log a single error entry with no SQL (we don't know which statement failed).
             log_single_entry(
@@ -270,7 +270,7 @@ pub async fn execute_multi_query_bridge(
                     row_count: Some(0),
                     affected_rows: Some(0),
                     success: false,
-                    error_message: Some(e.clone()),
+                    error_message: Some(error.clone()),
                 },
             );
         }
@@ -304,14 +304,22 @@ pub async fn execute_call_query_bridge(
     match &result {
         Ok(multi) => {
             // Aggregate: sum total time, total rows from all result sets.
-            let total_time: i64 = multi.results.iter().map(|r| r.total_time_ms as i64).sum();
-            let total_rows: i64 = multi.results.iter().map(|r| r.total_rows).sum();
-            let total_affected: i64 = multi.results.iter().map(|r| r.affected_rows as i64).sum();
-            let has_error = multi.results.iter().any(|r| r.error.is_some());
+            let total_time: i64 = multi
+                .results
+                .iter()
+                .map(|result| result.total_time_ms as i64)
+                .sum();
+            let total_rows: i64 = multi.results.iter().map(|result| result.total_rows).sum();
+            let total_affected: i64 = multi
+                .results
+                .iter()
+                .map(|result| result.affected_rows as i64)
+                .sum();
+            let has_error = multi.results.iter().any(|result| result.error.is_some());
             let error_msg = multi
                 .results
                 .iter()
-                .filter_map(|r| r.error.as_ref())
+                .filter_map(|result| result.error.as_ref())
                 .next()
                 .cloned();
 
@@ -329,7 +337,7 @@ pub async fn execute_call_query_bridge(
                 },
             );
         }
-        Err(e) => {
+        Err(error) => {
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
@@ -340,7 +348,7 @@ pub async fn execute_call_query_bridge(
                     row_count: Some(0),
                     affected_rows: Some(0),
                     success: false,
-                    error_message: Some(e.clone()),
+                    error_message: Some(error.clone()),
                 },
             );
         }

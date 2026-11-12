@@ -248,7 +248,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               options={engineDropdownOptions}
               value={properties.engine}
               data-testid="table-properties-engine"
-              onChange={(v) => handlePropertyChange('engine', v)}
+              onChange={(value) => handlePropertyChange('engine', value)}
               workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
@@ -266,7 +266,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               value={selectedCharset}
               disabled={isCharsetsLoading}
               data-testid="table-properties-charset"
-              onChange={(v) => handlePropertyChange('charset', v)}
+              onChange={(value) => handlePropertyChange('charset', value)}
               workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
@@ -286,7 +286,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               value={properties.collation}
               disabled={isCollationsLoading || !selectedCharset}
               data-testid="table-properties-collation"
-              onChange={(v) => handlePropertyChange('collation', v)}
+              onChange={(value) => handlePropertyChange('collation', value)}
               workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
@@ -322,7 +322,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               options={rowFormatDropdownOptions}
               value={properties.rowFormat}
               data-testid="table-properties-row-format"
-              onChange={(v) => handlePropertyChange('rowFormat', v)}
+              onChange={(value) => handlePropertyChange('rowFormat', value)}
               workspaceTabId={tabId}
               triggerClassName={styles.control}
             />

@@ -27,6 +27,7 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import { logFrontend } from '../../lib/app-log-commands'
 import styles from './CopyToHostDialog.module.css'
+import { PERCENT_SCALE } from '../../lib/units'
 
 // Skip focus management in deterministic test environments (Playwright + Vitest/jsdom) so the
 // focus trap's rAF-driven focus restoration cannot interfere with portalled dropdown interactions.
@@ -93,7 +94,7 @@ export interface CopyToHostDialogProps {
 /** Return the list of object names within a category from the loaded enumeration. */
 function categoryNames(objects: CopyableObjects, category: CopyObjectCategory): string[] {
   if (category === 'tables') {
-    return objects.tables.map((t) => t.name)
+    return objects.tables.map((table) => table.name)
   }
   return objects[category]
 }
@@ -111,7 +112,7 @@ function progressPercent(
   total: number | null | undefined
 ): number {
   if (!total) return 0
-  return Math.round(((done ?? 0) / total) * 100)
+  return Math.round(((done ?? 0) / total) * PERCENT_SCALE)
 }
 
 export default function CopyToHostDialog({
@@ -122,8 +123,8 @@ export default function CopyToHostDialog({
   sourceDatabase,
   preSelectedObject,
 }: CopyToHostDialogProps) {
-  const savedConnections = useConnectionStore((s) => s.savedConnections)
-  const activeConnections = useConnectionStore((s) => s.activeConnections)
+  const savedConnections = useConnectionStore((state) => state.savedConnections)
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
 
   // Target selection
   const [targetConnectionId, setTargetConnectionId] = useState('')
@@ -216,8 +217,8 @@ export default function CopyToHostDialog({
         setObjects(result)
         // Expand all non-empty categories by default (plus any pre-selected category) so the
         // objects are visible; empty categories stay collapsed.
-        setExpandedCategories((prev) => {
-          const next = new Set(prev)
+        setExpandedCategories((previous) => {
+          const next = new Set(previous)
           for (const category of CATEGORY_ORDER) {
             if (categoryNames(result, category).length > 0) next.add(category)
           }
@@ -226,22 +227,22 @@ export default function CopyToHostDialog({
         if (preSelectedCategory && preSelectedName) {
           const names = categoryNames(result, preSelectedCategory)
           if (names.includes(preSelectedName)) {
-            setSelected((prev) => {
-              const next = { ...prev }
+            setSelected((previous) => {
+              const next = { ...previous }
               next[preSelectedCategory] = new Set([preSelectedName])
               return next
             })
           }
         }
-      } catch (err) {
+      } catch (error) {
         if (cancelled) return
-        const msg = err instanceof Error ? err.message : String(err)
-        setLoadError(msg)
+        const message = error instanceof Error ? error.message : String(error)
+        setLoadError(message)
         logFrontend(
           'error',
-          ['[copy-to-host] Failed to load copyable objects:', msg].map(String).join(' ')
+          ['[copy-to-host] Failed to load copyable objects:', message].map(String).join(' ')
         )
-        showErrorToast('Failed to load copyable objects', msg)
+        showErrorToast('Failed to load copyable objects', message)
       } finally {
         if (!cancelled) setLoadingObjects(false)
       }
@@ -281,18 +282,18 @@ export default function CopyToHostDialog({
         // Default to a target database matching the source name when one exists, but never
         // overwrite a selection the user has already made.
         if (dbs.includes(sourceDatabase)) {
-          setTargetDatabaseValue((prev) => (prev === '' ? sourceDatabase : prev))
+          setTargetDatabaseValue((previous) => (previous === '' ? sourceDatabase : previous))
         }
-      } catch (err) {
+      } catch (error) {
         if (cancelled) return
-        const msg = err instanceof Error ? err.message : String(err)
+        const message = error instanceof Error ? error.message : String(error)
         setTargetDatabases([])
         setTargetDatabaseNotice(null)
         logFrontend(
           'error',
-          ['[copy-to-host] Failed to load target databases:', msg].map(String).join(' ')
+          ['[copy-to-host] Failed to load target databases:', message].map(String).join(' ')
         )
-        showErrorToast(`Failed to load target databases: ${msg}`)
+        showErrorToast(`Failed to load target databases: ${message}`)
       }
     }
 
@@ -323,29 +324,29 @@ export default function CopyToHostDialog({
 
     const poll = () => {
       getCopyProgress(jobId)
-        .then((p) => {
-          setProgress(p)
-          if (p.status === 'completed') {
+        .then((progress) => {
+          setProgress(progress)
+          if (progress.status === 'completed') {
             setIsCopying(false)
             stopPolling()
             showSuccessToast(
               'Copy completed',
-              `${p.objectsDone} ${p.objectsDone === 1 ? 'object' : 'objects'} copied`
+              `${progress.objectsDone} ${progress.objectsDone === 1 ? 'object' : 'objects'} copied`
             )
-          } else if (p.status === 'cancelled') {
+          } else if (progress.status === 'cancelled') {
             setIsCopying(false)
             setCancelPending(false)
             stopPolling()
-          } else if (p.status === 'failed') {
+          } else if (progress.status === 'failed') {
             setIsCopying(false)
             stopPolling()
-            showErrorToast('Copy failed', p.errorMessage ?? 'Copy to host failed')
+            showErrorToast('Copy failed', progress.errorMessage ?? 'Copy to host failed')
           }
         })
-        .catch((err) => {
+        .catch((error) => {
           logFrontend(
             'error',
-            ['[copy-to-host] Failed to poll progress:', err].map(String).join(' ')
+            ['[copy-to-host] Failed to poll progress:', error].map(String).join(' ')
           )
         })
     }
@@ -360,35 +361,35 @@ export default function CopyToHostDialog({
 
   // Target connection options exclude the source host and any read-only connection.
   const targetConnectionOptions = useMemo<DropdownOption[]>(() => {
-    const opts = savedConnections
-      .filter((c) => !c.readOnly)
-      .filter((c) => sourceHost === null || normalizeHost(c.host) !== sourceHost)
-      .map((c) => ({
-        value: c.id,
-        label: c.name,
-        description: `${c.host}:${c.port}`,
+    const options = savedConnections
+      .filter((connection) => !connection.readOnly)
+      .filter((connection) => sourceHost === null || normalizeHost(connection.host) !== sourceHost)
+      .map((connection) => ({
+        value: connection.id,
+        label: connection.name,
+        description: `${connection.host}:${connection.port}`,
       }))
-    return [{ value: '', label: 'Select a connection…' }, ...opts]
+    return [{ value: '', label: 'Select a connection…' }, ...options]
   }, [savedConnections, sourceHost])
 
   // Database dropdown options: existing databases + the "+ New database…" sentinel.
   const targetDatabaseOptions = useMemo<DropdownOption[]>(() => {
-    const opts: DropdownOption[] = [{ value: '', label: 'Select a database…' }]
+    const options: DropdownOption[] = [{ value: '', label: 'Select a database…' }]
     for (const db of targetDatabases) {
-      opts.push({ value: db, label: db })
+      options.push({ value: db, label: db })
     }
-    opts.push({
+    options.push({
       value: NEW_DB_SENTINEL,
       label: '+ New database…',
       description: 'Create a new database on the target',
     })
-    return opts
+    return options
   }, [targetDatabases])
 
   // The same-host guard: warn if the chosen target resolves to the source host.
   const targetIsSameHost = useMemo(() => {
     if (!targetConnectionId || sourceHost === null) return false
-    const target = savedConnections.find((c) => c.id === targetConnectionId)
+    const target = savedConnections.find((connection) => connection.id === targetConnectionId)
     return normalizeHost(target?.host) === sourceHost
   }, [savedConnections, targetConnectionId, sourceHost])
 
@@ -408,9 +409,9 @@ export default function CopyToHostDialog({
 
   // Toggle a single object within a category.
   const toggleObject = useCallback((category: CopyObjectCategory, name: string) => {
-    setSelected((prev) => {
-      const next = { ...prev }
-      const set = new Set(prev[category])
+    setSelected((previous) => {
+      const next = { ...previous }
+      const set = new Set(previous[category])
       if (set.has(name)) {
         set.delete(name)
       } else {
@@ -426,9 +427,9 @@ export default function CopyToHostDialog({
     (category: CopyObjectCategory) => {
       if (!objects) return
       const names = categoryNames(objects, category)
-      setSelected((prev) => {
-        const next = { ...prev }
-        next[category] = prev[category].size === names.length ? new Set() : new Set(names)
+      setSelected((previous) => {
+        const next = { ...previous }
+        next[category] = previous[category].size === names.length ? new Set() : new Set(names)
         return next
       })
     },
@@ -436,8 +437,8 @@ export default function CopyToHostDialog({
   )
 
   const toggleCategoryExpanded = useCallback((category: CopyObjectCategory) => {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev)
+    setExpandedCategories((previous) => {
+      const next = new Set(previous)
       if (next.has(category)) {
         next.delete(category)
       } else {
@@ -458,28 +459,28 @@ export default function CopyToHostDialog({
     const options: CopyToHostOptions = {
       copyStructure: copyType !== 'dataOnly',
       copyData: copyType !== 'structureOnly',
-      dropIfExists,
-      createIfNotExists,
-      truncateBeforeInsert,
-      insertMode,
-      ignoreDefiner,
+      dropIfExists: dropIfExists,
+      createIfNotExists: createIfNotExists,
+      truncateBeforeInsert: truncateBeforeInsert,
+      insertMode: insertMode,
+      ignoreDefiner: ignoreDefiner,
     }
 
     try {
       const id = await startCopyToHost({
-        sourceConnectionId,
-        sourceDatabase,
-        targetConnectionId,
+        sourceConnectionId: sourceConnectionId,
+        sourceDatabase: sourceDatabase,
+        targetConnectionId: targetConnectionId,
         targetDatabase: effectiveTargetDatabase,
         objects: copyObjects,
-        options,
+        options: options,
       })
       setJobId(id)
-    } catch (err) {
+    } catch (error) {
       setIsCopying(false)
-      const msg = err instanceof Error ? err.message : String(err)
-      showErrorToast('Copy failed', msg)
-      logFrontend('error', ['[copy-to-host] Failed to start copy:', msg].map(String).join(' '))
+      const message = error instanceof Error ? error.message : String(error)
+      showErrorToast('Copy failed', message)
+      logFrontend('error', ['[copy-to-host] Failed to start copy:', message].map(String).join(' '))
     }
   }, [
     canCopy,
@@ -502,11 +503,11 @@ export default function CopyToHostDialog({
     setCancelPending(true)
     try {
       await cancelCopy(jobId)
-    } catch (err) {
+    } catch (error) {
       setCancelPending(false)
-      const msg = err instanceof Error ? err.message : String(err)
-      logFrontend('error', ['[copy-to-host] Failed to cancel copy:', msg].map(String).join(' '))
-      showErrorToast('Failed to cancel copy', msg)
+      const message = error instanceof Error ? error.message : String(error)
+      logFrontend('error', ['[copy-to-host] Failed to cancel copy:', message].map(String).join(' '))
+      showErrorToast('Failed to cancel copy', message)
     }
   }, [jobId, cancelPending])
 
@@ -609,8 +610,8 @@ export default function CopyToHostDialog({
                 labelledBy="copy-target-connection-label"
                 options={targetConnectionOptions}
                 value={targetConnectionId}
-                onChange={(v) => {
-                  setTargetConnectionId(v)
+                onChange={(value) => {
+                  setTargetConnectionId(value)
                   setTargetDatabaseValue('')
                   setNewDatabaseName('')
                 }}
@@ -635,7 +636,7 @@ export default function CopyToHostDialog({
                   <TextInput
                     ref={newDbInputRef}
                     value={newDatabaseName}
-                    onChange={(e) => setNewDatabaseName(e.target.value)}
+                    onChange={(event) => setNewDatabaseName(event.target.value)}
                     placeholder="new_database_name"
                     aria-label="New database name"
                     data-testid="copy-new-database-name"
@@ -707,8 +708,8 @@ export default function CopyToHostDialog({
                         <Checkbox
                           checked={allSelected}
                           disabled={isEmpty}
-                          ref={(el) => {
-                            if (el) el.indeterminate = someSelected
+                          ref={(element) => {
+                            if (element) element.indeterminate = someSelected
                           }}
                           onChange={() => toggleCategory(category)}
                           aria-label={`Select all ${CATEGORY_LABELS[category]}`}
@@ -752,7 +753,7 @@ export default function CopyToHostDialog({
                 labelledBy="copy-type-label"
                 options={COPY_TYPE_OPTIONS}
                 value={copyType}
-                onChange={(v) => setCopyType(v as CopyType)}
+                onChange={(value) => setCopyType(value as CopyType)}
                 data-testid="copy-type"
               />
             </div>
@@ -770,7 +771,7 @@ export default function CopyToHostDialog({
                   id="copy-drop-if-exists"
                   checked={dropIfExists}
                   disabled={structureDisabled}
-                  onChange={(e) => setDropIfExists(e.target.checked)}
+                  onChange={(event) => setDropIfExists(event.target.checked)}
                   data-testid="copy-drop-if-exists"
                 />
                 <label htmlFor="copy-drop-if-exists" className={styles.checkboxLabel}>
@@ -782,7 +783,7 @@ export default function CopyToHostDialog({
                   id="copy-create-if-not-exists"
                   checked={createIfNotExists}
                   disabled={structureDisabled}
-                  onChange={(e) => setCreateIfNotExists(e.target.checked)}
+                  onChange={(event) => setCreateIfNotExists(event.target.checked)}
                   data-testid="copy-create-if-not-exists"
                 />
                 <label htmlFor="copy-create-if-not-exists" className={styles.checkboxLabel}>
@@ -815,7 +816,7 @@ export default function CopyToHostDialog({
                   options={INSERT_MODE_OPTIONS}
                   value={insertMode}
                   disabled={dataDisabled}
-                  onChange={(v) => setInsertMode(v as CopyInsertMode)}
+                  onChange={(value) => setInsertMode(value as CopyInsertMode)}
                   data-testid="copy-insert-mode"
                 />
               </div>
@@ -825,7 +826,7 @@ export default function CopyToHostDialog({
                   id="copy-truncate"
                   checked={truncateBeforeInsert}
                   disabled={dataDisabled}
-                  onChange={(e) => setTruncateBeforeInsert(e.target.checked)}
+                  onChange={(event) => setTruncateBeforeInsert(event.target.checked)}
                   data-testid="copy-truncate"
                 />
                 <label htmlFor="copy-truncate" className={styles.checkboxLabel}>
@@ -845,7 +846,7 @@ export default function CopyToHostDialog({
               <Checkbox
                 id="copy-ignore-definer"
                 checked={ignoreDefiner}
-                onChange={(e) => setIgnoreDefiner(e.target.checked)}
+                onChange={(event) => setIgnoreDefiner(event.target.checked)}
                 data-testid="copy-ignore-definer"
               />
               <label htmlFor="copy-ignore-definer" className={styles.checkboxLabel}>

@@ -78,10 +78,10 @@ export function normalizeTinyIntRows(
  * mapping boundary and ensures the backend only receives the expected fields.
  */
 function mapFilterConditions(conditions: FilterCondition[]): BackendFilterCondition[] {
-  return conditions.map((c) => ({
-    column: c.column,
-    operator: c.operator,
-    value: c.value,
+  return conditions.map((condition) => ({
+    column: condition.column,
+    operator: condition.operator,
+    value: condition.value,
   }))
 }
 
@@ -260,14 +260,14 @@ export async function fetchBlobValue(
   database: string,
   table: string,
   column: string,
-  pkPairs: [string, unknown][]
+  primaryKeyPairs: [string, unknown][]
 ): Promise<BlobValueResponse> {
   return invoke<BlobValueResponse>('fetch_blob_value', {
-    connectionId,
-    database,
-    table,
-    column,
-    pkPairs,
+    connectionId: connectionId,
+    database: database,
+    table: table,
+    column: column,
+    pkPairs: primaryKeyPairs,
   })
 }
 

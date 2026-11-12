@@ -145,13 +145,13 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
           isLoading: false,
           error: null,
         })
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return
 
-        const errorMsg = err instanceof Error ? err.message : String(err)
+        const errorMessage = error instanceof Error ? error.message : String(error)
         patchTab(tabId, {
           isLoading: false,
-          error: errorMsg,
+          error: errorMessage,
         })
       }
     },
@@ -172,12 +172,12 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
           tab.content,
           tab.mode
         )
-      } catch (err) {
+      } catch (error) {
         if (!get().tabs[tabId]) return
 
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        showErrorToast('Save failed', errorMsg)
-        patchTab(tabId, { isSaving: false, error: errorMsg })
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        showErrorToast('Save failed', errorMessage)
+        patchTab(tabId, { isSaving: false, error: errorMessage })
         return
       }
 
@@ -232,9 +232,9 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
           )
         }
       } else {
-        const errorMsg = response.errorMessage ?? 'Unknown error'
-        showErrorToast('Save failed', errorMsg)
-        patchTab(tabId, { isSaving: false, error: errorMsg })
+        const errorMessage = response.errorMessage ?? 'Unknown error'
+        showErrorToast('Save failed', errorMessage)
+        patchTab(tabId, { isSaving: false, error: errorMessage })
       }
     },
 

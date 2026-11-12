@@ -144,8 +144,8 @@ pub(crate) fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<Str
     match row.try_get::<String, _>(index) {
         Ok(value) => Ok(value),
         Err(_) => {
-            let bytes: Vec<u8> = row.try_get(index).map_err(|err| {
-                format!("Failed to decode column index {index} as UTF-8 text: {err}")
+            let bytes: Vec<u8> = row.try_get(index).map_err(|error| {
+                format!("Failed to decode column index {index} as UTF-8 text: {error}")
             })?;
             Ok(String::from_utf8_lossy(&bytes).into_owned())
         }
@@ -156,8 +156,8 @@ pub(crate) fn decode_mysql_text_cell_named(row: &MySqlRow, column: &str) -> Resu
     match row.try_get::<String, _>(column) {
         Ok(value) => Ok(value),
         Err(_) => {
-            let bytes: Vec<u8> = row.try_get(column).map_err(|err| {
-                format!("Failed to decode column '{column}' as UTF-8 text: {err}")
+            let bytes: Vec<u8> = row.try_get(column).map_err(|error| {
+                format!("Failed to decode column '{column}' as UTF-8 text: {error}")
             })?;
             Ok(String::from_utf8_lossy(&bytes).into_owned())
         }
@@ -170,8 +170,8 @@ fn decode_mysql_optional_text_cell(row: &MySqlRow, index: usize) -> Result<Optio
         Ok(value) => Ok(value),
         Err(_) => match row.try_get::<Option<Vec<u8>>, _>(index) {
             Ok(opt) => Ok(opt.map(|bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned())),
-            Err(err) => Err(format!(
-                "Failed to decode optional text column index {index}: {err}"
+            Err(error) => Err(format!(
+                "Failed to decode optional text column index {index}: {error}"
             )),
         },
     }
@@ -206,7 +206,7 @@ pub async fn query_list_databases(pool: &MySqlPool) -> Result<Vec<String>, Strin
     let rows = sqlx::query(sql)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to list databases: {e}"))?;
+        .map_err(|error| format!("Failed to list databases: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut names = Vec::with_capacity(rows.len());
@@ -258,7 +258,7 @@ pub async fn query_list_schema_objects(
         .bind(database)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to list {object_type}s: {e}"))?;
+        .map_err(|error| format!("Failed to list {object_type}s: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut names = Vec::with_capacity(rows.len());
@@ -284,11 +284,11 @@ pub async fn query_list_columns(
         .bind(table)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to list columns: {e}"))?;
+        .map_err(|error| format!("Failed to list columns: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut columns = Vec::with_capacity(rows.len());
-    for (i, row) in rows.iter().enumerate() {
+    for (row_index, row) in rows.iter().enumerate() {
         columns.push(ColumnInfo {
             name: decode_mysql_text_cell(row, 0)?,
             data_type: decode_mysql_text_cell(row, 1)?,
@@ -296,7 +296,7 @@ pub async fn query_list_columns(
             column_key: String::new(),
             default_value: None,
             extra: String::new(),
-            ordinal_position: (i + 1) as u32,
+            ordinal_position: (row_index + 1) as u32,
         });
     }
     Ok(columns)
@@ -314,7 +314,7 @@ pub async fn query_database_details(
         .bind(database)
         .fetch_optional(pool)
         .await
-        .map_err(|e| format!("Failed to get database details: {e}"))?
+        .map_err(|error| format!("Failed to get database details: {error}"))?
         .ok_or_else(|| format!("Database '{database}' not found"))?;
     query_log::log_mysql_rows(std::slice::from_ref(&row));
 
@@ -332,7 +332,7 @@ pub async fn query_list_charsets(pool: &MySqlPool) -> Result<Vec<CharsetInfo>, S
     let rows = sqlx::query(sql)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to list character sets: {e}"))?;
+        .map_err(|error| format!("Failed to list character sets: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
@@ -355,16 +355,16 @@ pub async fn query_list_collations(pool: &MySqlPool) -> Result<Vec<CollationInfo
     let rows = sqlx::query(sql)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to list collations: {e}"))?;
+        .map_err(|error| format!("Failed to list collations: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let default_val = decode_mysql_text_cell(row, 3).unwrap_or_default();
+        let default_value = decode_mysql_text_cell(row, 3).unwrap_or_default();
         out.push(CollationInfo {
             name: decode_mysql_text_cell(row, 0)?,
             charset: decode_mysql_text_cell(row, 1)?,
-            is_default: default_val == "Yes",
+            is_default: default_value == "Yes",
         });
     }
     Ok(out)
@@ -392,7 +392,7 @@ pub async fn query_full_columns(
         .bind(table)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get column details: {e}"))?;
+        .map_err(|error| format!("Failed to get column details: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut columns = Vec::with_capacity(rows.len());
@@ -426,7 +426,7 @@ pub async fn query_indexes(
     let rows = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get indexes: {e}"))?;
+        .map_err(|error| format!("Failed to get indexes: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut index_map: HashMap<String, IndexInfo> = HashMap::new();
@@ -443,7 +443,7 @@ pub async fn query_indexes(
 
         // MySQL 8.0+ has a Visible column; older versions and MariaDB do not.
         let is_visible = decode_mysql_text_cell_named(row, "Visible")
-            .map(|v| v == "YES")
+            .map(|value| value == "YES")
             .unwrap_or(true);
 
         if !index_map.contains_key(&key_name) {
@@ -497,7 +497,7 @@ pub async fn query_foreign_keys(
         .bind(table)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get foreign keys: {e}"))?;
+        .map_err(|error| format!("Failed to get foreign keys: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
@@ -536,7 +536,7 @@ pub async fn query_table_metadata(
         .bind(table)
         .fetch_optional(pool)
         .await
-        .map_err(|e| format!("Failed to get table metadata: {e}"))?
+        .map_err(|error| format!("Failed to get table metadata: {error}"))?
         .ok_or_else(|| format!("Table '{database}'.'{table}' not found"))?;
     query_log::log_mysql_rows(std::slice::from_ref(&row));
 
@@ -584,7 +584,7 @@ pub async fn query_ddl(
     let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .fetch_optional(pool)
         .await
-        .map_err(|e| format!("Failed to get DDL for {object_type} '{object_name}': {e}"))?
+        .map_err(|error| format!("Failed to get DDL for {object_type} '{object_name}': {error}"))?
         .ok_or_else(|| format!("{object_type} '{object_name}' not found in '{database}'"))?;
     query_log::log_mysql_rows(std::slice::from_ref(&row));
 
@@ -652,7 +652,7 @@ pub async fn validate_charset(pool: &MySqlPool, charset: &str) -> Result<(), Str
     let charsets = query_list_charsets(pool).await?;
     if !charsets
         .iter()
-        .any(|c| c.charset.eq_ignore_ascii_case(charset))
+        .any(|known_charset| known_charset.charset.eq_ignore_ascii_case(charset))
     {
         return Err(format!("Invalid character set: '{charset}'"));
     }
@@ -669,12 +669,13 @@ pub async fn validate_collation(
 ) -> Result<(), String> {
     let collations = query_list_collations(pool).await?;
     let valid = match charset {
-        Some(cs) => collations
-            .iter()
-            .any(|c| c.name.eq_ignore_ascii_case(collation) && c.charset.eq_ignore_ascii_case(cs)),
+        Some(cs) => collations.iter().any(|known_collation| {
+            known_collation.name.eq_ignore_ascii_case(collation)
+                && known_collation.charset.eq_ignore_ascii_case(cs)
+        }),
         None => collations
             .iter()
-            .any(|c| c.name.eq_ignore_ascii_case(collation)),
+            .any(|known_collation| known_collation.name.eq_ignore_ascii_case(collation)),
     };
     if !valid {
         let suffix = charset
@@ -718,13 +719,13 @@ pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), S
         .bind(database)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Query failed: {e}"))?;
+        .map_err(|error| format!("Query failed: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let blockers: Vec<String> = rows
         .iter()
-        .filter_map(|r| r.try_get::<String, _>(0).ok())
-        .map(|t| format!("{t}s"))
+        .filter_map(|row| row.try_get::<String, _>(0).ok())
+        .map(|object_type| format!("{object_type}s"))
         .collect();
 
     if !blockers.is_empty() {
@@ -797,7 +798,7 @@ async fn query_routine_parameters_inner(
         .bind(routine_type)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get routine parameters: {e}"))?;
+        .map_err(|error| format!("Failed to get routine parameters: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut params = Vec::with_capacity(rows.len());
@@ -864,7 +865,7 @@ pub async fn query_routine_exists(
         .bind(routine_type)
         .fetch_one(pool)
         .await
-        .map_err(|e| format!("Failed to check routine existence: {e}"))?;
+        .map_err(|error| format!("Failed to check routine existence: {error}"))?;
     query_log::log_mysql_rows(std::slice::from_ref(&row));
     let count: i64 = row.try_get(0).unwrap_or(0);
     Ok(count > 0)
@@ -902,13 +903,13 @@ pub async fn query_all_foreign_keys(
         .bind(database)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get all foreign keys: {e}"))?;
+        .map_err(|error| format!("Failed to get all foreign keys: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut result: HashMap<String, Vec<ForeignKeyInfo>> = HashMap::new();
     for row in &rows {
         let table_name = decode_mysql_text_cell(row, 0).unwrap_or_default();
-        let fk = ForeignKeyInfo {
+        let foreign_key = ForeignKeyInfo {
             name: decode_mysql_text_cell(row, 1).unwrap_or_default(),
             column_name: decode_mysql_text_cell(row, 2).unwrap_or_default(),
             referenced_database: decode_mysql_text_cell(row, 3).unwrap_or_default(),
@@ -917,7 +918,7 @@ pub async fn query_all_foreign_keys(
             on_delete: decode_mysql_text_cell(row, 6).unwrap_or_default(),
             on_update: decode_mysql_text_cell(row, 7).unwrap_or_default(),
         };
-        result.entry(table_name).or_default().push(fk);
+        result.entry(table_name).or_default().push(foreign_key);
     }
     Ok(result)
 }
@@ -1019,7 +1020,7 @@ pub async fn query_all_indexes(
         .bind(database)
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get all indexes: {e}"))?;
+        .map_err(|error| format!("Failed to get all indexes: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     // Columns: 0=TABLE_NAME, 1=INDEX_NAME, 2=NON_UNIQUE, 3=INDEX_TYPE, 4=COLUMN_NAME, 5=CARDINALITY
@@ -1090,7 +1091,7 @@ pub async fn query_all_foreign_keys_batch(
         .build()
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get batch foreign keys: {e}"))?;
+        .map_err(|error| format!("Failed to get batch foreign keys: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut result: HashMap<String, Vec<ForeignKeyInfo>> = HashMap::new();
@@ -1098,7 +1099,7 @@ pub async fn query_all_foreign_keys_batch(
         let schema = decode_mysql_text_cell(row, 0).unwrap_or_default();
         let table_name = decode_mysql_text_cell(row, 1).unwrap_or_default();
         let key = format!("{schema}.{table_name}");
-        let fk = ForeignKeyInfo {
+        let foreign_key = ForeignKeyInfo {
             name: decode_mysql_text_cell(row, 2).unwrap_or_default(),
             column_name: decode_mysql_text_cell(row, 3).unwrap_or_default(),
             referenced_database: decode_mysql_text_cell(row, 4).unwrap_or_default(),
@@ -1107,7 +1108,7 @@ pub async fn query_all_foreign_keys_batch(
             on_delete: decode_mysql_text_cell(row, 7).unwrap_or_default(),
             on_update: decode_mysql_text_cell(row, 8).unwrap_or_default(),
         };
-        result.entry(key).or_default().push(fk);
+        result.entry(key).or_default().push(foreign_key);
     }
     Ok(result)
 }
@@ -1152,7 +1153,7 @@ pub async fn query_all_views_batch(
         .build()
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get batch views: {e}"))?;
+        .map_err(|error| format!("Failed to get batch views: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut result: HashMap<String, Vec<ViewMeta>> = HashMap::new();
@@ -1204,7 +1205,7 @@ pub async fn query_all_triggers_batch(
         .build()
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get batch triggers: {e}"))?;
+        .map_err(|error| format!("Failed to get batch triggers: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     let mut result: HashMap<String, Vec<TriggerMeta>> = HashMap::new();
@@ -1260,7 +1261,7 @@ pub async fn query_all_indexes_batch(
         .build()
         .fetch_all(pool)
         .await
-        .map_err(|e| format!("Failed to get batch indexes: {e}"))?;
+        .map_err(|error| format!("Failed to get batch indexes: {error}"))?;
     query_log::log_mysql_rows(&rows);
 
     // Columns: 0=TABLE_SCHEMA, 1=TABLE_NAME, 2=INDEX_NAME, 3=NON_UNIQUE, 4=INDEX_TYPE, 5=COLUMN_NAME, 6=CARDINALITY

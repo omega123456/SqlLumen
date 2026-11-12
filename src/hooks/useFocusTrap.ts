@@ -42,8 +42,8 @@ export function useFocusTrap(
       })
     }
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return
 
       const currentDialog = dialogRef.current
       if (!currentDialog) return
@@ -56,16 +56,16 @@ export function useFocusTrap(
       const firstElement = focusableElements[0]
       const lastElement = focusableElements[focusableElements.length - 1]
 
-      if (e.shiftKey) {
+      if (event.shiftKey) {
         // Shift+Tab: cycle backwards
         if (document.activeElement === firstElement) {
-          e.preventDefault()
+          event.preventDefault()
           lastElement.focus()
         }
       } else {
         // Tab: cycle forwards
         if (document.activeElement === lastElement) {
-          e.preventDefault()
+          event.preventDefault()
           firstElement.focus()
         }
       }
@@ -77,9 +77,9 @@ export function useFocusTrap(
       document.removeEventListener('keydown', handleKeyDown)
 
       // Restore focus to the previously focused element
-      const prevFocus = previousFocusRef.current
-      if (prevFocus && prevFocus instanceof HTMLElement) {
-        prevFocus.focus()
+      const previousFocus = previousFocusRef.current
+      if (previousFocus && previousFocus instanceof HTMLElement) {
+        previousFocus.focus()
       }
     }
   }, [initialFocusRef, isOpen, dialogRef])

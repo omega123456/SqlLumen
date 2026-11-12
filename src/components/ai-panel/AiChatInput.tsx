@@ -18,6 +18,9 @@ import type { MemoryScope } from '../../lib/ai-memory-commands'
 import styles from './AiChatInput.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
+
+const CONTEXT_CHIP_MAX_LENGTH = 60
+const TRUNCATION_ELLIPSIS = '...'
 /** One line of the 32px Fluent field (prototype `.ai-row .fld`). */
 const MIN_TEXTAREA_HEIGHT_PX = 32
 const MAX_TEXTAREA_HEIGHT_PX = 140
@@ -48,38 +51,40 @@ export function AiChatInput({
 }: AiChatInputProps) {
   const [value, setValue] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
-  const [filteredCmds, setFilteredCmds] = useState<SlashCommand[]>([])
+  const [filteredCommands, setFilteredCommands] = useState<SlashCommand[]>([])
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   // When set, the "Always ask" memory scope picker is shown above the input.
   // The string is the (trimmed) memory content awaiting a scope choice.
   const [pendingRememberContent, setPendingRememberContent] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const setLastFocusedSurface = useWorkspaceStore((s) => s.setLastFocusedSurface)
+  const setLastFocusedSurface = useWorkspaceStore((state) => state.setLastFocusedSurface)
 
   // The active connection's group presence (the session id `connectionId` maps
   // to a saved profile via the connection store). Used to enable/disable the
   // Group option in the scope picker.
   const hasGroup = useConnectionStore(
-    (s) =>
-      (connectionId ? (s.activeConnections[connectionId]?.profile?.groupId ?? null) : null) !== null
+    (state) =>
+      (connectionId ? (state.activeConnections[connectionId]?.profile?.groupId ?? null) : null) !==
+      null
   )
-  const isGenerating = useAiStore((s) => s.tabs[tabId]?.isGenerating ?? false)
-  const attachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext ?? null)
+  const isGenerating = useAiStore((state) => state.tabs[tabId]?.isGenerating ?? false)
+  const attachedContext = useAiStore((state) => state.tabs[tabId]?.attachedContext ?? null)
 
   const aiEnabled = useSettingsStore(
-    (s) => (s.pendingChanges['ai.enabled'] ?? s.settings['ai.enabled'] ?? 'false') === 'true'
+    (state) =>
+      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
   )
   const hasEndpoint = useSettingsStore(
-    (s) => !!(s.pendingChanges['ai.endpoint'] ?? s.settings['ai.endpoint'] ?? '')
+    (state) => !!(state.pendingChanges['ai.endpoint'] ?? state.settings['ai.endpoint'] ?? '')
   )
   const hasModel = useSettingsStore(
-    (s) => !!(s.pendingChanges['ai.model'] ?? s.settings['ai.model'] ?? '')
+    (state) => !!(state.pendingChanges['ai.model'] ?? state.settings['ai.model'] ?? '')
   )
   // Saved default `/remember` scope, used to seed the scope-picker highlight.
   // Only a concrete level is passed through; `'ask'` (or anything else) lets
   // the picker fall back to Connection.
-  const defaultRememberScope = useSettingsStore((s) => {
-    const value = s.pendingChanges['ai.rememberScope'] ?? s.settings['ai.rememberScope']
+  const defaultRememberScope = useSettingsStore((state) => {
+    const value = state.pendingChanges['ai.rememberScope'] ?? state.settings['ai.rememberScope']
     return value === 'connection' || value === 'group' || value === 'global'
       ? (value as MemoryScope)
       : undefined
@@ -108,19 +113,19 @@ export function AiChatInput({
 
   // Auto-expand textarea based on content
   const adjustHeight = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) {
+    const element = textareaRef.current
+    if (!element) {
       return
     }
     if (value.length === 0) {
-      el.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
+      element.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
       return
     }
-    el.style.height = 'auto'
+    element.style.height = 'auto'
     // The field is border-box, so add its borders to the content-and-padding scroll height
-    const borders = el.offsetHeight - el.clientHeight
-    el.style.height = `${Math.min(
-      Math.max(el.scrollHeight + borders, MIN_TEXTAREA_HEIGHT_PX),
+    const borders = element.offsetHeight - element.clientHeight
+    element.style.height = `${Math.min(
+      Math.max(element.scrollHeight + borders, MIN_TEXTAREA_HEIGHT_PX),
       MAX_TEXTAREA_HEIGHT_PX
     )}px`
   }, [value])
@@ -136,7 +141,7 @@ export function AiChatInput({
 
     return subscribeToTabDeactivated(workspaceTabId, () => {
       setShowDropdown(false)
-      setFilteredCmds([])
+      setFilteredCommands([])
       setHighlightedIndex(-1)
       setPendingRememberContent(null)
     })
@@ -145,20 +150,20 @@ export function AiChatInput({
   const updateDropdown = useCallback((text: string) => {
     if (text.startsWith('/') && !text.includes(' ')) {
       const prefix = text.slice(1)
-      const cmds = filterCommands(prefix)
-      setFilteredCmds(cmds)
-      setShowDropdown(cmds.length > 0)
+      const commands = filterCommands(prefix)
+      setFilteredCommands(commands)
+      setShowDropdown(commands.length > 0)
       setHighlightedIndex(-1)
     } else {
       setShowDropdown(false)
-      setFilteredCmds([])
+      setFilteredCommands([])
       setHighlightedIndex(-1)
     }
   }, [])
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newValue = e.target.value
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const newValue = event.target.value
       setValue(newValue)
       updateDropdown(newValue)
     },
@@ -171,26 +176,26 @@ export function AiChatInput({
     }
   }, [setLastFocusedSurface, workspaceTabId])
 
-  const selectCommand = useCallback((cmd: SlashCommand) => {
-    const newValue = `/${cmd.name} `
+  const selectCommand = useCallback((command: SlashCommand) => {
+    const newValue = `/${command.name} `
     setValue(newValue)
     setShowDropdown(false)
-    setFilteredCmds([])
+    setFilteredCommands([])
     setHighlightedIndex(-1)
     requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.focus()
-        el.setSelectionRange(newValue.length, newValue.length)
+      const element = textareaRef.current
+      if (element) {
+        element.focus()
+        element.setSelectionRange(newValue.length, newValue.length)
       }
     })
   }, [])
 
   const resetHeight = useCallback(() => {
     requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
+      const element = textareaRef.current
+      if (element) {
+        element.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
       }
     })
   }, [])
@@ -204,9 +209,9 @@ export function AiChatInput({
     // Check for slash command
     const slashMatch = trimmed.match(/^\/(\S+)\s*(.*)$/)
     if (slashMatch) {
-      const [, cmdName, cmdArgs] = slashMatch
-      const cmd = findCommand(cmdName)
-      if (cmd) {
+      const [, commandName, commandArgs] = slashMatch
+      const command = findCommand(commandName)
+      if (command) {
         if (!connectionId) {
           showErrorToast('No active connection')
           return
@@ -215,11 +220,11 @@ export function AiChatInput({
 
         // `/remember` is scope-aware. When the default scope is "Always ask"
         // we show an inline level picker instead of saving immediately.
-        if (cmdName === 'remember') {
-          const args = cmdArgs.trim()
+        if (commandName === 'remember') {
+          const args = commandArgs.trim()
           if (!args) {
             // Surface the standard empty-args error via executeRemember.
-            executeRemember(cmdArgs, connectionId).catch(() => {
+            executeRemember(commandArgs, connectionId).catch(() => {
               /* error already toasted */
             })
             return
@@ -230,18 +235,18 @@ export function AiChatInput({
           }
         }
 
-        cmd
-          .execute(cmdArgs, connectionId)
+        command
+          .execute(commandArgs, connectionId)
           .then(() => {
             setValue('')
             resetHeight()
           })
-          .catch((err: unknown) => {
+          .catch((error: unknown) => {
             // Restore input on failure
             setValue(savedValue)
             logFrontend(
               'warn',
-              `[AiChatInput] slash command /${cmdName} rejected: ${err instanceof Error ? err.message : String(err)}`
+              `[AiChatInput] slash command /${commandName} rejected: ${error instanceof Error ? error.message : String(error)}`
             )
           })
         return
@@ -270,10 +275,10 @@ export function AiChatInput({
           setValue('')
           resetHeight()
         })
-        .catch((err: unknown) => {
+        .catch((error: unknown) => {
           logFrontend(
             'warn',
-            `[AiChatInput] /remember (ask) rejected: ${err instanceof Error ? err.message : String(err)}`
+            `[AiChatInput] /remember (ask) rejected: ${error instanceof Error ? error.message : String(error)}`
           )
         })
     },
@@ -292,57 +297,61 @@ export function AiChatInput({
   }, [tabId])
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // While the "Always ask" scope picker is open it owns Enter/Arrow/Escape
       // (handled at the document level inside MemoryScopePicker); swallow those
       // keys here so they neither send a message nor insert a newline.
       if (pendingRememberContent !== null) {
         if (
-          e.key === 'Enter' ||
-          e.key === 'Escape' ||
-          e.key === 'ArrowUp' ||
-          e.key === 'ArrowDown'
+          event.key === 'Enter' ||
+          event.key === 'Escape' ||
+          event.key === 'ArrowUp' ||
+          event.key === 'ArrowDown'
         ) {
-          e.preventDefault()
+          event.preventDefault()
         }
         return
       }
       if (showDropdown) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault()
-          setHighlightedIndex((prev) => (prev < filteredCmds.length - 1 ? prev + 1 : 0))
+        if (event.key === 'ArrowDown') {
+          event.preventDefault()
+          setHighlightedIndex((previous) =>
+            previous < filteredCommands.length - 1 ? previous + 1 : 0
+          )
           return
         }
-        if (e.key === 'ArrowUp') {
-          e.preventDefault()
-          setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredCmds.length - 1))
+        if (event.key === 'ArrowUp') {
+          event.preventDefault()
+          setHighlightedIndex((previous) =>
+            previous > 0 ? previous - 1 : filteredCommands.length - 1
+          )
           return
         }
-        if (e.key === 'Enter' && !e.shiftKey && highlightedIndex >= 0) {
-          e.preventDefault()
-          selectCommand(filteredCmds[highlightedIndex])
+        if (event.key === 'Enter' && !event.shiftKey && highlightedIndex >= 0) {
+          event.preventDefault()
+          selectCommand(filteredCommands[highlightedIndex])
           return
         }
-        if (e.key === 'Tab' && highlightedIndex >= 0) {
-          e.preventDefault()
-          selectCommand(filteredCmds[highlightedIndex])
+        if (event.key === 'Tab' && highlightedIndex >= 0) {
+          event.preventDefault()
+          selectCommand(filteredCommands[highlightedIndex])
           return
         }
-        if (e.key === 'Escape') {
-          e.preventDefault()
+        if (event.key === 'Escape') {
+          event.preventDefault()
           setShowDropdown(false)
           return
         }
       }
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault()
         handleSend()
       }
     },
     [
       pendingRememberContent,
       showDropdown,
-      filteredCmds,
+      filteredCommands,
       highlightedIndex,
       selectCommand,
       handleSend,
@@ -358,7 +367,7 @@ export function AiChatInput({
       <div className={styles.textareaWrapper}>
         {showDropdown && (
           <SlashCommandDropdown
-            commands={filteredCmds}
+            commands={filteredCommands}
             highlightedIndex={highlightedIndex}
             onSelect={selectCommand}
             onHighlightChange={setHighlightedIndex}
@@ -375,8 +384,11 @@ export function AiChatInput({
         {attachedContext && (
           <div className={styles.contextChip} data-testid="ai-context-chip">
             <span className={styles.contextChipText} title={attachedContext.sql}>
-              {attachedContext.sql.length > 60
-                ? attachedContext.sql.slice(0, 57) + '...'
+              {attachedContext.sql.length > CONTEXT_CHIP_MAX_LENGTH
+                ? attachedContext.sql.slice(
+                    0,
+                    CONTEXT_CHIP_MAX_LENGTH - TRUNCATION_ELLIPSIS.length
+                  ) + TRUNCATION_ELLIPSIS
                 : attachedContext.sql}
             </span>
             <IconButton
@@ -403,7 +415,7 @@ export function AiChatInput({
           aria-controls={showDropdown ? 'slash-command-listbox' : undefined}
           aria-activedescendant={
             showDropdown && highlightedIndex >= 0
-              ? `slash-cmd-${filteredCmds[highlightedIndex]?.name}`
+              ? `slash-cmd-${filteredCommands[highlightedIndex]?.name}`
               : undefined
           }
           placeholder={

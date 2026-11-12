@@ -1,6 +1,11 @@
 import type { DrawHeaderCallback, Theme } from '@glideapps/glide-data-grid'
 import type { GridColumn, GridSortColumn } from './glide-grid-types'
-import { drawHighlightedColumnBackground } from './glide-drawers'
+import {
+  drawHighlightedColumnBackground,
+  centeredTextBaselineY,
+  TRAILING_ICON_INSET_PX,
+} from './glide-drawers'
+import { HEADER_ICON_WIDTH_PX } from '../../../lib/grid-column-style'
 
 export type HeaderDrawArgs = Parameters<DrawHeaderCallback>[0]
 
@@ -20,7 +25,7 @@ export function buildHeaderMeta(
   sortColumns: GridSortColumn[],
   highlightedColumnKey: string | undefined
 ): GridColumnHeaderMeta {
-  const sort = sortColumns.find((s) => s.columnKey === column.key)
+  const sort = sortColumns.find((sortColumn) => sortColumn.columnKey === column.key)
   return {
     sortDirection: sort?.direction,
     isReadOnly: column.editable !== true && column.blobViewerEditable !== true,
@@ -30,36 +35,36 @@ export function buildHeaderMeta(
 }
 
 export function drawCustomHeader(
-  ctx: CanvasRenderingContext2D,
+  context: CanvasRenderingContext2D,
   args: HeaderDrawArgs,
   meta: GridColumnHeaderMeta,
   theme: Theme
 ): void {
   if (meta.isHighlighted) {
-    drawHighlightedColumnBackground(ctx, args.rect, theme.bgSearchResult)
+    drawHighlightedColumnBackground(context, args.rect, theme.bgSearchResult)
   }
 
-  ctx.fillStyle = meta.isHighlighted ? theme.textHeaderSelected : theme.textHeader
-  ctx.font = `${theme.headerFontStyle} ${theme.fontFamily}`
-  ctx.textAlign = 'left'
-  ctx.fillText(
+  context.fillStyle = meta.isHighlighted ? theme.textHeaderSelected : theme.textHeader
+  context.font = `${theme.headerFontStyle} ${theme.fontFamily}`
+  context.textAlign = 'left'
+  context.fillText(
     args.column.title,
     args.rect.x + theme.cellHorizontalPadding,
-    args.rect.y + args.rect.height / 2 + 4
+    centeredTextBaselineY(args.rect)
   )
 
-  let x = args.rect.x + args.rect.width - 8
-  ctx.textAlign = 'right'
+  let iconX = args.rect.x + args.rect.width - TRAILING_ICON_INSET_PX
+  context.textAlign = 'right'
   if (meta.sortDirection) {
-    ctx.fillText(getSortIconName(meta.sortDirection), x, args.rect.y + args.rect.height / 2 + 4)
-    x -= 14
+    context.fillText(getSortIconName(meta.sortDirection), iconX, centeredTextBaselineY(args.rect))
+    iconX -= HEADER_ICON_WIDTH_PX
   }
   if (meta.hasFkLink) {
-    ctx.fillText('↗', x, args.rect.y + args.rect.height / 2 + 4)
-    x -= 14
+    context.fillText('↗', iconX, centeredTextBaselineY(args.rect))
+    iconX -= HEADER_ICON_WIDTH_PX
   }
   if (meta.isReadOnly) {
-    ctx.fillText('🔒', x, args.rect.y + args.rect.height / 2 + 4)
+    context.fillText('🔒', iconX, centeredTextBaselineY(args.rect))
   }
-  ctx.textAlign = 'left'
+  context.textAlign = 'left'
 }

@@ -72,9 +72,9 @@ export function ApplySchemaChangesDialog({
         'error',
         ['[apply-schema-dialog] Failed to apply schema changes', applyError].map(String).join(' ')
       )
-      const msg = applyError instanceof Error ? applyError.message : String(applyError)
-      setError(msg)
-      showErrorToast('Failed to apply schema changes', msg)
+      const message = applyError instanceof Error ? applyError.message : String(applyError)
+      setError(message)
+      showErrorToast('Failed to apply schema changes', message)
     } finally {
       setIsExecuting(false)
     }

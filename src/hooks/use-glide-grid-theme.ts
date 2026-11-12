@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Theme } from '@glideapps/glide-data-grid'
 import { useGridDimensions } from './use-grid-dimensions'
 
+const FALLBACK_CELL_PADDING_X_PX = 10
+const FALLBACK_CELL_PADDING_Y_PX = 4
+const FALLBACK_CONTROL_RADIUS_PX = 4
+const MIN_HEADER_ICON_SIZE_PX = 12
+const MAX_HEADER_ICON_SIZE_PX = 18
+const HEADER_ICON_VERTICAL_INSET_PX = 14
+
 function readCssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
@@ -15,7 +22,7 @@ function useThemeVersion(): number {
   const [themeVersion, setThemeVersion] = useState(0)
 
   useEffect(() => {
-    const observer = new MutationObserver(() => setThemeVersion((v) => v + 1))
+    const observer = new MutationObserver(() => setThemeVersion((version) => version + 1))
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['data-theme'],
@@ -53,8 +60,8 @@ export function useGlideGridTheme(): Partial<Theme> {
     const bodyFontSize = monoFamily ? `${cellFontSize} ${monoFamily},` : cellFontSize
     const headerFontSize = readCssVar('--type-table-header-size') || '12px'
     const headerWeight = readCssVar('--type-table-header-weight') || '600'
-    const horizontalPadding = readPxVar('--grid-cell-padding-x', 10)
-    const verticalPadding = readPxVar('--grid-cell-padding-y', 4)
+    const horizontalPadding = readPxVar('--grid-cell-padding-x', FALLBACK_CELL_PADDING_X_PX)
+    const verticalPadding = readPxVar('--grid-cell-padding-y', FALLBACK_CELL_PADDING_Y_PX)
     const gridBorder = readCssVar('--result-grid-border')
 
     return {
@@ -85,13 +92,16 @@ export function useGlideGridTheme(): Partial<Theme> {
       cellHorizontalPadding: horizontalPadding,
       cellVerticalPadding: verticalPadding,
       headerFontStyle: `${headerWeight} ${headerFontSize}`,
-      headerIconSize: Math.max(12, Math.min(18, headerHeight - 14)),
+      headerIconSize: Math.max(
+        MIN_HEADER_ICON_SIZE_PX,
+        Math.min(MAX_HEADER_ICON_SIZE_PX, headerHeight - HEADER_ICON_VERTICAL_INSET_PX)
+      ),
       baseFontStyle: bodyFontSize,
       markerFontStyle: bodyFontSize,
-      fontFamily,
+      fontFamily: fontFamily,
       editorFontSize: cellFontSize,
       lineHeight: rowHeight,
-      roundingRadius: readPxVar('--radius-control', 4),
+      roundingRadius: readPxVar('--radius-control', FALLBACK_CONTROL_RADIUS_PX),
     }
   }, [headerHeight, rowHeight, themeVersion])
 }

@@ -12,6 +12,14 @@ import { formatCount } from '../../lib/format-row-count'
 import { useQueryStore, type ExportRowScope, type ResultExportJob } from '../../stores/query-store'
 import type { ExportFormat } from '../../types/schema'
 import styles from './ExportDialog.module.css'
+import {
+  BYTES_PER_MEGABYTE,
+  MILLISECONDS_PER_SECOND,
+  SECONDS_PER_MINUTE,
+  TWO_DIGIT_WIDTH,
+} from '../../lib/units'
+
+const ONE_DECIMAL_BELOW_MEGABYTES = 10
 
 const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
@@ -90,15 +98,18 @@ function ignoredViewMessage(hasSort: boolean, filterCount: number): string {
 
 /** `m:ss` for the elapsed time of a running export. */
 function formatElapsed(elapsedMs: number): string {
-  const totalSeconds = Math.floor(elapsedMs / 1000)
-  const seconds = totalSeconds % 60
-  return `${Math.floor(totalSeconds / 60)}:${seconds.toString().padStart(2, '0')}`
+  const totalSeconds = Math.floor(elapsedMs / MILLISECONDS_PER_SECOND)
+  const minutes = Math.floor(totalSeconds / SECONDS_PER_MINUTE)
+  const seconds = totalSeconds % SECONDS_PER_MINUTE
+  return `${minutes}:${seconds.toString().padStart(TWO_DIGIT_WIDTH, '0')}`
 }
 
 /** Megabytes written, with one decimal below 10 MB. */
 function formatMegabytes(bytes: number): string {
-  const mb = bytes / (1024 * 1024)
-  return mb < 10 ? mb.toFixed(1) : formatCount(Math.round(mb))
+  const megabytes = bytes / BYTES_PER_MEGABYTE
+  return megabytes < ONE_DECIMAL_BELOW_MEGABYTES
+    ? megabytes.toFixed(1)
+    : formatCount(Math.round(megabytes))
 }
 
 /**
@@ -133,15 +144,15 @@ export default function ExportDialog({
 
   // The result this dialog exports, and the tab's full-export job (D22: the
   // store owns the job and its polling; the dialog only renders it).
-  const resolvedResultIndex = useQueryStore((s) => {
-    const tab = s.tabs[tabId]
+  const resolvedResultIndex = useQueryStore((state) => {
+    const tab = state.tabs[tabId]
     if (!tab) return 0
     return resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
   })
-  const result = useQueryStore((s) => s.tabs[tabId]?.results[resolvedResultIndex])
-  const exportJob = useQueryStore((s) => s.exportJobs[tabId])
-  const startFullExport = useQueryStore((s) => s.startFullExport)
-  const cancelFullExport = useQueryStore((s) => s.cancelFullExport)
+  const result = useQueryStore((state) => state.tabs[tabId]?.results[resolvedResultIndex])
+  const exportJob = useQueryStore((state) => state.exportJobs[tabId])
+  const startFullExport = useQueryStore((state) => state.startFullExport)
+  const cancelFullExport = useQueryStore((state) => state.cancelFullExport)
 
   /** "All rows" is offered only for truncated results that can be re-run. */
   const offersAllRows =
@@ -224,11 +235,11 @@ export default function ExportDialog({
     if (effectiveScope === 'allRows') {
       setError(null)
       await startFullExport(tabId, {
-        connectionId,
+        connectionId: connectionId,
         resultIndex: resolvedResultIndex,
-        format,
-        filePath,
-        includeHeaders,
+        format: format,
+        filePath: filePath,
+        includeHeaders: includeHeaders,
         tableName: format === 'sql-insert' ? tableName : undefined,
       })
       return
@@ -248,26 +259,26 @@ export default function ExportDialog({
           connectionId,
           tabId,
           {
-            format,
-            filePath,
-            includeHeaders,
+            format: format,
+            filePath: filePath,
+            includeHeaders: includeHeaders,
             tableName: format === 'sql-insert' ? tableName : undefined,
           },
           resultIndex
         )
       }
       onClose()
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err)
-      if (errMsg.includes('results_expired')) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('results_expired')) {
         const tab = useQueryStore.getState().tabs[tabId]
         if (tab) {
           const expiredResultIndex =
             resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
           useQueryStore.setState((state) => {
-            const t = state.tabs[tabId]
-            if (!t || expiredResultIndex >= t.results.length) return state
-            const newResults = [...t.results]
+            const tabState = state.tabs[tabId]
+            if (!tabState || expiredResultIndex >= tabState.results.length) return state
+            const newResults = [...tabState.results]
             newResults[expiredResultIndex] = {
               ...newResults[expiredResultIndex],
               isExpired: true,
@@ -275,13 +286,13 @@ export default function ExportDialog({
             return {
               tabs: {
                 ...state.tabs,
-                [tabId]: { ...t, results: newResults },
+                [tabId]: { ...tabState, results: newResults },
               },
             }
           })
         }
       }
-      setError(errMsg)
+      setError(errorMessage)
     } finally {
       setIsExporting(false)
     }
@@ -385,7 +396,7 @@ export default function ExportDialog({
                   labelledBy="export-rows-label"
                   options={rowScopeOptions}
                   value={effectiveScope}
-                  onChange={(v) => setScope(v as ExportRowScope)}
+                  onChange={(value) => setScope(value as ExportRowScope)}
                   data-testid="export-rows-select"
                   className={styles.formatDropdownRoot}
                   triggerClassName={styles.formatDropdownTrigger}
@@ -422,7 +433,7 @@ export default function ExportDialog({
                 labelledBy="export-format-label"
                 options={formatDropdownOptions}
                 value={format}
-                onChange={(v) => setFormat(v as ExportFormat)}
+                onChange={(value) => setFormat(value as ExportFormat)}
                 data-testid="export-format-select"
                 className={styles.formatDropdownRoot}
                 triggerClassName={styles.formatDropdownTrigger}
@@ -462,7 +473,7 @@ export default function ExportDialog({
                   type="text"
                   className={styles.destinationInput}
                   value={filePath}
-                  onChange={(e) => setFilePath(e.target.value)}
+                  onChange={(event) => setFilePath(event.target.value)}
                   placeholder={`query_results.${EXPORT_FORMAT_CONFIG[format].extension}`}
                   data-testid="export-file-path-input"
                 />
@@ -490,7 +501,7 @@ export default function ExportDialog({
                   type="text"
                   className={styles.tableNameInput}
                   value={tableName}
-                  onChange={(e) => setTableName(e.target.value)}
+                  onChange={(event) => setTableName(event.target.value)}
                   placeholder="exported_results"
                   data-testid="export-table-name-input"
                 />
@@ -502,7 +513,7 @@ export default function ExportDialog({
               <Checkbox
                 id="export-include-headers"
                 checked={includeHeaders}
-                onChange={(e) => setIncludeHeaders(e.target.checked)}
+                onChange={(event) => setIncludeHeaders(event.target.checked)}
                 data-testid="export-include-headers-checkbox"
               />
               <label htmlFor="export-include-headers" className={styles.checkboxLabel}>

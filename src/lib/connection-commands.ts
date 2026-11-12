@@ -47,7 +47,7 @@ export async function updateConnection(
   options?: { clearPassword?: boolean }
 ): Promise<void> {
   return invoke<void>('update_connection', {
-    id,
+    id: id,
     data: {
       ...data,
       password: data.password || null,

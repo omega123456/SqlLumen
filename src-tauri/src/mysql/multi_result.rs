@@ -158,14 +158,14 @@ pub fn serialize_bytes_value(
     match col_type {
         // BIT: convert bytes to u64 integer
         MYSQL_TYPE_BIT => {
-            let mut val: u64 = 0;
-            for &b in bytes {
-                val = (val << 8) | (b as u64);
+            let mut value: u64 = 0;
+            for &byte in bytes {
+                value = (value << 8) | (byte as u64);
             }
-            if val > JS_SAFE_INTEGER_MAX as u64 {
-                serde_json::Value::String(val.to_string())
+            if value > JS_SAFE_INTEGER_MAX as u64 {
+                serde_json::Value::String(value.to_string())
             } else {
-                serde_json::Value::from(val)
+                serde_json::Value::from(value)
             }
         }
 
@@ -173,28 +173,30 @@ pub fn serialize_bytes_value(
         // same as binary-protocol `Int`/`UInt`/`Double` values.
         MYSQL_TYPE_TINY | MYSQL_TYPE_SHORT | MYSQL_TYPE_INT24 | MYSQL_TYPE_LONG
         | MYSQL_TYPE_LONGLONG | MYSQL_TYPE_YEAR => {
-            let s = String::from_utf8_lossy(bytes);
-            let parsed = s
+            let text = String::from_utf8_lossy(bytes);
+            let parsed = text
                 .parse::<i64>()
                 .map(mysql_async::Value::Int)
-                .or_else(|_| s.parse::<u64>().map(mysql_async::Value::UInt));
+                .or_else(|_| text.parse::<u64>().map(mysql_async::Value::UInt));
             match parsed {
                 Ok(value) => serialize_mysql_value(&value, col_type, flags),
-                Err(_) => serde_json::Value::String(s.into_owned()),
+                Err(_) => serde_json::Value::String(text.into_owned()),
             }
         }
         MYSQL_TYPE_FLOAT | MYSQL_TYPE_DOUBLE => {
-            let s = String::from_utf8_lossy(bytes);
-            match s.parse::<f64>() {
-                Ok(f) => serialize_mysql_value(&mysql_async::Value::Double(f), col_type, flags),
-                Err(_) => serde_json::Value::String(s.into_owned()),
+            let text = String::from_utf8_lossy(bytes);
+            match text.parse::<f64>() {
+                Ok(float) => {
+                    serialize_mysql_value(&mysql_async::Value::Double(float), col_type, flags)
+                }
+                Err(_) => serde_json::Value::String(text.into_owned()),
             }
         }
 
         // DECIMAL/NUMERIC: string to preserve precision
         MYSQL_TYPE_DECIMAL | MYSQL_TYPE_NEWDECIMAL => {
-            let s = String::from_utf8_lossy(bytes);
-            serde_json::Value::String(s.into_owned())
+            let text = String::from_utf8_lossy(bytes);
+            serde_json::Value::String(text.into_owned())
         }
 
         // BLOB/BINARY types: base64-encode if binary flag is set
@@ -231,27 +233,27 @@ pub fn serialize_mysql_value(
 
         mysql_async::Value::Bytes(bytes) => serialize_bytes_value(bytes, col_type, flags),
 
-        mysql_async::Value::Int(n) => {
-            if (-JS_SAFE_INTEGER_MAX..=JS_SAFE_INTEGER_MAX).contains(n) {
-                serde_json::Value::from(*n)
+        mysql_async::Value::Int(number) => {
+            if (-JS_SAFE_INTEGER_MAX..=JS_SAFE_INTEGER_MAX).contains(number) {
+                serde_json::Value::from(*number)
             } else {
-                serde_json::Value::String(n.to_string())
+                serde_json::Value::String(number.to_string())
             }
         }
 
-        mysql_async::Value::UInt(n) => {
-            if *n > JS_SAFE_INTEGER_MAX as u64 {
-                serde_json::Value::String(n.to_string())
+        mysql_async::Value::UInt(number) => {
+            if *number > JS_SAFE_INTEGER_MAX as u64 {
+                serde_json::Value::String(number.to_string())
             } else {
-                serde_json::Value::from(*n)
+                serde_json::Value::from(*number)
             }
         }
 
-        mysql_async::Value::Float(f) => serde_json::Number::from_f64(*f as f64)
+        mysql_async::Value::Float(float) => serde_json::Number::from_f64(*float as f64)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
 
-        mysql_async::Value::Double(f) => serde_json::Number::from_f64(*f)
+        mysql_async::Value::Double(float) => serde_json::Number::from_f64(*float)
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
 
@@ -296,14 +298,14 @@ pub fn serialize_mysql_value(
 ///
 /// MySQL error 1317 (ER_QUERY_INTERRUPTED) is mapped to "Query cancelled".
 #[cfg(not(coverage))]
-pub(crate) fn map_mysql_error(e: &mysql_async::Error) -> String {
-    crate::mysql::query_log::log_mysql_async_error(e);
-    if let mysql_async::Error::Server(ref server_err) = e {
-        if server_err.code == 1317 {
+pub(crate) fn map_mysql_error(error: &mysql_async::Error) -> String {
+    crate::mysql::query_log::log_mysql_async_error(error);
+    if let mysql_async::Error::Server(ref server_error) = error {
+        if server_error.code == 1317 {
             return "Query cancelled".to_string();
         }
     }
-    format!("Query failed: {e}")
+    format!("Query failed: {error}")
 }
 
 // ── Connection builder ─────────────────────────────────────────────────────────
@@ -358,7 +360,7 @@ pub async fn build_connection(
     let opts: mysql_async::Opts = builder.into();
     let conn = mysql_async::Conn::new(opts)
         .await
-        .map_err(|e| format!("Failed to connect via mysql_async: {e}"))?;
+        .map_err(|error| format!("Failed to connect via mysql_async: {error}"))?;
 
     Ok(conn)
 }
@@ -393,19 +395,19 @@ struct DecodedRows {
 
 /// True for MySQL error 1317 (ER_QUERY_INTERRUPTED).
 #[cfg(not(coverage))]
-pub(crate) fn is_query_interrupted(e: &mysql_async::Error) -> bool {
-    matches!(e, mysql_async::Error::Server(server_err) if server_err.code == 1317)
+pub(crate) fn is_query_interrupted(error: &mysql_async::Error) -> bool {
+    matches!(error, mysql_async::Error::Server(server_err) if server_err.code == 1317)
 }
 
 /// Issue `KILL QUERY <thread_id>` over a pool connection after the ceiling was
 /// reached. Returns `false` (with a warning) when the KILL could not be sent,
 /// in which case the caller drains the rest of the stream instead.
 #[cfg(not(coverage))]
-async fn kill_for_ceiling(ctx: &DecodeContext<'_>) -> bool {
-    let Some(pool) = ctx.pool.as_ref() else {
+async fn kill_for_ceiling(context: &DecodeContext<'_>) -> bool {
+    let Some(pool) = context.pool.as_ref() else {
         tracing::warn!(
-            connection_id = ctx.connection_id,
-            thread_id = ctx.thread_id,
+            connection_id = context.connection_id,
+            thread_id = context.thread_id,
             "row ceiling reached but no pool is available for KILL QUERY; draining instead"
         );
         return false;
@@ -414,8 +416,8 @@ async fn kill_for_ceiling(ctx: &DecodeContext<'_>) -> bool {
         Ok(Ok(conn)) => conn,
         Ok(Err(error)) => {
             tracing::warn!(
-                connection_id = ctx.connection_id,
-                thread_id = ctx.thread_id,
+                connection_id = context.connection_id,
+                thread_id = context.thread_id,
                 %error,
                 "row ceiling reached but a pool connection for KILL QUERY failed; draining instead"
             );
@@ -423,18 +425,18 @@ async fn kill_for_ceiling(ctx: &DecodeContext<'_>) -> bool {
         }
         Err(_) => {
             tracing::warn!(
-                connection_id = ctx.connection_id,
-                thread_id = ctx.thread_id,
+                connection_id = context.connection_id,
+                thread_id = context.thread_id,
                 "row ceiling reached but no pool connection for KILL QUERY within 1 s; draining instead"
             );
             return false;
         }
     };
-    let kill_sql = format!("KILL QUERY {}", ctx.thread_id);
+    let kill_sql = format!("KILL QUERY {}", context.thread_id);
     tracing::debug!(
-        connection_id = ctx.connection_id,
-        thread_id = ctx.thread_id,
-        ceiling = ctx.ceiling,
+        connection_id = context.connection_id,
+        thread_id = context.thread_id,
+        ceiling = context.ceiling,
         "row ceiling reached: issuing KILL QUERY"
     );
     crate::mysql::query_log::log_outgoing_sql(&kill_sql);
@@ -449,8 +451,8 @@ async fn kill_for_ceiling(ctx: &DecodeContext<'_>) -> bool {
         Err(error) => {
             crate::mysql::query_log::log_execute_error(&error);
             tracing::warn!(
-                connection_id = ctx.connection_id,
-                thread_id = ctx.thread_id,
+                connection_id = context.connection_id,
+                thread_id = context.thread_id,
                 %error,
                 "row ceiling KILL QUERY failed; draining the rest of the result instead"
             );
@@ -467,7 +469,7 @@ async fn kill_for_ceiling(ctx: &DecodeContext<'_>) -> bool {
 #[cfg(not(coverage))]
 async fn drain_after_ceiling<P>(
     result: &mut mysql_async::QueryResult<'_, '_, P>,
-    ctx: &DecodeContext<'_>,
+    context: &DecodeContext<'_>,
 ) -> bool
 where
     P: mysql_async::prelude::Protocol,
@@ -478,7 +480,7 @@ where
             Ok(None) => return false,
             Err(error) if is_query_interrupted(&error) => {
                 tracing::debug!(
-                    connection_id = ctx.connection_id,
+                    connection_id = context.connection_id,
                     "row ceiling: stream ended by KILL QUERY (1317)"
                 );
                 return true;
@@ -486,7 +488,7 @@ where
             Err(error) => {
                 crate::mysql::query_log::log_mysql_async_error(&error);
                 tracing::warn!(
-                    connection_id = ctx.connection_id,
+                    connection_id = context.connection_id,
                     ?error,
                     "row ceiling: error while draining a truncated result; keeping stored rows"
                 );
@@ -570,7 +572,7 @@ async fn execute_single_select_statement(
     sql: &str,
     auto_limit_applied: bool,
     row_limit_used: usize,
-    ctx: &DecodeContext<'_>,
+    context: &DecodeContext<'_>,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -595,7 +597,7 @@ async fn execute_single_select_statement(
     let mut result = conn
         .query_iter(&sql_to_execute)
         .await
-        .map_err(|e| map_mysql_error(&e))?;
+        .map_err(|error| map_mysql_error(&error))?;
 
     // Result header is available — record execution time before row transfer.
     let execution_time_ms = start.elapsed().as_millis() as u64;
@@ -603,9 +605,9 @@ async fn execute_single_select_statement(
     let columns_ref = result.columns_ref();
     let columns: Vec<ColumnMeta> = columns_ref
         .iter()
-        .map(|c: &mysql_async::Column| ColumnMeta {
-            name: c.name_str().to_string(),
-            data_type: column_type_display_name(c.column_type(), c.flags()),
+        .map(|column: &mysql_async::Column| ColumnMeta {
+            name: column.name_str().to_string(),
+            data_type: column_type_display_name(column.column_type(), column.flags()),
         })
         .collect();
 
@@ -614,7 +616,7 @@ async fn execute_single_select_statement(
         mysql_async::consts::ColumnFlags,
     )> = columns_ref
         .iter()
-        .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
+        .map(|column: &mysql_async::Column| (column.column_type(), column.flags()))
         .collect();
 
     let capacity_hint = if auto_limit_applied {
@@ -623,13 +625,13 @@ async fn execute_single_select_statement(
         0
     };
     let decoded =
-        stream_serialized_rows(&mut result, &col_types, capacity_hint, ctx.ceiling).await?;
+        stream_serialized_rows(&mut result, &col_types, capacity_hint, context.ceiling).await?;
     let mut late_kill_possible = false;
     if decoded.overflowed {
         // Rows remain unread: stop the server sending them. If the KILL can't
         // be sent, the drain below still reads (and discards) the rest.
-        let kill_sent = kill_for_ceiling(ctx).await;
-        let interrupted = drain_after_ceiling(&mut result, ctx).await;
+        let kill_sent = kill_for_ceiling(context).await;
+        let interrupted = drain_after_ceiling(&mut result, context).await;
         // The stream ended on its own after the KILL was sent: the KILL may
         // still be pending on the session.
         late_kill_possible = kill_sent && !interrupted;
@@ -638,7 +640,7 @@ async fn execute_single_select_statement(
     // Drop remaining result sets (if any unexpected ones)
     drop(result);
     if late_kill_possible {
-        absorb_late_kill(conn, ctx.connection_id).await;
+        absorb_late_kill(conn, context.connection_id).await;
     }
 
     // All rows streamed and serialized — record total time.
@@ -655,12 +657,12 @@ async fn execute_single_select_statement(
         auto_limit_applied,
     );
     stored.truncated = decoded.overflowed;
-    stored.row_ceiling = ctx.ceiling;
+    stored.row_ceiling = context.ceiling;
     stored.applied_row_limit = auto_limit_applied.then_some(row_limit_used);
     stored.source_sql = sql.to_string();
     stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
     if stored.truncated && stored.full_export_blocked_reason.is_none() {
-        match capture_session_database(conn, ctx.connection_id).await {
+        match capture_session_database(conn, context.connection_id).await {
             Some(database) => stored.run_database = database,
             None => {
                 stored.full_export_blocked_reason = Some(FullExportBlockedReason::UnknownDatabase)
@@ -680,7 +682,7 @@ async fn execute_single_select_statement(
 async fn execute_single_dml_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
-    ctx: &DecodeContext<'_>,
+    context: &DecodeContext<'_>,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -696,7 +698,7 @@ async fn execute_single_dml_statement(
     let mut result = conn
         .query_iter(sql)
         .await
-        .map_err(|e| map_mysql_error(&e))?;
+        .map_err(|error| map_mysql_error(&error))?;
 
     // Statement executed (header available) — record execution time.
     let execution_time_ms = start.elapsed().as_millis() as u64;
@@ -719,7 +721,7 @@ async fn execute_single_dml_statement(
         affected,
         false,
     );
-    stored.row_ceiling = ctx.ceiling;
+    stored.row_ceiling = context.ceiling;
     stored.source_sql = sql.to_string();
     let item = MultiQueryResultItem::from_stored(&stored, None, true);
     Ok((stored, item))
@@ -737,7 +739,7 @@ async fn execute_single_dml_statement(
 async fn execute_call_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
-    ctx: &DecodeContext<'_>,
+    context: &DecodeContext<'_>,
 ) -> Result<
     Vec<(
         crate::mysql::query_executor::StoredResult,
@@ -755,7 +757,7 @@ async fn execute_call_statement(
     let mut result = conn
         .query_iter(sql)
         .await
-        .map_err(|e| map_mysql_error(&e))?;
+        .map_err(|error| map_mysql_error(&error))?;
 
     // Procedure executed and the first result-set header is available — record
     // execution time once. All result sets share this single header time; each
@@ -767,7 +769,7 @@ async fn execute_call_statement(
     let mut call_last_affected: u64 = 0;
 
     let finish = |stored: &mut StoredResult| {
-        stored.row_ceiling = ctx.ceiling;
+        stored.row_ceiling = context.ceiling;
         stored.source_sql = sql.to_string();
         stored.full_export_blocked_reason = Some(FullExportBlockedReason::Call);
     };
@@ -788,9 +790,9 @@ async fn execute_call_statement(
 
         let columns: Vec<ColumnMeta> = columns_ref
             .iter()
-            .map(|c: &mysql_async::Column| ColumnMeta {
-                name: c.name_str().to_string(),
-                data_type: column_type_display_name(c.column_type(), c.flags()),
+            .map(|column: &mysql_async::Column| ColumnMeta {
+                name: column.name_str().to_string(),
+                data_type: column_type_display_name(column.column_type(), column.flags()),
             })
             .collect();
 
@@ -799,20 +801,20 @@ async fn execute_call_statement(
             mysql_async::consts::ColumnFlags,
         )> = columns_ref
             .iter()
-            .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
+            .map(|column: &mysql_async::Column| (column.column_type(), column.flags()))
             .collect();
 
-        let decoded = stream_serialized_rows(&mut result, &col_types, 0, ctx.ceiling).await?;
+        let decoded = stream_serialized_rows(&mut result, &col_types, 0, context.ceiling).await?;
         if decoded.overflowed {
             tracing::debug!(
-                connection_id = ctx.connection_id,
-                ceiling = ctx.ceiling,
+                connection_id = context.connection_id,
+                ceiling = context.ceiling,
                 "row ceiling reached in a CALL result set: draining the rest of the set"
             );
             while result
                 .next()
                 .await
-                .map_err(|e| map_mysql_error(&e))?
+                .map_err(|error| map_mysql_error(&error))?
                 .is_some()
             {}
         }
@@ -922,7 +924,7 @@ pub async fn execute_multi_query_internal(
     let session = guard.as_mut().expect("acquire always yields a session");
     let key = run.running_query_key();
 
-    let ctx = DecodeContext {
+    let context = DecodeContext {
         ceiling: state.result_cache.row_ceiling(),
         connection_id,
         thread_id: session.thread_id,
@@ -947,9 +949,9 @@ pub async fn execute_multi_query_internal(
 
         let stmt_result = if is_call_statement(sql) {
             // CALL may produce multiple result sets
-            execute_call_statement(&mut session.conn, sql, &ctx).await
+            execute_call_statement(&mut session.conn, sql, &context).await
         } else {
-            execute_statement(&mut session.conn, sql, row_limit_used, &ctx)
+            execute_statement(&mut session.conn, sql, row_limit_used, &context)
                 .await
                 .map(|pair| vec![pair])
         };
@@ -995,13 +997,13 @@ pub async fn execute_single_on_session(
     let session = guard.as_mut().expect("acquire always yields a session");
     let key = run.running_query_key();
 
-    let ctx = DecodeContext {
+    let context = DecodeContext {
         ceiling: state.result_cache.row_ceiling(),
         connection_id,
         thread_id: session.thread_id,
         pool: state.registry.get_pool(connection_id),
     };
-    let result = execute_statement(&mut session.conn, sql, row_limit, &ctx).await;
+    let result = execute_statement(&mut session.conn, sql, row_limit, &context).await;
 
     state.running_queries.write().await.remove(&key);
 
@@ -1014,7 +1016,7 @@ async fn execute_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     row_limit: usize,
-    ctx: &DecodeContext<'_>,
+    context: &DecodeContext<'_>,
 ) -> Result<
     (
         crate::mysql::query_executor::StoredResult,
@@ -1037,9 +1039,9 @@ async fn execute_statement(
     };
 
     if is_result_set {
-        execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit, ctx).await
+        execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit, context).await
     } else {
-        execute_single_dml_statement(conn, sql, ctx).await
+        execute_single_dml_statement(conn, sql, context).await
     }
 }
 
@@ -1071,7 +1073,11 @@ where
 {
     let mut serialized_rows = Vec::with_capacity(capacity_hint.min(ceiling));
     let mut overflowed = false;
-    while let Some(row) = result.next().await.map_err(|e| map_mysql_error(&e))? {
+    while let Some(row) = result
+        .next()
+        .await
+        .map_err(|error| map_mysql_error(&error))?
+    {
         if serialized_rows.len() >= ceiling {
             overflowed = true;
             break;
@@ -1094,8 +1100,8 @@ async fn drain_result_set<P>(result: &mut mysql_async::QueryResult<'_, '_, P>)
 where
     P: mysql_async::prelude::Protocol,
 {
-    if let Err(e) = result.for_each(|_| {}).await {
-        tracing::debug!(error = %e, "ignoring error while draining result set");
+    if let Err(error) = result.for_each(|_| {}).await {
+        tracing::debug!(error = %error, "ignoring error while draining result set");
     }
 }
 
@@ -1111,9 +1117,11 @@ pub(crate) fn serialize_row(
     col_types
         .iter()
         .enumerate()
-        .map(|(i, &(col_type, flags))| match row.as_ref(i) {
-            Some(value) => serialize_mysql_value(value, col_type, flags),
-            None => serde_json::Value::Null,
-        })
+        .map(
+            |(column_index, &(col_type, flags))| match row.as_ref(column_index) {
+                Some(value) => serialize_mysql_value(value, col_type, flags),
+                None => serde_json::Value::Null,
+            },
+        )
         .collect()
 }

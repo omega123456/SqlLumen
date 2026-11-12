@@ -111,7 +111,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
           <TextInput
             id="favorite-name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(event) => setName(event.target.value)}
             placeholder="My query..."
             data-testid="favorite-name-input"
           />
@@ -124,7 +124,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
             id="favorite-sql"
             variant="mono"
             value={sqlText}
-            onChange={(e) => setSqlText(e.target.value)}
+            onChange={(event) => setSqlText(event.target.value)}
             placeholder="SELECT * FROM ..."
             rows={6}
             data-testid="favorite-sql-input"
@@ -139,7 +139,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
             ariaLabel="Favorite scope"
             options={SCOPE_OPTIONS}
             value={scope}
-            onChange={(val) => setScope(val as 'connection' | 'global')}
+            onChange={(value) => setScope(value as 'connection' | 'global')}
             data-testid="favorite-scope-dropdown"
           />
         </div>
@@ -150,7 +150,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
           <TextInput
             id="favorite-category"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            onChange={(event) => setCategory(event.target.value)}
             placeholder="e.g. Reports, Admin..."
             data-testid="favorite-category-input"
           />
@@ -162,7 +162,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
           <Textarea
             id="favorite-description"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(event) => setDescription(event.target.value)}
             placeholder="Description or context..."
             rows={3}
             data-testid="favorite-description-input"

@@ -26,10 +26,10 @@ interface MemoryStore {
 const EMPTY_STORE: MemoryStore = { global: [], group: {}, connection: {} }
 
 export function AiMemoriesSettings() {
-  const savedConnections = useConnectionStore((s) => s.savedConnections)
-  const connectionGroups = useConnectionStore((s) => s.connectionGroups)
-  const activeConnections = useConnectionStore((s) => s.activeConnections)
-  const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
+  const savedConnections = useConnectionStore((state) => state.savedConnections)
+  const connectionGroups = useConnectionStore((state) => state.connectionGroups)
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
+  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
 
   const [memories, setMemories] = useState<MemoryStore>(EMPTY_STORE)
   const [loading, setLoading] = useState(true)
@@ -48,44 +48,47 @@ export function AiMemoriesSettings() {
   const loadMemories = useCallback(async () => {
     try {
       const [global, groupEntries, connectionEntries] = await Promise.all([
-        listGlobalMemories().catch((err) => {
-          logFrontend('warn', `[AiMemoriesSettings] listGlobalMemories failed: ${String(err)}`)
+        listGlobalMemories().catch((error) => {
+          logFrontend('warn', `[AiMemoriesSettings] listGlobalMemories failed: ${String(error)}`)
           return [] as AiMemory[]
         }),
         Promise.all(
-          connectionGroups.map(async (g) => {
+          connectionGroups.map(async (group) => {
             try {
-              return [g.id, await listGroupMemories({ groupId: g.id })] as const
-            } catch (err) {
+              return [group.id, await listGroupMemories({ groupId: group.id })] as const
+            } catch (error) {
               logFrontend(
                 'warn',
-                `[AiMemoriesSettings] listGroupMemories failed for ${g.id}: ${String(err)}`
+                `[AiMemoriesSettings] listGroupMemories failed for ${group.id}: ${String(error)}`
               )
-              return [g.id, [] as AiMemory[]] as const
+              return [group.id, [] as AiMemory[]] as const
             }
           })
         ),
         Promise.all(
-          savedConnections.map(async (c) => {
+          savedConnections.map(async (connection) => {
             try {
-              return [c.id, await listConnectionMemories({ connectionId: c.id })] as const
-            } catch (err) {
+              return [
+                connection.id,
+                await listConnectionMemories({ connectionId: connection.id }),
+              ] as const
+            } catch (error) {
               logFrontend(
                 'warn',
-                `[AiMemoriesSettings] listConnectionMemories failed for ${c.id}: ${String(err)}`
+                `[AiMemoriesSettings] listConnectionMemories failed for ${connection.id}: ${String(error)}`
               )
-              return [c.id, [] as AiMemory[]] as const
+              return [connection.id, [] as AiMemory[]] as const
             }
           })
         ),
       ])
       setMemories({
-        global,
+        global: global,
         group: Object.fromEntries(groupEntries),
         connection: Object.fromEntries(connectionEntries),
       })
-    } catch (err) {
-      logFrontend('error', `[AiMemoriesSettings] Failed to load memories: ${String(err)}`)
+    } catch (error) {
+      logFrontend('error', `[AiMemoriesSettings] Failed to load memories: ${String(error)}`)
     } finally {
       setLoading(false)
     }
@@ -96,7 +99,7 @@ export function AiMemoriesSettings() {
   }, [loadMemories])
 
   const ungroupedConnections = useMemo(
-    () => savedConnections.filter((c) => !c.groupId),
+    () => savedConnections.filter((connection) => !connection.groupId),
     [savedConnections]
   )
 
@@ -111,11 +114,11 @@ export function AiMemoriesSettings() {
         return sessions[0]?.[0] ?? null
       }
       if (scope === 'connection') {
-        const match = sessions.find(([, c]) => c.profile.id === ownerId)
+        const match = sessions.find(([, connection]) => connection.profile.id === ownerId)
         return match?.[0] ?? null
       }
       // group
-      const match = sessions.find(([, c]) => c.profile.groupId === ownerId)
+      const match = sessions.find(([, connection]) => connection.profile.groupId === ownerId)
       return match?.[0] ?? null
     },
     [activeConnections]
@@ -133,8 +136,8 @@ export function AiMemoriesSettings() {
       try {
         await saveMemory({ sessionId, content, scope })
         await loadMemories()
-      } catch (err) {
-        showErrorToast(`Failed to save memory: ${String(err)}`)
+      } catch (error) {
+        showErrorToast(`Failed to save memory: ${String(error)}`)
       }
     },
     [resolveSessionId, loadMemories]
@@ -145,8 +148,8 @@ export function AiMemoriesSettings() {
     try {
       await deleteMemory({ scope: deleteTarget.scope, memoryId: deleteTarget.id })
       await loadMemories()
-    } catch (err) {
-      showErrorToast(`Failed to delete memory: ${String(err)}`)
+    } catch (error) {
+      showErrorToast(`Failed to delete memory: ${String(error)}`)
     } finally {
       setDeleteTarget(null)
     }
@@ -161,7 +164,7 @@ export function AiMemoriesSettings() {
       try {
         await moveMemory({
           memoryId: memory.id,
-          fromScope,
+          fromScope: fromScope,
           toScope: target.scope,
           toGroupId: target.groupId,
           toConnectionId: target.connectionId,
@@ -169,8 +172,8 @@ export function AiMemoriesSettings() {
           fromConnectionId: memory.connectionId ?? undefined,
         })
         await loadMemories()
-      } catch (err) {
-        showErrorToast(`Failed to move memory: ${String(err)}`)
+      } catch (error) {
+        showErrorToast(`Failed to move memory: ${String(error)}`)
       }
     },
     [loadMemories]
@@ -184,12 +187,14 @@ export function AiMemoriesSettings() {
       // Find the dragged memory across stores by id + source scope.
       let memory: AiMemory | undefined
       if (payload.fromScope === 'global') {
-        memory = memories.global.find((m) => m.id === payload.memoryId)
+        memory = memories.global.find((candidate) => candidate.id === payload.memoryId)
       } else if (payload.fromScope === 'group' && payload.fromGroupId) {
-        memory = memories.group[payload.fromGroupId]?.find((m) => m.id === payload.memoryId)
+        memory = memories.group[payload.fromGroupId]?.find(
+          (candidate) => candidate.id === payload.memoryId
+        )
       } else if (payload.fromScope === 'connection' && payload.fromConnectionId) {
         memory = memories.connection[payload.fromConnectionId]?.find(
-          (m) => m.id === payload.memoryId
+          (candidate) => candidate.id === payload.memoryId
         )
       }
       activeDragRef.current = null
@@ -202,9 +207,9 @@ export function AiMemoriesSettings() {
   )
 
   const sharedDnd = {
-    activeDrag,
+    activeDrag: activeDrag,
     getActiveDrag: () => activeDragRef.current,
-    hoverKey,
+    hoverKey: hoverKey,
     onHover: setHoverKey,
     onDragStart: (payload: MemoryDragPayload) => {
       activeDragRef.current = payload
@@ -237,7 +242,9 @@ export function AiMemoriesSettings() {
 
           {/* Per-group sections */}
           {connectionGroups.map((group) => {
-            const groupConnections = savedConnections.filter((c) => c.groupId === group.id)
+            const groupConnections = savedConnections.filter(
+              (connection) => connection.groupId === group.id
+            )
             return (
               <MemorySection
                 key={group.id}
@@ -252,18 +259,18 @@ export function AiMemoriesSettings() {
                 onAdd={(content) => handleAdd('group', content, group.id)}
                 {...sharedDnd}
               >
-                {groupConnections.map((conn) => (
+                {groupConnections.map((connection) => (
                   <MemorySection
-                    key={conn.id}
-                    sectionKey={`connection-${conn.id}`}
+                    key={connection.id}
+                    sectionKey={`connection-${connection.id}`}
                     scope="connection"
-                    label={conn.name}
-                    connectionId={conn.id}
+                    label={connection.name}
+                    connectionId={connection.id}
                     nested
                     subdued
-                    memories={memories.connection[conn.id] ?? []}
+                    memories={memories.connection[connection.id] ?? []}
                     onRequestDelete={setDeleteTarget}
-                    onAdd={(content) => handleAdd('connection', content, conn.id)}
+                    onAdd={(content) => handleAdd('connection', content, connection.id)}
                     {...sharedDnd}
                   />
                 ))}
@@ -277,18 +284,18 @@ export function AiMemoriesSettings() {
               <div className={styles.ungroupedLabel} data-testid="ai-memory-ungrouped-label">
                 No group
               </div>
-              {ungroupedConnections.map((conn) => (
+              {ungroupedConnections.map((connection) => (
                 <MemorySection
-                  key={conn.id}
-                  sectionKey={`connection-${conn.id}`}
+                  key={connection.id}
+                  sectionKey={`connection-${connection.id}`}
                   scope="connection"
-                  label={conn.name}
-                  connectionId={conn.id}
+                  label={connection.name}
+                  connectionId={connection.id}
                   nested
                   subdued
-                  memories={memories.connection[conn.id] ?? []}
+                  memories={memories.connection[connection.id] ?? []}
                   onRequestDelete={setDeleteTarget}
-                  onAdd={(content) => handleAdd('connection', content, conn.id)}
+                  onAdd={(content) => handleAdd('connection', content, connection.id)}
                   {...sharedDnd}
                 />
               ))}

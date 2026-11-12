@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { FALLBACK_ROW_LIMIT } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
@@ -19,7 +20,7 @@ import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context
 import { FkLookupDialog } from './FkLookupDialog'
 import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
 import { fetchBlobValue } from '../../lib/table-data-commands'
-import { buildEnvelopedPkPairs } from '../../lib/blob-utils'
+import { buildEnvelopedPrimaryKeyPairs } from '../../lib/blob-utils'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
@@ -34,13 +35,13 @@ import type { BlobEnvelope, ForeignKeyColumnInfo, TableDataColumnMeta } from '..
 function getRowKeyFromArray(
   row: unknown[],
   columns: TableDataColumnMeta[],
-  pkColumns: string[]
+  primaryKeyColumns: string[]
 ): Record<string, unknown> {
   const key: Record<string, unknown> = {}
-  for (const pkCol of pkColumns) {
-    const idx = columns.findIndex((c) => c.name === pkCol)
-    if (idx !== -1) {
-      key[pkCol] = row[idx]
+  for (const primaryKeyColumn of primaryKeyColumns) {
+    const index = columns.findIndex((column) => column.name === primaryKeyColumn)
+    if (index !== -1) {
+      key[primaryKeyColumn] = row[index]
     }
   }
   return key
@@ -49,8 +50,8 @@ function getRowKeyFromArray(
 /** Build a values map from a positional row array and column metadata. */
 function rowToValues(row: unknown[], columns: TableDataColumnMeta[]): Record<string, unknown> {
   const values: Record<string, unknown> = {}
-  for (let i = 0; i < columns.length; i++) {
-    values[columns[i].name] = row[i]
+  for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+    values[columns[columnIndex].name] = row[columnIndex]
   }
   return values
 }
@@ -68,17 +69,17 @@ function escapeForAttributeSelector(value: string): string {
 
 /** Convert TableDataColumnMeta[] → GridColumnDescriptor[]. */
 function toGridColumns(columns: TableDataColumnMeta[]): GridColumnDescriptor[] {
-  return columns.map((col) => ({
-    key: col.name,
-    displayName: col.name,
-    dataType: col.dataType,
+  return columns.map((column) => ({
+    key: column.name,
+    displayName: column.name,
+    dataType: column.dataType,
     editable: true, // BaseFormView further restricts with hasEditCapability && !isBlobField
-    isBinary: col.isBinary,
-    isNullable: col.isNullable,
-    isPrimaryKey: col.isPrimaryKey,
-    isUniqueKey: col.isUniqueKey && !col.isPrimaryKey,
-    enumValues: col.enumValues,
-    tableColumnMeta: col,
+    isBinary: column.isBinary,
+    isNullable: column.isNullable,
+    isPrimaryKey: column.isPrimaryKey,
+    isUniqueKey: column.isUniqueKey && !column.isPrimaryKey,
+    enumValues: column.enumValues,
+    tableColumnMeta: column,
   }))
 }
 
@@ -112,7 +113,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
   const currentPage = tabState?.currentPage ?? 1
-  const pageSize = tabState?.pageSize ?? 1000
+  const pageSize = tabState?.pageSize ?? FALLBACK_ROW_LIMIT
   const primaryKey = tabState?.primaryKey ?? null
   const storeEditState = tabState?.editState ?? null
   const selectedRowKey = tabState?.selectedRowKey ?? null
@@ -120,8 +121,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
   const foreignKeyLookup = useMemo(() => buildForeignKeyLookup(foreignKeys), [foreignKeys])
 
-  const [fkLookupOpen, setFkLookupOpen] = useState(false)
-  const [fkLookupContext, setFkLookupContext] = useState<{
+  const [foreignKeyLookupOpen, setForeignKeyLookupOpen] = useState(false)
+  const [foreignKeyLookupContext, setForeignKeyLookupContext] = useState<{
     columnKey: string
     currentValue: unknown
     foreignKey: ForeignKeyColumnInfo
@@ -135,16 +136,16 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     pkPairs: [string, unknown][] | null
   } | null>(null)
 
-  const hasPk = primaryKey !== null
-  const isEditable = !isConnectionReadOnly && hasPk && !isView
-  const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
+  const hasPrimaryKey = primaryKey !== null
+  const isEditable = !isConnectionReadOnly && hasPrimaryKey && !isView
+  const primaryKeyColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
 
   // --- Grid columns (stable) ---
   const gridColumns = useMemo(
     () =>
-      toGridColumns(columns).map((col) => ({
-        ...col,
-        foreignKey: foreignKeyLookup.get(col.key.toLowerCase()),
+      toGridColumns(columns).map((column) => ({
+        ...column,
+        foreignKey: foreignKeyLookup.get(column.key.toLowerCase()),
       })),
     [columns, foreignKeyLookup]
   )
@@ -157,12 +158,12 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     if ('__tempId' in selectedRowKey) {
       return rows.length - 1
     }
-    const idx = rows.findIndex((row) => {
-      const key = getRowKeyFromArray(row, columns, pkColumns)
+    const index = rows.findIndex((row) => {
+      const key = getRowKeyFromArray(row, columns, primaryKeyColumns)
       return isSameRowKey(key, selectedRowKey)
     })
-    return idx >= 0 ? idx : 0
-  }, [selectedRowKey, rows, columns, pkColumns])
+    return index >= 0 ? index : 0
+  }, [selectedRowKey, rows, columns, primaryKeyColumns])
 
   const absoluteIndex = (currentPage - 1) * pageSize + localIndex
   const currentRow = rows.length > 0 ? rows[localIndex] : null
@@ -170,9 +171,9 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   // Current row key (for edit-state matching)
   const currentRowKey = useMemo(() => {
     if (storeEditState?.isNewRow) return storeEditState.rowKey
-    if (!currentRow || pkColumns.length === 0) return null
-    return getRowKeyFromArray(currentRow, columns, pkColumns)
-  }, [storeEditState, currentRow, columns, pkColumns])
+    if (!currentRow || primaryKeyColumns.length === 0) return null
+    return getRowKeyFromArray(currentRow, columns, primaryKeyColumns)
+  }, [storeEditState, currentRow, columns, primaryKeyColumns])
 
   // Is the current row being edited?
   const isEditingCurrentRow = useMemo(() => {
@@ -184,8 +185,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     if (!currentRow) return null
 
     const rowData: Record<string, unknown> = {}
-    for (let i = 0; i < columns.length; i++) {
-      rowData[columns[i].name] = currentRow[i] ?? null
+    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+      rowData[columns[columnIndex].name] = currentRow[columnIndex] ?? null
     }
 
     if (storeEditState && isEditingCurrentRow) {
@@ -229,7 +230,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
           const targetRow = updatedState?.rows[0]
 
           if (updatedState && targetRow) {
-            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, pkColumns)
+            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
             setSelectedRow(tabId, newKey)
           }
 
@@ -242,7 +243,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
           const targetRow = updatedState?.rows[updatedState.rows.length - 1]
 
           if (updatedState && targetRow) {
-            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, pkColumns)
+            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
             setSelectedRow(tabId, newKey)
           }
 
@@ -256,7 +257,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
           const targetIndex = Math.min(newLocalIndex, updatedState.rows.length - 1)
           const targetRow = updatedState.rows[targetIndex]
           if (targetRow) {
-            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, pkColumns)
+            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
             setSelectedRow(tabId, newKey)
           }
         }
@@ -274,13 +275,13 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
       pageSize,
       tabId,
       fetchPage,
-      pkColumns,
+      primaryKeyColumns,
       setSelectedRow,
       requestNavigationAction,
     ]
   )
 
-  const onNavigatePrev = useCallback(() => navigateRelative(-1), [navigateRelative])
+  const onNavigatePrevious = useCallback(() => navigateRelative(-1), [navigateRelative])
   const onNavigateNext = useCallback(() => navigateRelative(1), [navigateRelative])
 
   // --- Editing callbacks ---
@@ -308,8 +309,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   )
 
   // --- Save / Discard with toast feedback ---
-  const showError = useToastStore((s) => s.showError)
-  const showSuccess = useToastStore((s) => s.showSuccess)
+  const showError = useToastStore((state) => state.showError)
+  const showSuccess = useToastStore((state) => state.showSuccess)
 
   const onSave = useCallback(async () => {
     // Temporal validation uses the store's RowEditState (with modifiedColumns)
@@ -340,7 +341,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
 
-  const onFkLookup = useCallback(
+  const onForeignKeyLookup = useCallback(
     async (args: FkLookupArgs) => {
       if (!isActive) return
       if (!currentRowKey) return
@@ -352,44 +353,44 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
       }
 
       setSelectedRow(tabId, currentRowKey)
-      setFkLookupContext({
+      setForeignKeyLookupContext({
         columnKey: args.columnKey,
         currentValue: args.currentValue,
         foreignKey: args.foreignKey,
         rowData: args.rowData,
       })
-      setFkLookupOpen(true)
+      setForeignKeyLookupOpen(true)
     },
     [isActive, currentRowKey, storeEditState, saveCurrentRow, tabId, setSelectedRow]
   )
 
-  const closeFkLookup = useCallback(() => {
-    setFkLookupOpen(false)
-    setFkLookupContext(null)
+  const closeForeignKeyLookup = useCallback(() => {
+    setForeignKeyLookupOpen(false)
+    setForeignKeyLookupContext(null)
   }, [])
 
   useEffect(() => {
-    setBlockingNavigation(tabId, fkLookupOpen)
+    setBlockingNavigation(tabId, foreignKeyLookupOpen)
     return () => setBlockingNavigation(tabId, false)
-  }, [fkLookupOpen, setBlockingNavigation, tabId])
+  }, [foreignKeyLookupOpen, setBlockingNavigation, tabId])
 
   useEffect(() => {
     if (isActive) return
-    queueMicrotask(closeFkLookup)
-  }, [closeFkLookup, isActive])
+    queueMicrotask(closeForeignKeyLookup)
+  }, [closeForeignKeyLookup, isActive])
 
-  const onFkApply = useCallback(
+  const onForeignKeyApply = useCallback(
     (selectedValue: unknown) => {
-      if (!fkLookupContext || !currentRowKey || !currentRowData) return
+      if (!foreignKeyLookupContext || !currentRowKey || !currentRowData) return
 
       const currentEdit = useTableDataStore.getState().tabs[tabId]?.editState
       const alreadyEditing = currentEdit && isSameRowKey(currentEdit.rowKey, currentRowKey)
 
       if (
-        selectedValue === fkLookupContext.currentValue &&
+        selectedValue === foreignKeyLookupContext.currentValue &&
         (!alreadyEditing || currentEdit.modifiedColumns.size === 0)
       ) {
-        closeFkLookup()
+        closeForeignKeyLookup()
         return
       }
 
@@ -397,26 +398,26 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
         ensureEditingCurrentRow()
       }
 
-      updateCellValue(tabId, fkLookupContext.columnKey, selectedValue)
+      updateCellValue(tabId, foreignKeyLookupContext.columnKey, selectedValue)
       useTableDataStore
         .getState()
         .syncCellValue(
           tabId,
           currentRowData,
-          fkLookupContext.columnKey,
+          foreignKeyLookupContext.columnKey,
           selectedValue,
           currentRowKey
         )
-      closeFkLookup()
+      closeForeignKeyLookup()
     },
     [
-      fkLookupContext,
+      foreignKeyLookupContext,
       currentRowKey,
       currentRowData,
       tabId,
       ensureEditingCurrentRow,
       updateCellValue,
-      closeFkLookup,
+      closeForeignKeyLookup,
     ]
   )
 
@@ -425,19 +426,19 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   // primary key. Without one (read-only connection or PK-less table) the grid
   // holds only the placeholder, so the affordance is disabled rather than
   // opening a dialog that would falsely report the value as NULL.
-  const canResolveBlobPk = isEditable && pkColumns.length > 0
+  const canResolveBlobPrimaryKey = isEditable && primaryKeyColumns.length > 0
   const onBlobView = useCallback(
     (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
-      if (!rowData || !canResolveBlobPk) return
-      const converted = buildEnvelopedPkPairs(pkColumns, columns, rowData)
+      if (!rowData || !canResolveBlobPrimaryKey) return
+      const converted = buildEnvelopedPrimaryKeyPairs(primaryKeyColumns, columns, rowData)
       if (!converted.ok) {
         showError('Could not open BLOB viewer', converted.error)
         return
       }
-      setBlobContext({ columnKey: column.key, rowData, pkPairs: converted.pairs })
+      setBlobContext({ columnKey: column.key, rowData: rowData, pkPairs: converted.pairs })
       setBlobDialogOpen(true)
     },
-    [canResolveBlobPk, pkColumns, columns, showError]
+    [canResolveBlobPrimaryKey, primaryKeyColumns, columns, showError]
   )
 
   const closeBlobDialog = useCallback(() => {
@@ -468,7 +469,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   // --- Render ---
   return (
-    <FkLookupProvider onFkLookup={onFkLookup}>
+    <FkLookupProvider onFkLookup={onForeignKeyLookup}>
       <BaseFormView
         columns={gridColumns}
         currentRow={currentRow}
@@ -476,7 +477,7 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
         recordCountMode="unknown"
         currentAbsoluteIndex={absoluteIndex}
         isFirstRecord={isFirstRecord}
-        onNavigatePrev={onNavigatePrev}
+        onNavigatePrev={onNavigatePrevious}
         onNavigateNext={onNavigateNext}
         isLoading={isLoading}
         editState={sharedEditState}
@@ -488,21 +489,21 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
         testId="table-data-form-view"
         workspaceTabId={tabId}
         onBlobView={onBlobView}
-        blobViewDisabled={!canResolveBlobPk}
+        blobViewDisabled={!canResolveBlobPrimaryKey}
         blobViewDisabledReason="Cannot view BLOB — table has no primary key"
       />
-      {fkLookupOpen && fkLookupContext && tabState && (
+      {foreignKeyLookupOpen && foreignKeyLookupContext && tabState && (
         <FkLookupDialog
-          isOpen={fkLookupOpen}
-          onClose={closeFkLookup}
-          onApply={onFkApply}
+          isOpen={foreignKeyLookupOpen}
+          onClose={closeForeignKeyLookup}
+          onApply={onForeignKeyApply}
           connectionId={tabState.connectionId}
-          database={fkLookupContext.foreignKey.referencedDatabase || tabState.database}
+          database={foreignKeyLookupContext.foreignKey.referencedDatabase || tabState.database}
           sourceTable={tabState.table}
-          sourceColumn={fkLookupContext.columnKey}
-          currentValue={fkLookupContext.currentValue}
-          referencedTable={fkLookupContext.foreignKey.referencedTable}
-          referencedColumn={fkLookupContext.foreignKey.referencedColumn}
+          sourceColumn={foreignKeyLookupContext.columnKey}
+          currentValue={foreignKeyLookupContext.currentValue}
+          referencedTable={foreignKeyLookupContext.foreignKey.referencedTable}
+          referencedColumn={foreignKeyLookupContext.foreignKey.referencedColumn}
           isReadOnly={!isEditable}
         />
       )}

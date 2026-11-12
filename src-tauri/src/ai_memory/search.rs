@@ -25,7 +25,7 @@ fn knn_one_table(
     scope: MemoryScope,
     vec_table: &str,
     embedding_bytes: &[u8],
-    k: usize,
+    limit: usize,
 ) -> Result<Vec<ScoredMemory>, String> {
     // Select the row columns relevant to the scope plus the vec distance.
     let row_table = match scope {
@@ -53,9 +53,9 @@ fn knn_one_table(
     };
 
     let mut stmt = match conn.prepare(&sql) {
-        Ok(s) => s,
-        Err(e) => {
-            let msg = e.to_string();
+        Ok(statement) => statement,
+        Err(error) => {
+            let msg = error.to_string();
             if msg.contains("no such table") {
                 tracing::debug!(
                     vec_table,
@@ -69,7 +69,7 @@ fn knn_one_table(
     };
 
     let rows = stmt
-        .query_map(params![embedding_bytes, k as i64], |row| {
+        .query_map(params![embedding_bytes, limit as i64], |row| {
             let (memory, distance) = match scope {
                 MemoryScope::Connection => (
                     AiMemory {
@@ -110,10 +110,10 @@ fn knn_one_table(
             };
             Ok(ScoredMemory { memory, distance })
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| error.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())
 }
 
 /// Search memories by semantic similarity across all applicable scopes.
@@ -127,23 +127,26 @@ pub async fn search_memories_impl(
     connection_id: &str,
     group_id: Option<&str>,
     query: &str,
-    k: usize,
+    limit: usize,
 ) -> Result<Vec<AiMemory>, String> {
     tracing::debug!(
         connection_id,
         has_group = group_id.is_some(),
         query_len = query.len(),
-        k,
+        limit,
         "search_memories: start"
     );
 
     // Read embedding config from settings.
     let (endpoint, model) = {
-        let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
         match read_embedding_config(&conn) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                tracing::debug!(connection_id, reason = %e, "search_memories: embedding not configured — returning empty");
+            Ok(config) => config,
+            Err(error) => {
+                tracing::debug!(connection_id, reason = %error, "search_memories: embedding not configured — returning empty");
                 return Ok(vec![]);
             }
         }
@@ -165,10 +168,12 @@ pub async fn search_memories_impl(
             None,
         )
         .await
-        .map_err(|e| e.to_string())?;
-        let v = vecs.into_iter().next().ok_or("Empty embedding response")?;
-        state.embedding_cache.insert(&model, query, v.clone());
-        v
+        .map_err(|error| error.to_string())?;
+        let embedding = vecs.into_iter().next().ok_or("Empty embedding response")?;
+        state
+            .embedding_cache
+            .insert(&model, query, embedding.clone());
+        embedding
     };
 
     if !cache_hit {
@@ -184,7 +189,10 @@ pub async fn search_memories_impl(
 
     // Run the merged KNN under one DB lock.
     let knn_started = Instant::now();
-    let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+    let conn = state
+        .db
+        .lock()
+        .map_err(|error| format!("DB lock: {error}"))?;
 
     let mut merged: Vec<ScoredMemory> = Vec::new();
 
@@ -194,7 +202,7 @@ pub async fn search_memories_impl(
         MemoryScope::Global,
         &global_vec_table_name(),
         &embedding_bytes,
-        k,
+        limit,
     )?);
 
     // Group — only when the active connection has a group.
@@ -204,7 +212,7 @@ pub async fn search_memories_impl(
             MemoryScope::Group,
             &group_vec_table_name(gid),
             &embedding_bytes,
-            k,
+            limit,
         )?);
     }
 
@@ -214,23 +222,23 @@ pub async fn search_memories_impl(
         MemoryScope::Connection,
         &vec_table_name(connection_id),
         &embedding_bytes,
-        k,
+        limit,
     )?);
 
     // Merge by ascending distance, then truncate to k.
-    merged.sort_by(|a, b| {
-        a.distance
-            .partial_cmp(&b.distance)
+    merged.sort_by(|left, right| {
+        left.distance
+            .partial_cmp(&right.distance)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    merged.truncate(k);
+    merged.truncate(limit);
 
-    let memories: Vec<AiMemory> = merged.into_iter().map(|s| s.memory).collect();
+    let memories: Vec<AiMemory> = merged.into_iter().map(|scored| scored.memory).collect();
 
     tracing::debug!(
         connection_id,
         results = memories.len(),
-        k,
+        limit,
         elapsed_ms = knn_started.elapsed().as_millis() as u64,
         "search_memories: merged KNN complete"
     );

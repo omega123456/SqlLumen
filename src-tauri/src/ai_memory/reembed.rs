@@ -39,7 +39,10 @@ where
 
     // Load all memory texts for this scope/owner.
     let texts = {
-        let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
         storage::get_memory_texts_scoped(&conn, scope, owner_id.as_deref())?
     };
 
@@ -57,11 +60,14 @@ where
 
     // Read embedding config.
     let (endpoint, model) = {
-        let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
-        read_embedding_config(&conn).map_err(|e| {
-            tracing::error!(owner_key, reason = %e, "reembed_memories: embedding not configured");
-            progress_callback(make_progress("error", 0, total, Some(e.clone())));
-            e
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
+        read_embedding_config(&conn).map_err(|error| {
+            tracing::error!(owner_key, reason = %error, "reembed_memories: embedding not configured");
+            progress_callback(make_progress("error", 0, total, Some(error.clone())));
+            error
         })?
     };
 
@@ -75,18 +81,18 @@ where
     // Detect embedding dimension.
     let dim = embeddings::detect_embedding_dimension(&state.http_client, &endpoint, &model)
         .await
-        .map_err(|e| {
-            let err = e.to_string();
-            tracing::error!(owner_key, model = %model, error = %err, "reembed_memories: failed to detect embedding dimension");
-            progress_callback(make_progress("error", 0, total, Some(err.clone())));
-            err
+        .map_err(|error| {
+            let message = error.to_string();
+            tracing::error!(owner_key, model = %model, error = %message, "reembed_memories: failed to detect embedding dimension");
+            progress_callback(make_progress("error", 0, total, Some(message.clone())));
+            message
         })?;
 
     tracing::debug!(owner_key, model = %model, dim, "reembed_memories: dimension detected");
 
     // Embed all texts BEFORE touching the vec table.
     let embed_started = Instant::now();
-    let content_strings: Vec<String> = texts.iter().map(|(_, c)| c.clone()).collect();
+    let content_strings: Vec<String> = texts.iter().map(|(_, content)| content.clone()).collect();
     let all_embeddings = embeddings::embed_texts(
         &state.http_client,
         &endpoint,
@@ -95,22 +101,22 @@ where
         None,
     )
     .await
-    .map_err(|e| {
-        let err = e.to_string();
-        tracing::error!(owner_key, model = %model, error = %err, "reembed_memories: embed_texts failed");
-        progress_callback(make_progress("error", 0, total, Some(err.clone())));
-        err
+    .map_err(|error| {
+        let message = error.to_string();
+        tracing::error!(owner_key, model = %model, error = %message, "reembed_memories: embed_texts failed");
+        progress_callback(make_progress("error", 0, total, Some(message.clone())));
+        message
     })?;
 
     if all_embeddings.len() != total {
-        let err = format!(
+        let error = format!(
             "Embedding count mismatch: expected {} embeddings, got {}",
             total,
             all_embeddings.len()
         );
         tracing::error!(owner_key, model = %model, expected = total, got = all_embeddings.len(), "reembed_memories: embedding count mismatch");
-        progress_callback(make_progress("error", 0, total, Some(err.clone())));
-        return Err(err);
+        progress_callback(make_progress("error", 0, total, Some(error.clone())));
+        return Err(error);
     }
 
     tracing::debug!(
@@ -125,25 +131,34 @@ where
 
     // All embeddings succeeded — now safe to drop and recreate vec table.
     {
-        let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
         conn.execute_batch(&format!("DROP TABLE IF EXISTS {table_name}"))
-            .map_err(|e| e.to_string())?;
-        storage::ensure_vec_table_named(&conn, &table_name, dim).map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
+        storage::ensure_vec_table_named(&conn, &table_name, dim)
+            .map_err(|error| error.to_string())?;
     }
 
     // Insert embeddings.
     let insert_started = Instant::now();
     {
-        let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
-        for (i, ((id, _), embedding)) in texts.iter().zip(all_embeddings.iter()).enumerate() {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|error| format!("DB lock: {error}"))?;
+        for (text_index, ((id, _), embedding)) in
+            texts.iter().zip(all_embeddings.iter()).enumerate()
+        {
             storage::insert_memory_vector(&conn, &table_name, *id, embedding)
-                .map_err(|e| {
-                    let err = e.to_string();
-                    tracing::error!(owner_key, memory_id = id, error = %err, "reembed_memories: failed to insert vector");
-                    progress_callback(make_progress("error", i, total, Some(err.clone())));
-                    err
+                .map_err(|error| {
+                    let message = error.to_string();
+                    tracing::error!(owner_key, memory_id = id, error = %message, "reembed_memories: failed to insert vector");
+                    progress_callback(make_progress("error", text_index, total, Some(message.clone())));
+                    message
                 })?;
-            progress_callback(make_progress("embedding", i + 1, total, None));
+            progress_callback(make_progress("embedding", text_index + 1, total, None));
         }
     }
 
