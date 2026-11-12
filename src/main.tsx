@@ -64,6 +64,11 @@ function supplyWorkerToSqlLanguageWorkers(monaco: MonacoModule): void {
   Object.assign(monaco.editor, { createWebWorker: createWebWorkerWithLabelledWorker })
 }
 
+function resolveInitialTheme(theme: string): 'dark' | 'light' {
+  if (theme === 'dark' || theme === 'light') return theme
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
 async function configureMonaco(monaco: MonacoModule): Promise<void> {
   const { loader } = await import('@monaco-editor/react')
   loader.config({ monaco })
@@ -129,13 +134,7 @@ async function init() {
   try {
     await useSettingsStore.getState().loadSettings()
     const theme = useSettingsStore.getState().getSetting('theme')
-    const resolved =
-      theme === 'dark' || theme === 'light'
-        ? theme
-        : window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
-    document.documentElement.setAttribute('data-theme', resolved)
+    document.documentElement.setAttribute('data-theme', resolveInitialTheme(theme))
 
     // Apply saved zoom level before first render to prevent flash
     const zoom = useSettingsStore.getState().getSetting('appearance.zoom')

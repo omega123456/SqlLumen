@@ -377,16 +377,16 @@ pub fn extract_responses_reasoning_text_for_event(
         Some("response.reasoning_summary_text.delta") | Some("response.reasoning_text.delta") => {
             extract_responses_delta_text(json)
         }
-        Some("response.reasoning_summary_text.done") | Some("response.reasoning_text.done") => {
-            if already_streamed_reasoning {
-                String::new()
-            } else {
-                json.get("text")
-                    .and_then(|value| value.as_str())
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| extract_responses_reasoning_text(json))
-            }
+        Some("response.reasoning_summary_text.done") | Some("response.reasoning_text.done")
+            if already_streamed_reasoning =>
+        {
+            String::new()
         }
+        Some("response.reasoning_summary_text.done") | Some("response.reasoning_text.done") => json
+            .get("text")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| extract_responses_reasoning_text(json)),
         Some("response.reasoning_summary_part.added") | Some("response.content_part.added") => json
             .get("part")
             .map(|part| extract_text_from_response_part(part, &["summary_text", "reasoning_text"]))
@@ -603,15 +603,14 @@ pub fn responses_input_items(request: &AiChatRequest) -> Vec<ResponsesInputItem>
         }
     }
 
-    if incremental_items.is_empty() {
-        let mut items = Vec::with_capacity(request.messages.len());
-        for message in &request.messages {
-            items.push(ResponsesInputItem::from(message));
-        }
-        items
-    } else {
-        incremental_items
+    if !incremental_items.is_empty() {
+        return incremental_items;
     }
+    request
+        .messages
+        .iter()
+        .map(ResponsesInputItem::from)
+        .collect()
 }
 
 fn emit_responses_done<R: Runtime>(
@@ -627,6 +626,52 @@ fn emit_responses_done<R: Runtime>(
             transport: AiTransport::Responses,
         },
     );
+}
+
+async fn stream_with_preferred_api<R: Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    request: &AiChatRequest,
+    cancellation_token: &CancellationToken,
+) -> Result<(), String> {
+    if !should_use_responses_api(request) {
+        return stream_chat_inner(app_handle, request, cancellation_token).await;
+    }
+    match stream_responses_completion(app_handle, request, cancellation_token).await {
+        Ok(()) => Ok(()),
+        Err(responses_error) if responses_error.fallback_to_chat_completions => {
+            tracing::warn!(
+                stream_id = %request.stream_id,
+                endpoint = %request.endpoint,
+                error = %responses_error.message,
+                "Responses API unavailable or incompatible; falling back to chat completions"
+            );
+            stream_chat_inner(app_handle, request, cancellation_token).await
+        }
+        Err(responses_error) => Err(responses_error.message),
+    }
+}
+
+fn reasoning_effort_level(enable_reasoning: bool) -> &'static str {
+    if enable_reasoning {
+        return "medium";
+    }
+    "none"
+}
+
+fn responses_event_response_id(json: &serde_json::Value) -> Option<&str> {
+    let nested_response_id = json
+        .get("response")
+        .and_then(|response| response.get("id"))
+        .and_then(|value| value.as_str());
+    if let Some(id) = nested_response_id {
+        return Some(id);
+    }
+    if let Some(id) = json.get("response_id").and_then(|value| value.as_str()) {
+        return Some(id);
+    }
+    json.get("id")
+        .and_then(|value| value.as_str())
+        .filter(|id| id.starts_with("resp_"))
 }
 
 /// Stream a chat completion from an OpenAI-compatible endpoint, emitting Tauri events.
@@ -646,23 +691,7 @@ pub async fn stream_chat_completion<R: Runtime>(
     let stream_id = request.stream_id.clone();
     tracing::info!(stream_id = %stream_id, endpoint = %request.endpoint, model = %request.model, "starting AI stream");
 
-    let result = if should_use_responses_api(&request) {
-        match stream_responses_completion(app_handle, &request, &cancellation_token).await {
-            Ok(()) => Ok(()),
-            Err(responses_error) if responses_error.fallback_to_chat_completions => {
-                tracing::warn!(
-                    stream_id = %stream_id,
-                    endpoint = %request.endpoint,
-                    error = %responses_error.message,
-                    "Responses API unavailable or incompatible; falling back to chat completions"
-                );
-                stream_chat_inner(app_handle, &request, &cancellation_token).await
-            }
-            Err(responses_error) => Err(responses_error.message),
-        }
-    } else {
-        stream_chat_inner(app_handle, &request, &cancellation_token).await
-    };
+    let result = stream_with_preferred_api(app_handle, &request, &cancellation_token).await;
 
     match &result {
         Ok(()) => {
@@ -702,14 +731,7 @@ async fn stream_chat_inner<R: Runtime>(
         temperature: request.temperature,
         max_tokens: request.max_tokens,
         stream: true,
-        reasoning_effort: Some(
-            if request.enable_reasoning {
-                "medium"
-            } else {
-                "none"
-            }
-            .to_string(),
-        ),
+        reasoning_effort: Some(reasoning_effort_level(request.enable_reasoning).to_string()),
         enable_thinking,
         chat_template_kwargs,
     };
@@ -759,39 +781,38 @@ async fn stream_chat_inner<R: Runtime>(
             Err(_) => "<failed to read body>".to_string(),
         };
 
-        if api_request.reasoning_effort.is_some()
-            && should_retry_chat_without_reasoning(status, &body)
-        {
-            if !request.enable_reasoning {
-                return Err(format!(
-                    "Provider rejected reasoning disable parameter reasoning_effort=none; cannot safely disable thinking for this endpoint/model. HTTP {status}: {body}"
-                ));
-            }
-
-            tracing::warn!(
-                endpoint = %request.endpoint,
-                model = %request.model,
-                status = %status,
-                "chat completions endpoint rejected reasoning_effort; retrying without it"
-            );
-
-            let retry_request = ApiChatRequest {
-                reasoning_effort: None,
-                ..api_request.clone()
-            };
-            response =
-                send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
-
-            let retry_status = response.status();
-            if !retry_status.is_success() {
-                let retry_body = match response.text().await {
-                    Ok(body) => body,
-                    Err(_) => "<failed to read body>".to_string(),
-                };
-                return Err(format!("HTTP {retry_status}: {retry_body}"));
-            }
-        } else {
+        let can_retry_without_reasoning = api_request.reasoning_effort.is_some()
+            && should_retry_chat_without_reasoning(status, &body);
+        if !can_retry_without_reasoning {
             return Err(format!("HTTP {status}: {body}"));
+        }
+        if !request.enable_reasoning {
+            return Err(format!(
+                "Provider rejected reasoning disable parameter reasoning_effort=none; cannot safely disable thinking for this endpoint/model. HTTP {status}: {body}"
+            ));
+        }
+
+        tracing::warn!(
+            endpoint = %request.endpoint,
+            model = %request.model,
+            status = %status,
+            "chat completions endpoint rejected reasoning_effort; retrying without it"
+        );
+
+        let retry_request = ApiChatRequest {
+            reasoning_effort: None,
+            ..api_request.clone()
+        };
+        response =
+            send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
+
+        let retry_status = response.status();
+        if !retry_status.is_success() {
+            let retry_body = match response.text().await {
+                Ok(body) => body,
+                Err(_) => "<failed to read body>".to_string(),
+            };
+            return Err(format!("HTTP {retry_status}: {retry_body}"));
         }
     }
 
@@ -1073,27 +1094,14 @@ fn process_responses_payload<R: Runtime>(
         state.saw_valid_responses_payload = true;
     }
 
-    if let Some(id) = json
-        .get("response")
-        .and_then(|response| response.get("id"))
-        .and_then(|value| value.as_str())
-    {
+    if let Some(id) = responses_event_response_id(json) {
         state.response_id = Some(id.to_string());
-    } else if let Some(id) = json.get("response_id").and_then(|value| value.as_str()) {
-        state.response_id = Some(id.to_string());
-    } else if let Some(id) = json.get("id").and_then(|value| value.as_str()) {
-        if id.starts_with("resp_") {
-            state.response_id = Some(id.to_string());
-        }
     }
 
-    let reasoning_text = if enable_reasoning {
-        extract_responses_reasoning_text_for_event(event_type, json, state.saw_streamed_reasoning)
-    } else {
-        String::new()
-    };
-
-    if !reasoning_text.is_empty() && enable_reasoning {
+    let reasoning_text =
+        extract_responses_reasoning_text_for_event(event_type, json, state.saw_streamed_reasoning);
+    let has_reasoning_text = enable_reasoning && !reasoning_text.is_empty();
+    if has_reasoning_text {
         state.thinking_buffer.push_str(&reasoning_text);
         state.saw_streamed_reasoning = true;
         state.saw_valid_responses_payload = true;
@@ -1166,16 +1174,8 @@ async fn stream_responses_completion<R: Runtime>(
         stream: true,
         previous_response_id: request.previous_response_id.clone(),
         reasoning: Some(crate::ai::types::ReasoningConfig {
-            effort: if request.enable_reasoning {
-                "medium".to_string()
-            } else {
-                "none".to_string()
-            },
-            summary: if request.enable_reasoning {
-                Some("auto".to_string())
-            } else {
-                None
-            },
+            effort: reasoning_effort_level(request.enable_reasoning).to_string(),
+            summary: request.enable_reasoning.then(|| "auto".to_string()),
         }),
         reasoning_effort: None,
     };
@@ -1223,38 +1223,37 @@ async fn stream_responses_completion<R: Runtime>(
             Err(_) => "<failed to read body>".to_string(),
         };
 
-        if should_fallback_from_responses_status(status, &body) {
-            tracing::warn!(
-                endpoint = %request.endpoint,
-                model = %request.model,
-                status = %status,
-                "responses endpoint rejected reasoning config; retrying without reasoning"
-            );
-
-            let retry_request = ApiResponsesRequest {
-                reasoning: None,
-                ..api_request.clone()
-            };
-
-            response =
-                send_responses_request(&client, &responses_url, &retry_request, cancellation_token)
-                    .await?;
-            let retry_status = response.status();
-            if !retry_status.is_success() {
-                let retry_body = match response.text().await {
-                    Ok(body) => body,
-                    Err(_) => "<failed to read body>".to_string(),
-                };
-                return Err(ResponsesStreamError::new(
-                    format!("HTTP {retry_status}: {retry_body}"),
-                    retry_status.is_server_error()
-                        || should_fallback_from_responses_status(retry_status, &retry_body),
-                ));
-            }
-        } else {
+        if !should_fallback_from_responses_status(status, &body) {
             return Err(ResponsesStreamError::new(
                 format!("HTTP {status}: {body}"),
-                status.is_server_error() || should_fallback_from_responses_status(status, &body),
+                status.is_server_error(),
+            ));
+        }
+        tracing::warn!(
+            endpoint = %request.endpoint,
+            model = %request.model,
+            status = %status,
+            "responses endpoint rejected reasoning config; retrying without reasoning"
+        );
+
+        let retry_request = ApiResponsesRequest {
+            reasoning: None,
+            ..api_request.clone()
+        };
+
+        response =
+            send_responses_request(&client, &responses_url, &retry_request, cancellation_token)
+                .await?;
+        let retry_status = response.status();
+        if !retry_status.is_success() {
+            let retry_body = match response.text().await {
+                Ok(body) => body,
+                Err(_) => "<failed to read body>".to_string(),
+            };
+            return Err(ResponsesStreamError::new(
+                format!("HTTP {retry_status}: {retry_body}"),
+                retry_status.is_server_error()
+                    || should_fallback_from_responses_status(retry_status, &retry_body),
             ));
         }
     }

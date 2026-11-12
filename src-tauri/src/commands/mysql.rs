@@ -82,12 +82,12 @@ fn health_monitor_token(
     if keepalive_secs == 0 {
         let token = CancellationToken::new();
         token.cancel();
-        token
-    } else if let Some(ref handle) = state.app_handle {
-        health::spawn_health_monitor(session_id.to_string(), keepalive_secs, handle.clone())
-    } else {
-        CancellationToken::new()
+        return token;
     }
+    let Some(ref handle) = state.app_handle else {
+        return CancellationToken::new();
+    };
+    health::spawn_health_monitor(session_id.to_string(), keepalive_secs, handle.clone())
 }
 
 #[cfg(not(coverage))]
@@ -106,32 +106,43 @@ async fn close_pool(pool: sqlx::MySqlPool) {
     pool.close().await;
 }
 
+#[cfg(not(coverage))]
+fn resolve_test_connection_password(input: &TestConnectionInput) -> Result<String, String> {
+    if !input.password.is_empty() {
+        return Ok(input.password.clone());
+    }
+    let Some(profile_id) = input.profile_id.as_deref() else {
+        return Ok(String::new());
+    };
+    Ok(credentials::get_password(profile_id)?.unwrap_or_default())
+}
+
+#[cfg(not(coverage))]
+fn ssl_status_label(cipher: String) -> String {
+    if cipher.is_empty() {
+        return "Not using SSL".to_string();
+    }
+    cipher
+}
+
 /// Test a MySQL connection with the given parameters.
 /// Creates a temporary pool, runs diagnostic queries, and drops the pool.
 #[cfg(not(coverage))]
 pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionResult {
     // When testing a saved connection without a freshly typed password, resolve the
     // stored password from secure storage so the test uses real credentials.
-    let password = if input.password.is_empty() {
-        match input.profile_id.as_deref() {
-            Some(profile_id) => match credentials::get_password(profile_id) {
-                Ok(Some(stored)) => stored,
-                Ok(None) => String::new(),
-                Err(error) => {
-                    return TestConnectionResult {
-                        success: false,
-                        server_version: None,
-                        auth_method: None,
-                        ssl_status: None,
-                        connection_time_ms: None,
-                        error_message: Some(error),
-                    };
-                }
-            },
-            None => String::new(),
+    let password = match resolve_test_connection_password(&input) {
+        Ok(password) => password,
+        Err(error) => {
+            return TestConnectionResult {
+                success: false,
+                server_version: None,
+                auth_method: None,
+                ssl_status: None,
+                connection_time_ms: None,
+                error_message: Some(error),
+            };
         }
-    } else {
-        input.password
     };
 
     let params = ConnectionParams {
@@ -187,13 +198,7 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
             query_log::log_mysql_rows(std::slice::from_ref(&row));
             row.try_get::<String, _>(1).ok()
         })
-        .map(|cipher| {
-            if cipher.is_empty() {
-                "Not using SSL".to_string()
-            } else {
-                cipher
-            }
-        });
+        .map(ssl_status_label);
 
     query_log::log_outgoing_sql("SELECT CURRENT_USER()");
     let auth_method = sqlx::query("SELECT CURRENT_USER()")
@@ -338,14 +343,13 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
 
     // Decrement ref count
     let should_cleanup = match state.session_ref_counts.lock() {
-        Ok(mut counts) => {
-            if let Some(count) = counts.get_mut(&profile_id) {
+        Ok(mut counts) => match counts.get_mut(&profile_id) {
+            Some(count) => {
                 *count = count.saturating_sub(1);
                 *count == 0
-            } else {
-                false
             }
-        }
+            None => false,
+        },
         Err(_) => false,
     };
 
@@ -373,21 +377,20 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
     // Cancel running full exports first, while the pool their KILL needs exists.
     crate::export::result_export::cancel_result_exports_for_connection(state, connection_id).await;
-    if state.registry.contains(connection_id) {
-        // Clean up schema index session tracking
-        cleanup_schema_index_session(state, connection_id);
-
-        // Clean up any running_queries entries for this connection
-        {
-            let mut rq = state.running_queries.write().await;
-            rq.retain(|(conn_id, _), _| conn_id != connection_id);
-        }
-        evict_metadata_cache_for_connection(state, connection_id);
-        crate::mysql::session::close(state, connection_id).await;
-        Ok(())
-    } else {
-        Err(format!("Connection '{connection_id}' is not open"))
+    if !state.registry.contains(connection_id) {
+        return Err(format!("Connection '{connection_id}' is not open"));
     }
+    // Clean up schema index session tracking
+    cleanup_schema_index_session(state, connection_id);
+
+    // Clean up any running_queries entries for this connection
+    {
+        let mut rq = state.running_queries.write().await;
+        rq.retain(|(conn_id, _), _| conn_id != connection_id);
+    }
+    evict_metadata_cache_for_connection(state, connection_id);
+    crate::mysql::session::close(state, connection_id).await;
+    Ok(())
 }
 
 /// Close an open connection: removes pool from registry and drops it.

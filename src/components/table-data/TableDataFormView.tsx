@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo } from 'react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
-import { useConnectionStore } from '../../stores/connection-store'
+import { useIsConnectionReadOnly } from '../../stores/connection-store'
 import { FALLBACK_ROW_LIMIT } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
@@ -23,7 +23,13 @@ import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../types/shared-data-view'
-import type { TableDataColumnMeta } from '../../types/schema'
+import type {
+  ForeignKeyColumnInfo,
+  PrimaryKeyInfo,
+  RowEditState,
+  TableDataColumnMeta,
+  TableDataTabState,
+} from '../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,6 +74,167 @@ function focusFormInput(columnName: string): void {
   input?.focus()
 }
 
+type RowKey = Record<string, unknown>
+
+const EMPTY_COLUMNS: TableDataColumnMeta[] = []
+const EMPTY_ROWS: unknown[][] = []
+const EMPTY_KEY_COLUMNS: string[] = []
+const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
+
+interface FormTabView {
+  connectionId: string
+  columns: TableDataColumnMeta[]
+  rows: unknown[][]
+  currentPage: number
+  pageSize: number
+  primaryKey: PrimaryKeyInfo | null
+  primaryKeyColumns: string[]
+  editState: RowEditState | null
+  selectedRowKey: RowKey | null
+  isLoading: boolean
+  foreignKeys: ForeignKeyColumnInfo[]
+}
+
+const EMPTY_FORM_TAB_VIEW: FormTabView = {
+  connectionId: '',
+  columns: EMPTY_COLUMNS,
+  rows: EMPTY_ROWS,
+  currentPage: 1,
+  pageSize: FALLBACK_ROW_LIMIT,
+  primaryKey: null,
+  primaryKeyColumns: EMPTY_KEY_COLUMNS,
+  editState: null,
+  selectedRowKey: null,
+  isLoading: false,
+  foreignKeys: EMPTY_FOREIGN_KEYS,
+}
+
+function formTabView(tabState: TableDataTabState | undefined): FormTabView {
+  if (!tabState) return EMPTY_FORM_TAB_VIEW
+  return {
+    connectionId: tabState.connectionId,
+    columns: tabState.columns,
+    rows: tabState.rows,
+    currentPage: tabState.currentPage,
+    pageSize: tabState.pageSize,
+    primaryKey: tabState.primaryKey,
+    primaryKeyColumns: tabState.primaryKey?.keyColumns ?? EMPTY_KEY_COLUMNS,
+    editState: tabState.editState,
+    selectedRowKey: tabState.selectedRowKey,
+    isLoading: tabState.isLoading,
+    foreignKeys: tabState.foreignKeys ?? EMPTY_FOREIGN_KEYS,
+  }
+}
+
+interface SelectedRowLookup {
+  selectedRowKey: RowKey | null
+  rows: unknown[][]
+  columns: TableDataColumnMeta[]
+  primaryKeyColumns: string[]
+}
+
+function findSelectedLocalIndex(lookup: SelectedRowLookup): number {
+  const { selectedRowKey, rows } = lookup
+  if (!selectedRowKey || rows.length === 0) return 0
+  // Handle temp rows (new row insert): selectedRowKey = { __tempId: 'temp-...' }
+  // New rows are always appended at the end of the rows array
+  if ('__tempId' in selectedRowKey) {
+    return rows.length - 1
+  }
+  const index = rows.findIndex((row) => {
+    const key = getRowKeyFromArray(row, lookup.columns, lookup.primaryKeyColumns)
+    return isSameRowKey(key, selectedRowKey)
+  })
+  return Math.max(index, 0)
+}
+
+function buildCurrentRowData(
+  currentRow: unknown[],
+  columns: TableDataColumnMeta[],
+  activeEditState: RowEditState | null
+): Record<string, unknown> {
+  const rowData: Record<string, unknown> = {}
+  for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
+    rowData[columns[columnIndex].name] = currentRow[columnIndex] ?? null
+  }
+
+  if (!activeEditState) return rowData
+
+  rowData.__editingRowKey = activeEditState.rowKey
+  for (const [columnName, value] of Object.entries(activeEditState.currentValues)) {
+    rowData[columnName] = value
+  }
+  return rowData
+}
+
+interface FormEditability {
+  isConnectionReadOnly: boolean
+  hasPrimaryKey: boolean
+  isView: boolean | undefined
+}
+
+function canEditFormRows(editability: FormEditability): boolean {
+  if (editability.isConnectionReadOnly || editability.isView) return false
+  return editability.hasPrimaryKey
+}
+
+function isAtFirstRecord(currentPage: number, localIndex: number): boolean {
+  return currentPage === 1 && localIndex === 0
+}
+
+type StoreRowPicker = (rows: unknown[][]) => unknown[] | undefined
+
+function selectStoreRow(tabId: string, primaryKeyColumns: string[], pickRow: StoreRowPicker): void {
+  const updatedState = useTableDataStore.getState().tabs[tabId]
+  if (!updatedState) return
+  const targetRow = pickRow(updatedState.rows)
+  if (!targetRow) return
+  const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
+  useTableDataStore.getState().setSelectedRow(tabId, newKey)
+}
+
+interface FormRowPosition {
+  localIndex: number
+  rowCount: number
+  currentPage: number
+  pageSize: number
+}
+
+interface RelativeRowNavigation {
+  tabId: string
+  direction: -1 | 1
+  position: FormRowPosition
+  primaryKeyColumns: string[]
+  fetchPage: (tabId: string, page: number) => Promise<void>
+}
+
+const pickFirstRow: StoreRowPicker = (rows) => rows[0]
+const pickLastRow: StoreRowPicker = (rows) => rows[rows.length - 1]
+
+async function navigateToRelativeRow(navigation: RelativeRowNavigation): Promise<void> {
+  const { tabId, direction, position, primaryKeyColumns } = navigation
+  const isForwardCrossPage = direction > 0 && position.localIndex === position.rowCount - 1
+  const isBackwardCrossPage = direction < 0 && position.localIndex === 0 && position.currentPage > 1
+
+  if (isForwardCrossPage) {
+    await navigation.fetchPage(tabId, position.currentPage + 1)
+    selectStoreRow(tabId, primaryKeyColumns, pickFirstRow)
+    return
+  }
+
+  if (isBackwardCrossPage) {
+    await navigation.fetchPage(tabId, position.currentPage - 1)
+    selectStoreRow(tabId, primaryKeyColumns, pickLastRow)
+    return
+  }
+
+  const absoluteIndex = (position.currentPage - 1) * position.pageSize + position.localIndex
+  const newAbsoluteIndex = absoluteIndex + direction
+  const newLocalIndex =
+    ((newAbsoluteIndex % position.pageSize) + position.pageSize) % position.pageSize
+  selectStoreRow(tabId, primaryKeyColumns, (rows) => rows[Math.min(newLocalIndex, rows.length - 1)])
+}
+
 // ---------------------------------------------------------------------------
 // Column adapter
 // ---------------------------------------------------------------------------
@@ -109,28 +276,30 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const setSelectedRow = useTableDataStore((state) => state.setSelectedRow)
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
-  // Connection read-only check
-  const connectionId = tabState?.connectionId ?? ''
-  const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
-  const isConnectionReadOnly = activeConnection?.profile?.readOnly ?? false
-
-  const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
-  const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
-  const currentPage = tabState?.currentPage ?? 1
-  const pageSize = tabState?.pageSize ?? FALLBACK_ROW_LIMIT
-  const primaryKey = tabState?.primaryKey ?? null
-  const storeEditState = tabState?.editState ?? null
-  const selectedRowKey = tabState?.selectedRowKey ?? null
-  const isLoading = tabState?.isLoading ?? false
-  const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
+  const {
+    connectionId,
+    columns,
+    rows,
+    currentPage,
+    pageSize,
+    primaryKey,
+    primaryKeyColumns,
+    editState: storeEditState,
+    selectedRowKey,
+    isLoading,
+    foreignKeys,
+  } = formTabView(tabState)
+  const isConnectionReadOnly = useIsConnectionReadOnly(connectionId)
   const foreignKeyLookup = useMemo(() => buildForeignKeyLookup(foreignKeys), [foreignKeys])
 
   const { foreignKeyLookupTarget, openForeignKeyLookup, closeForeignKeyLookup } = useFkLookupFlow()
   const isForeignKeyLookupOpen = foreignKeyLookupTarget !== null
 
-  const hasPrimaryKey = primaryKey !== null
-  const isEditable = !isConnectionReadOnly && hasPrimaryKey && !isView
-  const primaryKeyColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
+  const isEditable = canEditFormRows({
+    isConnectionReadOnly: isConnectionReadOnly,
+    hasPrimaryKey: primaryKey !== null,
+    isView: isView,
+  })
   const blobViewer = useBlobViewerState({
     tabId: tabId,
     columns: columns,
@@ -148,19 +317,16 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   )
 
   // --- Find local index of selected row ---
-  const localIndex = useMemo(() => {
-    if (!selectedRowKey || rows.length === 0) return 0
-    // Handle temp rows (new row insert): selectedRowKey = { __tempId: 'temp-...' }
-    // New rows are always appended at the end of the rows array
-    if ('__tempId' in selectedRowKey) {
-      return rows.length - 1
-    }
-    const index = rows.findIndex((row) => {
-      const key = getRowKeyFromArray(row, columns, primaryKeyColumns)
-      return isSameRowKey(key, selectedRowKey)
-    })
-    return index >= 0 ? index : 0
-  }, [selectedRowKey, rows, columns, primaryKeyColumns])
+  const localIndex = useMemo(
+    () =>
+      findSelectedLocalIndex({
+        selectedRowKey: selectedRowKey,
+        rows: rows,
+        columns: columns,
+        primaryKeyColumns: primaryKeyColumns,
+      }),
+    [selectedRowKey, rows, columns, primaryKeyColumns]
+  )
 
   const absoluteIndex = (currentPage - 1) * pageSize + localIndex
   const currentRow = rows.length > 0 ? rows[localIndex] : null
@@ -180,20 +346,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   const currentRowData = useMemo(() => {
     if (!currentRow) return null
-
-    const rowData: Record<string, unknown> = {}
-    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-      rowData[columns[columnIndex].name] = currentRow[columnIndex] ?? null
-    }
-
-    if (storeEditState && isEditingCurrentRow) {
-      rowData.__editingRowKey = storeEditState.rowKey
-      for (const [columnName, value] of Object.entries(storeEditState.currentValues)) {
-        rowData[columnName] = value
-      }
-    }
-
-    return rowData
+    const activeEditState = isEditingCurrentRow ? storeEditState : null
+    return buildCurrentRowData(currentRow, columns, activeEditState)
   }, [currentRow, columns, storeEditState, isEditingCurrentRow])
 
   // --- Adapt store RowEditState → shared RowEditState ---
@@ -208,57 +362,28 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   // --- Navigation boundary flags ---
   // Fold isLoading into the first flag so BaseFormView disables buttons
-  const isFirstRecord = (currentPage === 1 && localIndex === 0) || isLoading
+  const isFirstRecord = isAtFirstRecord(currentPage, localIndex) || isLoading
 
   // --- Navigation handlers ---
   const navigateRelative = useCallback(
     (direction: -1 | 1) => {
       if (!tabState || isLoading) return
 
-      if (direction < 0 && currentPage === 1 && localIndex === 0) return
+      if (direction < 0 && isAtFirstRecord(currentPage, localIndex)) return
 
-      const action = async () => {
-        const isForwardCrossPage = direction > 0 && localIndex === rows.length - 1
-        const isBackwardCrossPage = direction < 0 && localIndex === 0 && currentPage > 1
-
-        if (isForwardCrossPage) {
-          await fetchPage(tabId, currentPage + 1)
-          const updatedState = useTableDataStore.getState().tabs[tabId]
-          const targetRow = updatedState?.rows[0]
-
-          if (updatedState && targetRow) {
-            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
-            setSelectedRow(tabId, newKey)
-          }
-
-          return
-        }
-
-        if (isBackwardCrossPage) {
-          await fetchPage(tabId, currentPage - 1)
-          const updatedState = useTableDataStore.getState().tabs[tabId]
-          const targetRow = updatedState?.rows[updatedState.rows.length - 1]
-
-          if (updatedState && targetRow) {
-            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
-            setSelectedRow(tabId, newKey)
-          }
-
-          return
-        }
-
-        const newAbsoluteIndex = absoluteIndex + direction
-        const newLocalIndex = ((newAbsoluteIndex % pageSize) + pageSize) % pageSize
-        const updatedState = useTableDataStore.getState().tabs[tabId]
-        if (updatedState && updatedState.rows.length > 0) {
-          const targetIndex = Math.min(newLocalIndex, updatedState.rows.length - 1)
-          const targetRow = updatedState.rows[targetIndex]
-          if (targetRow) {
-            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, primaryKeyColumns)
-            setSelectedRow(tabId, newKey)
-          }
-        }
-      }
+      const action = () =>
+        navigateToRelativeRow({
+          tabId: tabId,
+          direction: direction,
+          position: {
+            localIndex: localIndex,
+            rowCount: rows.length,
+            currentPage: currentPage,
+            pageSize: pageSize,
+          },
+          primaryKeyColumns: primaryKeyColumns,
+          fetchPage: fetchPage,
+        })
 
       requestNavigationAction(tabId, action)
     },
@@ -267,13 +392,11 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
       isLoading,
       localIndex,
       rows.length,
-      absoluteIndex,
       currentPage,
       pageSize,
       tabId,
       fetchPage,
       primaryKeyColumns,
-      setSelectedRow,
       requestNavigationAction,
     ]
   )

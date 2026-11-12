@@ -36,33 +36,34 @@ export function isPinnedWorkspaceTab(tab: WorkspaceTab): boolean {
   return tab.type === 'history' || tab.type === 'processlist'
 }
 
+const STACK_KEY_BY_TAB_TYPE: Record<WorkspaceTab['type'], WorkspaceTabStackKey | null> = {
+  'query-editor': 'queries',
+  'table-data': 'tables',
+  'table-designer': 'designers',
+  'schema-info': 'schema',
+  'object-editor': 'objects',
+  history: null,
+  processlist: null,
+}
+
+function isHiddenScopedTableDataTab(
+  tab: WorkspaceTab,
+  options: WorkspaceTabStackResolutionOptions
+): boolean {
+  if (tab.type !== 'table-data') {
+    return false
+  }
+  return Boolean(options.hideScopedTableDataTabs && tab.parentQueryTabId)
+}
+
 export function getWorkspaceStackKeyForTab(
   tab: WorkspaceTab,
   options: WorkspaceTabStackResolutionOptions = {}
 ): WorkspaceTabStackKey | null {
-  if (isPinnedWorkspaceTab(tab)) {
+  if (isHiddenScopedTableDataTab(tab, options)) {
     return null
   }
-
-  if (tab.type === 'table-data' && options.hideScopedTableDataTabs && tab.parentQueryTabId) {
-    return null
-  }
-
-  switch (tab.type) {
-    case 'query-editor':
-      return 'queries'
-    case 'table-data':
-      return 'tables'
-    case 'table-designer':
-      return 'designers'
-    case 'schema-info':
-      return 'schema'
-    case 'object-editor':
-      return 'objects'
-    case 'history':
-    case 'processlist':
-      return null
-  }
+  return STACK_KEY_BY_TAB_TYPE[tab.type]
 }
 
 export function groupWorkspaceTabsByStack(

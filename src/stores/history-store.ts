@@ -88,33 +88,68 @@ const INITIAL_STATE = {
   pageSize: DEFAULT_PAGE_SIZE,
 }
 
+interface HistoryQuery {
+  append: boolean
+  page: number
+  search: string
+  since: HistoryState['sinceByConnection'][string]
+}
+
+function resolveHistoryQuery(
+  state: HistoryState,
+  connectionId: string,
+  options: LoadHistoryOptions
+): HistoryQuery {
+  const search =
+    options.search !== undefined ? options.search : (state.searchByConnection[connectionId] ?? '')
+  const since =
+    options.since !== undefined ? options.since : (state.sinceByConnection[connectionId] ?? null)
+  return {
+    append: options.append ?? false,
+    page: options.page ?? state.pageByConnection[connectionId] ?? 1,
+    search: search,
+    since: since,
+  }
+}
+
+function markHistoryLoading(connectionId: string, append: boolean): void {
+  const state = useHistoryStore.getState()
+  if (append) {
+    useHistoryStore.setState({
+      isLoadingMoreByConnection: { ...state.isLoadingMoreByConnection, [connectionId]: true },
+    })
+    return
+  }
+  useHistoryStore.setState({
+    isLoadingByConnection: { ...state.isLoadingByConnection, [connectionId]: true },
+    errorByConnection: { ...state.errorByConnection, [connectionId]: null },
+  })
+}
+
+function markHistoryLoadFailed(connectionId: string, append: boolean, message: string): void {
+  const state = useHistoryStore.getState()
+  if (append) {
+    // The already-loaded rows stay visible, so the failure surfaces as a toast.
+    useHistoryStore.setState({
+      isLoadingMoreByConnection: { ...state.isLoadingMoreByConnection, [connectionId]: false },
+    })
+    showErrorToast('Failed to load more history', message)
+    return
+  }
+  useHistoryStore.setState({
+    isLoadingByConnection: { ...state.isLoadingByConnection, [connectionId]: false },
+    errorByConnection: { ...state.errorByConnection, [connectionId]: message },
+  })
+}
+
 export const useHistoryStore = create<HistoryState>()((set, get) => ({
   ...INITIAL_STATE,
 
   loadHistory: async (connectionId: string, options: LoadHistoryOptions = {}) => {
-    const state = get()
-    const append = options.append ?? false
-    const page = options.page ?? state.pageByConnection[connectionId] ?? 1
-    const search =
-      options.search !== undefined ? options.search : (state.searchByConnection[connectionId] ?? '')
-    const since =
-      options.since !== undefined ? options.since : (state.sinceByConnection[connectionId] ?? null)
+    const { append, page, search, since } = resolveHistoryQuery(get(), connectionId, options)
     const requestSeq = nextRequestSeq(connectionId)
     const isStale = () => latestRequestSeq[connectionId] !== requestSeq
-
-    if (append) {
-      set({
-        isLoadingMoreByConnection: {
-          ...get().isLoadingMoreByConnection,
-          [connectionId]: true,
-        },
-      })
-    } else {
-      set({
-        isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: true },
-        errorByConnection: { ...get().errorByConnection, [connectionId]: null },
-      })
-    }
+    markHistoryLoading(connectionId, append)
 
     try {
       const result: HistoryPage = await listHistoryCmd(
@@ -146,21 +181,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       const message = toErrorMessage(error)
       logFrontendError('[history-store] loadHistory failed:', error)
       if (isStale()) return
-      if (append) {
-        // Keep the already-loaded rows visible; surface the failure as a toast.
-        set({
-          isLoadingMoreByConnection: {
-            ...get().isLoadingMoreByConnection,
-            [connectionId]: false,
-          },
-        })
-        showErrorToast('Failed to load more history', message)
-      } else {
-        set({
-          isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
-          errorByConnection: { ...get().errorByConnection, [connectionId]: message },
-        })
-      }
+      markHistoryLoadFailed(connectionId, append, message)
     }
   },
 

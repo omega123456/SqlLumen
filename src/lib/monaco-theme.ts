@@ -220,6 +220,6 @@ export function getMonacoThemeName(
   theme: 'light' | 'dark' | 'system',
   systemIsDark: boolean
 ): MonacoThemeName {
-  const resolved = theme === 'system' ? (systemIsDark ? 'dark' : 'light') : theme
-  return resolved === 'dark' ? 'precision-studio-dark' : 'precision-studio-light'
+  const isDark = theme === 'system' ? systemIsDark : theme === 'dark'
+  return isDark ? 'precision-studio-dark' : 'precision-studio-light'
 }

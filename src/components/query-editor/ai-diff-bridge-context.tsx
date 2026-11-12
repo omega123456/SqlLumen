@@ -24,9 +24,9 @@ export function AiDiffBridgeProvider({ children }: { children: ReactNode }) {
   const registerHandler = useCallback((tabId: string, handler: AiDiffHandler | null) => {
     if (handler === null) {
       delete handlersRef.current[tabId]
-    } else {
-      handlersRef.current[tabId] = handler
+      return
     }
+    handlersRef.current[tabId] = handler
   }, [])
 
   const triggerDiff = useCallback((tabId: string, proposedSql: string, range: PlainRange) => {

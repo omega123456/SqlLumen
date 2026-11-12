@@ -14,27 +14,17 @@ export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   passwordToggleGutter?: boolean
 }
 
+const VARIANT_CLASSES: Record<TextInputVariant, string> = {
+  default: 'ui-input',
+  mono: mergeClassNames('ui-input', styles.mono),
+  formField: mergeClassNames('ui-field-chrome', styles.formField),
+  tableCell: mergeClassNames('ui-field-chrome', styles.tableCell),
+  gridCell: 'td-cell-editor-input',
+  bare: '',
+}
+
 function variantClasses(variant: TextInputVariant): string {
-  switch (variant) {
-    case 'default': {
-      return 'ui-input'
-    }
-    case 'mono': {
-      return mergeClassNames('ui-input', styles.mono)
-    }
-    case 'formField': {
-      return mergeClassNames('ui-field-chrome', styles.formField)
-    }
-    case 'tableCell': {
-      return mergeClassNames('ui-field-chrome', styles.tableCell)
-    }
-    case 'gridCell': {
-      return 'td-cell-editor-input'
-    }
-    case 'bare': {
-      return ''
-    }
-  }
+  return VARIANT_CLASSES[variant]
 }
 
 export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(

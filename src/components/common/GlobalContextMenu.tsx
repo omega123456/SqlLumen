@@ -20,7 +20,7 @@ interface OpenState {
   field: HTMLElement
   portalRoot: HTMLElement
   /** Snapshot for inputs/textareas — focus can move before the menu renders and clear selection. */
-  textSelection?: { start: number; end: number }
+  textSelection?: TextSelectionRange
 }
 
 function contentEditableHasSelection(host: HTMLElement): boolean {
@@ -35,16 +35,38 @@ function contentEditableHasSelection(host: HTMLElement): boolean {
   return !range.collapsed
 }
 
-async function runCut(
-  field: HTMLElement,
-  textSelection?: { start: number; end: number }
-): Promise<void> {
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+type TextControl = HTMLInputElement | HTMLTextAreaElement
+
+interface TextSelectionRange {
+  start: number
+  end: number
+}
+
+function isTextControl(field: HTMLElement): field is TextControl {
+  return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
+}
+
+function resolveSelectionRange(
+  field: TextControl,
+  textSelection?: TextSelectionRange
+): TextSelectionRange {
+  return {
+    start: textSelection?.start ?? field.selectionStart ?? 0,
+    end: textSelection?.end ?? field.selectionEnd ?? 0,
+  }
+}
+
+function dispatchValueChange(field: TextControl): void {
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+  field.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+async function runCut(field: HTMLElement, textSelection?: TextSelectionRange): Promise<void> {
+  if (isTextControl(field)) {
     if (field.readOnly) {
       return
     }
-    const start = textSelection?.start ?? field.selectionStart ?? 0
-    const end = textSelection?.end ?? field.selectionEnd ?? 0
+    const { start, end } = resolveSelectionRange(field, textSelection)
     if (start === end) {
       return
     }
@@ -52,8 +74,7 @@ async function runCut(
     await writeClipboardText(slice)
     field.value = field.value.slice(0, start) + field.value.slice(end)
     field.setSelectionRange(start, start)
-    field.dispatchEvent(new Event('input', { bubbles: true }))
-    field.dispatchEvent(new Event('change', { bubbles: true }))
+    dispatchValueChange(field)
     return
   }
 
@@ -61,13 +82,9 @@ async function runCut(
   document.execCommand('cut')
 }
 
-async function runCopy(
-  field: HTMLElement,
-  textSelection?: { start: number; end: number }
-): Promise<void> {
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-    const start = textSelection?.start ?? field.selectionStart ?? 0
-    const end = textSelection?.end ?? field.selectionEnd ?? 0
+async function runCopy(field: HTMLElement, textSelection?: TextSelectionRange): Promise<void> {
+  if (isTextControl(field)) {
+    const { start, end } = resolveSelectionRange(field, textSelection)
     if (start === end) {
       return
     }
@@ -79,60 +96,72 @@ async function runCopy(
   document.execCommand('copy')
 }
 
-async function runPaste(
-  field: HTMLElement,
-  textSelection?: { start: number; end: number }
+async function pasteIntoTextControl(
+  field: TextControl,
+  textSelection?: TextSelectionRange
 ): Promise<void> {
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-    if (field.readOnly) {
-      return
-    }
-    const text = await readClipboardText()
-    const start = textSelection?.start ?? field.selectionStart ?? 0
-    const end = textSelection?.end ?? field.selectionEnd ?? 0
-    const fieldValue = field.value
-    field.value = fieldValue.slice(0, start) + text + fieldValue.slice(end)
-    const position = start + text.length
-    field.setSelectionRange(position, position)
-    field.dispatchEvent(new Event('input', { bubbles: true }))
-    field.dispatchEvent(new Event('change', { bubbles: true }))
+  if (field.readOnly) {
+    return
+  }
+  const text = await readClipboardText()
+  const { start, end } = resolveSelectionRange(field, textSelection)
+  const fieldValue = field.value
+  field.value = fieldValue.slice(0, start) + text + fieldValue.slice(end)
+  const position = start + text.length
+  field.setSelectionRange(position, position)
+  dispatchValueChange(field)
+}
+
+function selectionRangeInside(field: HTMLElement): Range | null {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    return null
+  }
+  const range = selection.getRangeAt(0)
+  if (!field.contains(range.commonAncestorContainer)) {
+    return null
+  }
+  return range
+}
+
+async function insertClipboardTextAtSelection(field: HTMLElement): Promise<void> {
+  const text = await readClipboardText()
+  if (!text) {
+    return
+  }
+  const range = selectionRangeInside(field)
+  if (!range) {
+    return
+  }
+  const selection = window.getSelection()
+  range.deleteContents()
+  range.insertNode(document.createTextNode(text))
+  range.collapse(false)
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+async function runPaste(field: HTMLElement, textSelection?: TextSelectionRange): Promise<void> {
+  if (isTextControl(field)) {
+    await pasteIntoTextControl(field, textSelection)
     return
   }
 
   field.focus()
-  const ok = document.execCommand('paste')
-  if (!ok) {
-    const text = await readClipboardText()
-    if (!text) {
-      return
-    }
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) {
-      return
-    }
-    const range = selection.getRangeAt(0)
-    if (!field.contains(range.commonAncestorContainer)) {
-      return
-    }
-    range.deleteContents()
-    range.insertNode(document.createTextNode(text))
-    range.collapse(false)
-    selection.removeAllRanges()
-    selection.addRange(range)
-    field.dispatchEvent(new Event('input', { bubbles: true }))
+  const pastedNatively = document.execCommand('paste')
+  if (!pastedNatively) {
+    await insertClipboardTextAtSelection(field)
   }
 }
 
 function menuFlags(
   field: HTMLElement,
-  textSelection?: { start: number; end: number }
+  textSelection?: TextSelectionRange
 ): { canCopy: boolean; canCut: boolean; canPaste: boolean } {
-  const readOnly =
-    (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.readOnly
-
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-    const start = textSelection?.start ?? field.selectionStart ?? 0
-    const end = textSelection?.end ?? field.selectionEnd ?? 0
+  if (isTextControl(field)) {
+    const readOnly = field.readOnly
+    const { start, end } = resolveSelectionRange(field, textSelection)
     const hasSelection = Math.abs(end - start) > 0
     return {
       canCopy: hasSelection,

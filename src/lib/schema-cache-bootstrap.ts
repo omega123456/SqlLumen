@@ -66,48 +66,52 @@ export async function bootstrapSchemaCache(
     )
   }
 
-  if (hasHydratedSnapshot) {
-    // Cache is already usable with stale data — unblock waiters immediately.
-    resolveInitial()
+  const releasePendingBootstrap = () => {
     if (_pendingBootstraps.get(sessionId) === initialLoadPromise) {
       _pendingBootstraps.delete(sessionId)
     }
+  }
 
-    // Refresh in the background (non-blocking for callers).
-    try {
-      await refreshCacheInBackground(sessionId)
-      const freshSnapshot = serializeCacheSnapshot(sessionId)
-      if (freshSnapshot) {
-        await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
-      }
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontend(
-        'warn',
-        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`
-      )
-    }
-  } else {
-    // No snapshot — must do a full rebuild before unblocking.
-    try {
-      await rebuildCache(sessionId)
-      resolveInitial()
-      const freshSnapshot = serializeCacheSnapshot(sessionId)
-      if (freshSnapshot) {
-        await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
-      }
-    } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontend(
-        'warn',
-        `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`
-      )
-      // Still resolve (don't leave waiters hanging — cache will be in error state)
-      resolveInitial()
-    } finally {
-      if (_pendingBootstraps.get(sessionId) === initialLoadPromise) {
-        _pendingBootstraps.delete(sessionId)
-      }
-    }
+  if (hasHydratedSnapshot) {
+    // The stale cache is already usable, so waiters unblock before the background refresh.
+    resolveInitial()
+    releasePendingBootstrap()
+    await refreshAndPersistCache(sessionId, savedConnectionId)
+    return
+  }
+
+  try {
+    await rebuildCache(sessionId)
+    resolveInitial()
+    await persistCacheSnapshot(sessionId, savedConnectionId)
+  } catch (error) {
+    logCacheRebuildFailure(error)
+    resolveInitial()
+  } finally {
+    releasePendingBootstrap()
+  }
+}
+
+async function persistCacheSnapshot(sessionId: string, savedConnectionId: string): Promise<void> {
+  const freshSnapshot = serializeCacheSnapshot(sessionId)
+  if (freshSnapshot) {
+    await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
+  }
+}
+
+function logCacheRebuildFailure(error: unknown): void {
+  const message = toErrorMessage(error)
+  logFrontend(
+    'warn',
+    `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`
+  )
+}
+
+async function refreshAndPersistCache(sessionId: string, savedConnectionId: string): Promise<void> {
+  try {
+    await refreshCacheInBackground(sessionId)
+    await persistCacheSnapshot(sessionId, savedConnectionId)
+  } catch (error) {
+    logCacheRebuildFailure(error)
   }
 }

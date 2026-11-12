@@ -118,105 +118,122 @@ interface ColumnWidthSizing {
   autoPaddingPx: number
 }
 
+const BOOLEAN_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 100,
+  autoMinWidth: 90,
+  autoCharPx: 8.5,
+  autoPaddingPx: 28,
+}
+
+const NUMERIC_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 120,
+  autoMinWidth: 100,
+  autoCharPx: 9,
+  autoPaddingPx: 28,
+}
+
+const ENUM_OR_SET_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 140,
+  autoMinWidth: 150,
+  autoCharPx: 10,
+  autoPaddingPx: 36,
+}
+
+const CHARACTER_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 200,
+  autoMinWidth: 120,
+  autoCharPx: 10,
+  autoPaddingPx: 36,
+}
+
+const TEXT_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 200,
+  autoMinWidth: 180,
+  autoCharPx: 10,
+  autoPaddingPx: 40,
+}
+
+const JSON_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 200,
+  autoMinWidth: 200,
+  autoCharPx: 10,
+  autoPaddingPx: 40,
+}
+
+const BINARY_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 140,
+  autoMinWidth: 140,
+  autoCharPx: 9,
+  autoPaddingPx: 32,
+}
+
+const DEFAULT_COLUMN_SIZING: ColumnWidthSizing = {
+  defaultWidth: 150,
+  autoMinWidth: 90,
+  autoCharPx: 9,
+  autoPaddingPx: 32,
+}
+
+const TEMPORAL_CHAR_PX = 9
+const DATETIME_DEFAULT_WIDTH = 180
+const DATE_OR_TIME_DEFAULT_WIDTH = 120
+
+function isBooleanColumnType(upperType: string): boolean {
+  return upperType.startsWith('BOOL') || upperType === 'TINYINT(1)'
+}
+
 function getColumnWidthSizing(dataType: string, isNullable = false): ColumnWidthSizing {
   const upperType = dataType.trim().toUpperCase()
+  if (isBooleanColumnType(upperType)) return BOOLEAN_COLUMN_SIZING
+  if (isNumericSqlType(dataType)) return NUMERIC_COLUMN_SIZING
+  const temporalSizing = temporalColumnWidthSizing(upperType, isNullable)
+  if (temporalSizing) return temporalSizing
+  return nonTemporalColumnWidthSizing(upperType)
+}
 
-  if (upperType.startsWith('BOOL') || upperType === 'TINYINT(1)') {
-    return {
-      defaultWidth: 100,
-      autoMinWidth: 90,
-      autoCharPx: 8.5,
-      autoPaddingPx: 28,
-    }
-  }
-
-  if (isNumericSqlType(dataType)) {
-    return {
-      defaultWidth: 120,
-      autoMinWidth: 100,
-      autoCharPx: 9,
-      autoPaddingPx: 28,
-    }
-  }
-
+function temporalColumnWidthSizing(
+  upperType: string,
+  isNullable: boolean
+): ColumnWidthSizing | null {
   if (upperType.startsWith('DATETIME') || upperType.startsWith('TIMESTAMP')) {
     return {
-      defaultWidth: 180,
+      defaultWidth: DATETIME_DEFAULT_WIDTH,
       autoMinWidth: widthForNullability(DATETIME_AUTO_MIN_WIDTH, isNullable),
-      autoCharPx: 9,
+      autoCharPx: TEMPORAL_CHAR_PX,
       autoPaddingPx: widthForNullability(DATETIME_AUTO_PADDING, isNullable),
     }
   }
 
   if (upperType.startsWith('DATE')) {
     return {
-      defaultWidth: 120,
+      defaultWidth: DATE_OR_TIME_DEFAULT_WIDTH,
       autoMinWidth: widthForNullability(DATE_AUTO_MIN_WIDTH, isNullable),
-      autoCharPx: 9,
+      autoCharPx: TEMPORAL_CHAR_PX,
       autoPaddingPx: widthForNullability(DATE_OR_TIME_AUTO_PADDING, isNullable),
     }
   }
 
   if (upperType.startsWith('TIME')) {
     return {
-      defaultWidth: 120,
+      defaultWidth: DATE_OR_TIME_DEFAULT_WIDTH,
       autoMinWidth: widthForNullability(TIME_AUTO_MIN_WIDTH, isNullable),
-      autoCharPx: 9,
+      autoCharPx: TEMPORAL_CHAR_PX,
       autoPaddingPx: widthForNullability(DATE_OR_TIME_AUTO_PADDING, isNullable),
     }
   }
 
-  if (upperType.startsWith('ENUM') || upperType.startsWith('SET')) {
-    return {
-      defaultWidth: 140,
-      autoMinWidth: 150,
-      autoCharPx: 10,
-      autoPaddingPx: 36,
-    }
-  }
+  return null
+}
 
+function nonTemporalColumnWidthSizing(upperType: string): ColumnWidthSizing {
+  if (upperType.startsWith('ENUM') || upperType.startsWith('SET')) return ENUM_OR_SET_COLUMN_SIZING
   if (upperType.startsWith('VARCHAR') || upperType.startsWith('CHAR')) {
-    return {
-      defaultWidth: 200,
-      autoMinWidth: 120,
-      autoCharPx: 10,
-      autoPaddingPx: 36,
-    }
+    return CHARACTER_COLUMN_SIZING
   }
-
-  if (upperType.includes('TEXT')) {
-    return {
-      defaultWidth: 200,
-      autoMinWidth: 180,
-      autoCharPx: 10,
-      autoPaddingPx: 40,
-    }
-  }
-
-  if (isJsonSqlType(upperType)) {
-    return {
-      defaultWidth: 200,
-      autoMinWidth: 200,
-      autoCharPx: 10,
-      autoPaddingPx: 40,
-    }
-  }
-
-  if (upperType.includes('BLOB') || upperType.includes('BINARY')) {
-    return {
-      defaultWidth: 140,
-      autoMinWidth: 140,
-      autoCharPx: 9,
-      autoPaddingPx: 32,
-    }
-  }
-
-  return {
-    defaultWidth: 150,
-    autoMinWidth: 90,
-    autoCharPx: 9,
-    autoPaddingPx: 32,
-  }
+  if (upperType.includes('TEXT')) return TEXT_COLUMN_SIZING
+  if (isJsonSqlType(upperType)) return JSON_COLUMN_SIZING
+  if (upperType.includes('BLOB') || upperType.includes('BINARY')) return BINARY_COLUMN_SIZING
+  return DEFAULT_COLUMN_SIZING
 }
 
 function stringifyGridValue(value: unknown): string {

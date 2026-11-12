@@ -28,6 +28,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::mysql::multi_result::minus_sign;
 use crate::mysql::query_executor::{compare_json_values, ColumnMeta, SharedRow, StoredResult};
 use crate::mysql::result_cache::{CachedResultEntry, SlotWrite};
 use crate::state::AppState;
@@ -139,18 +140,25 @@ pub struct RemoveResultRowsResult {
 
 // ── JavaScript coercion parity ──────────────────────────────────────────────────
 
+fn finite_compare_number(text: &str) -> Option<f64> {
+    if text.is_empty() {
+        return None;
+    }
+    Some(js_string_to_number(text)).filter(|number| number.is_finite())
+}
+
 /// JavaScript `Number.prototype.toString()` for a finite double.
 pub fn js_number_to_string(value: f64) -> String {
     if value.is_nan() {
         return "NaN".to_string();
     }
     if value.is_infinite() {
-        return if value > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+        return format!("{}Infinity", minus_sign(value < 0.0));
     }
     if value == 0.0 {
         return "0".to_string();
     }
-    let sign = if value < 0.0 { "-" } else { "" };
+    let sign = minus_sign(value < 0.0);
     // `{:e}` yields the shortest round-trip digits, e.g. "1.2345e-7".
     let sci = format!("{:e}", value.abs());
     let (mantissa, exponent) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
@@ -159,32 +167,63 @@ pub fn js_number_to_string(value: f64) -> String {
         .filter(|character| *character != '.')
         .collect();
     let exponent: i32 = exponent.parse().unwrap_or(0);
-    let digit_count = digits.len() as i32;
     let point_position = exponent + 1;
+    format!("{sign}{}", js_number_body(&digits, point_position))
+}
 
-    let body = if digit_count <= point_position && point_position <= 21 {
-        format!(
+const JS_MAX_FIXED_POINT_POSITION: i32 = 21;
+const JS_MIN_FIXED_POINT_POSITION: i32 = -6;
+
+fn js_number_body(digits: &str, point_position: i32) -> String {
+    let digit_count = digits.len() as i32;
+    let fits_fixed_notation = point_position <= JS_MAX_FIXED_POINT_POSITION;
+    if digit_count <= point_position && fits_fixed_notation {
+        return format!(
             "{digits}{}",
             "0".repeat((point_position - digit_count) as usize)
-        )
-    } else if 0 < point_position && point_position <= 21 {
-        format!(
+        );
+    }
+    if 0 < point_position && fits_fixed_notation {
+        return format!(
             "{}.{}",
             &digits[..point_position as usize],
             &digits[point_position as usize..]
-        )
-    } else if -6 < point_position && point_position <= 0 {
-        format!("0.{}{digits}", "0".repeat((-point_position) as usize))
-    } else {
-        let exp_sign = if point_position - 1 < 0 { '-' } else { '+' };
-        let exp_abs = (point_position - 1).abs();
-        if digit_count == 1 {
-            format!("{digits}e{exp_sign}{exp_abs}")
-        } else {
-            format!("{}.{}e{exp_sign}{exp_abs}", &digits[..1], &digits[1..])
-        }
-    };
-    format!("{sign}{body}")
+        );
+    }
+    if JS_MIN_FIXED_POINT_POSITION < point_position && point_position <= 0 {
+        return format!("0.{}{digits}", "0".repeat((-point_position) as usize));
+    }
+    js_exponential_body(digits, point_position - 1)
+}
+
+fn js_exponential_body(digits: &str, exponent: i32) -> String {
+    let exponent_sign = js_exponent_sign(exponent);
+    let exponent_magnitude = exponent.abs();
+    if digits.len() == 1 {
+        return format!("{digits}e{exponent_sign}{exponent_magnitude}");
+    }
+    format!(
+        "{}.{}e{exponent_sign}{exponent_magnitude}",
+        &digits[..1],
+        &digits[1..]
+    )
+}
+
+fn js_exponent_sign(exponent: i32) -> char {
+    if exponent < 0 {
+        return '-';
+    }
+    '+'
+}
+
+fn json_number_as_f64(number: &serde_json::Number) -> f64 {
+    if let Some(integer) = number.as_i64() {
+        return integer as f64;
+    }
+    if let Some(unsigned) = number.as_u64() {
+        return unsigned as f64;
+    }
+    number.as_f64().unwrap_or(f64::NAN)
 }
 
 /// JavaScript `String(value)` for a JSON cell value.
@@ -195,16 +234,9 @@ pub fn js_number_to_string(value: f64) -> String {
 pub fn js_string(value: &Value) -> Cow<'_, str> {
     match value {
         Value::Null => Cow::Borrowed("null"),
-        Value::Bool(boolean) => Cow::Borrowed(if *boolean { "true" } else { "false" }),
-        Value::Number(number) => {
-            if let Some(integer) = number.as_i64() {
-                Cow::Owned(js_number_to_string(integer as f64))
-            } else if let Some(unsigned) = number.as_u64() {
-                Cow::Owned(js_number_to_string(unsigned as f64))
-            } else {
-                Cow::Owned(js_number_to_string(number.as_f64().unwrap_or(f64::NAN)))
-            }
-        }
+        Value::Bool(true) => Cow::Borrowed("true"),
+        Value::Bool(false) => Cow::Borrowed("false"),
+        Value::Number(number) => Cow::Owned(js_number_to_string(json_number_as_f64(number))),
         Value::String(text) => Cow::Borrowed(text.as_str()),
         Value::Array(items) => Cow::Owned(
             items
@@ -322,13 +354,8 @@ pub fn js_string_to_number(text: &str) -> f64 {
 pub fn js_number(value: &Value) -> f64 {
     match value {
         Value::Null => 0.0,
-        Value::Bool(boolean) => {
-            if *boolean {
-                1.0
-            } else {
-                0.0
-            }
-        }
+        Value::Bool(true) => 1.0,
+        Value::Bool(false) => 0.0,
         Value::Number(number) => number.as_f64().unwrap_or(f64::NAN),
         Value::String(text) => js_string_to_number(text),
         Value::Array(_) => js_string_to_number(&js_string(value)),
@@ -421,14 +448,17 @@ pub struct CompiledFilter {
 }
 
 impl CompiledFilter {
+    fn comparable_cell<'a>(&self, raw: &'a Value) -> Cow<'a, Value> {
+        if self.tinyint {
+            return normalize_tinyint_value(raw);
+        }
+        Cow::Borrowed(raw)
+    }
+
     /// Evaluate the condition against one row.
     pub fn matches(&self, row: &[Value]) -> bool {
         let raw = row.get(self.column).unwrap_or(&Value::Null);
-        let cell = if self.tinyint {
-            normalize_tinyint_value(raw)
-        } else {
-            Cow::Borrowed(raw)
-        };
+        let cell = self.comparable_cell(raw);
         let cell = cell.as_ref();
         match &self.test {
             FilterTest::IsNull => cell.is_null(),
@@ -485,11 +515,7 @@ fn compile_filter(
                 "<" => CompareOp::Lt,
                 _ => CompareOp::Le,
             };
-            let number = if condition.value.is_empty() {
-                None
-            } else {
-                Some(js_string_to_number(&condition.value)).filter(|number| number.is_finite())
-            };
+            let number = finite_compare_number(&condition.value);
             FilterTest::Compare {
                 op,
                 text: condition.value.clone(),

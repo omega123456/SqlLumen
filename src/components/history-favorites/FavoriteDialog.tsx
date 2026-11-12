@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useFavoritesStore } from '../../stores/favorites-store'
+import type { FavoriteEntry } from '../../types/schema'
 import { DialogShell } from '../dialogs/DialogShell'
 import { TextInput } from '../common/TextInput'
 import { Textarea } from '../common/Textarea'
@@ -16,6 +17,38 @@ const SCOPE_OPTIONS: DropdownOption[] = [
   { value: 'connection', label: 'This connection only' },
   { value: 'global', label: 'Global (all connections)' },
 ]
+
+interface FavoriteFormValues {
+  name: string
+  sqlText: string
+  description: string
+  category: string
+  scope: 'connection' | 'global'
+}
+
+const EMPTY_FAVORITE_FORM: FavoriteFormValues = {
+  name: '',
+  sqlText: '',
+  description: '',
+  category: '',
+  scope: 'connection',
+}
+
+function favoriteFormValues(favorite: FavoriteEntry | null | undefined): FavoriteFormValues {
+  if (!favorite) return EMPTY_FAVORITE_FORM
+  return {
+    name: favorite.name ?? '',
+    sqlText: favorite.sqlText ?? '',
+    description: favorite.description ?? '',
+    category: favorite.category ?? '',
+    scope: favorite.connectionId === null ? 'global' : 'connection',
+  }
+}
+
+function saveButtonLabel(isSaving: boolean, isEditing: boolean): string {
+  if (isSaving) return 'Saving...'
+  return isEditing ? 'Update' : 'Save'
+}
 
 export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
   const dialogOpen = useFavoritesStore((state) => state.dialogOpen)
@@ -34,19 +67,12 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    if (editingFavorite) {
-      setName(editingFavorite.name ?? '')
-      setSqlText(editingFavorite.sqlText ?? '')
-      setDescription(editingFavorite.description ?? '')
-      setCategory(editingFavorite.category ?? '')
-      setScope(editingFavorite.connectionId === null ? 'global' : 'connection')
-    } else {
-      setName('')
-      setSqlText('')
-      setDescription('')
-      setCategory('')
-      setScope('connection')
-    }
+    const formValues = favoriteFormValues(editingFavorite)
+    setName(formValues.name)
+    setSqlText(formValues.sqlText)
+    setDescription(formValues.description)
+    setCategory(formValues.category)
+    setScope(formValues.scope)
   }, [editingFavorite])
 
   const resolvedConnectionId = useMemo(
@@ -59,23 +85,17 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
 
     setIsSaving(true)
     try {
-      if (isEditing && editingFavorite) {
-        await updateFavorite(editingFavorite.id, {
-          name: name.trim(),
-          sqlText: sqlText.trim(),
-          description: description.trim() || null,
-          category: category.trim() || null,
-          connectionId: resolvedConnectionId,
-        })
-      } else {
-        await createFavorite({
-          connectionId: resolvedConnectionId,
-          name: name.trim(),
-          sqlText: sqlText.trim(),
-          description: description.trim() || null,
-          category: category.trim() || null,
-        })
+      const fields = {
+        connectionId: resolvedConnectionId,
+        name: name.trim(),
+        sqlText: sqlText.trim(),
+        description: description.trim() || null,
+        category: category.trim() || null,
       }
+      const isUpdatingExisting = isEditing && editingFavorite
+      await (isUpdatingExisting
+        ? updateFavorite(editingFavorite.id, fields)
+        : createFavorite(fields))
       closeDialog()
     } finally {
       setIsSaving(false)
@@ -175,7 +195,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
             disabled={isSaving || !name.trim() || !sqlText.trim()}
             data-testid="favorite-dialog-save"
           >
-            {isSaving ? 'Saving...' : isEditing ? 'Update' : 'Save'}
+            {saveButtonLabel(isSaving, isEditing)}
           </Button>
           <Button onClick={closeDialog} data-testid="favorite-dialog-cancel">
             Cancel

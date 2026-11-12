@@ -109,30 +109,18 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         // --- Multi-line comment: /* ... */ ---
         // MySQL conditional comments /*!...*/ are preserved as executable SQL.
         if ch == '/' && position + 1 < len && chars[position + 1] == '*' {
-            if position + 2 < len && chars[position + 2] == '!' {
-                // Conditional comment /*!...*/ — treat content as executable SQL
-                position += 3; // skip /*!
-                while position < len {
-                    if chars[position] == '*' && position + 1 < len && chars[position + 1] == '/' {
-                        position += 2;
-                        break;
-                    }
-                    current.push(chars[position]);
-                    position += 1;
-                }
-            } else {
-                // Regular block comment — skip entirely
-                position += 2; // skip /*
-                while position < len {
-                    if chars[position] == '*' && position + 1 < len && chars[position + 1] == '/' {
-                        position += 2;
-                        break;
-                    }
-                    position += 1;
-                }
-                // Add a space to prevent token concatenation
-                current.push(' ');
+            let is_conditional_comment = position + 2 < len && chars[position + 2] == '!';
+            if is_conditional_comment {
+                let body_start = position + "/*!".len();
+                let close = find_block_comment_close(&chars, body_start);
+                current.extend(&chars[body_start..close]);
+                position = (close + "*/".len()).min(len);
+                continue;
             }
+            let close = find_block_comment_close(&chars, position + "/*".len());
+            position = (close + "*/".len()).min(len);
+            // Add a space to prevent token concatenation
+            current.push(' ');
             continue;
         }
 
@@ -352,11 +340,7 @@ pub fn execute_sql_import(
             }
         }
 
-        let sql_preview: String = if sql.len() > 80 {
-            format!("{}…", &sql[..80])
-        } else {
-            sql.clone()
-        };
+        let sql_preview = statement_preview(sql, LOG_PREVIEW_CHARS, "…");
         tracing::debug!(
             job_id = %job_id,
             statement_index = index,
@@ -409,11 +393,7 @@ pub fn execute_sql_import(
                         tally.error_count += 1;
                         tally.last_error_message = Some(error_text.clone());
 
-                        let preview = if sql.len() > 120 {
-                            format!("{}...", &sql[..120])
-                        } else {
-                            sql.clone()
-                        };
+                        let preview = statement_preview(sql, ERROR_PREVIEW_CHARS, "...");
                         progress.errors.push(ImportError {
                             statement_index: index,
                             sql_preview: preview,
@@ -476,12 +456,7 @@ pub fn execute_sql_import(
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(job_id) {
             if progress.status == ImportJobStatus::Running {
-                if progress.errors.is_empty() {
-                    progress.status = ImportJobStatus::Completed;
-                } else {
-                    // Completed with errors (not stop_on_error mode)
-                    progress.status = ImportJobStatus::Completed;
-                }
+                progress.status = ImportJobStatus::Completed;
                 progress.completed_at = Some(std::time::SystemTime::now());
             }
         }
@@ -518,17 +493,21 @@ struct ImportHistorySummary<'a> {
     cancelled: bool,
 }
 
+fn import_status_label(cancelled: bool, error_count: usize) -> &'static str {
+    if cancelled {
+        return "cancelled";
+    }
+    if error_count > 0 {
+        return "with errors";
+    }
+    "OK"
+}
+
 /// Log a single summary history entry for a SQL import job.
 fn log_import_history(db: &Arc<Mutex<rusqlite::Connection>>, summary: ImportHistorySummary<'_>) {
     let tally = summary.tally;
     let success = tally.error_count == 0 && !summary.cancelled;
-    let status_label = if summary.cancelled {
-        "cancelled"
-    } else if tally.error_count > 0 {
-        "with errors"
-    } else {
-        "OK"
-    };
+    let status_label = import_status_label(summary.cancelled, tally.error_count);
     let sql_text = format!(
         "/* SQL Import: {} — {} statements, {} errors, {} */",
         summary.filename, tally.statements_executed, tally.error_count, status_label
@@ -597,4 +576,27 @@ fn remaining_starts_with(chars: &[char], position: usize, pattern: &str) -> bool
         }
     }
     true
+}
+
+const LOG_PREVIEW_CHARS: usize = 80;
+const ERROR_PREVIEW_CHARS: usize = 120;
+
+fn statement_preview(sql: &str, max_len: usize, ellipsis: &str) -> String {
+    if sql.len() <= max_len {
+        return sql.to_string();
+    }
+    format!("{}{ellipsis}", &sql[..max_len])
+}
+
+fn find_block_comment_close(chars: &[char], start: usize) -> usize {
+    let mut position = start;
+    while position < chars.len() {
+        let closes_comment =
+            chars[position] == '*' && position + 1 < chars.len() && chars[position + 1] == '/';
+        if closes_comment {
+            return position;
+        }
+        position += 1;
+    }
+    chars.len()
 }

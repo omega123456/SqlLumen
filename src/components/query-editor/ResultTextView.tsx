@@ -42,6 +42,66 @@ export interface ResultTextViewProps {
 
 const EMPTY_ROWS: unknown[][] = []
 
+interface LoadedRows {
+  key: string
+  rows: unknown[][]
+}
+
+function visibleTextRows(
+  shownCount: number,
+  loaded: LoadedRows | null,
+  loadKey: string
+): unknown[][] | null {
+  if (shownCount === 0) return EMPTY_ROWS
+  if (loaded?.key !== loadKey) return null
+  return loaded.rows
+}
+
+function CapStripText({
+  showTruncatedCopy,
+  viewRowCount,
+}: {
+  showTruncatedCopy: boolean
+  viewRowCount: number
+}) {
+  if (!showTruncatedCopy) {
+    return (
+      <>
+        Showing first {formatCount(TEXT_VIEW_ROW_CAP)} of {formatCount(viewRowCount)} rows in this
+        view.
+      </>
+    )
+  }
+  return (
+    <>
+      Showing first {formatCount(TEXT_VIEW_ROW_CAP)} of{' '}
+      <WarningCircle size={12} weight="fill" className={styles.capWarning} aria-hidden="true" />{' '}
+      {formatCount(viewRowCount)}+ rows · truncated
+    </>
+  )
+}
+
+interface CopyAllButtonProps {
+  isCapped: boolean
+  disabled: boolean
+  onCopy: () => void
+}
+
+function CopyAllButton({ isCapped, disabled, onCopy }: CopyAllButtonProps) {
+  return (
+    <Button
+      size="sm"
+      onClick={onCopy}
+      disabled={disabled}
+      title={isCapped ? 'Copies the rows shown. Export all rows for the full result.' : undefined}
+      data-testid="copy-all-button"
+    >
+      <CopySimple size={14} aria-hidden="true" />
+      <span>{isCapped ? `Copy first ${formatCount(TEXT_VIEW_ROW_CAP)}` : 'Copy all'}</span>
+    </Button>
+  )
+}
+
 export function ResultTextView({
   columns,
   tabId,
@@ -56,7 +116,7 @@ export function ResultTextView({
   const shownCount = Math.min(viewRowCount, TEXT_VIEW_ROW_CAP)
   const isCapped = viewRowCount > TEXT_VIEW_ROW_CAP
   const loadKey = `${queryId ?? ''}:${viewVersion}:${shownCount}`
-  const [loaded, setLoaded] = useState<{ key: string; rows: unknown[][] } | null>(null)
+  const [loaded, setLoaded] = useState<LoadedRows | null>(null)
 
   // Fetch the first rows of the current view (in 2,000-row chunks).
   useEffect(() => {
@@ -81,7 +141,7 @@ export function ResultTextView({
     }
   }, [loadKey, loaded, markResultsExpired, resultIndex, shownCount, tabId])
 
-  const rows = shownCount === 0 ? EMPTY_ROWS : loaded?.key === loadKey ? loaded.rows : null
+  const rows = visibleTextRows(shownCount, loaded, loadKey)
   const formattedText = useMemo(
     () => (rows ? formatTextOutput(columns, rows) : ''),
     [columns, rows]
@@ -98,16 +158,11 @@ export function ResultTextView({
   }, [formattedText])
 
   const copyButton = (
-    <Button
-      size="sm"
-      onClick={() => void handleCopyAll()}
+    <CopyAllButton
+      isCapped={isCapped}
       disabled={rows === null}
-      title={isCapped ? 'Copies the rows shown. Export all rows for the full result.' : undefined}
-      data-testid="copy-all-button"
-    >
-      <CopySimple size={14} aria-hidden="true" />
-      <span>{isCapped ? `Copy first ${formatCount(TEXT_VIEW_ROW_CAP)}` : 'Copy all'}</span>
-    </Button>
+      onCopy={() => void handleCopyAll()}
+    />
   )
 
   const showTruncatedCopy = truncated && !isFiltered
@@ -117,23 +172,7 @@ export function ResultTextView({
       {isCapped ? (
         <div className={styles.capStrip} data-testid="result-text-view-cap-strip">
           <span className={styles.capText}>
-            {showTruncatedCopy ? (
-              <>
-                Showing first {formatCount(TEXT_VIEW_ROW_CAP)} of{' '}
-                <WarningCircle
-                  size={12}
-                  weight="fill"
-                  className={styles.capWarning}
-                  aria-hidden="true"
-                />{' '}
-                {formatCount(viewRowCount)}+ rows · truncated
-              </>
-            ) : (
-              <>
-                Showing first {formatCount(TEXT_VIEW_ROW_CAP)} of {formatCount(viewRowCount)} rows
-                in this view.
-              </>
-            )}
+            <CapStripText showTruncatedCopy={showTruncatedCopy} viewRowCount={viewRowCount} />
           </span>
           {copyButton}
         </div>

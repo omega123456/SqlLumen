@@ -182,7 +182,9 @@ function hasUnclosedStoredProgramBegin(statementPrefix: string): boolean {
 
     if (upperToken === 'BEGIN') {
       depth += 1
-    } else if (upperToken === 'END' && depth > 0) {
+      continue
+    }
+    if (upperToken === 'END' && depth > 0) {
       depth -= 1
     }
   }
@@ -483,6 +485,17 @@ function pushScopedColumns(
   }
 }
 
+function matchesRoutineType(
+  routine: { routineType: string },
+  routineType: 'FUNCTION' | 'PROCEDURE' | null
+): boolean {
+  return routineType === null || routine.routineType === routineType
+}
+
+function routineCompletionKey(routine: { name: string; routineType: string }): string {
+  return routine.routineType === 'FUNCTION' ? `fn:${routine.name}` : `proc:${routine.name}`
+}
+
 function pushScopedRoutines(
   cache: ReturnType<typeof getCache>,
   databases: readonly string[],
@@ -495,12 +508,11 @@ function pushScopedRoutines(
   for (const db of databases) {
     const routines = cache.routines[db] ?? []
     for (const routine of routines) {
-      if (routineType && routine.routineType !== routineType) {
+      if (!matchesRoutineType(routine, routineType)) {
         continue
       }
 
-      const routineKey =
-        routine.routineType === 'FUNCTION' ? `fn:${routine.name}` : `proc:${routine.name}`
+      const routineKey = routineCompletionKey(routine)
 
       if (seenLabels.has(routineKey)) {
         continue
@@ -634,9 +646,76 @@ function hasDottedPrefixBeforeWord(model: editor.IReadOnlyModel, position: Posit
   return /[\w`"']\.\s*$/.test(textBeforeWord)
 }
 
-// ---------------------------------------------------------------------------
-// completionService implementation
-// ---------------------------------------------------------------------------
+type SchemaCache = ReturnType<typeof getCache>
+type AliasTarget = NonNullable<ReturnType<AliasMap['get']>>
+
+const DOT_PREFIX_PATTERN = /(?:([\w`"']+)\.)?([\w`"']+)\.\s*$/
+const IDENTIFIER_QUOTE_CHARACTERS = /[`"']/g
+const WILDCARD_FOLLOW_UP_KEYWORDS = ['FROM']
+
+function resolveActiveDatabase(connectionId: string | undefined): string | null {
+  if (!connectionId) return null
+  const activeConnection = useConnectionStore.getState().activeConnections[connectionId]
+  return activeConnection?.sessionDatabase ?? activeConnection?.profile.defaultDatabase ?? null
+}
+
+function hasParserKeywords(suggestions: Suggestions | null): suggestions is Suggestions {
+  return suggestions !== null && suggestions.keywords.length > 0
+}
+
+function hasUsableSuggestions(suggestions: Suggestions | null): suggestions is Suggestions {
+  if (suggestions === null) return false
+  return suggestions.syntax.length > 0 || suggestions.keywords.length > 0
+}
+
+function schemaUnavailableItems(): ICompletionItem[] {
+  return [
+    {
+      label: 'Schema unavailable',
+      kind: languages.CompletionItemKind.Text,
+      insertText: '',
+      sortText: '0',
+    },
+  ]
+}
+
+interface CaretText {
+  statementPrefix: string
+  statementText: string
+  cursorPrefix: string
+  currentWordPrefix: string
+}
+
+interface ConnectionlessCompletionRequest {
+  suggestions: Suggestions | null
+  caret: CaretText
+  snippets: CompletionSnippet[] | undefined
+}
+
+function buildConnectionlessCompletions(
+  request: ConnectionlessCompletionRequest
+): ICompletionItem[] {
+  const { suggestions, caret } = request
+  const items: ICompletionItem[] = []
+  if (!hasParserKeywords(suggestions)) {
+    pushFallbackKeywordsAndFunctions(items)
+    items.push(...mapSnippetsToItems(request.snippets))
+    return items
+  }
+  items.push(...suggestions.keywords.map((keyword) => keywordItem(keyword)))
+  pushStoredProgramBodyKeywords(
+    items,
+    caret.cursorPrefix,
+    suggestions,
+    caret.currentWordPrefix,
+    suggestions.keywords
+  )
+  if (hasFunctionContext(suggestions)) {
+    pushBuiltinFunctions(items, null)
+  }
+  items.push(...mapSnippetsToItems(request.snippets))
+  return items
+}
 
 export const completionService: CompletionService = async (
   model: editor.IReadOnlyModel,
@@ -648,446 +727,471 @@ export const completionService: CompletionService = async (
 ): Promise<ICompletionItem[]> => {
   const quoteIdentifiers =
     useSettingsStore.getState().getSetting('editor.autocompleteBackticks') === 'true'
-
   const connectionId = modelConnections.get(model.uri.toString())?.connectionId
-
-  // -------------------------------------------------------------------
-  // Resolve the active database for alias resolution
-  // -------------------------------------------------------------------
-  const activeDatabase = connectionId
-    ? (useConnectionStore.getState().activeConnections[connectionId]?.sessionDatabase ??
-      useConnectionStore.getState().activeConnections[connectionId]?.profile.defaultDatabase ??
-      null)
-    : null
+  const activeDatabase = resolveActiveDatabase(connectionId)
   const selectedDatabase = getSelectedDatabase(connectionId)
   const resolutionDatabase = activeDatabase ?? selectedDatabase
   const broadSuggestionDatabase = selectedDatabase ?? activeDatabase
-  const currentStatementPrefix = getCurrentStatementPrefix(model, position)
-  const currentStatementText = getCurrentStatementText(model, position)
-  const cursorPrefix = getCursorPrefix(model, position)
-  const currentWordPrefix = getCurrentWordPrefix(model, position)
-
-  // Build alias map from entities (pure function — no side effects)
+  const caret: CaretText = {
+    statementPrefix: getCurrentStatementPrefix(model, position),
+    statementText: getCurrentStatementText(model, position),
+    cursorPrefix: getCursorPrefix(model, position),
+    currentWordPrefix: getCurrentWordPrefix(model, position),
+  }
   const aliasMap = buildAliasMap(entities, resolutionDatabase)
 
-  // -------------------------------------------------------------------
-  // No connectionId → keywords + built-in functions (neutral ranking).
-  // Fall back to SQL_KEYWORDS when parser provides empty keywords list.
-  // -------------------------------------------------------------------
   if (!connectionId) {
-    const items: ICompletionItem[] = []
-
-    if (suggestions?.keywords.length) {
-      items.push(...suggestions.keywords.map((kw) => keywordItem(kw)))
-      pushStoredProgramBodyKeywords(
-        items,
-        cursorPrefix,
-        suggestions,
-        currentWordPrefix,
-        suggestions.keywords
-      )
-    } else {
-      pushFallbackKeywordsAndFunctions(items)
-    }
-
-    // Include built-in functions during keyword fallback and explicit function context.
-    if (suggestions?.keywords.length && suggestions && hasFunctionContext(suggestions)) {
-      pushBuiltinFunctions(items, null)
-    }
-
-    items.push(...mapSnippetsToItems(snippets))
-    return items
+    return buildConnectionlessCompletions({
+      suggestions: suggestions,
+      caret: caret,
+      snippets: snippets,
+    })
   }
 
-  // -------------------------------------------------------------------
-  // Look up cache synchronously. Completion must never await schema loading:
-  // Monaco shows its own "loading..." state until this promise resolves, so
-  // keyword completions need to be returned even while schema cache startup
-  // or refresh work is still in flight.
-  // -------------------------------------------------------------------
+  // Completion must never await schema loading: Monaco shows "loading..." until this resolves.
   const cache = getCache(connectionId)
-
   if (cache.status === 'error') {
-    return [
-      {
-        label: 'Schema unavailable',
-        kind: languages.CompletionItemKind.Text,
-        insertText: '',
-        sortText: '0',
-      },
-    ]
+    return schemaUnavailableItems()
   }
 
-  // -------------------------------------------------------------------
-  // Dot notation handling (includes alias resolution)
-  // Triggers on explicit '.' keypress OR when the text before the
-  // current word already contains a dot (e.g. manual Ctrl+Space on
-  // "users.em" should still resolve "users." columns).
-  // -------------------------------------------------------------------
-  const isDotContext =
-    completionContext.triggerCharacter === '.' || hasDottedPrefixBeforeWord(model, position)
+  const dotCompletions = resolveDotCompletions(
+    {
+      model: model,
+      position: position,
+      cache: cache,
+      aliasMap: aliasMap,
+      resolutionDatabase: resolutionDatabase,
+      caret: caret,
+      quoteIdentifiers: quoteIdentifiers,
+    },
+    completionContext
+  )
+  if (dotCompletions !== null) return dotCompletions
 
-  if (isDotContext) {
-    const dotResult = handleDotNotation(
-      model,
-      position,
-      connectionId,
-      aliasMap,
-      resolutionDatabase,
-      currentStatementPrefix,
-      currentStatementText,
-      quoteIdentifiers
-    )
-    if (dotResult !== null) return dotResult
-    if (isInTableReferenceClause(currentStatementPrefix)) {
-      return []
+  // dt-sql-parser degrades to empty syntax and keywords when it chokes earlier in the statement.
+  if (!hasUsableSuggestions(suggestions)) {
+    return buildParseFallback({
+      cache: cache,
+      statementPrefix: caret.statementPrefix,
+      selectedDatabase: selectedDatabase,
+      broadSuggestionDatabase: broadSuggestionDatabase,
+      snippets: snippets,
+      quoteIdentifiers: quoteIdentifiers,
+    })
+  }
+
+  return buildSyntaxCompletions({
+    cache: cache,
+    suggestions: suggestions,
+    entities: entities,
+    snippets: snippets,
+    caret: caret,
+    resolutionDatabase: resolutionDatabase,
+    selectedDatabase: selectedDatabase,
+    broadSuggestionDatabase: broadSuggestionDatabase,
+    quoteIdentifiers: quoteIdentifiers,
+  })
+}
+
+interface SortPrefixes {
+  column: string
+  schema: string
+  callSchema: string
+  keyword: string
+}
+
+interface SortContextFlags {
+  isColumnContext: boolean
+  isTableContext: boolean
+  inCallStatementContext: boolean
+}
+
+function resolveSortPrefixes(flags: SortContextFlags): SortPrefixes {
+  const schema = flags.isTableContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
+  const isRankedContext =
+    flags.isColumnContext || flags.isTableContext || flags.inCallStatementContext
+  return {
+    column: flags.isColumnContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL,
+    schema: schema,
+    callSchema: flags.inCallStatementContext ? SORT_PREFIX_HIGH : schema,
+    keyword: isRankedContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL,
+  }
+}
+
+interface SyntaxCompletionRequest {
+  cache: SchemaCache
+  suggestions: Suggestions
+  entities: EntityContext[] | null
+  snippets: CompletionSnippet[] | undefined
+  caret: CaretText
+  resolutionDatabase: string | null
+  selectedDatabase: string | null
+  broadSuggestionDatabase: string | null
+  quoteIdentifiers: boolean
+}
+
+interface SyntaxCompletionContext extends SyntaxCompletionRequest {
+  items: ICompletionItem[]
+  seenLabels: Set<string>
+  sortPrefixes: SortPrefixes
+  inSelectListContext: boolean
+  inCallStatementContext: boolean
+}
+
+function scopedSchemaDatabases(context: SyntaxCompletionContext): readonly string[] {
+  return getScopedSchemaDatabases(context.cache.databases, context.broadSuggestionDatabase)
+}
+
+function pushDatabaseContextItems(context: SyntaxCompletionContext): void {
+  pushDatabases(
+    context.cache.databases,
+    context.items,
+    context.seenLabels,
+    context.sortPrefixes.callSchema,
+    context.quoteIdentifiers
+  )
+}
+
+function pushTableContextItems(context: SyntaxCompletionContext): void {
+  const { cache, items, seenLabels, sortPrefixes, quoteIdentifiers } = context
+  pushDatabases(cache.databases, items, seenLabels, sortPrefixes.schema, quoteIdentifiers)
+  if (!context.selectedDatabase) return
+  pushScopedTables(
+    cache,
+    [context.selectedDatabase],
+    items,
+    seenLabels,
+    sortPrefixes.schema,
+    quoteIdentifiers
+  )
+}
+
+function pushSelectListSchemaItems(
+  context: SyntaxCompletionContext,
+  fallbackDatabases: readonly string[]
+): void {
+  const { cache, items, seenLabels, sortPrefixes, quoteIdentifiers } = context
+  pushDatabases(cache.databases, items, seenLabels, sortPrefixes.schema, quoteIdentifiers)
+  pushScopedTables(
+    cache,
+    fallbackDatabases,
+    items,
+    seenLabels,
+    sortPrefixes.schema,
+    quoteIdentifiers
+  )
+  pushScopedRoutines(
+    cache,
+    fallbackDatabases,
+    items,
+    seenLabels,
+    sortPrefixes.schema,
+    'FUNCTION',
+    quoteIdentifiers
+  )
+}
+
+function pushColumnContextItems(context: SyntaxCompletionContext): void {
+  const scopedTables = findTablesInCaretStatement(
+    context.entities,
+    context.caret.statementText,
+    context.resolutionDatabase
+  )
+  if (scopedTables.length > 0) {
+    for (const tableRef of scopedTables) {
+      addColumnsForTable(context, tableRef)
     }
+    return
   }
 
-  // -------------------------------------------------------------------
-  // Parse-failure fallback. `suggestions` is null when the parser fails
-  // outright, but dt-sql-parser also degrades to a non-null object with
-  // BOTH `syntax` and `keywords` empty when it chokes earlier in the
-  // statement — e.g. an unquoted non-reserved keyword used as an
-  // identifier (`smp.active`) leaves every caret after it with no
-  // context. Treat that degenerate state like a parse failure so we
-  // recover statement-scoped schema/keyword completions instead of
-  // returning nothing. buildParseFallback includes schema items only
-  // when a ready cache is available; otherwise it still returns SQL
-  // keywords/functions immediately.
-  // -------------------------------------------------------------------
-  if (
-    suggestions === null ||
-    (suggestions.syntax.length === 0 && suggestions.keywords.length === 0)
-  ) {
-    return buildParseFallback(
-      connectionId,
-      currentStatementPrefix,
-      selectedDatabase,
-      broadSuggestionDatabase,
-      snippets,
-      quoteIdentifiers
-    )
+  const fallbackDatabases = scopedSchemaDatabases(context)
+  pushScopedColumns(
+    context.cache,
+    fallbackDatabases,
+    context.items,
+    context.seenLabels,
+    context.sortPrefixes.column,
+    context.quoteIdentifiers
+  )
+  if (context.inSelectListContext) {
+    pushSelectListSchemaItems(context, fallbackDatabases)
   }
+}
 
-  // -------------------------------------------------------------------
-  // Normal flow: map syntax context types to schema items
-  // Context-aware ranking: in column context, columns get priority '0_',
-  // other schema items get '1_', and keywords/snippets get '2_'.
-  // Outside column context, everything gets neutral '1_'.
-  // -------------------------------------------------------------------
-  const items: ICompletionItem[] = []
-  const seenLabels = new Set<string>()
-  const isColumnContext = hasColumnContext(suggestions)
-  const isTableContext = hasTableContext(suggestions)
-  const inSelectListContext = isSelectListContext(currentStatementPrefix)
-  const inCallStatementContext = isCallStatementContext(currentStatementPrefix)
-  const afterSelectWildcard = isAfterSelectWildcard(currentStatementPrefix)
+function pushFunctionContextItems(context: SyntaxCompletionContext): void {
+  pushBuiltinFunctions(context.items, context.seenLabels, context.sortPrefixes.schema)
+  pushScopedRoutines(
+    context.cache,
+    context.cache.databases,
+    context.items,
+    context.seenLabels,
+    context.sortPrefixes.schema,
+    'FUNCTION',
+    context.quoteIdentifiers
+  )
+}
 
-  // In column context: columns='0_', other schema='1_', keywords/snippets='2_'
-  // Otherwise: everything='1_' (neutral)
-  const columnSortPrefix = isColumnContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  const schemaSortPrefix = isTableContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  const callSchemaSortPrefix = inCallStatementContext ? SORT_PREFIX_HIGH : schemaSortPrefix
-  const kwSortPrefix =
-    isColumnContext || isTableContext || inCallStatementContext
-      ? SORT_PREFIX_LOW
-      : SORT_PREFIX_NEUTRAL
-  const snippetSortPrefix =
-    isColumnContext || isTableContext || inCallStatementContext
-      ? SORT_PREFIX_LOW
-      : SORT_PREFIX_NEUTRAL
+function pushProcedureContextItems(context: SyntaxCompletionContext): void {
+  if (context.inCallStatementContext) return
+  pushScopedRoutines(
+    context.cache,
+    scopedSchemaDatabases(context),
+    context.items,
+    context.seenLabels,
+    context.sortPrefixes.schema,
+    'PROCEDURE',
+    context.quoteIdentifiers
+  )
+}
 
-  if (isColumnContext && afterSelectWildcard) {
-    const keywordLabels = suggestions.keywords.length > 0 ? suggestions.keywords : ['FROM']
+const SYNTAX_CONTEXT_COMPLETIONS: Partial<
+  Record<string, (context: SyntaxCompletionContext) => void>
+> = {
+  [EntityContextType.DATABASE]: pushDatabaseContextItems,
+  [EntityContextType.TABLE]: pushTableContextItems,
+  [EntityContextType.COLUMN]: pushColumnContextItems,
+  [EntityContextType.FUNCTION]: pushFunctionContextItems,
+  [EntityContextType.PROCEDURE]: pushProcedureContextItems,
+}
 
-    for (const kw of keywordLabels) {
-      items.push(keywordItem(kw, kwSortPrefix))
-    }
+function pushCallStatementItems(context: SyntaxCompletionContext): void {
+  const { cache, items, seenLabels, sortPrefixes, quoteIdentifiers } = context
+  pushDatabases(cache.databases, items, seenLabels, sortPrefixes.callSchema, quoteIdentifiers)
+  pushScopedRoutines(
+    cache,
+    scopedSchemaDatabases(context),
+    items,
+    seenLabels,
+    sortPrefixes.callSchema,
+    'PROCEDURE',
+    quoteIdentifiers
+  )
+}
 
-    items.push(...mapSnippetsToItems(snippets, snippetSortPrefix))
-    return items
+function pushRankedKeywordsAndSnippets(context: SyntaxCompletionContext): void {
+  const { items, suggestions, caret, sortPrefixes } = context
+  for (const keyword of suggestions.keywords) {
+    items.push(keywordItem(keyword, sortPrefixes.keyword))
   }
-
-  for (const syntaxSuggestion of suggestions.syntax) {
-    const contextType = syntaxSuggestion.syntaxContextType
-
-    if (contextType === EntityContextType.DATABASE) {
-      pushDatabases(
-        cache.databases,
-        items,
-        seenLabels,
-        inCallStatementContext ? callSchemaSortPrefix : schemaSortPrefix,
-        quoteIdentifiers
-      )
-    } else if (contextType === EntityContextType.TABLE) {
-      pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix, quoteIdentifiers)
-
-      if (selectedDatabase) {
-        pushScopedTables(
-          cache,
-          [selectedDatabase],
-          items,
-          seenLabels,
-          schemaSortPrefix,
-          quoteIdentifiers
-        )
-      }
-    } else if (contextType === EntityContextType.COLUMN) {
-      // Try to scope columns by tables in the current caret statement
-      const scopedTables = findTablesInCaretStatement(
-        entities,
-        currentStatementText,
-        resolutionDatabase
-      )
-      if (scopedTables.length > 0) {
-        for (const tableRef of scopedTables) {
-          addColumnsForTable(
-            cache,
-            tableRef,
-            items,
-            seenLabels,
-            columnSortPrefix,
-            resolutionDatabase,
-            quoteIdentifiers
-          )
-        }
-      } else {
-        // Broad fallback: prefer the current database context, otherwise all databases.
-        const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
-
-        pushScopedColumns(
-          cache,
-          fallbackDatabases,
-          items,
-          seenLabels,
-          columnSortPrefix,
-          quoteIdentifiers
-        )
-
-        if (inSelectListContext) {
-          pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix, quoteIdentifiers)
-          pushScopedTables(
-            cache,
-            fallbackDatabases,
-            items,
-            seenLabels,
-            schemaSortPrefix,
-            quoteIdentifiers
-          )
-          pushScopedRoutines(
-            cache,
-            fallbackDatabases,
-            items,
-            seenLabels,
-            schemaSortPrefix,
-            'FUNCTION',
-            quoteIdentifiers
-          )
-        }
-      }
-    } else if (contextType === EntityContextType.FUNCTION) {
-      pushBuiltinFunctions(items, seenLabels, schemaSortPrefix)
-      pushScopedRoutines(
-        cache,
-        cache.databases,
-        items,
-        seenLabels,
-        schemaSortPrefix,
-        'FUNCTION',
-        quoteIdentifiers
-      )
-    } else if (contextType === EntityContextType.PROCEDURE) {
-      if (!inCallStatementContext) {
-        const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
-
-        pushScopedRoutines(
-          cache,
-          fallbackDatabases,
-          items,
-          seenLabels,
-          schemaSortPrefix,
-          'PROCEDURE',
-          quoteIdentifiers
-        )
-      }
-    }
-  }
-
-  if (inCallStatementContext) {
-    const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
-
-    pushDatabases(cache.databases, items, seenLabels, callSchemaSortPrefix, quoteIdentifiers)
-    pushScopedRoutines(
-      cache,
-      fallbackDatabases,
-      items,
-      seenLabels,
-      callSchemaSortPrefix,
-      'PROCEDURE',
-      quoteIdentifiers
-    )
-  }
-
-  // Keywords (ranked lower in column context, neutral otherwise)
-  for (const kw of suggestions.keywords) {
-    items.push(keywordItem(kw, kwSortPrefix))
-  }
-
   pushStoredProgramBodyKeywords(
     items,
-    cursorPrefix,
+    caret.cursorPrefix,
     suggestions,
-    currentWordPrefix,
+    caret.currentWordPrefix,
     suggestions.keywords,
-    kwSortPrefix
+    sortPrefixes.keyword
   )
+  items.push(...mapSnippetsToItems(context.snippets, sortPrefixes.keyword))
+}
 
-  // Snippets (ranked same as keywords)
-  items.push(...mapSnippetsToItems(snippets, snippetSortPrefix))
-
+function buildWildcardFollowUpItems(
+  request: SyntaxCompletionRequest,
+  keywordSortPrefix: string
+): ICompletionItem[] {
+  const parserKeywords = request.suggestions.keywords
+  const keywordLabels = parserKeywords.length > 0 ? parserKeywords : WILDCARD_FOLLOW_UP_KEYWORDS
+  const items = keywordLabels.map((keyword) => keywordItem(keyword, keywordSortPrefix))
+  items.push(...mapSnippetsToItems(request.snippets, keywordSortPrefix))
   return items
 }
 
-// ---------------------------------------------------------------------------
-// Dot notation: "alias." → columns, "database." → tables, "table." → columns
-// ---------------------------------------------------------------------------
+function buildSyntaxCompletions(request: SyntaxCompletionRequest): ICompletionItem[] {
+  const statementPrefix = request.caret.statementPrefix
+  const isColumnContext = hasColumnContext(request.suggestions)
+  const inCallStatementContext = isCallStatementContext(statementPrefix)
+  const sortPrefixes = resolveSortPrefixes({
+    isColumnContext: isColumnContext,
+    isTableContext: hasTableContext(request.suggestions),
+    inCallStatementContext: inCallStatementContext,
+  })
 
-function handleDotNotation(
-  model: editor.IReadOnlyModel,
-  position: Position,
-  connectionId: string,
-  aliasMap: AliasMap,
-  resolutionDatabase: string | null,
-  currentStatementPrefix: string,
-  currentStatementText: string,
-  quoteIdentifiers = false
+  if (isColumnContext && isAfterSelectWildcard(statementPrefix)) {
+    return buildWildcardFollowUpItems(request, sortPrefixes.keyword)
+  }
+
+  const context: SyntaxCompletionContext = {
+    ...request,
+    items: [],
+    seenLabels: new Set<string>(),
+    sortPrefixes: sortPrefixes,
+    inSelectListContext: isSelectListContext(statementPrefix),
+    inCallStatementContext: inCallStatementContext,
+  }
+  for (const syntaxSuggestion of request.suggestions.syntax) {
+    SYNTAX_CONTEXT_COMPLETIONS[syntaxSuggestion.syntaxContextType]?.(context)
+  }
+  if (inCallStatementContext) {
+    pushCallStatementItems(context)
+  }
+  pushRankedKeywordsAndSnippets(context)
+  return context.items
+}
+
+interface DotNotationRequest {
+  model: editor.IReadOnlyModel
+  position: Position
+  cache: SchemaCache
+  aliasMap: AliasMap
+  resolutionDatabase: string | null
+  caret: CaretText
+  quoteIdentifiers: boolean
+}
+
+interface DotTarget {
+  qualifiedDatabase: string | null
+  tablePart: string
+  prefixLower: string
+}
+
+function resolveDotCompletions(
+  request: DotNotationRequest,
+  completionContext: languages.CompletionContext
 ): ICompletionItem[] | null {
-  const cache = getCache(connectionId)
-  if (cache.status !== 'ready') return null
-
-  // Get text before the cursor on the current line
-  const lineContent = model.getLineContent(position.lineNumber)
-  const textBefore = lineContent.substring(0, position.column - 1)
-
-  // Match optional "db." prefix before "word." pattern at end of text.
-  // Group 1: optional database qualifier (e.g. "analytics_db" in "analytics_db.events.")
-  // Group 2: the word immediately before the trailing dot
-  let dotMatch = textBefore.match(/(?:([\w`"']+)\.)?([\w`"']+)\.\s*$/)
-
-  // If no match, the cursor may be in a partial word after a dot (e.g. "users.em|").
-  // Strip the current partial word to reveal the dot pattern.
-  if (!dotMatch) {
-    const wordInfo = model.getWordUntilPosition(position)
-    const textBeforeWord = lineContent.substring(0, wordInfo.startColumn - 1)
-    dotMatch = textBeforeWord.match(/(?:([\w`"']+)\.)?([\w`"']+)\.\s*$/)
-  }
-
-  if (!dotMatch) return null
-
-  // Extract parts — qualifiedDb is set only for "db.table." syntax
-  const qualifiedDb = dotMatch[1] ? dotMatch[1].replace(/[`"']/g, '') : null
-  const tablePart = dotMatch[2].replace(/[`"']/g, '')
-  const prefixLower = tablePart.toLowerCase()
-
-  // 1. Check entity-based alias map first (case-insensitive)
-  const aliasResolution = aliasMap.get(prefixLower)
-  if (aliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
-    const columns = cache.columns[`${aliasResolution.database}.${aliasResolution.table}`] ?? []
-    return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
-  }
-
-  // 1b. Text-based alias fallback: when the parser doesn't provide entities,
-  //     extract aliases from the current statement so aliases declared later
-  //     in the same statement still resolve while avoiding cross-statement bleed.
-  const textAliasMap = buildAliasMapFromText(currentStatementText, resolutionDatabase)
-  const textAliasResolution = textAliasMap.get(prefixLower)
-  if (textAliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
-    const columns =
-      cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
-    return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
-  }
-
-  // 2. Check if it's a database name → suggest that db's tables
-  const matchedDb = cache.databases.find((db) => db.toLowerCase() === prefixLower)
-  if (matchedDb) {
-    const items: ICompletionItem[] = []
-
-    if (isCallStatementContext(currentStatementPrefix)) {
-      const routines = cache.routines[matchedDb] ?? []
-      items.push(
-        ...routines
-          .filter((routine) => routine.routineType === 'PROCEDURE')
-          .map((routine) =>
-            routineItem(routine.name, 'PROCEDURE', SORT_PREFIX_NEUTRAL, quoteIdentifiers)
-          )
-      )
-
-      return items
-    }
-
-    const tables = cache.tables[matchedDb] ?? []
-    items.push(
-      ...tables.map((table) => tableItem(table.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
-    )
-
-    if (isInTableReferenceClause(currentStatementPrefix)) {
-      return items
-    }
-
-    const routines = cache.routines[matchedDb] ?? []
-    items.push(
-      ...routines
-        .filter((routine) => routine.routineType === 'FUNCTION')
-        .map((routine) =>
-          routineItem(
-            routine.name,
-            routine.routineType as 'FUNCTION' | 'PROCEDURE',
-            SORT_PREFIX_NEUTRAL,
-            quoteIdentifiers
-          )
-        )
-    )
-
-    return items
-  }
-
-  if (isInTableReferenceClause(currentStatementPrefix)) {
-    return null
-  }
-
-  // 3. Check if it's a table name → suggest that table's columns.
-  //    When qualifiedDb is set (db.table. syntax), do an exact lookup
-  //    to avoid ambiguity with duplicate table names across databases.
-  //    When unqualified, prefer resolutionDatabase to avoid picking a
-  //    same-named table from the wrong database.
-  if (qualifiedDb) {
-    const columns = cache.columns[`${qualifiedDb}.${tablePart}`] ?? []
-    if (columns.length > 0) {
-      return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
-    }
-
-    return null
-  }
-  const searchOrder = resolutionDatabase
-    ? [resolutionDatabase, ...cache.databases.filter((db) => db !== resolutionDatabase)]
-    : cache.databases
-
-  for (const db of searchOrder) {
-    const tables = cache.tables[db] ?? []
-    const matchedTable = tables.find((table) => table.name.toLowerCase() === prefixLower)
-    if (matchedTable) {
-      const columns = cache.columns[`${db}.${matchedTable.name}`] ?? []
-      return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
-    }
-  }
-
+  const isDotContext =
+    completionContext.triggerCharacter === '.' ||
+    hasDottedPrefixBeforeWord(request.model, request.position)
+  if (!isDotContext) return null
+  const dotResult = handleDotNotation(request)
+  if (dotResult !== null) return dotResult
+  if (isInTableReferenceClause(request.caret.statementPrefix)) return []
   return null
 }
 
-// ---------------------------------------------------------------------------
-// Find TABLE entities in the statement containing the caret
-// ---------------------------------------------------------------------------
+function matchDotPrefix(model: editor.IReadOnlyModel, position: Position): RegExpMatchArray | null {
+  const lineContent = model.getLineContent(position.lineNumber)
+  const textBefore = lineContent.substring(0, position.column - 1)
+  const dotMatch = textBefore.match(DOT_PREFIX_PATTERN)
+  if (dotMatch) return dotMatch
+  const wordInfo = model.getWordUntilPosition(position)
+  const textBeforeWord = lineContent.substring(0, wordInfo.startColumn - 1)
+  return textBeforeWord.match(DOT_PREFIX_PATTERN)
+}
+
+function stripIdentifierQuotes(identifier: string): string {
+  return identifier.replace(IDENTIFIER_QUOTE_CHARACTERS, '')
+}
+
+function parseDotTarget(dotMatch: RegExpMatchArray): DotTarget {
+  const tablePart = stripIdentifierQuotes(dotMatch[2])
+  return {
+    qualifiedDatabase: dotMatch[1] ? stripIdentifierQuotes(dotMatch[1]) : null,
+    tablePart: tablePart,
+    prefixLower: tablePart.toLowerCase(),
+  }
+}
+
+function columnCompletionItems(
+  cache: SchemaCache,
+  tableKey: string,
+  quoteIdentifiers: boolean
+): ICompletionItem[] {
+  const columns = cache.columns[tableKey] ?? []
+  return columns.map((column) => columnItem(column.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+}
+
+function resolveAliasTarget(
+  request: DotNotationRequest,
+  prefixLower: string
+): AliasTarget | undefined {
+  if (isInTableReferenceClause(request.caret.statementPrefix)) return undefined
+  const entityAlias = request.aliasMap.get(prefixLower)
+  if (entityAlias) return entityAlias
+  const textAliasMap = buildAliasMapFromText(
+    request.caret.statementText,
+    request.resolutionDatabase
+  )
+  return textAliasMap.get(prefixLower)
+}
+
+function routinesOfType(
+  cache: SchemaCache,
+  database: string,
+  routineType: 'FUNCTION' | 'PROCEDURE'
+): Array<{ name: string }> {
+  const routines = cache.routines[database] ?? []
+  return routines.filter((routine) => routine.routineType === routineType)
+}
+
+function databaseDotCompletions(request: DotNotationRequest, database: string): ICompletionItem[] {
+  const { cache, quoteIdentifiers } = request
+  const statementPrefix = request.caret.statementPrefix
+  if (isCallStatementContext(statementPrefix)) {
+    return routinesOfType(cache, database, 'PROCEDURE').map((routine) =>
+      routineItem(routine.name, 'PROCEDURE', SORT_PREFIX_NEUTRAL, quoteIdentifiers)
+    )
+  }
+  const tables = cache.tables[database] ?? []
+  const items = tables.map((table) => tableItem(table.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+  if (isInTableReferenceClause(statementPrefix)) return items
+  const functions = routinesOfType(cache, database, 'FUNCTION').map((routine) =>
+    routineItem(routine.name, 'FUNCTION', SORT_PREFIX_NEUTRAL, quoteIdentifiers)
+  )
+  return [...items, ...functions]
+}
+
+function databaseSearchOrder(
+  databases: readonly string[],
+  preferredDatabase: string | null
+): readonly string[] {
+  if (!preferredDatabase) return databases
+  return [preferredDatabase, ...databases.filter((database) => database !== preferredDatabase)]
+}
+
+function findTableByLowerName(
+  cache: SchemaCache,
+  database: string,
+  tableNameLower: string
+): { name: string } | undefined {
+  const tables = cache.tables[database] ?? []
+  return tables.find((table) => table.name.toLowerCase() === tableNameLower)
+}
+
+function tableDotCompletions(
+  request: DotNotationRequest,
+  target: DotTarget
+): ICompletionItem[] | null {
+  const { cache, quoteIdentifiers } = request
+  if (target.qualifiedDatabase) {
+    const tableKey = `${target.qualifiedDatabase}.${target.tablePart}`
+    const items = columnCompletionItems(cache, tableKey, quoteIdentifiers)
+    return items.length > 0 ? items : null
+  }
+  for (const database of databaseSearchOrder(cache.databases, request.resolutionDatabase)) {
+    const matchedTable = findTableByLowerName(cache, database, target.prefixLower)
+    if (matchedTable) {
+      return columnCompletionItems(cache, `${database}.${matchedTable.name}`, quoteIdentifiers)
+    }
+  }
+  return null
+}
+
+function handleDotNotation(request: DotNotationRequest): ICompletionItem[] | null {
+  const { cache, quoteIdentifiers } = request
+  if (cache.status !== 'ready') return null
+  const dotMatch = matchDotPrefix(request.model, request.position)
+  if (!dotMatch) return null
+  const target = parseDotTarget(dotMatch)
+
+  const aliasTarget = resolveAliasTarget(request, target.prefixLower)
+  if (aliasTarget) {
+    const tableKey = `${aliasTarget.database}.${aliasTarget.table}`
+    return columnCompletionItems(cache, tableKey, quoteIdentifiers)
+  }
+
+  const matchedDatabase = cache.databases.find(
+    (database) => database.toLowerCase() === target.prefixLower
+  )
+  if (matchedDatabase) return databaseDotCompletions(request, matchedDatabase)
+  if (isInTableReferenceClause(request.caret.statementPrefix)) return null
+  return tableDotCompletions(request, target)
+}
+
+function isCaretStatementTable(entity: EntityContext): boolean {
+  return (
+    entity.entityContextType === EntityContextType.TABLE &&
+    entity.belongStmt?.isContainCaret === true
+  )
+}
 
 function findTablesInCaretStatement(
   entities: EntityContext[] | null,
@@ -1096,19 +1200,11 @@ function findTablesInCaretStatement(
 ): TableRef[] {
   const tableRefs: TableRef[] = []
 
-  if (entities) {
-    for (const entity of entities) {
-      if (
-        entity.entityContextType === EntityContextType.TABLE &&
-        entity.belongStmt?.isContainCaret
-      ) {
-        const text = entity.text
-        if (!text) continue
-        const tableRef = parseTableRefText(text)
-        if (!tableRef) continue
-        tableRefs.push(tableRef)
-      }
-    }
+  for (const entity of entities ?? []) {
+    if (!isCaretStatementTable(entity) || !entity.text) continue
+    const tableRef = parseTableRefText(entity.text)
+    if (!tableRef) continue
+    tableRefs.push(tableRef)
   }
 
   if (tableRefs.length > 0) return tableRefs
@@ -1154,191 +1250,189 @@ function findTablesInStatementText(
   return tableRefs
 }
 
-// ---------------------------------------------------------------------------
-// Add columns for a table reference (exact lookup when database is provided,
-// falls back to searching all databases when database is null)
-// ---------------------------------------------------------------------------
+function pushUnseenColumns(context: SyntaxCompletionContext, tableKey: string): void {
+  const columns = context.cache.columns[tableKey] ?? []
+  for (const column of columns) {
+    const label = `col:${column.name}`
+    if (context.seenLabels.has(label)) continue
+    context.seenLabels.add(label)
+    context.items.push(
+      columnItem(column.name, context.sortPrefixes.column, context.quoteIdentifiers)
+    )
+  }
+}
 
-function addColumnsForTable(
-  cache: ReturnType<typeof getCache>,
-  tableRef: TableRef,
-  items: ICompletionItem[],
-  seenLabels: Set<string>,
-  sortPrefix = SORT_PREFIX_NEUTRAL,
-  resolutionDatabase: string | null = null,
-  quoteIdentifiers = false
-): void {
+function addColumnsForTable(context: SyntaxCompletionContext, tableRef: TableRef): void {
   if (tableRef.database) {
-    // Exact lookup: database is known
-    const columns = cache.columns[`${tableRef.database}.${tableRef.table}`] ?? []
-    for (const column of columns) {
-      if (!seenLabels.has(`col:${column.name}`)) {
-        seenLabels.add(`col:${column.name}`)
-        items.push(columnItem(column.name, sortPrefix, quoteIdentifiers))
-      }
-    }
-  } else {
-    // Fallback: search all databases for matching table name,
-    // preferring resolutionDatabase to avoid picking a same-named table
-    // from the wrong database.
-    const searchOrder = resolutionDatabase
-      ? [resolutionDatabase, ...cache.databases.filter((db) => db !== resolutionDatabase)]
-      : cache.databases
+    pushUnseenColumns(context, `${tableRef.database}.${tableRef.table}`)
+    return
+  }
 
-    for (const db of searchOrder) {
-      const tables = cache.tables[db] ?? []
-      const matchedTable = tables.find(
-        (table) => table.name.toLowerCase() === tableRef.table.toLowerCase()
-      )
-      if (matchedTable) {
-        const columns = cache.columns[`${db}.${matchedTable.name}`] ?? []
-        for (const column of columns) {
-          if (!seenLabels.has(`col:${column.name}`)) {
-            seenLabels.add(`col:${column.name}`)
-            items.push(columnItem(column.name, sortPrefix, quoteIdentifiers))
-          }
-        }
-      }
+  const tableNameLower = tableRef.table.toLowerCase()
+  const searchOrder = databaseSearchOrder(context.cache.databases, context.resolutionDatabase)
+  for (const database of searchOrder) {
+    const matchedTable = findTableByLowerName(context.cache, database, tableNameLower)
+    if (matchedTable) {
+      pushUnseenColumns(context, `${database}.${matchedTable.name}`)
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Parse-failure fallback: dump everything from cache + basic keywords
-// ---------------------------------------------------------------------------
+interface ParseFallbackRequest {
+  cache: SchemaCache
+  statementPrefix: string
+  selectedDatabase: string | null
+  broadSuggestionDatabase: string | null
+  snippets: CompletionSnippet[] | undefined
+  quoteIdentifiers: boolean
+}
 
-function buildParseFallback(
-  connectionId: string | undefined,
-  currentStatementPrefix: string,
-  selectedDatabase: string | null,
-  broadSuggestionDatabase: string | null,
-  snippets?: CompletionSnippet[],
-  quoteIdentifiers = false
-): ICompletionItem[] {
-  const items: ICompletionItem[] = []
+interface ParseFallbackContext {
+  cache: SchemaCache
+  items: ICompletionItem[]
+  seenLabels: Set<string>
+  fallbackDatabases: readonly string[]
+  inSelectListContext: boolean
+  inCallStatementContext: boolean
+  quoteIdentifiers: boolean
+}
 
-  // If we have a ready connection cache, dump all schema items.
-  // Otherwise keep autocomplete useful with parser-independent SQL keywords
-  // while startup/background cache work is still in flight.
-  if (connectionId) {
-    const cache = getCache(connectionId)
-    if (cache.status === 'ready') {
-      const mode = getParseFallbackMode(currentStatementPrefix, cache.databases, selectedDatabase)
-      const inSelectListContext = isSelectListContext(currentStatementPrefix)
-      const inCallStatementContext = isCallStatementContext(currentStatementPrefix)
-      const fallbackDatabases =
-        inSelectListContext || inCallStatementContext
-          ? getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
-          : cache.databases
-      const seenLabels = new Set<string>()
+function fallbackKeywordSortPrefix(
+  mode: ParseFallbackMode,
+  inCallStatementContext: boolean
+): string {
+  if (inCallStatementContext) return SORT_PREFIX_LOW
+  if (mode.type === 'databases') return SORT_PREFIX_LOW
+  if (mode.type === 'databasesAndTables') return SORT_PREFIX_LOW
+  return SORT_PREFIX_NEUTRAL
+}
 
-      if (mode.type === 'none') {
-        return []
-      }
+function pushParseFallbackKeywords(context: ParseFallbackContext, sortPrefix: string): void {
+  if (!context.inCallStatementContext) {
+    pushFallbackKeywordsAndFunctions(context.items, sortPrefix)
+    return
+  }
+  for (const keyword of SQL_KEYWORDS) {
+    context.items.push(keywordItem(keyword, sortPrefix))
+  }
+}
 
-      const keywordSortPrefix = inCallStatementContext
-        ? SORT_PREFIX_LOW
-        : mode.type === 'databases' || mode.type === 'databasesAndTables'
-          ? SORT_PREFIX_LOW
-          : SORT_PREFIX_NEUTRAL
+function pushHighRankedDatabases(context: ParseFallbackContext): void {
+  for (const database of context.cache.databases) {
+    context.items.push(dbItem(database, SORT_PREFIX_HIGH, context.quoteIdentifiers))
+  }
+}
 
-      if (inCallStatementContext) {
-        for (const kw of SQL_KEYWORDS) {
-          items.push(keywordItem(kw, keywordSortPrefix))
-        }
-      } else {
-        // Basic keywords and built-in functions (ranked lower when database/table context detected)
-        pushFallbackKeywordsAndFunctions(items, keywordSortPrefix)
-      }
+function pushTablesOfDatabase(
+  context: ParseFallbackContext,
+  database: string,
+  sortPrefix: string
+): void {
+  const tables = context.cache.tables[database] ?? []
+  for (const table of tables) {
+    context.items.push(tableItem(table.name, sortPrefix, context.quoteIdentifiers))
+  }
+}
 
-      if (mode.type === 'databases') {
-        for (const db of cache.databases) {
-          items.push(dbItem(db, SORT_PREFIX_HIGH, quoteIdentifiers))
-        }
-      } else if (mode.type === 'databasesAndTables') {
-        for (const db of cache.databases) {
-          items.push(dbItem(db, SORT_PREFIX_HIGH, quoteIdentifiers))
-        }
+function pushAllFallbackSchemaItems(context: ParseFallbackContext): void {
+  const { cache, items, seenLabels, fallbackDatabases, quoteIdentifiers } = context
+  const databaseSortPrefix = context.inCallStatementContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
+  pushDatabases(cache.databases, items, seenLabels, databaseSortPrefix, quoteIdentifiers)
 
-        const tables = cache.tables[mode.database] ?? []
-        for (const table of tables) {
-          items.push(tableItem(table.name, SORT_PREFIX_HIGH, quoteIdentifiers))
-        }
-      } else if (mode.type === 'tables') {
-        const tables = cache.tables[mode.database] ?? []
-        for (const table of tables) {
-          items.push(tableItem(table.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
-        }
-      } else if (mode.type === 'all') {
-        pushDatabases(
-          cache.databases,
-          items,
-          seenLabels,
-          inCallStatementContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL,
-          quoteIdentifiers
-        )
-
-        if (inCallStatementContext) {
-          pushScopedRoutines(
-            cache,
-            fallbackDatabases,
-            items,
-            seenLabels,
-            SORT_PREFIX_HIGH,
-            'PROCEDURE',
-            quoteIdentifiers
-          )
-        } else {
-          pushScopedTables(
-            cache,
-            fallbackDatabases,
-            items,
-            seenLabels,
-            SORT_PREFIX_NEUTRAL,
-            quoteIdentifiers
-          )
-          pushScopedColumns(
-            cache,
-            fallbackDatabases,
-            items,
-            seenLabels,
-            SORT_PREFIX_NEUTRAL,
-            quoteIdentifiers
-          )
-
-          if (inSelectListContext) {
-            pushScopedRoutines(
-              cache,
-              fallbackDatabases,
-              items,
-              seenLabels,
-              SORT_PREFIX_NEUTRAL,
-              'FUNCTION',
-              quoteIdentifiers
-            )
-          } else {
-            pushScopedRoutines(
-              cache,
-              fallbackDatabases,
-              items,
-              seenLabels,
-              SORT_PREFIX_NEUTRAL,
-              null,
-              quoteIdentifiers
-            )
-          }
-        }
-      }
-    } else {
-      pushFallbackKeywordsAndFunctions(items)
-    }
-  } else {
-    // Basic keywords and built-in functions (neutral ranking in fallback — no context available)
-    pushFallbackKeywordsAndFunctions(items)
+  if (context.inCallStatementContext) {
+    pushScopedRoutines(
+      cache,
+      fallbackDatabases,
+      items,
+      seenLabels,
+      SORT_PREFIX_HIGH,
+      'PROCEDURE',
+      quoteIdentifiers
+    )
+    return
   }
 
-  // Snippets
-  items.push(...mapSnippetsToItems(snippets))
+  pushScopedTables(
+    cache,
+    fallbackDatabases,
+    items,
+    seenLabels,
+    SORT_PREFIX_NEUTRAL,
+    quoteIdentifiers
+  )
+  pushScopedColumns(
+    cache,
+    fallbackDatabases,
+    items,
+    seenLabels,
+    SORT_PREFIX_NEUTRAL,
+    quoteIdentifiers
+  )
+  const routineType = context.inSelectListContext ? 'FUNCTION' : null
+  pushScopedRoutines(
+    cache,
+    fallbackDatabases,
+    items,
+    seenLabels,
+    SORT_PREFIX_NEUTRAL,
+    routineType,
+    quoteIdentifiers
+  )
+}
 
+function pushParseFallbackSchemaItems(
+  context: ParseFallbackContext,
+  mode: ParseFallbackMode
+): void {
+  if (mode.type === 'databases') {
+    pushHighRankedDatabases(context)
+    return
+  }
+  if (mode.type === 'databasesAndTables') {
+    pushHighRankedDatabases(context)
+    pushTablesOfDatabase(context, mode.database, SORT_PREFIX_HIGH)
+    return
+  }
+  if (mode.type === 'tables') {
+    pushTablesOfDatabase(context, mode.database, SORT_PREFIX_NEUTRAL)
+    return
+  }
+  if (mode.type === 'all') {
+    pushAllFallbackSchemaItems(context)
+  }
+}
+
+function buildParseFallback(request: ParseFallbackRequest): ICompletionItem[] {
+  const { cache, statementPrefix } = request
+  const items: ICompletionItem[] = []
+
+  if (cache.status !== 'ready') {
+    pushFallbackKeywordsAndFunctions(items)
+    items.push(...mapSnippetsToItems(request.snippets))
+    return items
+  }
+
+  const mode = getParseFallbackMode(statementPrefix, cache.databases, request.selectedDatabase)
+  if (mode.type === 'none') {
+    return []
+  }
+
+  const inSelectListContext = isSelectListContext(statementPrefix)
+  const inCallStatementContext = isCallStatementContext(statementPrefix)
+  const usesScopedDatabases = inSelectListContext || inCallStatementContext
+  const context: ParseFallbackContext = {
+    cache: cache,
+    items: items,
+    seenLabels: new Set<string>(),
+    fallbackDatabases: usesScopedDatabases
+      ? getScopedSchemaDatabases(cache.databases, request.broadSuggestionDatabase)
+      : cache.databases,
+    inSelectListContext: inSelectListContext,
+    inCallStatementContext: inCallStatementContext,
+    quoteIdentifiers: request.quoteIdentifiers,
+  }
+  pushParseFallbackKeywords(context, fallbackKeywordSortPrefix(mode, inCallStatementContext))
+  pushParseFallbackSchemaItems(context, mode)
+  items.push(...mapSnippetsToItems(request.snippets))
   return items
 }

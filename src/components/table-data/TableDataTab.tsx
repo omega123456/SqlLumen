@@ -7,7 +7,7 @@
 
 import { useEffect, useCallback } from 'react'
 import { useTableDataStore } from '../../stores/table-data-store'
-import { useConnectionStore } from '../../stores/connection-store'
+import { useIsConnectionReadOnly } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { exportTableData } from '../../lib/table-data-commands'
 import { TableDataToolbar } from './TableDataToolbar'
@@ -17,6 +17,10 @@ import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
 import type {
   ExportOptions,
+  FilterCondition,
+  PrimaryKeyInfo,
+  TableDataColumnMeta,
+  TableDataTabState,
   WorkspaceTab,
   TableDataTab as TableDataTabType,
 } from '../../types/schema'
@@ -28,6 +32,182 @@ interface TableDataTabProps {
   tab: WorkspaceTab
   isActive?: boolean
   renderMode?: 'standalone' | 'bottom-panel'
+}
+
+interface TableDataTabView {
+  isLoading: boolean
+  error: string | null
+  primaryKey: PrimaryKeyInfo | null
+  viewMode: TableDataTabState['viewMode']
+  isExportDialogOpen: boolean
+  pendingNavigationAction: TableDataTabState['pendingNavigationAction']
+  saveError: string | null
+  columns: TableDataColumnMeta[]
+  isRestoring: boolean
+}
+
+const EMPTY_TABLE_DATA_TAB_VIEW: TableDataTabView = {
+  isLoading: true,
+  error: null,
+  primaryKey: null,
+  viewMode: 'grid',
+  isExportDialogOpen: false,
+  pendingNavigationAction: null,
+  saveError: null,
+  columns: [],
+  isRestoring: false,
+}
+
+function tableDataTabView(tabState: TableDataTabState | undefined): TableDataTabView {
+  if (!tabState) return EMPTY_TABLE_DATA_TAB_VIEW
+  return {
+    isLoading: tabState.isLoading,
+    error: tabState.error,
+    primaryKey: tabState.primaryKey,
+    viewMode: tabState.viewMode,
+    isExportDialogOpen: tabState.isExportDialogOpen,
+    pendingNavigationAction: tabState.pendingNavigationAction,
+    saveError: tabState.saveError,
+    columns: tabState.columns,
+    isRestoring: tabState.rowResidency?.status === 'restoring',
+  }
+}
+
+interface TableDataExportScope {
+  filterModel?: FilterCondition[]
+  sortColumn?: string
+  sortDirection?: string
+  page?: number
+  pageSize?: number
+}
+
+function tableDataExportScope(tabState: TableDataTabState | undefined): TableDataExportScope {
+  if (!tabState) return {}
+  const hasActiveFilters = tabState.filterModel.length > 0
+  return {
+    filterModel: hasActiveFilters ? tabState.filterModel : undefined,
+    sortColumn: tabState.sort?.column,
+    sortDirection: tabState.sort?.direction,
+    page: tabState.currentPage,
+    pageSize: tabState.pageSize,
+  }
+}
+
+function hasLoadedColumns(view: TableDataTabView): boolean {
+  return !view.error && view.columns.length > 0
+}
+
+function isInitialLoad(view: TableDataTabView): boolean {
+  return view.isLoading && !view.error && view.columns.length === 0
+}
+
+// Show no-PK warning only for actual tables, not views (views never have PKs)
+function shouldShowNoPrimaryKeyWarning(view: TableDataTabView, isViewObject: boolean): boolean {
+  if (isViewObject || view.primaryKey !== null) return false
+  return !view.isLoading && hasLoadedColumns(view)
+}
+
+function NoPrimaryKeyWarning() {
+  return (
+    <div className={styles.warningHost}>
+      <InfoBar
+        severity="warning"
+        title="Read only"
+        message="This table has no primary key or unique key. Editing is disabled. Data can be browsed but not modified."
+        data-testid="no-pk-warning"
+      />
+    </div>
+  )
+}
+
+function TableDataLoadingState() {
+  return (
+    <div className={styles.loadingState}>
+      <div className={styles.spinner} />
+      <span>Loading table data...</span>
+    </div>
+  )
+}
+
+interface TableDataErrorStateProps {
+  error: string
+  onRetry: () => void
+}
+
+function TableDataErrorState({ error, onRetry }: TableDataErrorStateProps) {
+  return (
+    <div className={styles.errorState} data-testid="table-data-error">
+      <span className={styles.errorMessage}>{error}</span>
+      <Button
+        variant="bare"
+        className={styles.retryButton}
+        onClick={onRetry}
+        data-testid="btn-retry"
+      >
+        Retry
+      </Button>
+    </div>
+  )
+}
+
+interface BusyOverlayProps {
+  label: string
+  testId: string
+}
+
+function BusyOverlay({ label, testId }: BusyOverlayProps) {
+  return (
+    <div
+      className={styles.restoringOverlay}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      data-testid={testId}
+    >
+      <div className={styles.spinner} aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  )
+}
+
+interface TableDataContentProps {
+  tabId: string
+  view: TableDataTabView
+  isReadOnly: boolean
+  isViewObject: boolean
+  isActive: boolean
+}
+
+function TableDataContent({
+  tabId,
+  view,
+  isReadOnly,
+  isViewObject,
+  isActive,
+}: TableDataContentProps) {
+  return (
+    <div className={styles.content} aria-busy={view.isRestoring} data-testid="table-data-content">
+      {view.viewMode === 'grid' && (
+        <TableDataGrid
+          tabId={tabId}
+          isReadOnly={isReadOnly || !view.primaryKey}
+          isActive={isActive}
+        />
+      )}
+      {view.viewMode === 'form' && (
+        <TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />
+      )}
+      {view.isLoading && <BusyOverlay label="Loading…" testId="table-data-sort-overlay" />}
+      {view.isRestoring && (
+        <BusyOverlay label="Restoring cached table data..." testId="table-data-restore-overlay" />
+      )}
+    </div>
+  )
+}
+
+function containerClassName(renderMode: TableDataTabProps['renderMode']): string {
+  const renderModeClassName = renderMode === 'bottom-panel' ? styles.bottomPanelContainer : ''
+  return `${styles.container} ${renderModeClassName}`
 }
 
 export function TableDataTab({
@@ -50,11 +230,9 @@ export function TableDataTab({
   const closeExportDialog = useTableDataStore((state) => state.closeExportDialog)
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
-  // Look up the active connection to get the profile for readOnly info
-  const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
-  const isReadOnly = activeConnection?.profile?.readOnly ?? false
+  const isConnectionReadOnly = useIsConnectionReadOnly(connectionId)
   const isViewObject = tableDataTab.objectType === 'view'
-  const effectiveReadOnly = isReadOnly || isViewObject
+  const effectiveReadOnly = isConnectionReadOnly || isViewObject
 
   useEffect(() => {
     // Only init + load if we don't already have state for this tab
@@ -84,13 +262,6 @@ export function TableDataTab({
     cancelNavigation(tabId)
   }, [cancelNavigation, tabId])
 
-  const filterModel = tabState?.filterModel
-  const sort = tabState?.sort
-  const currentPage = tabState?.currentPage
-  const pageSize = tabState?.pageSize
-  const hasActiveFilters = (filterModel?.length ?? 0) > 0
-  const exportFilterModel = hasActiveFilters ? filterModel : undefined
-
   const handleExport = useCallback(
     async (options: Required<ExportOptions>) => {
       await exportTableData({
@@ -101,139 +272,51 @@ export function TableDataTab({
         filePath: options.filePath,
         includeHeaders: options.includeHeaders,
         tableNameForSql: options.tableName,
-        filterModel: exportFilterModel,
-        sortColumn: sort?.column,
-        sortDirection: sort?.direction,
-        page: currentPage,
-        pageSize: pageSize,
+        ...tableDataExportScope(tabState),
       })
       closeExportDialog(tabId)
     },
-    [
-      connectionId,
-      database,
-      table,
-      exportFilterModel,
-      sort,
-      currentPage,
-      pageSize,
-      closeExportDialog,
-      tabId,
-    ]
+    [connectionId, database, table, tabState, closeExportDialog, tabId]
   )
 
-  const isLoading = tabState?.isLoading ?? true
-  const error = tabState?.error ?? null
-  const primaryKey = tabState?.primaryKey
-  const viewMode = tabState?.viewMode ?? 'grid'
-  const isExportDialogOpen = tabState?.isExportDialogOpen ?? false
-  const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
-  const saveError = tabState?.saveError ?? null
-  const columns = tabState?.columns ?? []
-  const rowResidencyStatus = tabState?.rowResidency?.status ?? 'resident'
-  const isRestoring = rowResidencyStatus === 'restoring'
-
-  // Show no-PK warning only for actual tables, not views (views never have PKs)
-  const showNoPrimaryKeyWarning =
-    !isViewObject && primaryKey === null && !isLoading && !error && columns.length > 0
+  const view = tableDataTabView(tabState)
+  const hasPendingNavigation = view.pendingNavigationAction !== null
 
   useEffect(() => {
-    setBlockingNavigation(tabId, pendingNavigationAction !== null)
+    setBlockingNavigation(tabId, hasPendingNavigation)
     return () => setBlockingNavigation(tabId, false)
-  }, [pendingNavigationAction, setBlockingNavigation, tabId])
+  }, [hasPendingNavigation, setBlockingNavigation, tabId])
 
   useEffect(() => {
     if (isActive) return
-    if (isExportDialogOpen) closeExportDialog(tabId)
-  }, [closeExportDialog, isActive, isExportDialogOpen, tabId])
+    if (view.isExportDialogOpen) closeExportDialog(tabId)
+  }, [closeExportDialog, isActive, view.isExportDialogOpen, tabId])
 
   return (
     <div
-      className={`${styles.container} ${
-        renderMode === 'bottom-panel' ? styles.bottomPanelContainer : ''
-      }`}
+      className={containerClassName(renderMode)}
       data-testid="table-data-tab"
       data-render-mode={renderMode}
     >
       <TableDataToolbar tabId={tabId} isView={isViewObject} />
 
-      {/* No-PK Warning Banner */}
-      {showNoPrimaryKeyWarning && (
-        <div className={styles.warningHost}>
-          <InfoBar
-            severity="warning"
-            title="Read only"
-            message="This table has no primary key or unique key. Editing is disabled. Data can be browsed but not modified."
-            data-testid="no-pk-warning"
-          />
-        </div>
+      {shouldShowNoPrimaryKeyWarning(view, isViewObject) && <NoPrimaryKeyWarning />}
+
+      {isInitialLoad(view) && <TableDataLoadingState />}
+
+      {view.error && <TableDataErrorState error={view.error} onRetry={handleRetry} />}
+
+      {hasLoadedColumns(view) && (
+        <TableDataContent
+          tabId={tabId}
+          view={view}
+          isReadOnly={effectiveReadOnly}
+          isViewObject={isViewObject}
+          isActive={isActive}
+        />
       )}
 
-      {/* Loading state */}
-      {isLoading && !error && columns.length === 0 && (
-        <div className={styles.loadingState}>
-          <div className={styles.spinner} />
-          <span>Loading table data...</span>
-        </div>
-      )}
-
-      {/* Error state */}
-      {error && (
-        <div className={styles.errorState} data-testid="table-data-error">
-          <span className={styles.errorMessage}>{error}</span>
-          <Button
-            variant="bare"
-            className={styles.retryButton}
-            onClick={handleRetry}
-            data-testid="btn-retry"
-          >
-            Retry
-          </Button>
-        </div>
-      )}
-
-      {/* Content area */}
-      {!error && columns.length > 0 && (
-        <div className={styles.content} aria-busy={isRestoring} data-testid="table-data-content">
-          {viewMode === 'grid' && (
-            <TableDataGrid
-              tabId={tabId}
-              isReadOnly={effectiveReadOnly || !primaryKey}
-              isActive={isActive}
-            />
-          )}
-          {viewMode === 'form' && (
-            <TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />
-          )}
-          {isLoading && columns.length > 0 && (
-            <div
-              className={styles.restoringOverlay}
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              data-testid="table-data-sort-overlay"
-            >
-              <div className={styles.spinner} aria-hidden="true" />
-              <span>Loading…</span>
-            </div>
-          )}
-          {isRestoring && (
-            <div
-              className={styles.restoringOverlay}
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              data-testid="table-data-restore-overlay"
-            >
-              <div className={styles.spinner} aria-hidden="true" />
-              <span>Restoring cached table data...</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Export Dialog */}
-      {isExportDialogOpen && (
+      {view.isExportDialogOpen && (
         <ExportDialog
           connectionId={connectionId}
           tabId={tabId}
@@ -244,14 +327,13 @@ export function TableDataTab({
         />
       )}
 
-      {/* Unsaved Changes Dialog */}
-      {pendingNavigationAction !== null && (
+      {hasPendingNavigation && (
         <UnsavedChangesDialog
           tabId={tabId}
           onSave={handleSaveNavigation}
           onDiscard={handleDiscardNavigation}
           onCancel={handleCancelNavigation}
-          error={saveError}
+          error={view.saveError}
         />
       )}
     </div>

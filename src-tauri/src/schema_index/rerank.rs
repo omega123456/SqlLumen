@@ -11,6 +11,17 @@ use super::search::SearchResult;
 use serde::{Deserialize, Serialize};
 
 const SUMMARY_MAX_CHARS: usize = 200;
+
+fn candidate_summary(ddl_text: &str) -> String {
+    if ddl_text.len() <= SUMMARY_MAX_CHARS {
+        return ddl_text.to_string();
+    }
+    let truncated = ddl_text
+        .char_indices()
+        .nth(SUMMARY_MAX_CHARS)
+        .map_or(ddl_text, |(cut, _)| &ddl_text[..cut]);
+    format!("{}…", truncated)
+}
 const BODY_PREVIEW_MAX_CHARS: usize = 200;
 
 /// Rerank search results using an LLM cross-encoder.
@@ -41,18 +52,7 @@ pub async fn rerank_with_llm(
     let candidate_list: Vec<RerankCandidate> = candidates
         .iter()
         .map(|candidate| {
-            let summary = if candidate.ddl_text.len() > SUMMARY_MAX_CHARS {
-                let truncated = candidate
-                    .ddl_text
-                    .char_indices()
-                    .nth(SUMMARY_MAX_CHARS)
-                    .map_or(candidate.ddl_text.as_str(), |(cut, _)| {
-                        &candidate.ddl_text[..cut]
-                    });
-                format!("{}…", truncated)
-            } else {
-                candidate.ddl_text.clone()
-            };
+            let summary = candidate_summary(&candidate.ddl_text);
             RerankCandidate {
                 id: candidate.chunk_id,
                 name: format!("`{}`.`{}`", candidate.db_name, candidate.table_name),
@@ -159,11 +159,10 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
         content: String,
     }
 
-    let content = if let Ok(completion) = serde_json::from_str::<ChatCompletion>(response_body) {
-        completion.choices.first()?.message.content.clone()
-    } else {
+    let content = match serde_json::from_str::<ChatCompletion>(response_body) {
+        Ok(completion) => completion.choices.first()?.message.content.clone(),
         // Maybe the response body IS the content directly
-        response_body.to_string()
+        Err(_) => response_body.to_string(),
     };
 
     // Try to parse the content as RerankOutput

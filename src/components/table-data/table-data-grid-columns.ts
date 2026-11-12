@@ -4,6 +4,19 @@ import { getTemporalColumnType } from '../../lib/date-utils'
 import { isJsonSqlType } from '../../lib/grid-column-style'
 import { isEnumColumn, isSetColumn } from './enum-field-utils'
 
+function resolveEditorType(
+  column: TableDataColumnMeta,
+  foreignKey: ForeignKeyColumnInfo | undefined
+): GridColumnDescriptor['editorType'] {
+  if (column.isBinary) return 'none'
+  if (isJsonSqlType(column.dataType)) return 'json'
+  if (getTemporalColumnType(column.dataType)) return 'datetime'
+  if (isEnumColumn(column)) return 'enum'
+  if (isSetColumn(column)) return 'set'
+  if (foreignKey) return 'fk'
+  return 'text'
+}
+
 export function buildColumnDescriptors(
   columns: TableDataColumnMeta[],
   isReadOnly: boolean,
@@ -12,19 +25,7 @@ export function buildColumnDescriptors(
 ): GridColumnDescriptor[] {
   return columns.map((column) => {
     const foreignKey = foreignKeys.find((candidate) => candidate.columnName === column.name)
-    const editorType = column.isBinary
-      ? 'none'
-      : isJsonSqlType(column.dataType)
-        ? 'json'
-        : getTemporalColumnType(column.dataType)
-          ? 'datetime'
-          : isEnumColumn(column)
-            ? 'enum'
-            : isSetColumn(column)
-              ? 'set'
-              : foreignKey
-                ? 'fk'
-                : 'text'
+    const editorType = resolveEditorType(column, foreignKey)
     return {
       key: column.name,
       displayName: column.name,

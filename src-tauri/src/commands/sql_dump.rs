@@ -116,11 +116,7 @@ pub async fn list_exportable_objects_impl(
             let table_type: String =
                 decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
             let estimated_rows: i64 = row.try_get("TABLE_ROWS").unwrap_or(0);
-            let object_type = if table_type.contains("VIEW") {
-                DumpObjectType::View
-            } else {
-                DumpObjectType::Table
-            };
+            let object_type = dump_object_type(&table_type);
             if let Some(db) = result.last_mut() {
                 db.tables.push(ExportableTable {
                     name,
@@ -198,32 +194,37 @@ pub async fn start_sql_dump_impl(
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(&job_id_clone) {
-            match result {
-                Ok(bytes) => {
-                    if progress.cancel_requested {
-                        progress.status = DumpJobStatus::Cancelled;
-                    } else {
-                        progress.status = DumpJobStatus::Completed;
-                    }
-                    progress.bytes_written = bytes;
-                    progress.current_table = None;
-                    progress.completed_at = Some(std::time::SystemTime::now());
-                }
-                Err(error) => {
-                    if progress.cancel_requested {
-                        progress.status = DumpJobStatus::Cancelled;
-                    } else {
-                        progress.status = DumpJobStatus::Failed;
-                        progress.error_message = Some(error);
-                    }
-                    progress.current_table = None;
-                    progress.completed_at = Some(std::time::SystemTime::now());
-                }
-            }
+            finish_dump_job(progress, result);
         }
     });
 
     Ok(job_id)
+}
+
+fn dump_object_type(table_type: &str) -> DumpObjectType {
+    if table_type.contains("VIEW") {
+        return DumpObjectType::View;
+    }
+    DumpObjectType::Table
+}
+
+fn finish_dump_job(progress: &mut DumpJobProgress, result: Result<u64, String>) {
+    progress.current_table = None;
+    progress.completed_at = Some(std::time::SystemTime::now());
+    if let Ok(bytes) = result {
+        progress.bytes_written = bytes;
+    }
+    if progress.cancel_requested {
+        progress.status = DumpJobStatus::Cancelled;
+        return;
+    }
+    match result {
+        Ok(_) => progress.status = DumpJobStatus::Completed,
+        Err(error) => {
+            progress.status = DumpJobStatus::Failed;
+            progress.error_message = Some(error);
+        }
+    }
 }
 
 /// Execute the actual SQL dump (blocking). Returns total bytes written.
@@ -294,39 +295,23 @@ fn execute_dump(
 
                 // Get CREATE statement
                 if input.options.include_structure {
-                    let create_sql = if is_view {
-                        rt.block_on(async {
-                            let query = format!(
-                                "SHOW CREATE VIEW `{}`.`{}`",
-                                sql_dump::escape_identifier(db_name),
-                                sql_dump::escape_identifier(table_name)
-                            );
-                            let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-                                .fetch_one(pool)
-                                .await
-                                .map_err(|error| {
-                                    format!("Failed to get CREATE VIEW for '{table_name}': {error}")
-                                })?;
-                            decode_mysql_text_cell(&row, 1)
-                        })?
-                    } else {
-                        rt.block_on(async {
-                            let query = format!(
-                                "SHOW CREATE TABLE `{}`.`{}`",
-                                sql_dump::escape_identifier(db_name),
-                                sql_dump::escape_identifier(table_name)
-                            );
-                            let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
-                                .fetch_one(pool)
-                                .await
-                                .map_err(|error| {
-                                    format!(
-                                        "Failed to get CREATE TABLE for '{table_name}': {error}"
-                                    )
-                                })?;
-                            decode_mysql_text_cell(&row, 1)
-                        })?
-                    };
+                    let object_keyword = sql_dump::dump_object_keyword(is_view);
+                    let create_sql = rt.block_on(async {
+                        let query = format!(
+                            "SHOW CREATE {object_keyword} `{}`.`{}`",
+                            sql_dump::escape_identifier(db_name),
+                            sql_dump::escape_identifier(table_name)
+                        );
+                        let row = sqlx::query(sqlx::AssertSqlSafe(query.as_str()))
+                            .fetch_one(pool)
+                            .await
+                            .map_err(|error| {
+                                format!(
+                                    "Failed to get CREATE {object_keyword} for '{table_name}': {error}"
+                                )
+                            })?;
+                        decode_mysql_text_cell(&row, 1)
+                    })?;
 
                     sql_dump::write_structure(
                         &mut file,
@@ -824,11 +809,9 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, column_index: usize) ->
     match row.try_get::<Option<String>, _>(column_index) {
         Ok(Some(text)) => SqlDumpValue::QuotedString(text),
         Ok(None) => SqlDumpValue::Null,
-        Err(_) => {
-            // Last resort: try to decode raw bytes as UTF-8
-            if let Some(text) = decode_dump_string(row, column_index, &raw_value) {
-                SqlDumpValue::QuotedString(text)
-            } else {
+        Err(_) => match decode_dump_string(row, column_index, &raw_value) {
+            Some(text) => SqlDumpValue::QuotedString(text),
+            None => {
                 tracing::warn!(
                     column_index = column_index,
                     column_type = %type_name,
@@ -836,7 +819,7 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, column_index: usize) ->
                 );
                 SqlDumpValue::Null
             }
-        }
+        },
     }
 }
 
@@ -888,22 +871,7 @@ fn serialize_dump_temporal(value: MySqlValueRef<'_>) -> Option<String> {
 
     let owned = sqlx::ValueRef::to_owned(&value);
     if let Ok(value) = owned.try_decode::<MySqlTime>() {
-        let sign = if value.sign().is_negative() { "-" } else { "" };
-        let hours = value.hours();
-        return Some(if value.microseconds() == 0 {
-            format!(
-                "{sign}{hours:02}:{:02}:{:02}",
-                value.minutes(),
-                value.seconds()
-            )
-        } else {
-            format!(
-                "{sign}{hours:02}:{:02}:{:02}.{:06}",
-                value.minutes(),
-                value.seconds(),
-                value.microseconds()
-            )
-        });
+        return Some(crate::mysql::query_log::format_mysql_time(value));
     }
 
     // Last resort: raw string decode

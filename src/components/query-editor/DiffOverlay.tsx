@@ -92,6 +92,66 @@ function removeAllHunkViewZones(
   zoneIdsRef.current = { orig: [], mod: [] }
 }
 
+type CodeEditor = monaco.editor.ICodeEditor
+
+interface EligibleHunk {
+  index: number
+  change: LineChange
+}
+
+function supportsViewZones(editor: CodeEditor | undefined): editor is CodeEditor {
+  return Boolean(editor) && typeof editor?.changeViewZones === 'function'
+}
+
+function removeAcceptWidgets(
+  modifiedEditor: CodeEditor,
+  widgets: monaco.editor.IContentWidget[]
+): void {
+  if (typeof modifiedEditor.removeContentWidget !== 'function') return
+  for (const widget of widgets) {
+    modifiedEditor.removeContentWidget(widget)
+  }
+}
+
+function eligibleHunks(
+  lineChanges: LineChange[],
+  modifiedModel: monaco.editor.ITextModel
+): EligibleHunk[] {
+  const eligible: EligibleHunk[] = []
+  lineChanges.forEach((change, index) => {
+    const modifiedLine = change.modifiedStartLineNumber
+    const isInsideModel = modifiedLine >= 1 && modifiedLine <= modifiedModel.getLineCount()
+    if (isInsideModel) eligible.push({ index: index, change: change })
+  })
+  return eligible
+}
+
+interface HunkSpacerPlan {
+  hunks: EligibleHunk[]
+  afterLine: (change: LineChange) => number
+}
+
+function addHunkSpacerZones(editor: CodeEditor, plan: HunkSpacerPlan): string[] {
+  const zoneIds: string[] = []
+  editor.changeViewZones((accessor) => {
+    for (const { index, change } of plan.hunks) {
+      const spacer = document.createElement('div')
+      spacer.className = styles.hunkSpacerRow
+      spacer.setAttribute('aria-hidden', 'true')
+      zoneIds.push(
+        accessor.addZone({
+          afterLineNumber: plan.afterLine(change),
+          heightInLines: 1,
+          domNode: spacer,
+          suppressMouseDown: true,
+          ordinal: HUNK_ZONE_ORDINAL_BASE + index,
+        })
+      )
+    }
+  })
+  return zoneIds
+}
+
 function createAcceptHunkContentWidget(options: {
   id: string
   testId: string
@@ -248,72 +308,23 @@ export function DiffOverlay({
 
     const origEd = diffEditor.getOriginalEditor?.()
     const modifiedEditor = diffEditor.getModifiedEditor?.()
-    if (!origEd || typeof origEd.changeViewZones !== 'function') {
-      return
-    }
-    if (!modifiedEditor || typeof modifiedEditor.changeViewZones !== 'function') {
+    if (!supportsViewZones(origEd) || !supportsViewZones(modifiedEditor)) {
       return
     }
 
-    for (const widget of acceptWidgetsRef.current) {
-      if (typeof modifiedEditor.removeContentWidget === 'function') {
-        modifiedEditor.removeContentWidget(widget)
-      }
-    }
+    removeAcceptWidgets(modifiedEditor, acceptWidgetsRef.current)
     acceptWidgetsRef.current = []
 
     removeAllHunkViewZones(diffEditor, hunkZoneIdsRef)
 
-    type EligibleHunk = { index: number; change: LineChange }
-    const eligible: EligibleHunk[] = []
-    for (let index = 0; index < lineChanges.length; index++) {
-      const change = lineChanges[index]
-      const modifiedLine = change.modifiedStartLineNumber
-      if (modifiedLine < 1 || modifiedLine > modifiedModel.getLineCount()) {
-        continue
-      }
-      eligible.push({ index: index, change: change })
+    const eligible = eligibleHunks(lineChanges, modifiedModel)
+    hunkZoneIdsRef.current = {
+      orig: addHunkSpacerZones(origEd, { hunks: eligible, afterLine: originalViewZoneAfterLine }),
+      mod: addHunkSpacerZones(modifiedEditor, {
+        hunks: eligible,
+        afterLine: modifiedViewZoneAfterLine,
+      }),
     }
-
-    const nextOrig: string[] = []
-    origEd.changeViewZones((origAccessor) => {
-      for (const { index, change } of eligible) {
-        const origWrap = document.createElement('div')
-        origWrap.className = styles.hunkSpacerRow
-        origWrap.setAttribute('aria-hidden', 'true')
-
-        nextOrig.push(
-          origAccessor.addZone({
-            afterLineNumber: originalViewZoneAfterLine(change),
-            heightInLines: 1,
-            domNode: origWrap,
-            suppressMouseDown: true,
-            ordinal: HUNK_ZONE_ORDINAL_BASE + index,
-          })
-        )
-      }
-    })
-
-    const nextModifiedZoneIds: string[] = []
-    modifiedEditor.changeViewZones((modifiedAccessor) => {
-      for (const { index, change } of eligible) {
-        const modifiedSpacer = document.createElement('div')
-        modifiedSpacer.className = styles.hunkSpacerRow
-        modifiedSpacer.setAttribute('aria-hidden', 'true')
-
-        nextModifiedZoneIds.push(
-          modifiedAccessor.addZone({
-            afterLineNumber: modifiedViewZoneAfterLine(change),
-            heightInLines: 1,
-            domNode: modifiedSpacer,
-            suppressMouseDown: true,
-            ordinal: HUNK_ZONE_ORDINAL_BASE + index,
-          })
-        )
-      }
-    })
-
-    hunkZoneIdsRef.current = { orig: nextOrig, mod: nextModifiedZoneIds }
 
     if (typeof modifiedEditor.addContentWidget === 'function') {
       for (const { index, change } of eligible) {
@@ -333,11 +344,7 @@ export function DiffOverlay({
     }
 
     return () => {
-      for (const widget of acceptWidgetsRef.current) {
-        if (typeof modifiedEditor.removeContentWidget === 'function') {
-          modifiedEditor.removeContentWidget(widget)
-        }
-      }
+      removeAcceptWidgets(modifiedEditor, acceptWidgetsRef.current)
       acceptWidgetsRef.current = []
       removeAllHunkViewZones(diffEditor, hunkZoneIdsRef)
     }
@@ -353,11 +360,12 @@ export function DiffOverlay({
    * `proposedSql` (i.e. accept every AI change).
    */
   const handleAcceptAll = useCallback(() => {
-    if (hunksAccepted && originalModelRef.current) {
-      onAccept(originalModelRef.current.getValue())
-    } else {
-      onAccept(proposedSql)
+    const mergedModel = hunksAccepted ? originalModelRef.current : null
+    if (mergedModel) {
+      onAccept(mergedModel.getValue())
+      return
     }
+    onAccept(proposedSql)
   }, [onAccept, proposedSql, hunksAccepted])
 
   /**
@@ -366,11 +374,12 @@ export function DiffOverlay({
    * that state). Otherwise dismiss without changing the query tab.
    */
   const handleClose = useCallback(() => {
-    if (hunksAccepted && originalModelRef.current) {
-      onAccept(originalModelRef.current.getValue())
-    } else {
-      onReject()
+    const mergedModel = hunksAccepted ? originalModelRef.current : null
+    if (mergedModel) {
+      onAccept(mergedModel.getValue())
+      return
     }
+    onReject()
   }, [onAccept, onReject, hunksAccepted])
 
   const closeLabel = hunksAccepted

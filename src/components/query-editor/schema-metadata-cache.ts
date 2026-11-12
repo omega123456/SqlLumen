@@ -82,163 +82,67 @@ function isNamedEntry<T extends { name?: string | null }>(entry: T | null | unde
   return !!entry && hasNonEmptyName(entry.name)
 }
 
+type NamedEntry = { name?: string | null }
+
+function namedEntriesOf<Entry extends NamedEntry>(entries: Entry[]): Entry[] {
+  if (!Array.isArray(entries)) return []
+  return entries.filter(isNamedEntry)
+}
+
+function sanitizeByDatabase<Entry extends NamedEntry>(
+  source: Record<string, Entry[]>,
+  databases: Set<string>
+): Record<string, Entry[]> {
+  const sanitized: Record<string, Entry[]> = {}
+  for (const [database, entries] of Object.entries(source)) {
+    if (!hasNonEmptyName(database)) continue
+    const validEntries = namedEntriesOf(entries)
+    if (validEntries.length === 0) continue
+    sanitized[database] = validEntries
+    databases.add(database)
+  }
+  return sanitized
+}
+
+interface TableKey {
+  database: string
+  table: string
+}
+
+function splitTableKey(key: string): TableKey | null {
+  const separatorIndex = key.indexOf('.')
+  if (separatorIndex <= 0 || separatorIndex >= key.length - 1) return null
+  const database = key.slice(0, separatorIndex)
+  const table = key.slice(separatorIndex + 1)
+  if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) return null
+  return { database: database, table: table }
+}
+
+function sanitizeByTableKey<Entry extends NamedEntry>(
+  source: Record<string, Entry[]>,
+  databases: Set<string>
+): Record<string, Entry[]> {
+  const sanitized: Record<string, Entry[]> = {}
+  for (const [key, entries] of Object.entries(source)) {
+    const tableKey = splitTableKey(key)
+    if (!tableKey) continue
+    const validEntries = namedEntriesOf(entries)
+    if (validEntries.length === 0) continue
+    sanitized[`${tableKey.database}.${tableKey.table}`] = validEntries
+    databases.add(tableKey.database)
+  }
+  return sanitized
+}
+
 export function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
-  const tables: Record<string, TableInfo[]> = {}
-  const views: Record<string, ViewInfo[]> = {}
-  const columns: Record<string, ColumnMeta[]> = {}
-  const routines: Record<string, RoutineMeta[]> = {}
-  const triggers: Record<string, TriggerInfo[]> = {}
-  const foreignKeys: Record<string, ForeignKeyInfo[]> = {}
-  const indexes: Record<string, IndexInfo[]> = {}
-  const databases = new Set<string>()
-
-  for (const db of data.databases) {
-    if (hasNonEmptyName(db)) {
-      databases.add(db)
-    }
-  }
-
-  for (const [database, tableList] of Object.entries(data.tables)) {
-    if (!hasNonEmptyName(database)) {
-      continue
-    }
-    if (!Array.isArray(tableList)) {
-      continue
-    }
-
-    const validTables = tableList.filter(isNamedEntry)
-    if (validTables.length === 0) {
-      continue
-    }
-
-    tables[database] = validTables
-    databases.add(database)
-  }
-
-  for (const [database, viewList] of Object.entries(data.views ?? {})) {
-    if (!hasNonEmptyName(database)) {
-      continue
-    }
-    if (!Array.isArray(viewList)) {
-      continue
-    }
-
-    const validViews = viewList.filter(isNamedEntry)
-    if (validViews.length === 0) {
-      continue
-    }
-
-    views[database] = validViews
-    databases.add(database)
-  }
-
-  for (const [key, columnList] of Object.entries(data.columns)) {
-    const separatorIndex = key.indexOf('.')
-    if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
-      continue
-    }
-    if (!Array.isArray(columnList)) {
-      continue
-    }
-
-    const database = key.slice(0, separatorIndex)
-    const table = key.slice(separatorIndex + 1)
-    if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) {
-      continue
-    }
-
-    const validColumns = columnList.filter(isNamedEntry)
-    if (validColumns.length === 0) {
-      continue
-    }
-
-    columns[`${database}.${table}`] = validColumns
-    databases.add(database)
-  }
-
-  for (const [database, routineList] of Object.entries(data.routines)) {
-    if (!hasNonEmptyName(database)) {
-      continue
-    }
-    if (!Array.isArray(routineList)) {
-      continue
-    }
-
-    const validRoutines = routineList.filter(isNamedEntry)
-    if (validRoutines.length === 0) {
-      continue
-    }
-
-    routines[database] = validRoutines
-    databases.add(database)
-  }
-
-  for (const [database, triggerList] of Object.entries(data.triggers ?? {})) {
-    if (!hasNonEmptyName(database)) {
-      continue
-    }
-    if (!Array.isArray(triggerList)) {
-      continue
-    }
-
-    const validTriggers = triggerList.filter(isNamedEntry)
-    if (validTriggers.length === 0) {
-      continue
-    }
-
-    triggers[database] = validTriggers
-    databases.add(database)
-  }
-
-  // Sanitize foreignKeys (keyed by "db.table")
-  for (const [key, foreignKeyList] of Object.entries(data.foreignKeys)) {
-    const separatorIndex = key.indexOf('.')
-    if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
-      continue
-    }
-    if (!Array.isArray(foreignKeyList)) {
-      continue
-    }
-
-    const database = key.slice(0, separatorIndex)
-    const table = key.slice(separatorIndex + 1)
-    if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) {
-      continue
-    }
-
-    const validForeignKeys = foreignKeyList.filter(isNamedEntry)
-    if (validForeignKeys.length === 0) {
-      continue
-    }
-
-    foreignKeys[`${database}.${table}`] = validForeignKeys
-    databases.add(database)
-  }
-
-  // Sanitize indexes (keyed by "db.table")
-  for (const [key, indexList] of Object.entries(data.indexes)) {
-    const separatorIndex = key.indexOf('.')
-    if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
-      continue
-    }
-    if (!Array.isArray(indexList)) {
-      continue
-    }
-
-    const database = key.slice(0, separatorIndex)
-    const table = key.slice(separatorIndex + 1)
-    if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) {
-      continue
-    }
-
-    const validIndexes = indexList.filter(isNamedEntry)
-    if (validIndexes.length === 0) {
-      continue
-    }
-
-    indexes[`${database}.${table}`] = validIndexes
-    databases.add(database)
-  }
+  const databases = new Set<string>(data.databases.filter(hasNonEmptyName))
+  const tables = sanitizeByDatabase(data.tables, databases)
+  const views = sanitizeByDatabase(data.views ?? {}, databases)
+  const columns = sanitizeByTableKey(data.columns, databases)
+  const routines = sanitizeByDatabase(data.routines, databases)
+  const triggers = sanitizeByDatabase(data.triggers ?? {}, databases)
+  const foreignKeys = sanitizeByTableKey(data.foreignKeys, databases)
+  const indexes = sanitizeByTableKey(data.indexes, databases)
 
   return {
     databases: Array.from(databases),
@@ -483,42 +387,44 @@ export function filterRoutines(
   return routines.filter((routine) => routine.name.toLowerCase().startsWith(lowerPrefix))
 }
 
+type SearchableObjectType = SearchableObject['objectType']
+
+const ROUTINE_OBJECT_TYPES: Partial<Record<string, SearchableObjectType>> = {
+  PROCEDURE: 'procedure',
+  FUNCTION: 'function',
+}
+
+function searchableEntries(
+  source: Record<string, { name: string }[]>,
+  objectType: SearchableObjectType
+): SearchableObject[] {
+  return Object.entries(source).flatMap(([database, entries]) =>
+    entries.map((entry) => ({ database: database, objectType: objectType, name: entry.name }))
+  )
+}
+
+function searchableRoutines(routinesByDatabase: Record<string, RoutineMeta[]>): SearchableObject[] {
+  const searchableObjects: SearchableObject[] = []
+  for (const [database, routines] of Object.entries(routinesByDatabase)) {
+    for (const routine of routines) {
+      const objectType = ROUTINE_OBJECT_TYPES[routine.routineType.trim().toUpperCase()]
+      if (!objectType) continue
+      searchableObjects.push({ database: database, objectType: objectType, name: routine.name })
+    }
+  }
+  return searchableObjects
+}
+
 export function getSearchableObjects(connectionId: string): SearchableObject[] {
   const cache = cacheMap.get(connectionId)
   if (!cache || cache.status !== 'ready') return []
 
-  const searchableObjects: SearchableObject[] = []
-
-  for (const [database, tables] of Object.entries(cache.tables)) {
-    for (const table of tables) {
-      searchableObjects.push({ database: database, objectType: 'table', name: table.name })
-    }
-  }
-
-  for (const [database, views] of Object.entries(cache.views)) {
-    for (const view of views) {
-      searchableObjects.push({ database: database, objectType: 'view', name: view.name })
-    }
-  }
-
-  for (const [database, routines] of Object.entries(cache.routines)) {
-    for (const routine of routines) {
-      const normalizedType = routine.routineType.trim().toUpperCase()
-      if (normalizedType === 'PROCEDURE') {
-        searchableObjects.push({ database: database, objectType: 'procedure', name: routine.name })
-      } else if (normalizedType === 'FUNCTION') {
-        searchableObjects.push({ database: database, objectType: 'function', name: routine.name })
-      }
-    }
-  }
-
-  for (const [database, triggers] of Object.entries(cache.triggers)) {
-    for (const trigger of triggers) {
-      searchableObjects.push({ database: database, objectType: 'trigger', name: trigger.name })
-    }
-  }
-
-  return searchableObjects
+  return [
+    ...searchableEntries(cache.tables, 'table'),
+    ...searchableEntries(cache.views, 'view'),
+    ...searchableRoutines(cache.routines),
+    ...searchableEntries(cache.triggers, 'trigger'),
+  ]
 }
 
 /**

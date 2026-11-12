@@ -84,9 +84,8 @@ pub fn write_sql_row<W: Write>(
                 write!(writer, "'{escaped}'")?;
             }
             serde_json::Value::Number(number) => write!(writer, "{number}")?,
-            serde_json::Value::Bool(boolean) => {
-                write!(writer, "{}", if *boolean { 1 } else { 0 })?;
-            }
+            serde_json::Value::Bool(true) => write!(writer, "1")?,
+            serde_json::Value::Bool(false) => write!(writer, "0")?,
             _ => {
                 let text = value.to_string();
                 let escaped = escape_string_value(&text);

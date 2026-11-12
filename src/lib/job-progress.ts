@@ -22,3 +22,15 @@ export function progressPercent(
   if (!total) return 0
   return Math.round(((done ?? 0) / total) * PERCENT_SCALE)
 }
+
+export interface CancellableJobProgress {
+  cancelRequested?: boolean
+}
+
+export function isCancelInFlight(
+  cancelPending: boolean,
+  progress: CancellableJobProgress | null
+): boolean {
+  if (cancelPending) return true
+  return progress?.cancelRequested === true
+}

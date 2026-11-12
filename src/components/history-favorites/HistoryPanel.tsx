@@ -14,6 +14,46 @@ export interface HistoryPanelProps {
   connectionId: string
 }
 
+function EmptyHistoryState({ isLoading, search }: { isLoading: boolean; search: string }) {
+  if (isLoading) return <div className={styles.emptyState}>Loading...</div>
+  return (
+    <div className={styles.emptyState} data-testid="history-empty">
+      {search ? 'No matching queries found' : 'No query history yet'}
+    </div>
+  )
+}
+
+interface HistoryListBodyProps {
+  connectionId: string
+  entries: HistoryEntry[]
+  listState: { error: string | null; isLoading: boolean; search: string }
+  onRetry: () => void
+}
+
+function HistoryListBody({ connectionId, entries, listState, onRetry }: HistoryListBodyProps) {
+  if (listState.error) {
+    return (
+      <div className={styles.errorState} data-testid="history-error">
+        <span className={styles.errorMessage}>{listState.error}</span>
+        <Button variant="subtle" size="sm" onClick={onRetry} data-testid="history-retry">
+          <ArrowClockwise size={14} weight="bold" />
+          &nbsp;Retry
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <>
+      {entries.length === 0 && (
+        <EmptyHistoryState isLoading={listState.isLoading} search={listState.search} />
+      )}
+      {entries.map((entry) => (
+        <HistoryRow key={entry.id} entry={entry} connectionId={connectionId} />
+      ))}
+    </>
+  )
+}
+
 export function HistoryPanel({ connectionId }: HistoryPanelProps) {
   const entries = useHistoryStore(
     (state) => state.entriesByConnection[connectionId] ?? EMPTY_ENTRIES
@@ -85,27 +125,12 @@ export function HistoryPanel({ connectionId }: HistoryPanelProps) {
       </div>
 
       <div className={styles.list} data-testid="history-list">
-        {error && (
-          <div className={styles.errorState} data-testid="history-error">
-            <span className={styles.errorMessage}>{error}</span>
-            <Button variant="subtle" size="sm" onClick={handleRetry} data-testid="history-retry">
-              <ArrowClockwise size={14} weight="bold" />
-              &nbsp;Retry
-            </Button>
-          </div>
-        )}
-        {!error && isLoading && entries.length === 0 && (
-          <div className={styles.emptyState}>Loading...</div>
-        )}
-        {!error && !isLoading && entries.length === 0 && (
-          <div className={styles.emptyState} data-testid="history-empty">
-            {search ? 'No matching queries found' : 'No query history yet'}
-          </div>
-        )}
-        {!error &&
-          entries.map((entry) => (
-            <HistoryRow key={entry.id} entry={entry} connectionId={connectionId} />
-          ))}
+        <HistoryListBody
+          connectionId={connectionId}
+          entries={entries}
+          listState={{ error: error, isLoading: isLoading, search: search }}
+          onRetry={handleRetry}
+        />
       </div>
 
       {total > pageSize && (

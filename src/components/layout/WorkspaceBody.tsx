@@ -1,6 +1,12 @@
 import { useEffect, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
-import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels'
+import {
+  Group,
+  Panel,
+  Separator,
+  usePanelRef,
+  type PanelImperativeHandle,
+} from 'react-resizable-panels'
 import { dispatchWorkspaceLayoutResize } from '../../lib/workspace-layout-events'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -33,6 +39,43 @@ function isQueryEditorTab(tab: WorkspaceTab): tab is QueryEditorTab {
   return tab.type === 'query-editor'
 }
 
+const AI_PANEL_EXPANDED_DEFAULT_SIZE = '25%'
+const AI_PANEL_COLLAPSED_SIZE = '0%'
+
+function aiPanelDefaultSizeFor(shouldExpand: boolean): string {
+  if (shouldExpand) return AI_PANEL_EXPANDED_DEFAULT_SIZE
+  return AI_PANEL_COLLAPSED_SIZE
+}
+
+function findActiveQueryTab(
+  queryTabs: QueryEditorTab[],
+  activeTabId: string | null
+): QueryEditorTab | null {
+  return queryTabs.find((tab) => tab.id === activeTabId) ?? null
+}
+
+function expandAiPanel(panel: PanelImperativeHandle | null): void {
+  if (!panel) return
+  panel.expand()
+  // A panel that starts collapsed expands to its 15% minimum; open it at the
+  // prototype's 340px instead (`.p-ai.open`), within the 48% maximum.
+  if (panel.getSize().inPixels < AI_PANEL_OPEN_WIDTH_PX) {
+    panel.resize(`${AI_PANEL_OPEN_WIDTH_PX}px`)
+  }
+}
+
+function syncAiPanelOpenState(tabId: string, collapsed: boolean): void {
+  const aiState = useAiStore.getState()
+  const storeOpen = aiState.tabs[tabId]?.isPanelOpen ?? false
+  if (collapsed && storeOpen) {
+    aiState.closePanel(tabId)
+    return
+  }
+  if (!collapsed && !storeOpen) {
+    aiState.openPanel(tabId)
+  }
+}
+
 export function WorkspaceBody({
   tabs,
   activeTabId,
@@ -41,7 +84,7 @@ export function WorkspaceBody({
   renderTabStack,
 }: WorkspaceBodyProps) {
   const queryTabs = tabs.filter(isQueryEditorTab)
-  const activeQueryTab = queryTabs.find((tab) => tab.id === activeTabId) ?? null
+  const activeQueryTab = findActiveQueryTab(queryTabs, activeTabId)
   const activeQueryTabId = activeQueryTab?.id ?? null
   const isActiveQueryPanelOpen = useAiStore((state) =>
     activeQueryTabId ? (state.tabs[activeQueryTabId]?.isPanelOpen ?? false) : false
@@ -57,31 +100,19 @@ export function WorkspaceBody({
   const showActiveQueryAiLayout = aiEnabled && activeQueryTab != null
   const shouldRenderAiPanelStack = aiEnabled && hasQueryTabs
   const shouldExpandAiPanel = activeQueryTabId != null && isActiveQueryPanelOpen
-  const aiPanelDefaultSize = shouldExpandAiPanel ? '25%' : '0%'
+  const aiPanelDefaultSize = aiPanelDefaultSizeFor(shouldExpandAiPanel)
 
   useEffect(() => {
-    if (shouldExpandAiPanel) {
-      const panel = aiChatPanelRef.current
-      panel?.expand()
-      // A panel that starts collapsed expands to its 15% minimum; open it at the
-      // prototype's 340px instead (`.p-ai.open`), within the 48% maximum.
-      if (panel && panel.getSize().inPixels < AI_PANEL_OPEN_WIDTH_PX) {
-        panel.resize(`${AI_PANEL_OPEN_WIDTH_PX}px`)
-      }
-    } else {
+    if (!shouldExpandAiPanel) {
       aiChatPanelRef.current?.collapse()
+      return
     }
+    expandAiPanel(aiChatPanelRef.current)
   }, [aiChatPanelRef, shouldExpandAiPanel])
 
   function handleAiChatResize(): void {
     if (activeQueryTabId) {
-      const collapsed = aiChatPanelRef.current?.isCollapsed() ?? false
-      const storeOpen = useAiStore.getState().tabs[activeQueryTabId]?.isPanelOpen ?? false
-      if (collapsed && storeOpen) {
-        useAiStore.getState().closePanel(activeQueryTabId)
-      } else if (!collapsed && !storeOpen) {
-        useAiStore.getState().openPanel(activeQueryTabId)
-      }
+      syncAiPanelOpenState(activeQueryTabId, aiChatPanelRef.current?.isCollapsed() ?? false)
     }
     dispatchWorkspaceLayoutResize()
   }

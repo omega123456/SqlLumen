@@ -26,6 +26,28 @@ export interface ConfirmDialogProps {
   onCancel: () => void
 }
 
+const DEFAULT_WARNING_TEXT = 'This action cannot be undone.'
+
+function resolveWarningText(warningText: string | null | undefined): string | null {
+  if (warningText === undefined) return DEFAULT_WARNING_TEXT
+  return warningText
+}
+
+function actionsClassName(hideCancel: boolean): string {
+  if (!hideCancel) return styles.actions
+  return `${styles.actions} ${styles.actionsSingle}`
+}
+
+function ConfirmButtonContent({ isLoading, label }: { isLoading: boolean; label: string }) {
+  if (!isLoading) return <>{label}</>
+  return (
+    <span className={styles.confirmContent}>
+      <span className={styles.spinner} aria-hidden="true" />
+      Processing...
+    </span>
+  )
+}
+
 export function ConfirmDialog({
   isOpen,
   title,
@@ -41,7 +63,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const resolvedWarning = warningText === undefined ? 'This action cannot be undone.' : warningText
+  const resolvedWarning = resolveWarningText(warningText)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
 
   return (
@@ -64,7 +86,7 @@ export function ConfirmDialog({
           {error}
         </div>
       )}
-      <div className={hideCancel ? `${styles.actions} ${styles.actionsSingle}` : styles.actions}>
+      <div className={actionsClassName(hideCancel)}>
         <Button
           ref={confirmButtonRef}
           variant={isDestructive ? 'danger' : 'accent'}
@@ -72,14 +94,7 @@ export function ConfirmDialog({
           disabled={isLoading}
           data-testid="confirm-confirm-button"
         >
-          {isLoading ? (
-            <span className={styles.confirmContent}>
-              <span className={styles.spinner} aria-hidden="true" />
-              Processing...
-            </span>
-          ) : (
-            confirmLabel
-          )}
+          <ConfirmButtonContent isLoading={isLoading} label={confirmLabel} />
         </Button>
         {!hideCancel && (
           <Button onClick={onCancel} disabled={nonDismissible} data-testid="confirm-cancel-button">

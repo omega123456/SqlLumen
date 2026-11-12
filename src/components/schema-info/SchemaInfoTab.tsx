@@ -75,6 +75,67 @@ function getDefaultSubTab(objectType: ObjectType): SubTab {
   return tabs.includes('columns') ? 'columns' : 'ddl'
 }
 
+const SUB_TAB_PANELS: Record<
+  SubTab,
+  (data: SchemaInfoResponse, objectType: ObjectType) => React.ReactNode
+> = {
+  columns: (data) => <ColumnsPanel columns={data.columns} />,
+  indexes: (data) => <IndexesPanel indexes={data.indexes} />,
+  fks: (data) => <ForeignKeysPanel foreignKeys={data.foreignKeys} />,
+  ddl: (data, objectType) => (
+    <DdlPanel ddl={data.ddl} metadata={data.metadata} objectType={objectType} />
+  ),
+}
+
+const DATA_VIEWABLE_TYPES: ReadonlySet<ObjectType> = new Set<ObjectType>(['table', 'view'])
+
+function SchemaInfoStatusView({
+  stateClassName,
+  textClassName,
+  children,
+}: {
+  stateClassName: string
+  textClassName: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={styles.container} data-testid="schema-info-tab">
+      <div className={stateClassName}>
+        <span className={textClassName}>{children}</span>
+      </div>
+    </div>
+  )
+}
+
+interface SchemaInfoHeaderActionsProps {
+  objectType: ObjectType
+  onAlterTable: () => void
+  onViewData: () => void
+}
+
+function SchemaInfoHeaderActions({
+  objectType,
+  onAlterTable,
+  onViewData,
+}: SchemaInfoHeaderActionsProps) {
+  return (
+    <>
+      {objectType === 'table' ? (
+        <Button size="sm" onClick={onAlterTable} data-testid="schema-info-alter-table">
+          <Wrench size={16} weight="regular" />
+          Alter table
+        </Button>
+      ) : null}
+      {DATA_VIEWABLE_TYPES.has(objectType) ? (
+        <Button size="sm" onClick={onViewData} data-testid="schema-info-view-data">
+          <GridNine size={16} weight="regular" />
+          View data
+        </Button>
+      ) : null}
+    </>
+  )
+}
+
 export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
   const [data, setData] = useState<SchemaInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -160,21 +221,17 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
 
   if (loading) {
     return (
-      <div className={styles.container} data-testid="schema-info-tab">
-        <div className={styles.loadingState}>
-          <span className={styles.loadingText}>Loading schema info...</span>
-        </div>
-      </div>
+      <SchemaInfoStatusView stateClassName={styles.loadingState} textClassName={styles.loadingText}>
+        Loading schema info...
+      </SchemaInfoStatusView>
     )
   }
 
   if (error) {
     return (
-      <div className={styles.container} data-testid="schema-info-tab">
-        <div className={styles.errorState}>
-          <span className={styles.errorText}>Failed to load schema info: {error}</span>
-        </div>
-      </div>
+      <SchemaInfoStatusView stateClassName={styles.errorState} textClassName={styles.errorText}>
+        Failed to load schema info: {error}
+      </SchemaInfoStatusView>
     )
   }
 
@@ -193,18 +250,11 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
             {OBJECT_TYPE_LABELS[tab.objectType]} · {tab.databaseName}
           </span>
         </div>
-        {tab.objectType === 'table' ? (
-          <Button size="sm" onClick={handleAlterTable} data-testid="schema-info-alter-table">
-            <Wrench size={16} weight="regular" />
-            Alter table
-          </Button>
-        ) : null}
-        {tab.objectType === 'table' || tab.objectType === 'view' ? (
-          <Button size="sm" onClick={handleViewData} data-testid="schema-info-view-data">
-            <GridNine size={16} weight="regular" />
-            View data
-          </Button>
-        ) : null}
+        <SchemaInfoHeaderActions
+          objectType={tab.objectType}
+          onAlterTable={handleAlterTable}
+          onViewData={handleViewData}
+        />
       </div>
 
       {/* Stats row (tables only); column count shown on every sub-tab */}
@@ -223,12 +273,7 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
 
       {/* Sub-tab content */}
       <div className={styles.subTabContent}>
-        {activeSubTab === 'columns' && <ColumnsPanel columns={data.columns} />}
-        {activeSubTab === 'indexes' && <IndexesPanel indexes={data.indexes} />}
-        {activeSubTab === 'fks' && <ForeignKeysPanel foreignKeys={data.foreignKeys} />}
-        {activeSubTab === 'ddl' && (
-          <DdlPanel ddl={data.ddl} metadata={data.metadata} objectType={tab.objectType} />
-        )}
+        {SUB_TAB_PANELS[activeSubTab](data, tab.objectType)}
       </div>
     </div>
   )

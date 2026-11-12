@@ -4,7 +4,7 @@ import path from 'node:path'
 import { findIfElseLines } from './rust-else-scanner.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const RUST_PATHS_CHECKED_FOR_ELSE = []
+const RUST_PATHS_CHECKED_FOR_ELSE = ['src-tauri/src']
 const RUST_EXTENSION = '.rs'
 const SLASH = '/'
 const FAILURE_EXIT_CODE = 1

@@ -43,6 +43,235 @@ function getExecutableStatements(sql: string): string[] {
     .filter((statement) => !/^DELIMITER\s/i.test(statement))
 }
 
+const SQL_FORMAT_OPTIONS = { language: 'mysql', tabWidth: 2 } as const
+const START_OF_DOCUMENT = { lineNumber: 1, column: 1 }
+const STATEMENT_DELIMITER = ';'
+const SQL_FILE_FILTERS = [
+  { name: 'SQL files', extensions: ['sql'] },
+  { name: 'All files', extensions: ['*'] },
+]
+const PATH_SEPARATOR_PATTERN = /[\\/]/
+const BUSY_QUERY_TAB_STATUSES = new Set(['running', 'ai-pending', 'ai-reviewing'])
+const AI_LOCKED_TAB_STATUSES = new Set(['ai-pending', 'ai-reviewing'])
+
+type QueryTabState = ReturnType<typeof useQueryStore.getState>['tabs'][string]
+type CursorPosition = QueryTabState['cursorPosition']
+
+interface ActiveWorkspaceContext {
+  connectionId: string | null
+  tabId: string | null
+  tabType: string | null
+}
+
+interface ActiveQueryTab {
+  connectionId: string
+  tabId: string
+  tabState: QueryTabState
+}
+
+function getActiveContext(): ActiveWorkspaceContext {
+  const connectionId = useConnectionStore.getState().activeTabId
+  if (!connectionId) return { connectionId: null, tabId: null, tabType: null }
+
+  const workspaceState = useWorkspaceStore.getState()
+  const tabId = workspaceState.activeTabByConnection[connectionId] ?? null
+  if (!tabId) return { connectionId: connectionId, tabId: null, tabType: null }
+
+  const tabs = workspaceState.tabsByConnection[connectionId] ?? []
+  const tab = tabs.find((candidate) => candidate.id === tabId)
+  return { connectionId: connectionId, tabId: tabId, tabType: tab?.type ?? null }
+}
+
+function getRunnableQueryTab(): ActiveQueryTab | null {
+  const { connectionId, tabId, tabType } = getActiveContext()
+  if (!connectionId || !tabId || tabType !== 'query-editor') return null
+  const tabState = useQueryStore.getState().tabs[tabId]
+  if (!tabState || BUSY_QUERY_TAB_STATUSES.has(tabState.tabStatus)) return null
+  if (!tabState.content.trim()) return null
+  return { connectionId: connectionId, tabId: tabId, tabState: tabState }
+}
+
+function executeQueryAtCursor(): void {
+  const queryTab = getRunnableQueryTab()
+  if (!queryTab) return
+  const { tabState } = queryTab
+  const plan = buildExecuteQueryPlan(
+    tabState.content,
+    tabState.selectedText ?? '',
+    tabState.cursorPosition
+  )
+  if (!plan) return
+  runExecuteQueryPlan(useQueryStore.getState(), queryTab.connectionId, queryTab.tabId, plan)
+}
+
+function executeAllStatements(): void {
+  const queryTab = getRunnableQueryTab()
+  if (!queryTab) return
+  const queryState = useQueryStore.getState()
+  const { connectionId, tabId, tabState } = queryTab
+  queryState.requestNavigationAction(tabId, () => {
+    const statements = getExecutableStatements(tabState.content)
+    if (statements.length === 0) return
+    queryState.executeMultiQuery(connectionId, tabId, statements)
+  })
+}
+
+function isSelectionEndingAt(content: string, selectedText: string, cursorOffset: number): boolean {
+  if (cursorOffset < selectedText.length) return false
+  return content.substring(cursorOffset - selectedText.length, cursorOffset) === selectedText
+}
+
+function resolveSelectionStart(
+  content: string,
+  selectedText: string,
+  cursorOffset: number
+): number {
+  if (isSelectionEndingAt(content, selectedText, cursorOffset)) {
+    return cursorOffset - selectedText.length
+  }
+  const textAfterCursor = content.substring(cursorOffset, cursorOffset + selectedText.length)
+  if (textAfterCursor === selectedText) return cursorOffset
+  return content.indexOf(selectedText)
+}
+
+function cursorOffsetIn(content: string, cursorPosition: CursorPosition): number {
+  const cursor = cursorPosition ?? START_OF_DOCUMENT
+  return cursorToOffset(content, cursor.lineNumber, cursor.column)
+}
+
+function formatSelectedText(
+  content: string,
+  selectedText: string,
+  cursorPosition: CursorPosition
+): string | null {
+  const formatted = formatSQL(selectedText, SQL_FORMAT_OPTIONS)
+  const cursorOffset = cursorOffsetIn(content, cursorPosition)
+  const selectionStart = resolveSelectionStart(content, selectedText, cursorOffset)
+  if (selectionStart === -1) return null
+  return (
+    content.substring(0, selectionStart) +
+    formatted +
+    content.substring(selectionStart + selectedText.length)
+  )
+}
+
+function withoutTrailingDelimiter(formatted: string): string {
+  const trimmed = formatted.trimEnd()
+  if (!trimmed.endsWith(STATEMENT_DELIMITER)) return trimmed
+  return trimmed.slice(0, -1).trimEnd()
+}
+
+function formatStatementAtCursor(content: string, cursorPosition: CursorPosition): string {
+  const offset = cursorOffsetIn(content, cursorPosition)
+  const statement = findStatementAtCursor(splitStatements(content), offset)
+  if (!statement) return formatSQL(content, SQL_FORMAT_OPTIONS)
+
+  // The statement range includes its delimiter; sql-formatter may or may not emit one.
+  const rangeText = content.substring(statement.start, statement.end)
+  const hadTrailingDelimiter = rangeText.trimEnd().endsWith(STATEMENT_DELIMITER)
+  const formatted = withoutTrailingDelimiter(formatSQL(statement.sql, SQL_FORMAT_OPTIONS))
+  const finalFormatted = hadTrailingDelimiter ? formatted + STATEMENT_DELIMITER : formatted
+  return content.substring(0, statement.start) + finalFormatted + content.substring(statement.end)
+}
+
+function formattedQueryContent(tabState: QueryTabState): string | null {
+  const content = tabState.content ?? ''
+  if (!content.trim()) return null
+  const selectedText = tabState.selectedText ?? ''
+  if (selectedText.length > 0) {
+    return formatSelectedText(content, selectedText, tabState.cursorPosition)
+  }
+  return formatStatementAtCursor(content, tabState.cursorPosition)
+}
+
+function formatActiveQuery(): void {
+  const { tabId, tabType } = getActiveContext()
+  if (!tabId || tabType !== 'query-editor') return
+  const queryState = useQueryStore.getState()
+  const tabState = queryState.tabs[tabId]
+  if (!tabState || AI_LOCKED_TAB_STATUSES.has(tabState.tabStatus)) return
+  try {
+    const newContent = formattedQueryContent(tabState)
+    if (newContent === null) return
+    queryState.setContent(tabId, newContent)
+  } catch (error) {
+    logFrontend('warn', `[app-layout] Formatting the query failed: ${String(error)}`)
+  }
+}
+
+function saveActiveObjectEditor(): void {
+  const { tabId, tabType } = getActiveContext()
+  if (!tabId || tabType !== 'object-editor') return
+  const objectStore = useObjectEditorStore.getState()
+  const objectTab = objectStore.tabs[tabId]
+  if (!objectTab || objectTab.isSaving) return
+  if (objectTab.content === objectTab.originalContent) return
+  void objectStore.saveBody(tabId)
+}
+
+function openNewQueryTab(): void {
+  const connectionId = useConnectionStore.getState().activeTabId
+  if (!connectionId) return
+  useWorkspaceStore.getState().openQueryTab(connectionId)
+}
+
+function closeActiveTab(): void {
+  const { connectionId, tabId } = getActiveContext()
+  if (!connectionId || !tabId) return
+  useWorkspaceStore.getState().closeTab(connectionId, tabId)
+}
+
+async function openSqlFileInNewTab(connectionId: string): Promise<void> {
+  try {
+    const result = await openFileDialog({ multiple: false, filters: SQL_FILE_FILTERS })
+    const filePath = Array.isArray(result) ? result[0] : result
+    if (!filePath) return
+
+    const contents = await readFile(filePath)
+    const fileName = filePath.split(PATH_SEPARATOR_PATTERN).pop() ?? 'Untitled'
+    const tabId = useWorkspaceStore.getState().openQueryTab(connectionId, fileName)
+    if (!tabId) return
+    const queryState = useQueryStore.getState()
+    queryState.setContent(tabId, contents)
+    queryState.setFilePath(tabId, filePath)
+  } catch (error) {
+    logFrontendError('[app-layout] open-file failed:', error)
+  }
+}
+
+function openFile(): void {
+  const connectionId = useConnectionStore.getState().activeTabId
+  if (!connectionId) return
+  void openSqlFileInNewTab(connectionId)
+}
+
+function revealActiveTabInObjectBrowser(): void {
+  const { connectionId, tabId } = getActiveContext()
+  if (!connectionId || !tabId) return
+  const tabs = useWorkspaceStore.getState().tabsByConnection[connectionId] ?? []
+  const tab = tabs.find((candidate) => candidate.id === tabId)
+  if (tab) {
+    void revealTabInObjectBrowser(tab)
+  }
+}
+
+const APP_SHORTCUT_ACTIONS: Record<string, () => void> = {
+  'execute-query': executeQueryAtCursor,
+  'execute-all': executeAllStatements,
+  'format-query': formatActiveQuery,
+  'save-file': saveActiveObjectEditor,
+  'new-query-tab': openNewQueryTab,
+  'close-tab': closeActiveTab,
+  'open-file': openFile,
+  settings: () => useSettingsStore.getState().openDialog(),
+  'zoom-in': () => void useZoomStore.getState().zoomIn(),
+  'zoom-out': () => void useZoomStore.getState().zoomOut(),
+  'zoom-reset': () => void useZoomStore.getState().resetZoom(),
+  'command-palette': () => useCommandPaletteStore.getState().toggle(),
+  'command-palette-table': () => useCommandPaletteStore.getState().toggle(true),
+  'reveal-in-object-browser': revealActiveTabInObjectBrowser,
+}
+
 export function AppLayout() {
   const sidebarPanelRef = usePanelRef()
   const isSettingsOpen = useSettingsStore((state) => state.isDialogOpen)
@@ -73,280 +302,16 @@ export function AppLayout() {
     closeSettingsDialog()
   }, [closeSettingsDialog])
 
-  // Register shortcut action callbacks
   useEffect(() => {
     const store = useShortcutStore.getState()
-
-    /** Get the active connection ID and active workspace tab for that connection. */
-    function getActiveContext(): {
-      connectionId: string | null
-      tabId: string | null
-      tabType: string | null
-    } {
-      const connectionId = useConnectionStore.getState().activeTabId
-      if (!connectionId) return { connectionId: null, tabId: null, tabType: null }
-
-      const workspaceState = useWorkspaceStore.getState()
-      const tabId = workspaceState.activeTabByConnection[connectionId] ?? null
-      if (!tabId) return { connectionId: connectionId, tabId: null, tabType: null }
-
-      const tabs = workspaceState.tabsByConnection[connectionId] ?? []
-      const tab = tabs.find((tab) => tab.id === tabId)
-      return { connectionId: connectionId, tabId: tabId, tabType: tab?.type ?? null }
+    const actionEntries = Object.entries(APP_SHORTCUT_ACTIONS)
+    for (const [actionId, action] of actionEntries) {
+      store.registerAction(actionId, action)
     }
-
-    store.registerAction('execute-query', () => {
-      const { connectionId, tabId, tabType } = getActiveContext()
-      if (!connectionId || !tabId || tabType !== 'query-editor') return
-
-      const queryState = useQueryStore.getState()
-      const tabState = queryState.tabs[tabId]
-      if (
-        !tabState ||
-        tabState.tabStatus === 'running' ||
-        tabState.tabStatus === 'ai-pending' ||
-        tabState.tabStatus === 'ai-reviewing'
-      )
-        return
-
-      const content = tabState.content
-      if (!content.trim()) return
-
-      const plan = buildExecuteQueryPlan(
-        content,
-        tabState.selectedText ?? '',
-        tabState.cursorPosition
-      )
-      if (!plan) return
-
-      runExecuteQueryPlan(queryState, connectionId, tabId, plan)
-    })
-
-    store.registerAction('execute-all', () => {
-      const { connectionId, tabId, tabType } = getActiveContext()
-      if (!connectionId || !tabId || tabType !== 'query-editor') return
-
-      const queryState = useQueryStore.getState()
-      const tabState = queryState.tabs[tabId]
-      if (
-        !tabState ||
-        tabState.tabStatus === 'running' ||
-        tabState.tabStatus === 'ai-pending' ||
-        tabState.tabStatus === 'ai-reviewing'
-      )
-        return
-
-      const content = tabState.content
-      if (!content.trim()) return
-
-      queryState.requestNavigationAction(tabId, () => {
-        const filtered = getExecutableStatements(content)
-
-        if (filtered.length === 0) return
-        queryState.executeMultiQuery(connectionId, tabId, filtered)
-      })
-    })
-
-    store.registerAction('format-query', () => {
-      const { tabId, tabType } = getActiveContext()
-      if (!tabId) return
-
-      if (tabType === 'query-editor') {
-        const queryState = useQueryStore.getState()
-        const tabState = queryState.tabs[tabId]
-        if (!tabState) return
-
-        // Block format during AI lock states
-        if (tabState.tabStatus === 'ai-pending' || tabState.tabStatus === 'ai-reviewing') return
-
-        const content = tabState.content ?? ''
-        if (!content.trim()) return
-
-        const selectedText = tabState.selectedText ?? ''
-        const cursorPosition = tabState.cursorPosition
-
-        try {
-          if (selectedText.length > 0) {
-            // Format only the selected text and replace it in-place
-            const formatted = formatSQL(selectedText, { language: 'mysql', tabWidth: 2 })
-            const cursor = cursorPosition ?? { lineNumber: 1, column: 1 }
-            const cursorOffset = cursorToOffset(content, cursor.lineNumber, cursor.column)
-
-            // The cursor is at one end of the selection — find which end
-            let selectionStart: number
-            if (
-              cursorOffset >= selectedText.length &&
-              content.substring(cursorOffset - selectedText.length, cursorOffset) === selectedText
-            ) {
-              // Cursor is at the end of the selection (forward selection)
-              selectionStart = cursorOffset - selectedText.length
-            } else if (
-              content.substring(cursorOffset, cursorOffset + selectedText.length) === selectedText
-            ) {
-              // Cursor is at the start of the selection (backward selection)
-              selectionStart = cursorOffset
-            } else {
-              // Fallback: search for the selected text nearest to cursor
-              const index = content.indexOf(selectedText)
-              if (index === -1) return
-              selectionStart = index
-            }
-
-            const newContent =
-              content.substring(0, selectionStart) +
-              formatted +
-              content.substring(selectionStart + selectedText.length)
-            queryState.setContent(tabId, newContent)
-          } else {
-            // No selection — format only the statement at cursor
-            const cursor = cursorPosition ?? { lineNumber: 1, column: 1 }
-            const offset = cursorToOffset(content, cursor.lineNumber, cursor.column)
-            const statements = splitStatements(content)
-            const statementAtCursor = findStatementAtCursor(statements, offset)
-
-            if (statementAtCursor) {
-              const formatted = formatSQL(statementAtCursor.sql, { language: 'mysql', tabWidth: 2 })
-              // Replace the statement range in the original content, preserving surrounding text
-              const before = content.substring(0, statementAtCursor.start)
-              // The end offset includes the delimiter; we want to replace only the statement text
-              // but keep any trailing delimiter. The `end` includes the delimiter character(s).
-              // We replace from start to just the statement text length (start + sql original span).
-              // Actually, statementAtCursor.end includes the delimiter, and statementAtCursor.sql
-              // is the trimmed text. We need to replace the full range [start, end) which includes
-              // the delimiter, but re-append a semicolon after the formatted text.
-              const after = content.substring(statementAtCursor.end)
-              // Determine if there was a trailing delimiter (semicolon) in the original range
-              const rangeText = content.substring(statementAtCursor.start, statementAtCursor.end)
-              const hadTrailingDelimiter = rangeText.trimEnd().endsWith(';')
-              const formattedTrimmed = formatted.trimEnd()
-              // sql-formatter may add its own trailing semicolons or not — normalize
-              const formattedWithoutTrailingSemicolon = formattedTrimmed.endsWith(';')
-                ? formattedTrimmed.slice(0, -1).trimEnd()
-                : formattedTrimmed
-              const finalFormatted = hadTrailingDelimiter
-                ? formattedWithoutTrailingSemicolon + ';'
-                : formattedWithoutTrailingSemicolon
-              const newContent = before + finalFormatted + after
-              queryState.setContent(tabId, newContent)
-            } else {
-              // Fallback: format entire content
-              const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })
-              queryState.setContent(tabId, formatted)
-            }
-          }
-        } catch (error) {
-          logFrontend('warn', `[app-layout] Formatting the query failed: ${String(error)}`)
-        }
-      }
-    })
-
-    store.registerAction('save-file', () => {
-      const { tabId, tabType } = getActiveContext()
-      if (!tabId) return
-
-      if (tabType === 'object-editor') {
-        const objectStore = useObjectEditorStore.getState()
-        const objectTab = objectStore.tabs[tabId]
-        if (objectTab && objectTab.content !== objectTab.originalContent && !objectTab.isSaving) {
-          void objectStore.saveBody(tabId)
-        }
-      }
-      // For query-editor tabs, save-file is handled by the EditorToolbar button
-      // (requires native file dialog which must be triggered from a user click handler)
-    })
-
-    store.registerAction('new-query-tab', () => {
-      const connectionId = useConnectionStore.getState().activeTabId
-      if (!connectionId) return
-      useWorkspaceStore.getState().openQueryTab(connectionId)
-    })
-
-    store.registerAction('close-tab', () => {
-      const { connectionId, tabId } = getActiveContext()
-      if (!connectionId || !tabId) return
-      useWorkspaceStore.getState().closeTab(connectionId, tabId)
-    })
-
-    store.registerAction('open-file', () => {
-      const connectionId = useConnectionStore.getState().activeTabId
-      if (!connectionId) return
-
-      void (async () => {
-        try {
-          const result = await openFileDialog({
-            multiple: false,
-            filters: [
-              { name: 'SQL files', extensions: ['sql'] },
-              { name: 'All files', extensions: ['*'] },
-            ],
-          })
-          const filePath = Array.isArray(result) ? result[0] : result
-          if (!filePath) return
-
-          const contents = await readFile(filePath)
-          const fileName = filePath.split(/[\\/]/).pop() ?? 'Untitled'
-          const tabId = useWorkspaceStore.getState().openQueryTab(connectionId, fileName)
-          if (tabId) {
-            const queryState = useQueryStore.getState()
-            queryState.setContent(tabId, contents)
-            queryState.setFilePath(tabId, filePath)
-          }
-        } catch (error) {
-          logFrontendError('[app-layout] open-file failed:', error)
-        }
-      })()
-    })
-
-    store.registerAction('settings', () => {
-      useSettingsStore.getState().openDialog()
-    })
-
-    store.registerAction('zoom-in', () => {
-      void useZoomStore.getState().zoomIn()
-    })
-
-    store.registerAction('zoom-out', () => {
-      void useZoomStore.getState().zoomOut()
-    })
-
-    store.registerAction('zoom-reset', () => {
-      void useZoomStore.getState().resetZoom()
-    })
-
-    store.registerAction('command-palette', () => {
-      useCommandPaletteStore.getState().toggle()
-    })
-
-    store.registerAction('command-palette-table', () => {
-      useCommandPaletteStore.getState().toggle(true)
-    })
-
-    store.registerAction('reveal-in-object-browser', () => {
-      const { connectionId, tabId } = getActiveContext()
-      if (!connectionId || !tabId) return
-      const tab = (useWorkspaceStore.getState().tabsByConnection[connectionId] ?? []).find(
-        (tab) => tab.id === tabId
-      )
-      if (tab) {
-        void revealTabInObjectBrowser(tab)
-      }
-    })
-
     return () => {
-      store.unregisterAction('execute-query')
-      store.unregisterAction('execute-all')
-      store.unregisterAction('format-query')
-      store.unregisterAction('save-file')
-      store.unregisterAction('new-query-tab')
-      store.unregisterAction('close-tab')
-      store.unregisterAction('open-file')
-      store.unregisterAction('settings')
-      store.unregisterAction('zoom-in')
-      store.unregisterAction('zoom-out')
-      store.unregisterAction('zoom-reset')
-      store.unregisterAction('command-palette')
-      store.unregisterAction('command-palette-table')
-      store.unregisterAction('reveal-in-object-browser')
+      for (const [actionId] of actionEntries) {
+        store.unregisterAction(actionId)
+      }
     }
   }, [])
 

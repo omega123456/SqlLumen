@@ -18,7 +18,7 @@ import { IconButton } from '../common/IconButton'
 import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
-import type { NodeType, ObjectType } from '../../types/schema'
+import type { NodeType, ObjectType, TreeNode as SchemaTreeNode } from '../../types/schema'
 import { computeScopedFilterMatchIds, isNodeUnderFilterScope } from '../../lib/tree-filter'
 import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
@@ -75,6 +75,115 @@ interface CopyToHostDialogState {
 
 const CLOSED_COPY_TO_HOST_DIALOG: CopyToHostDialogState = { open: false }
 
+type TreeNodeMap = Record<string, SchemaTreeNode>
+type ActiveConnectionState = ReturnType<
+  typeof useConnectionStore.getState
+>['activeConnections'][string]
+
+const EDITABLE_TARGET_SELECTOR = 'input, textarea, [contenteditable="true"]'
+
+function columnScopeRoot(columnNode: SchemaTreeNode, nodes: TreeNodeMap | null): string | null {
+  return nodes?.[columnNode.parentId ?? '']?.parentId ?? null
+}
+
+function databaseScopeRoot(databaseNode: SchemaTreeNode, nodes: TreeNodeMap | null): string {
+  const dbName = databaseNode.databaseName ?? parseNodeId(databaseNode.id).database
+  const tableCategoryId = makeNodeId('category', dbName, 'table')
+  return nodes?.[tableCategoryId] ? tableCategoryId : databaseNode.id
+}
+
+function filterScopeRootFor(selectedNode: SchemaTreeNode | null, nodes: TreeNodeMap | null) {
+  if (!selectedNode) return null
+  if (SCHEMA_OBJECT_TYPES.has(selectedNode.type)) return selectedNode.parentId ?? null
+  if (selectedNode.type === 'column') return columnScopeRoot(selectedNode, nodes)
+  if (selectedNode.type === 'database') return databaseScopeRoot(selectedNode, nodes)
+  return selectedNode.id
+}
+
+function hasCommandModifier(event: React.KeyboardEvent): boolean {
+  return event.ctrlKey || event.altKey || event.metaKey
+}
+
+function isEditableTarget(target: HTMLElement | null): boolean {
+  if (!target) return true
+  return target.closest(EDITABLE_TARGET_SELECTOR) !== null
+}
+
+function shouldIgnoreTreeKey(event: React.KeyboardEvent<HTMLDivElement>): boolean {
+  if (event.defaultPrevented || hasCommandModifier(event)) return true
+  return isEditableTarget(event.target as HTMLElement | null)
+}
+
+function typeAheadFilterValue(key: string, filterText: string): string | null {
+  if (key === 'Backspace') return filterText.slice(0, -1)
+  const isPrintableCharacter = key.length === 1 && !/\s/.test(key)
+  if (!isPrintableCharacter) return null
+  return `${filterText}${key}`
+}
+
+function selectedDatabaseName(
+  selectedNode: SchemaTreeNode | null,
+  selectedNodeId: string | null
+): string | null {
+  const databaseName = selectedNode?.databaseName
+  if (databaseName != null) return databaseName
+  if (!selectedNodeId) return null
+  return parseNodeId(selectedNodeId).database
+}
+
+function isReadOnlyConnection(activeConnection: ActiveConnectionState | null): boolean {
+  return activeConnection?.profile?.readOnly ?? false
+}
+
+function currentRevealSeq(): number {
+  return useSchemaStore.getState().revealRequest?.seq ?? 0
+}
+
+interface ObjectTreeBodyProps {
+  isConnected: boolean
+  topLevelIds: string[]
+  children: React.ReactNode
+}
+
+function ObjectTreeBody({ isConnected, topLevelIds, children }: ObjectTreeBodyProps) {
+  if (!isConnected) return <div className={styles.emptyState}>Not connected</div>
+  if (topLevelIds.length === 0) return <div className={styles.emptyState}>No databases loaded</div>
+  return (
+    <div role="tree" aria-label="Database objects">
+      {children}
+    </div>
+  )
+}
+
+interface CopyToHostDialogHostProps {
+  dialog: CopyToHostDialogState
+  connectionId: string
+  activeConnection: ActiveConnectionState | null
+  onClose: () => void
+}
+
+function CopyToHostDialogHost({
+  dialog,
+  connectionId,
+  activeConnection,
+  onClose,
+}: CopyToHostDialogHostProps) {
+  const profile = activeConnection?.profile
+  if (!dialog.open || !dialog.database || !profile) return null
+  return (
+    <Suspense fallback={null}>
+      <CopyToHostDialog
+        isOpen
+        onClose={onClose}
+        sourceConnectionId={connectionId}
+        sourceConnectionLabel={profile.name}
+        sourceDatabase={dialog.database}
+        preSelectedObject={dialog.objectSelection}
+      />
+    </Suspense>
+  )
+}
+
 export function ObjectBrowser({
   connectionId,
   favouritesOpen,
@@ -123,21 +232,22 @@ export function ObjectBrowser({
     CLOSED_COPY_TO_HOST_DIALOG
   )
 
-  const isReadOnly = activeConnection?.profile?.readOnly ?? false
+  const isReadOnly = isReadOnlyConnection(activeConnection)
+  const connectionStatus = activeConnection?.status
 
   // Dialog/action orchestration (Simplification 3)
   const actions = useObjectBrowserActions(connectionId)
 
   // Load databases on mount when connected
   useEffect(() => {
-    if (activeConnection?.status === 'connected') {
+    if (connectionStatus === 'connected') {
       void loadDatabases(connectionId)
     }
-  }, [connectionId, activeConnection?.status, loadDatabases])
+  }, [connectionId, connectionStatus, loadDatabases])
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
-      if (activeConnection?.status !== 'connected' || !nodes) return
+      if (connectionStatus !== 'connected' || !nodes) return
 
       const node = nodes[nodeId]
       if (!node) return
@@ -147,7 +257,7 @@ export function ObjectBrowser({
 
       void setActiveDatabase(connectionId, selectedDatabase)
     },
-    [activeConnection?.status, connectionId, nodes, setActiveDatabase]
+    [connectionStatus, connectionId, nodes, setActiveDatabase]
   )
 
   // Use childIdsByParentId index for top-level nodes (Simplification 4)
@@ -156,27 +266,10 @@ export function ObjectBrowser({
     return childIdsByParentId['__root__'] ?? []
   }, [childIdsByParentId])
 
-  const effectiveScopeRoot = useMemo(() => {
-    if (!selectedNode) {
-      return null
-    }
-
-    if (SCHEMA_OBJECT_TYPES.has(selectedNode.type)) {
-      return selectedNode.parentId ?? null
-    }
-
-    if (selectedNode.type === 'column') {
-      return nodes?.[selectedNode.parentId ?? '']?.parentId ?? null
-    }
-
-    if (selectedNode.type === 'database') {
-      const dbName = selectedNode.databaseName ?? parseNodeId(selectedNode.id).database
-      const tableCatId = makeNodeId('category', dbName, 'table')
-      return nodes?.[tableCatId] ? tableCatId : selectedNode.id
-    }
-
-    return selectedNode.id
-  }, [nodes, selectedNode])
+  const effectiveScopeRoot = useMemo(
+    () => filterScopeRootFor(selectedNode, nodes),
+    [nodes, selectedNode]
+  )
 
   // Clear filter when scope (selected database) changes *within the same
   // connection*. The single ObjectBrowser instance is reused across connection
@@ -250,36 +343,25 @@ export function ObjectBrowser({
 
   const handleTreeKeyDownCapture = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) {
-        return
-      }
-
-      const target = event.target as HTMLElement | null
-      if (!target || target.closest('input, textarea, [contenteditable="true"]')) {
+      if (shouldIgnoreTreeKey(event)) {
         return
       }
 
       if (event.key === 'F5') {
         event.preventDefault()
-        const dbName =
-          selectedNode?.databaseName ??
-          (selectedNodeId ? parseNodeId(selectedNodeId).database : null)
+        const dbName = selectedDatabaseName(selectedNode, selectedNodeId)
         if (dbName) {
           void refreshDatabase(connectionId, dbName)
         }
         return
       }
 
-      const isPrintableCharacter = event.key.length === 1 && !/\s/.test(event.key)
-      const isBackspace = event.key === 'Backspace'
-
-      if (!isPrintableCharacter && !isBackspace) {
+      const nextValue = typeAheadFilterValue(event.key, filterText)
+      if (nextValue === null) {
         return
       }
 
       event.preventDefault()
-
-      const nextValue = isBackspace ? filterText.slice(0, -1) : `${filterText}${event.key}`
       setFilter(nextValue, connectionId)
       filterInputRef.current?.focus()
     },
@@ -313,7 +395,7 @@ export function ObjectBrowser({
   // Scroll to and focus the node named by the latest reveal request for this
   // connection. Clears the filter first when it hides the node.
   // Start from the current seq so a freshly mounted browser does not replay an old request.
-  const handledRevealSeqRef = useRef(useSchemaStore.getState().revealRequest?.seq ?? 0)
+  const handledRevealSeqRef = useRef(currentRevealSeq())
   useEffect(() => {
     if (!revealRequest || revealRequest.connectionId !== connectionId || !treeScrollElement) return
     if (revealRequest.seq <= handledRevealSeqRef.current) return
@@ -440,8 +522,7 @@ export function ObjectBrowser({
     [connectionId, nodes]
   )
 
-  const isConnected = activeConnection?.status === 'connected'
-  const hasNodes = topLevelIds.length > 0
+  const isConnected = connectionStatus === 'connected'
 
   return (
     <div className={styles.container} data-testid="object-browser">
@@ -489,33 +570,25 @@ export function ObjectBrowser({
             data-testid="object-browser-scroll"
             onKeyDownCapture={handleTreeKeyDownCapture}
           >
-            {!isConnected && <div className={styles.emptyState}>Not connected</div>}
-
-            {isConnected && !hasNodes && (
-              <div className={styles.emptyState}>No databases loaded</div>
-            )}
-
-            {isConnected && hasNodes && (
-              <div role="tree" aria-label="Database objects">
-                {visibleTopLevelIds.map((nodeId, index) => (
-                  <TreeNode
-                    key={nodeId}
-                    nodeId={nodeId}
-                    connectionId={connectionId}
-                    level={0}
-                    onContextMenu={handleContextMenu}
-                    onActivate={handleActivateNode}
-                    onSelect={handleNodeSelect}
-                    filterMatchIds={filterMatchIds}
-                    filterScopeRootId={effectiveScopeRoot}
-                    onClearFilter={handleClearFilter}
-                    isFirstVisible={index === 0}
-                    isPinned={nodeId === pinnedDatabaseId}
-                    onRevealPinned={handleRevealPinned}
-                  />
-                ))}
-              </div>
-            )}
+            <ObjectTreeBody isConnected={isConnected} topLevelIds={topLevelIds}>
+              {visibleTopLevelIds.map((nodeId, index) => (
+                <TreeNode
+                  key={nodeId}
+                  nodeId={nodeId}
+                  connectionId={connectionId}
+                  level={0}
+                  onContextMenu={handleContextMenu}
+                  onActivate={handleActivateNode}
+                  onSelect={handleNodeSelect}
+                  filterMatchIds={filterMatchIds}
+                  filterScopeRootId={effectiveScopeRoot}
+                  onClearFilter={handleClearFilter}
+                  isFirstVisible={index === 0}
+                  isPinned={nodeId === pinnedDatabaseId}
+                  onRevealPinned={handleRevealPinned}
+                />
+              ))}
+            </ObjectTreeBody>
           </div>
         </>
       )}
@@ -560,18 +633,12 @@ export function ObjectBrowser({
         </Suspense>
       )}
 
-      {copyToHostDialog.open && copyToHostDialog.database && activeConnection?.profile && (
-        <Suspense fallback={null}>
-          <CopyToHostDialog
-            isOpen
-            onClose={handleCloseCopyToHostDialog}
-            sourceConnectionId={connectionId}
-            sourceConnectionLabel={activeConnection.profile.name}
-            sourceDatabase={copyToHostDialog.database}
-            preSelectedObject={copyToHostDialog.objectSelection}
-          />
-        </Suspense>
-      )}
+      <CopyToHostDialogHost
+        dialog={copyToHostDialog}
+        connectionId={connectionId}
+        activeConnection={activeConnection}
+        onClose={handleCloseCopyToHostDialog}
+      />
     </div>
   )
 }

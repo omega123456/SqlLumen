@@ -66,6 +66,54 @@ export interface ObjectEditorStore {
 // Store
 // ---------------------------------------------------------------------------
 
+function createdObjectUpdates(response: SaveObjectResponse): Partial<ObjectEditorTabState> {
+  const updates: Partial<ObjectEditorTabState> = {
+    savedObjectName: response.savedObjectName ?? null,
+    mode: 'alter',
+  }
+  if (response.savedObjectName) {
+    updates.objectName = response.savedObjectName
+  }
+  return updates
+}
+
+function savedTabUpdates(
+  tab: ObjectEditorTabState,
+  response: SaveObjectResponse
+): Partial<ObjectEditorTabState> {
+  const updates: Partial<ObjectEditorTabState> = {
+    originalContent: tab.content,
+    isSaving: false,
+    error: null,
+  }
+  if (tab.mode !== 'create') return updates
+  return { ...updates, ...createdObjectUpdates(response) }
+}
+
+function isRoutineObject(objectType: EditableObjectType): boolean {
+  return objectType === 'procedure' || objectType === 'function'
+}
+
+async function refreshSchemaTreeAfterSave(tab: ObjectEditorTabState): Promise<void> {
+  // refreshCategory no-ops for a category node that was never expanded, so refreshDatabase runs too.
+  try {
+    await useSchemaStore.getState().refreshCategory(tab.connectionId, tab.database, tab.objectType)
+  } catch (error) {
+    logFrontend(
+      'warn',
+      `[object-editor-store] Refreshing the object category after save failed: ${String(error)}`
+    )
+  }
+  try {
+    await useSchemaStore.getState().refreshDatabase(tab.connectionId, tab.database)
+  } catch (error) {
+    logFrontend(
+      'warn',
+      `[object-editor-store] Refreshing the database after save failed: ${String(error)}`
+    )
+  }
+}
+
 export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
   const patchTab = (tabId: string, partial: Partial<ObjectEditorTabState>) => {
     set((state) => {
@@ -184,59 +232,21 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
 
       if (!get().tabs[tabId]) return
 
-      if (response.success) {
-        showSuccessToast(`${tab.objectType} saved successfully`)
-
-        const updates: Partial<ObjectEditorTabState> = {
-          originalContent: tab.content,
-          isSaving: false,
-          error: null,
-        }
-
-        // If create mode, set savedObjectName, transition to alter, and update objectName
-        if (tab.mode === 'create') {
-          updates.savedObjectName = response.savedObjectName ?? null
-          updates.mode = 'alter'
-          if (response.savedObjectName) {
-            updates.objectName = response.savedObjectName
-          }
-        }
-
-        patchTab(tabId, updates)
-
-        // Invalidate routine parameter cache and schema metadata cache after saving
-        // a procedure or function so signature help picks up new/changed routines.
-        if (tab.objectType === 'procedure' || tab.objectType === 'function') {
-          invalidateRoutineCache(tab.connectionId)
-          invalidateSchemaMetadataCache(tab.connectionId)
-        }
-
-        // Refresh schema tree — call both refreshCategory and refreshDatabase
-        // refreshCategory may silently no-op if the category node hasn't been expanded,
-        // so always also call refreshDatabase to ensure tree awareness.
-        try {
-          await useSchemaStore
-            .getState()
-            .refreshCategory(tab.connectionId, tab.database, tab.objectType)
-        } catch (error) {
-          logFrontend(
-            'warn',
-            `[object-editor-store] Refreshing the object category after save failed: ${String(error)}`
-          )
-        }
-        try {
-          await useSchemaStore.getState().refreshDatabase(tab.connectionId, tab.database)
-        } catch (error) {
-          logFrontend(
-            'warn',
-            `[object-editor-store] Refreshing the database after save failed: ${String(error)}`
-          )
-        }
-      } else {
+      if (!response.success) {
         const errorMessage = response.errorMessage ?? 'Unknown error'
         showErrorToast('Save failed', errorMessage)
         patchTab(tabId, { isSaving: false, error: errorMessage })
+        return
       }
+
+      showSuccessToast(`${tab.objectType} saved successfully`)
+      patchTab(tabId, savedTabUpdates(tab, response))
+      if (isRoutineObject(tab.objectType)) {
+        // Signature help must pick up new or changed routines.
+        invalidateRoutineCache(tab.connectionId)
+        invalidateSchemaMetadataCache(tab.connectionId)
+      }
+      await refreshSchemaTreeAfterSave(tab)
     },
 
     cleanupTab: (tabId) => {

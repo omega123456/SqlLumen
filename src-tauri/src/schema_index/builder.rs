@@ -65,16 +65,7 @@ pub fn compact_ddl(create_table_sql: &str) -> String {
         .expect("valid trailing clause regex")
     });
 
-    let text = if let Some(mat) = re_trailing.find(&text) {
-        // Keep everything up to and including the `)`, strip the rest
-        let paren_pos = text[..mat.start() + 1].rfind(')');
-        match paren_pos {
-            Some(pos) => format!("{})", &text[..pos]),
-            None => text.to_string(),
-        }
-    } else {
-        text.to_string()
-    };
+    let text = strip_trailing_table_options(&text, re_trailing);
 
     // Normalize whitespace
     let re_ws =
@@ -82,6 +73,32 @@ pub fn compact_ddl(create_table_sql: &str) -> String {
     let text = re_ws.replace_all(&text, " ");
 
     text.trim().to_string()
+}
+
+fn strip_trailing_table_options(text: &str, trailing_clause_regex: &Regex) -> String {
+    let Some(trailing_match) = trailing_clause_regex.find(text) else {
+        return text.to_string();
+    };
+    match text[..trailing_match.start() + 1].rfind(')') {
+        Some(paren_position) => format!("{})", &text[..paren_position]),
+        None => text.to_string(),
+    }
+}
+
+#[cfg(not(coverage))]
+fn routine_chunk_type(routine_type: &str) -> ChunkType {
+    if routine_type == "PROCEDURE" {
+        return ChunkType::Procedure;
+    }
+    ChunkType::Function
+}
+
+#[cfg(not(coverage))]
+fn show_create_routine_keyword(routine_type: &str) -> &'static str {
+    if routine_type.to_uppercase() == "PROCEDURE" {
+        return "PROCEDURE";
+    }
+    "FUNCTION"
 }
 
 /// Strip MySQL engine/storage metadata from DDL but **keep** `COMMENT '...'`
@@ -193,12 +210,9 @@ pub fn generate_text_for_embedding(description: &TableEmbeddingDescription<'_>) 
     if !cols.is_empty() {
         let col_descs: Vec<String> = cols
             .iter()
-            .map(|(name, typ, comment)| {
-                if let Some(comment_text) = comment {
-                    format!("{name} ({typ}, \"{comment_text}\")")
-                } else {
-                    format!("{name} ({typ})")
-                }
+            .map(|(name, typ, comment)| match comment {
+                Some(comment_text) => format!("{name} ({typ}, \"{comment_text}\")"),
+                None => format!("{name} ({typ})"),
             })
             .collect();
         parts.push(format!("Columns: {}.", col_descs.join(", ")));
@@ -517,6 +531,79 @@ pub fn decide_signature_action(
 
 // ── Build index (full) ──────────────────────────────────────────────────
 
+#[cfg(not(coverage))]
+const FINALIZING_SQLITE_STEPS: usize = 2;
+
+#[cfg(not(coverage))]
+struct FinalizingSteps {
+    done: usize,
+    total: usize,
+}
+
+#[cfg(not(coverage))]
+struct EmbeddingProgressTracker {
+    profile_id: String,
+    tables_done: usize,
+    tables_total: usize,
+    total_embed_batches: usize,
+    embed_batches_done: usize,
+    finalizing: Option<FinalizingSteps>,
+}
+
+#[cfg(not(coverage))]
+impl EmbeddingProgressTracker {
+    fn start(&mut self) -> BuildProgress {
+        if self.tables_done >= self.tables_total {
+            self.finalizing = Some(FinalizingSteps {
+                done: 0,
+                total: self.total_embed_batches + FINALIZING_SQLITE_STEPS,
+            });
+        }
+        self.current_progress()
+    }
+
+    fn record_batch(&mut self, table_chunks_in_batch: usize) -> BuildProgress {
+        self.tables_done += table_chunks_in_batch;
+        self.embed_batches_done += 1;
+        if let Some(progress) = self.advance_finalizing() {
+            return progress;
+        }
+        if self.tables_done >= self.tables_total {
+            let remaining_batches = self
+                .total_embed_batches
+                .saturating_sub(self.embed_batches_done);
+            self.finalizing = Some(FinalizingSteps {
+                done: 0,
+                total: remaining_batches + FINALIZING_SQLITE_STEPS,
+            });
+        }
+        self.current_progress()
+    }
+
+    fn advance_finalizing(&mut self) -> Option<BuildProgress> {
+        let steps = self.finalizing.as_mut()?;
+        steps.done = (steps.done + 1).min(steps.total);
+        Some(self.current_progress())
+    }
+
+    fn current_progress(&self) -> BuildProgress {
+        match &self.finalizing {
+            Some(steps) => BuildProgress {
+                profile_id: self.profile_id.clone(),
+                phase: BuildPhase::Finalizing,
+                tables_done: steps.done,
+                tables_total: steps.total,
+            },
+            None => BuildProgress {
+                profile_id: self.profile_id.clone(),
+                phase: BuildPhase::Embedding,
+                tables_done: self.tables_done,
+                tables_total: self.tables_total,
+            },
+        }
+    }
+}
+
 /// Build (or incrementally update) the schema index for a connection.
 ///
 /// Algorithm:
@@ -653,14 +740,14 @@ pub async fn build_index(
             // We only need to check for chunk existence when the signatures
             // match — otherwise the decision is already `Refetch`.
             let chunk_key = table_chunk_key(db_name, table_name);
-            let existing_chunk = if matches!((current, stored), (Some(current_signature), Some(stored_signature)) if current_signature == stored_signature)
-            {
-                storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key).map_err(
-                    |error| format!("Failed to look up existing chunk {chunk_key}: {error}"),
-                )?
-            } else {
-                None
-            };
+            let signatures_match = matches!((current, stored), (Some(current_signature), Some(stored_signature)) if current_signature == stored_signature);
+            let mut existing_chunk = None;
+            if signatures_match {
+                existing_chunk =
+                    storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key).map_err(
+                        |error| format!("Failed to look up existing chunk {chunk_key}: {error}"),
+                    )?;
+            }
             let chunk_exists = existing_chunk.is_some();
 
             match decide_signature_action(current, stored, chunk_exists) {
@@ -699,10 +786,9 @@ pub async fn build_index(
     }
 
     // 3d. Parallel SHOW CREATE TABLE for tables that actually changed.
-    let fetched_ddls = if to_fetch.is_empty() {
-        Vec::new()
-    } else {
-        fetch_create_tables_parallel(
+    let mut fetched_ddls = Vec::new();
+    if !to_fetch.is_empty() {
+        fetched_ddls = fetch_create_tables_parallel(
             mysql_pool,
             to_fetch,
             &config.connection_id,
@@ -711,8 +797,8 @@ pub async fn build_index(
             reused_ddls.len(),
             tables_total,
         )
-        .await?
-    };
+        .await?;
+    }
 
     let mut all_ddl_inputs: Vec<TableDdlInput> = Vec::with_capacity(tables_total);
     all_ddl_inputs.extend(reused_ddls);
@@ -852,11 +938,7 @@ pub async fn build_index(
 
     // Add routine chunks (procedures and functions)
     for (db, routine_name, routine_type, create_ddl) in &all_routines {
-        let chunk_type = if routine_type == "PROCEDURE" {
-            ChunkType::Procedure
-        } else {
-            ChunkType::Function
-        };
+        let chunk_type = routine_chunk_type(routine_type);
         let type_lower = chunk_type.as_str();
         let key = format!("{type_lower}:{db}.{routine_name}");
         let hash = compute_hash(create_ddl);
@@ -976,40 +1058,22 @@ pub async fn build_index(
         let total_table_chunks = table_chunks.len();
         total_table_chunks - table_keys_to_embed.len()
     };
-    let mut tables_done: usize = unchanged_tables;
-    let total_embed_batches = if total_to_embed == 0 {
-        0
-    } else {
-        total_to_embed.div_ceil(EMBED_BATCH_SIZE)
+    let mut progress_tracker = EmbeddingProgressTracker {
+        profile_id: config.connection_id.clone(),
+        tables_done: unchanged_tables,
+        tables_total,
+        total_embed_batches: total_to_embed.div_ceil(EMBED_BATCH_SIZE),
+        embed_batches_done: 0,
+        finalizing: None,
     };
-    let mut embed_batches_done: usize = 0;
-    let mut finalizing_started = false;
-    let mut finalizing_done: usize = 0;
-    let mut finalizing_total: usize = 0;
 
     // Emit an initial embedding/finalizing progress event so the UI can switch
     // from "Reading schema..." immediately. If table progress is already
     // complete (e.g. only FK chunks remain), report Finalizing right away
     // with a separate step counter.
+    let initial_progress = progress_tracker.start();
     if let Some(cb) = on_progress {
-        if tables_done >= tables_total {
-            finalizing_started = true;
-            // Remaining embedding batches + signature upsert + metadata finalize.
-            finalizing_total = total_embed_batches + 2;
-            cb(BuildProgress {
-                profile_id: config.connection_id.clone(),
-                phase: BuildPhase::Finalizing,
-                tables_done: finalizing_done,
-                tables_total: finalizing_total,
-            });
-        } else {
-            cb(BuildProgress {
-                profile_id: config.connection_id.clone(),
-                phase: BuildPhase::Embedding,
-                tables_done,
-                tables_total,
-            });
-        }
+        cb(initial_progress);
     }
 
     for batch_start in (0..total_to_embed).step_by(EMBED_BATCH_SIZE) {
@@ -1085,39 +1149,42 @@ pub async fn build_index(
                     storage::get_chunk_by_key(&conn, &config.connection_id, &chunk.chunk_key)
                         .map_err(|error| format!("Failed to lookup chunk: {error}"))?;
 
-                if let Some(existing_chunk) = existing {
-                    storage::update_chunk_embedding(
-                        &conn,
-                        &config.connection_id,
-                        &ChunkEmbeddingUpdate {
-                            chunk_id: existing_chunk.id,
-                            ddl_text: &chunk.ddl_text,
-                            ddl_hash: &chunk.ddl_hash,
-                            model_id: &config.model_id,
-                            embedding,
-                            text_for_embedding: chunk.text_for_embedding.as_deref(),
+                match existing {
+                    Some(existing_chunk) => {
+                        storage::update_chunk_embedding(
+                            &conn,
+                            &config.connection_id,
+                            &ChunkEmbeddingUpdate {
+                                chunk_id: existing_chunk.id,
+                                ddl_text: &chunk.ddl_text,
+                                ddl_hash: &chunk.ddl_hash,
+                                model_id: &config.model_id,
+                                embedding,
+                                text_for_embedding: chunk.text_for_embedding.as_deref(),
+                                row_count_approx: chunk.row_count_approx,
+                            },
+                        )
+                        .map_err(|error| format!("Failed to update chunk: {error}"))?;
+                    }
+                    None => {
+                        let insert = ChunkInsert {
+                            connection_id: config.connection_id.clone(),
+                            chunk_key: chunk.chunk_key.clone(),
+                            db_name: chunk.db_name.clone(),
+                            table_name: chunk.table_name.clone(),
+                            chunk_type: chunk.chunk_type.clone(),
+                            ddl_text: chunk.ddl_text.clone(),
+                            ddl_hash: chunk.ddl_hash.clone(),
+                            model_id: config.model_id.clone(),
+                            ref_db_name: chunk.ref_db_name.clone(),
+                            ref_table_name: chunk.ref_table_name.clone(),
+                            embedding: embedding.clone(),
+                            text_for_embedding: chunk.text_for_embedding.clone(),
                             row_count_approx: chunk.row_count_approx,
-                        },
-                    )
-                    .map_err(|error| format!("Failed to update chunk: {error}"))?;
-                } else {
-                    let insert = ChunkInsert {
-                        connection_id: config.connection_id.clone(),
-                        chunk_key: chunk.chunk_key.clone(),
-                        db_name: chunk.db_name.clone(),
-                        table_name: chunk.table_name.clone(),
-                        chunk_type: chunk.chunk_type.clone(),
-                        ddl_text: chunk.ddl_text.clone(),
-                        ddl_hash: chunk.ddl_hash.clone(),
-                        model_id: config.model_id.clone(),
-                        ref_db_name: chunk.ref_db_name.clone(),
-                        ref_table_name: chunk.ref_table_name.clone(),
-                        embedding: embedding.clone(),
-                        text_for_embedding: chunk.text_for_embedding.clone(),
-                        row_count_approx: chunk.row_count_approx,
-                    };
-                    storage::insert_chunk(&conn, &insert)
-                        .map_err(|error| format!("Failed to insert chunk: {error}"))?;
+                        };
+                        storage::insert_chunk(&conn, &insert)
+                            .map_err(|error| format!("Failed to insert chunk: {error}"))?;
+                    }
                 }
 
                 tx_count += 1;
@@ -1146,44 +1213,9 @@ pub async fn build_index(
             .iter()
             .filter(|chunk| matches!(&chunk.chunk_type, ChunkType::Table))
             .count();
-        tables_done += table_chunks_in_batch;
-        embed_batches_done += 1;
+        let batch_progress = progress_tracker.record_batch(table_chunks_in_batch);
         if let Some(cb) = on_progress {
-            let mut entered_finalizing_this_batch = false;
-
-            if !finalizing_started {
-                if tables_done >= tables_total {
-                    finalizing_started = true;
-                    entered_finalizing_this_batch = true;
-                    // Remaining embedding batches after this one + two SQLite
-                    // finalization steps (signatures + metadata status update).
-                    finalizing_total = total_embed_batches.saturating_sub(embed_batches_done) + 2;
-                    finalizing_done = 0;
-                    cb(BuildProgress {
-                        profile_id: config.connection_id.clone(),
-                        phase: BuildPhase::Finalizing,
-                        tables_done: finalizing_done,
-                        tables_total: finalizing_total,
-                    });
-                } else {
-                    cb(BuildProgress {
-                        profile_id: config.connection_id.clone(),
-                        phase: BuildPhase::Embedding,
-                        tables_done,
-                        tables_total,
-                    });
-                }
-            }
-
-            if finalizing_started && !entered_finalizing_this_batch {
-                finalizing_done = (finalizing_done + 1).min(finalizing_total);
-                cb(BuildProgress {
-                    profile_id: config.connection_id.clone(),
-                    phase: BuildPhase::Finalizing,
-                    tables_done: finalizing_done,
-                    tables_total: finalizing_total,
-                });
-            }
+            cb(batch_progress);
         }
     }
 
@@ -1219,16 +1251,8 @@ pub async fn build_index(
             .map_err(|error| format!("COMMIT signatures: {error}"))?;
     }
 
-    if let Some(cb) = on_progress {
-        if finalizing_started {
-            finalizing_done = (finalizing_done + 1).min(finalizing_total);
-            cb(BuildProgress {
-                profile_id: config.connection_id.clone(),
-                phase: BuildPhase::Finalizing,
-                tables_done: finalizing_done,
-                tables_total: finalizing_total,
-            });
-        }
+    if let (Some(cb), Some(progress)) = (on_progress, progress_tracker.advance_finalizing()) {
+        cb(progress);
     }
 
     // 8. Set status = "ready", update last_build_at
@@ -1247,16 +1271,8 @@ pub async fn build_index(
         }
     }
 
-    if let Some(cb) = on_progress {
-        if finalizing_started {
-            finalizing_done = (finalizing_done + 1).min(finalizing_total);
-            cb(BuildProgress {
-                profile_id: config.connection_id.clone(),
-                phase: BuildPhase::Finalizing,
-                tables_done: finalizing_done,
-                tables_total: finalizing_total,
-            });
-        }
+    if let (Some(cb), Some(progress)) = (on_progress, progress_tracker.advance_finalizing()) {
+        cb(progress);
     }
 
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -2256,11 +2272,8 @@ async fn fetch_all_user_routines(
         let safe_name = safe_identifier(&routine_name)
             .map_err(|error| format!("Invalid routine name {routine_name}: {error}"))?;
 
-        let show_cmd = if routine_type.to_uppercase() == "PROCEDURE" {
-            format!("SHOW CREATE PROCEDURE {safe_db}.{safe_name}")
-        } else {
-            format!("SHOW CREATE FUNCTION {safe_db}.{safe_name}")
-        };
+        let show_keyword = show_create_routine_keyword(&routine_type);
+        let show_cmd = format!("SHOW CREATE {show_keyword} {safe_db}.{safe_name}");
 
         match sqlx::query(sqlx::AssertSqlSafe(show_cmd.as_str()))
             .fetch_optional(pool)

@@ -365,19 +365,15 @@ pub fn delete_vector_from_table(conn: &Connection, table: &str, memory_id: i64) 
     );
     match result {
         Ok(_) => Ok(()),
-        Err(error) => {
-            let msg = error.to_string();
-            if msg.contains("no such table") {
-                tracing::warn!(
-                    table,
-                    memory_id,
-                    "delete_vector_from_table: vec table does not exist, skipping"
-                );
-                Ok(())
-            } else {
-                Err(error)
-            }
+        Err(error) if error.to_string().contains("no such table") => {
+            tracing::warn!(
+                table,
+                memory_id,
+                "delete_vector_from_table: vec table does not exist, skipping"
+            );
+            Ok(())
         }
+        Err(error) => Err(error),
     }
 }
 

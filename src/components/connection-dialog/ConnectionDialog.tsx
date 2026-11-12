@@ -20,12 +20,12 @@ export function ConnectionDialog() {
     const dialog = dialogRef.current
     if (!dialog) return
 
-    if (dialogOpen) {
-      dialog.showModal()
-      void fetchSavedConnections()
-    } else {
+    if (!dialogOpen) {
       dialog.close()
+      return
     }
+    dialog.showModal()
+    void fetchSavedConnections()
   }, [dialogOpen, fetchSavedConnections])
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDialogElement>) => {

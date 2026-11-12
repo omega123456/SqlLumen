@@ -23,7 +23,12 @@ import {
 import { useCommandPaletteStore } from '../../stores/command-palette-store'
 import { useQueryStore } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import type { PaletteTypeFilter, SearchableObject } from '../../types/schema'
+import type {
+  PaletteTypeFilter,
+  SearchableObject,
+  TableDataTab,
+  WorkspaceTab,
+} from '../../types/schema'
 import { CommandPaletteFooter } from './CommandPaletteKeyHints'
 import { CommandPaletteInput } from './CommandPaletteInput'
 import { CommandPaletteResults } from './CommandPaletteResults'
@@ -104,29 +109,38 @@ function getSearchFilters(pills: ReadonlyArray<CommandPaletteFilterPillValue>) {
   }
 }
 
+function scopedBottomPanelTableTab(
+  tabs: WorkspaceTab[],
+  activeTab: WorkspaceTab | undefined
+): TableDataTab | undefined {
+  if (activeTab?.type !== 'query-editor') return undefined
+  const bottomPanelItem = useQueryStore.getState().tabs[activeTab.id]?.activeBottomPanelItem
+  if (bottomPanelItem?.type !== 'table-data') return undefined
+  return tabs.find(
+    (tab): tab is TableDataTab =>
+      tab.type === 'table-data' &&
+      tab.id === bottomPanelItem.tabId &&
+      tab.parentQueryTabId === activeTab.id
+  )
+}
+
+function resolveActiveTableTab(
+  tabs: WorkspaceTab[],
+  activeTab: WorkspaceTab | undefined
+): TableDataTab | undefined {
+  if (activeTab?.type === 'table-data') return activeTab
+  return scopedBottomPanelTableTab(tabs, activeTab)
+}
+
 function getInitialPills(connectionId: string | null): CommandPaletteFilterPillValue[] {
   if (!connectionId) return []
 
   const workspace = useWorkspaceStore.getState()
   const tabs = workspace.tabsByConnection[connectionId] ?? []
   const activeTab = tabs.find((tab) => tab.id === workspace.activeTabByConnection[connectionId])
-  const bottomPanelItem =
-    activeTab?.type === 'query-editor'
-      ? useQueryStore.getState().tabs[activeTab.id]?.activeBottomPanelItem
-      : null
-  const tableTab =
-    activeTab?.type === 'table-data'
-      ? activeTab
-      : bottomPanelItem?.type === 'table-data'
-        ? tabs.find(
-            (tab) =>
-              tab.type === 'table-data' &&
-              tab.id === bottomPanelItem.tabId &&
-              tab.parentQueryTabId === activeTab?.id
-          )
-        : null
+  const tableTab = resolveActiveTableTab(tabs, activeTab)
 
-  if (tableTab?.type !== 'table-data') return []
+  if (!tableTab) return []
 
   return [
     {
@@ -149,6 +163,68 @@ interface ParsedSlashState {
   slashQuery: string
 }
 
+function slashTokenPill(
+  token: string,
+  databases: ReadonlyArray<string>
+): CommandPaletteFilterPillValue | null {
+  const typeMatch = TYPE_ALIASES.get(token)
+  if (typeMatch) return typeMatch
+  const databaseMatch = databases.find((database) => database.toLowerCase() === token)
+  if (!databaseMatch) return null
+  return { kind: 'database', value: databaseMatch, label: databaseMatch }
+}
+
+function hasPill(
+  pills: ReadonlyArray<CommandPaletteFilterPillValue>,
+  candidate: CommandPaletteFilterPillValue
+): boolean {
+  return pills.some((pill) => pill.kind === candidate.kind && pill.value === candidate.value)
+}
+
+interface ActiveResultSelection {
+  clampedActiveIndex: number
+  activeResult: PaletteSearchResult | null
+  activeDescendantId: string | undefined
+}
+
+function resolveActiveResultSelection(
+  visibleResults: PaletteSearchResult[],
+  activeIndex: number
+): ActiveResultSelection {
+  if (visibleResults.length === 0) {
+    return { clampedActiveIndex: 0, activeResult: null, activeDescendantId: undefined }
+  }
+  const clampedActiveIndex = Math.min(activeIndex, visibleResults.length - 1)
+  return {
+    clampedActiveIndex: clampedActiveIndex,
+    activeResult: visibleResults[clampedActiveIndex],
+    activeDescendantId: `command-palette-result-${clampedActiveIndex}`,
+  }
+}
+
+function clampedSlashIndex(activeIndex: number, optionCount: number): number {
+  return optionCount === 0 ? 0 : Math.min(activeIndex, optionCount - 1)
+}
+
+function isCaretAtInputStart(input: HTMLInputElement | null): boolean {
+  return input?.selectionStart === 0 && input.selectionEnd === 0
+}
+
+function tableScopePills(result: PaletteSearchResult): CommandPaletteFilterPillValue[] {
+  return [
+    {
+      kind: 'database',
+      value: result.database,
+      label: result.database,
+    },
+    {
+      kind: 'table',
+      value: `${result.database}.${result.name}`,
+      label: result.name,
+    },
+  ]
+}
+
 function parseCommandPaletteValue(
   value: string,
   pills: ReadonlyArray<CommandPaletteFilterPillValue>,
@@ -164,10 +240,8 @@ function parseCommandPaletteValue(
     }
 
     const token = tokenMatch[1].toLowerCase()
-    const databaseMatch = databases.find((database) => database.toLowerCase() === token) ?? null
-    const typeMatch = TYPE_ALIASES.get(token) ?? null
-
-    if (!databaseMatch && !typeMatch) {
+    const nextPill = slashTokenPill(token, databases)
+    if (!nextPill) {
       return {
         query: value,
         pills: nextPills,
@@ -176,15 +250,7 @@ function parseCommandPaletteValue(
       }
     }
 
-    const nextPill =
-      typeMatch ??
-      ({
-        kind: 'database',
-        value: databaseMatch ?? '',
-        label: databaseMatch ?? '',
-      } satisfies CommandPaletteFilterPillValue)
-
-    if (!nextPills.some((pill) => pill.kind === nextPill.kind && pill.value === nextPill.value)) {
+    if (!hasPill(nextPills, nextPill)) {
       nextPills.splice(0, nextPills.length, ...addOrReplacePill(nextPills, nextPill))
     }
 
@@ -404,8 +470,6 @@ function CommandPaletteSession({
     [databases, slashQuery]
   )
   const visibleResults = debouncedQuery.trim().length > 0 ? results : recentResults
-  const clampedActiveIndex =
-    visibleResults.length === 0 ? 0 : Math.min(activeIndex, visibleResults.length - 1)
   const searchState = getSearchState({
     connectionId: activeConnectionId,
     query: debouncedQuery,
@@ -414,9 +478,10 @@ function CommandPaletteSession({
     objects: searchableObjects,
     isLoading: isLoading,
   })
-  const activeResult = visibleResults.length === 0 ? null : visibleResults[clampedActiveIndex]
-  const activeDescendantId =
-    activeResult == null ? undefined : `command-palette-result-${clampedActiveIndex}`
+  const { clampedActiveIndex, activeResult, activeDescendantId } = resolveActiveResultSelection(
+    visibleResults,
+    activeIndex
+  )
 
   const handleSelect = useCallback(
     async (result: PaletteSearchResult) => {
@@ -480,123 +545,104 @@ function CommandPaletteSession({
     inputRef.current?.focus()
   }, [])
 
-  const handleQueryKeyDown = useCallback(
+  const closeFromKeyboard = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === PALETTE_KEYS.close.key) {
-        event.preventDefault()
-        // DialogShell closes on Escape from a document listener, so anything handled
-        // here must stop the event before it gets there.
-        event.stopPropagation()
-
-        if (isSlashDropdownOpen) {
-          setIsSlashDropdownOpen(false)
-          return
-        }
-
-        if (pills.length > 0) {
-          handlePillRemove(pills[pills.length - 1])
-          return
-        }
-
-        onClose()
+      event.preventDefault()
+      // DialogShell closes on Escape from a document listener, so stop the event before it.
+      event.stopPropagation()
+      if (isSlashDropdownOpen) {
+        setIsSlashDropdownOpen(false)
         return
       }
-
-      if (event.key === PALETTE_KEYS.down.key) {
-        event.preventDefault()
-        if (isSlashDropdownOpen) {
-          if (slashOptions.length > 0) {
-            setActiveIndex((current) => Math.min(current + 1, slashOptions.length - 1))
-          }
-          return
-        }
-
-        if (visibleResults.length > 0) {
-          setActiveIndex((current) => Math.min(current + 1, visibleResults.length - 1))
-        }
+      if (pills.length > 0) {
+        handlePillRemove(pills[pills.length - 1])
         return
       }
+      onClose()
+    },
+    [handlePillRemove, isSlashDropdownOpen, onClose, pills]
+  )
 
-      if (event.key === PALETTE_KEYS.up.key) {
+  const moveActiveIndexDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      event.preventDefault()
+      const optionCount = isSlashDropdownOpen ? slashOptions.length : visibleResults.length
+      if (optionCount === 0) return
+      setActiveIndex((current) => Math.min(current + 1, optionCount - 1))
+    },
+    [isSlashDropdownOpen, slashOptions.length, visibleResults.length]
+  )
+
+  const moveActiveIndexUp = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      event.preventDefault()
+      const canMove = isSlashDropdownOpen || visibleResults.length > 0
+      if (!canMove) return
+      setActiveIndex((current) => Math.max(current - 1, 0))
+    },
+    [isSlashDropdownOpen, visibleResults.length]
+  )
+
+  const openFromKeyboard = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (isSlashDropdownOpen) {
         event.preventDefault()
-        if (isSlashDropdownOpen) {
-          setActiveIndex((current) => Math.max(current - 1, 0))
-          return
-        }
-
-        if (visibleResults.length > 0) {
-          setActiveIndex((current) => Math.max(current - 1, 0))
-        }
-        return
-      }
-
-      if (event.key === PALETTE_KEYS.open.key && isSlashDropdownOpen) {
-        event.preventDefault()
-        if (slashOptions.length === 0) {
-          return
-        }
-        const slashIndex = Math.min(activeIndex, slashOptions.length - 1)
-        const selectedOption = slashOptions[slashIndex]
+        const selectedOption = slashOptions[clampedSlashIndex(activeIndex, slashOptions.length)]
         if (selectedOption) {
           handleSlashSelect(selectedOption.pill)
         }
         return
       }
+      if (!activeResult) return
+      event.preventDefault()
+      void handleSelect(activeResult)
+    },
+    [activeIndex, activeResult, handleSelect, handleSlashSelect, isSlashDropdownOpen, slashOptions]
+  )
 
-      if (
-        event.key === PALETTE_KEYS.columns.key &&
-        !isSlashDropdownOpen &&
-        activeResult?.objectType === 'table'
-      ) {
-        event.preventDefault()
-        setPills([
-          {
-            kind: 'database',
-            value: activeResult.database,
-            label: activeResult.database,
-          },
-          {
-            kind: 'table',
-            value: `${activeResult.database}.${activeResult.name}`,
-            label: activeResult.name,
-          },
-        ])
-        setQuery('')
-        setDebouncedQuery('')
-        setActiveIndex(0)
-        inputRef.current?.focus()
-        return
-      }
+  const showColumnsFromKeyboard = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (isSlashDropdownOpen || activeResult?.objectType !== 'table') return
+      event.preventDefault()
+      setPills(tableScopePills(activeResult))
+      setQuery('')
+      setDebouncedQuery('')
+      setActiveIndex(0)
+      inputRef.current?.focus()
+    },
+    [activeResult, isSlashDropdownOpen]
+  )
 
-      if (event.key === PALETTE_KEYS.open.key && activeResult) {
-        event.preventDefault()
-        void handleSelect(activeResult)
-        return
-      }
+  const removeLastPillFromKeyboard = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      const canRemovePill =
+        query.length === 0 && isCaretAtInputStart(inputRef.current) && pills.length > 0
+      if (!canRemovePill) return
+      event.preventDefault()
+      handlePillRemove(pills[pills.length - 1])
+    },
+    [handlePillRemove, pills, query.length]
+  )
 
-      if (
-        event.key === 'Backspace' &&
-        query.length === 0 &&
-        inputRef.current?.selectionStart === 0 &&
-        inputRef.current?.selectionEnd === 0 &&
-        pills.length > 0
-      ) {
-        event.preventDefault()
-        handlePillRemove(pills[pills.length - 1])
+  const handleQueryKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      const keyHandlers: Record<string, (keyEvent: KeyboardEvent<HTMLInputElement>) => void> = {
+        [PALETTE_KEYS.close.key]: closeFromKeyboard,
+        [PALETTE_KEYS.down.key]: moveActiveIndexDown,
+        [PALETTE_KEYS.up.key]: moveActiveIndexUp,
+        [PALETTE_KEYS.open.key]: openFromKeyboard,
+        [PALETTE_KEYS.columns.key]: showColumnsFromKeyboard,
+        Backspace: removeLastPillFromKeyboard,
       }
+      keyHandlers[event.key]?.(event)
     },
     [
-      activeIndex,
-      activeResult,
-      handlePillRemove,
-      handleSelect,
-      handleSlashSelect,
-      isSlashDropdownOpen,
-      onClose,
-      pills,
-      query.length,
-      slashOptions,
-      visibleResults.length,
+      closeFromKeyboard,
+      moveActiveIndexDown,
+      moveActiveIndexUp,
+      openFromKeyboard,
+      removeLastPillFromKeyboard,
+      showColumnsFromKeyboard,
     ]
   )
 
@@ -619,9 +665,7 @@ function CommandPaletteSession({
           <SlashCommandDropdown
             slashQuery={slashQuery}
             databases={databases}
-            activeIndex={
-              slashOptions.length === 0 ? 0 : Math.min(activeIndex, slashOptions.length - 1)
-            }
+            activeIndex={clampedSlashIndex(activeIndex, slashOptions.length)}
             onSelect={handleSlashSelect}
           />
         ) : (

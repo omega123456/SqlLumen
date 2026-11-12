@@ -26,8 +26,13 @@ import {
   HEADER_ICON_WIDTH_PX,
   getAutoSizedColumnWidth,
 } from '../../lib/grid-column-style'
-import type { GridColumnDescriptor, AutoSizeConfig } from '../../types/shared-data-view'
-import type { TableDataColumnMeta, PrimaryKeyInfo, FilterCondition } from '../../types/schema'
+import type { GridColumnDescriptor, AutoSizeConfig, StatusType } from '../../types/shared-data-view'
+import type {
+  TableDataColumnMeta,
+  TableDataResponse,
+  PrimaryKeyInfo,
+  FilterCondition,
+} from '../../types/schema'
 import { logFrontend } from '../../lib/app-log-commands'
 import styles from './FkLookupDialog.module.css'
 import { toErrorMessage } from '../../lib/error-message'
@@ -50,6 +55,144 @@ export interface FkLookupDialogProps {
   referencedTable: string
   referencedColumn: string
   isReadOnly: boolean
+}
+
+interface LookupSort {
+  column: string
+  direction: 'ASC' | 'DESC'
+}
+
+type LookupRow = Record<string, unknown>
+
+function lookupSortRequest(sortInfo: LookupSort | null) {
+  if (!sortInfo) return { sortColumn: undefined, sortDirection: undefined }
+  return { sortColumn: sortInfo.column, sortDirection: sortInfo.direction.toLowerCase() }
+}
+
+function toLookupRows(response: TableDataResponse): LookupRow[] {
+  const columnNames = response.columns.map((column) => column.name)
+  return response.rows.map((row, index) => {
+    const lookupRow: LookupRow = { __rowIdx: index }
+    columnNames.forEach((name, columnIndex) => {
+      lookupRow[name] = row[columnIndex] ?? null
+    })
+    return lookupRow
+  })
+}
+
+function hasLookupValue(currentValue: unknown): boolean {
+  return currentValue !== null && currentValue !== undefined && currentValue !== ''
+}
+
+function initialLookupFilter(currentValue: unknown, referencedColumn: string): FilterCondition[] {
+  if (!hasLookupValue(currentValue)) return []
+  return [{ column: referencedColumn, operator: '==' as const, value: String(currentValue) }]
+}
+
+function resolveLookupSort(
+  column: string | null,
+  direction: LookupSort['direction'] | null
+): LookupSort | null {
+  if (!column || !direction) return null
+  return { column, direction }
+}
+
+function lookupRowKey(row: LookupRow, primaryKey: PrimaryKeyInfo | null): string {
+  if (primaryKey && primaryKey.keyColumns.length > 0) {
+    return JSON.stringify(primaryKey.keyColumns.map((column) => row[column]))
+  }
+  // Fallback: use the synthetic __rowIdx field added during row transformation
+  return String(row['__rowIdx'] ?? -1)
+}
+
+function lookupStatus(isLoading: boolean, error: string | null): StatusType {
+  if (isLoading) return 'loading'
+  if (error !== null) return 'error'
+  return 'success'
+}
+
+interface ApplyAvailability {
+  hasSelection: boolean
+  isReadOnly: boolean
+  isLoading: boolean
+  error: string | null
+}
+
+function isApplyEnabled(availability: ApplyAvailability): boolean {
+  if (!availability.hasSelection || availability.isReadOnly) return false
+  return !availability.isLoading && !availability.error
+}
+
+interface LookupGridProps {
+  rows: LookupRow[]
+  columns: GridColumnDescriptor[]
+  sort: LookupSort | null
+  referencedColumn: string
+  autoSizeConfig: AutoSizeConfig
+  onSortChange: (column: string | null, direction: LookupSort['direction'] | null) => void
+  onRowClick: (rowData: LookupRow) => void
+  onRowDoubleClicked: (rowData: LookupRow) => void
+  getRowClass: (rowData: LookupRow) => string | undefined
+}
+
+function LookupGrid({ grid }: { grid: LookupGridProps }) {
+  return (
+    <div className={styles.gridContainer}>
+      <CanvasBaseGridView
+        rows={grid.rows}
+        columns={grid.columns}
+        editState={null}
+        sortColumn={grid.sort?.column ?? null}
+        sortDirection={grid.sort?.direction ?? null}
+        onSortChange={grid.onSortChange}
+        onRowClick={grid.onRowClick}
+        onRowDoubleClicked={grid.onRowDoubleClicked}
+        getRowClass={grid.getRowClass}
+        highlightColumnKey={grid.referencedColumn}
+        autoSizeConfig={grid.autoSizeConfig}
+        testId="fk-lookup-grid"
+      />
+    </div>
+  )
+}
+
+interface LookupBodyProps {
+  isLoading: boolean
+  error: string | null
+  onRetry: () => void
+  grid: LookupGridProps
+}
+
+function LookupBody({ isLoading, error, onRetry, grid }: LookupBodyProps) {
+  if (isLoading) {
+    return (
+      <div className={styles.loadingContainer} data-testid="fk-lookup-loading">
+        <span className={styles.spinner} />
+        <span>Loading…</span>
+      </div>
+    )
+  }
+
+  if (error !== null) {
+    return (
+      <div className={styles.errorContainer} data-testid="fk-lookup-error">
+        <span className={styles.errorMessage}>{error}</span>
+        <Button onClick={onRetry} data-testid="fk-lookup-retry">
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  if (grid.rows.length === 0) {
+    return (
+      <div className={styles.emptyContainer} data-testid="fk-lookup-empty">
+        No rows found
+      </div>
+    )
+  }
+
+  return <LookupGrid grid={grid} />
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +222,7 @@ export function FkLookupDialog({
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(LOOKUP_PAGE_SIZE)
   const [filterModel, setFilterModel] = useState<FilterCondition[]>([])
-  const [sort, setSort] = useState<{ column: string; direction: 'ASC' | 'DESC' } | null>(null)
+  const [sort, setSort] = useState<LookupSort | null>(null)
   const [primaryKey, setPrimaryKey] = useState<PrimaryKeyInfo | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -104,13 +247,9 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
 
   const loadData = useCallback(
-    async (
-      page: number,
-      size: number,
-      filters: FilterCondition[],
-      sortInfo: { column: string; direction: 'ASC' | 'DESC' } | null
-    ) => {
+    async (page: number, size: number, filters: FilterCondition[], sortInfo: LookupSort | null) => {
       const thisToken = ++loadRequestTokenRef.current
+      const isCurrentRequest = () => mountedRef.current && loadRequestTokenRef.current === thisToken
       setIsLoading(true)
       setError(null)
 
@@ -122,38 +261,25 @@ export function FkLookupDialog({
           table: referencedTable,
           page: page,
           pageSize: size,
-          sortColumn: sortInfo?.column,
-          sortDirection: sortInfo?.direction?.toLowerCase(),
+          ...lookupSortRequest(sortInfo),
           filterModel: filters.length > 0 ? filters : undefined,
         })
 
-        if (!mountedRef.current) return
-        if (loadRequestTokenRef.current !== thisToken) return // stale response
-
-        // Transform rows from unknown[][] to Record<string, unknown>[]
-        const columnNames = response.columns.map((column) => column.name)
-        const transformedRows = response.rows.map((row, index) => {
-          const object: Record<string, unknown> = { __rowIdx: index }
-          columnNames.forEach((name, columnIndex) => {
-            object[name] = row[columnIndex] ?? null
-          })
-          return object
-        })
+        if (!isCurrentRequest()) return
 
         setColumns(response.columns)
-        setRows(transformedRows)
+        setRows(toLookupRows(response))
         setCurrentPage(response.currentPage)
         setPageSize(response.pageSize)
         setPrimaryKey(response.primaryKey)
         setExecutionTimeMs(response.executionTimeMs)
       } catch (error) {
-        if (!mountedRef.current) return
-        if (loadRequestTokenRef.current !== thisToken) return // stale error
+        if (!isCurrentRequest()) return
         setError(toErrorMessage(error))
         setRows([])
         setSelectedRowKey(null)
       } finally {
-        if (mountedRef.current && loadRequestTokenRef.current === thisToken) {
+        if (isCurrentRequest()) {
           setIsLoading(false)
         }
       }
@@ -199,12 +325,7 @@ export function FkLookupDialog({
     if (hasInitialized.current) return
     hasInitialized.current = true
 
-    // Determine initial filter
-    const hasValue = currentValue !== null && currentValue !== undefined && currentValue !== ''
-
-    const initialFilter: FilterCondition[] = hasValue
-      ? [{ column: referencedColumn, operator: '==' as const, value: String(currentValue) }]
-      : []
+    const initialFilter = initialLookupFilter(currentValue, referencedColumn)
 
     const initialPage = 1
     const initialPageSize = 100
@@ -288,11 +409,7 @@ export function FkLookupDialog({
     (column: string | null, direction: 'ASC' | 'DESC' | null) => {
       setSelectedRowKey(null)
       setCurrentPage(1)
-      if (!column || !direction) {
-        setSort(null)
-      } else {
-        setSort({ column, direction })
-      }
+      setSort(resolveLookupSort(column, direction))
     },
     []
   )
@@ -349,11 +466,7 @@ export function FkLookupDialog({
   /** Compute a stable key for a row based on PK columns, or fall back to __rowIdx. */
   const computeRowKey = useCallback(
     (row: Record<string, unknown>) => {
-      if (primaryKey && primaryKey.keyColumns.length > 0) {
-        return JSON.stringify(primaryKey.keyColumns.map((column) => row[column]))
-      }
-      // Fallback: use the synthetic __rowIdx field added during row transformation
-      return String(row['__rowIdx'] ?? -1)
+      return lookupRowKey(row, primaryKey)
     },
     [primaryKey]
   )
@@ -434,11 +547,12 @@ export function FkLookupDialog({
   // Render
   // ---------------------------------------------------------------------------
 
-  // Determine grid content to show
-  const showGrid = !isLoading && !error && rows.length > 0
-  const showEmpty = !isLoading && !error && rows.length === 0
-  const showLoading = isLoading
-  const showError = !isLoading && error !== null
+  const canApplySelection = isApplyEnabled({
+    hasSelection: selectedRowKey !== null,
+    isReadOnly: isReadOnly,
+    isLoading: isLoading,
+    error: error,
+  })
 
   return (
     <>
@@ -477,7 +591,7 @@ export function FkLookupDialog({
           <div className={styles.toolbar} data-testid="fk-lookup-toolbar">
             <div className={styles.toolbarLeft}>
               <StatusArea
-                status={isLoading ? 'loading' : error !== null ? 'error' : 'success'}
+                status={lookupStatus(isLoading, error)}
                 executionTimeMs={executionTimeMs > 0 ? executionTimeMs : undefined}
                 errorMessage={error ?? undefined}
               />
@@ -513,52 +627,28 @@ export function FkLookupDialog({
           </div>
 
           {/* ── Grid / Loading / Error / Empty ─────────── */}
-          {showLoading && (
-            <div className={styles.loadingContainer} data-testid="fk-lookup-loading">
-              <span className={styles.spinner} />
-              <span>Loading…</span>
-            </div>
-          )}
-
-          {showError && (
-            <div className={styles.errorContainer} data-testid="fk-lookup-error">
-              <span className={styles.errorMessage}>{error}</span>
-              <Button onClick={handleRetry} data-testid="fk-lookup-retry">
-                Retry
-              </Button>
-            </div>
-          )}
-
-          {showEmpty && (
-            <div className={styles.emptyContainer} data-testid="fk-lookup-empty">
-              No rows found
-            </div>
-          )}
-
-          {showGrid && (
-            <div className={styles.gridContainer}>
-              <CanvasBaseGridView
-                rows={rows}
-                columns={descriptorColumns}
-                editState={null}
-                sortColumn={sort?.column ?? null}
-                sortDirection={sort?.direction ?? null}
-                onSortChange={handleSortChange}
-                onRowClick={handleRowClick}
-                onRowDoubleClicked={handleCellDoubleClick}
-                getRowClass={handleGetRowClass}
-                highlightColumnKey={referencedColumn}
-                autoSizeConfig={autoSizeConfig}
-                testId="fk-lookup-grid"
-              />
-            </div>
-          )}
+          <LookupBody
+            isLoading={isLoading}
+            error={error}
+            onRetry={handleRetry}
+            grid={{
+              rows: rows,
+              columns: descriptorColumns,
+              sort: sort,
+              referencedColumn: referencedColumn,
+              autoSizeConfig: autoSizeConfig,
+              onSortChange: handleSortChange,
+              onRowClick: handleRowClick,
+              onRowDoubleClicked: handleCellDoubleClick,
+              getRowClass: handleGetRowClass,
+            }}
+          />
 
           {/* ── Footer ─────────────────────────────────── */}
           <div className={styles.footer}>
             <Button
               variant="accent"
-              disabled={selectedRowKey === null || isReadOnly || isLoading || !!error}
+              disabled={!canApplySelection}
               onClick={handleApply}
               data-testid="fk-lookup-apply"
             >

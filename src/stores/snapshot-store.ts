@@ -199,6 +199,147 @@ function buildRecoveryState(
   return recoveryState
 }
 
+const RESTORE_FAILED_TITLE = 'Restore failed'
+
+interface PeriodicCheckMoment {
+  frequency: 'daily' | 'weekly'
+  lastDate: Date
+  now: Date
+}
+
+function isNewPeriod({ frequency, lastDate, now }: PeriodicCheckMoment): boolean {
+  if (frequency === 'daily') {
+    return !isSameUtcDay(lastDate, now)
+  }
+  return isoWeekKey(lastDate) !== isoWeekKey(now)
+}
+
+async function loadSnapshotSessionState(id: number): Promise<SessionState | null> {
+  const stateJson = await getSessionSnapshot(id)
+  if (!stateJson) {
+    showErrorToast(RESTORE_FAILED_TITLE, 'This snapshot could not be found.')
+    return null
+  }
+
+  try {
+    return JSON.parse(stateJson) as SessionState
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontend('error', `[snapshot] Failed to parse snapshot ${id} state: ${message}`)
+    showErrorToast(RESTORE_FAILED_TITLE, 'This snapshot is corrupted and cannot be restored.')
+    return null
+  }
+}
+
+interface PreRestoreSession {
+  connectionIds: string[]
+  state: SessionState | null
+}
+
+function capturePreRestoreSession(): PreRestoreSession {
+  const connectionStore = useConnectionStore.getState()
+  const connectionIds = normalizeActiveConnectionOrder(
+    connectionStore.activeConnectionOrder,
+    connectionStore.activeConnections
+  )
+  const hasActiveConnections = connectionIds.length > 0
+  return {
+    connectionIds: connectionIds,
+    state: hasActiveConnections ? buildSessionState() : null,
+  }
+}
+
+async function saveSafetySnapshot(
+  preRestore: PreRestoreSession,
+  createAutoSnapshot: (trigger: SnapshotTrigger) => Promise<number | null>
+): Promise<boolean> {
+  if (preRestore.connectionIds.length === 0) {
+    return true
+  }
+  const beforeRestoreSnapshotId = await createAutoSnapshot('beforeRestore')
+  if (beforeRestoreSnapshotId != null) {
+    return true
+  }
+  showErrorToast(
+    RESTORE_FAILED_TITLE,
+    'Could not create the safety snapshot. The current session was left unchanged.'
+  )
+  return false
+}
+
+interface ForceCloseOutcome {
+  closedConnectionIds: string[]
+  closeFailureId: string | null
+}
+
+async function forceCloseInOrder(connectionIds: string[]): Promise<ForceCloseOutcome> {
+  const closedConnectionIds: string[] = []
+  for (const sessionId of connectionIds) {
+    const closed = await useConnectionStore.getState().closeConnection(sessionId, { force: true })
+    if (!closed) {
+      return { closedConnectionIds: closedConnectionIds, closeFailureId: sessionId }
+    }
+    closedConnectionIds.push(sessionId)
+  }
+  return { closedConnectionIds: closedConnectionIds, closeFailureId: null }
+}
+
+async function replayPreRestoreSession(
+  preRestore: PreRestoreSession,
+  closedConnectionIds: string[]
+): Promise<void> {
+  if (!preRestore.state) {
+    return
+  }
+  const recoveryState = buildRecoveryState(
+    preRestore.state,
+    preRestore.connectionIds,
+    closedConnectionIds
+  )
+  if (recoveryState) {
+    await useSessionRestoreStore.getState().restoreFromState(recoveryState)
+  }
+}
+
+function describeIncompleteClose(closeFailureId: string | null, stillOpenIds: string[]): string {
+  if (closeFailureId != null) {
+    return ` Failed while force-closing ${closeFailureId}.`
+  }
+  if (stillOpenIds.length > 0) {
+    return ` Remaining open connections: ${stillOpenIds.join(', ')}.`
+  }
+  return ''
+}
+
+// Force-close everything in active-order (no unsaved-changes prompts). Stop on
+// the first failure so recovery can replay a deterministic subset of the
+// pre-restore session without creating duplicates.
+async function closeAllConnectionsBeforeRestore(preRestore: PreRestoreSession): Promise<boolean> {
+  const outcome = await forceCloseInOrder(preRestore.connectionIds)
+  const remainingConnections = useConnectionStore.getState().activeConnections
+  const isStillOpen = (sessionId: string) => sessionId in remainingConnections
+  const stillOpenTargetIds = preRestore.connectionIds.filter(isStillOpen)
+  if (!outcome.closeFailureId && stillOpenTargetIds.length === 0) {
+    return true
+  }
+
+  const confirmedClosedIds = outcome.closedConnectionIds.filter(
+    (sessionId) => !isStillOpen(sessionId)
+  )
+  await replayPreRestoreSession(preRestore, confirmedClosedIds)
+
+  const detail = describeIncompleteClose(outcome.closeFailureId, stillOpenTargetIds)
+  logFrontend(
+    'error',
+    `[snapshot] Restore aborted because not all connections closed before restore.${detail}`
+  )
+  showErrorToast(
+    RESTORE_FAILED_TITLE,
+    'Could not close all open connections. The current session was restored.'
+  )
+  return false
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -371,90 +512,19 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       // 1. Load the target snapshot's full state into memory FIRST so retention
       //    pruning (from the beforeRestore create below) can never delete the
       //    snapshot being restored (NFR2).
-      const stateJson = await getSessionSnapshot(id)
-      if (!stateJson) {
-        showErrorToast('Restore failed', 'This snapshot could not be found.')
+      const parsedState = await loadSnapshotSessionState(id)
+      if (!parsedState) {
         return
       }
 
-      // 2. Parse the state.
-      let parsedState: SessionState
-      try {
-        parsedState = JSON.parse(stateJson) as SessionState
-      } catch (error) {
-        const message = toErrorMessage(error)
-        logFrontend('error', `[snapshot] Failed to parse snapshot ${id} state: ${message}`)
-        showErrorToast('Restore failed', 'This snapshot is corrupted and cannot be restored.')
+      const preRestore = capturePreRestoreSession()
+      const isSafetySnapshotSaved = await saveSafetySnapshot(preRestore, get().createAutoSnapshot)
+      if (!isSafetySnapshotSaved) {
         return
       }
 
-      // 3. Save the current session as a safety snapshot when there is anything
-      //    to lose (at least one active connection).
-      const connectionStore = useConnectionStore.getState()
-      const beforeRestoreConnectionIds = normalizeActiveConnectionOrder(
-        connectionStore.activeConnectionOrder,
-        connectionStore.activeConnections
-      )
-      const hasActiveConnections = beforeRestoreConnectionIds.length > 0
-      const beforeRestoreState = hasActiveConnections ? buildSessionState() : null
-      if (hasActiveConnections) {
-        const beforeRestoreSnapshotId = await get().createAutoSnapshot('beforeRestore')
-        if (beforeRestoreSnapshotId == null) {
-          showErrorToast(
-            'Restore failed',
-            'Could not create the safety snapshot. The current session was left unchanged.'
-          )
-          return
-        }
-      }
-
-      // 4. Force-close everything in active-order (no unsaved-changes prompts).
-      //    Stop on the first failure so recovery can replay a deterministic
-      //    subset of the pre-restore session without creating duplicates.
-      const closedConnectionIds: string[] = []
-      let closeFailureId: string | null = null
-
-      for (const sessionId of beforeRestoreConnectionIds) {
-        const closed = await useConnectionStore
-          .getState()
-          .closeConnection(sessionId, { force: true })
-        if (!closed) {
-          closeFailureId = sessionId
-          break
-        }
-        closedConnectionIds.push(sessionId)
-      }
-
-      const remainingConnections = useConnectionStore.getState().activeConnections
-      const stillOpenTargetIds = beforeRestoreConnectionIds.filter(
-        (sessionId) => sessionId in remainingConnections
-      )
-      if (closeFailureId || stillOpenTargetIds.length > 0) {
-        if (beforeRestoreState) {
-          const recoveryState = buildRecoveryState(
-            beforeRestoreState,
-            beforeRestoreConnectionIds,
-            closedConnectionIds.filter((sessionId) => !(sessionId in remainingConnections))
-          )
-          if (recoveryState) {
-            await useSessionRestoreStore.getState().restoreFromState(recoveryState)
-          }
-        }
-
-        const detail =
-          closeFailureId != null
-            ? ` Failed while force-closing ${closeFailureId}.`
-            : stillOpenTargetIds.length > 0
-              ? ` Remaining open connections: ${stillOpenTargetIds.join(', ')}.`
-              : ''
-        logFrontend(
-          'error',
-          `[snapshot] Restore aborted because not all connections closed before restore.${detail}`
-        )
-        showErrorToast(
-          'Restore failed',
-          'Could not close all open connections. The current session was restored.'
-        )
+      const isFullyClosed = await closeAllConnectionsBeforeRestore(preRestore)
+      if (!isFullyClosed) {
         return
       }
 
@@ -484,12 +554,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       const lastDate = parseEpochSeconds(marker)
       const hasValidMarker = lastDate != null && !Number.isNaN(lastDate.getTime())
 
-      let due: boolean
-      if (frequency === 'daily') {
-        due = !hasValidMarker || !isSameUtcDay(lastDate, now)
-      } else {
-        due = !hasValidMarker || isoWeekKey(lastDate) !== isoWeekKey(now)
-      }
+      const due = !hasValidMarker || isNewPeriod({ frequency, lastDate, now })
 
       if (!due) {
         return

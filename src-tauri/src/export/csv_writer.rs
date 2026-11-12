@@ -35,18 +35,15 @@ pub fn write_csv<W: Write, R: AsRef<[serde_json::Value]>>(
 /// strings are written as-is and other values use their JSON text. Shared by
 /// the slice writer and the streaming writer so their output is identical.
 pub fn csv_record(row: &[serde_json::Value]) -> Vec<String> {
-    row.iter()
-        .map(|value| match value {
-            serde_json::Value::Null => String::new(), // empty field for NULL
-            serde_json::Value::Bool(boolean) => {
-                if *boolean {
-                    "1".to_string()
-                } else {
-                    "0".to_string()
-                }
-            }
-            serde_json::Value::String(text) => text.clone(),
-            other => other.to_string(),
-        })
-        .collect()
+    row.iter().map(csv_field).collect()
+}
+
+pub fn csv_field(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::Bool(true) => "1".to_string(),
+        serde_json::Value::Bool(false) => "0".to_string(),
+        serde_json::Value::String(text) => text.clone(),
+        other => other.to_string(),
+    }
 }

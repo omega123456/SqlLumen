@@ -108,6 +108,184 @@ const REMEMBER_SCOPE_OPTIONS = [
   { value: 'ask', label: 'Always ask' },
 ]
 
+const DEFAULT_REMEMBER_SCOPE = 'connection'
+
+type ModelFetch = ReturnType<typeof useFetchModels>
+type FetchedModel = ModelFetch['models'][number]
+
+function resolveRememberScope(rememberScopeRaw: string): string {
+  const isKnownScope = REMEMBER_SCOPE_OPTIONS.some((option) => option.value === rememberScopeRaw)
+  if (isKnownScope) return rememberScopeRaw
+  return DEFAULT_REMEMBER_SCOPE
+}
+
+function connectionCountLabel(count: number): string {
+  if (count === 1) return '1 connection'
+  return `${count} connections`
+}
+
+function describeBuildingState(buildingConnections: ConnectionIndexState[]): string {
+  const countLabel = connectionCountLabel(buildingConnections.length)
+  if (buildingConnections.length === 0) return `Reading schema (${countLabel})...`
+  const first = buildingConnections[0]
+  const hasTableTotals = first.tablesTotal > 0
+  if (first.phase === 'finalizing' && hasTableTotals) {
+    return `Finalizing ${first.tablesDone}/${first.tablesTotal} steps (${countLabel})...`
+  }
+  if (first.phase === 'embedding' && hasTableTotals) {
+    return `Indexing ${first.tablesDone}/${first.tablesTotal} tables (${countLabel})...`
+  }
+  if (first.phase === 'loading_schema' && first.tablesDone > 0) {
+    return `Reading schema (${first.tablesDone} tables, ${countLabel})...`
+  }
+  return `Reading schema (${countLabel})...`
+}
+
+function isChatModel(model: FetchedModel): boolean {
+  return model.category === 'chat' || !model.category
+}
+
+function isEmbeddingOrUncategorisedModel(model: FetchedModel): boolean {
+  return model.category === 'embedding' || !model.category
+}
+
+interface ModelCategories {
+  show: boolean
+  chatModels: FetchedModel[]
+  embeddingModels: FetchedModel[]
+}
+
+// When an embedding URL is set, drive the embedding grid from its dedicated
+// fetch (including uncategorised models, since that server may not categorise).
+// When blank, fall back to the chat-fetch embedding-category models.
+function embeddingModelsFor(
+  chatFetch: ModelFetch,
+  embeddingFetch: ModelFetch,
+  hasEmbeddingUrl: boolean
+): FetchedModel[] {
+  if (hasEmbeddingUrl) return embeddingFetch.models.filter(isEmbeddingOrUncategorisedModel)
+  return chatFetch.models.filter((model) => model.category === 'embedding')
+}
+
+// Render the category grids once either fetch has produced models, or when an
+// embedding URL is set (so its scoped loading/empty state has a place to live).
+function resolveModelCategories(
+  chatFetch: ModelFetch,
+  embeddingFetch: ModelFetch,
+  hasEmbeddingUrl: boolean
+): ModelCategories {
+  const hasFetchedModels = chatFetch.models.length > 0 || embeddingFetch.models.length > 0
+  return {
+    show: hasFetchedModels || hasEmbeddingUrl,
+    chatModels: chatFetch.models.filter(isChatModel),
+    embeddingModels: embeddingModelsFor(chatFetch, embeddingFetch, hasEmbeddingUrl),
+  }
+}
+
+function FetchStatus({
+  modelFetch,
+  loadingTestId,
+  errorTestId,
+  loadingText,
+}: {
+  modelFetch: ModelFetch
+  loadingTestId: string
+  errorTestId: string
+  loadingText: string
+}) {
+  return (
+    <>
+      {modelFetch.loading && (
+        <div className={styles.modelLoading} data-testid={loadingTestId}>
+          {loadingText}
+        </div>
+      )}
+      {modelFetch.error && (
+        <div className={styles.modelError} data-testid={errorTestId}>
+          {modelFetch.error}
+        </div>
+      )}
+    </>
+  )
+}
+
+interface ModelSelection {
+  chatModel: string
+  embeddingModel: string
+  onSelectChatModel: (modelId: string) => void
+  onSelectEmbeddingModel: (modelId: string) => void
+}
+
+interface ModelCategoryGridsProps {
+  categories: ModelCategories
+  embeddingFetch: ModelFetch
+  selection: ModelSelection
+}
+
+function ModelCategoryGrids({ categories, embeddingFetch, selection }: ModelCategoryGridsProps) {
+  if (!categories.show) return null
+  return (
+    <div className={styles.categorySections} data-testid="ai-model-categories">
+      <ModelCategorySection
+        categoryKey="chat"
+        label="Chat models"
+        icon={ChatCircleTextIcon}
+        models={categories.chatModels}
+        selectedModelId={selection.chatModel}
+        onSelectModel={selection.onSelectChatModel}
+        emptyText="No chat models found"
+      />
+
+      <div className={styles.sectionDivider} />
+
+      <div className={styles.categorySection} data-testid="ai-embedding-models-region">
+        <FetchStatus
+          modelFetch={embeddingFetch}
+          loadingTestId="ai-embedding-models-loading"
+          errorTestId="ai-embedding-models-error"
+          loadingText="Loading embedding models..."
+        />
+
+        <ModelCategorySection
+          categoryKey="embedding"
+          label="Embedding models"
+          icon={DatabaseIcon}
+          models={categories.embeddingModels}
+          selectedModelId={selection.embeddingModel}
+          onSelectModel={selection.onSelectEmbeddingModel}
+          emptyText="No embedding models found"
+        />
+      </div>
+    </div>
+  )
+}
+
+interface ReindexRowProps {
+  buildingConnections: ConnectionIndexState[]
+  onRequestReindex: () => void
+}
+
+function ReindexRow({ buildingConnections, onRequestReindex }: ReindexRowProps) {
+  const isBuilding = buildingConnections.length > 0
+  return (
+    <div className={styles.reindexRow} data-testid="ai-reindex-row">
+      <Button onClick={onRequestReindex} disabled={isBuilding} data-testid="ai-force-reindex-btn">
+        {isBuilding ? 'Reindexing...' : 'Force reindex'}
+      </Button>
+      {isBuilding && (
+        <span
+          className={styles.reindexStatus}
+          data-testid="ai-reindex-status"
+          role="status"
+          aria-live="polite"
+        >
+          {describeBuildingState(buildingConnections)}
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // AiSettings
 // ---------------------------------------------------------------------------
@@ -124,10 +302,7 @@ export function AiSettings() {
   const maxTokens = useSettingValue('ai.maxTokens')
   const enableReasoning = useSettingValue('ai.enableReasoning') !== 'false'
   const preferResponsesApi = useSettingValue('ai.preferResponsesApi') === 'true'
-  const rememberScopeRaw = useSettingValue('ai.rememberScope')
-  const rememberScope = REMEMBER_SCOPE_OPTIONS.some((option) => option.value === rememberScopeRaw)
-    ? rememberScopeRaw
-    : 'connection'
+  const rememberScope = resolveRememberScope(useSettingValue('ai.rememberScope'))
 
   // Retrieval settings
   const topKPerQuery = useSettingValue('ai.retrieval.topKPerQuery')
@@ -170,23 +345,6 @@ export function AiSettings() {
     }
   }, [])
 
-  function describeBuildingState(): string {
-    const count = buildingConnections.length
-    const first = buildingConnections[0]
-    const phase = first?.phase ?? null
-    const countLabel = count === 1 ? '1 connection' : `${count} connections`
-    if (phase === 'finalizing' && (first?.tablesTotal ?? 0) > 0) {
-      return `Finalizing ${first.tablesDone}/${first.tablesTotal} steps (${countLabel})...`
-    }
-    if (phase === 'embedding' && (first?.tablesTotal ?? 0) > 0) {
-      return `Indexing ${first.tablesDone}/${first.tablesTotal} tables (${countLabel})...`
-    }
-    if (phase === 'loading_schema' && (first?.tablesDone ?? 0) > 0) {
-      return `Reading schema (${first.tablesDone} tables, ${countLabel})...`
-    }
-    return `Reading schema (${countLabel})...`
-  }
-
   const chatFetchModels = chatFetch.fetch
   const embeddingFetchFetch = embeddingFetch.fetch
   const embeddingFetchReset = embeddingFetch.reset
@@ -198,34 +356,20 @@ export function AiSettings() {
   }, [aiEnabled, endpoint, chatFetchModels])
 
   useEffect(() => {
-    if (aiEnabled && embeddingEndpoint.trim()) {
-      embeddingFetchFetch()
-    } else {
+    if (!aiEnabled || !embeddingEndpoint.trim()) {
       // Blank embedding URL: invalidate any in-flight fetch and revert to the
       // chat-fetch embedding models with no leftover loading/error state.
       embeddingFetchReset()
+      return
     }
+    embeddingFetchFetch()
   }, [aiEnabled, embeddingEndpoint, embeddingFetchFetch, embeddingFetchReset])
 
   const chatUrl = endpoint.trim()
   const embeddingUrl = embeddingEndpoint.trim()
   const hasEmbeddingUrl = embeddingUrl.length > 0
 
-  const chatModels = chatFetch.models.filter(
-    (model) => model.category === 'chat' || !model.category
-  )
-
-  // When an embedding URL is set, drive the embedding grid from its dedicated
-  // fetch (including uncategorised models, since that server may not categorise).
-  // When blank, fall back to the chat-fetch embedding-category models.
-  const embeddingModels = hasEmbeddingUrl
-    ? embeddingFetch.models.filter((model) => model.category === 'embedding' || !model.category)
-    : chatFetch.models.filter((model) => model.category === 'embedding')
-
-  // Render the category grids once either fetch has produced models, or when an
-  // embedding URL is set (so its scoped loading/empty state has a place to live).
-  const showCategories =
-    chatFetch.models.length > 0 || embeddingFetch.models.length > 0 || hasEmbeddingUrl
+  const modelCategories = resolveModelCategories(chatFetch, embeddingFetch, hasEmbeddingUrl)
 
   function handleSelectChatModel(modelId: string) {
     setPendingChange('ai.model', modelId)
@@ -292,80 +436,28 @@ export function AiSettings() {
                 Models will be grouped by type: chat for conversation, embedding for schema search
               </p>
 
-              {chatFetch.loading && (
-                <div className={styles.modelLoading} data-testid="ai-models-loading">
-                  Loading models...
-                </div>
-              )}
+              <FetchStatus
+                modelFetch={chatFetch}
+                loadingTestId="ai-models-loading"
+                errorTestId="ai-models-error"
+                loadingText="Loading models..."
+              />
 
-              {chatFetch.error && (
-                <div className={styles.modelError} data-testid="ai-models-error">
-                  {chatFetch.error}
-                </div>
-              )}
+              <ModelCategoryGrids
+                categories={modelCategories}
+                embeddingFetch={embeddingFetch}
+                selection={{
+                  chatModel: model,
+                  embeddingModel: embeddingModel,
+                  onSelectChatModel: handleSelectChatModel,
+                  onSelectEmbeddingModel: handleSelectEmbeddingModel,
+                }}
+              />
 
-              {showCategories && (
-                <div className={styles.categorySections} data-testid="ai-model-categories">
-                  <ModelCategorySection
-                    categoryKey="chat"
-                    label="Chat models"
-                    icon={ChatCircleTextIcon}
-                    models={chatModels}
-                    selectedModelId={model}
-                    onSelectModel={handleSelectChatModel}
-                    emptyText="No chat models found"
-                  />
-
-                  <div className={styles.sectionDivider} />
-
-                  <div className={styles.categorySection} data-testid="ai-embedding-models-region">
-                    {embeddingFetch.loading && (
-                      <div
-                        className={styles.modelLoading}
-                        data-testid="ai-embedding-models-loading"
-                      >
-                        Loading embedding models...
-                      </div>
-                    )}
-
-                    {embeddingFetch.error && (
-                      <div className={styles.modelError} data-testid="ai-embedding-models-error">
-                        {embeddingFetch.error}
-                      </div>
-                    )}
-
-                    <ModelCategorySection
-                      categoryKey="embedding"
-                      label="Embedding models"
-                      icon={DatabaseIcon}
-                      models={embeddingModels}
-                      selectedModelId={embeddingModel}
-                      onSelectModel={handleSelectEmbeddingModel}
-                      emptyText="No embedding models found"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className={styles.reindexRow} data-testid="ai-reindex-row">
-                <Button
-                  onClick={() => setReindexConfirmOpen(true)}
-                  disabled={isBuilding}
-                  data-testid="ai-force-reindex-btn"
-                >
-                  {isBuilding ? 'Reindexing...' : 'Force reindex'}
-                </Button>
-                {isBuilding && (
-                  <span
-                    className={styles.reindexStatus}
-                    data-testid="ai-reindex-status"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {describeBuildingState()}
-                  </span>
-                )}
-              </div>
+              <ReindexRow
+                buildingConnections={buildingConnections}
+                onRequestReindex={() => setReindexConfirmOpen(true)}
+              />
             </div>
           )}
         </SettingsSection>

@@ -220,21 +220,20 @@ pub fn generate_create_table_ddl(schema: &DesignerTableSchema, database: &str) -
     let table_options = build_create_table_options(&schema.properties);
 
     if table_options.is_empty() {
-        format!(
+        return format!(
             "CREATE TABLE {}.{} (\n{}\n);",
             database_name,
             table_name,
             definitions.join(",\n")
-        )
-    } else {
-        format!(
-            "CREATE TABLE {}.{} (\n{}\n) {};",
-            database_name,
-            table_name,
-            definitions.join(",\n"),
-            table_options.join(" ")
-        )
+        );
     }
+    format!(
+        "CREATE TABLE {}.{} (\n{}\n) {};",
+        database_name,
+        table_name,
+        definitions.join(",\n"),
+        table_options.join(" ")
+    )
 }
 
 pub fn generate_alter_table_ddl(
@@ -305,14 +304,7 @@ pub fn generate_alter_table_ddl(
         .enumerate()
         .filter(|(_, column)| !original_names.contains(column.name.as_str()))
         .map(|(index, column)| {
-            let position_clause = if index == 0 {
-                " FIRST".to_string()
-            } else {
-                format!(
-                    " AFTER {}",
-                    quote_identifier(&current.columns[index - 1].name)
-                )
-            };
+            let position_clause = column_position_clause(&current.columns, index);
 
             format!(
                 "ADD COLUMN {}{}",
@@ -435,12 +427,25 @@ fn is_generatable_foreign_key(foreign_key: &DesignerForeignKeyDef) -> bool {
         && !identifier_is_blank(&foreign_key.referenced_column)
 }
 
+fn column_position_clause(columns: &[DesignerColumnDef], index: usize) -> String {
+    if index == 0 {
+        return " FIRST".to_string();
+    }
+    format!(" AFTER {}", quote_identifier(&columns[index - 1].name))
+}
+
+fn referenced_database_name<'a>(
+    foreign_key: &'a DesignerForeignKeyDef,
+    database: &'a str,
+) -> &'a str {
+    if identifier_is_blank(&foreign_key.referenced_database) {
+        return database;
+    }
+    &foreign_key.referenced_database
+}
+
 fn format_referenced_table_name(foreign_key: &DesignerForeignKeyDef, database: &str) -> String {
-    let referenced_database = if identifier_is_blank(&foreign_key.referenced_database) {
-        database
-    } else {
-        &foreign_key.referenced_database
-    };
+    let referenced_database = referenced_database_name(foreign_key, database);
 
     format!(
         "{}.{}",
@@ -480,28 +485,31 @@ fn default_clause(default_value: &DefaultValueModel) -> Option<String> {
     }
 }
 
-fn format_column_definition(column: &DesignerColumnDef, identifier_name: &str) -> String {
-    let base_type_clause = if column.length.is_empty() {
-        column.r#type.clone()
-    } else {
-        format!("{}({})", column.r#type, column.length)
-    };
-    let type_clause = if column.type_modifier.is_empty() {
-        base_type_clause
-    } else {
-        format!("{} {}", base_type_clause, column.type_modifier)
-    };
+fn column_type_clause(column: &DesignerColumnDef) -> String {
+    let mut type_clause = column.r#type.clone();
+    if !column.length.is_empty() {
+        type_clause = format!("{type_clause}({})", column.length);
+    }
+    if !column.type_modifier.is_empty() {
+        type_clause = format!("{type_clause} {}", column.type_modifier);
+    }
+    type_clause
+}
 
+fn nullability_clause(nullable: bool) -> &'static str {
+    if nullable {
+        return "NULL";
+    }
+    "NOT NULL"
+}
+
+fn format_column_definition(column: &DesignerColumnDef, identifier_name: &str) -> String {
     let mut parts = vec![format!(
         "{} {}",
         quote_identifier(identifier_name),
-        type_clause
+        column_type_clause(column)
     )];
-    parts.push(if column.nullable {
-        "NULL".to_string()
-    } else {
-        "NOT NULL".to_string()
-    });
+    parts.push(nullability_clause(column.nullable).to_string());
 
     if let Some(default_clause) = default_clause(&column.default_value) {
         parts.push(default_clause);
@@ -730,25 +738,24 @@ fn diff_add_foreign_keys(
         .foreign_keys
         .iter()
         .filter(|foreign_key| is_generatable_foreign_key(foreign_key))
-        .filter_map(|foreign_key| {
-            let should_add = match original_foreign_keys.get(foreign_key.name.as_str()) {
-                Some(original_foreign_key) => !foreign_keys_equal(original_foreign_key, foreign_key),
+        .filter(
+            |foreign_key| match original_foreign_keys.get(foreign_key.name.as_str()) {
+                Some(original_foreign_key) => {
+                    !foreign_keys_equal(original_foreign_key, foreign_key)
+                }
                 None => true,
-            };
-
-            if should_add {
-                Some(format!(
-                    "ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
-                    quote_identifier(&foreign_key.name),
-                    quote_identifier(&foreign_key.source_column),
-                    format_referenced_table_name(foreign_key, database),
-                    quote_identifier(&foreign_key.referenced_column),
-                    foreign_key.on_delete,
-                    foreign_key.on_update
-                ))
-            } else {
-                None
-            }
+            },
+        )
+        .map(|foreign_key| {
+            format!(
+                "ADD CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {} ({}) ON DELETE {} ON UPDATE {}",
+                quote_identifier(&foreign_key.name),
+                quote_identifier(&foreign_key.source_column),
+                format_referenced_table_name(foreign_key, database),
+                quote_identifier(&foreign_key.referenced_column),
+                foreign_key.on_delete,
+                foreign_key.on_update
+            )
         })
         .collect()
 }

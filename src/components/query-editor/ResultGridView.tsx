@@ -19,7 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
-import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
+import { QueryResultBlobDialog, type QueryResultBlobContext } from './QueryResultBlobDialog'
 import { isBinaryDataType } from '../../lib/blob-utils'
 import type { BlobEnvelope } from '../../types/schema'
 import {
@@ -118,10 +118,7 @@ interface ResultGridViewProps {
   isActive?: boolean
 }
 
-const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
-const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: import('../../types/schema').ForeignKeyColumnInfo[] = []
-const EMPTY_BINDINGS = new Map<number, string>()
 const EMPTY_ROWS: ResultRow[] = []
 
 /** True when `row` is the editing row: by base index, or by position for the clone draft. */
@@ -137,6 +134,64 @@ function isEditingRowData(
 }
 const READ_ONLY_SELECTION_SYNC_DELAY_MS = 75
 
+type ResolvedResultColumn = ReturnType<typeof resolveQueryResultColumns>[number]
+
+function resolveEditorType(
+  meta: TableDataColumnMeta | undefined
+): GridColumnDescriptor['editorType'] {
+  if (!meta) return 'none'
+  if (meta.enumValues?.length) return 'enum'
+  if (isJsonSqlType(meta.dataType)) return 'json'
+  if (meta.setValues?.length) return 'set'
+  return 'text'
+}
+
+function resultColumnKeyFlags(meta: TableDataColumnMeta | undefined) {
+  return {
+    isNullable: meta?.isNullable ?? true,
+    isPrimaryKey: meta?.isPrimaryKey ?? false,
+    isUniqueKey: meta?.isUniqueKey ?? false,
+  }
+}
+
+interface ResultColumnContext {
+  isEditing: boolean
+  editColumnBindings: Map<number, string>
+}
+
+function toResultGridColumn(
+  column: ResolvedResultColumn,
+  columnIndex: number,
+  context: ResultColumnContext
+): GridColumnDescriptor {
+  const meta = column.tableColumnMeta
+  const isBlob = column.effectiveTableMeta.isBinary
+  const isBoundForEdit = context.isEditing && context.editColumnBindings.has(columnIndex)
+  return {
+    key: column.key,
+    displayName: column.displayName,
+    dataType: column.dataType,
+    editable: column.editable,
+    isBinary: isBinaryDataType(column.dataType),
+    blobViewer: isBlob,
+    blobViewerEditable: isBlob && isBoundForEdit,
+    ...resultColumnKeyFlags(meta),
+    enumValues: meta?.enumValues,
+    setValues: meta?.setValues,
+    tableColumnMeta: column.editable ? meta : undefined,
+    foreignKey: column.foreignKey,
+    editorType: resolveEditorType(meta),
+  }
+}
+
+const READ_ONLY_SELECTED_ROW_CLASS = 'grid-row-precision-selected'
+
+interface GridBlobContext extends QueryResultBlobContext {
+  rowIndex: number
+  row: CachedRow
+  columnIndex: number
+}
+
 export function ResultGridView({
   columns,
   resultIndex,
@@ -150,14 +205,14 @@ export function ResultGridView({
   onRowSelected,
   selectedRowIndex,
   tabId,
-  editMode = null,
-  editableColumnMap = EMPTY_EDITABLE_MAP,
-  editState = null,
-  editingRowIndex = null,
-  editingBaseIndex = null,
-  editTableColumns = EMPTY_TABLE_COLUMNS,
+  editMode,
+  editableColumnMap,
+  editState,
+  editingRowIndex,
+  editingBaseIndex,
+  editTableColumns,
   editForeignKeys = EMPTY_FOREIGN_KEYS,
-  editColumnBindings = EMPTY_BINDINGS,
+  editColumnBindings,
   onStartEditing,
   onUpdateCellValue,
   onSyncCellValue,
@@ -241,18 +296,9 @@ export function ResultGridView({
   // double-clicking a binary cell opens the shared dialog seeded with those
   // bytes. No PK exists for query results, so no staging or lazy fetch happens.
   // ---------------------------------------------------------------------------
-  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
-  const [blobContext, setBlobContext] = useState<{
-    rowIndex: number
-    row: CachedRow
-    columnIndex: number
-    columnLabel: string
-    base64: string | null
-    editable: boolean
-  } | null>(null)
+  const [blobContext, setBlobContext] = useState<GridBlobContext | null>(null)
 
   const closeBlobDialog = useCallback(() => {
-    setBlobDialogOpen(false)
     setBlobContext(null)
   }, [])
 
@@ -516,34 +562,10 @@ export function ResultGridView({
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
   // ---------------------------------------------------------------------------
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return resolvedColumns.map((column, columnIndex) => ({
-      key: column.key,
-      displayName: column.displayName,
-      dataType: column.dataType,
-      editable: column.editable,
-      isBinary: isBinaryDataType(column.dataType),
-      blobViewer: column.effectiveTableMeta.isBinary,
-      blobViewerEditable:
-        column.effectiveTableMeta.isBinary &&
-        editMode !== null &&
-        editColumnBindings.has(columnIndex),
-      isNullable: column.tableColumnMeta?.isNullable ?? true,
-      isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
-      isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
-      enumValues: column.tableColumnMeta?.enumValues,
-      setValues: column.tableColumnMeta?.setValues,
-      tableColumnMeta: column.editable ? column.tableColumnMeta : undefined,
-      foreignKey: column.foreignKey,
-      editorType: column.tableColumnMeta?.enumValues?.length
-        ? 'enum'
-        : column.tableColumnMeta && isJsonSqlType(column.tableColumnMeta.dataType)
-          ? 'json'
-          : column.tableColumnMeta?.setValues?.length
-            ? 'set'
-            : column.tableColumnMeta
-              ? 'text'
-              : 'none',
-    }))
+    const context = { isEditing: editMode !== null, editColumnBindings: editColumnBindings }
+    return resolvedColumns.map((column, columnIndex) =>
+      toResultGridColumn(column, columnIndex, context)
+    )
   }, [editColumnBindings, editMode, resolvedColumns])
 
   const handleCellDoubleClick = useCallback(
@@ -562,7 +584,6 @@ export function ResultGridView({
         base64: typeof cellValue === 'string' ? cellValue : null,
         editable: descriptor.blobViewerEditable === true,
       })
-      setBlobDialogOpen(true)
     },
     [columns, gridColumns]
   )
@@ -879,6 +900,8 @@ export function ResultGridView({
     [selectedRowIndex, editingRowIndex, editingBaseIndex]
   )
 
+  const isEditMode = Boolean(editMode)
+
   return (
     <EditorCallbacksContext.Provider value={editorCallbacksContext}>
       <CanvasBaseGridView
@@ -890,14 +913,16 @@ export function ResultGridView({
         sortColumn={sortColumnKey}
         sortDirection={sortDirectionUpper}
         onSortChange={handleSortChange}
-        onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
-        onCellSelectionChange={!editMode ? handleCellSelectionChange : undefined}
-        runCellClickGuardOnKeyboardSelection={!!editMode}
+        onCellClickGuard={isEditMode ? cellClickGuard : readOnlyCellClickGuard}
+        onCellSelectionChange={isEditMode ? undefined : handleCellSelectionChange}
+        runCellClickGuardOnKeyboardSelection={isEditMode}
+        isEditMode={isEditMode}
+        selectedRowClassName={isEditMode ? undefined : READ_ONLY_SELECTED_ROW_CLASS}
+        showReadOnlyHeaders={isEditMode}
         onCellClipboardEdit={handleCellClipboardEdit}
         onCellDoubleClick={handleCellDoubleClick}
         selectedCellPosition={selectedCellPosition}
         onSelectedCellChange={handleSelectedCellChange}
-        isEditMode={!!editMode}
         editableColumnKeys={editableColumnKeys}
         onCellValueChange={(rowIndex, columnKey, newValue) => {
           void rowIndex
@@ -910,10 +935,8 @@ export function ResultGridView({
         rowKeyGetter={rowKeyGetter}
         getRowClass={getRowClass}
         selectedRowIndex={selectedRowIndex}
-        selectedRowClassName={!editMode ? 'grid-row-precision-selected' : undefined}
         isModifiedCell={isModifiedCell}
         autoSizeConfig={autoSizeConfig}
-        showReadOnlyHeaders={!!editMode}
         isActive={isActive}
         onScrollCellChange={handleScrollCellChange}
         initialScrollCell={initialScrollCell}
@@ -922,16 +945,11 @@ export function ResultGridView({
         resetSelectionKey={resetSelectionKey}
         testId="result-grid"
       />
-      {blobDialogOpen && blobContext && (
-        <BlobViewerDialog
-          isOpen={blobDialogOpen}
-          onClose={closeBlobDialog}
-          mode={blobContext.editable ? 'edit' : 'view'}
-          columnLabel={blobContext.columnLabel}
-          initialBase64={blobContext.base64}
-          onApply={blobContext.editable ? handleBlobApply : undefined}
-        />
-      )}
+      <QueryResultBlobDialog
+        blobContext={blobContext}
+        onClose={closeBlobDialog}
+        onApply={handleBlobApply}
+      />
     </EditorCallbacksContext.Provider>
   )
 }

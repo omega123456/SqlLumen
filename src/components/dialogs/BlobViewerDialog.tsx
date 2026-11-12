@@ -13,7 +13,7 @@
  * path and to file loads; query-result inlined bytes keep Save-to-file enabled.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import {
   ArrowsOutIcon,
   ClipboardTextIcon,
@@ -104,6 +104,373 @@ function workingFromResponse(response: BlobValueResponse): WorkingValue {
   return { kind: 'bytes', bytes: base64ToBytes(response.base64) }
 }
 
+const EMPTY_WORKING_VALUE: WorkingValue = { kind: 'bytes', bytes: new Uint8Array(0) }
+
+function decodeInitialBase64(initialBase64: string | null | undefined): WorkingValue {
+  if (initialBase64 == null) return { kind: 'null' }
+  try {
+    return { kind: 'bytes', bytes: base64ToBytes(initialBase64) }
+  } catch (error) {
+    showErrorToast('Failed to decode BLOB value', toErrorMessage(error))
+    return EMPTY_WORKING_VALUE
+  }
+}
+
+function envelopeForWorkingValue(working: Exclude<WorkingValue, { kind: 'tooLarge' }>) {
+  if (working.kind === 'null') return nullEnvelope()
+  if (working.bytes.length === 0) return emptyEnvelope()
+  return bytesEnvelope(bytesToBase64(working.bytes))
+}
+
+function workingBytesOf(working: WorkingValue | null): Uint8Array | null {
+  return working?.kind === 'bytes' ? working.bytes : null
+}
+
+function panelClassName(isEdit: boolean): string {
+  return isEdit ? `${styles.panel} ${styles.panelDroppable}` : styles.panel
+}
+
+function workingByteCount(working: WorkingValue | null): number | null {
+  if (working?.kind === 'bytes') return working.bytes.length
+  if (working?.kind === 'tooLarge') return working.byteLength
+  return null
+}
+
+function hasByteMetadata(working: WorkingValue | null): boolean {
+  return working?.kind === 'bytes' || working?.kind === 'tooLarge'
+}
+
+function saveButtonTitle(canSave: boolean, tooLarge: boolean): string {
+  if (!canSave && tooLarge) return 'Too large to load — exceeds 10 MB'
+  return 'Save bytes to a file'
+}
+
+function nextTabIndex(key: string, index: number): number | null {
+  const deltaByKey: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1 }
+  const delta = deltaByKey[key]
+  if (delta === undefined) return null
+  return (index + delta + TABS.length) % TABS.length
+}
+
+interface BytesPanelProps {
+  objectUrl: string | null
+  columnLabel: string
+  textContent: string
+  hexRows: ReturnType<typeof formatHexDump>
+}
+
+function ImagePanel({ objectUrl, columnLabel }: BytesPanelProps) {
+  if (!objectUrl) {
+    return (
+      <div className={styles.notImageState} data-testid="blob-not-image">
+        <ImageIcon size={40} weight="thin" />
+        <span className={styles.stateTitle}>Not a valid image</span>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.imagePanel} data-testid="blob-image">
+      <img className={styles.image} src={objectUrl} alt={`${columnLabel} contents`} />
+    </div>
+  )
+}
+
+function TextPanel({ textContent }: BytesPanelProps) {
+  return (
+    <pre className={styles.textPanel} data-testid="blob-text">
+      {textContent}
+    </pre>
+  )
+}
+
+function HexPanel({ hexRows }: BytesPanelProps) {
+  return (
+    <div className={styles.hexPanel} data-testid="blob-hex">
+      {hexRows.map((row) => (
+        <div className={styles.hexRow} key={row.offset}>
+          <span className={styles.hexOffset}>{row.offset}</span>
+          <span className={styles.hexBytes}>
+            <span className={styles.hexGroup}>
+              {row.hexBytes.slice(0, HEX_DUMP_GROUP_SIZE).join(' ')}
+            </span>
+            <span className={styles.hexGroup}>
+              {row.hexBytes.slice(HEX_DUMP_GROUP_SIZE).join(' ')}
+            </span>
+          </span>
+          <span className={styles.hexAscii}>{row.ascii}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const BYTES_PANELS: Record<BlobTab, (props: BytesPanelProps) => ReactElement> = {
+  image: ImagePanel,
+  text: TextPanel,
+  hex: HexPanel,
+}
+
+interface BlobPanelBodyProps extends BytesPanelProps {
+  loading: boolean
+  working: WorkingValue | null
+  activeTab: BlobTab
+}
+
+function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: BlobPanelBodyProps) {
+  if (loading || !working) {
+    return (
+      <div className={styles.skeleton} data-testid="blob-loading" aria-label="Loading">
+        <div className={styles.skeletonBar} />
+        <div className={styles.skeletonBar} />
+        <div className={styles.skeletonBar} />
+      </div>
+    )
+  }
+  if (working.kind === 'tooLarge') {
+    return (
+      <div className={styles.warningState} data-testid="blob-too-large-content">
+        <WarningCircleIcon size={40} weight="thin" />
+        <span className={styles.stateTitle}>Preview limit reached</span>
+        <span className={styles.stateSub}>
+          Exceeds the 10 MB preview limit. Save to file to access the full content.
+        </span>
+      </div>
+    )
+  }
+  if (working.kind === 'null') {
+    return (
+      <div className={styles.nullState} data-testid="blob-null-state">
+        <ProhibitIcon size={40} weight="thin" />
+        <span className={styles.stateTitle}>NULL value</span>
+        <span className={styles.stateSub}>This cell contains no data.</span>
+      </div>
+    )
+  }
+  if (working.bytes.length === 0) {
+    return (
+      <div className={styles.emptyState} data-testid="blob-empty-state">
+        <EraserIcon size={40} weight="thin" />
+        <span className={styles.stateTitle}>Empty — {formatBytes(0)}</span>
+      </div>
+    )
+  }
+  const BytesPanel = BYTES_PANELS[activeTab]
+  return <BytesPanel {...bytesPanel} />
+}
+
+interface SaveToFileButtonProps {
+  canSave: boolean
+  tooLarge: boolean
+  onSave: () => void
+}
+
+function SaveToFileButton({ canSave, tooLarge, onSave }: SaveToFileButtonProps) {
+  return (
+    <Button
+      variant="subtle"
+      size="sm"
+      onClick={onSave}
+      disabled={!canSave}
+      title={saveButtonTitle(canSave, tooLarge)}
+      aria-label="Save to file"
+      data-testid="blob-save-file"
+    >
+      <DownloadSimpleIcon size={16} />
+      Save to file
+    </Button>
+  )
+}
+
+interface BlobChipRowProps {
+  typeLabel: string | null
+  byteCount: number | null
+  tooLarge: boolean
+  dimensions: ReturnType<typeof readImageDimensions>
+}
+
+function BlobChipRow({ typeLabel, byteCount, tooLarge, dimensions }: BlobChipRowProps) {
+  return (
+    <div className={styles.chipRow} data-testid="blob-chip-row">
+      {typeLabel && (
+        <span className={styles.chip} data-testid="blob-chip-type">
+          <FileIcon size={12} />
+          {typeLabel}
+        </span>
+      )}
+      {byteCount != null && (
+        <span
+          className={tooLarge ? `${styles.chip} ${styles.chipWarning}` : styles.chip}
+          role={tooLarge ? 'alert' : undefined}
+          data-testid="blob-chip-size"
+        >
+          {tooLarge && <WarningCircleIcon size={12} weight="fill" />}
+          {formatBytes(byteCount)}
+        </span>
+      )}
+      {dimensions && (
+        <span className={styles.chip} data-testid="blob-chip-dimensions">
+          <ArrowsOutIcon size={12} />
+          {dimensions.width} × {dimensions.height}
+        </span>
+      )}
+    </div>
+  )
+}
+
+interface BlobEditToolbarProps {
+  saveButton: SaveToFileButtonProps
+  pasteOpen: boolean
+  onTogglePaste: () => void
+  onClosePaste: () => void
+  onApplyBytes: (bytes: Uint8Array) => void
+  onLoadFromFile: () => void
+  onSetNull: () => void
+  onClear: () => void
+}
+
+function BlobEditToolbar(props: BlobEditToolbarProps) {
+  const pasteAnchorRef = useRef<HTMLButtonElement>(null)
+  return (
+    <div className={styles.toolbar} data-testid="blob-action-bar">
+      <div className={styles.toolbarGroup}>
+        <Button
+          variant="subtle"
+          size="sm"
+          onClick={props.onLoadFromFile}
+          title="Load bytes from a file"
+          aria-label="Load file"
+          data-testid="blob-load-file"
+        >
+          <UploadSimpleIcon size={16} />
+          Load file
+        </Button>
+        <div className={styles.pasteAnchor}>
+          <Button
+            ref={pasteAnchorRef}
+            variant="subtle"
+            size="sm"
+            onClick={props.onTogglePaste}
+            title="Paste base64 or hex"
+            aria-label="Paste"
+            data-testid="blob-paste-toggle"
+          >
+            <ClipboardTextIcon size={16} />
+            Paste
+          </Button>
+          <BlobPastePopover
+            isOpen={props.pasteOpen}
+            onClose={props.onClosePaste}
+            onApply={props.onApplyBytes}
+            onError={(message) => showErrorToast('Could not parse pasted data', message)}
+            anchorRef={pasteAnchorRef}
+          />
+        </div>
+        <SaveToFileButton {...props.saveButton} />
+      </div>
+      <div className={styles.toolbarDivider} aria-hidden="true" />
+      <div className={styles.toolbarGroup}>
+        <Button
+          variant="subtle"
+          size="sm"
+          dangerText
+          onClick={props.onSetNull}
+          title="Stage a SQL NULL value"
+          aria-label="Set NULL"
+          data-testid="blob-set-null"
+        >
+          <ProhibitIcon size={16} />
+          Set NULL
+        </Button>
+        <Button
+          variant="subtle"
+          size="sm"
+          dangerText
+          onClick={props.onClear}
+          title="Clear to zero bytes"
+          aria-label="Clear"
+          data-testid="blob-clear"
+        >
+          <EraserIcon size={16} />
+          Clear
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface BlobTabListProps {
+  activeTab: BlobTab
+  firstTabRef: React.RefObject<HTMLButtonElement | null>
+  onSelectTab: (tab: BlobTab) => void
+}
+
+function BlobTabList({ activeTab, firstTabRef, onSelectTab }: BlobTabListProps) {
+  const handleTabKeyDown = (event: React.KeyboardEvent, index: number) => {
+    const nextIndex = nextTabIndex(event.key, index)
+    if (nextIndex === null) return
+    event.preventDefault()
+    onSelectTab(TABS[nextIndex].id)
+  }
+  return (
+    <UnderlineTabBar data-testid="blob-tabs">
+      <div role="tablist" aria-label="BLOB views" className={styles.tablist}>
+        {TABS.map((tab, index) => {
+          const selected = activeTab === tab.id
+          const tabClass = selected ? `${styles.tab} ${styles.tabActive}` : styles.tab
+          return (
+            <Button
+              variant="bare"
+              key={tab.id}
+              ref={index === 0 ? firstTabRef : undefined}
+              className={tabClass}
+              onClick={() => onSelectTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`blob-panel-${tab.id}`}
+              id={`blob-tab-${tab.id}`}
+              tabIndex={selected ? 0 : -1}
+              data-testid={`blob-tab-${tab.id}`}
+            >
+              {tab.label}
+            </Button>
+          )
+        })}
+      </div>
+    </UnderlineTabBar>
+  )
+}
+
+function BlobDialogFooter({
+  isEdit,
+  onApply,
+  onClose,
+}: {
+  isEdit: boolean
+  onApply: () => void
+  onClose: () => void
+}) {
+  if (!isEdit) {
+    return (
+      <div className={styles.footer}>
+        <Button variant="accent" onClick={onClose} data-testid="blob-close-footer">
+          Close
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.footer}>
+      <Button variant="accent" onClick={onApply} data-testid="blob-apply">
+        Apply
+      </Button>
+      <Button onClick={onClose} data-testid="blob-cancel">
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
 export function BlobViewerDialog({
   isOpen,
   onClose,
@@ -120,7 +487,6 @@ export function BlobViewerDialog({
   const [dragOver, setDragOver] = useState(false)
 
   const firstTabRef = useRef<HTMLButtonElement>(null)
-  const pasteAnchorRef = useRef<HTMLButtonElement>(null)
   const dragDepth = useRef(0)
 
   // -- Initialise working value on open ------------------------------------
@@ -132,34 +498,25 @@ export function BlobViewerDialog({
     setDragOver(false)
     dragDepth.current = 0
 
-    if (loader) {
-      setLoading(true)
-      setWorking(null)
-      loader()
-        .then((response) => {
-          if (cancelled) return
-          setWorking(workingFromResponse(response))
-        })
-        .catch((error) => {
-          if (cancelled) return
-          const message = toErrorMessage(error)
-          showErrorToast('Failed to load BLOB value', message)
-          setWorking({ kind: 'bytes', bytes: new Uint8Array(0) })
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    } else if (initialBase64 == null) {
-      setWorking({ kind: 'null' })
-    } else {
-      try {
-        setWorking({ kind: 'bytes', bytes: base64ToBytes(initialBase64) })
-      } catch (error) {
-        const message = toErrorMessage(error)
-        showErrorToast('Failed to decode BLOB value', message)
-        setWorking({ kind: 'bytes', bytes: new Uint8Array(0) })
-      }
+    if (!loader) {
+      setWorking(decodeInitialBase64(initialBase64))
+      return
     }
+    setLoading(true)
+    setWorking(null)
+    loader()
+      .then((response) => {
+        if (cancelled) return
+        setWorking(workingFromResponse(response))
+      })
+      .catch((error) => {
+        if (cancelled) return
+        showErrorToast('Failed to load BLOB value', toErrorMessage(error))
+        setWorking(EMPTY_WORKING_VALUE)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -175,7 +532,7 @@ export function BlobViewerDialog({
   }, [isOpen])
 
   // -- Object URL lifecycle for the Image tab ------------------------------
-  const workingBytes = working?.kind === 'bytes' ? working.bytes : null
+  const workingBytes = workingBytesOf(working)
   const imageMime = useMemo(
     () => (workingBytes && workingBytes.length > 0 ? sniffImageMime(workingBytes) : null),
     [workingBytes]
@@ -251,19 +608,9 @@ export function BlobViewerDialog({
   // -- Apply / save ---------------------------------------------------------
   const handleApply = useCallback(() => {
     if (!onApply || !working) return
-    let envelope: BlobEnvelope
-    if (working.kind === 'null') {
-      envelope = nullEnvelope()
-    } else if (working.kind === 'tooLarge') {
-      // No bytes held — nothing to apply; just close.
-      onClose()
-      return
-    } else if (working.bytes.length === 0) {
-      envelope = emptyEnvelope()
-    } else {
-      envelope = bytesEnvelope(bytesToBase64(working.bytes))
+    if (working.kind !== 'tooLarge') {
+      onApply(envelopeForWorkingValue(working))
     }
-    onApply(envelope)
     onClose()
   }, [onApply, working, onClose])
 
@@ -350,108 +697,13 @@ export function BlobViewerDialog({
     onClose()
   }, [dragOver, onClose])
 
-  // Tab roll-over with arrow keys.
-  const handleTabKeyDown = useCallback((event: React.KeyboardEvent, index: number) => {
-    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      event.preventDefault()
-      const delta = event.key === 'ArrowRight' ? 1 : -1
-      const next = (index + delta + TABS.length) % TABS.length
-      setActiveTab(TABS[next].id)
-    }
-  }, [])
-
   if (!isOpen) return null
 
-  // Raw byte count surfaced in the size chip (NULL/loading omit the chip row).
-  const byteCount =
-    working?.kind === 'bytes'
-      ? working.bytes.length
-      : working?.kind === 'tooLarge'
-        ? working.byteLength
-        : null
-
-  const showChips = !loading && (working?.kind === 'bytes' || working?.kind === 'tooLarge')
-
-  function renderPanelBody() {
-    if (loading || !working) {
-      return (
-        <div className={styles.skeleton} data-testid="blob-loading" aria-label="Loading">
-          <div className={styles.skeletonBar} />
-          <div className={styles.skeletonBar} />
-          <div className={styles.skeletonBar} />
-        </div>
-      )
-    }
-    if (working.kind === 'tooLarge') {
-      return (
-        <div className={styles.warningState} data-testid="blob-too-large-content">
-          <WarningCircleIcon size={40} weight="thin" />
-          <span className={styles.stateTitle}>Preview limit reached</span>
-          <span className={styles.stateSub}>
-            Exceeds the 10 MB preview limit. Save to file to access the full content.
-          </span>
-        </div>
-      )
-    }
-    if (working.kind === 'null') {
-      return (
-        <div className={styles.nullState} data-testid="blob-null-state">
-          <ProhibitIcon size={40} weight="thin" />
-          <span className={styles.stateTitle}>NULL value</span>
-          <span className={styles.stateSub}>This cell contains no data.</span>
-        </div>
-      )
-    }
-    if (working.bytes.length === 0) {
-      return (
-        <div className={styles.emptyState} data-testid="blob-empty-state">
-          <EraserIcon size={40} weight="thin" />
-          <span className={styles.stateTitle}>Empty — {formatBytes(0)}</span>
-        </div>
-      )
-    }
-    if (activeTab === 'image') {
-      return objectUrl ? (
-        <div className={styles.imagePanel} data-testid="blob-image">
-          <img className={styles.image} src={objectUrl} alt={`${columnLabel} contents`} />
-        </div>
-      ) : (
-        <div className={styles.notImageState} data-testid="blob-not-image">
-          <ImageIcon size={40} weight="thin" />
-          <span className={styles.stateTitle}>Not a valid image</span>
-        </div>
-      )
-    }
-    if (activeTab === 'text') {
-      return (
-        <pre className={styles.textPanel} data-testid="blob-text">
-          {textContent}
-        </pre>
-      )
-    }
-    // hex
-    return (
-      <div className={styles.hexPanel} data-testid="blob-hex">
-        {hexRows.map((row) => (
-          <div className={styles.hexRow} key={row.offset}>
-            <span className={styles.hexOffset}>{row.offset}</span>
-            <span className={styles.hexBytes}>
-              <span className={styles.hexGroup}>
-                {row.hexBytes.slice(0, HEX_DUMP_GROUP_SIZE).join(' ')}
-              </span>
-              <span className={styles.hexGroup}>
-                {row.hexBytes.slice(HEX_DUMP_GROUP_SIZE).join(' ')}
-              </span>
-            </span>
-            <span className={styles.hexAscii}>{row.ascii}</span>
-          </div>
-        ))}
-      </div>
-    )
+  const saveButton: SaveToFileButtonProps = {
+    canSave: canSave,
+    tooLarge: tooLarge,
+    onSave: handleSaveToFile,
   }
-
-  const saveTitle =
-    !canSave && tooLarge ? 'Too large to load — exceeds 10 MB' : 'Save bytes to a file'
 
   return (
     <DialogShell
@@ -478,20 +730,7 @@ export function BlobViewerDialog({
             BLOB · <code className={styles.columnName}>{columnLabel}</code>
           </h2>
           <div className={styles.headerActions}>
-            {!isEdit && (
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={handleSaveToFile}
-                disabled={!canSave}
-                title={saveTitle}
-                aria-label="Save to file"
-                data-testid="blob-save-file"
-              >
-                <DownloadSimpleIcon size={16} />
-                Save to file
-              </Button>
-            )}
+            {!isEdit && <SaveToFileButton {...saveButton} />}
             <IconButton
               aria-label="Close"
               title="Close"
@@ -503,169 +742,50 @@ export function BlobViewerDialog({
           </div>
         </div>
 
-        {/* Metadata chip row */}
-        {showChips && (
-          <div className={styles.chipRow} data-testid="blob-chip-row">
-            {typeLabel && (
-              <span className={styles.chip} data-testid="blob-chip-type">
-                <FileIcon size={12} />
-                {typeLabel}
-              </span>
-            )}
-            {byteCount != null && (
-              <span
-                className={tooLarge ? `${styles.chip} ${styles.chipWarning}` : styles.chip}
-                role={tooLarge ? 'alert' : undefined}
-                data-testid="blob-chip-size"
-              >
-                {tooLarge && <WarningCircleIcon size={12} weight="fill" />}
-                {formatBytes(byteCount)}
-              </span>
-            )}
-            {dimensions && (
-              <span className={styles.chip} data-testid="blob-chip-dimensions">
-                <ArrowsOutIcon size={12} />
-                {dimensions.width} × {dimensions.height}
-              </span>
-            )}
-          </div>
+        {!loading && hasByteMetadata(working) && (
+          <BlobChipRow
+            typeLabel={typeLabel}
+            byteCount={workingByteCount(working)}
+            tooLarge={tooLarge}
+            dimensions={dimensions}
+          />
         )}
 
-        {/* Action toolbar (edit mode only) */}
         {isEdit && (
-          <div className={styles.toolbar} data-testid="blob-action-bar">
-            <div className={styles.toolbarGroup}>
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={handleLoadFromFile}
-                title="Load bytes from a file"
-                aria-label="Load file"
-                data-testid="blob-load-file"
-              >
-                <UploadSimpleIcon size={16} />
-                Load file
-              </Button>
-              <div className={styles.pasteAnchor}>
-                <Button
-                  ref={pasteAnchorRef}
-                  variant="subtle"
-                  size="sm"
-                  onClick={() => setPasteOpen((isOpen) => !isOpen)}
-                  title="Paste base64 or hex"
-                  aria-label="Paste"
-                  data-testid="blob-paste-toggle"
-                >
-                  <ClipboardTextIcon size={16} />
-                  Paste
-                </Button>
-                <BlobPastePopover
-                  isOpen={pasteOpen}
-                  onClose={() => setPasteOpen(false)}
-                  onApply={applyBytes}
-                  onError={(message) => showErrorToast('Could not parse pasted data', message)}
-                  anchorRef={pasteAnchorRef}
-                />
-              </div>
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={handleSaveToFile}
-                disabled={!canSave}
-                title={saveTitle}
-                aria-label="Save to file"
-                data-testid="blob-save-file"
-              >
-                <DownloadSimpleIcon size={16} />
-                Save to file
-              </Button>
-            </div>
-            <div className={styles.toolbarDivider} aria-hidden="true" />
-            <div className={styles.toolbarGroup}>
-              <Button
-                variant="subtle"
-                size="sm"
-                dangerText
-                onClick={handleSetNull}
-                title="Stage a SQL NULL value"
-                aria-label="Set NULL"
-                data-testid="blob-set-null"
-              >
-                <ProhibitIcon size={16} />
-                Set NULL
-              </Button>
-              <Button
-                variant="subtle"
-                size="sm"
-                dangerText
-                onClick={handleClear}
-                title="Clear to zero bytes"
-                aria-label="Clear"
-                data-testid="blob-clear"
-              >
-                <EraserIcon size={16} />
-                Clear
-              </Button>
-            </div>
-          </div>
+          <BlobEditToolbar
+            saveButton={saveButton}
+            pasteOpen={pasteOpen}
+            onTogglePaste={() => setPasteOpen((isPasteOpen) => !isPasteOpen)}
+            onClosePaste={() => setPasteOpen(false)}
+            onApplyBytes={applyBytes}
+            onLoadFromFile={handleLoadFromFile}
+            onSetNull={handleSetNull}
+            onClear={handleClear}
+          />
         )}
 
-        {/* Tabs */}
-        <UnderlineTabBar data-testid="blob-tabs">
-          <div role="tablist" aria-label="BLOB views" className={styles.tablist}>
-            {TABS.map((tab, index) => {
-              const selected = activeTab === tab.id
-              const tabClass = selected ? `${styles.tab} ${styles.tabActive}` : styles.tab
-              return (
-                <Button
-                  variant="bare"
-                  key={tab.id}
-                  ref={index === 0 ? firstTabRef : undefined}
-                  className={tabClass}
-                  onClick={() => setActiveTab(tab.id)}
-                  onKeyDown={(event) => handleTabKeyDown(event, index)}
-                  role="tab"
-                  aria-selected={selected}
-                  aria-controls={`blob-panel-${tab.id}`}
-                  id={`blob-tab-${tab.id}`}
-                  tabIndex={selected ? 0 : -1}
-                  data-testid={`blob-tab-${tab.id}`}
-                >
-                  {tab.label}
-                </Button>
-              )
-            })}
-          </div>
-        </UnderlineTabBar>
+        <BlobTabList activeTab={activeTab} firstTabRef={firstTabRef} onSelectTab={setActiveTab} />
 
         {/* Panel */}
         <div
-          className={isEdit ? `${styles.panel} ${styles.panelDroppable}` : styles.panel}
+          className={panelClassName(isEdit)}
           role="tabpanel"
           id={`blob-panel-${activeTab}`}
           aria-labelledby={`blob-tab-${activeTab}`}
           data-testid="blob-panel"
         >
-          {renderPanelBody()}
+          <BlobPanelBody
+            loading={loading}
+            working={working}
+            activeTab={activeTab}
+            objectUrl={objectUrl}
+            columnLabel={columnLabel}
+            textContent={textContent}
+            hexRows={hexRows}
+          />
         </div>
 
-        {/* Footer */}
-        <div className={styles.footer}>
-          {isEdit ? (
-            <>
-              <Button variant="accent" onClick={handleApply} data-testid="blob-apply">
-                Apply
-              </Button>
-              <Button onClick={onClose} data-testid="blob-cancel">
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button variant="accent" onClick={onClose} data-testid="blob-close-footer">
-              Close
-            </Button>
-          )}
-        </div>
+        <BlobDialogFooter isEdit={isEdit} onApply={handleApply} onClose={onClose} />
 
         {/* Drag overlay */}
         {isEdit && dragOver && (

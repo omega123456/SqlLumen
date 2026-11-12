@@ -69,19 +69,90 @@ function groupsSignature(groups: WorkspaceTabStackGroup[]): string {
   return groups.map((group) => group.key).join(',')
 }
 
+type RailNavigationTarget = (keys: RailKey[], index: number) => RailKey | undefined
+
+const RAIL_NAVIGATION_TARGETS: Record<string, RailNavigationTarget> = {
+  ArrowDown: (keys, index) => keys[(index + 1) % keys.length],
+  ArrowUp: (keys, index) => keys[(index - 1 + keys.length) % keys.length],
+  Home: (keys) => keys[0],
+  End: (keys) => keys[keys.length - 1],
+}
+
+function enteringPhase(prior: RailEntry | undefined): RailItemPhase {
+  if (!prior || prior.phase === 'leaving') return 'entering'
+  return prior.phase
+}
+
+function mergedEntry(
+  key: WorkspaceTabStackKey,
+  group: WorkspaceTabStackGroup | undefined,
+  prior: RailEntry | undefined
+): RailEntry | null {
+  if (group) return { key: key, phase: enteringPhase(prior), tabs: group.tabs }
+  if (prior) return { key: key, phase: 'leaving', tabs: prior.tabs }
+  return null
+}
+
+function pinnedKey(tab: WorkspaceTab): RailKey {
+  return `pinned:${tab.type}`
+}
+
+interface SelectedRailKeyInputs {
+  activePinnedTab: WorkspaceTab | undefined
+  value: WorkspaceTabStackKey | null
+  liveKeys: WorkspaceTabStackKey[]
+}
+
+function resolveSelectedRailKey(inputs: SelectedRailKeyInputs): RailKey | null {
+  if (inputs.activePinnedTab) return pinnedKey(inputs.activePinnedTab)
+  if (inputs.value && inputs.liveKeys.includes(inputs.value)) return inputs.value
+  return null
+}
+
+function railClassName(className: string | undefined): string {
+  return className ? `${styles.rail} ${className}` : styles.rail
+}
+
+function railItemAccessibility(live: boolean, selected: boolean) {
+  if (!live) return { role: undefined, 'aria-selected': undefined, 'aria-hidden': true }
+  return { role: 'tab', 'aria-selected': selected, 'aria-hidden': undefined }
+}
+
+interface RailTooltipProps {
+  tooltip: { key: RailKey; top: number } | null
+  group: WorkspaceTabStackGroup | undefined
+  pinnedTab: WorkspaceTab | undefined
+}
+
+function RailTooltip({ tooltip, group, pinnedTab }: RailTooltipProps) {
+  if (!tooltip) return null
+  if (!group && !pinnedTab) return null
+  return (
+    <div
+      className={styles.tooltip}
+      role="tooltip"
+      style={{ top: tooltip.top }}
+      data-testid="workspace-group-rail-tooltip"
+    >
+      {group ? (
+        <>
+          {WORKSPACE_TAB_STACK_META[group.key].label}
+          <span className={styles.tooltipCount}>{formatTabCount(group.tabs.length)}</span>
+        </>
+      ) : (
+        pinnedTab?.label
+      )}
+    </div>
+  )
+}
+
 function mergeEntries(previous: RailEntry[], groups: WorkspaceTabStackGroup[]): RailEntry[] {
   const current = new Map(groups.map((group) => [group.key, group]))
   const before = new Map(previous.map((entry) => [entry.key, entry]))
   const next: RailEntry[] = []
   for (const key of WORKSPACE_TAB_STACK_ORDER) {
-    const group = current.get(key)
-    const prior = before.get(key)
-    if (group) {
-      const phase: RailItemPhase = !prior || prior.phase === 'leaving' ? 'entering' : prior.phase
-      next.push({ key: key, phase: phase, tabs: group.tabs })
-    } else if (prior) {
-      next.push({ key: key, phase: 'leaving', tabs: prior.tabs })
-    }
+    const entry = mergedEntry(key, current.get(key), before.get(key))
+    if (entry) next.push(entry)
   }
   return next
 }
@@ -126,15 +197,14 @@ export function WorkspaceGroupRail({
 
   const groupByKey = new Map(stackGroups.map((group) => [group.key, group]))
   const liveKeys = entries.filter((entry) => entry.phase !== 'leaving').map((entry) => entry.key)
-  const pinnedKey = (tab: WorkspaceTab): RailKey => `pinned:${tab.type}`
   const pinnedByKey = new Map(pinnedTabs.map((tab) => [pinnedKey(tab), tab]))
   const navigableKeys: RailKey[] = [...liveKeys, ...pinnedByKey.keys()]
   const activePinnedTab = pinnedTabs.find((tab) => tab.id === activePinnedTabId)
-  const selectedKey: RailKey | null = activePinnedTab
-    ? pinnedKey(activePinnedTab)
-    : value && liveKeys.includes(value)
-      ? value
-      : null
+  const selectedKey = resolveSelectedRailKey({
+    activePinnedTab: activePinnedTab,
+    value: value,
+    liveKeys: liveKeys,
+  })
 
   const itemRefs = useRef(new Map<RailKey, HTMLButtonElement>())
   const markerRef = useRef<HTMLDivElement | null>(null)
@@ -197,63 +267,48 @@ export function WorkspaceGroupRail({
     const pinnedTab = pinnedByKey.get(key)
     if (pinnedTab) {
       onSelectPinned?.(pinnedTab.id)
-    } else {
-      onSelect(key as WorkspaceTabStackKey)
+      return
     }
+    onSelect(key as WorkspaceTabStackKey)
+  }
+
+  const focusMembersFromKey = (event: KeyboardEvent<HTMLButtonElement>, key: RailKey) => {
+    if (pinnedByKey.has(key)) return
+    event.preventDefault()
+    hideTooltip()
+    onFocusMembers?.(key as WorkspaceTabStackKey)
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, key: RailKey) => {
-    const index = navigableKeys.indexOf(key)
-    let target: RailKey | undefined
-    switch (event.key) {
-      case 'ArrowDown':
-        target = navigableKeys[(index + 1) % navigableKeys.length]
-        break
-      case 'ArrowUp':
-        target = navigableKeys[(index - 1 + navigableKeys.length) % navigableKeys.length]
-        break
-      case 'Home':
-        target = navigableKeys[0]
-        break
-      case 'End':
-        target = navigableKeys[navigableKeys.length - 1]
-        break
-      case 'ArrowRight':
-        if (pinnedByKey.has(key)) {
-          return
-        }
-        event.preventDefault()
-        hideTooltip()
-        onFocusMembers?.(key as WorkspaceTabStackKey)
-        return
-      default:
-        return
+    if (event.key === 'ArrowRight') {
+      focusMembersFromKey(event, key)
+      return
     }
+    const resolveTarget = RAIL_NAVIGATION_TARGETS[event.key]
+    if (!resolveTarget) return
     event.preventDefault()
     hideTooltip()
-    if (target && target !== key) {
+    const target = resolveTarget(navigableKeys, navigableKeys.indexOf(key))
+    if (!target) return
+    if (target !== key) {
       selectKey(target)
     }
-    if (target) {
-      itemRefs.current.get(target)?.focus()
-    }
+    itemRefs.current.get(target)?.focus()
   }
 
   const setItemRef = (key: RailKey) => (node: HTMLButtonElement | null) => {
-    if (node) {
-      itemRefs.current.set(key, node)
-    } else {
+    if (!node) {
       itemRefs.current.delete(key)
+      return
     }
+    itemRefs.current.set(key, node)
   }
 
   const tabStopKey = selectedKey ?? navigableKeys[0] ?? null
-  const tooltipGroup = tooltip ? groupByKey.get(tooltip.key as WorkspaceTabStackKey) : undefined
-  const tooltipPinned = tooltip ? pinnedByKey.get(tooltip.key) : undefined
 
   return (
     <div
-      className={className ? `${styles.rail} ${className}` : styles.rail}
+      className={railClassName(className)}
       role="tablist"
       aria-orientation="vertical"
       aria-label="Tab groups"
@@ -279,11 +334,9 @@ export function WorkspaceGroupRail({
             variant="bare"
             key={entry.key}
             ref={setItemRef(entry.key)}
-            role={live ? 'tab' : undefined}
+            {...railItemAccessibility(live, selected)}
             className={styles.item}
-            aria-selected={live ? selected : undefined}
             aria-label={`${label}, ${formatTabCount(count)}`}
-            aria-hidden={live ? undefined : true}
             disabled={!live}
             tabIndex={entry.key === tabStopKey ? 0 : -1}
             data-phase={entry.phase === 'idle' ? undefined : entry.phase}
@@ -355,25 +408,11 @@ export function WorkspaceGroupRail({
           })}
         </div>
       ) : null}
-      {tooltip && (tooltipGroup || tooltipPinned) ? (
-        <div
-          className={styles.tooltip}
-          role="tooltip"
-          style={{ top: tooltip.top }}
-          data-testid="workspace-group-rail-tooltip"
-        >
-          {tooltipGroup ? (
-            <>
-              {WORKSPACE_TAB_STACK_META[tooltipGroup.key].label}
-              <span className={styles.tooltipCount}>
-                {formatTabCount(tooltipGroup.tabs.length)}
-              </span>
-            </>
-          ) : (
-            tooltipPinned?.label
-          )}
-        </div>
-      ) : null}
+      <RailTooltip
+        tooltip={tooltip}
+        group={tooltip ? groupByKey.get(tooltip.key as WorkspaceTabStackKey) : undefined}
+        pinnedTab={tooltip ? pinnedByKey.get(tooltip.key) : undefined}
+      />
     </div>
   )
 }

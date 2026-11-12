@@ -73,21 +73,37 @@ export function stripQuotes(identifier: string): string {
  * (e.g. `db . table`).
  */
 function parseTableRef(rawText: string, activeDatabase: string | null): AliasResolution | null {
-  if (rawText.includes('.')) {
-    // Qualified: "db.table" or "`db`.`table`"
-    const parts = rawText.split('.')
-    const database = stripQuotes(parts[0].trim())
-    const table = stripQuotes(parts[parts.length - 1].trim())
-    if (!table) return null
-    if (!database) return null
-    return { database, table }
-  } else {
+  if (!rawText.includes('.')) {
     // Unqualified: "table" or "`table`"
     const table = stripQuotes(rawText.trim())
     if (!table) return null
     if (!activeDatabase) return null
     return { database: activeDatabase, table: table }
   }
+  // Qualified: "db.table" or "`db`.`table`"
+  const parts = rawText.split('.')
+  const database = stripQuotes(parts[0].trim())
+  const table = stripQuotes(parts[parts.length - 1].trim())
+  if (!table) return null
+  if (!database) return null
+  return { database, table }
+}
+
+function isWrappedIn(text: string, quote: string): boolean {
+  return text.startsWith(quote) && text.endsWith(quote)
+}
+
+function isQuotedIdentifier(text: string): boolean {
+  if (text.length < QUOTE_PAIR_LENGTH) return false
+  return isWrappedIn(text, '`') || isWrappedIn(text, '"')
+}
+
+function aliasTextFromMatch(aliasPart: string): string | null {
+  const aliasText = stripQuotes(aliasPart).toLowerCase()
+  if (!aliasText) return null
+  const isReservedWord = !isQuotedIdentifier(aliasPart) && SQL_RESERVED_WORDS_SET.has(aliasText)
+  if (isReservedWord) return null
+  return aliasText
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +189,7 @@ export function buildAliasMapFromText(
   const map: AliasMap = new Map()
   if (!text) return map
 
-  const effectiveText = caretOffset !== undefined ? text.substring(0, caretOffset) : text
+  const effectiveText = text.substring(0, caretOffset ?? text.length)
 
   // Match FROM/JOIN followed by a table reference and an alias.
   // table_ref  = identifier  |  identifier.identifier
@@ -184,15 +200,8 @@ export function buildAliasMapFromText(
   let match
   while ((match = pattern.exec(effectiveText)) !== null) {
     const tablePart = match[1]
-    const aliasPart = match[2]
-
-    const isQuotedAlias =
-      aliasPart.length >= QUOTE_PAIR_LENGTH &&
-      ((aliasPart.startsWith('`') && aliasPart.endsWith('`')) ||
-        (aliasPart.startsWith('"') && aliasPart.endsWith('"')))
-    const aliasText = stripQuotes(aliasPart).toLowerCase()
+    const aliasText = aliasTextFromMatch(match[2])
     if (!aliasText) continue
-    if (!isQuotedAlias && SQL_RESERVED_WORDS_SET.has(aliasText)) continue
 
     const resolved = parseTableRef(tablePart, activeDatabase)
     if (!resolved) continue

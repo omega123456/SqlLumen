@@ -14,11 +14,11 @@
  */
 
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { ENUM_NULL_SENTINEL, getEnumFallbackValue } from '../table-data/enum-field-utils'
-import { useEditorCallbacks } from './editor-callbacks-context'
+import { useCellStoreSync } from './editor-callbacks-context'
 import { useFkLookup } from './fk-lookup-context'
 import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { TextInput } from '../common/TextInput'
@@ -67,107 +67,239 @@ interface EnumCellEditorProps extends CellEditorBaseProps {
   fullOverlay?: boolean
 }
 
+type ForeignKeyLookup = ReturnType<typeof useFkLookup>
+type EditorField = HTMLInputElement | HTMLTextAreaElement
+
+interface TextEditorInitialState {
+  restoresToNull: boolean
+  restoreValue: unknown
+  isNull: boolean
+  text: string
+}
+
+function initialEditingText(
+  initialInputValue: string | undefined,
+  restoresToNull: boolean,
+  rawValue: unknown
+): string {
+  if (initialInputValue != null) return initialInputValue
+  if (restoresToNull) return ''
+  return String(rawValue ?? '')
+}
+
+function resolveTextEditorInitialState(props: CellEditorBaseProps): TextEditorInitialState {
+  const rawValue = props.row[props.column.key]
+  const hasCancelRestoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
+  const restoreSource = hasCancelRestoreValue ? props.cancelRestoreValue : rawValue
+  const restoresToNull = isNullish(restoreSource)
+  return {
+    restoresToNull: restoresToNull,
+    restoreValue: restoresToNull ? null : restoreSource,
+    isNull: props.initialInputValue == null && restoresToNull,
+    text: initialEditingText(props.initialInputValue, restoresToNull, rawValue),
+  }
+}
+
+function focusEditorField(field: EditorField | null, selectAllOnFocus: boolean): void {
+  field?.focus()
+  if (selectAllOnFocus) {
+    field?.select()
+    return
+  }
+  const currentValue = field?.value ?? ''
+  field?.setSelectionRange(currentValue.length, currentValue.length)
+}
+
+function isForeignKeyLookupKey(event: ReactKeyboardEvent): boolean {
+  const hasModifier = event.altKey || event.ctrlKey || event.metaKey || event.shiftKey
+  return event.key === 'F4' && !hasModifier
+}
+
+interface ForeignKeyLookupRequest {
+  props: CellEditorBaseProps
+  foreignKeyLookup: ForeignKeyLookup
+  currentValue: unknown
+}
+
+function openForeignKeyLookupFromKey(
+  event: ReactKeyboardEvent,
+  request: ForeignKeyLookupRequest
+): boolean {
+  const { props, foreignKeyLookup } = request
+  if (!isForeignKeyLookupKey(event) || !props.foreignKey || !foreignKeyLookup) return false
+  event.preventDefault()
+  event.stopPropagation()
+  // The glide overlay portal outranks the dialog z-index, so close it before opening the dialog.
+  props.onClose(true, false)
+  foreignKeyLookup.onFkLookup({
+    columnKey: props.column.key,
+    currentValue: request.currentValue,
+    foreignKey: props.foreignKey,
+    rowData: props.row,
+    source: 'keyboard',
+  })
+  return true
+}
+
+function isFocusInside(wrapper: HTMLDivElement | null, target: EventTarget | null): boolean {
+  return target instanceof Node && wrapper?.contains(target) === true
+}
+
+function nullToggleClassName(isNull: boolean): string {
+  return `td-null-toggle ${isNull ? 'td-null-active' : ''}`
+}
+
+interface EditorMarkersProps {
+  props: CellEditorBaseProps
+  isNull: boolean
+  onToggleNull: () => void
+}
+
+function EditorMarkers({ props, isNull, onToggleNull }: EditorMarkersProps) {
+  const foreignKeyLookup = useFkLookup()
+  const { row, foreignKey, onClose } = props
+  const fieldName = props.column.key
+  return (
+    <div className={styles.editorMarkerGroup}>
+      {props.isNullable && (
+        <Button
+          variant="bare"
+          className={nullToggleClassName(isNull)}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onToggleNull}
+          tabIndex={-1}
+        >
+          NULL
+        </Button>
+      )}
+      {foreignKey && foreignKeyLookup && (
+        <FkLookupTriggerButton
+          foreignKey={foreignKey}
+          columnKey={fieldName}
+          currentValue={row[fieldName]}
+          rowData={row}
+          className={styles.fkTriggerButton}
+          onBeforeLookup={() => onClose(true, false)}
+        />
+      )}
+    </div>
+  )
+}
+
+interface NullableTextEditorRefs {
+  fieldRef: RefObject<EditorField | null>
+  wrapperRef: RefObject<HTMLDivElement | null>
+}
+
+function useNullableTextEditor(props: CellEditorBaseProps, refs: NullableTextEditorRefs) {
+  const { fieldRef, wrapperRef } = refs
+  const { row, column, onRowChange, onClose } = props
+  const fieldName = column.key
+  const foreignKeyLookup = useFkLookup()
+  const initialState = resolveTextEditorInitialState(props)
+  const { restoresToNull, restoreValue } = initialState
+  const [isNull, setIsNull] = useState(initialState.isNull)
+  const [value, setValue] = useState(initialState.text)
+  const isCancellingRef = useRef(false)
+  const syncToStore = useCellStoreSync(props)
+  const selectAllOnFocus = props.selectAllOnFocus ?? true
+
+  useEffect(() => {
+    focusEditorField(fieldRef.current, selectAllOnFocus)
+  }, [fieldRef, selectAllOnFocus])
+
+  const handleToggleNull = useCallback(() => {
+    if (!isNull) {
+      setIsNull(true)
+      setValue('')
+      onRowChange({ ...row, [fieldName]: null })
+      syncToStore(null)
+      return
+    }
+    setIsNull(false)
+    onRowChange({ ...row, [fieldName]: '' })
+    syncToStore('')
+    setTimeout(() => fieldRef.current?.focus(), 0)
+  }, [fieldName, fieldRef, isNull, onRowChange, row, syncToStore])
+
+  const handleChange = useCallback(
+    (nextValue: string) => {
+      setIsNull(false)
+      setValue(nextValue)
+      onRowChange({ ...row, [fieldName]: nextValue })
+      syncToStore(nextValue)
+    },
+    [fieldName, onRowChange, row, syncToStore]
+  )
+
+  const handleBlur = useCallback(
+    (relatedTarget: EventTarget | null) => {
+      if (isCancellingRef.current) return
+      if (isFocusInside(wrapperRef.current, relatedTarget)) return
+      onClose(true, false)
+    },
+    [onClose, wrapperRef]
+  )
+
+  const cancelEdit = useCallback(() => {
+    isCancellingRef.current = true
+    setIsNull(restoresToNull)
+    setValue(restoresToNull ? '' : String(restoreValue ?? ''))
+    onRowChange({ ...row, [fieldName]: restoreValue }, false)
+    syncToStore(restoreValue)
+    onClose(false, false)
+  }, [fieldName, onClose, onRowChange, restoreValue, restoresToNull, row, syncToStore])
+
+  const currentValue = isNull ? null : value
+
+  const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent, isCommitKey: boolean) => {
+      const lookupRequest = {
+        props: props,
+        foreignKeyLookup: foreignKeyLookup,
+        currentValue: currentValue,
+      }
+      if (openForeignKeyLookupFromKey(event, lookupRequest)) return
+      if (isCommitKey) {
+        onRowChange({ ...row, [fieldName]: currentValue }, true)
+        onClose(true, true)
+        event.preventDefault()
+        return
+      }
+      if (event.key === 'Escape') {
+        cancelEdit()
+      }
+    },
+    [cancelEdit, currentValue, fieldName, foreignKeyLookup, onClose, onRowChange, props, row]
+  )
+
+  return {
+    isNull: isNull,
+    displayValue: isNull ? '' : value,
+    handleToggleNull: handleToggleNull,
+    handleChange: handleChange,
+    handleBlur: handleBlur,
+    handleKeyDown: handleKeyDown,
+  }
+}
+
+function isSingleLineCommitKey(event: ReactKeyboardEvent): boolean {
+  return event.key === 'Tab' || event.key === 'Enter'
+}
+
+function isMultilineCommitKey(event: ReactKeyboardEvent): boolean {
+  return event.key === 'Enter' && !event.shiftKey
+}
+
 // ---------------------------------------------------------------------------
 // NullableCellEditor — text input + NULL toggle
 // ---------------------------------------------------------------------------
 
 export function NullableCellEditor(props: CellEditorBaseProps) {
-  const { row, column, onRowChange, onClose } = props
-  const isNullable = props.isNullable ?? false
-  const fieldName = column.key
-  const foreignKey = props.foreignKey
-  const foreignKeyLookup = useFkLookup()
-
-  const rawValue = row[fieldName]
-  const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
-    ? props.cancelRestoreValue
-    : rawValue
-  const initialNull = isNullish(restoreValue)
-  const initialValue = initialNull ? null : restoreValue
-  const initialInputValue = props.initialInputValue
-
-  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
-  const [value, setValue] = useState(
-    initialInputValue != null ? initialInputValue : initialNull ? '' : String(rawValue ?? '')
-  )
   const inputRef = useRef<HTMLInputElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const isCancellingRef = useRef(false)
-
-  // Resolve callbacks: prefer props when tabId is set, fallback to context
-  const contextCallbacks = useEditorCallbacks()
-  const tabId = props.tabId || contextCallbacks?.tabId || ''
-  const updateCellValue = props.tabId
-    ? props.updateCellValue
-    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
-  const syncCellValue = props.tabId
-    ? props.syncCellValue
-    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
-  const selectAllOnFocus = props.selectAllOnFocus ?? true
-
-  useEffect(() => {
-    inputRef.current?.focus()
-    if (selectAllOnFocus) {
-      inputRef.current?.select()
-    } else {
-      const currentValue = inputRef.current?.value ?? ''
-      inputRef.current?.setSelectionRange(currentValue.length, currentValue.length)
-    }
-  }, [selectAllOnFocus])
-
-  /** Push a value to both editState and the backing row data via callbacks. */
-  const syncToStore = useCallback(
-    (nextValue: unknown) => {
-      if (tabId && fieldName && updateCellValue) {
-        updateCellValue(tabId, fieldName, nextValue)
-        syncCellValue?.(tabId, row, fieldName, nextValue)
-      }
-    },
-    [fieldName, tabId, updateCellValue, syncCellValue, row]
-  )
-
-  const handleToggleNull = useCallback(() => {
-    if (isNull) {
-      setIsNull(false)
-      onRowChange({ ...row, [fieldName]: '' })
-      syncToStore('')
-      // Restore with empty string
-      setTimeout(() => inputRef.current?.focus(), 0)
-    } else {
-      setIsNull(true)
-      setValue('')
-      onRowChange({ ...row, [fieldName]: null })
-      syncToStore(null)
-    }
-  }, [isNull, onRowChange, row, fieldName, syncToStore])
-
-  const handleChange = useCallback(
-    (nextValue: string) => {
-      if (isNull) {
-        setIsNull(false)
-      }
-      setValue(nextValue)
-      onRowChange({ ...row, [fieldName]: nextValue })
-      syncToStore(nextValue)
-    },
-    [isNull, onRowChange, row, fieldName, syncToStore]
-  )
-
-  const displayValue = isNull ? '' : value
-
-  const handleBlur = useCallback(
-    (relatedTarget: EventTarget | null) => {
-      if (isCancellingRef.current) {
-        return
-      }
-      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
-        return
-      }
-      // Commit without refocusing the grid
-      onClose(true, false)
-    },
-    [onClose]
-  )
+  const { isNull, displayValue, handleToggleNull, handleChange, handleBlur, handleKeyDown } =
+    useNullableTextEditor(props, { fieldRef: inputRef, wrapperRef: wrapperRef })
 
   return (
     <div ref={wrapperRef} className={styles.cellEditorWrapper}>
@@ -179,171 +311,19 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
           value={displayValue}
           onChange={(event) => handleChange(event.target.value)}
           onBlur={(event) => handleBlur(event.relatedTarget)}
-          onKeyDown={(event) => {
-            if (
-              event.key === 'F4' &&
-              !event.altKey &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !event.shiftKey &&
-              foreignKey &&
-              foreignKeyLookup
-            ) {
-              event.preventDefault()
-              event.stopPropagation()
-              // Close the overlay before opening the dialog so it does not float
-              // over the modal (the glide overlay portal outranks the dialog z-index).
-              onClose(true, false)
-              foreignKeyLookup.onFkLookup({
-                columnKey: fieldName,
-                currentValue: isNull ? null : value,
-                foreignKey: foreignKey,
-                rowData: row,
-                source: 'keyboard',
-              })
-              return
-            }
-            if (event.key === 'Tab' || event.key === 'Enter') {
-              // Commit and focus grid for navigation
-              onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
-              onClose(true, true)
-              event.preventDefault()
-              return
-            }
-            if (event.key === 'Escape') {
-              // Restore original value and sync to store
-              isCancellingRef.current = true
-              setIsNull(initialNull)
-              setValue(initialNull ? '' : String(initialValue ?? ''))
-              onRowChange({ ...row, [fieldName]: initialValue }, false)
-              syncToStore(initialValue)
-              // Discard edit, don't refocus grid
-              onClose(false, false)
-              return
-            }
-          }}
+          onKeyDown={(event) => handleKeyDown(event, isSingleLineCommitKey(event))}
         />
       </div>
-      <div className={styles.editorMarkerGroup}>
-        {isNullable && (
-          <Button
-            variant="bare"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </Button>
-        )}
-        {foreignKey && foreignKeyLookup && (
-          <FkLookupTriggerButton
-            foreignKey={foreignKey}
-            columnKey={fieldName}
-            currentValue={row[fieldName]}
-            rowData={row}
-            className={styles.fkTriggerButton}
-            onBeforeLookup={() => onClose(true, false)}
-          />
-        )}
-      </div>
+      <EditorMarkers props={props} isNull={isNull} onToggleNull={handleToggleNull} />
     </div>
   )
 }
 
 export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
-  const { row, column, onRowChange, onClose } = props
-  const isNullable = props.isNullable ?? false
-  const fieldName = column.key
-  const foreignKey = props.foreignKey
-  const foreignKeyLookup = useFkLookup()
-
-  const rawValue = row[fieldName]
-  const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
-    ? props.cancelRestoreValue
-    : rawValue
-  const initialNull = isNullish(restoreValue)
-  const initialValue = initialNull ? null : restoreValue
-  const initialInputValue = props.initialInputValue
-
-  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
-  const [value, setValue] = useState(
-    initialInputValue != null ? initialInputValue : initialNull ? '' : String(rawValue ?? '')
-  )
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const isCancellingRef = useRef(false)
-
-  const contextCallbacks = useEditorCallbacks()
-  const tabId = props.tabId || contextCallbacks?.tabId || ''
-  const updateCellValue = props.tabId
-    ? props.updateCellValue
-    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
-  const syncCellValue = props.tabId
-    ? props.syncCellValue
-    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
-  const selectAllOnFocus = props.selectAllOnFocus ?? true
-
-  useEffect(() => {
-    textareaRef.current?.focus()
-    if (selectAllOnFocus) {
-      textareaRef.current?.select()
-    } else {
-      const currentValue = textareaRef.current?.value ?? ''
-      textareaRef.current?.setSelectionRange(currentValue.length, currentValue.length)
-    }
-  }, [selectAllOnFocus])
-
-  const syncToStore = useCallback(
-    (nextValue: unknown) => {
-      if (tabId && fieldName && updateCellValue) {
-        updateCellValue(tabId, fieldName, nextValue)
-        syncCellValue?.(tabId, row, fieldName, nextValue)
-      }
-    },
-    [fieldName, tabId, updateCellValue, syncCellValue, row]
-  )
-
-  const handleToggleNull = useCallback(() => {
-    if (isNull) {
-      setIsNull(false)
-      onRowChange({ ...row, [fieldName]: '' })
-      syncToStore('')
-      setTimeout(() => textareaRef.current?.focus(), 0)
-    } else {
-      setIsNull(true)
-      setValue('')
-      onRowChange({ ...row, [fieldName]: null })
-      syncToStore(null)
-    }
-  }, [fieldName, isNull, onRowChange, row, syncToStore])
-
-  const handleChange = useCallback(
-    (nextValue: string) => {
-      if (isNull) {
-        setIsNull(false)
-      }
-      setValue(nextValue)
-      onRowChange({ ...row, [fieldName]: nextValue })
-      syncToStore(nextValue)
-    },
-    [fieldName, isNull, onRowChange, row, syncToStore]
-  )
-
-  const displayValue = isNull ? '' : value
-
-  const handleBlur = useCallback(
-    (relatedTarget: EventTarget | null) => {
-      if (isCancellingRef.current) {
-        return
-      }
-      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
-        return
-      }
-      onClose(true, false)
-    },
-    [onClose]
-  )
+  const { isNull, displayValue, handleToggleNull, handleChange, handleBlur, handleKeyDown } =
+    useNullableTextEditor(props, { fieldRef: textareaRef, wrapperRef: wrapperRef })
 
   return (
     <div ref={wrapperRef} className={styles.multilineEditorWrapper}>
@@ -356,70 +336,10 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
           value={displayValue}
           onChange={(event) => handleChange(event.target.value)}
           onBlur={(event) => handleBlur(event.relatedTarget)}
-          onKeyDown={(event) => {
-            if (
-              event.key === 'F4' &&
-              !event.altKey &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !event.shiftKey &&
-              foreignKey &&
-              foreignKeyLookup
-            ) {
-              event.preventDefault()
-              event.stopPropagation()
-              // Close the overlay before opening the dialog so it does not float
-              // over the modal (the glide overlay portal outranks the dialog z-index).
-              onClose(true, false)
-              foreignKeyLookup.onFkLookup({
-                columnKey: fieldName,
-                currentValue: isNull ? null : value,
-                foreignKey: foreignKey,
-                rowData: row,
-                source: 'keyboard',
-              })
-              return
-            }
-            if (event.key === 'Enter' && !event.shiftKey) {
-              onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
-              onClose(true, true)
-              event.preventDefault()
-              return
-            }
-            if (event.key === 'Escape') {
-              isCancellingRef.current = true
-              setIsNull(initialNull)
-              setValue(initialNull ? '' : String(initialValue ?? ''))
-              onRowChange({ ...row, [fieldName]: initialValue }, false)
-              syncToStore(initialValue)
-              onClose(false, false)
-            }
-          }}
+          onKeyDown={(event) => handleKeyDown(event, isMultilineCommitKey(event))}
         />
       </div>
-      <div className={styles.editorMarkerGroup}>
-        {isNullable && (
-          <Button
-            variant="bare"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </Button>
-        )}
-        {foreignKey && foreignKeyLookup && (
-          <FkLookupTriggerButton
-            foreignKey={foreignKey}
-            columnKey={fieldName}
-            currentValue={row[fieldName]}
-            rowData={row}
-            className={styles.fkTriggerButton}
-            onBeforeLookup={() => onClose(true, false)}
-          />
-        )}
-      </div>
+      <EditorMarkers props={props} isNull={isNull} onToggleNull={handleToggleNull} />
     </div>
   )
 }
@@ -428,54 +348,68 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
 // EnumCellEditor — select + NULL toggle
 // ---------------------------------------------------------------------------
 
+function isDropdownPortalTarget(node: Node | null): boolean {
+  if (!(node instanceof HTMLElement)) return false
+  return node.getAttribute('role') === 'listbox' || node.closest('[role="listbox"]') !== null
+}
+
+function isFocusInsideEnumEditor(wrapper: HTMLDivElement | null, target: EventTarget | null) {
+  if (!(target instanceof Node)) return false
+  return isFocusInside(wrapper, target) || isDropdownPortalTarget(target)
+}
+
+function buildEnumOptions(enumValues: string[], isNullable: boolean): DropdownOption[] {
+  const valueOptions = enumValues.map((enumValue) => ({ value: enumValue, label: enumValue }))
+  if (!isNullable) return valueOptions
+  return [{ value: ENUM_NULL_SENTINEL, label: 'NULL' }, ...valueOptions]
+}
+
+interface EnumEditorLayout {
+  wrapperClassName: string
+  fieldWrapperClassName: string
+  dropdownRootClassName: string
+  dropdownTriggerClassName: string
+  dropdownTriggerProps: Record<string, string> | undefined
+}
+
+const FULL_OVERLAY_ENUM_LAYOUT: EnumEditorLayout = {
+  wrapperClassName: styles.dropdownOnlyWrapper,
+  fieldWrapperClassName: styles.editorDropdownRoot,
+  dropdownRootClassName: styles.editorDropdownRoot,
+  dropdownTriggerClassName: `td-cell-editor-select ${styles.editorDropdownTrigger}`,
+  dropdownTriggerProps: { 'data-sqllumen-grid-editor': 'enum-overlay' },
+}
+
+const INLINE_ENUM_LAYOUT: EnumEditorLayout = {
+  wrapperClassName: styles.cellEditorWrapper,
+  fieldWrapperClassName: styles.editorFieldPrimary,
+  dropdownRootClassName: styles.editorField,
+  dropdownTriggerClassName: `td-cell-editor-select ${styles.editorSelect}`,
+  dropdownTriggerProps: undefined,
+}
+
 export function EnumCellEditor(props: EnumCellEditorProps) {
   const { row, column, onRowChange, onClose } = props
-  const isNullable = props.isNullable ?? false
+  const isNullable = props.isNullable === true
   const fieldName = column.key
-  const foreignKey = props.foreignKey
   const foreignKeyLookup = useFkLookup()
-  const fullOverlay = props.fullOverlay ?? false
+  const fullOverlay = props.fullOverlay === true
+  const layout = fullOverlay ? FULL_OVERLAY_ENUM_LAYOUT : INLINE_ENUM_LAYOUT
 
   const rawValue = row[fieldName]
   const initialNull = isNullish(rawValue)
-  const initialValue = initialNull ? null : String(rawValue ?? '')
+  const initialValue = initialNull ? null : String(rawValue)
+  const fallbackValue = initialValue ?? getEnumFallbackValue(props.columnMeta)
 
   const [isNull, setIsNull] = useState(initialNull)
-  const [value, setValue] = useState(initialValue ?? getEnumFallbackValue(props.columnMeta))
+  const [value, setValue] = useState(fallbackValue)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-
-  const isDropdownPortalTarget = useCallback((node: Node | null) => {
-    if (!(node instanceof HTMLElement)) {
-      return false
-    }
-
-    return node.getAttribute('role') === 'listbox' || node.closest('[role="listbox"]') !== null
-  }, [])
-
-  // Resolve callbacks: prefer props when tabId is set, fallback to context
-  const contextCallbacks = useEditorCallbacks()
-  const tabId = props.tabId || contextCallbacks?.tabId || ''
-  const updateCellValue = props.tabId
-    ? props.updateCellValue
-    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
-  const syncCellValue = props.tabId
-    ? props.syncCellValue
-    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
+  const syncToStore = useCellStoreSync(props)
 
   useEffect(() => {
     triggerRef.current?.focus()
   }, [])
-
-  const syncToStore = useCallback(
-    (nextValue: string | null) => {
-      if (tabId && fieldName && updateCellValue) {
-        updateCellValue(tabId, fieldName, nextValue)
-        syncCellValue?.(tabId, row, fieldName, nextValue)
-      }
-    },
-    [fieldName, tabId, updateCellValue, syncCellValue, row]
-  )
 
   const handleChange = useCallback(
     (nextValue: string) => {
@@ -488,173 +422,108 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
   )
 
   const handleToggleNull = useCallback(() => {
-    if (isNull) {
-      const fallbackValue = initialValue ?? getEnumFallbackValue(props.columnMeta)
-      setIsNull(false)
-      setValue(fallbackValue)
-      onRowChange({ ...row, [fieldName]: fallbackValue })
-      syncToStore(fallbackValue)
-      setTimeout(() => triggerRef.current?.focus(), 0)
-    } else {
+    if (!isNull) {
       setIsNull(true)
       onRowChange({ ...row, [fieldName]: null })
       syncToStore(null)
+      return
     }
-  }, [props.columnMeta, initialValue, isNull, onRowChange, row, fieldName, syncToStore])
+    setIsNull(false)
+    setValue(fallbackValue)
+    onRowChange({ ...row, [fieldName]: fallbackValue })
+    syncToStore(fallbackValue)
+    setTimeout(() => triggerRef.current?.focus(), 0)
+  }, [fallbackValue, isNull, onRowChange, row, fieldName, syncToStore])
 
-  const enumOptions: DropdownOption[] = useMemo(() => {
-    const ev = props.columnMeta?.enumValues ?? []
-    const out: DropdownOption[] = []
-    if (isNullable) {
-      out.push({ value: ENUM_NULL_SENTINEL, label: 'NULL' })
-    }
-    for (const enumValue of ev) {
-      out.push({ value: enumValue, label: enumValue })
-    }
-    return out
-  }, [props.columnMeta?.enumValues, isNullable])
+  const enumValues = props.columnMeta?.enumValues
+  const enumOptions = useMemo(
+    () => buildEnumOptions(enumValues ?? [], isNullable),
+    [enumValues, isNullable]
+  )
+
+  const currentValue = isNull ? null : value
 
   const handleCommitKeys = useCallback(
     (event: ReactKeyboardEvent) => {
-      if (
-        event.key === 'F4' &&
-        !event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        foreignKey &&
-        foreignKeyLookup
-      ) {
-        event.preventDefault()
-        event.stopPropagation()
-        // Close the overlay before opening the dialog so it does not float
-        // over the modal (the glide overlay portal outranks the dialog z-index).
-        onClose(true, false)
-        foreignKeyLookup.onFkLookup({
-          columnKey: fieldName,
-          currentValue: isNull ? null : value,
-          foreignKey: foreignKey,
-          rowData: row,
-          source: 'keyboard',
-        })
-        return
+      const lookupRequest = {
+        props: props,
+        foreignKeyLookup: foreignKeyLookup,
+        currentValue: currentValue,
       }
-      if (event.key === 'Tab' || event.key === 'Enter') {
-        onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
+      if (openForeignKeyLookupFromKey(event, lookupRequest)) return
+      if (isSingleLineCommitKey(event)) {
+        onRowChange({ ...row, [fieldName]: currentValue }, true)
         onClose(true, true)
         event.preventDefault()
         return
       }
       if (event.key === 'Escape') {
         setIsNull(initialNull)
-        setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
+        setValue(fallbackValue)
         syncToStore(initialValue)
         onClose(false, false)
         event.preventDefault()
       }
     },
     [
+      currentValue,
+      fallbackValue,
       fieldName,
       foreignKeyLookup,
-      foreignKey,
       initialNull,
       initialValue,
-      isNull,
       onClose,
       onRowChange,
-      props.columnMeta,
+      props,
       row,
       syncToStore,
-      value,
     ]
   )
 
-  const wrapperClassName = fullOverlay ? styles.dropdownOnlyWrapper : styles.cellEditorWrapper
-  const fieldWrapperClassName = fullOverlay ? styles.editorDropdownRoot : styles.editorFieldPrimary
-  const dropdownRootClassName = fullOverlay ? styles.editorDropdownRoot : styles.editorField
-  const dropdownTriggerClassName = fullOverlay
-    ? `td-cell-editor-select ${styles.editorDropdownTrigger}`
-    : `td-cell-editor-select ${styles.editorSelect}`
-  const dropdownTriggerProps = fullOverlay
-    ? { 'data-sqllumen-grid-editor': 'enum-overlay' }
-    : undefined
   const handleTriggerBlur = useCallback(
     (event: React.FocusEvent<HTMLButtonElement>) => {
-      const nextFocused = event.relatedTarget
-      if (
-        nextFocused instanceof Node &&
-        (wrapperRef.current?.contains(nextFocused) || isDropdownPortalTarget(nextFocused))
-      ) {
-        return
-      }
-
+      if (isFocusInsideEnumEditor(wrapperRef.current, event.relatedTarget)) return
       queueMicrotask(() => {
-        const activeElement = document.activeElement
-        if (
-          activeElement instanceof Node &&
-          (wrapperRef.current?.contains(activeElement) || isDropdownPortalTarget(activeElement))
-        ) {
-          return
-        }
+        if (isFocusInsideEnumEditor(wrapperRef.current, document.activeElement)) return
         onClose(true, false)
       })
     },
-    [isDropdownPortalTarget, onClose]
+    [onClose]
   )
 
+  const handleDropdownChange = (nextValue: string) => {
+    if (nextValue === ENUM_NULL_SENTINEL) {
+      setIsNull(true)
+      onRowChange({ ...row, [fieldName]: null })
+      syncToStore(null)
+      onClose(true, true)
+      return
+    }
+    handleChange(nextValue)
+    onClose(true, true)
+  }
+
   return (
-    <div ref={wrapperRef} className={wrapperClassName}>
-      <div className={fieldWrapperClassName}>
+    <div ref={wrapperRef} className={layout.wrapperClassName}>
+      <div className={layout.fieldWrapperClassName}>
         <Dropdown
           ref={triggerRef}
           id={`enum-cell-${fieldName}`}
           ariaLabel={fieldName}
           options={enumOptions}
           value={isNull ? ENUM_NULL_SENTINEL : value}
-          onChange={(nextValue) => {
-            if (nextValue === ENUM_NULL_SENTINEL) {
-              setIsNull(true)
-              onRowChange({ ...row, [fieldName]: null })
-              syncToStore(null)
-              onClose(true, true)
-              return
-            }
-            handleChange(nextValue)
-            onClose(true, true)
-          }}
+          onChange={handleDropdownChange}
           onTriggerKeyDown={handleCommitKeys}
           onListKeyDown={handleCommitKeys}
           focusListOnOpen={fullOverlay}
           onTriggerBlur={fullOverlay ? undefined : handleTriggerBlur}
-          className={dropdownRootClassName}
-          triggerClassName={dropdownTriggerClassName}
-          triggerProps={dropdownTriggerProps}
+          className={layout.dropdownRootClassName}
+          triggerClassName={layout.dropdownTriggerClassName}
+          triggerProps={layout.dropdownTriggerProps}
         />
       </div>
       {!fullOverlay && (
-        <div className={styles.editorMarkerGroup}>
-          {isNullable && (
-            <Button
-              variant="bare"
-              className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={handleToggleNull}
-              tabIndex={-1}
-            >
-              NULL
-            </Button>
-          )}
-          {foreignKey && foreignKeyLookup && (
-            <FkLookupTriggerButton
-              foreignKey={foreignKey}
-              columnKey={fieldName}
-              currentValue={row[fieldName]}
-              rowData={row}
-              className={styles.fkTriggerButton}
-              onBeforeLookup={() => onClose(true, false)}
-            />
-          )}
-        </div>
+        <EditorMarkers props={props} isNull={isNull} onToggleNull={handleToggleNull} />
       )}
     </div>
   )

@@ -38,6 +38,26 @@ export interface AlterDatabaseDialogProps {
   onCancel: () => void
 }
 
+function firstErrorMessage(candidates: (string | null)[]): string | null {
+  return candidates.find(Boolean) ?? null
+}
+
+interface AlterDatabaseEncodingSectionProps {
+  isLoading: boolean
+  hasBlockingLoadError: boolean
+  encoding: ReturnType<typeof useDatabaseEncoding>
+}
+
+function AlterDatabaseEncodingSection({
+  isLoading,
+  hasBlockingLoadError,
+  encoding,
+}: AlterDatabaseEncodingSectionProps) {
+  if (isLoading) return <div className={styles.loading}>Loading database details...</div>
+  if (hasBlockingLoadError) return null
+  return <EncodingFields idPrefix="alter-db" encoding={encoding} />
+}
+
 export function AlterDatabaseDialog({
   isOpen,
   connectionId,
@@ -104,8 +124,9 @@ export function AlterDatabaseDialog({
   const isLoading = detailsLoading || encoding.isLoading
 
   // Combine errors
-  const displayError = submitError || detailsError || encoding.error
+  const displayError = firstErrorMessage([submitError, detailsError, encoding.error])
   const hasBlockingLoadError = detailsError !== null || encoding.error !== null
+  const canSubmit = !isLoading && !hasBlockingLoadError && !isSubmitting
 
   const handleSubmit = useCallback(async () => {
     patchDialogState({ isSubmitting: true, submitError: null })
@@ -149,11 +170,11 @@ export function AlterDatabaseDialog({
       <h2 className={styles.title}>Alter database</h2>
       <p className={styles.subtitle}>{databaseName}</p>
 
-      {isLoading ? (
-        <div className={styles.loading}>Loading database details...</div>
-      ) : hasBlockingLoadError ? null : (
-        <EncodingFields idPrefix="alter-db" encoding={encoding} />
-      )}
+      <AlterDatabaseEncodingSection
+        isLoading={isLoading}
+        hasBlockingLoadError={hasBlockingLoadError}
+        encoding={encoding}
+      />
 
       {displayError && (
         <div className={styles.error} data-testid="alter-db-error">
@@ -165,7 +186,7 @@ export function AlterDatabaseDialog({
         <Button
           variant="accent"
           type="submit"
-          disabled={detailsLoading || encoding.isLoading || hasBlockingLoadError || isSubmitting}
+          disabled={!canSubmit}
           data-testid="alter-db-submit-button"
         >
           {isSubmitting ? 'Saving...' : 'Alter database'}

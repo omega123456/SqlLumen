@@ -31,10 +31,7 @@ use sqlx::Value;
 use sqlx::ValueRef;
 
 #[cfg(not(coverage))]
-const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
-
-#[cfg(not(coverage))]
-const JS_SAFE_INTEGER_MIN: i64 = -JS_SAFE_INTEGER_MAX;
+use crate::mysql::multi_result::{json_from_i64, json_from_u64};
 
 // ── Data structures ────────────────────────────────────────────────────────────
 
@@ -505,12 +502,15 @@ pub fn format_bytes(bytes: u64) -> String {
         unit_index += 1;
     }
     let rounded = (value * 10.0).round() / 10.0;
-    let text = if (rounded.fract()).abs() < f64::EPSILON {
-        format!("{}", rounded as i64)
-    } else {
-        format!("{rounded:.1}")
-    };
-    format!("{text} {}", UNITS[unit_index])
+    format!("{} {}", format_rounded_size(rounded), UNITS[unit_index])
+}
+
+fn format_rounded_size(rounded: f64) -> String {
+    let is_whole_number = rounded.fract().abs() < f64::EPSILON;
+    if is_whole_number {
+        return format!("{}", rounded as i64);
+    }
+    format!("{rounded:.1}")
 }
 
 // ── Blob envelope handling ─────────────────────────────────────────────────────
@@ -607,18 +607,12 @@ fn parse_quoted_type_values(column_type: &str, type_name: &str) -> Option<Vec<St
 
     while let Some(ch) = chars.next() {
         match ch {
-            '\'' => {
-                if in_quote {
-                    if matches!(chars.peek(), Some('\'')) {
-                        current.push('\'');
-                        chars.next();
-                    } else {
-                        in_quote = false;
-                    }
-                } else {
-                    in_quote = true;
-                }
+            '\'' if !in_quote => in_quote = true,
+            '\'' if matches!(chars.peek(), Some('\'')) => {
+                current.push('\'');
+                chars.next();
             }
+            '\'' => in_quote = false,
             ',' if !in_quote => {
                 values.push(current.clone());
                 current.clear();
@@ -695,35 +689,19 @@ fn build_table_data_projection(
     for column in columns {
         let safe_col = safe_identifier(&column.name)?;
         let is_primary_key = primary_key_column_set.contains(column.name.as_str());
-        if column.is_binary && !is_primary_key {
-            projection_parts.push(format!("OCTET_LENGTH({safe_col}) AS {safe_col}"));
-        } else {
-            projection_parts.push(safe_col);
-        }
+        let is_blob_placeholder = column.is_binary && !is_primary_key;
+        projection_parts.push(projection_part(&safe_col, is_blob_placeholder));
     }
 
     Ok(projection_parts.join(", "))
 }
 
 #[cfg(not(coverage))]
-fn format_mysql_time(value: MySqlTime) -> String {
-    let sign = if value.sign().is_negative() { "-" } else { "" };
-    let hours = value.hours();
-
-    if value.microseconds() == 0 {
-        format!(
-            "{sign}{hours:02}:{:02}:{:02}",
-            value.minutes(),
-            value.seconds()
-        )
-    } else {
-        format!(
-            "{sign}{hours:02}:{:02}:{:02}.{:06}",
-            value.minutes(),
-            value.seconds(),
-            value.microseconds()
-        )
+fn projection_part(safe_col: &str, is_blob_placeholder: bool) -> String {
+    if is_blob_placeholder {
+        return format!("OCTET_LENGTH({safe_col}) AS {safe_col}");
     }
+    safe_col.to_string()
 }
 
 #[cfg(not(coverage))]
@@ -748,7 +726,9 @@ fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Valu
 
     let owned = sqlx::ValueRef::to_owned(&value);
     if let Ok(value) = owned.try_decode::<MySqlTime>() {
-        return Some(serde_json::Value::String(format_mysql_time(value)));
+        return Some(serde_json::Value::String(
+            crate::mysql::query_log::format_mysql_time(value),
+        ));
     }
 
     sqlx::ValueRef::to_owned(&value)
@@ -778,81 +758,26 @@ fn serialize_table_value(
         return serde_json::Value::Null;
     }
 
-    // Binary columns: placeholder or hex
+    if is_binary && is_primary_key {
+        return serialize_binary_primary_key(row, column_index);
+    }
     if is_binary {
-        if is_primary_key {
-            if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
-                return match value {
-                    Some(bytes) => {
-                        serde_json::Value::String(format!("0x{}", hex::encode_upper(bytes)))
-                    }
-                    None => serde_json::Value::Null,
-                };
-            }
-        } else {
-            if let Ok(value) = row.try_get::<Option<u64>, _>(column_index) {
-                return match value {
-                    Some(byte_len) => {
-                        serde_json::Value::String(format!("[BLOB - {}]", format_bytes(byte_len)))
-                    }
-                    None => serde_json::Value::Null,
-                };
-            }
-            if let Ok(value) = row.try_get::<Option<i64>, _>(column_index) {
-                return match value {
-                    Some(byte_len) if byte_len >= 0 => serde_json::Value::String(format!(
-                        "[BLOB - {}]",
-                        format_bytes(byte_len as u64)
-                    )),
-                    Some(_) | None => serde_json::Value::Null,
-                };
-            }
-        }
-        return serde_json::Value::Null;
+        return serialize_blob_placeholder(row, column_index);
     }
 
     let type_name = raw_value.type_info().name().to_uppercase();
 
     // BIT: sqlx u64 decoder has an explicit ColumnType::Bit path that reads raw big-endian bytes
     if type_name == "BIT" {
-        return match row.try_get::<Option<u64>, _>(column_index) {
-            Ok(Some(value)) => {
-                if value > JS_SAFE_INTEGER_MAX as u64 {
-                    serde_json::Value::String(value.to_string())
-                } else {
-                    serde_json::Value::from(value)
-                }
-            }
-            Ok(None) => serde_json::Value::Null,
-            Err(error) => {
-                tracing::warn!(column_index = column_index, error = ?error, "Failed to decode BIT column as u64");
-                serde_json::Value::Null
-            }
-        };
+        return decode_bit_value(row, column_index);
     }
 
     if is_sqlx_integer_type_name(&type_name) {
         if let Ok(value) = row.try_get::<Option<i64>, _>(column_index) {
-            return value
-                .map(|number| {
-                    if (JS_SAFE_INTEGER_MIN..=JS_SAFE_INTEGER_MAX).contains(&number) {
-                        serde_json::Value::from(number)
-                    } else {
-                        serde_json::Value::String(number.to_string())
-                    }
-                })
-                .unwrap_or(serde_json::Value::Null);
+            return value.map(json_from_i64).unwrap_or(serde_json::Value::Null);
         }
         if let Ok(value) = row.try_get::<Option<u64>, _>(column_index) {
-            return value
-                .map(|number| {
-                    if number > JS_SAFE_INTEGER_MAX as u64 {
-                        serde_json::Value::String(number.to_string())
-                    } else {
-                        serde_json::Value::from(number)
-                    }
-                })
-                .unwrap_or(serde_json::Value::Null);
+            return value.map(json_from_u64).unwrap_or(serde_json::Value::Null);
         }
     }
 
@@ -899,6 +824,50 @@ fn serialize_table_value(
     }
 }
 
+#[cfg(not(coverage))]
+fn serialize_binary_primary_key(
+    row: &sqlx::mysql::MySqlRow,
+    column_index: usize,
+) -> serde_json::Value {
+    match row.try_get::<Option<Vec<u8>>, _>(column_index) {
+        Ok(Some(bytes)) => serde_json::Value::String(format!("0x{}", hex::encode_upper(bytes))),
+        Ok(None) | Err(_) => serde_json::Value::Null,
+    }
+}
+
+#[cfg(not(coverage))]
+fn serialize_blob_placeholder(
+    row: &sqlx::mysql::MySqlRow,
+    column_index: usize,
+) -> serde_json::Value {
+    if let Ok(value) = row.try_get::<Option<u64>, _>(column_index) {
+        return match value {
+            Some(byte_len) => {
+                serde_json::Value::String(format!("[BLOB - {}]", format_bytes(byte_len)))
+            }
+            None => serde_json::Value::Null,
+        };
+    }
+    match row.try_get::<Option<i64>, _>(column_index) {
+        Ok(Some(byte_len)) if byte_len >= 0 => {
+            serde_json::Value::String(format!("[BLOB - {}]", format_bytes(byte_len as u64)))
+        }
+        Ok(_) | Err(_) => serde_json::Value::Null,
+    }
+}
+
+#[cfg(not(coverage))]
+fn decode_bit_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> serde_json::Value {
+    match row.try_get::<Option<u64>, _>(column_index) {
+        Ok(Some(value)) => json_from_u64(value),
+        Ok(None) => serde_json::Value::Null,
+        Err(error) => {
+            tracing::warn!(column_index = column_index, error = ?error, "Failed to decode BIT column as u64");
+            serde_json::Value::Null
+        }
+    }
+}
+
 /// Base64-encode bytes for export serialization.
 #[cfg(not(coverage))]
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
@@ -919,20 +888,7 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> s
 
     // BIT: sqlx u64 decoder has an explicit ColumnType::Bit path that reads raw big-endian bytes
     if type_name == "BIT" {
-        return match row.try_get::<Option<u64>, _>(column_index) {
-            Ok(Some(value)) => {
-                if value > JS_SAFE_INTEGER_MAX as u64 {
-                    serde_json::Value::String(value.to_string())
-                } else {
-                    serde_json::Value::from(value)
-                }
-            }
-            Ok(None) => serde_json::Value::Null,
-            Err(error) => {
-                tracing::warn!(column_index = column_index, error = ?error, "Failed to decode BIT column as u64");
-                serde_json::Value::Null
-            }
-        };
+        return decode_bit_value(row, column_index);
     }
 
     // Binary types → base64
@@ -996,6 +952,53 @@ fn log_table_data_sql(sql: &str, params: &[serde_json::Value]) {
     crate::mysql::query_log::log_outgoing_sql_bound(sql, &binds);
 }
 
+#[cfg(not(coverage))]
+fn bind_json_number<'q>(
+    query: sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments>,
+    number: &serde_json::Number,
+) -> sqlx::query::Query<'q, sqlx::MySql, sqlx::mysql::MySqlArguments> {
+    if let Some(integer) = number.as_i64() {
+        return query.bind(integer);
+    }
+    if let Some(unsigned) = number.as_u64() {
+        return query.bind(unsigned);
+    }
+    if let Some(float) = number.as_f64() {
+        return query.bind(float);
+    }
+    query.bind(number.to_string())
+}
+
+pub fn where_clause_sql(filter_sql: &str) -> String {
+    if filter_sql.is_empty() {
+        return String::new();
+    }
+    format!(" WHERE {filter_sql}")
+}
+
+pub fn sort_direction_keyword(direction: &str) -> &'static str {
+    if direction == "desc" {
+        return "DESC";
+    }
+    "ASC"
+}
+
+#[cfg(not(coverage))]
+fn sql_export_table_name(options: &ExportTableOptions) -> &str {
+    if options.table_name_for_sql.is_empty() {
+        return &options.table;
+    }
+    &options.table_name_for_sql
+}
+
+#[cfg(not(coverage))]
+fn json_array_closing_bracket(is_empty: bool) -> &'static str {
+    if is_empty {
+        return "]";
+    }
+    "\n]"
+}
+
 /// Bind a serde_json::Value to a sqlx query, returning the updated query.
 #[cfg(not(coverage))]
 fn bind_json_value<'q>(
@@ -1005,17 +1008,7 @@ fn bind_json_value<'q>(
     match value {
         serde_json::Value::Null => query.bind(Option::<String>::None),
         serde_json::Value::String(text) => query.bind(text.clone()),
-        serde_json::Value::Number(number) => {
-            if let Some(integer) = number.as_i64() {
-                query.bind(integer)
-            } else if let Some(unsigned) = number.as_u64() {
-                query.bind(unsigned)
-            } else if let Some(float) = number.as_f64() {
-                query.bind(float)
-            } else {
-                query.bind(number.to_string())
-            }
-        }
+        serde_json::Value::Number(number) => bind_json_number(query, number),
         serde_json::Value::Bool(boolean) => query.bind(*boolean as i64),
         // Recognise a staged blob-envelope before the object catch-all and bind
         // it as real bytes / empty / SQL NULL. Malformed envelopes are rejected
@@ -1314,21 +1307,13 @@ pub async fn fetch_table_data_impl(
 
     // Build filter WHERE clause
     let filter_clause = translate_filter_model_with_columns(&filter_model, &columns);
-    let where_sql = if filter_clause.sql.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {}", filter_clause.sql)
-    };
+    let where_sql = where_clause_sql(&filter_clause.sql);
 
     // Build ORDER BY clause
     let order_sql = match &sort {
         Some(sort_spec) => {
             let safe_col = safe_identifier(&sort_spec.column)?;
-            let dir = if sort_spec.direction == "desc" {
-                "DESC"
-            } else {
-                "ASC"
-            };
+            let dir = sort_direction_keyword(&sort_spec.direction);
             format!(" ORDER BY {safe_col} {dir}")
         }
         None => String::new(),
@@ -1339,7 +1324,7 @@ pub async fn fetch_table_data_impl(
     let projection = build_table_data_projection(&columns, &primary_key_column_set)?;
 
     // Build and execute DATA query
-    let page = if page < 1 { 1 } else { page };
+    let page = page.max(1);
     let offset = (page - 1) as u64 * page_size as u64;
     let data_sql = format!(
         "SELECT {projection} FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
@@ -1389,17 +1374,17 @@ pub async fn fetch_table_data_impl(
         let mut serialized_row = Vec::with_capacity(columns.len());
 
         for (column_index, col_meta) in columns.iter().enumerate() {
-            if column_index < row_col_count {
-                let is_primary_key = primary_key_column_set.contains(col_meta.name.as_str());
-                serialized_row.push(serialize_table_value(
-                    row,
-                    column_index,
-                    col_meta.is_binary,
-                    is_primary_key,
-                ));
-            } else {
+            if column_index >= row_col_count {
                 serialized_row.push(serde_json::Value::Null);
+                continue;
             }
+            let is_primary_key = primary_key_column_set.contains(col_meta.name.as_str());
+            serialized_row.push(serialize_table_value(
+                row,
+                column_index,
+                col_meta.is_binary,
+                is_primary_key,
+            ));
         }
         serialized_rows.push(serialized_row);
     }
@@ -1596,82 +1581,42 @@ pub async fn insert_table_row_impl(
     crate::mysql::query_log::log_execute_result(&insert_result);
 
     // Re-fetch the inserted row
-    let refetch_row = if primary_key_info.has_auto_increment {
-        // Use the connection's insert id from the driver (`u64`). A separate
-        // `SELECT LAST_INSERT_ID()` decodes as `BIGINT UNSIGNED` and breaks when read as `i64`.
-        let last_id = insert_result.last_insert_id();
+    // Use the connection's insert id from the driver (`u64`). A separate
+    // `SELECT LAST_INSERT_ID()` decodes as `BIGINT UNSIGNED` and breaks when read as `i64`.
+    let auto_increment_id = primary_key_info
+        .has_auto_increment
+        .then_some(insert_result.last_insert_id());
 
-        // Build WHERE using LAST_INSERT_ID for missing PK cols, provided values for rest
-        let mut where_parts = Vec::new();
-        let mut where_params: Vec<serde_json::Value> = Vec::new();
+    let mut where_parts = Vec::new();
+    let mut where_params: Vec<serde_json::Value> = Vec::new();
+    for primary_key_column in &primary_key_info.key_columns {
+        let safe_col = safe_identifier(primary_key_column)?;
+        where_parts.push(format!("{safe_col} = ?"));
+        where_params.push(inserted_primary_key_value(
+            values,
+            primary_key_column,
+            auto_increment_id,
+        ));
+    }
 
-        for primary_key_column in &primary_key_info.key_columns {
-            let safe_col = safe_identifier(primary_key_column)?;
-            // If the PK column was NOT provided in the values map, assume it's auto-increment
-            if !values.contains_key(primary_key_column) || values[primary_key_column].is_null() {
-                where_parts.push(format!("{safe_col} = ?"));
-                where_params.push(serde_json::Value::from(last_id));
-            } else {
-                where_parts.push(format!("{safe_col} = ?"));
-                where_params.push(values[primary_key_column].clone());
-            }
-        }
+    let refetch_sql = format!(
+        "SELECT {projection} FROM {safe_db}.{safe_table} WHERE {}",
+        where_parts.join(" AND ")
+    );
 
-        let refetch_sql = format!(
-            "SELECT {projection} FROM {safe_db}.{safe_table} WHERE {}",
-            where_parts.join(" AND ")
-        );
+    log_table_data_sql(&refetch_sql, &where_params);
+    let mut refetch_query = sqlx::query(sqlx::AssertSqlSafe(refetch_sql.as_str()));
+    for param in &where_params {
+        refetch_query = bind_json_value(refetch_query, param);
+    }
 
-        log_table_data_sql(&refetch_sql, &where_params);
-        let mut refetch_query = sqlx::query(sqlx::AssertSqlSafe(refetch_sql.as_str()));
-        for param in &where_params {
-            refetch_query = bind_json_value(refetch_query, param);
-        }
-
-        let opt = refetch_query
-            .fetch_optional(pool)
-            .await
-            .map_err(|error| format!("Failed to re-fetch inserted row: {error}"))?;
-        if let Some(ref row) = opt {
-            crate::mysql::query_log::log_mysql_row(row);
-        }
-        opt
-    } else {
-        // No auto-increment: use provided PK values
-        let mut where_parts = Vec::new();
-        let mut where_params: Vec<serde_json::Value> = Vec::new();
-
-        for primary_key_column in &primary_key_info.key_columns {
-            let safe_col = safe_identifier(primary_key_column)?;
-            where_parts.push(format!("{safe_col} = ?"));
-            where_params.push(
-                values
-                    .get(primary_key_column)
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null),
-            );
-        }
-
-        let refetch_sql = format!(
-            "SELECT {projection} FROM {safe_db}.{safe_table} WHERE {}",
-            where_parts.join(" AND ")
-        );
-
-        log_table_data_sql(&refetch_sql, &where_params);
-        let mut refetch_query = sqlx::query(sqlx::AssertSqlSafe(refetch_sql.as_str()));
-        for param in &where_params {
-            refetch_query = bind_json_value(refetch_query, param);
-        }
-
-        let opt = refetch_query
-            .fetch_optional(pool)
-            .await
-            .map_err(|error| format!("Failed to re-fetch inserted row: {error}"))?;
-        if let Some(ref row) = opt {
-            crate::mysql::query_log::log_mysql_row(row);
-        }
-        opt
-    };
+    let refetch_row = refetch_query
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| format!("Failed to re-fetch inserted row: {error}"))?;
+    if let Some(ref row) = refetch_row {
+        crate::mysql::query_log::log_mysql_row(row);
+    }
 
     // Serialize the re-fetched row
     match refetch_row {
@@ -1692,6 +1637,20 @@ pub async fn insert_table_row_impl(
             Ok(result)
         }
         None => Ok(vec![]),
+    }
+}
+
+#[cfg(not(coverage))]
+fn inserted_primary_key_value(
+    values: &HashMap<String, serde_json::Value>,
+    column: &str,
+    auto_increment_id: Option<u64>,
+) -> serde_json::Value {
+    let provided_value = values.get(column).filter(|value| !value.is_null());
+    match (provided_value, auto_increment_id) {
+        (Some(value), _) => value.clone(),
+        (None, Some(last_id)) => serde_json::Value::from(last_id),
+        (None, None) => serde_json::Value::Null,
     }
 }
 
@@ -1833,20 +1792,12 @@ pub async fn export_table_data_impl(
 
     // Build WHERE, ORDER BY, and optional LIMIT/OFFSET (to export only the current page)
     let filter_clause = translate_filter_model_with_columns(&options.filter_model, &columns);
-    let where_sql = if filter_clause.sql.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {}", filter_clause.sql)
-    };
+    let where_sql = where_clause_sql(&filter_clause.sql);
 
     let order_sql = match &options.sort {
         Some(sort_spec) => {
             let safe_col = safe_identifier(&sort_spec.column)?;
-            let dir = if sort_spec.direction == "desc" {
-                "DESC"
-            } else {
-                "ASC"
-            };
+            let dir = sort_direction_keyword(&sort_spec.direction);
             format!(" ORDER BY {safe_col} {dir}")
         }
         None => String::new(),
@@ -1864,11 +1815,7 @@ pub async fn export_table_data_impl(
     log_table_data_sql(&sql, &filter_clause.params);
     let format = crate::export::ExportFormat::from_format_str(&options.format)?;
 
-    let table_name = if options.table_name_for_sql.is_empty() {
-        &options.table
-    } else {
-        &options.table_name_for_sql
-    };
+    let table_name = sql_export_table_name(options);
 
     // XLSX: rust_xlsxwriter builds the entire workbook in memory before saving,
     // so we must fetch all rows upfront. Other formats stream row-by-row.
@@ -1884,15 +1831,16 @@ pub async fn export_table_data_impl(
             .map_err(|error| format!("Export query failed: {error}"))?;
         crate::mysql::query_log::log_mysql_rows(&rows);
 
-        let columns: Vec<String> = if let Some(first) = rows.first() {
-            first
-                .columns()
-                .iter()
-                .map(|column| column.name().to_string())
-                .collect()
-        } else {
-            vec![]
-        };
+        let columns: Vec<String> = rows
+            .first()
+            .map(|first| {
+                first
+                    .columns()
+                    .iter()
+                    .map(|column| column.name().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let serialized_rows: Vec<Vec<serde_json::Value>> = rows
             .iter()
@@ -1964,19 +1912,10 @@ pub async fn export_table_data_impl(
                 let col_count = row.columns().len();
                 let record: Vec<String> = (0..col_count)
                     .map(|column_index| {
-                        let value = serialize_export_value(&row, column_index);
-                        match value {
-                            serde_json::Value::Null => String::new(),
-                            serde_json::Value::Bool(boolean) => {
-                                if boolean {
-                                    "1".to_string()
-                                } else {
-                                    "0".to_string()
-                                }
-                            }
-                            serde_json::Value::String(text) => text,
-                            other => other.to_string(),
-                        }
+                        crate::export::csv_writer::csv_field(&serialize_export_value(
+                            &row,
+                            column_index,
+                        ))
                     })
                     .collect();
                 csv_wtr
@@ -2014,12 +1953,11 @@ pub async fn export_table_data_impl(
 
                 let mut obj = serde_json::Map::new();
                 for (column_index, col) in cols.iter().enumerate() {
-                    let value = if column_index < col_count {
-                        serialize_export_value(&row, column_index)
-                    } else {
-                        serde_json::Value::Null
-                    };
-                    obj.insert(col.clone(), value);
+                    if column_index >= col_count {
+                        obj.insert(col.clone(), serde_json::Value::Null);
+                        continue;
+                    }
+                    obj.insert(col.clone(), serialize_export_value(&row, column_index));
                 }
 
                 if !is_first {
@@ -2038,12 +1976,9 @@ pub async fn export_table_data_impl(
                 is_first = false;
             }
 
-            if is_first {
-                // No rows — produce `[]`
-                writeln!(writer, "]").map_err(|error| format!("Write error: {error}"))?;
-            } else {
-                writeln!(writer, "\n]").map_err(|error| format!("Write error: {error}"))?;
-            }
+            let closing_bracket = json_array_closing_bracket(is_first);
+            writeln!(writer, "{closing_bracket}")
+                .map_err(|error| format!("Write error: {error}"))?;
             writer
                 .flush()
                 .map_err(|error| format!("Flush error: {error}"))?;

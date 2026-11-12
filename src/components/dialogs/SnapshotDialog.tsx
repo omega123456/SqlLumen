@@ -20,6 +20,120 @@ type ConfirmState =
   | { kind: 'delete'; snapshot: SnapshotSummary }
   | null
 
+interface SnapshotListPosition {
+  currentIndex: number
+  snapshotCount: number
+}
+
+type SnapshotIndexResolver = (position: SnapshotListPosition) => number
+
+const SNAPSHOT_LIST_KEY_TARGETS: Partial<Record<string, SnapshotIndexResolver>> = {
+  ArrowDown: ({ currentIndex }) => (currentIndex < 0 ? 0 : currentIndex + 1),
+  ArrowUp: ({ currentIndex, snapshotCount }) =>
+    currentIndex < 0 ? snapshotCount - 1 : currentIndex - 1,
+  Home: () => 0,
+  End: ({ snapshotCount }) => snapshotCount - 1,
+}
+
+function snapshotRowId(snapshotId: number): string {
+  return `snapshot-row-${snapshotId}`
+}
+
+function activeSnapshotRowId(selectedSnapshotId: number | null): string | undefined {
+  if (selectedSnapshotId == null) return undefined
+  return snapshotRowId(selectedSnapshotId)
+}
+
+function unsavedChangesWarning(unsavedCount: number): string {
+  if (unsavedCount === 1) return '1 connection has unsaved changes that will be lost.'
+  return `${unsavedCount} connections have unsaved changes that will be lost.`
+}
+
+function RestoreConfirmMessage({ confirm }: { confirm: ConfirmState }) {
+  if (confirm?.kind !== 'restore') return null
+  return (
+    <>
+      Replace your current connections and tabs with the state from{' '}
+      <strong>{formatSnapshotTimestamp(confirm.snapshot.createdAt)}</strong>?
+      {confirm.unsavedCount > 0 && (
+        <span className={styles.unsavedWarning}>{unsavedChangesWarning(confirm.unsavedCount)}</span>
+      )}
+    </>
+  )
+}
+
+function DeleteConfirmMessage({ confirm }: { confirm: ConfirmState }) {
+  if (confirm?.kind !== 'delete') return null
+  return (
+    <>
+      Delete the snapshot from{' '}
+      <strong>{formatSnapshotTimestamp(confirm.snapshot.createdAt)}</strong>?
+    </>
+  )
+}
+
+function EmptySnapshotList({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className={styles.empty}>
+      <ClockCounterClockwiseIcon size={40} className={styles.emptyIcon} />
+      <h3 className={styles.emptyTitle}>No snapshots yet.</h3>
+      <p className={styles.emptyBody}>
+        Snapshots capture your open connections and tabs so you can restore them later.
+      </p>
+      <Button onClick={onCreate}>
+        <CameraPlusIcon size={16} />
+        Create your first snapshot
+      </Button>
+    </div>
+  )
+}
+
+interface SnapshotRowProps {
+  snapshot: SnapshotSummary
+  isSelected: boolean
+  onSelect: (snapshotId: SnapshotSummary['id']) => void
+  onDelete: (snapshot: SnapshotSummary) => void
+}
+
+function SnapshotRow({ snapshot, isSelected, onSelect, onDelete }: SnapshotRowProps) {
+  const timestamp = formatSnapshotTimestamp(snapshot.createdAt)
+  const rowClassName = isSelected ? `${styles.row} ${styles.rowSelected}` : styles.row
+  return (
+    <div
+      id={snapshotRowId(snapshot.id)}
+      data-testid={snapshotRowId(snapshot.id)}
+      role="option"
+      aria-selected={isSelected}
+      className={rowClassName}
+      onClick={() => onSelect(snapshot.id)}
+    >
+      <div className={styles.rowHeader}>
+        <span className={styles.timestamp}>{timestamp}</span>
+        <span className={styles.chip}>{formatSnapshotTrigger(snapshot.triggerType)}</span>
+        <Button
+          variant="subtle"
+          size="sm"
+          dangerText
+          iconOnly
+          className={styles.deleteButton}
+          aria-label={`Delete snapshot from ${timestamp}`}
+          data-testid={`snapshot-delete-${snapshot.id}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete(snapshot)
+          }}
+        >
+          <TrashIcon size={16} />
+        </Button>
+      </div>
+      <div className={styles.counts}>
+        {formatSnapshotCounts(snapshot.connectionCount, snapshot.tabCount)}
+      </div>
+      <div className={styles.breakdown}>{formatConnectionBreakdown(snapshot.connections)}</div>
+    </div>
+  )
+}
+
 export function SnapshotDialog() {
   const isDialogOpen = useSnapshotStore((state) => state.isDialogOpen)
   const snapshots = useSnapshotStore((state) => state.snapshots)
@@ -84,19 +198,12 @@ export function SnapshotDialog() {
         selectSnapshot(snapshots[clamped].id)
       }
 
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        selectAt(currentIndex < 0 ? 0 : currentIndex + 1)
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        selectAt(currentIndex < 0 ? snapshots.length - 1 : currentIndex - 1)
-      } else if (event.key === 'Home') {
-        event.preventDefault()
-        selectAt(0)
-      } else if (event.key === 'End') {
-        event.preventDefault()
-        selectAt(snapshots.length - 1)
+      const resolveTargetIndex = SNAPSHOT_LIST_KEY_TARGETS[event.key]
+      if (!resolveTargetIndex) {
+        return
       }
+      event.preventDefault()
+      selectAt(resolveTargetIndex({ currentIndex: currentIndex, snapshotCount: snapshots.length }))
     },
     [snapshots, selectedSnapshotId, selectSnapshot]
   )
@@ -106,6 +213,7 @@ export function SnapshotDialog() {
   }
 
   const restoreDisabled = selectedSnapshotId == null || isRestoring
+  const confirmKind = confirm?.kind
 
   return (
     <DialogShell
@@ -129,67 +237,20 @@ export function SnapshotDialog() {
         className={styles.list}
         role="listbox"
         aria-label="Session snapshots"
-        aria-activedescendant={
-          selectedSnapshotId != null ? `snapshot-row-${selectedSnapshotId}` : undefined
-        }
+        aria-activedescendant={activeSnapshotRowId(selectedSnapshotId)}
         tabIndex={0}
         onKeyDown={handleListKeyDown}
       >
-        {snapshots.length === 0 ? (
-          <div className={styles.empty}>
-            <ClockCounterClockwiseIcon size={40} className={styles.emptyIcon} />
-            <h3 className={styles.emptyTitle}>No snapshots yet.</h3>
-            <p className={styles.emptyBody}>
-              Snapshots capture your open connections and tabs so you can restore them later.
-            </p>
-            <Button onClick={handleCreateClick}>
-              <CameraPlusIcon size={16} />
-              Create your first snapshot
-            </Button>
-          </div>
-        ) : (
-          snapshots.map((snapshot) => {
-            const timestamp = formatSnapshotTimestamp(snapshot.createdAt)
-            const isSelected = snapshot.id === selectedSnapshotId
-            return (
-              <div
-                key={snapshot.id}
-                id={`snapshot-row-${snapshot.id}`}
-                data-testid={`snapshot-row-${snapshot.id}`}
-                role="option"
-                aria-selected={isSelected}
-                className={`${styles.row}${isSelected ? ` ${styles.rowSelected}` : ''}`}
-                onClick={() => selectSnapshot(snapshot.id)}
-              >
-                <div className={styles.rowHeader}>
-                  <span className={styles.timestamp}>{timestamp}</span>
-                  <span className={styles.chip}>{formatSnapshotTrigger(snapshot.triggerType)}</span>
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    dangerText
-                    iconOnly
-                    className={styles.deleteButton}
-                    aria-label={`Delete snapshot from ${timestamp}`}
-                    data-testid={`snapshot-delete-${snapshot.id}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      handleDeleteClick(snapshot)
-                    }}
-                  >
-                    <TrashIcon size={16} />
-                  </Button>
-                </div>
-                <div className={styles.counts}>
-                  {formatSnapshotCounts(snapshot.connectionCount, snapshot.tabCount)}
-                </div>
-                <div className={styles.breakdown}>
-                  {formatConnectionBreakdown(snapshot.connections)}
-                </div>
-              </div>
-            )
-          })
-        )}
+        {snapshots.length === 0 && <EmptySnapshotList onCreate={handleCreateClick} />}
+        {snapshots.map((snapshot) => (
+          <SnapshotRow
+            key={snapshot.id}
+            snapshot={snapshot}
+            isSelected={snapshot.id === selectedSnapshotId}
+            onSelect={selectSnapshot}
+            onDelete={handleDeleteClick}
+          />
+        ))}
       </div>
 
       <div className={styles.footer}>
@@ -207,7 +268,7 @@ export function SnapshotDialog() {
       </div>
 
       <ConfirmDialog
-        isOpen={confirm?.kind === 'create'}
+        isOpen={confirmKind === 'create'}
         title="Create snapshot?"
         message="Capture the current session as a snapshot? This saves your open connections and tabs so you can restore them later."
         confirmLabel="Create snapshot"
@@ -225,25 +286,9 @@ export function SnapshotDialog() {
       />
 
       <ConfirmDialog
-        isOpen={confirm?.kind === 'restore'}
+        isOpen={confirmKind === 'restore'}
         title="Restore this snapshot?"
-        message={
-          confirm?.kind === 'restore' ? (
-            <>
-              Replace your current connections and tabs with the state from{' '}
-              <strong>{formatSnapshotTimestamp(confirm.snapshot.createdAt)}</strong>?
-              {confirm.unsavedCount > 0 && (
-                <span className={styles.unsavedWarning}>
-                  {confirm.unsavedCount === 1
-                    ? '1 connection has unsaved changes that will be lost.'
-                    : `${confirm.unsavedCount} connections have unsaved changes that will be lost.`}
-                </span>
-              )}
-            </>
-          ) : (
-            ''
-          )
-        }
+        message={<RestoreConfirmMessage confirm={confirm} />}
         confirmLabel="Restore"
         isDestructive
         warningText="Your current session is saved as a snapshot first, then closed."
@@ -260,18 +305,9 @@ export function SnapshotDialog() {
       />
 
       <ConfirmDialog
-        isOpen={confirm?.kind === 'delete'}
+        isOpen={confirmKind === 'delete'}
         title="Delete snapshot?"
-        message={
-          confirm?.kind === 'delete' ? (
-            <>
-              Delete the snapshot from{' '}
-              <strong>{formatSnapshotTimestamp(confirm.snapshot.createdAt)}</strong>?
-            </>
-          ) : (
-            ''
-          )
-        }
+        message={<DeleteConfirmMessage confirm={confirm} />}
         confirmLabel="Delete"
         isDestructive
         warningText={null}

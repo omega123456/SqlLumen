@@ -25,6 +25,24 @@ interface MemoryStore {
 
 const EMPTY_STORE: MemoryStore = { global: [], group: {}, connection: {} }
 
+function findMemoryById(memories: AiMemory[] | undefined, memoryId: AiMemory['id']) {
+  return memories?.find((candidate) => candidate.id === memoryId)
+}
+
+function findDraggedMemory(
+  memories: MemoryStore,
+  payload: MemoryDragPayload
+): AiMemory | undefined {
+  if (payload.fromScope === 'global') return findMemoryById(memories.global, payload.memoryId)
+  if (payload.fromScope === 'group' && payload.fromGroupId) {
+    return findMemoryById(memories.group[payload.fromGroupId], payload.memoryId)
+  }
+  if (payload.fromScope === 'connection' && payload.fromConnectionId) {
+    return findMemoryById(memories.connection[payload.fromConnectionId], payload.memoryId)
+  }
+  return undefined
+}
+
 export function AiMemoriesSettings() {
   const savedConnections = useConnectionStore((state) => state.savedConnections)
   const connectionGroups = useConnectionStore((state) => state.connectionGroups)
@@ -184,19 +202,7 @@ export function AiMemoriesSettings() {
       target: { scope: MemoryScope; connectionId?: string; groupId?: string },
       payload: MemoryDragPayload
     ) => {
-      // Find the dragged memory across stores by id + source scope.
-      let memory: AiMemory | undefined
-      if (payload.fromScope === 'global') {
-        memory = memories.global.find((candidate) => candidate.id === payload.memoryId)
-      } else if (payload.fromScope === 'group' && payload.fromGroupId) {
-        memory = memories.group[payload.fromGroupId]?.find(
-          (candidate) => candidate.id === payload.memoryId
-        )
-      } else if (payload.fromScope === 'connection' && payload.fromConnectionId) {
-        memory = memories.connection[payload.fromConnectionId]?.find(
-          (candidate) => candidate.id === payload.memoryId
-        )
-      }
+      const memory = findDraggedMemory(memories, payload)
       activeDragRef.current = null
       setActiveDrag(null)
       setHoverKey(null)

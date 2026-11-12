@@ -6,6 +6,7 @@ import {
   FolderOpenIcon,
   GlobeIcon,
   PlusCircleIcon,
+  type Icon,
 } from '@phosphor-icons/react'
 import { Button } from '../../common/Button'
 import { Textarea } from '../../common/Textarea'
@@ -52,15 +53,15 @@ export interface MemorySectionProps {
 
 const HEADER_ICON_SIZE = 16
 
+const SCOPE_ICONS: Record<MemoryScope, Icon> = {
+  global: GlobeIcon,
+  group: FolderOpenIcon,
+  connection: DatabaseIcon,
+}
+
 function scopeIcon(scope: MemoryScope) {
-  switch (scope) {
-    case 'global':
-      return <GlobeIcon size={HEADER_ICON_SIZE} aria-hidden />
-    case 'group':
-      return <FolderOpenIcon size={HEADER_ICON_SIZE} aria-hidden />
-    case 'connection':
-      return <DatabaseIcon size={HEADER_ICON_SIZE} aria-hidden />
-  }
+  const ScopeIcon = SCOPE_ICONS[scope]
+  return <ScopeIcon size={HEADER_ICON_SIZE} aria-hidden />
 }
 
 function isDropAccepted(
@@ -79,30 +80,30 @@ function isDropAccepted(
   return true
 }
 
+const MEMORY_SCOPES: ReadonlySet<unknown> = new Set<MemoryScope>(['global', 'group', 'connection'])
+
+function isMemoryScope(value: unknown): value is MemoryScope {
+  return MEMORY_SCOPES.has(value)
+}
+
+function ownerIdOrUndefined(value: unknown): string | null | undefined {
+  if (typeof value === 'string' || value === null) return value
+  return undefined
+}
+
 function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null {
   try {
     const raw = dataTransfer.getData(MEMORY_DRAG_MIME_TYPE)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<MemoryDragPayload>
-    if (
-      typeof parsed.memoryId !== 'number' ||
-      (parsed.fromScope !== 'global' &&
-        parsed.fromScope !== 'group' &&
-        parsed.fromScope !== 'connection')
-    ) {
+    if (typeof parsed.memoryId !== 'number' || !isMemoryScope(parsed.fromScope)) {
       return null
     }
     return {
       memoryId: parsed.memoryId,
       fromScope: parsed.fromScope,
-      fromConnectionId:
-        typeof parsed.fromConnectionId === 'string' || parsed.fromConnectionId === null
-          ? parsed.fromConnectionId
-          : undefined,
-      fromGroupId:
-        typeof parsed.fromGroupId === 'string' || parsed.fromGroupId === null
-          ? parsed.fromGroupId
-          : undefined,
+      fromConnectionId: ownerIdOrUndefined(parsed.fromConnectionId),
+      fromGroupId: ownerIdOrUndefined(parsed.fromGroupId),
     }
   } catch (error) {
     logParseFallback('[memory-section] parseDragPayload', error)
@@ -115,6 +116,126 @@ function hasMemoryDragType(dataTransfer: DataTransfer): boolean {
     if (dataTransfer.types[typeIndex] === MEMORY_DRAG_MIME_TYPE) return true
   }
   return false
+}
+
+const SCOPE_TONE_CLASS: Record<MemoryScope, string> = {
+  global: styles.toneGlobal,
+  group: styles.toneGroup,
+  connection: styles.toneConnection,
+}
+
+function memoryCountLabel(count: number): string {
+  return `${count} ${count === 1 ? 'memory' : 'memories'}`
+}
+
+function joinClassNames(classNames: string[]): string {
+  return classNames.filter(Boolean).join(' ')
+}
+
+interface MemorySectionHeaderProps {
+  sectionKey: string
+  scope: MemoryScope
+  label: string
+  memoryCount: number
+  subdued: boolean
+  collapse: { collapsible: boolean; collapsed: boolean; onToggle: () => void }
+}
+
+function MemorySectionHeader({
+  sectionKey,
+  scope,
+  label,
+  memoryCount,
+  subdued,
+  collapse,
+}: MemorySectionHeaderProps) {
+  const headerClassNames = [
+    styles.header,
+    SCOPE_TONE_CLASS[scope],
+    subdued ? styles.headerSubdued : '',
+  ]
+  const headerContent = (
+    <>
+      <span className={styles.headerIcon}>{scopeIcon(scope)}</span>
+      <span className={styles.headerLabel}>{label}</span>
+      <span className={styles.countBadge}>{memoryCountLabel(memoryCount)}</span>
+    </>
+  )
+  if (!collapse.collapsible) {
+    return <div className={joinClassNames(headerClassNames)}>{headerContent}</div>
+  }
+  return (
+    <Button
+      variant="bare"
+      className={joinClassNames([...headerClassNames, styles.headerButton])}
+      aria-expanded={!collapse.collapsed}
+      data-testid={`ai-memory-section-toggle-${sectionKey}`}
+      onClick={collapse.onToggle}
+    >
+      <span className={styles.chevron}>
+        {collapse.collapsed ? <CaretRightIcon size={14} /> : <CaretDownIcon size={14} />}
+      </span>
+      {headerContent}
+    </Button>
+  )
+}
+
+function MemoryDropSkeleton({ sectionKey }: { sectionKey: string }) {
+  return (
+    <div className={styles.skeletonRow} data-testid={`ai-memory-drop-skeleton-${sectionKey}`}>
+      <div className={`shimmerBlock ${styles.skeletonHandle}`} />
+      <div className={styles.skeletonContent}>
+        <div className={`shimmerBlock ${styles.skeletonLineText}`} />
+        <div className={`shimmerBlock ${styles.skeletonLineDate}`} />
+      </div>
+    </div>
+  )
+}
+
+interface MemoryListProps {
+  sectionKey: string
+  memories: AiMemory[]
+  owner: { scope: MemoryScope; connectionId?: string; groupId?: string }
+  activeDrag: MemoryDragPayload | null
+  rowHandlers: Pick<MemorySectionProps, 'onRequestDelete' | 'onDragStart' | 'onDragEnd'>
+}
+
+function isDraggingMemory(
+  activeDrag: MemoryDragPayload | null,
+  memory: AiMemory,
+  scope: MemoryScope
+): boolean {
+  return activeDrag?.memoryId === memory.id && activeDrag.fromScope === scope
+}
+
+function MemoryList({ sectionKey, memories, owner, activeDrag, rowHandlers }: MemoryListProps) {
+  if (memories.length === 0) {
+    return (
+      <div className={styles.emptyState} data-testid={`ai-memory-empty-${sectionKey}`}>
+        No memories
+      </div>
+    )
+  }
+  return (
+    <>
+      {memories.map((memory) => (
+        <MemoryRow
+          key={`${memory.scope}-${memory.id}`}
+          memory={memory}
+          source={{
+            memoryId: memory.id,
+            fromScope: owner.scope,
+            fromConnectionId: owner.connectionId ?? null,
+            fromGroupId: owner.groupId ?? null,
+          }}
+          onRequestDelete={rowHandlers.onRequestDelete}
+          onDragStart={rowHandlers.onDragStart}
+          onDragEnd={rowHandlers.onDragEnd}
+          isDragging={isDraggingMemory(activeDrag, memory, owner.scope)}
+        />
+      ))}
+    </>
+  )
 }
 
 export function MemorySection({
@@ -154,13 +275,6 @@ export function MemorySection({
   // "skeleton stuck in every section I dragged through" bug.
   const isDragOver = hoverKey === sectionKey
 
-  const toneClass =
-    scope === 'global'
-      ? styles.toneGlobal
-      : scope === 'group'
-        ? styles.toneGroup
-        : styles.toneConnection
-
   useEffect(() => {
     if (addOpen) textareaRef.current?.focus()
   }, [addOpen])
@@ -197,9 +311,11 @@ export function MemorySection({
 
   return (
     <div
-      className={`${styles.section} ${nested ? styles.nested : ''} ${
-        isDragOver ? styles.dropTarget : ''
-      }`}
+      className={joinClassNames([
+        styles.section,
+        nested ? styles.nested : '',
+        isDragOver ? styles.dropTarget : '',
+      ])}
       data-testid={`ai-memory-section-${sectionKey}`}
       onDragOver={(event) => {
         const payload = resolveDragPayload(event.dataTransfer)
@@ -213,11 +329,8 @@ export function MemorySection({
         event.preventDefault()
         const dropAccepted = payload ? isDropAccepted(scope, connectionId, groupId, payload) : true
         event.dataTransfer.dropEffect = dropAccepted ? 'move' : 'none'
-        if (dropAccepted) {
-          if (!isDragOver) onHover(sectionKey)
-        } else if (isDragOver) {
-          onHover(null)
-        }
+        const hoverChanged = dropAccepted !== isDragOver
+        if (hoverChanged) onHover(dropAccepted ? sectionKey : null)
       }}
       onDragLeave={(event) => {
         // Only clear when the cursor truly leaves this section (not when moving
@@ -227,71 +340,33 @@ export function MemorySection({
       }}
       onDrop={handleDrop}
     >
-      {collapsible ? (
-        <Button
-          variant="bare"
-          className={`${styles.header} ${styles.headerButton} ${toneClass} ${
-            subdued ? styles.headerSubdued : ''
-          }`}
-          aria-expanded={!collapsed}
-          data-testid={`ai-memory-section-toggle-${sectionKey}`}
-          onClick={() => setCollapsed((isCollapsed) => !isCollapsed)}
-        >
-          <span className={styles.chevron}>
-            {collapsed ? <CaretRightIcon size={14} /> : <CaretDownIcon size={14} />}
-          </span>
-          <span className={styles.headerIcon}>{scopeIcon(scope)}</span>
-          <span className={styles.headerLabel}>{label}</span>
-          <span className={styles.countBadge}>
-            {memories.length} {memories.length === 1 ? 'memory' : 'memories'}
-          </span>
-        </Button>
-      ) : (
-        <div className={`${styles.header} ${toneClass} ${subdued ? styles.headerSubdued : ''}`}>
-          <span className={styles.headerIcon}>{scopeIcon(scope)}</span>
-          <span className={styles.headerLabel}>{label}</span>
-          <span className={styles.countBadge}>
-            {memories.length} {memories.length === 1 ? 'memory' : 'memories'}
-          </span>
-        </div>
-      )}
+      <MemorySectionHeader
+        sectionKey={sectionKey}
+        scope={scope}
+        label={label}
+        memoryCount={memories.length}
+        subdued={subdued}
+        collapse={{
+          collapsible: collapsible,
+          collapsed: collapsed,
+          onToggle: () => setCollapsed((isCollapsed) => !isCollapsed),
+        }}
+      />
 
       {!collapsed && (
         <div className={styles.body}>
-          {isDragOver && (
-            <div
-              className={styles.skeletonRow}
-              data-testid={`ai-memory-drop-skeleton-${sectionKey}`}
-            >
-              <div className={`shimmerBlock ${styles.skeletonHandle}`} />
-              <div className={styles.skeletonContent}>
-                <div className={`shimmerBlock ${styles.skeletonLineText}`} />
-                <div className={`shimmerBlock ${styles.skeletonLineDate}`} />
-              </div>
-            </div>
-          )}
-          {memories.length === 0 ? (
-            <div className={styles.emptyState} data-testid={`ai-memory-empty-${sectionKey}`}>
-              No memories
-            </div>
-          ) : (
-            memories.map((memory) => (
-              <MemoryRow
-                key={`${memory.scope}-${memory.id}`}
-                memory={memory}
-                source={{
-                  memoryId: memory.id,
-                  fromScope: scope,
-                  fromConnectionId: connectionId ?? null,
-                  fromGroupId: groupId ?? null,
-                }}
-                onRequestDelete={onRequestDelete}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                isDragging={activeDrag?.memoryId === memory.id && activeDrag.fromScope === scope}
-              />
-            ))
-          )}
+          {isDragOver && <MemoryDropSkeleton sectionKey={sectionKey} />}
+          <MemoryList
+            sectionKey={sectionKey}
+            memories={memories}
+            owner={{ scope: scope, connectionId: connectionId, groupId: groupId }}
+            activeDrag={activeDrag}
+            rowHandlers={{
+              onRequestDelete: onRequestDelete,
+              onDragStart: onDragStart,
+              onDragEnd: onDragEnd,
+            }}
+          />
 
           {addOpen ? (
             <div className={styles.addForm} id={formId}>

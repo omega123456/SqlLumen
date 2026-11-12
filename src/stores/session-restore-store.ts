@@ -53,10 +53,12 @@ let closeHandlerRegistered = false
 let saveSessionInFlight: Promise<void> | null = null
 let saveSessionRequestId = 0
 let saveSessionCompletedRequestId = 0
-const saveSessionWaiters = new Map<
-  number,
-  { resolve: () => void; reject: (error: Error) => void }
->()
+interface SaveSessionWaiter {
+  resolve: () => void
+  reject: (error: Error) => void
+}
+
+const saveSessionWaiters = new Map<number, SaveSessionWaiter>()
 let loadTauriWindowApi: LoadTauriWindowApi = defaultLoadTauriWindowApi
 
 /**
@@ -172,7 +174,6 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
 
     set({ isRestoring: true, restoreError: null, hasIncompleteRestore: true })
     let beganRestore = false
-    let restoredCount = 0
 
     try {
       beganRestore = true
@@ -182,57 +183,10 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
         useConnectionStore.getState().fetchSavedConnections(),
         listOpenConnectionSessions(),
       ])
-      const sessionsByProfile = new Map<string, typeof openSessions>()
-      for (const session of openSessions) {
-        const sessions = sessionsByProfile.get(session.profileId) ?? []
-        sessions.push(session)
-        sessionsByProfile.set(session.profileId, sessions)
-      }
-      const claimedSessionIds = new Set<string>()
-      const restoredSessionIdsBySavedIndex: Array<string | null> = Array.from(
-        { length: state.connections.length },
-        () => null
-      )
-
-      for (const [savedIndex, connectionState] of state.connections.entries()) {
-        try {
-          const existingSession = sessionsByProfile.get(connectionState.profileId)?.shift()
-          if (existingSession) {
-            claimedSessionIds.add(existingSession.sessionId)
-          }
-          const sessionId = existingSession
-            ? attachExistingSession(existingSession)
-            : await connectByProfileId(connectionState.profileId)
-          if (!sessionId) {
-            continue
-          }
-
-          await restoreConnectionTabs(sessionId, connectionState)
-          restoredSessionIdsBySavedIndex[savedIndex] = sessionId
-          restoredCount += 1
-        } catch (error) {
-          const message = toErrorMessage(error)
-          logFrontend(
-            'error',
-            `[session-restore] Failed to restore connection ${connectionState.profileId}: ${message}`
-          )
-          showErrorToast('Session restore failed', `Could not reconnect: ${message}`)
-        }
-      }
-
-      for (const session of openSessions) {
-        if (claimedSessionIds.has(session.sessionId)) {
-          continue
-        }
-        attachExistingSession(session)
-      }
-
-      if (typeof state.activeConnectionIndex === 'number') {
-        const activeSessionId = restoredSessionIdsBySavedIndex[state.activeConnectionIndex] ?? null
-        if (activeSessionId) {
-          useConnectionStore.getState().switchTab(activeSessionId)
-        }
-      }
+      const outcome = await restoreSavedConnections(state, openSessions)
+      const restoredCount = outcome.restoredCount
+      attachUnclaimedSessions(openSessions, outcome.claimedSessionIds)
+      switchToRestoredConnection(state.activeConnectionIndex, outcome.restoredSessionIds)
 
       useWorkspaceStore.getState().resetStackRecency()
       const hasIncompleteRestore = restoredCount !== state.connections.length
@@ -296,11 +250,7 @@ async function runSaveSessionQueue(): Promise<void> {
       }
 
       saveSessionWaiters.delete(completedRequestId)
-      if (error) {
-        waiter.reject(error)
-      } else {
-        waiter.resolve()
-      }
+      settleSaveWaiter(waiter, error)
     }
   }
 }
@@ -330,23 +280,10 @@ export function buildSessionState(): SessionState {
     const tabs = workspaceStore.tabsByConnection[sessionId] ?? []
     const activeTabId = workspaceStore.activeTabByConnection[sessionId] ?? null
 
-    const serializedTabs: SessionTabState[] = []
-    let activeTabIndex = 0
-
-    for (const tab of tabs) {
-      const serialized = serializeTab(tab, queryStore)
-      if (serialized) {
-        serializedTabs.push(serialized)
-      }
-    }
-
-    // Find the active tab index in the serialized list
-    if (activeTabId) {
-      const index = serializedTabs.findIndex((st) => st.tabId === activeTabId)
-      if (index >= 0) {
-        activeTabIndex = index
-      }
-    }
+    const serializedTabs = tabs
+      .map((tab) => serializeTab(tab, queryStore))
+      .filter((serialized): serialized is SessionTabState => serialized !== null)
+    const activeTabIndex = activeTabIndexOf(serializedTabs, activeTabId)
 
     connections.push({
       profileId: profileId,
@@ -371,21 +308,8 @@ function serializeTab(
   queryStore: ReturnType<(typeof useQueryStore)['getState']>
 ): SessionTabState | null {
   switch (tab.type) {
-    case 'query-editor': {
-      const tabState = queryStore.tabs[tab.id]
-      return {
-        type: 'query-editor',
-        tabId: tab.id,
-        sql: tabState?.content ?? '',
-        cursorLine: tabState?.cursorPosition?.lineNumber,
-        cursorColumn: tabState?.cursorPosition?.column,
-        label: tab.label,
-        activeBottomPanelTableTabId:
-          tabState?.activeBottomPanelItem.type === 'table-data'
-            ? tabState.activeBottomPanelItem.tabId
-            : undefined,
-      }
-    }
+    case 'query-editor':
+      return serializeQueryEditorTab(tab, queryStore)
     case 'table-data':
       return {
         type: 'table-data',
@@ -471,6 +395,318 @@ function attachExistingSession(session: OpenConnectionSession): string | null {
   return null
 }
 
+type SavedTableDataTab = Extract<SessionTabState, { type: 'table-data' }>
+type SavedSchemaInfoTab = Extract<SessionTabState, { type: 'schema-info' }>
+type SavedQueryEditorTab = Extract<SessionTabState, { type: 'query-editor' }>
+type QueryStoreState = ReturnType<(typeof useQueryStore)['getState']>
+
+interface TabRestoreContext {
+  sessionId: string
+  bottomPanelEnabled: boolean
+  savedToRuntimeTabId: Map<string, string>
+  queryBottomPanelSelections: Map<string, string>
+}
+
+function groupSessionsByProfile(
+  openSessions: OpenConnectionSession[]
+): Map<string, OpenConnectionSession[]> {
+  const sessionsByProfile = new Map<string, OpenConnectionSession[]>()
+  for (const session of openSessions) {
+    const sessions = sessionsByProfile.get(session.profileId) ?? []
+    sessions.push(session)
+    sessionsByProfile.set(session.profileId, sessions)
+  }
+  return sessionsByProfile
+}
+
+interface ConnectionsRestoreOutcome {
+  restoredCount: number
+  restoredSessionIds: Array<string | null>
+  claimedSessionIds: Set<string>
+}
+
+async function restoreSavedConnections(
+  state: SessionState,
+  openSessions: OpenConnectionSession[]
+): Promise<ConnectionsRestoreOutcome> {
+  const sessionsByProfile = groupSessionsByProfile(openSessions)
+  const outcome: ConnectionsRestoreOutcome = {
+    restoredCount: 0,
+    restoredSessionIds: Array.from({ length: state.connections.length }, () => null),
+    claimedSessionIds: new Set<string>(),
+  }
+  for (const [savedIndex, connectionState] of state.connections.entries()) {
+    try {
+      const existingSession = sessionsByProfile.get(connectionState.profileId)?.shift()
+      if (existingSession) {
+        outcome.claimedSessionIds.add(existingSession.sessionId)
+      }
+      const sessionId = await resolveRestoreSessionId(existingSession, connectionState.profileId)
+      if (!sessionId) continue
+      await restoreConnectionTabs(sessionId, connectionState)
+      outcome.restoredSessionIds[savedIndex] = sessionId
+      outcome.restoredCount += 1
+    } catch (error) {
+      reportConnectionRestoreFailure(connectionState.profileId, error)
+    }
+  }
+  return outcome
+}
+
+function attachUnclaimedSessions(
+  openSessions: OpenConnectionSession[],
+  claimedSessionIds: Set<string>
+): void {
+  for (const session of openSessions) {
+    if (!claimedSessionIds.has(session.sessionId)) {
+      attachExistingSession(session)
+    }
+  }
+}
+
+function reportConnectionRestoreFailure(profileId: string, error: unknown): void {
+  const message = toErrorMessage(error)
+  logFrontend('error', `[session-restore] Failed to restore connection ${profileId}: ${message}`)
+  showErrorToast('Session restore failed', `Could not reconnect: ${message}`)
+}
+
+async function resolveRestoreSessionId(
+  existingSession: OpenConnectionSession | undefined,
+  profileId: string
+): Promise<string | null> {
+  if (existingSession) return attachExistingSession(existingSession)
+  return connectByProfileId(profileId)
+}
+
+function switchToRestoredConnection(
+  activeConnectionIndex: number | undefined,
+  restoredSessionIds: Array<string | null>
+): void {
+  if (typeof activeConnectionIndex !== 'number') return
+  const activeSessionId = restoredSessionIds[activeConnectionIndex] ?? null
+  if (activeSessionId) {
+    useConnectionStore.getState().switchTab(activeSessionId)
+  }
+}
+
+function settleSaveWaiter(waiter: SaveSessionWaiter, error: Error | null): void {
+  if (error) {
+    waiter.reject(error)
+    return
+  }
+  waiter.resolve()
+}
+
+function activeTabIndexOf(serializedTabs: SessionTabState[], activeTabId: string | null): number {
+  if (!activeTabId) return 0
+  const index = serializedTabs.findIndex((serialized) => serialized.tabId === activeTabId)
+  return Math.max(index, 0)
+}
+
+function serializeQueryEditorTab(
+  tab: WorkspaceTab,
+  queryStore: QueryStoreState
+): SavedQueryEditorTab {
+  const tabState = queryStore.tabs[tab.id]
+  const bottomPanelItem = tabState?.activeBottomPanelItem
+  return {
+    type: 'query-editor',
+    tabId: tab.id,
+    sql: tabState?.content ?? '',
+    cursorLine: tabState?.cursorPosition?.lineNumber,
+    cursorColumn: tabState?.cursorPosition?.column,
+    label: tab.label,
+    activeBottomPanelTableTabId:
+      bottomPanelItem?.type === 'table-data' ? bottomPanelItem.tabId : undefined,
+  }
+}
+
+function restoreQueryEditorTab(context: TabRestoreContext, tabState: SavedQueryEditorTab): void {
+  const queryStore = useQueryStore.getState()
+  const runtimeTabId = useWorkspaceStore.getState().openQueryTab(context.sessionId, tabState.label)
+  context.savedToRuntimeTabId.set(tabState.tabId, runtimeTabId)
+  if (tabState.sql) {
+    queryStore.setContent(runtimeTabId, tabState.sql)
+  }
+  if (tabState.cursorLine != null && tabState.cursorColumn != null) {
+    queryStore.setCursorPosition(runtimeTabId, {
+      lineNumber: tabState.cursorLine,
+      column: tabState.cursorColumn,
+    })
+  }
+  if (tabState.activeBottomPanelTableTabId) {
+    context.queryBottomPanelSelections.set(runtimeTabId, tabState.activeBottomPanelTableTabId)
+  }
+}
+
+function restoreTableDataTab(context: TabRestoreContext, tabState: SavedTableDataTab): string {
+  const restoredTabId = useWorkspaceStore.getState().restoreTableDataTab({
+    type: 'table-data',
+    label: tabState.tableName,
+    connectionId: context.sessionId,
+    databaseName: tabState.databaseName,
+    objectName: tabState.tableName,
+    objectType: tabState.objectType ?? 'table',
+    // The saved scope stays until the post-pass remaps it, so same-table children keep apart.
+    parentQueryTabId: tabState.parentQueryTabId,
+  })
+  context.savedToRuntimeTabId.set(tabState.tabId, restoredTabId)
+  return restoredTabId
+}
+
+function sessionTabs(sessionId: string): WorkspaceTab[] {
+  return useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
+}
+
+function rememberRestoredTab(
+  context: TabRestoreContext,
+  savedTabId: string,
+  restoredTab: WorkspaceTab | undefined
+): string | null {
+  if (!restoredTab) return null
+  context.savedToRuntimeTabId.set(savedTabId, restoredTab.id)
+  return restoredTab.id
+}
+
+function restoreSchemaInfoTab(context: TabRestoreContext, tabState: SavedSchemaInfoTab) {
+  useWorkspaceStore.getState().openTab({
+    type: 'schema-info',
+    label: tabState.objectName,
+    connectionId: context.sessionId,
+    databaseName: tabState.databaseName,
+    objectName: tabState.objectName,
+    objectType: tabState.objectType as
+      'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event',
+  })
+  const created = sessionTabs(context.sessionId).find(
+    (tab) =>
+      tab.type === 'schema-info' &&
+      tab.databaseName === tabState.databaseName &&
+      tab.objectName === tabState.objectName
+  )
+  return rememberRestoredTab(context, tabState.tabId, created)
+}
+
+function restoreHistoryTab(context: TabRestoreContext, tabState: SessionTabState): string | null {
+  const workspaceStore = useWorkspaceStore.getState()
+  workspaceStore.openHistoryTab(context.sessionId, false)
+  const created = sessionTabs(context.sessionId).find((tab) => tab.type === 'history')
+  const restoredTabId = rememberRestoredTab(context, tabState.tabId, created)
+  workspaceStore.openProcessListTab(context.sessionId)
+  return restoredTabId
+}
+
+function restoreSavedTab(context: TabRestoreContext, tabState: SessionTabState): string | null {
+  if (tabState.type === 'query-editor') {
+    return context.savedToRuntimeTabId.get(tabState.tabId) ?? null
+  }
+  if (tabState.type === 'table-data') return restoreTableDataTab(context, tabState)
+  if (tabState.type === 'schema-info') return restoreSchemaInfoTab(context, tabState)
+  if (tabState.type === 'history') return restoreHistoryTab(context, tabState)
+  return null
+}
+
+function savedTableTabFor(
+  savedTabs: SessionTabState[],
+  context: TabRestoreContext,
+  runtimeTabId: string
+): SavedTableDataTab | undefined {
+  return savedTabs.find(
+    (savedTab): savedTab is SavedTableDataTab =>
+      savedTab.type === 'table-data' &&
+      context.savedToRuntimeTabId.get(savedTab.tabId) === runtimeTabId
+  )
+}
+
+function restoredParentQueryTabId(
+  context: TabRestoreContext,
+  savedTableTab: SavedTableDataTab | undefined
+): string | undefined {
+  const savedParentId = savedTableTab?.parentQueryTabId
+  if (!context.bottomPanelEnabled || !savedParentId) return undefined
+  return context.savedToRuntimeTabId.get(savedParentId)
+}
+
+function orderRestoredTabs(
+  runtimeTabs: WorkspaceTab[],
+  savedTabs: SessionTabState[],
+  context: TabRestoreContext
+): WorkspaceTab[] {
+  const orderedRuntimeTabIds = savedTabs
+    .map((savedTab) => context.savedToRuntimeTabId.get(savedTab.tabId) ?? null)
+    .filter((tabId): tabId is string => tabId != null)
+  const savedOrderTabs = orderedRuntimeTabIds
+    .map((tabId) => runtimeTabs.find((tab) => tab.id === tabId) ?? null)
+    .filter((tab): tab is WorkspaceTab => tab != null)
+  const unsavedTabs = runtimeTabs.filter((tab) => !orderedRuntimeTabIds.includes(tab.id))
+  return [...savedOrderTabs, ...unsavedTabs].map((tab) => {
+    if (tab.type !== 'table-data') return tab
+    const savedTableTab = savedTableTabFor(savedTabs, context, tab.id)
+    return { ...tab, parentQueryTabId: restoredParentQueryTabId(context, savedTableTab) }
+  })
+}
+
+function isScopedChildOf(tab: WorkspaceTab | undefined, queryTabId: string): boolean {
+  return tab?.type === 'table-data' && tab.parentQueryTabId === queryTabId
+}
+
+function applyBottomPanelSelections(context: TabRestoreContext): void {
+  for (const [runtimeQueryTabId, savedTableTabId] of context.queryBottomPanelSelections) {
+    const runtimeTableTabId = context.savedToRuntimeTabId.get(savedTableTabId)
+    if (!runtimeTableTabId) continue
+    const runtimeTableTab = sessionTabs(context.sessionId).find(
+      (tab) => tab.id === runtimeTableTabId
+    )
+    if (!isScopedChildOf(runtimeTableTab, runtimeQueryTabId)) continue
+    useQueryStore.getState().setActiveBottomPanelItem(runtimeQueryTabId, {
+      type: 'table-data',
+      tabId: runtimeTableTabId,
+    })
+  }
+}
+
+function activateFlattenedTableTab(
+  context: TabRestoreContext,
+  savedActiveTab: SessionTabState | null
+): void {
+  if (context.bottomPanelEnabled || savedActiveTab?.type !== 'table-data') return
+  const flattenedActiveTable = sessionTabs(context.sessionId).find(
+    (tab) =>
+      tab.type === 'table-data' &&
+      tab.databaseName === savedActiveTab.databaseName &&
+      tab.objectName === savedActiveTab.tableName
+  )
+  if (flattenedActiveTable) {
+    useWorkspaceStore.getState().setActiveTab(context.sessionId, flattenedActiveTable.id)
+  }
+}
+
+function activateRestoredTab(
+  context: TabRestoreContext,
+  activeTabId: string,
+  savedActiveTab: SessionTabState | null
+): void {
+  const activeTab = sessionTabs(context.sessionId).find((tab) => tab.id === activeTabId)
+  if (!activeTab) {
+    activateFlattenedTableTab(context, savedActiveTab)
+    return
+  }
+  if (activeTab.type !== 'table-data' || !activeTab.parentQueryTabId) {
+    useWorkspaceStore.getState().setActiveTab(context.sessionId, activeTabId)
+    return
+  }
+  useWorkspaceStore.getState().setActiveTab(context.sessionId, activeTab.parentQueryTabId)
+  useQueryStore.getState().setActiveBottomPanelItem(activeTab.parentQueryTabId, {
+    type: 'table-data',
+    tabId: activeTab.id,
+  })
+}
+
+function savedActiveTabOf(connectionState: SessionConnectionState): SessionTabState | null {
+  if (connectionState.activeTabIndex < 0) return null
+  return connectionState.tabs[connectionState.activeTabIndex] ?? null
+}
+
 /**
  * Restore tabs for a given connection session.
  */
@@ -478,197 +714,48 @@ async function restoreConnectionTabs(
   sessionId: string,
   connectionState: SessionConnectionState
 ): Promise<void> {
-  const workspaceStore = useWorkspaceStore.getState()
-  const queryStore = useQueryStore.getState()
-  const bottomPanelEnabled =
-    useSettingsStore.getState().getSetting('results.tableTabsInBottomPanel') === 'true'
-  let activeTabId: string | null = null
-  const savedToRuntimeTabId = new Map<string, string>()
-  const queryBottomPanelSelections = new Map<string, string>()
-  const savedActiveTabState =
-    connectionState.activeTabIndex >= 0
-      ? (connectionState.tabs[connectionState.activeTabIndex] ?? null)
-      : null
+  const context: TabRestoreContext = {
+    sessionId: sessionId,
+    bottomPanelEnabled:
+      useSettingsStore.getState().getSetting('results.tableTabsInBottomPanel') === 'true',
+    savedToRuntimeTabId: new Map<string, string>(),
+    queryBottomPanelSelections: new Map<string, string>(),
+  }
+  const savedActiveTab = savedActiveTabOf(connectionState)
 
   for (const tabState of connectionState.tabs) {
-    if (tabState.type !== 'query-editor') {
-      continue
-    }
-
-    const runtimeTabId = workspaceStore.openQueryTab(sessionId, tabState.label)
-    savedToRuntimeTabId.set(tabState.tabId, runtimeTabId)
-
-    if (tabState.sql) {
-      queryStore.setContent(runtimeTabId, tabState.sql)
-    }
-    if (tabState.cursorLine != null && tabState.cursorColumn != null) {
-      queryStore.setCursorPosition(runtimeTabId, {
-        lineNumber: tabState.cursorLine,
-        column: tabState.cursorColumn,
-      })
-    }
-    if (tabState.activeBottomPanelTableTabId) {
-      queryBottomPanelSelections.set(runtimeTabId, tabState.activeBottomPanelTableTabId)
+    if (tabState.type === 'query-editor') {
+      restoreQueryEditorTab(context, tabState)
     }
   }
 
-  for (let tabIndex = 0; tabIndex < connectionState.tabs.length; tabIndex++) {
-    const tabState = connectionState.tabs[tabIndex]
-    let restoredTabId: string | null = null
-
-    switch (tabState.type) {
-      case 'query-editor':
-        restoredTabId = savedToRuntimeTabId.get(tabState.tabId) ?? null
-        break
-      case 'table-data':
-        restoredTabId = workspaceStore.restoreTableDataTab({
-          type: 'table-data',
-          label: tabState.tableName,
-          connectionId: sessionId,
-          databaseName: tabState.databaseName,
-          objectName: tabState.tableName,
-          objectType: tabState.objectType ?? 'table',
-          // Preserve the saved scope identity until the post-pass remaps it to
-          // the restored runtime query tab ID. This avoids deduplicating
-          // same-table children from different saved query contexts.
-          parentQueryTabId: tabState.parentQueryTabId,
-        })
-        savedToRuntimeTabId.set(tabState.tabId, restoredTabId)
-        break
-      case 'schema-info': {
-        workspaceStore.openTab({
-          type: 'schema-info',
-          label: tabState.objectName,
-          connectionId: sessionId,
-          databaseName: tabState.databaseName,
-          objectName: tabState.objectName,
-          objectType: tabState.objectType as
-            'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event',
-        })
-        const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
-        const created = allTabs.find(
-          (tab) =>
-            tab.type === 'schema-info' &&
-            tab.databaseName === tabState.databaseName &&
-            tab.objectName === tabState.objectName
-        )
-        restoredTabId = created?.id ?? null
-        if (restoredTabId) {
-          savedToRuntimeTabId.set(tabState.tabId, restoredTabId)
-        }
-        break
-      }
-      case 'history': {
-        workspaceStore.openHistoryTab(sessionId, false)
-        const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
-        const created = allTabs.find((tab) => tab.type === 'history')
-        restoredTabId = created?.id ?? null
-        if (restoredTabId) {
-          savedToRuntimeTabId.set(tabState.tabId, restoredTabId)
-        }
-
-        workspaceStore.openProcessListTab(sessionId)
-        break
-      }
-    }
-
+  let activeTabId: string | null = null
+  for (const [tabIndex, tabState] of connectionState.tabs.entries()) {
+    const restoredTabId = restoreSavedTab(context, tabState)
     if (tabIndex === connectionState.activeTabIndex && restoredTabId) {
       activeTabId = restoredTabId
     }
   }
 
-  useWorkspaceStore.setState((state) => {
-    const runtimeTabs = state.tabsByConnection[sessionId] ?? []
-    const orderedRuntimeTabIds = connectionState.tabs
-      .map((savedTab) => savedToRuntimeTabId.get(savedTab.tabId) ?? null)
-      .filter((tabId): tabId is string => tabId != null)
+  useWorkspaceStore.setState((state) => ({
+    tabsByConnection: {
+      ...state.tabsByConnection,
+      [sessionId]: orderRestoredTabs(
+        state.tabsByConnection[sessionId] ?? [],
+        connectionState.tabs,
+        context
+      ),
+    },
+  }))
 
-    const orderedTabs = [
-      ...orderedRuntimeTabIds
-        .map((tabId) => runtimeTabs.find((tab) => tab.id === tabId) ?? null)
-        .filter((tab): tab is WorkspaceTab => tab != null),
-      ...runtimeTabs.filter((tab) => !orderedRuntimeTabIds.includes(tab.id)),
-    ].map((tab) => {
-      if (tab.type !== 'table-data') {
-        return tab
-      }
+  applyBottomPanelSelections(context)
 
-      const savedTableTab = connectionState.tabs.find(
-        (savedTab): savedTab is Extract<SessionTabState, { type: 'table-data' }> =>
-          savedTab.type === 'table-data' && savedToRuntimeTabId.get(savedTab.tabId) === tab.id
-      )
-
-      return {
-        ...tab,
-        parentQueryTabId:
-          bottomPanelEnabled && savedTableTab?.parentQueryTabId
-            ? savedToRuntimeTabId.get(savedTableTab.parentQueryTabId)
-            : undefined,
-      }
-    })
-
-    return {
-      tabsByConnection: {
-        ...state.tabsByConnection,
-        [sessionId]: orderedTabs,
-      },
-    }
-  })
-
-  for (const [runtimeQueryTabId, savedTableTabId] of queryBottomPanelSelections) {
-    const runtimeTableTabId = savedToRuntimeTabId.get(savedTableTabId)
-    if (!runtimeTableTabId) {
-      continue
-    }
-
-    const runtimeTableTab = useWorkspaceStore
-      .getState()
-      .tabsByConnection[sessionId]?.find((tab) => tab.id === runtimeTableTabId)
-
-    if (
-      runtimeTableTab?.type !== 'table-data' ||
-      runtimeTableTab.parentQueryTabId !== runtimeQueryTabId
-    ) {
-      continue
-    }
-
-    useQueryStore.getState().setActiveBottomPanelItem(runtimeQueryTabId, {
-      type: 'table-data',
-      tabId: runtimeTableTabId,
-    })
-  }
-
-  if (!bottomPanelEnabled) {
+  if (!context.bottomPanelEnabled) {
     useWorkspaceStore.getState().normalizeTableDataTabScopes()
   }
 
   if (activeTabId) {
-    const restoredTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
-    const activeTab = restoredTabs.find((tab) => tab.id === activeTabId)
-    if (!activeTab) {
-      if (!bottomPanelEnabled && savedActiveTabState?.type === 'table-data') {
-        const flattenedActiveTable = restoredTabs.find(
-          (tab) =>
-            tab.type === 'table-data' &&
-            tab.databaseName === savedActiveTabState.databaseName &&
-            tab.objectName === savedActiveTabState.tableName
-        )
-        if (flattenedActiveTable) {
-          useWorkspaceStore.getState().setActiveTab(sessionId, flattenedActiveTable.id)
-        }
-      }
-      return
-    }
-
-    if (activeTab?.type === 'table-data' && activeTab.parentQueryTabId) {
-      useWorkspaceStore.getState().setActiveTab(sessionId, activeTab.parentQueryTabId)
-      useQueryStore.getState().setActiveBottomPanelItem(activeTab.parentQueryTabId, {
-        type: 'table-data',
-        tabId: activeTab.id,
-      })
-    } else {
-      useWorkspaceStore.getState().setActiveTab(sessionId, activeTabId)
-    }
+    activateRestoredTab(context, activeTabId, savedActiveTab)
   }
 }
 

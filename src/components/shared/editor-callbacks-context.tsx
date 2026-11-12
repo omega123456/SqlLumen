@@ -17,7 +17,7 @@
  * focus loss.
  */
 
-import { createContext, useContext } from 'react'
+import { createContext, useCallback, useContext } from 'react'
 
 export interface EditorCallbacksContextType {
   tabId: string
@@ -38,4 +38,58 @@ export const EditorCallbacksContext = createContext<EditorCallbacksContextType |
  */
 export function useEditorCallbacks(): EditorCallbacksContextType | null {
   return useContext(EditorCallbacksContext)
+}
+
+type UpdateCellValue = EditorCallbacksContextType['updateCellValue']
+type SyncCellValue = EditorCallbacksContextType['syncCellValue']
+
+export interface CellStoreSyncSource {
+  row: Record<string, unknown>
+  column: { key: string }
+  tabId?: string
+  updateCellValue?: UpdateCellValue
+  syncCellValue?: SyncCellValue
+}
+
+interface EditorStoreCallbacks {
+  tabId: string
+  updateCellValue: UpdateCellValue | undefined
+  syncCellValue: SyncCellValue | undefined
+}
+
+function resolveEditorStoreCallbacks(
+  source: CellStoreSyncSource,
+  contextCallbacks: EditorCallbacksContextType | null
+): EditorStoreCallbacks {
+  const tabId = source.tabId || contextCallbacks?.tabId || ''
+  if (source.tabId) {
+    return {
+      tabId: tabId,
+      updateCellValue: source.updateCellValue,
+      syncCellValue: source.syncCellValue,
+    }
+  }
+  return {
+    tabId: tabId,
+    updateCellValue: contextCallbacks?.updateCellValue ?? source.updateCellValue,
+    syncCellValue: contextCallbacks?.syncCellValue ?? source.syncCellValue,
+  }
+}
+
+export function useCellStoreSync(source: CellStoreSyncSource): (nextValue: unknown) => void {
+  const contextCallbacks = useEditorCallbacks()
+  const { tabId, updateCellValue, syncCellValue } = resolveEditorStoreCallbacks(
+    source,
+    contextCallbacks
+  )
+  const { row } = source
+  const fieldName = source.column.key
+  return useCallback(
+    (nextValue: unknown) => {
+      if (!tabId || !fieldName || !updateCellValue) return
+      updateCellValue(tabId, fieldName, nextValue)
+      syncCellValue?.(tabId, row, fieldName, nextValue)
+    },
+    [fieldName, tabId, updateCellValue, syncCellValue, row]
+  )
 }

@@ -26,6 +26,55 @@ export interface WorkspaceTabPanelProps {
   sessionId?: string
 }
 
+function panelVisibilityProps(isActive: boolean) {
+  if (isActive) return { className: styles.panel }
+  return { className: `${styles.panel} ${styles.inactive}`, 'aria-hidden': true, tabIndex: -1 }
+}
+
+interface WorkspaceTabContentProps {
+  tab: WorkspaceTab
+  isActive: boolean
+  connection: { connectionId: string; sessionId: string | undefined }
+}
+
+function WorkspaceTabContent({ tab, isActive, connection }: WorkspaceTabContentProps) {
+  if (tab.type === 'table-data') return <TableDataTab tab={tab} isActive={isActive} />
+  if (tab.type === 'schema-info') {
+    return <SchemaInfoTab tab={tab as SchemaInfoTabType} isActive={isActive} />
+  }
+  if (tab.type === 'query-editor') {
+    return <QueryEditorTab tab={tab as QueryEditorTabType} isActive={isActive} />
+  }
+  if (tab.type === 'table-designer') {
+    return (
+      <Suspense fallback={<TableDesignerSkeleton />}>
+        <LazyTableDesignerTab tab={tab as TableDesignerTabType} isActive={isActive} />
+      </Suspense>
+    )
+  }
+  if (tab.type === 'object-editor') {
+    return (
+      <Suspense fallback={<MonacoEditorSkeleton />}>
+        <LazyObjectEditorTab tab={tab as ObjectEditorTabType} isActive={isActive} />
+      </Suspense>
+    )
+  }
+  if (tab.type === 'history') {
+    return <HistoryTabComponent tab={tab as HistoryTabType} isActive={isActive} />
+  }
+  if (tab.type === 'processlist') {
+    return (
+      <ProcessListTabComponent
+        connectionId={connection.connectionId}
+        sessionId={connection.sessionId ?? connection.connectionId}
+        workspaceTabId={tab.id}
+        isActive={isActive}
+      />
+    )
+  }
+  return null
+}
+
 // Memoized so switching tabs re-renders only the two panels whose isActive flips,
 // not every retained editor/grid.
 export const WorkspaceTabPanel = memo(function WorkspaceTabPanel({
@@ -34,45 +83,18 @@ export const WorkspaceTabPanel = memo(function WorkspaceTabPanel({
   connectionId,
   sessionId,
 }: WorkspaceTabPanelProps) {
-  const panelClassName = isActive ? styles.panel : `${styles.panel} ${styles.inactive}`
-
   return (
     <div
-      className={panelClassName}
+      {...panelVisibilityProps(isActive)}
       data-testid="workspace-panel"
       data-tab-id={tab.id}
       data-active={isActive}
-      aria-hidden={isActive ? undefined : true}
-      tabIndex={isActive ? undefined : -1}
     >
-      {tab.type === 'table-data' && <TableDataTab tab={tab} isActive={isActive} />}
-      {tab.type === 'schema-info' && (
-        <SchemaInfoTab tab={tab as SchemaInfoTabType} isActive={isActive} />
-      )}
-      {tab.type === 'query-editor' && (
-        <QueryEditorTab tab={tab as QueryEditorTabType} isActive={isActive} />
-      )}
-      {tab.type === 'table-designer' && (
-        <Suspense fallback={<TableDesignerSkeleton />}>
-          <LazyTableDesignerTab tab={tab as TableDesignerTabType} isActive={isActive} />
-        </Suspense>
-      )}
-      {tab.type === 'object-editor' && (
-        <Suspense fallback={<MonacoEditorSkeleton />}>
-          <LazyObjectEditorTab tab={tab as ObjectEditorTabType} isActive={isActive} />
-        </Suspense>
-      )}
-      {tab.type === 'history' && (
-        <HistoryTabComponent tab={tab as HistoryTabType} isActive={isActive} />
-      )}
-      {tab.type === 'processlist' && (
-        <ProcessListTabComponent
-          connectionId={connectionId}
-          sessionId={sessionId ?? connectionId}
-          workspaceTabId={tab.id}
-          isActive={isActive}
-        />
-      )}
+      <WorkspaceTabContent
+        tab={tab}
+        isActive={isActive}
+        connection={{ connectionId: connectionId, sessionId: sessionId }}
+      />
     </div>
   )
 })

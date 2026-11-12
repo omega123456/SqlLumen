@@ -25,7 +25,7 @@ import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
 import type { CopyObjectCategory, CopyObjectSelection } from '../../lib/copy-to-host-commands'
 import { parseNodeId, useSchemaStore, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import type { NodeType, ObjectType, EditableObjectType } from '../../types/schema'
+import type { NodeType, ObjectType, EditableObjectType, TreeNode } from '../../types/schema'
 import { Button } from '../common/Button'
 
 // ---------------------------------------------------------------------------
@@ -113,6 +113,50 @@ function copyToHostMenuItem(args: {
   }
 }
 
+type ParsedNodeId = ReturnType<typeof parseNodeId>
+
+interface MenuNodeInfo {
+  node: TreeNode | undefined
+  nodeType: NodeType
+  databaseName: string
+  nodeLabel: string
+  categoryType: string | undefined
+}
+
+function categoryTypeOf(node: TreeNode | undefined, parsed: ParsedNodeId): string | undefined {
+  const metadataCategoryType = node?.metadata?.categoryType
+  if (node?.type === 'category' && typeof metadataCategoryType === 'string') {
+    return metadataCategoryType
+  }
+  if (parsed.type === 'category') return parsed.name
+  return undefined
+}
+
+// Use direct fields on node if available, fall back to parseNodeId (Simplification 5)
+function resolveMenuNodeInfo(nodes: Record<string, TreeNode> | null, nodeId: string): MenuNodeInfo {
+  const node = nodes?.[nodeId]
+  const parsed = parseNodeId(nodeId)
+  const objectName = node?.objectName ?? parsed.name
+  return {
+    node: node,
+    nodeType: parsed.type,
+    databaseName: node?.databaseName ?? parsed.database,
+    nodeLabel: node?.label ?? objectName,
+    categoryType: categoryTypeOf(node, parsed),
+  }
+}
+
+function refreshesDatabase(nodeType: NodeType, node: TreeNode | undefined): boolean {
+  const isTableLike = nodeType === 'table' || nodeType === 'view'
+  if (!isTableLike) return true
+  return Boolean(node?.parentId)
+}
+
+function menuItemClassName(destructive: boolean | undefined): string {
+  if (!destructive) return 'ui-context-menu__item'
+  return 'ui-context-menu__item ui-context-menu__item--destructive'
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -187,19 +231,10 @@ export function ObjectBrowserContextMenu({
 
   if (!visible || !nodeId) return null
 
-  // Use direct fields on node if available, fall back to parseNodeId (Simplification 5)
-  const node = nodes?.[nodeId]
-  const parsed = parseNodeId(nodeId)
-  const nodeType: NodeType = parsed.type
-  const databaseName = node?.databaseName ?? parsed.database
-  const objectName = node?.objectName ?? parsed.name
-  const nodeLabel = node?.label ?? objectName
-  const categoryType =
-    node?.type === 'category' && typeof node.metadata?.categoryType === 'string'
-      ? node.metadata.categoryType
-      : nodeType === 'category'
-        ? parsed.name
-        : undefined
+  const { node, nodeType, databaseName, nodeLabel, categoryType } = resolveMenuNodeInfo(
+    nodes,
+    nodeId
+  )
 
   // ---------------------------------------------------------------------------
   // Action helpers
@@ -239,19 +274,7 @@ export function ObjectBrowserContextMenu({
   }
 
   const refreshNode = () => {
-    if (nodeType === 'database') {
-      void refreshDatabase(connectionId, databaseName)
-    } else if (nodeType === 'category') {
-      // Refresh the parent database (resets all categories)
-      void refreshDatabase(connectionId, databaseName)
-    } else if (nodeType === 'table' || nodeType === 'view') {
-      // Refresh the parent category — find it and reload
-      if (node?.parentId) {
-        // Reset the parent category's loaded state and reload
-        void refreshDatabase(connectionId, databaseName)
-      }
-    } else {
-      // For other types, refresh the entire database
+    if (refreshesDatabase(nodeType, node)) {
       void refreshDatabase(connectionId, databaseName)
     }
     closeMenu()
@@ -311,12 +334,7 @@ export function ObjectBrowserContextMenu({
           return <hr key={entry.key} className="ui-context-menu__separator" />
         }
 
-        const itemClass = [
-          'ui-context-menu__item',
-          entry.destructive ? 'ui-context-menu__item--destructive' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')
+        const itemClass = menuItemClassName(entry.destructive)
 
         return (
           <Button
@@ -376,139 +394,36 @@ interface BuildMenuArgs {
   closeMenu: () => void
 }
 
-function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
-  const {
-    nodeType,
-    databaseName,
-    objectName,
-    categoryType,
-    isReadOnly,
-    openSchemaInfoTab,
-    openViewDataTab,
-    copyName,
-    refreshNode,
-    onCreateDatabase,
-    onAlterDatabase,
-    onRenameDatabase,
-    onDropDatabase,
-    onDropTable,
-    onTruncateTable,
-    onRenameTable,
-    onDesignTable,
-    onCreateTable,
-    onAlterObject,
-    onDropObject,
-    onCreateObject,
-    onExecuteRoutine,
-    onExportDump,
-    onExportDdl,
-    onCopyToHost,
-    closeMenu,
-  } = args
+function buildColumnMenu(args: BuildMenuArgs): MenuEntry[] {
+  return [
+    {
+      key: 'copy-name',
+      label: 'Copy column name',
+      icon: <CopySimple size={18} weight="regular" />,
+      disabled: false,
+      destructive: false,
+      action: args.copyName,
+    },
+  ]
+}
 
-  switch (nodeType) {
-    case 'database':
-      return buildDatabaseMenu({
-        databaseName,
-        isReadOnly,
-        refreshNode,
-        onCreateDatabase,
-        onCreateTable,
-        onAlterDatabase,
-        onRenameDatabase,
-        onDropDatabase,
-        onCreateObject,
-        onExportDump,
-        onExportDdl,
-        onCopyToHost,
-        closeMenu,
-      })
-    case 'table':
-      return buildTableMenu({
-        databaseName,
-        objectName,
-        isReadOnly,
-        openSchemaInfoTab,
-        copyName,
-        refreshNode,
-        onDropTable,
-        onTruncateTable,
-        onRenameTable,
-        onDesignTable,
-        onCreateTable,
-        onExportDump,
-        onExportDdl,
-        onCopyToHost,
-        closeMenu,
-      })
-    case 'view':
-      return buildViewMenu({
-        databaseName,
-        objectName,
-        isReadOnly,
-        openSchemaInfoTab,
-        openViewDataTab,
-        copyName,
-        refreshNode,
-        onAlterObject,
-        onDropObject,
-        closeMenu,
-      })
-    case 'procedure':
-    case 'function':
-      return buildRoutineMenu({
-        databaseName,
-        objectName,
-        nodeType,
-        isReadOnly,
-        openSchemaInfoTab,
-        copyName,
-        refreshNode,
-        onAlterObject,
-        onDropObject,
-        onExecuteRoutine,
-        onCopyToHost,
-        closeMenu,
-      })
-    case 'trigger':
-    case 'event':
-      return buildTriggerEventMenu({
-        databaseName,
-        objectName,
-        nodeType,
-        isReadOnly,
-        openSchemaInfoTab,
-        copyName,
-        refreshNode,
-        onAlterObject,
-        onDropObject,
-        onCopyToHost,
-        closeMenu,
-      })
-    case 'category':
-      return buildCategoryMenu({
-        categoryType,
-        databaseName,
-        isReadOnly,
-        refreshNode,
-        onCreateTable,
-        onCreateObject,
-        closeMenu,
-      })
-    case 'column':
-      return [
-        {
-          key: 'copy-name',
-          label: 'Copy column name',
-          icon: <CopySimple size={18} weight="regular" />,
-          disabled: false,
-          destructive: false,
-          action: copyName,
-        },
-      ]
-    default:
-      return []
+const MENU_BUILDERS_BY_NODE_TYPE: Partial<Record<NodeType, (args: BuildMenuArgs) => MenuEntry[]>> =
+  {
+    database: buildDatabaseMenu,
+    table: buildTableMenu,
+    view: buildViewMenu,
+    procedure: (args) => buildRoutineMenu({ ...args, nodeType: 'procedure' }),
+    function: (args) => buildRoutineMenu({ ...args, nodeType: 'function' }),
+    trigger: (args) => buildTriggerEventMenu({ ...args, nodeType: 'trigger' }),
+    event: (args) => buildTriggerEventMenu({ ...args, nodeType: 'event' }),
+    category: buildCategoryMenu,
+    column: buildColumnMenu,
   }
+
+function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
+  const buildMenu = MENU_BUILDERS_BY_NODE_TYPE[args.nodeType]
+  if (!buildMenu) return []
+  return buildMenu(args)
 }
 
 function buildDatabaseMenu(args: {

@@ -72,17 +72,12 @@ export const useAiFeedbackStore = create<AiFeedbackState>()((set, get) => ({
       }
       for (const table of tables) {
         const key = entryKey(connectionId, table.dbName, table.tableName)
-        const existing = map.get(key)
-        if (existing) {
-          map.set(key, { ...existing, lastSeenAt: now })
-        } else {
-          map.set(key, {
-            dbName: table.dbName,
-            tableName: table.tableName,
-            connectionId: connectionId,
-            lastSeenAt: now,
-          })
+        const existing = map.get(key) ?? {
+          dbName: table.dbName,
+          tableName: table.tableName,
+          connectionId: connectionId,
         }
+        map.set(key, { ...existing, lastSeenAt: now })
       }
       return { entries: Array.from(map.values()) }
     })

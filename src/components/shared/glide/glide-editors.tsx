@@ -150,6 +150,31 @@ function applyInitialInputValue(value: GridCell, initialInputValue: string | und
   }
 }
 
+type OverlayHeight = GlideOverlayConfig['overlayHeight']
+
+function resolveOverlayHeight(
+  overlayHeight: OverlayHeight,
+  target: CustomEditorProps['target']
+): number | undefined {
+  if (typeof overlayHeight === 'function') return overlayHeight(target)
+  return overlayHeight
+}
+
+function overlaySizeStyle(expandedWidth: number, overlayHeight: number | undefined) {
+  const hasFixedHeight = overlayHeight != null
+  return {
+    width: `${expandedWidth}px`,
+    maxWidth: `${expandedWidth}px`,
+    minHeight: hasFixedHeight ? `${overlayHeight}px` : undefined,
+    height: hasFixedHeight ? `${overlayHeight}px` : '100%',
+  }
+}
+
+function restoreValueProps(editorData: NonNullable<ReturnType<typeof extractEditorData>>) {
+  if (!Object.prototype.hasOwnProperty.call(editorData, 'cancelRestoreValue')) return {}
+  return { cancelRestoreValue: editorData.cancelRestoreValue }
+}
+
 export function wrapEditorAsGlideOverlay(
   EditorComponent: VendorNeutralEditorComponent,
   config: GlideOverlayConfig = {}
@@ -193,15 +218,7 @@ export function wrapEditorAsGlideOverlay(
 
     if (!editorData) return null
 
-    const {
-      row,
-      columnKey,
-      columnMeta,
-      isNullable,
-      foreignKey,
-      cancelRestoreValue,
-      selectAllOnFocus,
-    } = editorData
+    const { row, columnKey, columnMeta, isNullable, foreignKey, selectAllOnFocus } = editorData
     const targetWidth = getEditorTargetWidth(target)
     const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
     const expandedWidth = Math.max(
@@ -209,8 +226,7 @@ export function wrapEditorAsGlideOverlay(
       getExpandedEditorWidth(targetWidth, markerCount)
     )
     const requestedOverlayWidth = expandedWidth + overlayExtraWidth
-    const resolvedOverlayHeight =
-      typeof overlayHeight === 'function' ? overlayHeight(target) : overlayHeight
+    const resolvedOverlayHeight = resolveOverlayHeight(overlayHeight, target)
 
     return (
       <div
@@ -220,11 +236,8 @@ export function wrapEditorAsGlideOverlay(
         style={{
           display: 'flex',
           alignItems: 'stretch',
-          width: `${expandedWidth}px`,
-          maxWidth: `${expandedWidth}px`,
+          ...overlaySizeStyle(expandedWidth, resolvedOverlayHeight),
           minWidth: 0,
-          minHeight: resolvedOverlayHeight == null ? undefined : `${resolvedOverlayHeight}px`,
-          height: resolvedOverlayHeight == null ? '100%' : `${resolvedOverlayHeight}px`,
           overflow: 'hidden',
           boxSizing: 'border-box',
         }}
@@ -236,9 +249,7 @@ export function wrapEditorAsGlideOverlay(
           columnMeta={columnMeta}
           foreignKey={foreignKey}
           initialInputValue={initialInputValue}
-          {...(Object.prototype.hasOwnProperty.call(editorData, 'cancelRestoreValue')
-            ? { cancelRestoreValue }
-            : {})}
+          {...restoreValueProps(editorData)}
           selectAllOnFocus={selectAllOnFocus}
           onRowChange={(nextRow) => {
             const nextValue = nextRow[columnKey]

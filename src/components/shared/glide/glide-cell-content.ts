@@ -99,64 +99,10 @@ function envelopeByteLength(envelope: BlobEnvelope): number {
   return 0
 }
 
-export function classifyCellValue(
-  rawValue: unknown,
-  columnKey: string,
-  options: ClassifyCellValueOptions = {}
-): ClassifiedCellValue {
-  // A staged blob edit arrives as a self-describing envelope. Render it as a
-  // modified blob placeholder (`[BLOB - N bytes*]`) or, for a staged NULL, fall
-  // through to the standard NULL rendering with the pending highlight.
-  if (isBlobEnvelope(rawValue)) {
-    if (rawValue.kind === 'null') {
-      return {
-        displayValue: 'NULL',
-        copyValue: 'NULL',
-        isNull: true,
-        isBlob: false,
-        isReadOnly: options.isReadOnly ?? false,
-        isModified: options.isModified ?? false,
-        isFkCell: options.isFkCell ?? false,
-        isSelectedRow: options.isSelectedRow ?? false,
-        isEditingRow: options.isEditingRow ?? false,
-        isNewRow: options.isNewRow ?? false,
-        isHighlightedColumn: options.highlightedColumnKey === columnKey,
-      }
-    }
-    const placeholder = blobPlaceholder(envelopeByteLength(rawValue), true)
-    return {
-      displayValue: placeholder,
-      copyValue: placeholder,
-      isNull: false,
-      isBlob: true,
-      isReadOnly: options.isReadOnly ?? false,
-      isModified: options.isModified ?? false,
-      isFkCell: options.isFkCell ?? false,
-      isSelectedRow: options.isSelectedRow ?? false,
-      isEditingRow: options.isEditingRow ?? false,
-      isNewRow: options.isNewRow ?? false,
-      isHighlightedColumn: options.highlightedColumnKey === columnKey,
-    }
-  }
+type RowStateFlags = Omit<CellStateFlags, 'isNull' | 'isBlob'>
 
-  const isNull = rawValue == null
-  const isBlob =
-    !isNull &&
-    (options.isBlobColumn === true ||
-      rawValue instanceof Uint8Array ||
-      rawValue instanceof ArrayBuffer ||
-      (typeof rawValue === 'string' && rawValue.startsWith('[BLOB')))
-  const displayValue = isNull
-    ? 'NULL'
-    : isBlob
-      ? formatBlobDisplayValue(rawValue, options.isBlobColumn === true)
-      : String(rawValue)
-
+function rowStateFlags(options: ClassifyCellValueOptions, columnKey: string): RowStateFlags {
   return {
-    displayValue: displayValue,
-    copyValue: displayValue,
-    isNull: isNull,
-    isBlob: isBlob,
     isReadOnly: options.isReadOnly ?? false,
     isModified: options.isModified ?? false,
     isFkCell: options.isFkCell ?? false,
@@ -164,6 +110,56 @@ export function classifyCellValue(
     isEditingRow: options.isEditingRow ?? false,
     isNewRow: options.isNewRow ?? false,
     isHighlightedColumn: options.highlightedColumnKey === columnKey,
+  }
+}
+
+// A staged blob edit arrives as a self-describing envelope. Render it as a
+// modified blob placeholder (`[BLOB - N bytes*]`) or, for a staged NULL, fall
+// through to the standard NULL rendering with the pending highlight.
+function classifyBlobEnvelope(envelope: BlobEnvelope, flags: RowStateFlags): ClassifiedCellValue {
+  if (envelope.kind === 'null') {
+    return { displayValue: 'NULL', copyValue: 'NULL', isNull: true, isBlob: false, ...flags }
+  }
+  const placeholder = blobPlaceholder(envelopeByteLength(envelope), true)
+  return {
+    displayValue: placeholder,
+    copyValue: placeholder,
+    isNull: false,
+    isBlob: true,
+    ...flags,
+  }
+}
+
+function isBlobValue(rawValue: unknown, isBlobColumn: boolean): boolean {
+  if (rawValue == null) return false
+  if (isBlobColumn) return true
+  if (rawValue instanceof Uint8Array || rawValue instanceof ArrayBuffer) return true
+  return typeof rawValue === 'string' && rawValue.startsWith('[BLOB')
+}
+
+function cellDisplayValue(rawValue: unknown, isBlob: boolean, isBlobColumn: boolean): string {
+  if (rawValue == null) return 'NULL'
+  if (isBlob) return formatBlobDisplayValue(rawValue, isBlobColumn)
+  return String(rawValue)
+}
+
+export function classifyCellValue(
+  rawValue: unknown,
+  columnKey: string,
+  options: ClassifyCellValueOptions = {}
+): ClassifiedCellValue {
+  const flags = rowStateFlags(options, columnKey)
+  if (isBlobEnvelope(rawValue)) return classifyBlobEnvelope(rawValue, flags)
+
+  const isBlobColumn = options.isBlobColumn === true
+  const isBlob = isBlobValue(rawValue, isBlobColumn)
+  const displayValue = cellDisplayValue(rawValue, isBlob, isBlobColumn)
+  return {
+    displayValue: displayValue,
+    copyValue: displayValue,
+    isNull: rawValue == null,
+    isBlob: isBlob,
+    ...flags,
   }
 }
 

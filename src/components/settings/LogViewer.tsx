@@ -37,6 +37,105 @@ function rowClass(level: string): string {
   return ''
 }
 
+function logCountSummary(total: number, page: number, entryCount: number): string {
+  if (total === 0) return 'No log entries'
+  const firstEntryIndex = (page - 1) * PAGE_SIZE + 1
+  const lastEntryIndex = Math.min(total, firstEntryIndex + entryCount - 1)
+  return `${firstEntryIndex}-${lastEntryIndex} of ${total}`
+}
+
+function LogSkeletonBody() {
+  return (
+    <tbody data-testid="log-viewer-loading" aria-busy="true">
+      {Array.from({ length: SKELETON_ROWS }, (_, index) => (
+        <tr key={index} className={styles.row}>
+          <td className={styles.cell}>
+            <span className={`${styles.skeletonBar} ${styles.skeletonBadge}`} />
+          </td>
+          <td className={`${styles.cell} ${styles.messageCell}`}>
+            <span className={`${styles.skeletonBar} ${styles.skeletonMessage}`} />
+          </td>
+          <td className={`${styles.cell} ${styles.timestampCell}`}>
+            <span className={`${styles.skeletonBar} ${styles.skeletonTimestamp}`} />
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  )
+}
+
+function LogEntriesBody({ entries }: { entries: LogEntry[] }) {
+  return (
+    <tbody>
+      {entries.map((entry) => (
+        <tr key={entry.id} className={`${styles.row} ${rowClass(entry.level)}`}>
+          <td className={styles.cell}>
+            <LogLevelBadge level={entry.level} />
+          </td>
+          <td className={`${styles.cell} ${styles.messageCell}`}>
+            <span
+              className={styles.messageText}
+              title={entry.message}
+              data-testid={`log-viewer-message-${entry.id}`}
+            >
+              {entry.message}
+            </span>
+          </td>
+          <td className={`${styles.cell} ${styles.timestampCell}`}>
+            {formatTimestamp(entry.timestamp)}
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  )
+}
+
+interface LogListProps {
+  errorMessage: string | null
+  isLoading: boolean
+  entries: LogEntry[]
+}
+
+function LogList({ errorMessage, isLoading, entries }: LogListProps) {
+  if (errorMessage) {
+    return (
+      <InfoBar
+        severity="error"
+        className={styles.errorState}
+        message="Failed to load logs."
+        data-testid="log-viewer-error"
+      />
+    )
+  }
+  if (!isLoading && entries.length === 0) {
+    return (
+      <div className={styles.state} data-testid="log-viewer-empty">
+        No log entries match this filter.
+      </div>
+    )
+  }
+  return (
+    <div className={styles.tableWrapper}>
+      <table className={styles.table}>
+        <thead className={styles.tableHead}>
+          <tr>
+            <th className={`${styles.tableHeader} ${styles.levelColumn}`} scope="col">
+              Level
+            </th>
+            <th className={styles.tableHeader} scope="col">
+              Message
+            </th>
+            <th className={`${styles.tableHeader} ${styles.timestampColumn}`} scope="col">
+              Timestamp
+            </th>
+          </tr>
+        </thead>
+        {isLoading ? <LogSkeletonBody /> : <LogEntriesBody entries={entries} />}
+      </table>
+    </div>
+  )
+}
+
 export function LogViewer() {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [page, setPage] = useState(1)
@@ -50,19 +149,13 @@ export function LogViewer() {
   const requestIdRef = useRef(0)
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const firstEntryIndex = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
-  const lastEntryIndex = total === 0 ? 0 : Math.min(total, firstEntryIndex + entries.length - 1)
-  const countSummary =
-    total === 0 ? 'No log entries' : `${firstEntryIndex}-${lastEntryIndex} of ${total}`
+  const countSummary = logCountSummary(total, page, entries.length)
 
   const loadPage = useCallback(
     async (nextPage: number, nextLevel: LogLevelFilter, refreshOnly = false) => {
       const requestId = ++requestIdRef.current
-      if (refreshOnly) {
-        setIsRefreshing(true)
-      } else {
-        setIsLoading(true)
-      }
+      const setBusy = refreshOnly ? setIsRefreshing : setIsLoading
+      setBusy(true)
 
       try {
         const response = await listLogs(nextPage, nextLevel)
@@ -197,75 +290,7 @@ export function LogViewer() {
           </span>
         </div>
 
-        {errorMessage ? (
-          <InfoBar
-            severity="error"
-            className={styles.errorState}
-            message="Failed to load logs."
-            data-testid="log-viewer-error"
-          />
-        ) : !isLoading && entries.length === 0 ? (
-          <div className={styles.state} data-testid="log-viewer-empty">
-            No log entries match this filter.
-          </div>
-        ) : (
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead className={styles.tableHead}>
-                <tr>
-                  <th className={`${styles.tableHeader} ${styles.levelColumn}`} scope="col">
-                    Level
-                  </th>
-                  <th className={styles.tableHeader} scope="col">
-                    Message
-                  </th>
-                  <th className={`${styles.tableHeader} ${styles.timestampColumn}`} scope="col">
-                    Timestamp
-                  </th>
-                </tr>
-              </thead>
-              {isLoading ? (
-                <tbody data-testid="log-viewer-loading" aria-busy="true">
-                  {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-                    <tr key={index} className={styles.row}>
-                      <td className={styles.cell}>
-                        <span className={`${styles.skeletonBar} ${styles.skeletonBadge}`} />
-                      </td>
-                      <td className={`${styles.cell} ${styles.messageCell}`}>
-                        <span className={`${styles.skeletonBar} ${styles.skeletonMessage}`} />
-                      </td>
-                      <td className={`${styles.cell} ${styles.timestampCell}`}>
-                        <span className={`${styles.skeletonBar} ${styles.skeletonTimestamp}`} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              ) : (
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className={`${styles.row} ${rowClass(entry.level)}`}>
-                      <td className={styles.cell}>
-                        <LogLevelBadge level={entry.level} />
-                      </td>
-                      <td className={`${styles.cell} ${styles.messageCell}`}>
-                        <span
-                          className={styles.messageText}
-                          title={entry.message}
-                          data-testid={`log-viewer-message-${entry.id}`}
-                        >
-                          {entry.message}
-                        </span>
-                      </td>
-                      <td className={`${styles.cell} ${styles.timestampCell}`}>
-                        {formatTimestamp(entry.timestamp)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              )}
-            </table>
-          </div>
-        )}
+        <LogList errorMessage={errorMessage} isLoading={isLoading} entries={entries} />
 
         <div className={styles.paginationBar}>
           <PaginationGroup {...paginationProps} />

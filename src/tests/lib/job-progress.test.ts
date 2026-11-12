@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
+import { isCancelInFlight, isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
 
 describe('isTerminalJobStatus', () => {
   it('treats completed, failed and cancelled as terminal', () => {
@@ -28,5 +28,20 @@ describe('progressPercent', () => {
 
   it('treats a missing done count as zero', () => {
     expect(progressPercent(null, 10)).toBe(0)
+  })
+})
+
+describe('isCancelInFlight', () => {
+  it('is true while a cancel request is pending locally', () => {
+    expect(isCancelInFlight(true, null)).toBe(true)
+  })
+
+  it('is true once the job reports the cancel request', () => {
+    expect(isCancelInFlight(false, { cancelRequested: true })).toBe(true)
+  })
+
+  it('is false without a pending or reported cancel', () => {
+    expect(isCancelInFlight(false, { cancelRequested: false })).toBe(false)
+    expect(isCancelInFlight(false, null)).toBe(false)
   })
 })

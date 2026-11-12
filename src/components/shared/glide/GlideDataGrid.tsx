@@ -119,6 +119,37 @@ export type GlideDataGridProps<TRow> = {
   'data-testid'?: string
 }
 
+const GLIDE_HOST_CLASS = 'glide-grid-host'
+const DEFAULT_GRID_ARIA_LABEL = 'Data grid'
+
+function hostClassNameFor(className: string | undefined): string {
+  if (!className) return GLIDE_HOST_CLASS
+  return `${GLIDE_HOST_CLASS} ${className}`
+}
+
+function gridAriaLabel(ariaLabel: string | undefined, testId: string | undefined): string {
+  return ariaLabel ?? testId ?? DEFAULT_GRID_ARIA_LABEL
+}
+
+function placeholderTestId(testId: string | undefined): string | undefined {
+  if (!testId) return undefined
+  return `${testId}-placeholder`
+}
+
+// Glide only paints an *unchecked* 'checkbox' marker at hover opacity, which makes the
+// column look empty (white, borderless) until the pointer is over a row. Promote it to
+// 'checkbox-visible' so every row's box is always drawn at full opacity.
+function rowMarkerSettings(rowMarkers: GlideRowMarkerKind) {
+  if (rowMarkers === 'none') {
+    return { width: 0, editorRowMarkers: rowMarkers, rowSelect: 'none' as const }
+  }
+  return {
+    width: DEFAULT_ROW_MARKER_WIDTH,
+    editorRowMarkers: rowMarkers === 'checkbox' ? ('checkbox-visible' as const) : rowMarkers,
+    rowSelect: 'multi' as const,
+  }
+}
+
 function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Ref<GridHandle>) {
   const {
     columns,
@@ -303,16 +334,12 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     [onCellClicked, onCellDoubleClicked]
   )
 
-  const hostClassName = className ? `glide-grid-host ${className}` : 'glide-grid-host'
+  const hostClassName = hostClassNameFor(className)
   const serializedColumnWidths = useMemo(
     () => JSON.stringify(columns.map(getColumnWidth)),
     [columns]
   )
-  const rowMarkerWidth = rowMarkers === 'none' ? 0 : DEFAULT_ROW_MARKER_WIDTH
-  // Glide only paints an *unchecked* 'checkbox' marker at hover opacity, which makes the
-  // column look empty (white, borderless) until the pointer is over a row. Promote it to
-  // 'checkbox-visible' so every row's box is always drawn at full opacity.
-  const dataEditorRowMarkers = rowMarkers === 'checkbox' ? 'checkbox-visible' : rowMarkers
+  const markerSettings = rowMarkerSettings(rowMarkers)
 
   return (
     <div
@@ -320,9 +347,9 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
       className={hostClassName}
       data-testid={testId}
       data-glide-column-width={serializedColumnWidths}
-      data-row-marker-width={String(rowMarkerWidth)}
+      data-row-marker-width={String(markerSettings.width)}
       role="grid"
-      aria-label={ariaLabel ?? testId ?? 'Data grid'}
+      aria-label={gridAriaLabel(ariaLabel, testId)}
       tabIndex={0}
     >
       {hasSize ? (
@@ -342,7 +369,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           theme={theme}
           rowHeight={rowHeight}
           headerHeight={headerHeight}
-          rowMarkers={dataEditorRowMarkers}
+          rowMarkers={markerSettings.editorRowMarkers}
           gridSelection={activeSelection}
           onGridSelectionChange={handleSelectionChange}
           onColumnResize={handleColumnResize}
@@ -360,7 +387,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           verticalBorder={true}
           cellActivationBehavior="second-click"
           rangeSelect="cell"
-          rowSelect={rowMarkers === 'none' ? 'none' : 'multi'}
+          rowSelect={markerSettings.rowSelect}
           rowSelectionMode="multi"
           rowSelectionBlending="mixed"
           columnSelect="none"
@@ -368,7 +395,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           keybindings={keybindings}
         />
       ) : (
-        <div data-testid={testId ? `${testId}-placeholder` : undefined} />
+        <div data-testid={placeholderTestId(testId)} />
       )}
     </div>
   )

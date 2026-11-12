@@ -17,6 +17,21 @@ use std::sync::Arc;
 /// Maximum safe integer in JavaScript (Number.MAX_SAFE_INTEGER = 2^53 - 1).
 pub const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
 
+pub fn json_from_i64(number: i64) -> serde_json::Value {
+    let is_safe_integer = (-JS_SAFE_INTEGER_MAX..=JS_SAFE_INTEGER_MAX).contains(&number);
+    if is_safe_integer {
+        return serde_json::Value::from(number);
+    }
+    serde_json::Value::String(number.to_string())
+}
+
+pub fn json_from_u64(number: u64) -> serde_json::Value {
+    if number > JS_SAFE_INTEGER_MAX as u64 {
+        return serde_json::Value::String(number.to_string());
+    }
+    serde_json::Value::from(number)
+}
+
 // ── Statement classification ───────────────────────────────────────────────────
 
 /// Returns `true` if the SQL statement is a CALL statement.
@@ -44,41 +59,16 @@ pub fn column_type_display_name(
     let is_binary = flags.contains(mysql_async::consts::ColumnFlags::BINARY_FLAG);
 
     match col_type {
-        MYSQL_TYPE_TINY => {
-            if is_unsigned {
-                "TINYINT UNSIGNED".to_string()
-            } else {
-                "TINYINT".to_string()
-            }
-        }
-        MYSQL_TYPE_SHORT => {
-            if is_unsigned {
-                "SMALLINT UNSIGNED".to_string()
-            } else {
-                "SMALLINT".to_string()
-            }
-        }
-        MYSQL_TYPE_INT24 => {
-            if is_unsigned {
-                "MEDIUMINT UNSIGNED".to_string()
-            } else {
-                "MEDIUMINT".to_string()
-            }
-        }
-        MYSQL_TYPE_LONG => {
-            if is_unsigned {
-                "INT UNSIGNED".to_string()
-            } else {
-                "INT".to_string()
-            }
-        }
-        MYSQL_TYPE_LONGLONG => {
-            if is_unsigned {
-                "BIGINT UNSIGNED".to_string()
-            } else {
-                "BIGINT".to_string()
-            }
-        }
+        MYSQL_TYPE_TINY if is_unsigned => "TINYINT UNSIGNED".to_string(),
+        MYSQL_TYPE_TINY => "TINYINT".to_string(),
+        MYSQL_TYPE_SHORT if is_unsigned => "SMALLINT UNSIGNED".to_string(),
+        MYSQL_TYPE_SHORT => "SMALLINT".to_string(),
+        MYSQL_TYPE_INT24 if is_unsigned => "MEDIUMINT UNSIGNED".to_string(),
+        MYSQL_TYPE_INT24 => "MEDIUMINT".to_string(),
+        MYSQL_TYPE_LONG if is_unsigned => "INT UNSIGNED".to_string(),
+        MYSQL_TYPE_LONG => "INT".to_string(),
+        MYSQL_TYPE_LONGLONG if is_unsigned => "BIGINT UNSIGNED".to_string(),
+        MYSQL_TYPE_LONGLONG => "BIGINT".to_string(),
         MYSQL_TYPE_FLOAT => "FLOAT".to_string(),
         MYSQL_TYPE_DOUBLE => "DOUBLE".to_string(),
         MYSQL_TYPE_DECIMAL | MYSQL_TYPE_NEWDECIMAL => "DECIMAL".to_string(),
@@ -91,48 +81,18 @@ pub fn column_type_display_name(
         MYSQL_TYPE_JSON => "JSON".to_string(),
         MYSQL_TYPE_ENUM => "ENUM".to_string(),
         MYSQL_TYPE_SET => "SET".to_string(),
-        MYSQL_TYPE_TINY_BLOB => {
-            if is_binary {
-                "TINYBLOB".to_string()
-            } else {
-                "TINYTEXT".to_string()
-            }
-        }
-        MYSQL_TYPE_BLOB => {
-            if is_binary {
-                "BLOB".to_string()
-            } else {
-                "TEXT".to_string()
-            }
-        }
-        MYSQL_TYPE_MEDIUM_BLOB => {
-            if is_binary {
-                "MEDIUMBLOB".to_string()
-            } else {
-                "MEDIUMTEXT".to_string()
-            }
-        }
-        MYSQL_TYPE_LONG_BLOB => {
-            if is_binary {
-                "LONGBLOB".to_string()
-            } else {
-                "LONGTEXT".to_string()
-            }
-        }
-        MYSQL_TYPE_STRING => {
-            if is_binary {
-                "BINARY".to_string()
-            } else {
-                "CHAR".to_string()
-            }
-        }
-        MYSQL_TYPE_VAR_STRING => {
-            if is_binary {
-                "VARBINARY".to_string()
-            } else {
-                "VARCHAR".to_string()
-            }
-        }
+        MYSQL_TYPE_TINY_BLOB if is_binary => "TINYBLOB".to_string(),
+        MYSQL_TYPE_TINY_BLOB => "TINYTEXT".to_string(),
+        MYSQL_TYPE_BLOB if is_binary => "BLOB".to_string(),
+        MYSQL_TYPE_BLOB => "TEXT".to_string(),
+        MYSQL_TYPE_MEDIUM_BLOB if is_binary => "MEDIUMBLOB".to_string(),
+        MYSQL_TYPE_MEDIUM_BLOB => "MEDIUMTEXT".to_string(),
+        MYSQL_TYPE_LONG_BLOB if is_binary => "LONGBLOB".to_string(),
+        MYSQL_TYPE_LONG_BLOB => "LONGTEXT".to_string(),
+        MYSQL_TYPE_STRING if is_binary => "BINARY".to_string(),
+        MYSQL_TYPE_STRING => "CHAR".to_string(),
+        MYSQL_TYPE_VAR_STRING if is_binary => "VARBINARY".to_string(),
+        MYSQL_TYPE_VAR_STRING => "VARCHAR".to_string(),
         MYSQL_TYPE_GEOMETRY => "GEOMETRY".to_string(),
         MYSQL_TYPE_NULL => "NULL".to_string(),
         _ => format!("{:?}", col_type),
@@ -162,11 +122,7 @@ pub fn serialize_bytes_value(
             for &byte in bytes {
                 value = (value << 8) | (byte as u64);
             }
-            if value > JS_SAFE_INTEGER_MAX as u64 {
-                serde_json::Value::String(value.to_string())
-            } else {
-                serde_json::Value::from(value)
-            }
+            json_from_u64(value)
         }
 
         // Text protocol sends numbers as ASCII — parse them so they serialize the
@@ -200,16 +156,14 @@ pub fn serialize_bytes_value(
         }
 
         // BLOB/BINARY types: base64-encode if binary flag is set
-        MYSQL_TYPE_TINY_BLOB | MYSQL_TYPE_BLOB | MYSQL_TYPE_MEDIUM_BLOB | MYSQL_TYPE_LONG_BLOB => {
-            if is_binary {
-                serde_json::Value::String(BASE64_STANDARD.encode(bytes))
-            } else {
-                serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned())
-            }
-        }
-
-        // BINARY / VARBINARY
-        MYSQL_TYPE_STRING | MYSQL_TYPE_VAR_STRING if is_binary => {
+        MYSQL_TYPE_TINY_BLOB
+        | MYSQL_TYPE_BLOB
+        | MYSQL_TYPE_MEDIUM_BLOB
+        | MYSQL_TYPE_LONG_BLOB
+        | MYSQL_TYPE_STRING
+        | MYSQL_TYPE_VAR_STRING
+            if is_binary =>
+        {
             serde_json::Value::String(BASE64_STANDARD.encode(bytes))
         }
 
@@ -233,21 +187,9 @@ pub fn serialize_mysql_value(
 
         mysql_async::Value::Bytes(bytes) => serialize_bytes_value(bytes, col_type, flags),
 
-        mysql_async::Value::Int(number) => {
-            if (-JS_SAFE_INTEGER_MAX..=JS_SAFE_INTEGER_MAX).contains(number) {
-                serde_json::Value::from(*number)
-            } else {
-                serde_json::Value::String(number.to_string())
-            }
-        }
+        mysql_async::Value::Int(number) => json_from_i64(*number),
 
-        mysql_async::Value::UInt(number) => {
-            if *number > JS_SAFE_INTEGER_MAX as u64 {
-                serde_json::Value::String(number.to_string())
-            } else {
-                serde_json::Value::from(*number)
-            }
-        }
+        mysql_async::Value::UInt(number) => json_from_u64(*number),
 
         mysql_async::Value::Float(float) => serde_json::Number::from_f64(*float as f64)
             .map(serde_json::Value::Number)
@@ -257,39 +199,45 @@ pub fn serialize_mysql_value(
             .map(serde_json::Value::Number)
             .unwrap_or(serde_json::Value::Null),
 
+        mysql_async::Value::Date(year, month, day, 0, 0, 0, 0) => {
+            serde_json::Value::String(format!("{:04}-{:02}-{:02}", year, month, day))
+        }
+
+        mysql_async::Value::Date(year, month, day, hour, min, sec, 0) => {
+            serde_json::Value::String(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                year, month, day, hour, min, sec
+            ))
+        }
+
         mysql_async::Value::Date(year, month, day, hour, min, sec, micro) => {
-            if *hour == 0 && *min == 0 && *sec == 0 && *micro == 0 {
-                // DATE only
-                serde_json::Value::String(format!("{:04}-{:02}-{:02}", year, month, day))
-            } else if *micro == 0 {
-                // DATETIME/TIMESTAMP without microseconds
-                serde_json::Value::String(format!(
-                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
-                    year, month, day, hour, min, sec
-                ))
-            } else {
-                // DATETIME/TIMESTAMP with microseconds
-                serde_json::Value::String(format!(
-                    "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
-                    year, month, day, hour, min, sec, micro
-                ))
-            }
+            serde_json::Value::String(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+                year, month, day, hour, min, sec, micro
+            ))
+        }
+
+        mysql_async::Value::Time(is_negative, days, hours, minutes, seconds, 0) => {
+            let sign = minus_sign(*is_negative);
+            let total_hours = *days * 24 + (*hours as u32);
+            serde_json::Value::String(format!("{sign}{total_hours:02}:{minutes:02}:{seconds:02}"))
         }
 
         mysql_async::Value::Time(is_negative, days, hours, minutes, seconds, micro) => {
-            let sign = if *is_negative { "-" } else { "" };
+            let sign = minus_sign(*is_negative);
             let total_hours = *days * 24 + (*hours as u32);
-            if *micro == 0 {
-                serde_json::Value::String(format!(
-                    "{sign}{total_hours:02}:{minutes:02}:{seconds:02}"
-                ))
-            } else {
-                serde_json::Value::String(format!(
-                    "{sign}{total_hours:02}:{minutes:02}:{seconds:02}.{micro:06}"
-                ))
-            }
+            serde_json::Value::String(format!(
+                "{sign}{total_hours:02}:{minutes:02}:{seconds:02}.{micro:06}"
+            ))
         }
     }
+}
+
+pub fn minus_sign(is_negative: bool) -> &'static str {
+    if is_negative {
+        return "-";
+    }
+    ""
 }
 
 // ── Error mapping ──────────────────────────────────────────────────────────────
@@ -337,12 +285,12 @@ pub async fn build_connection(
     if params.ssl.enabled {
         let mut ssl_opts = mysql_async::SslOpts::default();
 
-        if let Some(ref ca_path) = params.ssl.ca_path {
-            ssl_opts = ssl_opts.with_root_certs(vec![std::path::PathBuf::from(ca_path).into()]);
-        } else {
-            // No CA cert: accept any cert (equivalent to sqlx Required mode)
-            ssl_opts = ssl_opts.with_danger_accept_invalid_certs(true);
-        }
+        ssl_opts = match params.ssl.ca_path {
+            Some(ref ca_path) => {
+                ssl_opts.with_root_certs(vec![std::path::PathBuf::from(ca_path).into()])
+            }
+            None => ssl_opts.with_danger_accept_invalid_certs(true),
+        };
 
         if let (Some(ref cert_path), Some(ref key_path)) =
             (&params.ssl.cert_path, &params.ssl.key_path)
@@ -581,16 +529,12 @@ async fn execute_single_select_statement(
     String,
 > {
     use crate::mysql::query_executor::{
-        inject_limit_into_select, statement_blocked_reason, ColumnMeta, FullExportBlockedReason,
+        sql_with_auto_limit, statement_blocked_reason, ColumnMeta, FullExportBlockedReason,
         MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 
-    let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, row_limit_used)
-    } else {
-        sql.to_string()
-    };
+    let sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit_used);
 
     let start = std::time::Instant::now();
     crate::mysql::query_log::log_outgoing_sql(&sql_to_execute);
@@ -619,11 +563,7 @@ async fn execute_single_select_statement(
         .map(|column: &mysql_async::Column| (column.column_type(), column.flags()))
         .collect();
 
-    let capacity_hint = if auto_limit_applied {
-        row_limit_used.min(ROW_CAPACITY_HINT_MAX)
-    } else {
-        0
-    };
+    let capacity_hint = row_capacity_hint(auto_limit_applied, row_limit_used);
     let decoded =
         stream_serialized_rows(&mut result, &col_types, capacity_hint, context.ceiling).await?;
     let mut late_kill_possible = false;
@@ -930,7 +870,7 @@ pub async fn execute_multi_query_internal(
         thread_id: session.thread_id,
         pool: state.registry.get_pool(connection_id),
     };
-    let row_limit_used = if row_limit == 0 { 1000 } else { row_limit };
+    let row_limit_used = crate::mysql::query_executor::requested_row_limit(row_limit);
     let mut stored_results: Vec<StoredResult> = Vec::new();
     let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
 
@@ -947,14 +887,8 @@ pub async fn execute_multi_query_internal(
             break; // Stop on read-only violation
         }
 
-        let stmt_result = if is_call_statement(sql) {
-            // CALL may produce multiple result sets
-            execute_call_statement(&mut session.conn, sql, &context).await
-        } else {
-            execute_statement(&mut session.conn, sql, row_limit_used, &context)
-                .await
-                .map(|pair| vec![pair])
-        };
+        let stmt_result =
+            execute_batch_statement(&mut session.conn, sql, row_limit_used, &context).await;
 
         match stmt_result {
             Ok(pairs) => {
@@ -1012,6 +946,27 @@ pub async fn execute_single_on_session(
 
 /// Execute a SELECT-like or DML/DDL statement (anything but CALL).
 #[cfg(not(coverage))]
+async fn execute_batch_statement(
+    conn: &mut mysql_async::Conn,
+    sql: &str,
+    row_limit: usize,
+    context: &DecodeContext<'_>,
+) -> Result<
+    Vec<(
+        crate::mysql::query_executor::StoredResult,
+        crate::mysql::query_executor::MultiQueryResultItem,
+    )>,
+    String,
+> {
+    if is_call_statement(sql) {
+        return execute_call_statement(conn, sql, context).await;
+    }
+    execute_statement(conn, sql, row_limit, context)
+        .await
+        .map(|pair| vec![pair])
+}
+
+#[cfg(not(coverage))]
 async fn execute_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
@@ -1025,30 +980,28 @@ async fn execute_statement(
     String,
 > {
     use crate::mysql::query_executor::{
-        find_with_main_keyword, get_first_keyword, is_select_like, needs_auto_limit,
-        strip_non_executable_comments,
+        needs_auto_limit, returns_result_set, strip_non_executable_comments,
     };
 
-    let stripped = strip_non_executable_comments(sql);
-    let keyword = get_first_keyword(&stripped);
-    let is_result_set = if keyword == "WITH" {
-        let main_kw = find_with_main_keyword(&stripped);
-        is_select_like(&main_kw) || main_kw.is_empty()
-    } else {
-        is_select_like(&keyword)
-    };
-
-    if is_result_set {
-        execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit, context).await
-    } else {
-        execute_single_dml_statement(conn, sql, context).await
+    let is_result_set = returns_result_set(&strip_non_executable_comments(sql));
+    if !is_result_set {
+        return execute_single_dml_statement(conn, sql, context).await;
     }
+    execute_single_select_statement(conn, sql, needs_auto_limit(sql), row_limit, context).await
 }
 
 /// Upper bound for the up-front row `Vec` reservation when an auto-LIMIT tells
 /// us roughly how many rows to expect. Larger results grow normally.
 #[cfg(not(coverage))]
 const ROW_CAPACITY_HINT_MAX: usize = 10_000;
+
+#[cfg(not(coverage))]
+fn row_capacity_hint(auto_limit_applied: bool, row_limit_used: usize) -> usize {
+    if !auto_limit_applied {
+        return 0;
+    }
+    row_limit_used.min(ROW_CAPACITY_HINT_MAX)
+}
 
 /// Stream the current result set, serializing each row as it arrives, and stop
 /// storing at `ceiling` rows.

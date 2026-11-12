@@ -27,30 +27,33 @@ pub fn interpolate_sql_params(sql: &str, params: &[serde_json::Value]) -> String
     let mut result = String::with_capacity(sql.len() + params.len() * 8);
     let mut param_iter = params.iter();
     for ch in sql.chars() {
-        if ch == '?' {
-            match param_iter.next() {
-                None => result.push('?'),
-                Some(serde_json::Value::Null) => result.push_str("NULL"),
-                Some(serde_json::Value::Bool(boolean)) => {
-                    result.push_str(if *boolean { "1" } else { "0" })
-                }
-                Some(serde_json::Value::Number(number)) => result.push_str(&number.to_string()),
-                Some(serde_json::Value::String(text)) => {
-                    result.push('\'');
-                    result.push_str(&text.replace('\'', "''"));
-                    result.push('\'');
-                }
-                Some(other) => {
-                    result.push('\'');
-                    result.push_str(&other.to_string().replace('\'', "''"));
-                    result.push('\'');
-                }
-            }
-        } else {
+        if ch != '?' {
             result.push(ch);
+            continue;
         }
+        push_sql_param_literal(&mut result, param_iter.next());
     }
     result
+}
+
+fn push_sql_param_literal(result: &mut String, param: Option<&serde_json::Value>) {
+    match param {
+        None => result.push('?'),
+        Some(serde_json::Value::Null) => result.push_str("NULL"),
+        Some(serde_json::Value::Bool(true)) => result.push('1'),
+        Some(serde_json::Value::Bool(false)) => result.push('0'),
+        Some(serde_json::Value::Number(number)) => result.push_str(&number.to_string()),
+        Some(serde_json::Value::String(text)) => {
+            result.push('\'');
+            result.push_str(&text.replace('\'', "''"));
+            result.push('\'');
+        }
+        Some(other) => {
+            result.push('\'');
+            result.push_str(&other.to_string().replace('\'', "''"));
+            result.push('\'');
+        }
+    }
 }
 
 /// Build a descriptive SELECT SQL string for history logging.
@@ -68,20 +71,12 @@ pub fn build_select_sql(
     let safe_table = safe_identifier(table).ok()?;
 
     let filter_clause = table_data::translate_filter_model(filter);
-    let where_sql = if filter_clause.sql.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {}", filter_clause.sql)
-    };
+    let where_sql = table_data::where_clause_sql(&filter_clause.sql);
 
     let order_sql = match sort {
         Some(sort_spec) => {
             let safe_col = safe_identifier(&sort_spec.column).ok()?;
-            let dir = if sort_spec.direction == "desc" {
-                "DESC"
-            } else {
-                "ASC"
-            };
+            let dir = table_data::sort_direction_keyword(&sort_spec.direction);
             format!(" ORDER BY {safe_col} {dir}")
         }
         None => String::new(),
@@ -132,7 +127,7 @@ pub async fn fetch_table_data(
         .table_data_cache
         .current_invalidation_version(&connection_id, &tab_id);
 
-    let page_clamped = if page < 1 { 1 } else { page };
+    let page_clamped = page.max(1);
     let offset = (page_clamped - 1) as u64 * page_size as u64;
     let filter_clause = table_data::translate_filter_model(&filter);
     let raw_sql = build_select_sql(&database, &table, &filter, &sort, Some((page_size, offset)))
@@ -341,7 +336,9 @@ pub async fn update_table_row(
             sql_text,
             duration_ms: Some(duration_ms),
             row_count: Some(0),
-            affected_rows: Some(if result.is_ok() { 1 } else { 0 }),
+            affected_rows: Some(crate::commands::query_history_bridge::single_row_count(
+                result.is_ok(),
+            )),
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),
         },
@@ -413,7 +410,9 @@ pub async fn insert_table_row(
             sql_text,
             duration_ms: Some(duration_ms),
             row_count: Some(0),
-            affected_rows: Some(if result.is_ok() { 1 } else { 0 }),
+            affected_rows: Some(crate::commands::query_history_bridge::single_row_count(
+                result.is_ok(),
+            )),
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),
         },
@@ -484,7 +483,9 @@ pub async fn delete_table_row(
             sql_text,
             duration_ms: Some(duration_ms),
             row_count: Some(0),
-            affected_rows: Some(if result.is_ok() { 1 } else { 0 }),
+            affected_rows: Some(crate::commands::query_history_bridge::single_row_count(
+                result.is_ok(),
+            )),
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),
         },

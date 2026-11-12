@@ -57,7 +57,7 @@ const CONFORMANCE_RULE_SCOPES = [
     rules: { 'object-shorthand': ['error', 'consistent'] },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -66,11 +66,11 @@ const CONFORMANCE_RULE_SCOPES = [
     },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { 'no-nested-ternary': 'error' },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { complexity: ['error', MAXIMUM_COMPLEXITY] },
   },
   {

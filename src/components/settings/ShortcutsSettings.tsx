@@ -95,6 +95,45 @@ function parsePendingShortcuts(
   }
 }
 
+interface ShortcutBindingButtonProps {
+  actionId: string
+  binding: ShortcutBinding | null | undefined
+  isRecording: boolean
+  onCancelRecording: () => void
+  onStartRecording: () => void
+}
+
+function ShortcutBindingButton({
+  actionId,
+  binding,
+  isRecording,
+  onCancelRecording,
+  onStartRecording,
+}: ShortcutBindingButtonProps) {
+  if (isRecording) {
+    return (
+      <Button
+        variant="bare"
+        className={`${styles.recordButton} ${styles.recording}`}
+        data-testid={`shortcut-recording-${actionId}`}
+        onClick={() => onCancelRecording()}
+      >
+        Press keys...
+      </Button>
+    )
+  }
+  return (
+    <Button
+      variant="bare"
+      className={styles.recordButton}
+      data-testid={`shortcut-record-${actionId}`}
+      onClick={onStartRecording}
+    >
+      {binding ? <KeyCapBadge binding={binding} /> : 'Unassigned'}
+    </Button>
+  )
+}
+
 export function ShortcutsSettings() {
   const liveShortcuts = useShortcutStore((state) => state.shortcuts)
   const setPendingChange = useSettingsStore((state) => state.setPendingChange)
@@ -261,34 +300,13 @@ export function ShortcutsSettings() {
                   </td>
                   <td>
                     <div className={styles.shortcutCell}>
-                      {isRecording ? (
-                        <Button
-                          variant="bare"
-                          className={`${styles.recordButton} ${styles.recording}`}
-                          data-testid={`shortcut-recording-${id}`}
-                          onClick={() => cancelRecording()}
-                        >
-                          Press keys...
-                        </Button>
-                      ) : binding ? (
-                        <Button
-                          variant="bare"
-                          className={styles.recordButton}
-                          data-testid={`shortcut-record-${id}`}
-                          onClick={() => setRecordingActionId(id)}
-                        >
-                          <KeyCapBadge binding={binding} />
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="bare"
-                          className={styles.recordButton}
-                          data-testid={`shortcut-record-${id}`}
-                          onClick={() => setRecordingActionId(id)}
-                        >
-                          Unassigned
-                        </Button>
-                      )}
+                      <ShortcutBindingButton
+                        actionId={id}
+                        binding={binding}
+                        isRecording={isRecording}
+                        onCancelRecording={cancelRecording}
+                        onStartRecording={() => setRecordingActionId(id)}
+                      />
                       {hasConflict && (
                         <span className={styles.conflict}>
                           Conflict!{' '}

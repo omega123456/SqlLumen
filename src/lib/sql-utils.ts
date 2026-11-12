@@ -1,6 +1,7 @@
 export const MYSQL_IDENTIFIER_MAX_LENGTH = 64
 
 const BLOCK_COMMENT_OPEN = '/*'
+const BLOCK_COMMENT_CLOSE = '*/'
 const EXECUTABLE_COMMENT_OPEN = '/*!'
 const BLOCK_COMMENT_DELIMITER_LENGTH = 2
 const EXECUTABLE_COMMENT_MARKERS = new Set(['!', '+'])
@@ -10,6 +11,42 @@ const EXECUTABLE_COMMENT_MARKERS = new Set(['!', '+'])
  *
  * These are pure functions with no side effects or external dependencies.
  */
+
+function blockCommentEndIndex(text: string): number {
+  let depth = 0
+  let scanIndex = 0
+  while (scanIndex < text.length) {
+    const pair = text.slice(scanIndex, scanIndex + BLOCK_COMMENT_DELIMITER_LENGTH)
+    if (pair === BLOCK_COMMENT_OPEN) {
+      depth++
+      scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
+      continue
+    }
+    if (pair === BLOCK_COMMENT_CLOSE) {
+      depth--
+      scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
+      if (depth === 0) return scanIndex
+      continue
+    }
+    scanIndex++
+  }
+  return scanIndex
+}
+
+function textAfterFirstLine(text: string): string {
+  const newlineIndex = text.indexOf('\n')
+  return newlineIndex === -1 ? '' : text.slice(newlineIndex + 1)
+}
+
+function stripOneLeadingComment(text: string): string | null {
+  if (text.startsWith(BLOCK_COMMENT_OPEN)) {
+    const markerAfterOpen = text[BLOCK_COMMENT_OPEN.length]
+    if (EXECUTABLE_COMMENT_MARKERS.has(markerAfterOpen)) return null
+    return text.slice(blockCommentEndIndex(text))
+  }
+  if (text.startsWith('--') || text.startsWith('#')) return textAfterFirstLine(text)
+  return null
+}
 
 /**
  * Strip leading SQL comments (block, line `-- ...`, and `# ...`)
@@ -21,44 +58,12 @@ const EXECUTABLE_COMMENT_MARKERS = new Set(['!', '+'])
  * (`/*+ ... *\/`). These are treated as part of the SQL statement.
  */
 export function stripLeadingSqlComments(sql: string): string {
-  let remaining = sql
-
+  let remaining = sql.trimStart()
   while (true) {
-    remaining = remaining.trimStart()
-    if (remaining.startsWith(BLOCK_COMMENT_OPEN)) {
-      const markerAfterOpen = remaining[BLOCK_COMMENT_OPEN.length]
-      if (EXECUTABLE_COMMENT_MARKERS.has(markerAfterOpen)) {
-        break
-      }
-      // Standard block comment — find the matching close. Support nested /* ... */
-      let depth = 0
-      let scanIndex = 0
-      while (scanIndex < remaining.length) {
-        if (remaining[scanIndex] === '/' && remaining[scanIndex + 1] === '*') {
-          depth++
-          scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
-        } else if (remaining[scanIndex] === '*' && remaining[scanIndex + 1] === '/') {
-          depth--
-          scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
-          if (depth === 0) break
-        } else {
-          scanIndex++
-        }
-      }
-      remaining = remaining.slice(scanIndex)
-    } else if (remaining.startsWith('--')) {
-      // Line comment (-- style)
-      const newlineIndex = remaining.indexOf('\n')
-      remaining = newlineIndex === -1 ? '' : remaining.slice(newlineIndex + 1)
-    } else if (remaining.startsWith('#')) {
-      // Line comment (# style)
-      const newlineIndex = remaining.indexOf('\n')
-      remaining = newlineIndex === -1 ? '' : remaining.slice(newlineIndex + 1)
-    } else {
-      break
-    }
+    const stripped = stripOneLeadingComment(remaining)
+    if (stripped === null) return remaining
+    remaining = stripped.trimStart()
   }
-  return remaining
 }
 
 /**

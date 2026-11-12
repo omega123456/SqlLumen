@@ -15,6 +15,7 @@ import type {
   ConnectionStatusEvent,
   OpenConnectionSession,
 } from '../types/connection'
+import type { RowEditState, WorkspaceTab } from '../types/schema'
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
@@ -75,6 +76,123 @@ interface ConnectionState {
   setActiveDatabase: (sessionId: string, databaseName: string) => Promise<void>
   updateDefaultDatabase: (sessionId: string, newDefaultDb: string | null) => Promise<void>
   setupEventListeners: () => Promise<(() => void) | undefined>
+}
+
+const UNSAVED_EDITS_NOT_SAVED_TITLE = 'Connection not closed'
+const UNSAVED_EDITS_NOT_SAVED_MESSAGE =
+  'Could not save pending edits. Fix or discard changes before closing.'
+
+function hasModifiedColumns(editState: RowEditState | null | undefined): boolean {
+  return Boolean(editState && editState.modifiedColumns.size > 0)
+}
+
+async function saveRowBeforeClose(save: () => Promise<boolean>): Promise<boolean> {
+  const saved = await save()
+  if (!saved) {
+    showErrorToast(UNSAVED_EDITS_NOT_SAVED_TITLE, UNSAVED_EDITS_NOT_SAVED_MESSAGE)
+  }
+  return saved
+}
+
+async function settleQueryEditorTabBeforeClose(tabId: string): Promise<boolean> {
+  const queryTabState = useQueryStore.getState().tabs[tabId]
+  if (!queryTabState?.results) return true
+
+  const activeIndex = queryTabState.activeResultIndex ?? 0
+  const hasNonActiveDirty = queryTabState.results.some(
+    (result, index) => index !== activeIndex && hasModifiedColumns(result.editState)
+  )
+  if (hasNonActiveDirty) {
+    const confirmed = globalThis.confirm(
+      'You have unsaved changes in non-active query results. Close connection anyway? Unsaved changes will be lost.'
+    )
+    if (!confirmed) return false
+  }
+
+  const activeResult = queryTabState.results[activeIndex]
+  if (!hasModifiedColumns(activeResult?.editState)) return true
+  return saveRowBeforeClose(() => useQueryStore.getState().saveCurrentRow(tabId))
+}
+
+async function settleTableDataTabBeforeClose(tabId: string): Promise<boolean> {
+  const tableDataTabState = useTableDataStore.getState().tabs[tabId]
+  if (!hasModifiedColumns(tableDataTabState?.editState)) return true
+  return saveRowBeforeClose(() => useTableDataStore.getState().saveCurrentRow(tabId))
+}
+
+const SETTLE_TAB_BEFORE_CLOSE: Partial<
+  Record<WorkspaceTab['type'], (tabId: string) => Promise<boolean>>
+> = {
+  'query-editor': settleQueryEditorTabBeforeClose,
+  'table-data': settleTableDataTabBeforeClose,
+}
+
+function confirmDiscardingObjectEditorChanges(workspaceTabs: WorkspaceTab[]): boolean {
+  const objectEditorState = useObjectEditorStore.getState()
+  const hasDirtyObjectEditorTab = workspaceTabs.some(
+    (tab) => tab.type === 'object-editor' && objectEditorState.isDirty(tab.id)
+  )
+  if (!hasDirtyObjectEditorTab) return true
+  return globalThis.confirm(
+    'You have unsaved changes in object editor tabs. Close connection anyway?'
+  )
+}
+
+async function settleUnsavedEditsBeforeClose(connectionId: string): Promise<boolean> {
+  const workspaceTabs = useWorkspaceStore.getState().tabsByConnection[connectionId] ?? []
+  for (const tab of workspaceTabs) {
+    const settleTab = SETTLE_TAB_BEFORE_CLOSE[tab.type]
+    if (!settleTab) continue
+    const isSettled = await settleTab(tab.id)
+    if (!isSettled) return false
+  }
+  return confirmDiscardingObjectEditorChanges(workspaceTabs)
+}
+
+interface ConnectionSelection {
+  activeConnections: Record<string, ActiveConnection>
+  activeConnectionOrder: string[]
+  activeTabId: string | null
+}
+
+function resolveFallbackTabId(remainingIds: string[], closedIndex: number): string | null {
+  if (remainingIds.length === 0) return null
+  if (closedIndex < 0) return remainingIds[0]
+  return remainingIds[Math.min(closedIndex, remainingIds.length - 1)]
+}
+
+function resolveSelectionAfterClose(
+  state: ConnectionSelection,
+  closedId: string
+): ConnectionSelection {
+  const orderedIdsBeforeClose = normalizeActiveConnectionOrder(
+    state.activeConnectionOrder,
+    state.activeConnections
+  )
+  const closedIndex = orderedIdsBeforeClose.indexOf(closedId)
+  const remaining = { ...state.activeConnections }
+  delete remaining[closedId]
+  const remainingIds = normalizeActiveConnectionOrder(
+    state.activeConnectionOrder.filter((sessionId) => sessionId !== closedId),
+    remaining
+  )
+  const isClosingActiveTab = state.activeTabId === closedId
+  return {
+    activeConnections: remaining,
+    activeConnectionOrder: remainingIds,
+    activeTabId: isClosingActiveTab
+      ? resolveFallbackTabId(remainingIds, closedIndex)
+      : state.activeTabId,
+  }
+}
+
+function clearClosedConnectionState(connectionId: string): void {
+  useSchemaStore.getState().clearConnectionState(connectionId)
+  useWorkspaceStore.getState().clearConnectionTabs(connectionId)
+  useSchemaIndexStore.getState().unregisterSession(connectionId)
+  useProcessListStore.getState().resetConnection(connectionId)
+  invalidateCache(connectionId)
+  invalidateRoutineCache(connectionId)
 }
 
 export const useConnectionStore = create<ConnectionState>()((set, get) => ({
@@ -182,78 +300,8 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       // handling entirely — the caller has already warned the user — and
       // proceed straight to closing the connection.
       if (!options?.force) {
-        // Auto-save any pending edits in query-editor tabs before closing.
-        // For each query tab, check if any results have unsaved edits and
-        // try to save them. Non-active dirty results cannot be saved by
-        // saveCurrentRow, so we prompt the user rather than silently losing them.
-        const workspaceTabs = useWorkspaceStore.getState().tabsByConnection[id] ?? []
-        for (const tab of workspaceTabs) {
-          if (tab.type === 'query-editor') {
-            const queryTabState = useQueryStore.getState().tabs[tab.id]
-            if (!queryTabState?.results) continue
-
-            const activeIndex = queryTabState.activeResultIndex ?? 0
-
-            // Check for dirty non-active results — these cannot be saved
-            // by saveCurrentRow, so we need to prompt the user.
-            const hasNonActiveDirty = queryTabState.results.some(
-              (result, index) =>
-                index !== activeIndex &&
-                result.editState &&
-                result.editState.modifiedColumns.size > 0
-            )
-            if (hasNonActiveDirty) {
-              const confirmed = globalThis.confirm(
-                'You have unsaved changes in non-active query results. Close connection anyway? Unsaved changes will be lost.'
-              )
-              if (!confirmed) return false
-              // User confirmed losing non-active dirty results, but still
-              // try to save the active result if it's dirty (fall through).
-            }
-
-            // Check the active result for dirty edits — try to save it
-            const activeResult = queryTabState.results[activeIndex]
-            const activeIsDirty =
-              activeResult?.editState && activeResult.editState.modifiedColumns.size > 0
-            if (activeIsDirty) {
-              const saved = await useQueryStore.getState().saveCurrentRow(tab.id)
-              if (!saved) {
-                showErrorToast(
-                  'Connection not closed',
-                  'Could not save pending edits. Fix or discard changes before closing.'
-                )
-                return false
-              }
-            }
-          } else if (tab.type === 'table-data') {
-            const tableDataTabState = useTableDataStore.getState().tabs[tab.id]
-            if (
-              tableDataTabState?.editState &&
-              tableDataTabState.editState.modifiedColumns.size > 0
-            ) {
-              const saved = await useTableDataStore.getState().saveCurrentRow(tab.id)
-              if (!saved) {
-                showErrorToast(
-                  'Connection not closed',
-                  'Could not save pending edits. Fix or discard changes before closing.'
-                )
-                return false
-              }
-            }
-          }
-        }
-
-        // Check for dirty object-editor tabs before closing
-        const objectEditorState = useObjectEditorStore.getState()
-        const dirtyObjectEditorTabs = workspaceTabs.filter(
-          (tab) => tab.type === 'object-editor' && objectEditorState.isDirty(tab.id)
-        )
-        if (dirtyObjectEditorTabs.length > 0) {
-          const confirmed = globalThis.confirm(
-            'You have unsaved changes in object editor tabs. Close connection anyway?'
-          )
-          if (!confirmed) return false
-        }
+        const isReadyToClose = await settleUnsavedEditsBeforeClose(id)
+        if (!isReadyToClose) return false
       }
 
       await closeConnectionIPC(id)
@@ -262,47 +310,22 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       // session's workspace state. This lets the workspace visibility
       // coordinator capture the previous visible session/surface and reveal the
       // fallback session before the closed session's tabs are removed.
-      const preCloseState = get()
-      const orderedIdsBeforeClose = normalizeActiveConnectionOrder(
-        preCloseState.activeConnectionOrder,
-        preCloseState.activeConnections
-      )
-      const closedIndex = orderedIdsBeforeClose.indexOf(id)
-      const remaining = { ...preCloseState.activeConnections }
-      delete remaining[id]
-      const remainingIds = normalizeActiveConnectionOrder(
-        preCloseState.activeConnectionOrder.filter((sessionId) => sessionId !== id),
-        remaining
-      )
-      const fallbackIndex =
-        closedIndex >= 0 ? Math.min(closedIndex, Math.max(remainingIds.length - 1, 0)) : 0
-      const closingActiveTab = preCloseState.activeTabId === id
-      const newActiveTabId = closingActiveTab
-        ? remainingIds.length > 0
-          ? remainingIds[fallbackIndex]
-          : null
-        : preCloseState.activeTabId
+      const selection = resolveSelectionAfterClose(get(), id)
 
       // Coordinate the visible workspace transition while the closed session's
       // workspace state is still intact, so deactivation context is preserved.
       // When the closed session was the visible connection, reveal the fallback
       // session (or clear visibility when no session remains).
       if (useWorkspaceStore.getState().visibleConnectionSessionId === id) {
-        useWorkspaceStore.getState().setVisibleConnectionSession(newActiveTabId ?? '')
+        useWorkspaceStore.getState().setVisibleConnectionSession(selection.activeTabId ?? '')
       }
 
-      // Clear dependent store state for this connection
-      useSchemaStore.getState().clearConnectionState(id)
-      useWorkspaceStore.getState().clearConnectionTabs(id)
-      useSchemaIndexStore.getState().unregisterSession(id)
-      useProcessListStore.getState().resetConnection(id)
-      invalidateCache(id)
-      invalidateRoutineCache(id)
+      clearClosedConnectionState(id)
 
       set({
-        activeConnections: remaining,
-        activeConnectionOrder: remainingIds,
-        activeTabId: newActiveTabId,
+        activeConnections: selection.activeConnections,
+        activeConnectionOrder: selection.activeConnectionOrder,
+        activeTabId: selection.activeTabId,
         error: null,
       })
       return true
@@ -605,4 +628,10 @@ export function normalizeActiveConnectionOrder(
   }
 
   return orderedIds
+}
+
+export function useIsConnectionReadOnly(connectionId: string): boolean {
+  return useConnectionStore(
+    (state) => state.activeConnections[connectionId]?.profile?.readOnly ?? false
+  )
 }

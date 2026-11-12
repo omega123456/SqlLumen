@@ -148,14 +148,36 @@ fn decode_optional_text_cell_named(row: &MySqlRow, column: &str) -> Result<Optio
 #[cfg(not(coverage))]
 fn build_index_type(index_name: &str, non_unique: i64, index_type: &str) -> String {
     if index_name == "PRIMARY" {
-        "PRIMARY".to_string()
-    } else if non_unique == 0 {
-        "UNIQUE".to_string()
-    } else if index_type.eq_ignore_ascii_case("FULLTEXT") {
-        "FULLTEXT".to_string()
-    } else {
-        "INDEX".to_string()
+        return "PRIMARY".to_string();
     }
+    if non_unique == 0 {
+        return "UNIQUE".to_string();
+    }
+    if index_type.eq_ignore_ascii_case("FULLTEXT") {
+        return "FULLTEXT".to_string();
+    }
+    "INDEX".to_string()
+}
+
+#[cfg(not(coverage))]
+type IndexRowGroup = (String, i64, String, Vec<String>);
+
+#[cfg(not(coverage))]
+fn designer_index_from_group(group: IndexRowGroup) -> DesignerIndexDef {
+    let (name, non_unique, index_type, columns) = group;
+    DesignerIndexDef {
+        index_type: build_index_type(&name, non_unique, &index_type),
+        name,
+        columns,
+    }
+}
+
+#[cfg(not(coverage))]
+fn charset_for_collation(collation: &str) -> String {
+    if collation.is_empty() {
+        return String::new();
+    }
+    table_designer::derive_charset_from_collation(collation)
 }
 
 #[cfg(not(coverage))]
@@ -238,7 +260,7 @@ pub async fn load_table_for_designer_impl(
         .collect::<Result<Vec<_>, String>>()?;
 
     let mut indexes = Vec::new();
-    let mut current_index: Option<(String, i64, String, Vec<String>)> = None;
+    let mut current_index: Option<IndexRowGroup> = None;
 
     for row in index_rows {
         let index_name = decode_text_cell_named(&row, "INDEX_NAME")?;
@@ -254,31 +276,19 @@ pub async fn load_table_for_designer_impl(
             .unwrap_or(false);
 
         if same_index {
-            // append column to the current in-flight index
             if let Some((_, _, _, columns)) = current_index.as_mut() {
                 columns.push(column_name);
             }
-        } else {
-            // flush the previous index (if any), then start a new one
-            if let Some((name, previous_non_unique, previous_index_type, columns)) =
-                current_index.take()
-            {
-                indexes.push(DesignerIndexDef {
-                    name: name.clone(),
-                    index_type: build_index_type(&name, previous_non_unique, &previous_index_type),
-                    columns,
-                });
-            }
-            current_index = Some((index_name, non_unique, index_type, vec![column_name]));
+            continue;
         }
+        if let Some(previous_index) = current_index.take() {
+            indexes.push(designer_index_from_group(previous_index));
+        }
+        current_index = Some((index_name, non_unique, index_type, vec![column_name]));
     }
 
-    if let Some((name, non_unique, index_type, columns)) = current_index {
-        indexes.push(DesignerIndexDef {
-            name: name.clone(),
-            index_type: build_index_type(&name, non_unique, &index_type),
-            columns,
-        });
+    if let Some(last_index) = current_index {
+        indexes.push(designer_index_from_group(last_index));
     }
 
     let mut foreign_keys = Vec::new();
@@ -346,11 +356,7 @@ pub async fn load_table_for_designer_impl(
 
     let properties = DesignerTableProperties {
         engine: decode_optional_text_cell_named(&metadata_row, "ENGINE")?.unwrap_or_default(),
-        charset: if collation.is_empty() {
-            String::new()
-        } else {
-            table_designer::derive_charset_from_collation(&collation)
-        },
+        charset: charset_for_collation(&collation),
         collation,
         auto_increment: match metadata_row.try_get::<Option<u64>, _>("AUTO_INCREMENT") {
             Ok(value) => value,

@@ -20,7 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
-import { useEditorCallbacks } from '../shared/editor-callbacks-context'
+import { useCellStoreSync } from '../shared/editor-callbacks-context'
 import type { TableDataColumnMeta } from '../../types/schema'
 
 // ---------------------------------------------------------------------------
@@ -81,6 +81,25 @@ export interface CellEditorResult {
 // Hook
 // ---------------------------------------------------------------------------
 
+function initialEditorValue(
+  rawValue: unknown,
+  initialInputValue: string | undefined
+): string | null {
+  if (initialInputValue != null) return initialInputValue
+  if (rawValue === null || rawValue === undefined) return null
+  return String(rawValue)
+}
+
+function placeCaretOnFocus(input: HTMLInputElement | null, selectAll: boolean): void {
+  input?.focus()
+  if (selectAll) {
+    input?.select()
+    return
+  }
+  const currentLength = (input?.value ?? '').length
+  input?.setSelectionRange(currentLength, currentLength)
+}
+
 export function useCellEditor(
   params: CellEditorParams,
   callbacks: CellEditorCallbacks
@@ -95,102 +114,66 @@ export function useCellEditor(
   const initialNull = rawValue === null || rawValue === undefined
   const initialValue = initialNull ? null : rawValue
   const initialInputValue = params.initialInputValue
+  const startsNull = initialInputValue == null && initialNull
 
-  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
-  const [value, setValue] = useState<string | null>(
-    initialInputValue != null ? initialInputValue : initialNull ? null : String(rawValue ?? '')
-  )
+  const [isNull, setIsNull] = useState(startsNull)
+  const [value, setValue] = useState<string | null>(initialEditorValue(rawValue, initialInputValue))
 
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Resolve callbacks: prefer props when tabId is set, fallback to context
   // (BaseGridView passes NOOP callbacks with tabId='', so editors fall back
   // to the context provided by the wrapper component).
-  const contextCallbacks = useEditorCallbacks()
-  const tabId = callbacks.tabId || contextCallbacks?.tabId || ''
-  const updateCellValue = callbacks.tabId
-    ? callbacks.updateCellValue
-    : (contextCallbacks?.updateCellValue ?? callbacks.updateCellValue)
-  const syncCellValue = callbacks.tabId
-    ? callbacks.syncCellValue
-    : (contextCallbacks?.syncCellValue ?? callbacks.syncCellValue)
+  const syncToStore = useCellStoreSync({
+    row: row,
+    column: column,
+    tabId: callbacks.tabId,
+    updateCellValue: callbacks.updateCellValue,
+    syncCellValue: callbacks.syncCellValue,
+  })
 
-  // Auto-focus the text input on mount
+  const selectAllOnFocus = params.selectAllOnFocus ?? true
   useEffect(() => {
-    inputRef.current?.focus()
-    if (params.selectAllOnFocus ?? true) {
-      inputRef.current?.select()
-    } else {
-      const currentValue = inputRef.current?.value ?? ''
-      inputRef.current?.setSelectionRange(currentValue.length, currentValue.length)
-    }
-  }, [params.selectAllOnFocus])
+    placeCaretOnFocus(inputRef.current, selectAllOnFocus)
+  }, [selectAllOnFocus])
 
-  // -----------------------------------------------------------------------
-  // Handlers
-  // -----------------------------------------------------------------------
+  const previewAndSync = useCallback(
+    (nextValue: unknown) => {
+      onRowChange({ ...row, [fieldName]: nextValue })
+      syncToStore(nextValue)
+    },
+    [fieldName, onRowChange, row, syncToStore]
+  )
 
   const handleChange = useCallback(
     (nextValue: string) => {
-      // setIsNull(false) is idempotent — safe to call even when already non-null
       setIsNull(false)
       setValue(nextValue)
-      // Preview change in grid
-      onRowChange({ ...row, [fieldName]: nextValue })
-      // Sync to store
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, nextValue)
-        syncCellValue(tabId, row, fieldName, nextValue)
-      }
+      previewAndSync(nextValue)
     },
-    [fieldName, onRowChange, row, syncCellValue, tabId, updateCellValue]
+    [previewAndSync]
   )
 
   const handleToggleNull = useCallback(() => {
-    if (isNull) {
-      // Turning NULL off — pre-fill with today's date/time for temporal columns
-      const prefill = temporalType ? getTodayMysqlString(temporalType) : ''
-      setIsNull(false)
-      setValue(prefill)
-      // Preview change in grid
-      onRowChange({ ...row, [fieldName]: prefill })
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, prefill)
-        syncCellValue(tabId, row, fieldName, prefill)
-      }
-      setTimeout(() => inputRef.current?.focus(), 0)
-    } else {
-      // Turning NULL on
+    if (!isNull) {
       setIsNull(true)
       setValue(null)
-      // Preview change in grid
-      onRowChange({ ...row, [fieldName]: null })
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, null)
-        syncCellValue(tabId, row, fieldName, null)
-      }
+      previewAndSync(null)
+      return
     }
-  }, [fieldName, isNull, onRowChange, row, syncCellValue, tabId, temporalType, updateCellValue])
+    // Turning NULL off — pre-fill with today's date/time for temporal columns
+    const prefill = temporalType ? getTodayMysqlString(temporalType) : ''
+    setIsNull(false)
+    setValue(prefill)
+    previewAndSync(prefill)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [isNull, previewAndSync, temporalType])
 
   const restoreOriginalValue = useCallback(() => {
     setIsNull(initialNull)
-    setValue(initialNull ? null : String(initialValue ?? ''))
-    // Preview restored value in grid
-    onRowChange({ ...row, [fieldName]: initialValue })
-    if (tabId && fieldName) {
-      updateCellValue(tabId, fieldName, initialValue)
-      syncCellValue(tabId, row, fieldName, initialValue)
-    }
-  }, [
-    fieldName,
-    initialNull,
-    initialValue,
-    onRowChange,
-    row,
-    syncCellValue,
-    tabId,
-    updateCellValue,
-  ])
+    setValue(initialEditorValue(initialValue, undefined))
+    previewAndSync(initialValue)
+  }, [initialNull, initialValue, previewAndSync])
 
   return {
     value,

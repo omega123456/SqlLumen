@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from 'react'
-import { useObjectEditorStore } from '../../stores/object-editor-store'
+import { useCallback, useEffect, type ReactNode } from 'react'
+import { useObjectEditorStore, type ObjectEditorTabState } from '../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { ObjectEditorTab as ObjectEditorTabType } from '../../types/schema'
 import { MonacoEditorWrapper } from '../query-editor/MonacoEditorWrapper'
@@ -11,6 +11,58 @@ import styles from './ObjectEditorTab.module.css'
 interface ObjectEditorTabProps {
   tab: ObjectEditorTabType
   isActive?: boolean
+}
+
+interface ObjectEditorView {
+  content: string
+  isLoading: boolean
+  isSaving: boolean
+  error: string | null
+  isDirty: boolean
+  pendingNavigationAction: ObjectEditorTabState['pendingNavigationAction'] | null
+  mode: ObjectEditorTabType['mode']
+}
+
+function deriveObjectEditorView(
+  tabState: ObjectEditorTabState | undefined,
+  tabMode: ObjectEditorTabType['mode']
+): ObjectEditorView {
+  if (!tabState) {
+    return {
+      content: '',
+      isLoading: tabMode === 'alter',
+      isSaving: false,
+      error: null,
+      isDirty: false,
+      pendingNavigationAction: null,
+      mode: tabMode,
+    }
+  }
+  return {
+    content: tabState.content,
+    isLoading: tabState.isLoading,
+    isSaving: tabState.isSaving,
+    error: tabState.error,
+    isDirty: tabState.content !== tabState.originalContent,
+    pendingNavigationAction: tabState.pendingNavigationAction,
+    mode: tabState.mode,
+  }
+}
+
+interface ObjectEditorStatusViewProps {
+  stateClassName: string
+  testId: string
+  children: ReactNode
+}
+
+function ObjectEditorStatusView({ stateClassName, testId, children }: ObjectEditorStatusViewProps) {
+  return (
+    <div className={styles.container} data-testid="object-editor-tab">
+      <div className={stateClassName} data-testid={testId}>
+        {children}
+      </div>
+    </div>
+  )
 }
 
 export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) {
@@ -27,13 +79,8 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
   const updateObjectEditorTab = useWorkspaceStore((state) => state.updateObjectEditorTab)
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
-  // Derived state
-  const content = tabState?.content ?? ''
-  const isLoading = tabState?.isLoading ?? mode === 'alter'
-  const isSaving = tabState?.isSaving ?? false
-  const error = tabState?.error ?? null
-  const isDirty = tabState ? tabState.content !== tabState.originalContent : false
-  const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
+  const { content, isLoading, isSaving, error, isDirty, pendingNavigationAction, ...view } =
+    deriveObjectEditorView(tabState, mode)
 
   // Initialize tab and load body on mount
   useEffect(() => {
@@ -114,12 +161,10 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
   // Loading state
   if (isLoading && !error) {
     return (
-      <div className={styles.container} data-testid="object-editor-tab">
-        <div className={styles.loadingState} data-testid="object-editor-loading">
-          <div className={styles.spinner} aria-hidden />
-          <span>Loading...</span>
-        </div>
-      </div>
+      <ObjectEditorStatusView stateClassName={styles.loadingState} testId="object-editor-loading">
+        <div className={styles.spinner} aria-hidden />
+        <span>Loading...</span>
+      </ObjectEditorStatusView>
     )
   }
 
@@ -128,11 +173,9 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
   // user can correct the DDL and retry.  Save errors are surfaced via toast.
   if (error && !content) {
     return (
-      <div className={styles.container} data-testid="object-editor-tab">
-        <div className={styles.errorState} data-testid="object-editor-error">
-          {error}
-        </div>
-      </div>
+      <ObjectEditorStatusView stateClassName={styles.errorState} testId="object-editor-error">
+        {error}
+      </ObjectEditorStatusView>
     )
   }
 
@@ -142,7 +185,7 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
         objectType={objectType}
         objectName={objectName}
         databaseName={databaseName}
-        mode={tabState?.mode ?? mode}
+        mode={view.mode}
         isSaving={isSaving}
         isDirty={isDirty}
         onSave={() => void performSave()}

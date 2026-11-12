@@ -82,20 +82,21 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
         Err(error) => return Err(error.to_string()),
     };
 
-    if let Some(pw) = password {
-        // Store password in OS secure storage/shared vault using the saved profile id
-        if let Err(error) = crate::credentials::store_password(&id, &pw) {
-            // Rollback: delete the connection we just inserted
-            let _ = connections::delete_connection(&conn, &id);
-            return Err(error);
-        }
-    } else {
+    let Some(pw) = password else {
         // No password provided — clear keychain_ref so has_password is false
         conn.execute(
             "UPDATE connections SET keychain_ref = NULL WHERE id = ?1",
             rusqlite::params![id],
         )
         .map_err(|error| error.to_string())?;
+        return Ok(id);
+    };
+
+    // Store password in OS secure storage/shared vault using the saved profile id
+    if let Err(error) = crate::credentials::store_password(&id, &pw) {
+        // Rollback: delete the connection we just inserted
+        let _ = connections::delete_connection(&conn, &id);
+        return Err(error);
     }
 
     Ok(id)
@@ -156,19 +157,19 @@ pub fn update_connection_impl(
 
     if clear_password {
         crate::credentials::delete_password(id)?;
-        if let Err(error) = connections::set_keychain_ref(&conn, id, None) {
-            return Err(error.to_string());
-        }
-    } else if let Some(pw) = password {
-        // Store/update password in OS secure storage
-        crate::credentials::store_password(id, &pw)?;
-        // Ensure keychain_ref is set (may have been NULL if no previous password)
-        if let Err(error) = connections::set_keychain_ref(&conn, id, Some(id)) {
-            let _ = crate::credentials::delete_password(id);
-            return Err(error.to_string());
-        }
+        return connections::set_keychain_ref(&conn, id, None).map_err(|error| error.to_string());
     }
     // If password is None, leave existing password/keychain_ref unchanged
+    let Some(pw) = password else {
+        return Ok(());
+    };
+    // Store/update password in OS secure storage
+    crate::credentials::store_password(id, &pw)?;
+    // Ensure keychain_ref is set (may have been NULL if no previous password)
+    if let Err(error) = connections::set_keychain_ref(&conn, id, Some(id)) {
+        let _ = crate::credentials::delete_password(id);
+        return Err(error.to_string());
+    }
 
     Ok(())
 }

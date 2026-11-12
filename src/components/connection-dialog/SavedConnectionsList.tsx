@@ -53,16 +53,12 @@ function buildConnectionSections(
   for (const group of sortedGroups) {
     connectionsByGroup.set(group.id, [])
   }
-  connectionsByGroup.set(null, [])
+  const ungroupedConnections: SavedConnection[] = []
+  connectionsByGroup.set(null, ungroupedConnections)
 
   for (const connection of savedConnections) {
-    const bucket = connectionsByGroup.get(connection.groupId)
-    if (bucket) {
-      bucket.push(connection)
-    } else {
-      // Group was deleted or doesn't exist — treat as ungrouped
-      connectionsByGroup.get(null)!.push(connection)
-    }
+    const bucket = connectionsByGroup.get(connection.groupId) ?? ungroupedConnections
+    bucket.push(connection)
   }
 
   for (const [, connections] of connectionsByGroup) {
@@ -115,6 +111,43 @@ function filterConnectionsByQuery(
 type EditingGroupState =
   { mode: 'rename'; groupId: string; value: string } | { mode: 'create'; value: string } | null
 
+const UNGROUPED_SECTION_KEY = 'ungrouped'
+const UNGROUPED_SECTION_TITLE = 'Ungrouped'
+
+interface GroupMutation {
+  run: () => Promise<unknown>
+  successTitle: string
+  failureTitle: string
+  groupName: string
+}
+
+function isRenamingSection(section: ConnectionSection, editingGroup: EditingGroupState): boolean {
+  if (section.groupId === null) return false
+  if (editingGroup?.mode !== 'rename') return false
+  return editingGroup.groupId === section.groupId
+}
+
+interface SectionVisibilityInputs {
+  section: ConnectionSection
+  isFiltering: boolean
+  isRenaming: boolean
+}
+
+function shouldHideSection(inputs: SectionVisibilityInputs): boolean {
+  if (inputs.section.connections.length > 0) return false
+  if (inputs.isRenaming) return false
+  const isGroupSection = inputs.section.groupId !== null
+  return !isGroupSection || inputs.isFiltering
+}
+
+function sectionKey(section: ConnectionSection): string {
+  return section.groupId ?? UNGROUPED_SECTION_KEY
+}
+
+function sectionTitle(section: ConnectionSection): string {
+  return section.groupName ?? UNGROUPED_SECTION_TITLE
+}
+
 interface GroupInlineInputProps {
   value: string
   onChange: (value: string) => void
@@ -151,11 +184,11 @@ function GroupInlineInput({
       onChange={(event) => onChange(event.target.value)}
       onBlur={onCommit}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') {
-          onCommit()
-        } else if (event.key === 'Escape') {
-          onCancel()
+        const keyActions: Partial<Record<string, () => void>> = {
+          Enter: onCommit,
+          Escape: onCancel,
         }
+        keyActions[event.key]?.()
       }}
       placeholder={placeholder}
       aria-label={ariaLabel}
@@ -212,6 +245,7 @@ export function SavedConnectionsList({
   )
 
   const hasMatches = filteredConnections.length > 0
+  const isFiltering = filterText.trim().length > 0
 
   // Simplification 7: outside-click / Escape dismissal for context menu
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
@@ -255,6 +289,17 @@ export function SavedConnectionsList({
     })
   }, [])
 
+  const groupHeaderContextMenu = (section: ConnectionSection) => {
+    const groupId = section.groupId
+    if (groupId === null) return undefined
+    return (event: React.MouseEvent) => {
+      if (isEditableFieldElement(event.target)) {
+        return
+      }
+      handleGroupContextMenu(event, groupId)
+    }
+  }
+
   const handleConnectionContextMenu = useCallback(
     (event: React.MouseEvent, connection: SavedConnection) => {
       event.preventDefault()
@@ -289,6 +334,21 @@ export function SavedConnectionsList({
     [connectionGroups]
   )
 
+  const runGroupMutation = useCallback(
+    async (mutation: GroupMutation) => {
+      try {
+        await mutation.run()
+        await fetchSavedConnections()
+        showSuccessToast(mutation.successTitle, mutation.groupName)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : mutation.failureTitle
+        setError(message)
+        showErrorToast(mutation.failureTitle, message)
+      }
+    },
+    [fetchSavedConnections]
+  )
+
   const commitEditing = useCallback(async () => {
     if (!editingGroup) return
 
@@ -298,32 +358,26 @@ export function SavedConnectionsList({
       // Clear state immediately (matches original optimistic UX)
       setEditingGroup(null)
       if (!trimmedName) return
-
-      try {
-        await createConnectionGroup(trimmedName)
-        await fetchSavedConnections()
-        showSuccessToast('Group created', trimmedName)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to create group'
-        setError(message)
-        showErrorToast('Failed to create group', message)
-      }
-    } else {
-      // mode === 'rename'
-      if (trimmedName) {
-        try {
-          await updateConnectionGroup(editingGroup.groupId, trimmedName)
-          await fetchSavedConnections()
-          showSuccessToast('Group renamed', trimmedName)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Failed to rename group'
-          setError(message)
-          showErrorToast('Failed to rename group', message)
-        }
-      }
-      setEditingGroup(null)
+      await runGroupMutation({
+        run: () => createConnectionGroup(trimmedName),
+        successTitle: 'Group created',
+        failureTitle: 'Failed to create group',
+        groupName: trimmedName,
+      })
+      return
     }
-  }, [editingGroup, fetchSavedConnections])
+
+    if (trimmedName) {
+      const groupId = editingGroup.groupId
+      await runGroupMutation({
+        run: () => updateConnectionGroup(groupId, trimmedName),
+        successTitle: 'Group renamed',
+        failureTitle: 'Failed to rename group',
+        groupName: trimmedName,
+      })
+    }
+    setEditingGroup(null)
+  }, [editingGroup, runGroupMutation])
 
   const cancelEditing = useCallback(() => {
     setEditingGroup(null)
@@ -445,36 +499,19 @@ export function SavedConnectionsList({
           <div className={styles.emptyState}>No connections match “{filterText.trim()}”</div>
         )}
         {sections.map((section) => {
-          const isGroupSection = section.groupId !== null
-          const isRenaming =
-            isGroupSection &&
-            editingGroup?.mode === 'rename' &&
-            editingGroup.groupId === section.groupId
-
-          // Always skip the empty ungrouped section. While a filter is active, also
-          // hide empty named groups so only matching sections remain. With no filter,
-          // empty named groups stay visible (so they can be renamed/deleted) unless
-          // they are being renamed inline.
-          if (section.connections.length === 0) {
-            const hideEmptyGroup = !isGroupSection || filterText.trim().length > 0
-            if (hideEmptyGroup && !isRenaming) return null
-          }
+          const isRenaming = isRenamingSection(section, editingGroup)
+          if (
+            shouldHideSection({
+              section: section,
+              isFiltering: isFiltering,
+              isRenaming: isRenaming,
+            })
+          )
+            return null
 
           return (
-            <div key={section.groupId ?? 'ungrouped'} className={styles.group}>
-              <div
-                className={styles.groupHeader}
-                onContextMenu={
-                  isGroupSection
-                    ? (event) => {
-                        if (isEditableFieldElement(event.target)) {
-                          return
-                        }
-                        handleGroupContextMenu(event, section.groupId!)
-                      }
-                    : undefined
-                }
-              >
+            <div key={sectionKey(section)} className={styles.group}>
+              <div className={styles.groupHeader} onContextMenu={groupHeaderContextMenu(section)}>
                 {isRenaming ? (
                   <GroupInlineInput
                     value={editingGroup!.value}
@@ -488,7 +525,7 @@ export function SavedConnectionsList({
                     ariaLabel="Group name"
                   />
                 ) : (
-                  <span className={styles.groupName}>{section.groupName ?? 'Ungrouped'}</span>
+                  <span className={styles.groupName}>{sectionTitle(section)}</span>
                 )}
               </div>
               {section.connections.map(renderConnectionItem)}

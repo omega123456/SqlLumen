@@ -13,6 +13,18 @@ interface ColorPickerPopoverProps {
 const POPOVER_HEIGHT = 220
 const POPOVER_GAP = 4
 
+function popoverPositionFor(swatchRect: DOMRect): React.CSSProperties {
+  const spaceBelow = window.innerHeight - swatchRect.bottom
+  if (spaceBelow < POPOVER_HEIGHT) {
+    return {
+      position: 'fixed',
+      bottom: window.innerHeight - swatchRect.top + POPOVER_GAP,
+      left: swatchRect.left,
+    }
+  }
+  return { position: 'fixed', top: swatchRect.bottom + POPOVER_GAP, left: swatchRect.left }
+}
+
 export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [hexInput, setHexInput] = useState(color ?? '')
@@ -43,30 +55,14 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   const handleToggleOpen = () => {
     if (isOpen) {
       setIsOpen(false)
-    } else {
-      setHexInput(color ?? '')
-      if (swatchRef.current) {
-        setPortalContainer(swatchRef.current.closest('dialog') ?? document.body)
-        const rect = swatchRef.current.getBoundingClientRect()
-        const spaceBelow = window.innerHeight - rect.bottom
-        const flipUp = spaceBelow < POPOVER_HEIGHT
-
-        if (flipUp) {
-          setPopoverStyle({
-            position: 'fixed',
-            bottom: window.innerHeight - rect.top + POPOVER_GAP,
-            left: rect.left,
-          })
-        } else {
-          setPopoverStyle({
-            position: 'fixed',
-            top: rect.bottom + POPOVER_GAP,
-            left: rect.left,
-          })
-        }
-      }
-      setIsOpen(true)
+      return
     }
+    setHexInput(color ?? '')
+    if (swatchRef.current) {
+      setPortalContainer(swatchRef.current.closest('dialog') ?? document.body)
+      setPopoverStyle(popoverPositionFor(swatchRef.current.getBoundingClientRect()))
+    }
+    setIsOpen(true)
   }
 
   const handlePickerColorChange = (next: string) => {

@@ -40,6 +40,8 @@ import {
 } from '../../../lib/grid-column-style'
 import type {
   BaseGridViewProps,
+  CellClickGuardArgs,
+  CellClickGuardResult,
   GridColumnDescriptor,
   RowEditState,
 } from '../../../types/shared-data-view'
@@ -68,7 +70,7 @@ import {
 } from './grid-row-source'
 import { useGlideSkeletonColor } from '../../../hooks/use-glide-grid-theme'
 import { GlideDataGrid } from './GlideDataGrid'
-import type { GridColumn, GridHandle, GridSortColumn } from './glide-grid-types'
+import type { GridCellPosition, GridColumn, GridHandle, GridSortColumn } from './glide-grid-types'
 import { getGlideEditor } from './glide-editors'
 import { parseSetCellValue, serializeSetCellValue } from '../../table-data/enum-field-utils'
 
@@ -236,18 +238,16 @@ const ROW_ACTION_FAILURES: Record<GridRowActionVerb, ClipboardActionFailure> = {
 /** Windowed grids route Copy and Cut through the app's own async path (D21). */
 const WINDOWED_KEYBINDINGS = { copy: false, cut: false } as const
 
+const ROW_ACTION_SUCCESS: Record<GridRowActionVerb, (rows: string) => [string, string]> = {
+  Copying: (rows) => ['Copied', `${rows} copied to clipboard.`],
+  Cutting: (rows) => ['Cut', `${rows} cut.`],
+  Clearing: (rows) => ['Cleared', `${rows} cleared.`],
+  Pasting: (rows) => ['Pasted', `${rows} updated.`],
+}
+
 function rowActionSuccess(verb: GridRowActionVerb, count: number): [string, string] {
   const rows = `${formatCount(count)} ${count === 1 ? 'row' : 'rows'}`
-  switch (verb) {
-    case 'Copying':
-      return ['Copied', `${rows} copied to clipboard.`]
-    case 'Cutting':
-      return ['Cut', `${rows} cut.`]
-    case 'Clearing':
-      return ['Cleared', `${rows} cleared.`]
-    case 'Pasting':
-      return ['Pasted', `${rows} updated.`]
-  }
+  return ROW_ACTION_SUCCESS[verb](rows)
 }
 
 function isAbort(error: unknown): boolean {
@@ -276,8 +276,12 @@ function selectionRowRanges(selection: CompactSelection | Iterable<number>): Row
   const ranges: Array<[number, number]> = []
   for (const index of [...selection].sort((left, right) => left - right)) {
     const current = ranges[ranges.length - 1]
-    if (current && current[1] === index) current[1] = index + 1
-    else ranges.push([index, index + 1])
+    const extendsCurrentRange = current !== undefined && current[1] === index
+    if (extendsCurrentRange) {
+      current[1] = index + 1
+      continue
+    }
+    ranges.push([index, index + 1])
   }
   return ranges
 }
@@ -291,8 +295,12 @@ function mergeRowRanges(ranges: readonly RowRange[], rowCount: number): Array<[n
   const merged: Array<[number, number]> = []
   for (const [start, end] of sorted) {
     const last = merged[merged.length - 1]
-    if (last && start <= last[1]) last[1] = Math.max(last[1], end)
-    else merged.push([start, end])
+    const overlapsLastRange = last !== undefined && start <= last[1]
+    if (overlapsLastRange) {
+      last[1] = Math.max(last[1], end)
+      continue
+    }
+    merged.push([start, end])
   }
   return merged
 }
@@ -315,17 +323,22 @@ function isResultsExpired(error: unknown): boolean {
   return toErrorMessage(error).includes('results_expired')
 }
 
+function resolveConfiguredColumnWidth(
+  column: GridColumnDescriptor,
+  rows: readonly GridRow[],
+  autoSizeConfig: CanvasBaseGridViewProps['autoSizeConfig']
+): number | undefined {
+  if (typeof column.width === 'number') return column.width
+  if (autoSizeConfig?.enabled !== true) return undefined
+  return autoSizeConfig.computeWidth(column, rows)
+}
+
 function toGridColumn(
   column: GridColumnDescriptor,
   rows: readonly GridRow[],
   autoSizeConfig: CanvasBaseGridViewProps['autoSizeConfig']
 ): GridColumn<GridRow> {
-  const computedWidth =
-    typeof column.width === 'number'
-      ? column.width
-      : autoSizeConfig?.enabled === true
-        ? autoSizeConfig.computeWidth(column, rows)
-        : undefined
+  const computedWidth = resolveConfiguredColumnWidth(column, rows, autoSizeConfig)
   return {
     key: column.key,
     name: column.displayName,
@@ -506,6 +519,584 @@ function resolveEditorBaselineValue(
   return row[columnKey]
 }
 
+interface GridBehaviourFlags {
+  rowMarkers: NonNullable<CanvasBaseGridViewProps['rowMarkers']>
+  showInfoColumn: boolean
+  isActive: boolean
+  runCellClickGuardOnKeyboardSelection: boolean
+}
+
+function resolveGridBehaviourFlags(props: CanvasBaseGridViewProps): GridBehaviourFlags {
+  return {
+    rowMarkers: props.rowMarkers ?? 'none',
+    showInfoColumn: props.showInfoColumn ?? false,
+    isActive: props.isActive ?? true,
+    runCellClickGuardOnKeyboardSelection: props.runCellClickGuardOnKeyboardSelection ?? false,
+  }
+}
+
+function currentSelectionCell(selection: GridSelection | undefined): Item | undefined {
+  return selection?.current?.cell
+}
+
+function toCellPosition(cell: Item | undefined): GridCellPosition | null {
+  if (!cell) return null
+  return { idx: cell[0], rowIdx: cell[1] }
+}
+
+function gridAriaLabel(testId: string | undefined): string {
+  return testId ? `${testId} data grid` : 'Data grid'
+}
+
+function clipboardMenuTestId(testId: string | undefined): string {
+  return testId ? `${testId}-clipboard-menu` : 'grid-clipboard-menu'
+}
+
+function nullableCellString(value: unknown): string | null {
+  return value == null ? null : String(value)
+}
+
+function buildEmptyTextCell(): GridCell {
+  return buildTextCell('', classifyCellValue('', ''))
+}
+
+function buildCheckboxCell(rawValue: unknown): BooleanCell {
+  return {
+    kind: GridCellKind.Boolean,
+    data: rawValue === true,
+    allowOverlay: false,
+    readonly: false,
+  }
+}
+
+function matchingTypingActivation(
+  pending: PendingTypingActivation | null,
+  rowIndex: number,
+  columnKey: string
+): PendingTypingActivation | null {
+  const isForThisCell = pending?.rowIndex === rowIndex && pending.columnKey === columnKey
+  return isForThisCell ? pending : null
+}
+
+interface DataCellInput {
+  row: GridRow
+  rowIndex: number
+  column: GridColumn<GridRow>
+  flags: ReturnType<typeof classifyCellValue>
+  editable: boolean
+  pendingTypingActivation: PendingTypingActivation | null
+}
+
+function buildEditableTextCell(input: DataCellInput): GridCell {
+  const { row, rowIndex, column, flags } = input
+  const rawValue = row[column.key]
+  const baseCell = flags.isNull
+    ? buildNullCell(flags.copyValue)
+    : buildTextCell(flags.displayValue, flags, flags.copyValue)
+  const activation = matchingTypingActivation(input.pendingTypingActivation, rowIndex, column.key)
+  const cancelRestore = activation ? { cancelRestoreValue: activation.cancelRestoreValue } : {}
+  return {
+    ...baseCell,
+    readonly: false,
+    allowOverlay: true,
+    data: nullableCellString(rawValue) ?? '',
+    glideEditorData: {
+      row: row,
+      columnKey: column.key,
+      columnLabel: column.displayName,
+      columnMeta: column.tableColumnMeta,
+      isNullable: column.isNullable === true,
+      foreignKey: column.foreignKey,
+      initialInputValue: activation?.value,
+      ...cancelRestore,
+      selectAllOnFocus: activation === null,
+    },
+  } as TextCell & { glideEditorData: unknown }
+}
+
+function buildDataCell(input: DataCellInput): GridCell {
+  const { row, column, flags, editable } = input
+  const rawValue = row[column.key]
+  if (flags.isBlob) return buildBlobCell(flags.displayValue, flags.copyValue)
+  if (flags.isNull && !editable) return buildNullCell(flags.copyValue)
+  if (isEnumColumn(column)) {
+    return buildEnumDropdownCell(column, nullableCellString(rawValue), editable)
+  }
+  if (isSetColumn(column)) {
+    return buildSetMultiSelectCell(column, nullableCellString(rawValue), editable)
+  }
+  if (editable) return buildEditableTextCell(input)
+  return buildTextCell(flags.displayValue, flags, flags.copyValue)
+}
+
+function isReadOnlyInEditMode(
+  column: GridColumn<GridRow>,
+  isEditMode: boolean | undefined,
+  editableColumnKeys: ReadonlySet<string> | undefined
+): boolean {
+  return isEditMode === true && editableColumnKeys?.has(column.key) !== true
+}
+
+function hasInfoText(column: GridColumn<GridRow> | undefined, row: GridRow | undefined): boolean {
+  if (!column || !isInfoColumn(column)) return false
+  return typeof row?.info === 'string' && row.info.length > 0
+}
+
+function isPointerInTrailingGutter(event: CellClickedEventArgs, gutterWidth: number): boolean {
+  return (event.localEventX ?? 0) >= event.bounds.width - gutterWidth
+}
+
+function isForeignKeyAffordanceClick(
+  column: GridColumn<GridRow>,
+  event: CellClickedEventArgs
+): boolean {
+  if (isListSelectionColumn(column) || column.foreignKey == null) return false
+  return event.bounds != null && isPointerInTrailingGutter(event, FOREIGN_KEY_AFFORDANCE_WIDTH_PX)
+}
+
+function isInfoAffordanceClick(
+  column: GridColumn<GridRow>,
+  row: GridRow,
+  event: CellClickedEventArgs
+): boolean {
+  if (!hasInfoText(column, row)) return false
+  return event.bounds != null && isPointerInTrailingGutter(event, INFO_AFFORDANCE_GUTTER_PX)
+}
+
+function boundsToDomRect(bounds: Rectangle): DOMRect {
+  return new DOMRect(bounds.x, bounds.y, bounds.width, bounds.height)
+}
+
+function proceedWithoutGuard(
+  target: GridCellPosition,
+  enableEditor: boolean
+): CellClickGuardResult {
+  return {
+    proceed: true,
+    targetRowIdx: target.rowIdx,
+    targetColIdx: target.idx,
+    enableEditor: enableEditor,
+  }
+}
+
+function guardTargetCell(guard: CellClickGuardResult): GridCellPosition {
+  return { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx }
+}
+
+function selectGuardTarget(grid: GridHandle | null, guard: CellClickGuardResult): void {
+  grid?.selectCell(guardTargetCell(guard), {
+    shouldFocusCell: true,
+    enableEditor: guard.enableEditor,
+  })
+}
+
+function restoreFocusAfterRejectedGuard(
+  grid: GridHandle | null,
+  guard: CellClickGuardResult
+): void {
+  if (guard.restoreFocus) selectGuardTarget(grid, guard)
+}
+
+function resolveDropdownEditValue(column: GridColumn<GridRow>, cell: DropdownCellType): unknown {
+  const selectedValue = cell.data.value
+  if (isEnumColumn(column) && isDropdownNullSelection(column, selectedValue)) return null
+  return selectedValue ?? null
+}
+
+function resolveMultiSelectEditValue(
+  column: GridColumn<GridRow>,
+  cell: MultiSelectCellType
+): unknown {
+  const selectedValues = cell.data.values ?? null
+  if (isSetColumn(column)) return serializeSetCellValue(selectedValues)
+  return selectedValues
+}
+
+function resolveTextEditValue(cell: TextCell): string | null {
+  const isClearedToNull = cell.data === '' && cell.copyData === 'NULL'
+  return isClearedToNull ? null : cell.data
+}
+
+function resolveEditedCellValue(column: GridColumn<GridRow>, cell: EditableGridCell): unknown {
+  if (isDropdownCustomCell(cell)) return resolveDropdownEditValue(column, cell)
+  if (isMultiSelectCustomCell(cell)) return resolveMultiSelectEditValue(column, cell)
+  if (cell.kind === GridCellKind.Boolean) return cell.data === true
+  if (cell.kind === GridCellKind.Text) return resolveTextEditValue(cell)
+  return undefined
+}
+
+interface EditedCellIdentity {
+  rowIndex: number
+  columnKey: string
+  value: unknown
+}
+
+function isPendingTypingActivationCommit(
+  pending: PendingTypingActivation | null,
+  edit: EditedCellIdentity
+): boolean {
+  const isSameCell = pending?.rowIndex === edit.rowIndex && pending.columnKey === edit.columnKey
+  return isSameCell && pending.value === edit.value
+}
+
+function isUnchangedEditorCommit(
+  baseline: EditorSessionBaseline | null,
+  edit: EditedCellIdentity
+): boolean {
+  const isSameCell = baseline?.rowIndex === edit.rowIndex && baseline.columnKey === edit.columnKey
+  return isSameCell && areEditorValuesEqual(baseline.value, edit.value)
+}
+
+function withCellValue(rows: GridRow[], edit: EditedCellIdentity): GridRow[] {
+  return rows.map((row, index) =>
+    index === edit.rowIndex ? { ...row, [edit.columnKey]: edit.value } : row
+  )
+}
+
+function clearedValueFor(column: GridColumn<GridRow>): string | null {
+  if (column.isNullable === true) return null
+  if (isEnumColumn(column)) return column.enumValues[0] ?? ''
+  return ''
+}
+
+function buildClearedCell(
+  column: GridColumn<GridRow>,
+  clearedValue: string | null
+): EditableGridCell | undefined {
+  if (isEnumColumn(column)) return buildEnumDropdownCell(column, clearedValue, true)
+  if (isSetColumn(column)) return buildSetMultiSelectCell(column, clearedValue, true)
+  const text = clearedValue ?? ''
+  const baseCell = buildTextCell(
+    text,
+    classifyCellValue(clearedValue, column.key),
+    clearedValue ?? 'NULL'
+  )
+  if (baseCell.kind !== GridCellKind.Text) return undefined
+  return { ...baseCell, readonly: false, allowOverlay: true, data: text }
+}
+
+function isClearableColumn(column: GridColumn<GridRow> | undefined): column is GridColumn<GridRow> {
+  return column !== undefined && !isInfoColumn(column)
+}
+
+type RowProgress = ReturnType<GridRowActions['begin']>
+
+interface RowRangeLoadRequest {
+  source: GridRowSource<GridRow>
+  ranges: Array<[number, number]>
+  signal: AbortSignal
+  progress: RowProgress | undefined
+}
+
+async function loadRowRanges(request: RowRangeLoadRequest): Promise<Map<number, GridRow>> {
+  const resolved = new Map<number, GridRow>()
+  let doneBefore = 0
+  for (const range of request.ranges) {
+    const doneBeforeRange = doneBefore
+    const rows = await resolveRowRange(request.source, range, {
+      signal: request.signal,
+      onProgress: ({ done }) => request.progress?.update(doneBeforeRange + done),
+    })
+    if (request.signal.aborted) throw new DOMException('Cancelled', 'AbortError')
+    rows.forEach((row, offset) => resolved.set(range[0] + offset, row))
+    doneBefore += range[1] - range[0]
+    request.progress?.update(doneBefore)
+  }
+  return resolved
+}
+
+function finishRowProgress(progress: RowProgress | undefined): boolean {
+  return progress?.finish() ?? false
+}
+
+function countRows(ranges: Array<[number, number]>): number {
+  return ranges.reduce((sum, [start, end]) => sum + (end - start), 0)
+}
+
+function countFetchChunks(ranges: Array<[number, number]>): number {
+  return ranges.reduce((sum, [start, end]) => sum + Math.ceil((end - start) / ROW_FETCH_CHUNK), 0)
+}
+
+function reportRowActionLoadFailure(
+  verb: GridRowActionVerb,
+  error: unknown,
+  rowActions: GridRowActions | undefined
+): void {
+  if (isAbort(error)) return
+  if (isResultsExpired(error)) {
+    rowActions?.onExpired()
+    return
+  }
+  const failure = ROW_ACTION_FAILURES[verb]
+  logFrontend('warn', `[grid] ${verb} could not load rows: ${toErrorMessage(error)}`)
+  showErrorToast(failure.title, failure.message)
+}
+
+function visibleRepaintRange(loadedRange: RowRange, region: Rectangle | null): RowRange {
+  const [start, end] = loadedRange
+  if (!region) return [start, Math.min(end, start + VISIBLE_REPAINT_FALLBACK_ROWS)]
+  return [Math.max(start, region.y), Math.min(end, region.y + region.height)]
+}
+
+function cellsInRowSpan(span: RowRange, columnCount: number): Array<readonly [number, number]> {
+  const [from, to] = span
+  const cells: Array<readonly [number, number]> = []
+  for (let row = from; row < to; row++) {
+    for (let column = 0; column < columnCount; column++) cells.push([column, row])
+  }
+  return cells
+}
+
+interface EditorSessionBaselineInput {
+  row: GridRow | undefined
+  column: GridColumn<GridRow> | undefined
+  rowIndex: number
+  editState: RowEditState | null
+}
+
+function buildEditorSessionBaseline(
+  input: EditorSessionBaselineInput
+): EditorSessionBaseline | null {
+  const { row, column, rowIndex, editState } = input
+  if (!column || !row) return null
+  return {
+    rowIndex: rowIndex,
+    columnKey: column.key,
+    value: normalizeEditorValue(resolveEditorBaselineValue(row, column.key, editState)),
+  }
+}
+
+function hasPasteLine(line: readonly string[] | undefined): line is readonly string[] {
+  return line !== undefined && line.length > 0
+}
+
+function isRowInGrid(rowIndex: number, rowCount: number): boolean {
+  return rowIndex >= 0 && rowIndex < rowCount
+}
+
+interface FocusedCellSources {
+  selectedCell: GridCellPosition | null | undefined
+  selectionCell: Item | undefined
+  lastInteractedCell: GridCellPosition | null
+}
+
+function resolveFocusedCell(sources: FocusedCellSources): GridCellPosition | null {
+  return sources.selectedCell ?? toCellPosition(sources.selectionCell) ?? sources.lastInteractedCell
+}
+
+function resolveKeyboardCell(
+  selectionCell: Item | undefined,
+  selectedCell: GridCellPosition | null | undefined
+): GridCellPosition | null {
+  return toCellPosition(selectionCell) ?? selectedCell ?? null
+}
+
+interface TypingActivationRequest {
+  cell: GridCellPosition
+  row: GridRow
+  columnKey: string
+  typedValue: string
+  cancelRestoreValue: unknown
+}
+
+function canStartTypedEdit(
+  guard: CellClickGuardResult,
+  column: GridColumn<GridRow> | undefined,
+  editableColumnKeys: ReadonlySet<string> | undefined
+): column is GridColumn<GridRow> {
+  return guard.enableEditor && column !== undefined && editableColumnKeys?.has(column.key) === true
+}
+
+function clampIndex(value: number, lastIndex: number): number {
+  return Math.max(0, Math.min(lastIndex, value))
+}
+
+function resolveKeyboardRow(
+  currentCell: GridCellPosition | null,
+  activeSelectedRowIndex: number | null
+): number {
+  return currentCell?.rowIdx ?? activeSelectedRowIndex ?? 0
+}
+
+function resolveKeyboardColumn(currentCell: GridCellPosition | null): number {
+  return currentCell?.idx ?? 0
+}
+
+function cancelGlideKey(event: GlideKeyDownEvent): void {
+  event.preventDefault()
+  event.cancel?.()
+}
+
+function isShortcutKey(event: GlideKeyDownEvent, key: string): boolean {
+  const isShortcut = event.metaKey || event.ctrlKey
+  return isShortcut && event.key.toLowerCase() === key
+}
+
+const INTERACTIVE_TAG_NAMES = ['button', 'input', 'select', 'textarea', 'a']
+
+function isInteractiveElement(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName.toLowerCase()
+  return INTERACTIVE_TAG_NAMES.includes(tag) || target.isContentEditable
+}
+
+function isEditableListColumn(
+  column: GridColumn<GridRow> | undefined,
+  isEditMode: boolean | undefined,
+  editableColumnKeys: ReadonlySet<string> | undefined
+): column is EnumGridColumn | SetGridColumn {
+  return isListSelectionColumn(column) && isEditableColumn(column, isEditMode, editableColumnKeys)
+}
+
+function isSingleRowCheckAdded(next: CompactSelection, previous: CompactSelection): boolean {
+  return next.length === previous.length + 1
+}
+
+function haveSameRowIndexes(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((value, index) => value === right[index])
+}
+
+function isForeignKeyLookupColumn(
+  column: GridColumn<GridRow> | undefined
+): column is GridColumn<GridRow> {
+  if (!column?.foreignKey) return false
+  return !isListSelectionColumn(column)
+}
+
+type CellDrawArgs = Parameters<DrawCellCallback>[0]
+
+interface CellDrawState {
+  row: GridRow | undefined
+  column: GridColumn<GridRow> | undefined
+  isSelected: boolean
+  isEditing: boolean
+  isHighlightedColumn: boolean
+  isModified: boolean
+  hasInfoAffordance: boolean
+}
+
+interface ModifiedCellCheck {
+  row: GridRow | undefined
+  column: GridColumn<GridRow> | undefined
+  isModifiedCell: CanvasBaseGridViewProps['isModifiedCell']
+}
+
+function isCellModified(check: ModifiedCellCheck): boolean {
+  const { row, column, isModifiedCell } = check
+  if (!row || !column) return false
+  return isModifiedCell?.(row, column.key) === true
+}
+
+function drawCellBackground(args: CellDrawArgs, state: CellDrawState): void {
+  if (state.isHighlightedColumn) {
+    drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgSearchResult)
+  }
+  if (state.isSelected) {
+    drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgBubbleSelected)
+    drawSelectedRowAccent(args.ctx, args.rect, args.theme.accentColor)
+  }
+  if (state.isEditing) {
+    drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgHeaderHovered)
+  }
+}
+
+function drawCellContent(args: CellDrawArgs, state: CellDrawState, drawContent: () => void): void {
+  if (state.hasInfoAffordance) {
+    drawContentBesideInfoGutter(args, drawContent)
+    return
+  }
+  drawContent()
+}
+
+function drawCellOverlays(args: CellDrawArgs, state: CellDrawState): void {
+  if (state.isModified) {
+    drawModifiedCellIndicator(args.ctx, args.rect, args.theme.accentColor, false)
+  }
+  if (state.hasInfoAffordance) {
+    drawInfoAffordance(args.ctx, args.rect, args.theme.linkColor)
+  }
+  if (state.row && isForeignKeyLookupColumn(state.column)) {
+    drawForeignKeyEllipsis(args.ctx, args.rect, args.theme.linkColor)
+  }
+}
+
+function withoutUnloadedRowCheck(
+  selection: GridSelection,
+  previousRows: CompactSelection,
+  source: GridRowSource<GridRow>
+): GridSelection {
+  if (!isSingleRowCheckAdded(selection.rows, previousRows)) return selection
+  const added = findAddedIndex(selection.rows, previousRows)
+  if (added === undefined || source.isLoaded(added)) return selection
+  return { ...selection, rows: previousRows }
+}
+
+function drawContentBesideInfoGutter(args: CellDrawArgs, drawContent: () => void): void {
+  args.ctx.save()
+  args.ctx.beginPath()
+  args.ctx.rect(
+    args.rect.x,
+    args.rect.y,
+    Math.max(0, args.rect.width - INFO_AFFORDANCE_GUTTER_PX),
+    args.rect.height
+  )
+  args.ctx.clip()
+  drawContent()
+  args.ctx.restore()
+}
+
+function skeletonLineHeight(theme: CellDrawArgs['theme']): number {
+  return parseFloat(theme.editorFontSize) || SKELETON_FALLBACK_LINE_PX
+}
+
+interface GridClipboardMenuProps {
+  menu: { x: number; y: number; portalRoot: HTMLElement }
+  menuRef: React.RefObject<HTMLDivElement | null>
+  testId: string | undefined
+  onCopy: () => void
+  onCut: () => void
+  onPaste: () => void
+}
+
+function GridClipboardMenu({
+  menu,
+  menuRef,
+  testId,
+  onCopy,
+  onCut,
+  onPaste,
+}: GridClipboardMenuProps) {
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="ui-context-menu"
+      role="menu"
+      data-testid={clipboardMenuTestId(testId)}
+      style={{
+        left: menu.x,
+        top: menu.y,
+        position: getContextMenuPositionMode(menu.portalRoot),
+      }}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <Button variant="bare" className="ui-context-menu__item" role="menuitem" onClick={onCopy}>
+        <CopySimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+        <span>Copy</span>
+      </Button>
+      <Button variant="bare" className="ui-context-menu__item" role="menuitem" onClick={onCut}>
+        <Scissors className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+        <span>Cut</span>
+      </Button>
+      <Button variant="bare" className="ui-context-menu__item" role="menuitem" onClick={onPaste}>
+        <ClipboardText className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+        <span>Paste</span>
+      </Button>
+    </div>,
+    menu.portalRoot
+  )
+}
+
 function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<GridHandle>) {
   const {
     rows: rowsProp,
@@ -526,7 +1117,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     getRowClass,
     isModifiedCell,
     testId,
-    rowMarkers = 'none',
     onInfoCellClick,
     onSelectedRowChange,
     onRowDoubleClicked,
@@ -544,11 +1134,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     initialScrollCell,
     scrollToRowIndex,
     onFkCellAction,
-    showInfoColumn = false,
-    isActive = true,
-    runCellClickGuardOnKeyboardSelection = false,
     resetSelectionKey,
   } = props
+  const { rowMarkers, showInfoColumn, isActive, runCellClickGuardOnKeyboardSelection } =
+    resolveGridBehaviourFlags(props)
   const gridRef = useRef<GridHandle | null>(null)
   const [internalSelectedRowIndex, setInternalSelectedRowIndex] = useState<number | null>(null)
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
@@ -801,70 +1390,30 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     })
   }
 
-  /** Build the cell for `row` (a loaded row object) at `[colIndex, rowIndex]`. */
   const buildCellForRow = useCallback(
     (row: GridRow, columnIndex: number, rowIndex: number): GridCell => {
       const column = gridColumns[columnIndex]
-      if (!column) return buildTextCell('', classifyCellValue('', ''))
+      if (!column) return buildEmptyTextCell()
       const rawValue = row[column.key]
-      if (column.cellKind === 'checkbox') {
-        return {
-          kind: GridCellKind.Boolean,
-          data: rawValue === true,
-          allowOverlay: false,
-          readonly: false,
-        } satisfies BooleanCell
-      }
+      if (column.cellKind === 'checkbox') return buildCheckboxCell(rawValue)
+      const isSelectedRow = activeSelectedRowIndex === rowIndex || isRowSelected(row)
       const flags = classifyCellValue(rawValue, column.key, {
-        isReadOnly: isEditMode === true && editableColumnKeys?.has(column.key) !== true,
+        isReadOnly: isReadOnlyInEditMode(column, isEditMode, editableColumnKeys),
         isModified: isModifiedCell?.(row, column.key) ?? false,
         isFkCell: column.foreignKey != null,
         isBlobColumn: column.isBinary === true,
-        isSelectedRow: activeSelectedRowIndex === rowIndex || isRowSelected(row),
+        isSelectedRow: isSelectedRow,
         isEditingRow: isRowEditing(row),
         highlightedColumnKey: highlightColumnKey,
       })
-      if (flags.isBlob) return buildBlobCell(flags.displayValue, flags.copyValue)
-      const editable = isEditableColumn(column, isEditMode, editableColumnKeys)
-      if (flags.isNull && !editable) return buildNullCell(flags.copyValue)
-      if (isEnumColumn(column)) {
-        const enumValue = rawValue == null ? null : String(rawValue)
-        return buildEnumDropdownCell(column, enumValue, editable)
-      }
-      if (isSetColumn(column)) {
-        const setValue = rawValue == null ? null : String(rawValue)
-        return buildSetMultiSelectCell(column, setValue, editable)
-      }
-      if (editable) {
-        const baseCell = flags.isNull
-          ? buildNullCell(flags.copyValue)
-          : buildTextCell(flags.displayValue, flags, flags.copyValue)
-        const pendingTypingActivation =
-          pendingTypingActivationRef.current?.rowIndex === rowIndex &&
-          pendingTypingActivationRef.current?.columnKey === column.key
-            ? pendingTypingActivationRef.current
-            : null
-        return {
-          ...baseCell,
-          readonly: false,
-          allowOverlay: true,
-          data: rawValue == null ? '' : String(rawValue),
-          glideEditorData: {
-            row: row,
-            columnKey: column.key,
-            columnLabel: column.displayName,
-            columnMeta: column.tableColumnMeta,
-            isNullable: column.isNullable === true,
-            foreignKey: column.foreignKey,
-            initialInputValue: pendingTypingActivation?.value,
-            ...(pendingTypingActivation
-              ? { cancelRestoreValue: pendingTypingActivation.cancelRestoreValue }
-              : {}),
-            selectAllOnFocus: pendingTypingActivation ? false : true,
-          },
-        } as TextCell & { glideEditorData: unknown }
-      }
-      return buildTextCell(flags.displayValue, flags, flags.copyValue)
+      return buildDataCell({
+        row: row,
+        rowIndex: rowIndex,
+        column: column,
+        flags: flags,
+        editable: isEditableColumn(column, isEditMode, editableColumnKeys),
+        pendingTypingActivation: pendingTypingActivationRef.current,
+      })
     },
     [
       activeSelectedRowIndex,
@@ -882,10 +1431,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     ([columnIndex, rowIndex]: Item): GridCell => {
       const row = source.getRow(rowIndex)
       if (!row) {
-        // Windowed rows that aren't loaded yet: a flat skeleton (drawn in drawCell).
         return isWindowed
           ? { kind: GridCellKind.Loading, allowOverlay: false }
-          : buildTextCell('', classifyCellValue('', ''))
+          : buildEmptyTextCell()
       }
       return buildCellForRow(row, columnIndex, rowIndex)
     },
@@ -921,125 +1469,100 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [gridColumns, onSortChange, sortColumn, sortDirection]
   )
 
-  const handleCellClicked = useCallback(
-    (cell: Item, event: CellClickedEventArgs) => {
-      const [columnIndex, rowIndex] = cell
-      const row = source.getRow(rowIndex)
-      const column = gridColumns[columnIndex]
-      if (!row || !column) return
-      lastInteractedCellRef.current = { rowIdx: rowIndex, idx: columnIndex }
-
-      const isForeignKeyAffordanceClick =
-        !isListSelectionColumn(column) &&
-        column.foreignKey != null &&
-        event.bounds != null &&
-        (event.localEventX ?? 0) >= event.bounds.width - FOREIGN_KEY_AFFORDANCE_WIDTH_PX
-      const isInfoAffordanceClick =
-        isInfoColumn(column) &&
-        typeof row.info === 'string' &&
-        row.info.length > 0 &&
-        event.bounds != null &&
-        (event.localEventX ?? 0) >= event.bounds.width - INFO_AFFORDANCE_GUTTER_PX
-
-      if (isForeignKeyAffordanceClick) {
-        // Clicking the ellipsis on the already-selected cell is Glide's "second click"; without
-        // this the overlay editor opens too and floats above the lookup dialog.
-        event.preventDefault()
-        const runForeignKeyLookup = async () => {
-          const ok = await changeSelectedCell(rowIndex, columnIndex)
-          if (ok) {
-            selectRow(rowIndex)
-            await onFkCellAction?.({
-              rowIdx: rowIndex,
-              columnKey: column.key,
-              rowData: row,
-              source: 'grid-pointer',
-            })
-          }
-        }
-
-        void runForeignKeyLookup()
-        onCellSelectionChange?.({ rowIdx: rowIndex, columnKey: column.key, rowData: row })
-        onRowClick?.(row, column.key)
+  const selectCellFromPointer = useCallback(
+    async (cell: GridCellPosition, row: GridRow, columnKey: string): Promise<void> => {
+      if (actionPendingRef.current) return
+      const guard = onCellClickGuard
+        ? await onCellClickGuard({ rowIdx: cell.rowIdx, columnKey: columnKey, rowData: row })
+        : proceedWithoutGuard(cell, false)
+      if (!guard.proceed) {
+        restoreFocusAfterRejectedGuard(gridRef.current, guard)
         return
       }
-
-      if (isInfoAffordanceClick) {
-        const rect = new DOMRect(
-          event.bounds.x,
-          event.bounds.y,
-          event.bounds.width,
-          event.bounds.height
-        )
-        onInfoCellClick?.(row, rect)
-        return
+      const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
+      if (!ok) return
+      selectRow(guard.targetRowIdx)
+      const guardedColumn = gridColumns[guard.targetColIdx]
+      const guardedRow = source.getRow(guard.targetRowIdx)
+      if (guardedColumn && guardedRow) {
+        onCellSelectionChange?.({
+          rowIdx: guard.targetRowIdx,
+          columnKey: guardedColumn.key,
+          rowData: guardedRow,
+          source: 'grid-pointer',
+        })
       }
-
-      const run = async () => {
-        if (actionPendingRef.current) return
-        const guard = onCellClickGuard
-          ? await onCellClickGuard({ rowIdx: rowIndex, columnKey: column.key, rowData: row })
-          : {
-              proceed: true,
-              targetRowIdx: rowIndex,
-              targetColIdx: columnIndex,
-              enableEditor: false,
-            }
-        if (!guard.proceed) {
-          if (guard.restoreFocus) {
-            gridRef.current?.selectCell(
-              { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-              { shouldFocusCell: true, enableEditor: guard.enableEditor }
-            )
-          }
-          return
-        }
-        const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
-        if (ok) {
-          selectRow(guard.targetRowIdx)
-          const guardedColumn = gridColumns[guard.targetColIdx]
-          const guardedRow = source.getRow(guard.targetRowIdx)
-          if (guardedColumn && guardedRow) {
-            onCellSelectionChange?.({
-              rowIdx: guard.targetRowIdx,
-              columnKey: guardedColumn.key,
-              rowData: guardedRow,
-              source: 'grid-pointer',
-            })
-          }
-          if (guard.enableEditor) {
-            openListEditor({ rowIdx: guard.targetRowIdx, idx: guard.targetColIdx })
-          }
-        }
-      }
-      void run()
-      onRowClick?.(row, column.key)
-      if (
-        isInfoColumn(column) &&
-        typeof row.info === 'string' &&
-        row.info.length > 0 &&
-        event.bounds
-      ) {
-        const rect = new DOMRect(
-          event.bounds.x,
-          event.bounds.y,
-          event.bounds.width,
-          event.bounds.height
-        )
-        onInfoCellClick?.(row, rect)
-      }
+      if (guard.enableEditor) openListEditor(guardTargetCell(guard))
     },
     [
       changeSelectedCell,
       gridColumns,
       onCellClickGuard,
       onCellSelectionChange,
-      onFkCellAction,
+      openListEditor,
+      selectRow,
+      source,
+    ]
+  )
+
+  const runForeignKeyLookupFromPointer = useCallback(
+    async (cell: GridCellPosition, row: GridRow, columnKey: string): Promise<void> => {
+      const ok = await changeSelectedCell(cell.rowIdx, cell.idx)
+      if (!ok) return
+      selectRow(cell.rowIdx)
+      await onFkCellAction?.({
+        rowIdx: cell.rowIdx,
+        columnKey: columnKey,
+        rowData: row,
+        source: 'grid-pointer',
+      })
+    },
+    [changeSelectedCell, onFkCellAction, selectRow]
+  )
+
+  const openForeignKeyLookupFromPointer = useCallback(
+    (cell: GridCellPosition, row: GridRow, columnKey: string): void => {
+      void runForeignKeyLookupFromPointer(cell, row, columnKey)
+      onCellSelectionChange?.({ rowIdx: cell.rowIdx, columnKey: columnKey, rowData: row })
+      onRowClick?.(row, columnKey)
+    },
+    [onCellSelectionChange, onRowClick, runForeignKeyLookupFromPointer]
+  )
+
+  const handleCellClicked = useCallback(
+    (cell: Item, event: CellClickedEventArgs) => {
+      const [columnIndex, rowIndex] = cell
+      const row = source.getRow(rowIndex)
+      const column = gridColumns[columnIndex]
+      if (!row || !column) return
+      const position = { rowIdx: rowIndex, idx: columnIndex }
+      lastInteractedCellRef.current = position
+
+      if (isForeignKeyAffordanceClick(column, event)) {
+        // Glide treats a click on the selected cell as a second click and would also open its editor.
+        event.preventDefault()
+        openForeignKeyLookupFromPointer(position, row, column.key)
+        return
+      }
+
+      if (isInfoAffordanceClick(column, row, event)) {
+        onInfoCellClick?.(row, boundsToDomRect(event.bounds))
+        return
+      }
+
+      void selectCellFromPointer(position, row, column.key)
+      onRowClick?.(row, column.key)
+      if (hasInfoText(column, row) && event.bounds) {
+        onInfoCellClick?.(row, boundsToDomRect(event.bounds))
+      }
+    },
+    [
+      gridColumns,
       onInfoCellClick,
       onRowClick,
-      openListEditor,
+      openForeignKeyLookupFromPointer,
+      selectCellFromPointer,
       source,
-      selectRow,
     ]
   )
 
@@ -1048,49 +1571,25 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const [columnIndex, rowIndex] = cell
       const column = gridColumns[columnIndex]
       if (!column) return
-      const next = isDropdownCustomCell(newValue)
-        ? isEnumColumn(column) && isDropdownNullSelection(column, newValue.data.value)
-          ? null
-          : (newValue.data.value ?? null)
-        : isMultiSelectCustomCell(newValue)
-          ? isSetColumn(column)
-            ? serializeSetCellValue(newValue.data.values ?? null)
-            : (newValue.data.values ?? null)
-          : newValue.kind === GridCellKind.Boolean
-            ? newValue.data === true
-            : newValue.kind === GridCellKind.Text
-              ? newValue.data === '' && newValue.copyData === 'NULL'
-                ? null
-                : newValue.data
-              : undefined
+      const next = resolveEditedCellValue(column, newValue)
       if (next === undefined) return
-      const pendingTypingActivation = pendingTypingActivationRef.current
-      const isPendingTypingActivation =
-        pendingTypingActivation?.rowIndex === rowIndex &&
-        pendingTypingActivation.columnKey === column.key &&
-        pendingTypingActivation.value === next
+      const edit = { rowIndex: rowIndex, columnKey: column.key, value: next }
+      const isPendingTypingActivation = isPendingTypingActivationCommit(
+        pendingTypingActivationRef.current,
+        edit
+      )
       if (isPendingTypingActivation) {
         pendingTypingActivationRef.current = null
       }
-      const baseline = editorSessionBaselineRef.current
-      const isActiveEditorSession =
-        baseline?.rowIndex === rowIndex && baseline.columnKey === column.key
       const isNoOpCommit =
         !isPendingTypingActivation &&
-        isActiveEditorSession &&
-        areEditorValuesEqual(baseline.value, next)
+        isUnchangedEditorCommit(editorSessionBaselineRef.current, edit)
       if (!isNoOpCommit) {
         onCellValueChange?.(rowIndex, column.key, next)
       }
-      // Windowed grids have no full row array; they rely on onCellValueChange.
-      if (onRowsChange && !isWindowed) {
-        const nextRows = isNoOpCommit
-          ? rowsProp
-          : rowsProp.map((row, index) =>
-              index === rowIndex ? { ...row, [column.key]: next } : row
-            )
-        onRowsChange(nextRows, { indexes: [rowIndex], column: column })
-      }
+      if (!onRowsChange || isWindowed) return
+      const nextRows = isNoOpCommit ? rowsProp : withCellValue(rowsProp, edit)
+      onRowsChange(nextRows, { indexes: [rowIndex], column: column })
     },
     [gridColumns, isWindowed, onCellValueChange, onRowsChange, rowsProp]
   )
@@ -1109,56 +1608,38 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       act: (rowAt: (index: number) => GridRow | undefined) => boolean | Promise<boolean>
     ): Promise<boolean> => {
       const merged = mergeRowRanges(ranges, rowCount)
-      const missing = isWindowed
-        ? merged.filter(([start, end]) => !isRangeLoaded(source, start, end))
-        : []
-      if (missing.length === 0) {
+      const needsFetch =
+        isWindowed && merged.some(([start, end]) => !isRangeLoaded(source, start, end))
+      if (!needsFetch) {
         return act((index) => source.getRow(index))
       }
 
-      const total = merged.reduce((sum, [start, end]) => sum + (end - start), 0)
-      const chunkCount = merged.reduce(
-        (sum, [start, end]) => sum + Math.ceil((end - start) / ROW_FETCH_CHUNK),
-        0
-      )
+      const total = countRows(merged)
       const controller = new AbortController()
+      const cancelFetch = countFetchChunks(merged) > 1 ? () => controller.abort() : undefined
       actionPendingRef.current = true
       actionAbortRef.current = controller
-      const progress = rowActions?.begin(
-        verb,
-        total,
-        chunkCount > 1 ? () => controller.abort() : undefined
-      )
-      const resolved = new Map<number, GridRow>()
-      try {
-        let doneBefore = 0
-        for (const range of merged) {
-          const rows = await resolveRowRange(source, range, {
-            signal: controller.signal,
-            onProgress: ({ done }) => progress?.update(doneBefore + done),
-          })
-          if (controller.signal.aborted) throw new DOMException('Cancelled', 'AbortError')
-          rows.forEach((row, offset) => resolved.set(range[0] + offset, row))
-          doneBefore += range[1] - range[0]
-          progress?.update(doneBefore)
-        }
-      } catch (error) {
-        progress?.finish()
+      const progress = rowActions?.begin(verb, total, cancelFetch)
+      const releasePendingAction = () => {
         actionPendingRef.current = false
         actionAbortRef.current = null
-        if (isAbort(error)) return false
-        if (isResultsExpired(error)) {
-          rowActions?.onExpired()
-          return false
-        }
-        const failure = ROW_ACTION_FAILURES[verb]
-        logFrontend('warn', `[grid] ${verb} could not load rows: ${toErrorMessage(error)}`)
-        showErrorToast(failure.title, failure.message)
+      }
+      let resolved: Map<number, GridRow>
+      try {
+        resolved = await loadRowRanges({
+          source: source,
+          ranges: merged,
+          signal: controller.signal,
+          progress: progress,
+        })
+      } catch (error) {
+        finishRowProgress(progress)
+        releasePendingAction()
+        reportRowActionLoadFailure(verb, error, rowActions)
         return false
       }
-      actionPendingRef.current = false
-      actionAbortRef.current = null
-      const wasVisible = progress?.finish() ?? false
+      releasePendingAction()
+      const wasVisible = finishRowProgress(progress)
       const ok = await act((index) => resolved.get(index) ?? source.getRow(index))
       if (ok && wasVisible) {
         const [title, message] = rowActionSuccess(verb, total)
@@ -1231,7 +1712,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const [columnIndex, rowIndex] = target
       const column = gridColumns[columnIndex]
       const line = values[0]
-      if (!column || !line?.length || rowIndex < 0 || rowIndex >= rowCount) return false
+      if (!column || !hasPasteLine(line) || !isRowInGrid(rowIndex, rowCount)) return false
       if (isListSelectionColumn(column)) return false
       if (actionPendingRef.current) return false
       // Only the result grid is windowed; it pastes only in edit mode.
@@ -1253,52 +1734,25 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [gridColumns, isEditMode, isWindowed, pasteLineIntoRow, rowCount, runRowAction, source]
   )
 
-  /** Clear the cells of `range`, reading rows through `rowAt`. */
   const clearCellsWithRows = useCallback(
     (range: Rectangle, rowAt: (index: number) => GridRow | undefined) => {
-      // Changed rows are copied below; untouched rows keep their identity.
       const nextRows = isWindowed ? [] : rowsProp.slice()
       const changedIndexes = new Set<number>()
       for (let rowIndex = range.y; rowIndex < range.y + range.height; rowIndex += 1) {
-        const row = rowAt(rowIndex)
-        if (!row) continue
+        if (!rowAt(rowIndex)) continue
         for (let columnIndex = range.x; columnIndex < range.x + range.width; columnIndex += 1) {
           const column = gridColumns[columnIndex]
-          if (!column || isInfoColumn(column)) continue
-          const next = isEnumColumn(column)
-            ? column.isNullable === true
-              ? null
-              : (column.enumValues[0] ?? '')
-            : isSetColumn(column)
-              ? column.isNullable === true
-                ? null
-                : ''
-              : column.isNullable === true
-                ? null
-                : ''
-          const baseClearedCell = buildTextCell(
-            next == null ? '' : String(next),
-            classifyCellValue(next, column.key),
-            next == null ? 'NULL' : String(next)
-          )
-          if (baseClearedCell.kind !== GridCellKind.Text) continue
-          const clearedCell: EditableGridCell = isEnumColumn(column)
-            ? buildEnumDropdownCell(column, next == null ? null : String(next), true)
-            : isSetColumn(column)
-              ? buildSetMultiSelectCell(column, next == null ? null : String(next), true)
-              : {
-                  ...baseClearedCell,
-                  readonly: false,
-                  allowOverlay: true,
-                  data: next == null ? '' : String(next),
-                }
+          if (!isClearableColumn(column)) continue
+          const clearedValue = clearedValueFor(column)
+          const clearedCell = buildClearedCell(column, clearedValue)
+          if (!clearedCell) continue
           handleCellEdited([columnIndex, rowIndex], clearedCell)
-          nextRows[rowIndex] = { ...nextRows[rowIndex], [column.key]: next }
+          nextRows[rowIndex] = { ...nextRows[rowIndex], [column.key]: clearedValue }
           changedIndexes.add(rowIndex)
         }
       }
-      // Windowed grids have no full row array; handleCellEdited already reported each cell.
-      if (changedIndexes.size > 0 && !isWindowed) {
+      const shouldReportRows = changedIndexes.size > 0 && !isWindowed
+      if (shouldReportRows) {
         onRowsChange?.(nextRows, { indexes: [...changedIndexes], column: gridColumns[range.x] })
       }
     },
@@ -1387,7 +1841,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     await copyRects(selectionRects(activeGridSelection), 'Copying')
   }, [activeGridSelection, copyRects, selectionRects])
 
-  const activeSelectionCell = activeGridSelection?.current?.cell
+  const activeSelectionCell = currentSelectionCell(activeGridSelection)
 
   const pasteClipboardAtSelection = useCallback(async (): Promise<void> => {
     const target = activeSelectionCell
@@ -1500,28 +1954,17 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [cancelActiveEditor, onScrollCellChange, source]
   )
 
-  // Windowed mode: repaint only the cells of newly loaded rows that are on screen.
   const gridColumnCount = gridColumns.length
   useEffect(() => {
     if (!source.subscribe) return undefined
-    return source.subscribe(([start, end], info) => {
+    return source.subscribe((loadedRange, info) => {
       const region = lastVisibleRegionRef.current
-      // A re-seed dropped every page; the visible region may not change (and
-      // so not be reported again), so ask for its rows now.
       if (info?.reseeded && region) {
         source.onVisibleRangeChange?.([region.y, region.y + region.height])
       }
-      const from = Math.max(start, region ? region.y : start)
-      const to = Math.min(
-        end,
-        region ? region.y + region.height : start + VISIBLE_REPAINT_FALLBACK_ROWS
-      )
+      const [from, to] = visibleRepaintRange(loadedRange, region)
       if (to <= from) return
-      const cells: Array<readonly [number, number]> = []
-      for (let row = from; row < to; row++) {
-        for (let column = 0; column < gridColumnCount; column++) cells.push([column, row])
-      }
-      gridRef.current?.updateCells?.(cells)
+      gridRef.current?.updateCells?.(cellsInRowSpan([from, to], gridColumnCount))
     })
   }, [gridColumnCount, source])
 
@@ -1530,15 +1973,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const [columnIndex, rowIndex] = cell
       const column = gridColumns[columnIndex]
       const row = source.getRow(rowIndex)
-      if (column && row) {
-        editorSessionBaselineRef.current = {
-          rowIndex: rowIndex,
-          columnKey: column.key,
-          value: normalizeEditorValue(resolveEditorBaselineValue(row, column.key, editState)),
-        }
-      } else {
-        editorSessionBaselineRef.current = null
-      }
+      editorSessionBaselineRef.current = buildEditorSessionBaseline({
+        row: row,
+        column: column,
+        rowIndex: rowIndex,
+        editState: editState,
+      })
       isEditingCellRef.current = true
     },
     [editState, gridColumns, source]
@@ -1556,22 +1996,19 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [gridColumns, onCellDoubleClick, onRowDoubleClicked, source]
   )
 
-  const gridSelectionCell = gridSelection?.current?.cell
+  const gridSelectionCell = currentSelectionCell(gridSelection)
 
   const triggerForeignKeyLookupFromSelection = useCallback(
     (event: { preventDefault: () => void }) => {
-      const position =
-        selectedCellPosition ??
-        (gridSelectionCell
-          ? {
-              idx: gridSelectionCell[0],
-              rowIdx: gridSelectionCell[1],
-            }
-          : lastInteractedCellRef.current)
+      const position = resolveFocusedCell({
+        selectedCell: selectedCellPosition,
+        selectionCell: gridSelectionCell,
+        lastInteractedCell: lastInteractedCellRef.current,
+      })
       if (!position) return false
       const row = source.getRow(position.rowIdx)
       const column = gridColumns[position.idx]
-      if (!row || !column?.foreignKey || isListSelectionColumn(column)) return false
+      if (!row || !isForeignKeyLookupColumn(column)) return false
       event.preventDefault()
       void onFkCellAction?.({
         rowIdx: position.rowIdx,
@@ -1584,249 +2021,232 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [gridColumns, gridSelectionCell, onFkCellAction, source, selectedCellPosition]
   )
 
+  const selectCellWithoutEditor = useCallback((cell: GridCellPosition) => {
+    gridRef.current?.selectCell(cell, { shouldFocusCell: true, enableEditor: false })
+  }, [])
+
+  const applyGuardedKeyboardSelection = useCallback(
+    async (guard: CellClickGuardResult, request: CellClickGuardArgs): Promise<void> => {
+      if (!guard.proceed) {
+        restoreFocusAfterRejectedGuard(gridRef.current, guard)
+        return
+      }
+      const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
+      if (!ok) return
+      selectRow(guard.targetRowIdx)
+      selectGuardTarget(gridRef.current, guard)
+      onCellSelectionChange?.({
+        rowIdx: guard.targetRowIdx,
+        columnKey: gridColumns[guard.targetColIdx]?.key ?? request.columnKey,
+        rowData: source.getRow(guard.targetRowIdx) ?? request.rowData,
+        source: 'keyboard',
+      })
+    },
+    [changeSelectedCell, gridColumns, onCellSelectionChange, selectRow, source]
+  )
+
+  const applyKeyboardSelection = useCallback(
+    async (request: CellClickGuardArgs, columnIndex: number): Promise<void> => {
+      if (runCellClickGuardOnKeyboardSelection && onCellClickGuard) {
+        const guard = await onCellClickGuard(request)
+        await applyGuardedKeyboardSelection(guard, request)
+        return
+      }
+      const ok = await changeSelectedCell(request.rowIdx, columnIndex)
+      if (!ok) return
+      selectRow(request.rowIdx)
+      selectCellWithoutEditor({ rowIdx: request.rowIdx, idx: columnIndex })
+      onCellSelectionChange?.(request)
+    },
+    [
+      applyGuardedKeyboardSelection,
+      changeSelectedCell,
+      onCellClickGuard,
+      onCellSelectionChange,
+      runCellClickGuardOnKeyboardSelection,
+      selectCellWithoutEditor,
+      selectRow,
+    ]
+  )
+
+  const moveSelectionVertically = useCallback(
+    (delta: -1 | 1, currentCell: GridCellPosition | null) => {
+      const currentRow = resolveKeyboardRow(currentCell, activeSelectedRowIndex)
+      const nextRow = clampIndex(currentRow + delta, rowCount - 1)
+      const nextColumnIndex = resolveKeyboardColumn(currentCell)
+      const isAtGridEdge = nextRow === currentRow && currentCell !== null
+      if (isAtGridEdge) {
+        if (activeSelectedRowIndex !== nextRow) selectRow(nextRow)
+        selectCellWithoutEditor({ rowIdx: nextRow, idx: nextColumnIndex })
+        return
+      }
+      const nextRowData = source.getRow(nextRow)
+      const nextColumn = gridColumns[nextColumnIndex]
+      if (!nextRowData || !nextColumn) return
+      const request: CellClickGuardArgs = {
+        rowIdx: nextRow,
+        columnKey: nextColumn.key,
+        rowData: nextRowData,
+        source: 'keyboard',
+      }
+      void applyKeyboardSelection(request, nextColumnIndex)
+    },
+    [
+      activeSelectedRowIndex,
+      applyKeyboardSelection,
+      gridColumns,
+      rowCount,
+      selectCellWithoutEditor,
+      selectRow,
+      source,
+    ]
+  )
+
+  const moveSelectionHorizontally = useCallback(
+    (delta: -1 | 1, currentCell: GridCellPosition | null) => {
+      const currentRow = resolveKeyboardRow(currentCell, activeSelectedRowIndex)
+      const currentColumn = resolveKeyboardColumn(currentCell)
+      const nextColumn = clampIndex(currentColumn + delta, gridColumns.length - 1)
+      if (nextColumn !== currentColumn) {
+        void changeSelectedCell(currentRow, nextColumn)
+      }
+      selectCellWithoutEditor({ rowIdx: currentRow, idx: nextColumn })
+    },
+    [activeSelectedRowIndex, changeSelectedCell, gridColumns.length, selectCellWithoutEditor]
+  )
+
+  const startTypingEditor = useCallback(
+    async (request: TypingActivationRequest): Promise<void> => {
+      const guard = onCellClickGuard
+        ? await onCellClickGuard({
+            rowIdx: request.cell.rowIdx,
+            columnKey: request.columnKey,
+            rowData: request.row,
+            source: 'keyboard-typing',
+          })
+        : proceedWithoutGuard(request.cell, true)
+      if (!guard.proceed) {
+        restoreFocusAfterRejectedGuard(gridRef.current, guard)
+        return
+      }
+      const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
+      if (!ok) return
+      selectRow(guard.targetRowIdx)
+      const targetColumn = gridColumns[guard.targetColIdx]
+      if (canStartTypedEdit(guard, targetColumn, editableColumnKeys)) {
+        pendingTypingActivationRef.current = {
+          rowIndex: guard.targetRowIdx,
+          columnKey: targetColumn.key,
+          value: request.typedValue,
+          cancelRestoreValue: request.cancelRestoreValue,
+        }
+      }
+      selectGuardTarget(gridRef.current, guard)
+    },
+    [changeSelectedCell, editableColumnKeys, gridColumns, onCellClickGuard, selectRow]
+  )
+
+  const handleTypingActivation = useCallback(
+    (event: GlideKeyDownEvent, currentCell: GridCellPosition) => {
+      if (actionPendingRef.current) {
+        cancelGlideKey(event)
+        return
+      }
+      const currentRow = source.getRow(currentCell.rowIdx)
+      const currentColumn = gridColumns[currentCell.idx]
+      if (!currentRow || !currentColumn) return
+      if (isListSelectionColumn(currentColumn)) {
+        cancelGlideKey(event)
+        return
+      }
+      const cancelRestoreValue = resolveEditorBaselineValue(
+        currentRow,
+        currentColumn.key,
+        editState
+      )
+      cancelGlideKey(event)
+      void startTypingEditor({
+        cell: currentCell,
+        row: currentRow,
+        columnKey: currentColumn.key,
+        typedValue: event.key,
+        cancelRestoreValue: cancelRestoreValue,
+      })
+    },
+    [editState, gridColumns, source, startTypingEditor]
+  )
+
+  const handlePendingActionKey = useCallback(
+    (event: GlideKeyDownEvent): boolean => {
+      if (event.key === 'Escape' && actionPendingRef.current) {
+        cancelGlideKey(event)
+        actionAbortRef.current?.abort()
+        return true
+      }
+      if (isWindowed && isShortcutKey(event, 'c')) {
+        cancelGlideKey(event)
+        void copySelectionToClipboard()
+        return true
+      }
+      if (isShortcutKey(event, 'x')) {
+        cancelGlideKey(event)
+        void cutSelectionToClipboard()
+        return true
+      }
+      return false
+    },
+    [copySelectionToClipboard, cutSelectionToClipboard, isWindowed]
+  )
+
+  const handleEnterKey = useCallback(
+    (event: GlideKeyDownEvent, currentCell: GridCellPosition | null) => {
+      const currentColumn = currentCell ? gridColumns[currentCell.idx] : undefined
+      if (currentCell && isEditableListColumn(currentColumn, isEditMode, editableColumnKeys)) {
+        cancelGlideKey(event)
+        openListEditor(currentCell)
+        return
+      }
+      if (activeSelectedRowIndex == null) return
+      const row = source.getRow(activeSelectedRowIndex)
+      if (!row) return
+      event.preventDefault()
+      onRowDoubleClicked?.(row)
+    },
+    [
+      activeSelectedRowIndex,
+      editableColumnKeys,
+      gridColumns,
+      isEditMode,
+      onRowDoubleClicked,
+      openListEditor,
+      source,
+    ]
+  )
+
   const handleKeyDown = useCallback<(event: GlideKeyDownEvent) => void>(
     (event) => {
       if (rowCount === 0) return
-      const isShortcut = event.metaKey || event.ctrlKey
-      if (event.key === 'Escape' && actionPendingRef.current) {
-        // Escape cancels a fetch-first action; nothing has been written yet.
-        event.preventDefault()
-        event.cancel?.()
-        actionAbortRef.current?.abort()
-        return
+      if (handlePendingActionKey(event)) return
+      const currentCell = resolveKeyboardCell(gridSelectionCell, selectedCellPosition)
+      const arrowKeyMoves: Record<string, () => void> = {
+        ArrowDown: () => moveSelectionVertically(1, currentCell),
+        ArrowUp: () => moveSelectionVertically(-1, currentCell),
+        ArrowRight: () => moveSelectionHorizontally(1, currentCell),
+        ArrowLeft: () => moveSelectionHorizontally(-1, currentCell),
       }
-      if (isWindowed && isShortcut && event.key.toLowerCase() === 'c') {
-        // Glide's own copy is off in windowed mode; use the async copy path.
-        event.preventDefault()
-        event.cancel?.()
-        void copySelectionToClipboard()
-        return
-      }
-      if (isShortcut && event.key.toLowerCase() === 'x') {
-        event.preventDefault()
-        event.cancel?.()
-        void cutSelectionToClipboard()
-        return
-      }
-
-      const currentCell = gridSelectionCell
-        ? {
-            idx: gridSelectionCell[0],
-            rowIdx: gridSelectionCell[1],
-          }
-        : selectedCellPosition
-
-      const moveSelection = (delta: -1 | 1) => {
-        const currentRow = currentCell?.rowIdx ?? activeSelectedRowIndex ?? 0
-        const nextRow = Math.max(0, Math.min(rowCount - 1, currentRow + delta))
-        const nextColumnIndex = currentCell?.idx ?? 0
-
-        if (nextRow === currentRow && currentCell) {
-          if (activeSelectedRowIndex !== nextRow) {
-            selectRow(nextRow)
-          }
-          gridRef.current?.selectCell(
-            { rowIdx: nextRow, idx: nextColumnIndex },
-            { shouldFocusCell: true, enableEditor: false }
-          )
-          return
-        }
-
-        const nextRowData = source.getRow(nextRow)
-        const nextColumn = gridColumns[nextColumnIndex]
-        if (!nextRowData || !nextColumn) return
-
-        const applySelection = async () => {
-          if (runCellClickGuardOnKeyboardSelection && onCellClickGuard) {
-            const guard = await onCellClickGuard({
-              rowIdx: nextRow,
-              columnKey: nextColumn.key,
-              rowData: nextRowData,
-              source: 'keyboard',
-            })
-
-            if (!guard.proceed) {
-              if (guard.restoreFocus) {
-                gridRef.current?.selectCell(
-                  { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-                  {
-                    shouldFocusCell: true,
-                    enableEditor: guard.enableEditor,
-                  }
-                )
-              }
-              return
-            }
-
-            const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
-            if (!ok) return
-
-            selectRow(guard.targetRowIdx)
-            gridRef.current?.selectCell(
-              { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-              {
-                shouldFocusCell: true,
-                enableEditor: guard.enableEditor,
-              }
-            )
-            onCellSelectionChange?.({
-              rowIdx: guard.targetRowIdx,
-              columnKey: gridColumns[guard.targetColIdx]?.key ?? nextColumn.key,
-              rowData: source.getRow(guard.targetRowIdx) ?? nextRowData,
-              source: 'keyboard',
-            })
-            return
-          }
-
-          const ok = await changeSelectedCell(nextRow, nextColumnIndex)
-          if (!ok) return
-          selectRow(nextRow)
-          gridRef.current?.selectCell(
-            { rowIdx: nextRow, idx: nextColumnIndex },
-            { shouldFocusCell: true, enableEditor: false }
-          )
-          onCellSelectionChange?.({
-            rowIdx: nextRow,
-            columnKey: nextColumn.key,
-            rowData: nextRowData,
-            source: 'keyboard',
-          })
-        }
-
-        void applySelection()
-      }
-
-      const moveSelectionHorizontal = (delta: -1 | 1) => {
-        const currentRow = currentCell?.rowIdx ?? activeSelectedRowIndex ?? 0
-        const currentColumn = currentCell?.idx ?? 0
-        const nextColumn = Math.max(0, Math.min(gridColumns.length - 1, currentColumn + delta))
-
-        if (nextColumn !== currentColumn) {
-          void changeSelectedCell(currentRow, nextColumn)
-        }
-
-        gridRef.current?.selectCell(
-          { rowIdx: currentRow, idx: nextColumn },
-          { shouldFocusCell: true, enableEditor: false }
-        )
-      }
-
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        event.cancel?.()
-        moveSelection(1)
-        return
-      }
-      if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        event.cancel?.()
-        moveSelection(-1)
-        return
-      }
-      if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        event.cancel?.()
-        moveSelectionHorizontal(1)
-        return
-      }
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        event.cancel?.()
-        moveSelectionHorizontal(-1)
+      const moveByArrow = arrowKeyMoves[event.key]
+      if (moveByArrow) {
+        cancelGlideKey(event)
+        moveByArrow()
         return
       }
       if (isTypingActivationKey(event) && currentCell) {
-        if (actionPendingRef.current) {
-          // Edits are blocked while an action fetches rows.
-          event.preventDefault()
-          event.cancel?.()
-          return
-        }
-        const currentRow = source.getRow(currentCell.rowIdx)
-        const currentColumn = gridColumns[currentCell.idx]
-        if (!currentRow || !currentColumn) return
-        if (isListSelectionColumn(currentColumn)) {
-          event.preventDefault?.()
-          event.cancel?.()
-          return
-        }
-        const typedValue = event.key
-        const cancelRestoreValue = resolveEditorBaselineValue(
-          currentRow,
-          currentColumn.key,
-          editState
-        )
-
-        const startEditor = async () => {
-          const guard = onCellClickGuard
-            ? await onCellClickGuard({
-                rowIdx: currentCell.rowIdx,
-                columnKey: currentColumn.key,
-                rowData: currentRow,
-                source: 'keyboard-typing',
-              })
-            : {
-                proceed: true,
-                targetRowIdx: currentCell.rowIdx,
-                targetColIdx: currentCell.idx,
-                enableEditor: true,
-              }
-
-          if (!guard.proceed) {
-            if (guard.restoreFocus) {
-              gridRef.current?.selectCell(
-                { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-                { shouldFocusCell: true, enableEditor: guard.enableEditor }
-              )
-            }
-            return
-          }
-
-          const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
-          if (!ok) return
-          selectRow(guard.targetRowIdx)
-          const targetColumn = gridColumns[guard.targetColIdx]
-          if (
-            guard.enableEditor &&
-            targetColumn &&
-            editableColumnKeys?.has(targetColumn.key) === true
-          ) {
-            pendingTypingActivationRef.current = {
-              rowIndex: guard.targetRowIdx,
-              columnKey: targetColumn.key,
-              value: typedValue,
-              cancelRestoreValue: cancelRestoreValue,
-            }
-          }
-          gridRef.current?.selectCell(
-            { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-            { shouldFocusCell: true, enableEditor: guard.enableEditor }
-          )
-        }
-
-        event.preventDefault()
-        event.cancel?.()
-        void startEditor()
+        handleTypingActivation(event, currentCell)
         return
       }
-      if (event.key === 'Enter' && currentCell) {
-        const currentColumn = gridColumns[currentCell.idx]
-        if (
-          isListSelectionColumn(currentColumn) &&
-          isEditableColumn(currentColumn, isEditMode, editableColumnKeys)
-        ) {
-          event.preventDefault()
-          event.cancel?.()
-          openListEditor(currentCell)
-          return
-        }
-      }
-      if (event.key === 'Enter' && activeSelectedRowIndex != null) {
-        const row = source.getRow(activeSelectedRowIndex)
-        if (row) {
-          event.preventDefault()
-          onRowDoubleClicked?.(row)
-        }
+      if (event.key === 'Enter') {
+        handleEnterKey(event, currentCell)
+        return
       }
       if (isActive && event.key === 'F4') {
         event.cancel?.()
@@ -1834,65 +2254,38 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       }
     },
     [
-      activeSelectedRowIndex,
-      copySelectionToClipboard,
-      cutSelectionToClipboard,
-      isWindowed,
-      rowCount,
-      gridColumns,
-      editableColumnKeys,
-      isEditMode,
-      onRowDoubleClicked,
-      onCellClickGuard,
-      onCellSelectionChange,
-      source,
-      runCellClickGuardOnKeyboardSelection,
-      selectedCellPosition,
-      selectRow,
-      changeSelectedCell,
-      editState,
       gridSelectionCell,
+      handleEnterKey,
+      handlePendingActionKey,
+      handleTypingActivation,
       isActive,
+      moveSelectionHorizontally,
+      moveSelectionVertically,
+      rowCount,
+      selectedCellPosition,
       triggerForeignKeyLookupFromSelection,
-      openListEditor,
     ]
   )
 
   useEffect(() => {
-    const isInteractiveElement = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) return false
-      const tag = target.tagName.toLowerCase()
-      return (
-        ['button', 'input', 'select', 'textarea', 'a'].includes(tag) || target.isContentEditable
-      )
-    }
-
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
       if (!isActive) return
-      if (isInteractiveElement(event.target)) {
-        return
-      }
-
-      const currentDocumentCell =
-        selectedCellPosition ??
-        (gridSelection?.current
-          ? { idx: gridSelection.current.cell[0], rowIdx: gridSelection.current.cell[1] }
-          : lastInteractedCellRef.current)
-      if (event.key === 'Enter' && currentDocumentCell) {
-        const column = gridColumns[currentDocumentCell.idx]
-        if (
-          isListSelectionColumn(column) &&
-          isEditableColumn(column, isEditMode, editableColumnKeys)
-        ) {
+      if (isInteractiveElement(event.target)) return
+      const documentCell = resolveFocusedCell({
+        selectedCell: selectedCellPosition,
+        selectionCell: currentSelectionCell(gridSelection),
+        lastInteractedCell: lastInteractedCellRef.current,
+      })
+      if (event.key === 'Enter' && documentCell) {
+        const column = gridColumns[documentCell.idx]
+        if (isEditableListColumn(column, isEditMode, editableColumnKeys)) {
           event.preventDefault()
-          openListEditor(currentDocumentCell)
+          openListEditor(documentCell)
           return
         }
       }
-
       if (event.defaultPrevented) return
       if (event.key !== 'F4') return
-
       triggerForeignKeyLookupFromSelection(event)
     }
 
@@ -1911,54 +2304,59 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     triggerForeignKeyLookupFromSelection,
   ])
 
+  const reportRowMarkerRanges = useCallback(
+    (rows: CompactSelection) => {
+      const ranges = selectionRowRanges(rows)
+      const key = JSON.stringify(ranges)
+      if (key === previousMarkedRangesKeyRef.current) return
+      previousMarkedRangesKeyRef.current = key
+      onRowMarkerRangesChange?.(ranges)
+    },
+    [onRowMarkerRangesChange]
+  )
+
+  const reportMarkedRows = useCallback(
+    (rows: CompactSelection) => {
+      if (!onRowMarkersChange) return
+      const selectedRowIndices = [...rows]
+      if (haveSameRowIndexes(selectedRowIndices, previousMarkedRowsRef.current)) return
+      previousMarkedRowsRef.current = selectedRowIndices
+      const selected = selectedRowIndices
+        .map((rowIndex) => source.getRow(rowIndex))
+        .filter((row): row is GridRow => row != null)
+      onRowMarkersChange(selected)
+    },
+    [onRowMarkersChange, source]
+  )
+
   const handleSelectionChange = useCallback(
     (nextSelection: GridSelection) => {
-      let selection = nextSelection
-      if (isWindowed) {
-        // A loading row's checkbox is disabled: ignore a single-row check on it.
-        // Range and header select-all checks are kept (they are view ranges).
-        const previousRows = gridSelection?.rows ?? CompactSelection.empty()
-        if (selection.rows.length === previousRows.length + 1) {
-          const added = findAddedIndex(selection.rows, previousRows)
-          if (added !== undefined && !source.isLoaded(added)) {
-            selection = { ...selection, rows: previousRows }
-          }
-        }
-      }
+      const previousRows = gridSelection?.rows ?? CompactSelection.empty()
+      const selection = isWindowed
+        ? withoutUnloadedRowCheck(nextSelection, previousRows, source)
+        : nextSelection
       setGridSelection(selection)
-      if (selection.current) {
-        lastInteractedCellRef.current = {
-          idx: selection.current.cell[0],
-          rowIdx: selection.current.cell[1],
-        }
-        const column = gridColumns[selection.current.cell[0]]
-        lastSelectedListCellRef.current = isListSelectionColumn(column)
-          ? { idx: selection.current.cell[0], rowIdx: selection.current.cell[1] }
-          : null
+      const selectedCell = toCellPosition(currentSelectionCell(selection))
+      if (selectedCell) {
+        lastInteractedCellRef.current = selectedCell
+        const column = gridColumns[selectedCell.idx]
+        lastSelectedListCellRef.current = isListSelectionColumn(column) ? selectedCell : null
       }
       if (isWindowed && onRowMarkerRangesChange) {
-        const ranges = selectionRowRanges(selection.rows)
-        const key = JSON.stringify(ranges)
-        if (key !== previousMarkedRangesKeyRef.current) {
-          previousMarkedRangesKeyRef.current = key
-          onRowMarkerRangesChange(ranges)
-        }
-      } else if (onRowMarkersChange) {
-        const selectedRowIndices = [...selection.rows]
-        const previous = previousMarkedRowsRef.current
-        const rowsChanged =
-          selectedRowIndices.length !== previous.length ||
-          selectedRowIndices.some((value, index) => value !== previous[index])
-        if (rowsChanged) {
-          previousMarkedRowsRef.current = selectedRowIndices
-          const selected = selectedRowIndices
-            .map((rowIndex) => source.getRow(rowIndex))
-            .filter((row): row is GridRow => row != null)
-          onRowMarkersChange(selected)
-        }
+        reportRowMarkerRanges(selection.rows)
+        return
       }
+      reportMarkedRows(selection.rows)
     },
-    [gridColumns, gridSelection, isWindowed, onRowMarkerRangesChange, onRowMarkersChange, source]
+    [
+      gridColumns,
+      gridSelection,
+      isWindowed,
+      onRowMarkerRangesChange,
+      reportMarkedRows,
+      reportRowMarkerRanges,
+      source,
+    ]
   )
 
   const handleContextMenu = useCallback<React.MouseEventHandler<HTMLDivElement>>((event) => {
@@ -2028,56 +2426,28 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const row = source.getRow(args.row)
       const column = gridColumns[args.col]
       if (row === undefined && isWindowed) {
-        // Not loaded yet: a flat --skeleton-base bar (never like NULL text).
         drawSkeletonCell(
           args.ctx,
           args.rect,
           skeletonColor,
           args.theme.cellHorizontalPadding,
-          parseFloat(args.theme.editorFontSize) || SKELETON_FALLBACK_LINE_PX
+          skeletonLineHeight(args.theme)
         )
         return
       }
-      const hasInfoAffordance =
-        column != null &&
-        isInfoColumn(column) &&
-        typeof row?.info === 'string' &&
-        row.info.length > 0
       const isSelected = row != null && (activeSelectedRowIndex === args.row || isRowSelected(row))
-      if (column?.key === highlightColumnKey) {
-        drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgSearchResult)
+      const state: CellDrawState = {
+        row: row,
+        column: column,
+        isSelected: isSelected,
+        isEditing: row != null && isRowEditing(row),
+        isHighlightedColumn: column?.key === highlightColumnKey,
+        isModified: isCellModified({ row: row, column: column, isModifiedCell: isModifiedCell }),
+        hasInfoAffordance: hasInfoText(column, row),
       }
-      if (isSelected) {
-        drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgBubbleSelected)
-        drawSelectedRowAccent(args.ctx, args.rect, args.theme.accentColor)
-      }
-      if (row != null && isRowEditing(row)) {
-        drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgHeaderHovered)
-      }
-      if (hasInfoAffordance) {
-        args.ctx.save()
-        args.ctx.beginPath()
-        args.ctx.rect(
-          args.rect.x,
-          args.rect.y,
-          Math.max(0, args.rect.width - INFO_AFFORDANCE_GUTTER_PX),
-          args.rect.height
-        )
-        args.ctx.clip()
-        drawContent()
-        args.ctx.restore()
-      } else {
-        drawContent()
-      }
-      if (column && row && isModifiedCell?.(row, column.key)) {
-        drawModifiedCellIndicator(args.ctx, args.rect, args.theme.accentColor, false)
-      }
-      if (hasInfoAffordance) {
-        drawInfoAffordance(args.ctx, args.rect, args.theme.linkColor)
-      }
-      if (column?.foreignKey && row && !isListSelectionColumn(column)) {
-        drawForeignKeyEllipsis(args.ctx, args.rect, args.theme.linkColor)
-      }
+      drawCellBackground(args, state)
+      drawCellContent(args, state, drawContent)
+      drawCellOverlays(args, state)
     },
     [
       activeSelectedRowIndex,
@@ -2091,6 +2461,15 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       source,
     ]
   )
+
+  const rowSourceGridProps = isWindowed
+    ? {
+        rows: EMPTY_GRID_ROWS,
+        rowCount: rowCount,
+        getCellsForSelection: getCellsForSelection,
+        keybindings: WINDOWED_KEYBINDINGS,
+      }
+    : { rows: rowsProp }
 
   const drawHeader = useCallback<DrawHeaderCallback>(
     (args, drawContent) => {
@@ -2119,11 +2498,8 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       <GlideDataGrid
         ref={gridRef}
         columns={glideColumns}
-        rows={isWindowed ? EMPTY_GRID_ROWS : rowsProp}
-        rowCount={isWindowed ? rowCount : undefined}
+        {...rowSourceGridProps}
         getCellContent={getCellContent}
-        getCellsForSelection={isWindowed ? getCellsForSelection : undefined}
-        keybindings={isWindowed ? WINDOWED_KEYBINDINGS : undefined}
         customRenderers={CUSTOM_RENDERERS}
         onColumnResize={handleColumnResize}
         onHeaderClicked={handleHeaderClicked}
@@ -2143,78 +2519,28 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         drawCell={drawCell}
         drawHeader={drawHeader}
         onKeyDown={handleKeyDown}
-        aria-label={testId ? `${testId} data grid` : 'Data grid'}
+        aria-label={gridAriaLabel(testId)}
         data-testid={testId}
       />
-      {contextMenu
-        ? createPortal(
-            <div
-              ref={clipboardMenuRef}
-              className="ui-context-menu"
-              role="menu"
-              data-testid={testId ? `${testId}-clipboard-menu` : 'grid-clipboard-menu'}
-              style={{
-                left: contextMenu.x,
-                top: contextMenu.y,
-                position: getContextMenuPositionMode(contextMenu.portalRoot),
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <Button
-                variant="bare"
-                className="ui-context-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  void copySelectionToClipboard()
-                  closeContextMenu()
-                }}
-              >
-                <CopySimple
-                  className="ui-context-menu__icon"
-                  size={18}
-                  weight="regular"
-                  aria-hidden
-                />
-                <span>Copy</span>
-              </Button>
-              <Button
-                variant="bare"
-                className="ui-context-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  void cutSelectionToClipboard()
-                  closeContextMenu()
-                }}
-              >
-                <Scissors
-                  className="ui-context-menu__icon"
-                  size={18}
-                  weight="regular"
-                  aria-hidden
-                />
-                <span>Cut</span>
-              </Button>
-              <Button
-                variant="bare"
-                className="ui-context-menu__item"
-                role="menuitem"
-                onClick={() => {
-                  void pasteClipboardAtSelection()
-                  closeContextMenu()
-                }}
-              >
-                <ClipboardText
-                  className="ui-context-menu__icon"
-                  size={18}
-                  weight="regular"
-                  aria-hidden
-                />
-                <span>Paste</span>
-              </Button>
-            </div>,
-            contextMenu.portalRoot
-          )
-        : null}
+      {contextMenu && (
+        <GridClipboardMenu
+          menu={contextMenu}
+          menuRef={clipboardMenuRef}
+          testId={testId}
+          onCopy={() => {
+            void copySelectionToClipboard()
+            closeContextMenu()
+          }}
+          onCut={() => {
+            void cutSelectionToClipboard()
+            closeContextMenu()
+          }}
+          onPaste={() => {
+            void pasteClipboardAtSelection()
+            closeContextMenu()
+          }}
+        />
+      )}
     </div>
   )
 }

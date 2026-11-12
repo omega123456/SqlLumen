@@ -153,27 +153,31 @@ pub async fn search_memories_impl(
     };
 
     // Check cache first, then embed.
-    let cache_hit = state.embedding_cache.get(&model, query).is_some();
+    let cached_query_vec = state.embedding_cache.get(&model, query);
+    let cache_hit = cached_query_vec.is_some();
     let started = Instant::now();
-    let query_vec = if let Some(cached) = state.embedding_cache.get(&model, query) {
-        tracing::debug!(model = %model, connection_id, "search_memories: query embedding cache hit");
-        cached
-    } else {
-        tracing::debug!(model = %model, connection_id, "search_memories: query embedding cache miss — calling embed_texts");
-        let vecs = embeddings::embed_texts(
-            &state.http_client,
-            &endpoint,
-            &model,
-            vec![query.to_string()],
-            None,
-        )
-        .await
-        .map_err(|error| error.to_string())?;
-        let embedding = vecs.into_iter().next().ok_or("Empty embedding response")?;
-        state
-            .embedding_cache
-            .insert(&model, query, embedding.clone());
-        embedding
+    let query_vec = match cached_query_vec {
+        Some(cached) => {
+            tracing::debug!(model = %model, connection_id, "search_memories: query embedding cache hit");
+            cached
+        }
+        None => {
+            tracing::debug!(model = %model, connection_id, "search_memories: query embedding cache miss — calling embed_texts");
+            let vecs = embeddings::embed_texts(
+                &state.http_client,
+                &endpoint,
+                &model,
+                vec![query.to_string()],
+                None,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            let embedding = vecs.into_iter().next().ok_or("Empty embedding response")?;
+            state
+                .embedding_cache
+                .insert(&model, query, embedding.clone());
+            embedding
+        }
     };
 
     if !cache_hit {

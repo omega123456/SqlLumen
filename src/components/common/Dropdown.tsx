@@ -120,6 +120,162 @@ function isMultiSelect(props: DropdownProps): props is MultiSelectDropdownProps 
   return props.multiple === true
 }
 
+type HorizontalPanelBounds = { left: number; width: number }
+
+interface FixedPanelLayoutRequest {
+  triggerRect: DOMRect
+  dialogRect: DOMRect | null
+  horizontal: HorizontalPanelBounds
+  placement: DropdownPlacement
+}
+
+function assignForwardedRef<T>(ref: React.ForwardedRef<T>, node: T | null): void {
+  if (typeof ref === 'function') {
+    ref(node)
+    return
+  }
+  if (ref) {
+    ref.current = node
+  }
+}
+
+function fallbackTriggerLabel(props: DropdownProps): string {
+  if (isMultiSelect(props) && props.value.length > 0) return props.value.join(', ')
+  if (!isMultiSelect(props) && props.value) return props.value
+  return props.placeholder ?? props.options[0]?.label ?? ''
+}
+
+function multiSelectTriggerLabel(props: MultiSelectDropdownProps): string {
+  return props.value
+    .map((value) => props.options.find((option) => option.value === value)?.label ?? value)
+    .join(', ')
+}
+
+function resolveSelectedLabel(props: DropdownProps, selectedOptions: DropdownOption[]): ReactNode {
+  if (props.renderTriggerValue) return props.renderTriggerValue(selectedOptions)
+  if (selectedOptions.length === 0) return fallbackTriggerLabel(props)
+  if (isMultiSelect(props)) return multiSelectTriggerLabel(props)
+  return selectedOptions[0]?.label ?? props.placeholder ?? props.options[0]?.label ?? ''
+}
+
+function applyTriggerLabel(
+  trigger: HTMLButtonElement,
+  labelledBy: string | undefined,
+  ariaLabel: string | undefined
+): void {
+  if (labelledBy) {
+    trigger.setAttribute('aria-labelledby', labelledBy)
+    trigger.removeAttribute('aria-label')
+    return
+  }
+  if (ariaLabel) {
+    trigger.setAttribute('aria-label', ariaLabel)
+    trigger.removeAttribute('aria-labelledby')
+  }
+}
+
+function horizontalPanelBounds(triggerRect: DOMRect, minPanelWidth: number): HorizontalPanelBounds {
+  const viewportWidth = window.innerWidth
+  let left = triggerRect.left
+  let width = Math.max(triggerRect.width, minPanelWidth)
+  if (left < VIEWPORT_MARGIN) {
+    width -= VIEWPORT_MARGIN - left
+    left = VIEWPORT_MARGIN
+  }
+  if (left + width > viewportWidth - VIEWPORT_MARGIN) {
+    left = Math.max(VIEWPORT_MARGIN, viewportWidth - VIEWPORT_MARGIN - width)
+    width = Math.min(width, viewportWidth - VIEWPORT_MARGIN - VIEWPORT_MARGIN)
+  }
+  return { left: left, width: width }
+}
+
+function verticalPanelPlacement(
+  triggerRect: DOMRect,
+  panel: HTMLElement
+): { placement: DropdownPlacement; maxHeight: number } {
+  const desiredHeight = Math.min(panel.scrollHeight || MAX_DROPDOWN_HEIGHT, MAX_DROPDOWN_HEIGHT)
+  const availableBelow = Math.max(
+    0,
+    window.innerHeight - VIEWPORT_MARGIN - FLYOUT_GAP - triggerRect.bottom
+  )
+  const availableAbove = Math.max(0, triggerRect.top - VIEWPORT_MARGIN - FLYOUT_GAP)
+  const opensAbove = availableBelow < desiredHeight && availableAbove > availableBelow
+  const availableSpace = opensAbove ? availableAbove : availableBelow
+  return {
+    placement: opensAbove ? 'top' : 'bottom',
+    maxHeight: Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))),
+  }
+}
+
+function fixedPanelLayout(request: FixedPanelLayoutRequest): DropdownFixedLayout {
+  const { triggerRect, dialogRect, horizontal } = request
+  const left = horizontal.left - (dialogRect?.left ?? 0)
+  if (request.placement === 'bottom') {
+    const top = triggerRect.bottom + FLYOUT_GAP - (dialogRect?.top ?? 0)
+    return { left: left, width: horizontal.width, top: top, bottom: null }
+  }
+  const containerBottom = dialogRect?.bottom ?? window.innerHeight
+  const bottom = containerBottom - triggerRect.top + FLYOUT_GAP
+  return { left: left, width: horizontal.width, top: null, bottom: bottom }
+}
+
+function closestDialogElement(trigger: HTMLElement): HTMLElement | null {
+  const closestDialog = trigger.closest('dialog')
+  return closestDialog instanceof HTMLElement ? closestDialog : null
+}
+
+function listboxAriaLabelFor(props: CommonDropdownProps): string | undefined {
+  if (props.listAriaLabel !== undefined) return props.listAriaLabel
+  if (props.labelledBy || !props.ariaLabel) return undefined
+  return props.ariaLabel
+}
+
+function buildListboxClassName(isPortalInDialog: boolean, placement: DropdownPlacement): string {
+  return [
+    'ui-dropdown__panel',
+    'click-outside-ignore',
+    isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
+    placement === 'top' ? 'ui-dropdown__panel--top' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function buildListboxStyle(
+  maxHeight: number,
+  layout: DropdownFixedLayout,
+  placement: DropdownPlacement
+): CSSProperties {
+  const verticalAnchor =
+    placement === 'bottom'
+      ? { top: `${layout.top}px`, bottom: 'auto' }
+      : { bottom: `${layout.bottom}px`, top: 'auto' }
+  return {
+    maxHeight: `${maxHeight}px`,
+    left: `${layout.left}px`,
+    width: `${layout.width}px`,
+    ...verticalAnchor,
+  }
+}
+
+function SingleOptionLabel({
+  option,
+  context,
+  renderOptionLabel,
+}: {
+  option: DropdownOption
+  context: DropdownRenderContext
+  renderOptionLabel: CommonDropdownProps['renderOptionLabel']
+}) {
+  if (renderOptionLabel) return <>{renderOptionLabel(option, context)}</>
+  return (
+    <>
+      <span>{option.label}</span>
+      {option.description ? <span className="ui-dropdown__meta">{option.description}</span> : null}
+    </>
+  )
+}
+
 type DropdownChromeProps = {
   open: boolean
   options: DropdownOption[]
@@ -247,12 +403,9 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       onTriggerFocus,
       onTriggerBlur,
       triggerProps,
-      placeholder,
-      renderTriggerValue,
       renderOptionLabel,
       closeOnSelect = !isMultiSelect(props),
       focusListOnOpen = true,
-      listAriaLabel,
       workspaceTabId,
       chevronSize = 16,
       chevronWeight = 'bold',
@@ -279,11 +432,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
         triggerRef.current = node
-        if (typeof forwardedRef === 'function') {
-          forwardedRef(node)
-        } else if (forwardedRef) {
-          forwardedRef.current = node
-        }
+        assignForwardedRef(forwardedRef, node)
       },
       [forwardedRef]
     )
@@ -303,31 +452,10 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       [options, selectedIndices]
     )
 
-    const selectedLabel = useMemo(() => {
-      if (renderTriggerValue) {
-        return renderTriggerValue(selectedOptions)
-      }
-
-      if (selectedOptions.length === 0) {
-        if (isMultiSelect(props)) {
-          if (props.value.length > 0) {
-            return props.value.join(', ')
-          }
-        } else if (props.value) {
-          return props.value
-        }
-
-        return placeholder ?? options[0]?.label ?? ''
-      }
-
-      if (isMultiSelect(props)) {
-        return props.value
-          .map((value) => options.find((option) => option.value === value)?.label ?? value)
-          .join(', ')
-      }
-
-      return selectedOptions[0]?.label ?? placeholder ?? options[0]?.label ?? ''
-    }, [options, placeholder, props, renderTriggerValue, selectedOptions])
+    const selectedLabel = useMemo(
+      () => resolveSelectedLabel(props, selectedOptions),
+      [props, selectedOptions]
+    )
 
     const isWithinDropdownTarget = (target: EventTarget | null): boolean =>
       target instanceof Node &&
@@ -352,13 +480,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         return
       }
 
-      if (labelledBy) {
-        trigger.setAttribute('aria-labelledby', labelledBy)
-        trigger.removeAttribute('aria-label')
-      } else if (ariaLabel) {
-        trigger.setAttribute('aria-label', ariaLabel)
-        trigger.removeAttribute('aria-labelledby')
-      }
+      applyTriggerLabel(trigger, labelledBy, ariaLabel)
     }, [ariaLabel, labelledBy])
 
     const updatePlacement = useCallback(() => {
@@ -368,63 +490,24 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         return
       }
 
-      // When used inside a native <dialog>, render into that dialog's top-layer subtree.
-      const closestDialog = trigger.closest('dialog')
-      if (closestDialog instanceof HTMLElement) {
-        setPortalContainer(closestDialog)
-        setIsPortalInDialog(true)
-      } else {
-        setPortalContainer(document.body)
-        setIsPortalInDialog(false)
-      }
+      // Inside a native <dialog> the panel must render into that dialog's top-layer subtree.
+      const dialog = closestDialogElement(trigger)
+      setPortalContainer(dialog ?? document.body)
+      setIsPortalInDialog(dialog !== null)
 
       const triggerRect = trigger.getBoundingClientRect()
-      const vw = window.innerWidth
-      const vh = window.innerHeight
-      const margin = VIEWPORT_MARGIN
-
-      let left = triggerRect.left
-      let width = Math.max(triggerRect.width, minPanelWidth)
-      if (left < margin) {
-        width -= margin - left
-        left = margin
-      }
-      if (left + width > vw - margin) {
-        left = Math.max(margin, vw - margin - width)
-        width = Math.min(width, vw - margin - margin)
-      }
-
-      const desiredHeight = Math.min(panel.scrollHeight || MAX_DROPDOWN_HEIGHT, MAX_DROPDOWN_HEIGHT)
-      const availableBelow = Math.max(0, vh - margin - FLYOUT_GAP - triggerRect.bottom)
-      const availableAbove = Math.max(0, triggerRect.top - margin - FLYOUT_GAP)
-      const nextPlacement: DropdownPlacement =
-        availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
-      const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
-
-      setPlacement(nextPlacement)
-      setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
-
-      const dialogRect =
-        closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
-      const leftValue = dialogRect ? left - dialogRect.left : left
-      const topValue = triggerRect.bottom + FLYOUT_GAP - (dialogRect ? dialogRect.top : 0)
-      const bottomValue = (dialogRect ? dialogRect.bottom : vh) - triggerRect.top + FLYOUT_GAP
-
-      if (nextPlacement === 'bottom') {
-        setDropdownLayout({
-          left: leftValue,
-          width: width,
-          top: topValue,
-          bottom: null,
+      const horizontal = horizontalPanelBounds(triggerRect, minPanelWidth)
+      const vertical = verticalPanelPlacement(triggerRect, panel)
+      setPlacement(vertical.placement)
+      setDropdownMaxHeight(vertical.maxHeight)
+      setDropdownLayout(
+        fixedPanelLayout({
+          triggerRect: triggerRect,
+          dialogRect: dialog?.getBoundingClientRect() ?? null,
+          horizontal: horizontal,
+          placement: vertical.placement,
         })
-      } else {
-        setDropdownLayout({
-          left: leftValue,
-          width: width,
-          top: null,
-          bottom: bottomValue,
-        })
-      }
+      )
     }, [minPanelWidth])
 
     const setPanelRef = useCallback(
@@ -439,24 +522,9 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
 
     const rootClassName = ['ui-dropdown', className].filter(Boolean).join(' ')
     const triggerClass = ['ui-dropdown__trigger', triggerClassName].filter(Boolean).join(' ')
-    const listboxLabelledBy = labelledBy ?? undefined
-    const listboxAriaLabel = listAriaLabel ?? (ariaLabel && !labelledBy ? ariaLabel : undefined)
-    const listboxClassName = [
-      'ui-dropdown__panel',
-      'click-outside-ignore',
-      isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
-      placement === 'top' ? 'ui-dropdown__panel--top' : '',
-    ]
-      .filter(Boolean)
-      .join(' ')
-    const listboxStyle: CSSProperties = {
-      maxHeight: `${dropdownMaxHeight}px`,
-      left: `${dropdownLayout.left}px`,
-      width: `${dropdownLayout.width}px`,
-      ...(placement === 'bottom'
-        ? { top: `${dropdownLayout.top}px`, bottom: 'auto' }
-        : { bottom: `${dropdownLayout.bottom}px`, top: 'auto' }),
-    }
+    const listboxAriaLabel = listboxAriaLabelFor(props)
+    const listboxClassName = buildListboxClassName(isPortalInDialog, placement)
+    const listboxStyle = buildListboxStyle(dropdownMaxHeight, dropdownLayout, placement)
 
     const renderOptions = (open: boolean) => {
       if (!open) {
@@ -471,7 +539,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           ref={setPanelRef}
           id={listboxId}
           className={listboxClassName}
-          aria-labelledby={listboxLabelledBy}
+          aria-labelledby={labelledBy}
           aria-label={listboxAriaLabel}
           onKeyDown={(event) => {
             if (event.key === 'Tab') {
@@ -551,18 +619,12 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                       </span>
                       <Check className="ui-dropdown__check" size={16} weight="bold" aria-hidden />
                     </span>
-                  ) : renderOptionLabel ? (
-                    renderOptionLabel(option, {
-                      selected: selected,
-                      highlighted: focus,
-                    })
                   ) : (
-                    <>
-                      <span>{option.label}</span>
-                      {option.description ? (
-                        <span className="ui-dropdown__meta">{option.description}</span>
-                      ) : null}
-                    </>
+                    <SingleOptionLabel
+                      option={option}
+                      context={{ selected: selected, highlighted: focus }}
+                      renderOptionLabel={renderOptionLabel}
+                    />
                   )}
                 </>
               )}

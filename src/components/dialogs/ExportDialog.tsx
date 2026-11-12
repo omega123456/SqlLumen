@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef, type RefObject } from 'react'
 import { FolderOpen, X } from '@phosphor-icons/react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
@@ -8,7 +8,13 @@ import { DialogShell } from './DialogShell'
 import { Button } from '../common/Button'
 import { exportResults } from '../../lib/export-commands'
 import { formatCount } from '../../lib/format-row-count'
-import { useQueryStore, type ExportRowScope, type ResultExportJob } from '../../stores/query-store'
+import {
+  useQueryStore,
+  type ExportRowScope,
+  type ResultExportJob,
+  type SingleResultState,
+  type TabQueryState,
+} from '../../stores/query-store'
 import type { ExportFormat, ExportOptions } from '../../types/schema'
 import styles from './ExportDialog.module.css'
 import {
@@ -127,6 +133,268 @@ function exportProgressText(job: ResultExportJob): string {
   return `Rows written ${formatCount(rows)} · ${formatMegabytes(bytes)} MB · ${elapsed}`
 }
 
+type ExportResult = SingleResultState
+
+const DEFAULT_EXPORT_TABLE_NAME = 'exported_results'
+const RESULTS_EXPIRED_ERROR_MARKER = 'results_expired'
+
+function resolveExportResultIndex(tab: TabQueryState, resultIndex: number | undefined): number {
+  return resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
+}
+
+function markResultExpired(tabId: string, resultIndex: number | undefined): void {
+  const tab = useQueryStore.getState().tabs[tabId]
+  if (!tab) return
+  const expiredResultIndex = resolveExportResultIndex(tab, resultIndex)
+  useQueryStore.setState((state) => {
+    const tabState = state.tabs[tabId]
+    if (!tabState || expiredResultIndex >= tabState.results.length) return state
+    const newResults = [...tabState.results]
+    newResults[expiredResultIndex] = {
+      ...newResults[expiredResultIndex],
+      isExpired: true,
+    }
+    return {
+      tabs: {
+        ...state.tabs,
+        [tabId]: { ...tabState, results: newResults },
+      },
+    }
+  })
+}
+
+function offersAllRowsExport(result: ExportResult | undefined, hasCustomExport: boolean): boolean {
+  if (hasCustomExport) return false
+  if (!result?.truncated) return false
+  return result.fullExportBlockedReason === null && result.queryId !== null
+}
+
+interface ViewModifiers {
+  viewRowCount: number
+  filterCount: number
+  hasSort: boolean
+}
+
+function viewModifiersOf(result: ExportResult | undefined): ViewModifiers {
+  if (!result) return { viewRowCount: 0, filterCount: 0, hasSort: false }
+  return {
+    viewRowCount: result.viewRowCount,
+    filterCount: result.filterModel.length,
+    hasSort: result.sortColumn !== null,
+  }
+}
+
+function runningExportJob(exportJob: ResultExportJob | undefined): ResultExportJob | null {
+  if (exportJob?.status !== 'running') return null
+  return exportJob
+}
+
+function formatDescription(key: ExportFormat, offersAllRows: boolean): string {
+  if (offersAllRows && key === 'xlsx') return XLSX_ALL_ROWS_DESCRIPTION
+  return EXPORT_FORMAT_CONFIG[key].description
+}
+
+interface FullExportProgressProps {
+  exportJob: ResultExportJob
+  onCancel: () => void
+}
+
+function FullExportProgress({ exportJob, onCancel }: FullExportProgressProps) {
+  return (
+    <div className={styles.body}>
+      <div className={styles.progressSection} data-testid="export-progress">
+        <span className={styles.progressTitle} role="status">
+          Exporting all rows…
+        </span>
+        <div className={styles.progressBar} aria-hidden="true">
+          <div className={styles.progressIndicator} />
+        </div>
+        <span className={styles.progressStats} data-testid="export-progress-stats">
+          {exportProgressText(exportJob)}
+        </span>
+      </div>
+      <div className={`${styles.actions} ${styles.progressActions}`}>
+        <Button
+          type="button"
+          disabled={exportJob.cancelRequested}
+          onClick={onCancel}
+          data-testid="export-cancel-full-button"
+        >
+          {exportJob.cancelRequested ? 'Cancelling…' : 'Cancel export'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface RowScopeFieldProps {
+  offersAllRows: boolean
+  options: DropdownOption[]
+  value: ExportRowScope
+  onChange: (scope: ExportRowScope) => void
+}
+
+function RowScopeField({ offersAllRows, options, value, onChange }: RowScopeFieldProps) {
+  if (!offersAllRows) return null
+  return (
+    <div className={styles.fieldGroup}>
+      <label className={styles.label} id="export-rows-label">
+        Rows
+      </label>
+      <Dropdown
+        id="export-rows"
+        labelledBy="export-rows-label"
+        options={options}
+        value={value}
+        onChange={(selected) => onChange(selected as ExportRowScope)}
+        data-testid="export-rows-select"
+        className={styles.formatDropdownRoot}
+        triggerClassName={styles.formatDropdownTrigger}
+      />
+    </div>
+  )
+}
+
+interface IgnoredViewWarningProps {
+  isAllRows: boolean
+  modifiers: ViewModifiers
+  onUseCurrentView: () => void
+}
+
+function IgnoredViewWarning({ isAllRows, modifiers, onUseCurrentView }: IgnoredViewWarningProps) {
+  const hasViewModifiers = modifiers.hasSort || modifiers.filterCount > 0
+  if (!isAllRows || !hasViewModifiers) return null
+  return (
+    <InfoBar
+      severity="warning"
+      polite
+      title="Sort and filter aren't applied to all rows."
+      message={ignoredViewMessage(modifiers.hasSort, modifiers.filterCount)}
+      actions={
+        <Button
+          type="button"
+          size="sm"
+          onClick={onUseCurrentView}
+          data-testid="export-use-current-view"
+        >
+          Use current view
+        </Button>
+      }
+      data-testid="export-ignored-view-warning"
+    />
+  )
+}
+
+interface SheetLimitWarningProps {
+  isAllRows: boolean
+  format: ExportFormat
+  onSwitchToCsv: () => void
+}
+
+function SheetLimitWarning({ isAllRows, format, onSwitchToCsv }: SheetLimitWarningProps) {
+  if (!isAllRows || format !== 'xlsx') return null
+  return (
+    <InfoBar
+      severity="warning"
+      polite
+      message="Excel sheets stop at 1,048,576 rows. Rows past that are not written."
+      actions={
+        <Button type="button" size="sm" onClick={onSwitchToCsv} data-testid="export-switch-to-csv">
+          Switch to CSV
+        </Button>
+      }
+      data-testid="export-sheet-limit-warning"
+    />
+  )
+}
+
+interface TableNameFieldProps {
+  format: ExportFormat
+  tableName: string
+  onChange: (tableName: string) => void
+}
+
+function TableNameField({ format, tableName, onChange }: TableNameFieldProps) {
+  if (!EXPORT_FORMAT_CONFIG[format].requiresTableName) return null
+  return (
+    <div className={styles.fieldGroup}>
+      <label className={styles.label} htmlFor="export-table-name">
+        Table name
+      </label>
+      <TextInput
+        id="export-table-name"
+        variant="bare"
+        type="text"
+        className={styles.tableNameInput}
+        value={tableName}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={DEFAULT_EXPORT_TABLE_NAME}
+        data-testid="export-table-name-input"
+      />
+    </div>
+  )
+}
+
+interface FullExportOutcomeProps {
+  exportJob: ResultExportJob | undefined
+  failureBarRef: RefObject<HTMLDivElement | null>
+  onRetry: () => void
+}
+
+function FullExportOutcome({ exportJob, failureBarRef, onRetry }: FullExportOutcomeProps) {
+  if (exportJob?.status === 'cancelled') {
+    return (
+      <InfoBar
+        severity="warning"
+        title="Export cancelled"
+        message="No file was written."
+        data-testid="export-cancelled"
+      />
+    )
+  }
+  if (exportJob?.status !== 'failed') return null
+  return (
+    <InfoBar
+      ref={failureBarRef}
+      tabIndex={-1}
+      severity="error"
+      title="Export failed"
+      message={exportJob.error}
+      detail="No file was written."
+      actions={
+        <Button type="button" size="sm" onClick={onRetry} data-testid="export-try-again">
+          Try again
+        </Button>
+      }
+      data-testid="export-failed"
+    />
+  )
+}
+
+interface ExportFormActionsProps {
+  canSubmit: boolean
+  isExporting: boolean
+  onClose: () => void
+}
+
+function ExportFormActions({ canSubmit, isExporting, onClose }: ExportFormActionsProps) {
+  return (
+    <div className={styles.actions}>
+      <Button
+        type="submit"
+        variant="accent"
+        disabled={!canSubmit}
+        data-testid="export-submit-button"
+      >
+        {isExporting ? 'Exporting...' : 'Export'}
+      </Button>
+      <Button type="button" onClick={onClose} data-testid="export-cancel-button">
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
 export default function ExportDialog({
   connectionId,
   tabId,
@@ -139,7 +407,7 @@ export default function ExportDialog({
   const [format, setFormat] = useState<ExportFormat>('csv')
   const { filePath, setFilePath, browseForFilePath } = useBrowseFilePath('export-dialog')
   const [includeHeaders, setIncludeHeaders] = useState(true)
-  const [tableName, setTableName] = useState(defaultTableName ?? 'exported_results')
+  const [tableName, setTableName] = useState(defaultTableName ?? DEFAULT_EXPORT_TABLE_NAME)
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -148,7 +416,7 @@ export default function ExportDialog({
   const resolvedResultIndex = useQueryStore((state) => {
     const tab = state.tabs[tabId]
     if (!tab) return 0
-    return resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
+    return resolveExportResultIndex(tab, resultIndex)
   })
   const result = useQueryStore((state) => state.tabs[tabId]?.results[resolvedResultIndex])
   const exportJob = useQueryStore((state) => state.exportJobs[tabId])
@@ -156,17 +424,14 @@ export default function ExportDialog({
   const cancelFullExport = useQueryStore((state) => state.cancelFullExport)
 
   /** "All rows" is offered only for truncated results that can be re-run. */
-  const offersAllRows =
-    !onExport &&
-    result !== undefined &&
-    result.truncated &&
-    result.fullExportBlockedReason === null &&
-    result.queryId !== null
+  const offersAllRows = offersAllRowsExport(result, onExport !== undefined)
   const [scope, setScope] = useState<ExportRowScope>(() =>
-    offersAllRows ? result.preferredExportScope : 'currentView'
+    offersAllRows && result ? result.preferredExportScope : 'currentView'
   )
   const effectiveScope: ExportRowScope = offersAllRows ? scope : 'currentView'
-  const isFullExportRunning = exportJob?.status === 'running'
+  const isAllRows = effectiveScope === 'allRows'
+  const runningJob = runningExportJob(exportJob)
+  const isFullExportRunning = runningJob !== null
   const failureBarRef = useRef<HTMLDivElement>(null)
   const exportJobStatus = exportJob?.status
 
@@ -187,15 +452,13 @@ export default function ExportDialog({
       FORMAT_KEYS.filter((key) => !(isView && key === 'sql-insert')).map((key) => ({
         value: key,
         label: EXPORT_FORMAT_CONFIG[key].label,
-        description:
-          offersAllRows && key === 'xlsx'
-            ? XLSX_ALL_ROWS_DESCRIPTION
-            : EXPORT_FORMAT_CONFIG[key].description,
+        description: formatDescription(key, offersAllRows),
       })),
     [isView, offersAllRows]
   )
 
-  const viewRowCount = result?.viewRowCount ?? 0
+  const viewModifiers = viewModifiersOf(result)
+  const viewRowCount = viewModifiers.viewRowCount
   const rowScopeOptions: DropdownOption[] = useMemo(
     () => [
       {
@@ -212,10 +475,6 @@ export default function ExportDialog({
     ],
     [viewRowCount]
   )
-  const filterCount = result?.filterModel.length ?? 0
-  const hasSort = (result?.sortColumn ?? null) !== null
-  const showIgnoredViewWarning = effectiveScope === 'allRows' && (hasSort || filterCount > 0)
-  const showSheetLimitWarning = effectiveScope === 'allRows' && format === 'xlsx'
 
   const handleBrowse = useCallback(() => {
     const config = EXPORT_FORMAT_CONFIG[format]
@@ -235,7 +494,7 @@ export default function ExportDialog({
       tableName,
     }
     const backendOptions = keepTableNameForSqlInsertOnly(requestedOptions)
-    if (effectiveScope === 'allRows') {
+    if (isAllRows) {
       setError(null)
       await startFullExport(tabId, {
         ...backendOptions,
@@ -246,36 +505,16 @@ export default function ExportDialog({
     }
     setIsExporting(true)
     setError(null)
+    const exportCurrentView = onExport
+      ? () => onExport(requestedOptions)
+      : () => exportResults(connectionId, tabId, backendOptions, resultIndex)
     try {
-      if (onExport) {
-        await onExport(requestedOptions)
-      } else {
-        await exportResults(connectionId, tabId, backendOptions, resultIndex)
-      }
+      await exportCurrentView()
       onClose()
     } catch (error) {
       const errorMessage = toErrorMessage(error)
-      if (errorMessage.includes('results_expired')) {
-        const tab = useQueryStore.getState().tabs[tabId]
-        if (tab) {
-          const expiredResultIndex =
-            resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
-          useQueryStore.setState((state) => {
-            const tabState = state.tabs[tabId]
-            if (!tabState || expiredResultIndex >= tabState.results.length) return state
-            const newResults = [...tabState.results]
-            newResults[expiredResultIndex] = {
-              ...newResults[expiredResultIndex],
-              isExpired: true,
-            }
-            return {
-              tabs: {
-                ...state.tabs,
-                [tabId]: { ...tabState, results: newResults },
-              },
-            }
-          })
-        }
+      if (errorMessage.includes(RESULTS_EXPIRED_ERROR_MARKER)) {
+        markResultExpired(tabId, resultIndex)
       }
       setError(errorMessage)
     } finally {
@@ -291,7 +530,7 @@ export default function ExportDialog({
     onClose,
     onExport,
     resultIndex,
-    effectiveScope,
+    isAllRows,
     startFullExport,
     resolvedResultIndex,
   ])
@@ -337,70 +576,24 @@ export default function ExportDialog({
           )}
         </div>
 
-        {isFullExportRunning && exportJob ? (
-          /* Progress (All rows): the store polls the job; closing never cancels it. */
-          <div className={styles.body}>
-            <div className={styles.progressSection} data-testid="export-progress">
-              <span className={styles.progressTitle} role="status">
-                Exporting all rows…
-              </span>
-              <div className={styles.progressBar} aria-hidden="true">
-                <div className={styles.progressIndicator} />
-              </div>
-              <span className={styles.progressStats} data-testid="export-progress-stats">
-                {exportProgressText(exportJob)}
-              </span>
-            </div>
-            <div className={`${styles.actions} ${styles.progressActions}`}>
-              <Button
-                type="button"
-                disabled={exportJob.cancelRequested}
-                onClick={() => void cancelFullExport(tabId)}
-                data-testid="export-cancel-full-button"
-              >
-                {exportJob.cancelRequested ? 'Cancelling…' : 'Cancel export'}
-              </Button>
-            </div>
-          </div>
+        {runningJob ? (
+          <FullExportProgress
+            exportJob={runningJob}
+            onCancel={() => void cancelFullExport(tabId)}
+          />
         ) : (
           <div className={styles.body}>
-            {/* Rows (truncated, re-runnable results only) */}
-            {offersAllRows && (
-              <div className={styles.fieldGroup}>
-                <label className={styles.label} id="export-rows-label">
-                  Rows
-                </label>
-                <Dropdown
-                  id="export-rows"
-                  labelledBy="export-rows-label"
-                  options={rowScopeOptions}
-                  value={effectiveScope}
-                  onChange={(value) => setScope(value as ExportRowScope)}
-                  data-testid="export-rows-select"
-                  className={styles.formatDropdownRoot}
-                  triggerClassName={styles.formatDropdownTrigger}
-                />
-              </div>
-            )}
-            {showIgnoredViewWarning && (
-              <InfoBar
-                severity="warning"
-                polite
-                title="Sort and filter aren't applied to all rows."
-                message={ignoredViewMessage(hasSort, filterCount)}
-                actions={
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => setScope('currentView')}
-                    data-testid="export-use-current-view"
-                  >
-                    Use current view
-                  </Button>
-                }
-                data-testid="export-ignored-view-warning"
-              />
-            )}
+            <RowScopeField
+              offersAllRows={offersAllRows}
+              options={rowScopeOptions}
+              value={effectiveScope}
+              onChange={setScope}
+            />
+            <IgnoredViewWarning
+              isAllRows={isAllRows}
+              modifiers={viewModifiers}
+              onUseCurrentView={() => setScope('currentView')}
+            />
 
             {/* Format */}
             <div className={styles.fieldGroup}>
@@ -418,24 +611,11 @@ export default function ExportDialog({
                 triggerClassName={styles.formatDropdownTrigger}
               />
             </div>
-            {showSheetLimitWarning && (
-              <InfoBar
-                severity="warning"
-                polite
-                message="Excel sheets stop at 1,048,576 rows. Rows past that are not written."
-                actions={
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => setFormat('csv')}
-                    data-testid="export-switch-to-csv"
-                  >
-                    Switch to CSV
-                  </Button>
-                }
-                data-testid="export-sheet-limit-warning"
-              />
-            )}
+            <SheetLimitWarning
+              isAllRows={isAllRows}
+              format={format}
+              onSwitchToCsv={() => setFormat('csv')}
+            />
 
             {/* Destination */}
             <div className={styles.fieldGroup}>
@@ -468,24 +648,7 @@ export default function ExportDialog({
               </div>
             </div>
 
-            {/* Table Name (shown when format requires it) */}
-            {EXPORT_FORMAT_CONFIG[format].requiresTableName && (
-              <div className={styles.fieldGroup}>
-                <label className={styles.label} htmlFor="export-table-name">
-                  Table name
-                </label>
-                <TextInput
-                  id="export-table-name"
-                  variant="bare"
-                  type="text"
-                  className={styles.tableNameInput}
-                  value={tableName}
-                  onChange={(event) => setTableName(event.target.value)}
-                  placeholder="exported_results"
-                  data-testid="export-table-name-input"
-                />
-              </div>
-            )}
+            <TableNameField format={format} tableName={tableName} onChange={setTableName} />
 
             {/* Include headers checkbox */}
             <div className={styles.checkboxRow}>
@@ -507,50 +670,17 @@ export default function ExportDialog({
               </div>
             )}
 
-            {exportJob?.status === 'cancelled' && (
-              <InfoBar
-                severity="warning"
-                title="Export cancelled"
-                message="No file was written."
-                data-testid="export-cancelled"
-              />
-            )}
-            {exportJob?.status === 'failed' && (
-              <InfoBar
-                ref={failureBarRef}
-                tabIndex={-1}
-                severity="error"
-                title="Export failed"
-                message={exportJob.error}
-                detail="No file was written."
-                actions={
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleRetryFullExport}
-                    data-testid="export-try-again"
-                  >
-                    Try again
-                  </Button>
-                }
-                data-testid="export-failed"
-              />
-            )}
+            <FullExportOutcome
+              exportJob={exportJob}
+              failureBarRef={failureBarRef}
+              onRetry={handleRetryFullExport}
+            />
 
-            {/* Buttons */}
-            <div className={styles.actions}>
-              <Button
-                type="submit"
-                variant="accent"
-                disabled={!filePath || isExporting}
-                data-testid="export-submit-button"
-              >
-                {isExporting ? 'Exporting...' : 'Export'}
-              </Button>
-              <Button type="button" onClick={onClose} data-testid="export-cancel-button">
-                Cancel
-              </Button>
-            </div>
+            <ExportFormActions
+              canSubmit={Boolean(filePath) && !isExporting}
+              isExporting={isExporting}
+              onClose={onClose}
+            />
           </div>
         )}
       </div>

@@ -81,9 +81,9 @@ export function handleRunStatement(
   queryState.requestNavigationAction(tabId, () => {
     if (isCallSql(sql)) {
       queryState.executeCallQuery(connectionId, tabId, sql)
-    } else {
-      queryState.executeQuery(connectionId, tabId, sql)
+      return
     }
+    queryState.executeQuery(connectionId, tabId, sql)
   })
 }
 

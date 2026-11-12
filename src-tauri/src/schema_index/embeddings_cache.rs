@@ -57,12 +57,11 @@ impl EmbeddingCache {
         let mut inner = self.inner.lock().ok()?;
         inner.counter += 1;
         let counter = inner.counter;
-        if let Some(entry) = inner.map.get_mut(&(model_id.to_string(), text.to_string())) {
-            entry.last_used = counter;
-            Some(entry.vec.clone())
-        } else {
-            None
-        }
+        let entry = inner
+            .map
+            .get_mut(&(model_id.to_string(), text.to_string()))?;
+        entry.last_used = counter;
+        Some(entry.vec.clone())
     }
 
     /// Insert an embedding vector into the cache, evicting the LRU entry if full.

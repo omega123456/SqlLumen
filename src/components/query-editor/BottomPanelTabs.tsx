@@ -5,8 +5,13 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { TableDataTab } from '../../types/schema'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { Button } from '../common/Button'
+import { TAB_STRIP_NAVIGATION } from '../../lib/tab-strip-navigation'
 import styles from './BottomPanelTabs.module.css'
 import workspaceTabStyles from '../workspace/WorkspaceTabs.module.css'
+
+function isTabActivationKey(key: string): boolean {
+  return key === 'Enter' || key === ' '
+}
 
 interface BottomPanelTabsProps {
   queryTabId: string
@@ -33,6 +38,32 @@ function getResultTabIcon(result: SingleResultState) {
     return <CheckCircle size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
   }
   return <Table size={16} weight="regular" className={workspaceTabStyles.tabTypeIcon} />
+}
+
+function bottomTabPanelId(item: BottomPanelTabItem, queryTabId: string): string {
+  if (item.kind === 'result') return `result-tabpanel-${queryTabId}-${item.index}`
+  return `table-data-tabpanel-${item.tab.id}`
+}
+
+function bottomTabTestId(item: BottomPanelTabItem): string {
+  if (item.kind === 'result') return `bottom-panel-result-tab-${item.index}`
+  return `bottom-panel-table-tab-${item.tab.id}`
+}
+
+function showsResultSeparator(
+  items: BottomPanelTabItem[],
+  index: number,
+  resultCount: number
+): boolean {
+  if (items[index].kind !== 'table-data' || index === 0) return false
+  return items[index - 1]?.kind === 'result' && resultCount > 0
+}
+
+function bottomTabStateProps(isActive: boolean) {
+  return {
+    className: `${styles.tab} ${isActive ? styles.tabActive : ''}`,
+    'data-active': isActive ? true : undefined,
+  }
 }
 
 export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsProps) {
@@ -102,36 +133,27 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
     [queryTabId, setActiveBottomPanelItem, setActiveResultIndex]
   )
 
+  const activateFocusedItem = useCallback(() => {
+    const focusedIndex = tabRefs.current.findIndex((tab) => tab === document.activeElement)
+    if (focusedIndex >= 0) {
+      activateItem(items[focusedIndex])
+    }
+  }, [activateItem, items])
+
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (items.length === 0) return
-
-      let targetIndex: number | null = null
-      if (event.key === 'ArrowRight') {
+      if (isTabActivationKey(event.key)) {
         event.preventDefault()
-        targetIndex = Math.min((activeItemIndex >= 0 ? activeItemIndex : 0) + 1, items.length - 1)
-      } else if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        targetIndex = Math.max((activeItemIndex >= 0 ? activeItemIndex : 0) - 1, 0)
-      } else if (event.key === 'Home') {
-        event.preventDefault()
-        targetIndex = 0
-      } else if (event.key === 'End') {
-        event.preventDefault()
-        targetIndex = items.length - 1
-      } else if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        const focusedIndex = tabRefs.current.findIndex((tab) => tab === document.activeElement)
-        if (focusedIndex >= 0) {
-          activateItem(items[focusedIndex])
-        }
+        activateFocusedItem()
+        return
       }
-
-      if (targetIndex !== null) {
-        activateItem(items[targetIndex])
-      }
+      const resolveTargetIndex = TAB_STRIP_NAVIGATION[event.key]
+      if (!resolveTargetIndex) return
+      event.preventDefault()
+      activateItem(items[resolveTargetIndex(Math.max(activeItemIndex, 0), items.length)])
     },
-    [activateItem, activeItemIndex, items]
+    [activateFocusedItem, activateItem, activeItemIndex, items]
   )
 
   const handleCloseTableTab = useCallback(
@@ -155,15 +177,8 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
       <UnderlineTabBar variant="selector" className={styles.strip} scrollable>
         {items.map((item, index) => {
           const isActive = item.id === activeItemId
-          const panelId =
-            item.kind === 'result'
-              ? `result-tabpanel-${queryTabId}-${item.index}`
-              : `table-data-tabpanel-${item.tab.id}`
-          const showSeparator =
-            item.kind === 'table-data' &&
-            index > 0 &&
-            items[index - 1]?.kind === 'result' &&
-            results.length > 0
+          const panelId = bottomTabPanelId(item, queryTabId)
+          const showSeparator = showsResultSeparator(items, index, results.length)
 
           return (
             <div key={item.id} className={styles.item}>
@@ -175,19 +190,14 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                 />
               )}
               <div
-                className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
-                data-active={isActive ? true : undefined}
+                {...bottomTabStateProps(isActive)}
                 onMouseDown={(event) => {
                   if (event.button === 1 && item.kind === 'table-data') {
                     event.preventDefault()
                     handleCloseTableTab(item.tab.id)
                   }
                 }}
-                data-testid={
-                  item.kind === 'result'
-                    ? `bottom-panel-result-tab-${item.index}`
-                    : `bottom-panel-table-tab-${item.tab.id}`
-                }
+                data-testid={bottomTabTestId(item)}
               >
                 <Button
                   variant="bare"

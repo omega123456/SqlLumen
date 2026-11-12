@@ -142,6 +142,20 @@ pub fn write_footer<W: Write>(writer: &mut W) -> io::Result<()> {
     Ok(())
 }
 
+pub fn dump_object_keyword(is_view: bool) -> &'static str {
+    if is_view {
+        return "VIEW";
+    }
+    "TABLE"
+}
+
+fn structure_comment_label(is_view: bool) -> &'static str {
+    if is_view {
+        return "View";
+    }
+    "Table structure"
+}
+
 /// Write the structure (CREATE TABLE/VIEW) section for an object.
 ///
 /// `create_statement` is the raw output from `SHOW CREATE TABLE`/`SHOW CREATE VIEW`.
@@ -154,17 +168,18 @@ pub fn write_structure<W: Write>(
 ) -> io::Result<()> {
     let escaped_name = escape_identifier(object_name);
     writeln!(writer, "--")?;
-    let obj_type = if is_view { "View" } else { "Table structure" };
+    let obj_type = structure_comment_label(is_view);
     writeln!(writer, "-- {} for `{}`", obj_type, escaped_name)?;
     writeln!(writer, "--")?;
     writeln!(writer)?;
 
     if include_drop {
-        if is_view {
-            writeln!(writer, "DROP VIEW IF EXISTS `{}`;", escaped_name)?;
-        } else {
-            writeln!(writer, "DROP TABLE IF EXISTS `{}`;", escaped_name)?;
-        }
+        let object_keyword = dump_object_keyword(is_view);
+        writeln!(
+            writer,
+            "DROP {object_keyword} IF EXISTS `{}`;",
+            escaped_name
+        )?;
     }
 
     writeln!(
@@ -270,35 +285,21 @@ pub fn value_to_literal(value: &SqlDumpValue) -> String {
         SqlDumpValue::Null => "NULL".to_string(),
         SqlDumpValue::Int(number) => number.to_string(),
         SqlDumpValue::UInt(number) => number.to_string(),
-        SqlDumpValue::Float(float) => {
-            if float.is_nan() || float.is_infinite() {
-                "NULL".to_string()
-            } else {
-                float.to_string()
-            }
-        }
+        SqlDumpValue::Float(float) if !float.is_finite() => "NULL".to_string(),
+        SqlDumpValue::Float(float) => float.to_string(),
         SqlDumpValue::Decimal(text) => text.clone(),
         SqlDumpValue::QuotedString(text) => format!("'{}'", escape_string_value(text)),
         SqlDumpValue::HexBytes(bytes) => {
-            if bytes.is_empty() {
-                "0x".to_string()
-            } else {
-                let mut out = String::with_capacity(2 + bytes.len() * 2);
-                out.push_str("0x");
-                for byte in bytes {
-                    use std::fmt::Write as _;
-                    let _ = write!(out, "{:02X}", byte);
-                }
-                out
+            let mut out = String::with_capacity(2 + bytes.len() * 2);
+            out.push_str("0x");
+            for byte in bytes {
+                use std::fmt::Write as _;
+                let _ = write!(out, "{:02X}", byte);
             }
+            out
         }
-        SqlDumpValue::Bool(boolean) => {
-            if *boolean {
-                "1".to_string()
-            } else {
-                "0".to_string()
-            }
-        }
+        SqlDumpValue::Bool(true) => "1".to_string(),
+        SqlDumpValue::Bool(false) => "0".to_string(),
     }
 }
 

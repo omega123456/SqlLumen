@@ -33,14 +33,13 @@ pub fn detect_ddl_tables(sql: &str) -> DdlDetectionResult {
     }
 
     if affected_tables.is_empty() {
-        DdlDetectionResult::NoDdl
-    } else {
-        debug!(
-            ?affected_tables,
-            "Detected DDL statements affecting metadata cache"
-        );
-        DdlDetectionResult::DdlDetected(affected_tables)
+        return DdlDetectionResult::NoDdl;
     }
+    debug!(
+        ?affected_tables,
+        "Detected DDL statements affecting metadata cache"
+    );
+    DdlDetectionResult::DdlDetected(affected_tables)
 }
 
 fn collect_statement_tables(statement: &Statement, affected_tables: &mut Vec<AffectedTable>) {

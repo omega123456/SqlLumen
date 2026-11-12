@@ -103,6 +103,13 @@ pub async fn get_processlist(
 
 // ── kill_queries ─────────────────────────────────────────────────────────────
 
+fn kill_query_sql(id: u64, has_rds_kill: bool) -> String {
+    if has_rds_kill {
+        return format!("CALL mysql.rds_kill({id})");
+    }
+    format!("KILL QUERY {id}")
+}
+
 pub async fn kill_queries_impl(
     state: &AppState,
     session_id: &str,
@@ -132,11 +139,7 @@ pub async fn kill_queries_impl(
 
     let mut results = Vec::with_capacity(ids.len());
     for id in ids {
-        let sql = if has_rds_kill {
-            format!("CALL mysql.rds_kill({id})")
-        } else {
-            format!("KILL QUERY {id}")
-        };
+        let sql = kill_query_sql(id, has_rds_kill);
         crate::mysql::query_log::log_outgoing_sql(&sql);
         let start = std::time::Instant::now();
         let result = match sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))

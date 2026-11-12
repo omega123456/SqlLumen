@@ -17,10 +17,10 @@ export function insertSqlIntoEditor(connectionId: string, sqlText: string, label
     const trimmedExisting = existing.replace(/\s+$/, '')
     const nextContent = trimmedExisting ? `${trimmedExisting}\n\n${sqlText}` : sqlText
     useQueryStore.getState().setContent(activeTabId, nextContent)
-  } else {
-    const tabId = openQueryTab(connectionId, label ?? 'Query')
-    if (tabId) {
-      useQueryStore.getState().setContent(tabId, sqlText)
-    }
+    return
+  }
+  const tabId = openQueryTab(connectionId, label ?? 'Query')
+  if (tabId) {
+    useQueryStore.getState().setContent(tabId, sqlText)
   }
 }

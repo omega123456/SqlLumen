@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ComponentType } from 'react'
 import { DialogShell } from '../dialogs/DialogShell'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { GearSix, X } from '@phosphor-icons/react'
@@ -20,6 +20,16 @@ import { useZoomStore } from '../../stores/zoom-store'
 import { useUpdateStore } from '../../stores/update-store'
 import type { SettingsSection } from '../../types/schema'
 import styles from './SettingsDialog.module.css'
+
+const SETTINGS_SECTION_CONTENT: Record<SettingsSection, ComponentType> = {
+  general: GeneralSettings,
+  editor: EditorSettings,
+  results: ResultsSettings,
+  logging: LoggingSettings,
+  shortcuts: ShortcutsSettings,
+  ai: AiSettings,
+  updates: UpdatesSettings,
+}
 
 export interface SettingsDialogProps {
   isOpen: boolean
@@ -85,11 +95,11 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const handleCancel = useCallback(() => {
     if (isDirty) {
       setConfirmOpen(true)
-    } else {
-      revertPreview()
-      useZoomStore.getState().revertPreview()
-      onClose()
+      return
     }
+    revertPreview()
+    useZoomStore.getState().revertPreview()
+    onClose()
   }, [isDirty, onClose, revertPreview])
 
   const handleConfirmDiscard = useCallback(() => {
@@ -114,24 +124,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     [setActiveSection]
   )
 
-  const renderContent = () => {
-    switch (activeSection) {
-      case 'general':
-        return <GeneralSettings />
-      case 'editor':
-        return <EditorSettings />
-      case 'results':
-        return <ResultsSettings />
-      case 'logging':
-        return <LoggingSettings />
-      case 'shortcuts':
-        return <ShortcutsSettings />
-      case 'ai':
-        return <AiSettings />
-      case 'updates':
-        return <UpdatesSettings />
-    }
-  }
+  const ActiveSectionContent = SETTINGS_SECTION_CONTENT[activeSection]
 
   return (
     <>
@@ -156,7 +149,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
             <h2 className={styles.pageTitle}>
               {SETTINGS_SECTIONS.find((section) => section.id === activeSection)?.label}
             </h2>
-            {renderContent()}
+            <ActiveSectionContent />
           </div>
           <div className={styles.footer}>
             <Button

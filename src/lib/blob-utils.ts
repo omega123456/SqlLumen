@@ -453,34 +453,42 @@ function isJpegStartOfFrame(marker: number): boolean {
   return isInFrameRange && !JPEG_NON_FRAME_MARKERS_IN_FRAME_RANGE.has(marker)
 }
 
+type JpegScanStep =
+  { kind: 'continue'; nextOffset: number } | { kind: 'done'; dimensions: ImageDimensions | null }
+
+function readJpegFrameDimensions(bytes: Uint8Array, offset: number): ImageDimensions | null {
+  const height = readU16BE(bytes, offset + JPEG_FRAME_HEIGHT_OFFSET)
+  const width = readU16BE(bytes, offset + JPEG_FRAME_WIDTH_OFFSET)
+  if (width === null || height === null) return null
+  if (!hasPositiveArea(width, height)) return null
+  return { width, height }
+}
+
+function scanJpegMarkerAt(bytes: Uint8Array, offset: number): JpegScanStep {
+  if (bytes[offset] !== JPEG_MARKER_PREFIX) return { kind: 'continue', nextOffset: offset + 1 }
+  const marker = bytes[offset + 1]
+  if (marker === JPEG_MARKER_PREFIX) return { kind: 'continue', nextOffset: offset + 1 }
+  if (isStandaloneJpegMarker(marker)) {
+    return { kind: 'continue', nextOffset: offset + JPEG_MARKER_LENGTH }
+  }
+  const segmentLength = readU16BE(bytes, offset + JPEG_MARKER_LENGTH)
+  if (segmentLength === null || segmentLength < JPEG_MINIMUM_SEGMENT_LENGTH) {
+    return { kind: 'done', dimensions: null }
+  }
+  if (isJpegStartOfFrame(marker)) {
+    return { kind: 'done', dimensions: readJpegFrameDimensions(bytes, offset) }
+  }
+  return { kind: 'continue', nextOffset: offset + JPEG_MARKER_LENGTH + segmentLength }
+}
+
 function readJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
   let offset = JPEG_START_OF_IMAGE_LENGTH
   let scans = 0
   while (offset + 1 < bytes.length && scans < JPEG_MARKER_SCAN_LIMIT) {
     scans++
-    if (bytes[offset] !== JPEG_MARKER_PREFIX) {
-      offset++
-      continue
-    }
-    const marker = bytes[offset + 1]
-    if (marker === JPEG_MARKER_PREFIX) {
-      offset++
-      continue
-    }
-    if (isStandaloneJpegMarker(marker)) {
-      offset += JPEG_MARKER_LENGTH
-      continue
-    }
-    const segmentLength = readU16BE(bytes, offset + JPEG_MARKER_LENGTH)
-    if (segmentLength === null || segmentLength < JPEG_MINIMUM_SEGMENT_LENGTH) return null
-    if (isJpegStartOfFrame(marker)) {
-      const height = readU16BE(bytes, offset + JPEG_FRAME_HEIGHT_OFFSET)
-      const width = readU16BE(bytes, offset + JPEG_FRAME_WIDTH_OFFSET)
-      if (width === null || height === null) return null
-      if (!hasPositiveArea(width, height)) return null
-      return { width, height }
-    }
-    offset += JPEG_MARKER_LENGTH + segmentLength
+    const step = scanJpegMarkerAt(bytes, offset)
+    if (step.kind === 'done') return step.dimensions
+    offset = step.nextOffset
   }
   return null
 }

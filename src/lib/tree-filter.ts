@@ -90,29 +90,53 @@ export function computeScopedFilterMatchIds(
     if (!isNodeUnderFilterScope(id, scopeRootId, nodes)) {
       continue
     }
-    if (node.type === 'column' || node.type === 'category') {
+    if (!isFilterCandidateMatch(node, lowerFilter)) {
       continue
     }
-    if (!node.label.toLowerCase().includes(lowerFilter)) {
-      continue
-    }
-    let current: string | null = id
-    while (current) {
-      matchIds.add(current)
-      if (current === scopeRootId) {
-        break
-      }
-      current = nodes[current]?.parentId ?? null
+    for (const pathId of collectPathUpToScopeRoot(id, scopeRootId, nodes)) {
+      matchIds.add(pathId)
     }
   }
 
   // Always include the scope root and all its ancestors so the containing
   // database/category nodes remain in the match set and the tree path stays open.
-  let ancestorId: string | null = scopeRootId
-  while (ancestorId) {
+  for (const ancestorId of collectPathToTreeRoot(scopeRootId, nodes)) {
     matchIds.add(ancestorId)
-    ancestorId = nodes[ancestorId]?.parentId ?? null
   }
 
   return matchIds
+}
+
+function isFilterCandidateMatch(node: TreeNode, lowerFilter: string): boolean {
+  if (node.type === 'column' || node.type === 'category') {
+    return false
+  }
+  return node.label.toLowerCase().includes(lowerFilter)
+}
+
+function collectPathUpToScopeRoot(
+  nodeId: string,
+  scopeRootId: string,
+  nodes: Record<string, TreeNode>
+): string[] {
+  const path: string[] = []
+  let current: string | null = nodeId
+  while (current) {
+    path.push(current)
+    if (current === scopeRootId) {
+      break
+    }
+    current = nodes[current]?.parentId ?? null
+  }
+  return path
+}
+
+function collectPathToTreeRoot(nodeId: string, nodes: Record<string, TreeNode>): string[] {
+  const path: string[] = []
+  let current: string | null = nodeId
+  while (current) {
+    path.push(current)
+    current = nodes[current]?.parentId ?? null
+  }
+  return path
 }

@@ -395,14 +395,15 @@ where
                         let path = session_dir.join(format!("{safe_name}.msgpack"));
 
                         match rmp_serde::to_vec_named(&job.entry.value) {
-                            Ok(bytes) => {
-                                if let Err(error) = fs::write(&path, &bytes) {
+                            Ok(bytes) => match fs::write(&path, &bytes) {
+                                Err(error) => {
                                     tracing::warn!(
                                         error = %error,
                                         path = %path.display(),
                                         "failed to write spill file"
                                     );
-                                } else {
+                                }
+                                Ok(()) => {
                                     tracing::debug!(
                                         connection_id = %job.connection_id,
                                         tab_id = %job.tab_id,
@@ -412,7 +413,7 @@ where
                                         "cache spill written to disk"
                                     );
                                 }
-                            }
+                            },
                             Err(error) => {
                                 tracing::warn!(
                                     error = %error,
@@ -497,15 +498,15 @@ where
                         generation,
                         "failed to enqueue spill write job"
                     );
-                } else {
-                    tracing::debug!(
-                        connection_id = %key.0,
-                        tab_id = %key.1,
-                        generation,
-                        cause = %removal_cause_label(cause),
-                        "cache eviction: enqueueing spill write"
-                    );
+                    return;
                 }
+                tracing::debug!(
+                    connection_id = %key.0,
+                    tab_id = %key.1,
+                    generation,
+                    cause = %removal_cause_label(cause),
+                    "cache eviction: enqueueing spill write"
+                );
             })
             .build();
 
@@ -568,61 +569,60 @@ where
         }
 
         let spill_path = self.spill_file_path(connection_id, tab_id);
-        if spill_path.exists() {
-            tracing::debug!(
-                connection_id = %connection_id,
-                tab_id = %tab_id,
-                path = %spill_path.display(),
-                "cache attempting spill restore"
-            );
-            match fs::read(&spill_path) {
-                Ok(bytes) => match rmp_serde::from_slice::<V>(&bytes) {
-                    Ok(value) => {
-                        let spill_bytes = bytes.len();
-                        let _ = fs::remove_file(&spill_path);
-
-                        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
-                        let entry = Arc::new(CachedEntry { value, generation });
-                        self.cache.insert(key.clone(), Arc::clone(&entry));
-                        self.touch_lru(&key);
-                        {
-                            let mut gens =
-                                self.generations.write().expect("generations lock poisoned");
-                            gens.insert(key, generation);
-                        }
-                        tracing::debug!(
-                            connection_id = %connection_id,
-                            tab_id = %tab_id,
-                            generation,
-                            path = %spill_path.display(),
-                            spill_bytes,
-                            "cache spill restored from disk"
-                        );
-                        return CacheGet::ReWarmed(entry);
-                    }
-                    Err(error) => {
-                        tracing::warn!(
-                            error = %error,
-                            path = %spill_path.display(),
-                            "failed to deserialize spill file"
-                        );
-                    }
-                },
-                Err(error) => {
-                    tracing::warn!(
-                        error = %error,
-                        path = %spill_path.display(),
-                        "failed to read spill file"
-                    );
-                }
-            }
-        } else {
+        if !spill_path.exists() {
             tracing::debug!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,
                 path = %spill_path.display(),
                 "cache spill restore missed: spill file not found"
             );
+            return CacheGet::Expired;
+        }
+        tracing::debug!(
+            connection_id = %connection_id,
+            tab_id = %tab_id,
+            path = %spill_path.display(),
+            "cache attempting spill restore"
+        );
+        match fs::read(&spill_path) {
+            Ok(bytes) => match rmp_serde::from_slice::<V>(&bytes) {
+                Ok(value) => {
+                    let spill_bytes = bytes.len();
+                    let _ = fs::remove_file(&spill_path);
+
+                    let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
+                    let entry = Arc::new(CachedEntry { value, generation });
+                    self.cache.insert(key.clone(), Arc::clone(&entry));
+                    self.touch_lru(&key);
+                    {
+                        let mut gens = self.generations.write().expect("generations lock poisoned");
+                        gens.insert(key, generation);
+                    }
+                    tracing::debug!(
+                        connection_id = %connection_id,
+                        tab_id = %tab_id,
+                        generation,
+                        path = %spill_path.display(),
+                        spill_bytes,
+                        "cache spill restored from disk"
+                    );
+                    return CacheGet::ReWarmed(entry);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        path = %spill_path.display(),
+                        "failed to deserialize spill file"
+                    );
+                }
+            },
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    path = %spill_path.display(),
+                    "failed to read spill file"
+                );
+            }
         }
 
         CacheGet::Expired

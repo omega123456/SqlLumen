@@ -36,6 +36,39 @@ import styles from './WorkspaceArea.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
 
+function reconcilePanelOrder(panelOrder: string[], tabs: WorkspaceTab[]): string[] {
+  const nextPanelOrder = panelOrder.filter((tabId) => tabs.some((tab) => tab.id === tabId))
+  const seenIds = new Set(nextPanelOrder)
+  for (const tab of tabs) {
+    if (seenIds.has(tab.id)) continue
+    nextPanelOrder.push(tab.id)
+    seenIds.add(tab.id)
+  }
+  return nextPanelOrder
+}
+
+function isBottomPanelTableTab(tab: WorkspaceTab, bottomTableTabsEnabled: boolean): boolean {
+  if (!bottomTableTabsEnabled) return false
+  return tab.type === 'table-data' && tab.parentQueryTabId !== undefined
+}
+
+function workspaceVisibilityProps(isActive: boolean) {
+  if (isActive) {
+    return {
+      className: `${styles.connectionWorkspace} ${styles.connectionWorkspaceActive}`,
+      'data-testid': 'active-connection-workspace',
+      'aria-hidden': undefined,
+      inert: undefined,
+    }
+  }
+  return {
+    className: `${styles.connectionWorkspace} ${styles.connectionWorkspaceInactive}`,
+    'data-testid': 'inactive-connection-workspace',
+    'aria-hidden': true,
+    inert: true,
+  }
+}
+
 export interface ConnectionWorkspaceProps {
   sessionId: string
   isActive: boolean
@@ -70,14 +103,7 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
 
   let nextPanelOrder = panelOrder
   if (previousTabs !== tabs) {
-    nextPanelOrder = panelOrder.filter((tabId) => tabs.some((tab) => tab.id === tabId))
-    const seenIds = new Set(nextPanelOrder)
-    for (const tab of tabs) {
-      if (!seenIds.has(tab.id)) {
-        nextPanelOrder = [...nextPanelOrder, tab.id]
-        seenIds.add(tab.id)
-      }
-    }
+    nextPanelOrder = reconcilePanelOrder(panelOrder, tabs)
     setPanelOrder(nextPanelOrder)
     setPreviousTabs(tabs)
   }
@@ -85,29 +111,14 @@ export function ConnectionWorkspace({ sessionId, isActive }: ConnectionWorkspace
   const panelTabs = nextPanelOrder
     .map((tabId) => tabs.find((tab) => tab.id === tabId) ?? null)
     .filter((tab): tab is WorkspaceTab => tab != null)
-    .filter(
-      (tab) =>
-        !(bottomTableTabsEnabled && tab.type === 'table-data' && tab.parentQueryTabId !== undefined)
-    )
+    .filter((tab) => !isBottomPanelTableTab(tab, bottomTableTabsEnabled))
 
   if (!activeConnection) {
     return null
   }
 
-  const modifierClass = isActive
-    ? styles.connectionWorkspaceActive
-    : styles.connectionWorkspaceInactive
-  const rootClassName = [styles.connectionWorkspace, modifierClass].join(' ')
-
   return (
-    <div
-      className={rootClassName}
-      data-testid={isActive ? 'active-connection-workspace' : 'inactive-connection-workspace'}
-      data-session-id={sessionId}
-      data-active={isActive}
-      aria-hidden={isActive ? undefined : true}
-      inert={isActive ? undefined : true}
-    >
+    <div {...workspaceVisibilityProps(isActive)} data-session-id={sessionId} data-active={isActive}>
       <WorkspaceTabs
         connectionId={sessionId}
         hideTableDataTabs={bottomTableTabsEnabled}

@@ -13,6 +13,16 @@ import { dropObject, getRoutineParameters } from '../lib/object-editor-commands'
 import { invalidateSchemaIndex, buildSchemaIndex } from '../lib/schema-index-commands'
 import { buildExecuteTemplate } from '../lib/execute-template-builder'
 import { ConfirmDialog } from '../components/dialogs/ConfirmDialog'
+import {
+  DropDatabaseMessage,
+  DropObjectConfirmDialog,
+  DropTableMessage,
+  TruncateTableMessage,
+  type DatabaseTarget,
+  type DropObjectTarget,
+  type TableTarget,
+} from '../components/object-browser/ObjectBrowserActionDialogs'
+import { EDITABLE_OBJECT_TYPE_LABELS } from '../lib/editable-object-type-labels'
 import { CreateDatabaseDialog } from '../components/dialogs/CreateDatabaseDialog'
 import { AlterDatabaseDialog } from '../components/dialogs/AlterDatabaseDialog'
 import { RenameDialog } from '../components/dialogs/RenameDialog'
@@ -26,14 +36,6 @@ import { logFrontend } from '../lib/app-log-commands'
 import { toErrorMessage } from '../lib/error-message'
 const RENAME_DB_WARNING =
   'This operation will create a new database, move all tables, and drop the original. Only works for databases containing tables only (no views, procedures, functions, triggers, or events).'
-
-const OBJECT_TYPE_LABELS: Record<EditableObjectType, string> = {
-  view: 'View',
-  procedure: 'Procedure',
-  function: 'Function',
-  trigger: 'Trigger',
-  event: 'Event',
-}
 
 const PLACEHOLDER_NAMES: Record<EditableObjectType, string> = {
   procedure: 'new_procedure',
@@ -98,24 +100,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   const [alterDbTarget, setAlterDbTarget] = useState<string | null>(null)
   const [renameDbOpen, setRenameDbOpen] = useState(false)
   const [renameDbTarget, setRenameDbTarget] = useState<string | null>(null)
-  const [dropDbConfirm, setDropDbConfirm] = useState<{ name: string } | null>(null)
-  const [dropTableConfirm, setDropTableConfirm] = useState<{
-    db: string
-    table: string
-  } | null>(null)
-  const [truncateTableConfirm, setTruncateTableConfirm] = useState<{
-    db: string
-    table: string
-  } | null>(null)
-  const [renameTableOpen, setRenameTableOpen] = useState<{
-    db: string
-    table: string
-  } | null>(null)
-  const [dropObjectConfirm, setDropObjectConfirm] = useState<{
-    databaseName: string
-    objectName: string
-    objectType: EditableObjectType
-  } | null>(null)
+  const [dropDbConfirm, setDropDbConfirm] = useState<DatabaseTarget | null>(null)
+  const [dropTableConfirm, setDropTableConfirm] = useState<TableTarget | null>(null)
+  const [truncateTableConfirm, setTruncateTableConfirm] = useState<TableTarget | null>(null)
+  const [renameTableOpen, setRenameTableOpen] = useState<TableTarget | null>(null)
+  const [dropObjectConfirm, setDropObjectConfirm] = useState<DropObjectTarget | null>(null)
 
   // Shared loading/error state for confirm dialogs
   const [confirmLoading, setConfirmLoading] = useState(false)
@@ -183,7 +172,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     (databaseName: string, objectName: string, objectType: EditableObjectType) => {
       openTab({
         type: 'object-editor',
-        label: `${OBJECT_TYPE_LABELS[objectType]}: ${objectName}`,
+        label: `${EDITABLE_OBJECT_TYPE_LABELS[objectType]}: ${objectName}`,
         connectionId: connectionId,
         databaseName: databaseName,
         objectName: objectName,
@@ -457,7 +446,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
           `[object-browser-actions] Refreshing the database after drop failed: ${String(error)}`
         )
       }
-      const typeLabel = OBJECT_TYPE_LABELS[objectType]
+      const typeLabel = EDITABLE_OBJECT_TYPE_LABELS[objectType]
       showSuccessToast(`${typeLabel} dropped`, `${databaseName}.${objectName}`)
     } catch (error) {
       const message = toErrorMessage(error)
@@ -511,11 +500,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       <ConfirmDialog
         isOpen={isDropDbOpen}
         title="Drop database"
-        message={
-          <>
-            Are you sure you want to drop database <strong>{dropDbConfirm?.name ?? ''}</strong>?
-          </>
-        }
+        message={<DropDatabaseMessage target={dropDbConfirm} />}
         confirmLabel="Drop database"
         isDestructive
         isLoading={confirmLoading}
@@ -528,15 +513,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       <ConfirmDialog
         isOpen={isDropTableOpen}
         title="Drop table"
-        message={
-          <>
-            Are you sure you want to drop table{' '}
-            <strong>
-              {dropTableConfirm?.db ?? ''}.{dropTableConfirm?.table ?? ''}
-            </strong>
-            ?
-          </>
-        }
+        message={<DropTableMessage target={dropTableConfirm} />}
         confirmLabel="Drop table"
         isDestructive
         isLoading={confirmLoading}
@@ -548,15 +525,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       <ConfirmDialog
         isOpen={isTruncateTableOpen}
         title="Truncate table"
-        message={
-          <>
-            Are you sure you want to truncate table{' '}
-            <strong>
-              {truncateTableConfirm?.db ?? ''}.{truncateTableConfirm?.table ?? ''}
-            </strong>
-            ? All data will be deleted.
-          </>
-        }
+        message={<TruncateTableMessage target={truncateTableConfirm} />}
         confirmLabel="Truncate table"
         isDestructive
         isLoading={confirmLoading}
@@ -576,27 +545,13 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       />
 
       {/* Object drop confirmation dialog */}
-      {dropObjectConfirm && (
-        <ConfirmDialog
-          isOpen
-          title={`Drop ${OBJECT_TYPE_LABELS[dropObjectConfirm.objectType]}`}
-          message={
-            <>
-              Are you sure you want to drop{' '}
-              {OBJECT_TYPE_LABELS[dropObjectConfirm.objectType].toLowerCase()}{' '}
-              <strong>&apos;{dropObjectConfirm.objectName}&apos;</strong> from database{' '}
-              <strong>&apos;{dropObjectConfirm.databaseName}&apos;</strong>? This action cannot be
-              undone.
-            </>
-          }
-          confirmLabel={`Drop ${OBJECT_TYPE_LABELS[dropObjectConfirm.objectType]}`}
-          isDestructive
-          isLoading={confirmLoading}
-          error={confirmError}
-          onConfirm={handleDropObjectConfirm}
-          onCancel={() => setDropObjectConfirm(null)}
-        />
-      )}
+      <DropObjectConfirmDialog
+        target={dropObjectConfirm}
+        isLoading={confirmLoading}
+        error={confirmError}
+        onConfirm={handleDropObjectConfirm}
+        onCancel={() => setDropObjectConfirm(null)}
+      />
     </>
   )
 

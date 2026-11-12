@@ -55,6 +55,87 @@ function isWhitespaceOrControl(character: string): boolean {
   return /\s/.test(character) || character.charCodeAt(0) <= LAST_ASCII_CONTROL_CODE
 }
 
+const IDENTIFIER_CHARACTER = /[a-zA-Z0-9_$]/
+const PAREN_DEPTH_CHANGE_FORWARD: Record<string, number> = { '(': 1, ')': -1 }
+const PAREN_DEPTH_CHANGE_BACKWARD: Record<string, number> = { ')': 1, '(': -1 }
+const NOT_FOUND = -1
+
+function isQuoteCharacter(character: string): boolean {
+  return character === "'" || character === '"'
+}
+
+function isLineCommentDashesAt(text: string, index: number): boolean {
+  if (text[index] !== '-' || text[index + 1] !== '-') return false
+  const characterAfterDashes = index + LINE_COMMENT_DASHES_LENGTH
+  return characterAfterDashes < text.length && isWhitespaceOrControl(text[characterAfterDashes])
+}
+
+function isLineCommentMarkerAt(text: string, index: number): boolean {
+  return text[index] === '#' || isLineCommentDashesAt(text, index)
+}
+
+function isBlockCommentOpenAt(text: string, index: number): boolean {
+  return text[index] === '/' && text[index + 1] === '*'
+}
+
+function isBlockCommentCloseAt(text: string, index: number): boolean {
+  return index >= 1 && text[index] === '/' && text[index - 1] === '*'
+}
+
+function isDoubledQuoteAt(text: string, index: number, limit: number): boolean {
+  return index + 1 < limit && text[index + 1] === text[index]
+}
+
+function findLineStart(text: string, position: number): number {
+  let lineStart = position
+  while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--
+  return lineStart
+}
+
+function skipQuotedForward(text: string, quoteIndex: number, limit: number): number {
+  const quote = text[quoteIndex]
+  let scanIndex = quoteIndex + 1
+  while (scanIndex < limit) {
+    if (text[scanIndex] !== quote || isEscapedChar(text, scanIndex)) {
+      scanIndex++
+      continue
+    }
+    if (isDoubledQuoteAt(text, scanIndex, limit)) {
+      scanIndex += DOUBLED_QUOTE_LENGTH
+      continue
+    }
+    return scanIndex
+  }
+  return scanIndex
+}
+
+function skipBacktickForward(text: string, backtickIndex: number, limit: number): number {
+  let scanIndex = backtickIndex + 1
+  while (scanIndex < limit && text[scanIndex] !== '`') scanIndex++
+  return scanIndex
+}
+
+function findBlockCommentCloseForward(text: string, from: number, limit: number): number {
+  let scanIndex = from
+  while (scanIndex + 1 < limit && !(text[scanIndex] === '*' && text[scanIndex + 1] === '/')) {
+    scanIndex++
+  }
+  return scanIndex
+}
+
+function skipToLineEnd(text: string, from: number, limit: number): number {
+  let scanIndex = from
+  while (scanIndex < limit && text[scanIndex] !== '\n') scanIndex++
+  return scanIndex
+}
+
+function skipLiteralForward(text: string, index: number): number | null {
+  const character = text[index]
+  if (isQuoteCharacter(character)) return skipQuotedForward(text, index, text.length)
+  if (character === '`') return skipBacktickForward(text, index, text.length)
+  return null
+}
+
 /**
  * Scan the line containing `pos` forward from its start to determine whether
  * `pos` falls inside a `-- ` or `#` line comment.  Returns the index of the
@@ -65,52 +146,37 @@ function isWhitespaceOrControl(character: string): boolean {
  * `'-- '` inside a string is never mis-detected as a comment marker.
  */
 function findLineCommentStart(text: string, position: number): number {
-  let lineStart = position
-  while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--
-
-  for (let scanIndex = lineStart; scanIndex <= position; scanIndex++) {
-    const character = text[scanIndex]
-    // Skip string literals that may contain -- or #
-    // Handles both backslash escapes (\') and doubled-quote escapes ('')
-    if (character === "'" || character === '"') {
-      const quote = character
-      scanIndex++
-      while (scanIndex < text.length) {
-        if (text[scanIndex] === quote) {
-          if (isEscapedChar(text, scanIndex)) {
-            scanIndex++ // skip backslash-escaped quote
-            continue
-          }
-          if (scanIndex + 1 < text.length && text[scanIndex + 1] === quote) {
-            scanIndex += DOUBLED_QUOTE_LENGTH
-            continue
-          }
-          break // unescaped closing quote — end of string
-        }
-        scanIndex++
-      }
-      if (scanIndex > position) return -1 // pos is inside a literal, not a comment
+  for (let scanIndex = findLineStart(text, position); scanIndex <= position; scanIndex++) {
+    const literalEnd = skipLiteralForward(text, scanIndex)
+    if (literalEnd !== null) {
+      if (literalEnd > position) return NOT_FOUND
+      scanIndex = literalEnd
       continue
     }
-    // Skip backtick-quoted identifiers (no backslash escaping in MySQL)
-    if (character === '`') {
-      scanIndex++
-      while (scanIndex < text.length && text[scanIndex] !== '`') scanIndex++
-      if (scanIndex > position) return -1 // pos is inside an identifier, not a comment
-      continue
-    }
-    if (character === '#') return scanIndex
-    if (
-      character === '-' &&
-      scanIndex + 1 < text.length &&
-      text[scanIndex + 1] === '-' &&
-      scanIndex + LINE_COMMENT_DASHES_LENGTH < text.length &&
-      isWhitespaceOrControl(text[scanIndex + LINE_COMMENT_DASHES_LENGTH])
-    ) {
-      return scanIndex
-    }
+    if (isLineCommentMarkerAt(text, scanIndex)) return scanIndex
   }
-  return -1
+  return NOT_FOUND
+}
+
+function lineCommentJumpTarget(text: string, position: number): number | null {
+  const lineCommentStart = findLineCommentStart(text, position)
+  const isInsideLineComment = lineCommentStart >= 0 && lineCommentStart <= position
+  return isInsideLineComment ? lineCommentStart - 1 : null
+}
+
+function findBlockCommentOpenBackward(text: string, closeIndex: number): number {
+  let scanIndex = closeIndex - BLOCK_COMMENT_DELIMITER_LENGTH
+  while (scanIndex >= 0 && !isBlockCommentOpenAt(text, scanIndex)) scanIndex--
+  return scanIndex
+}
+
+function stepBackOverTrivia(text: string, position: number): number | null {
+  if (/\s/.test(text[position])) return position - 1
+  if (isBlockCommentCloseAt(text, position)) {
+    const openIndex = findBlockCommentOpenBackward(text, position)
+    return Math.max(openIndex - 1, NOT_FOUND)
+  }
+  return lineCommentJumpTarget(text, position)
 }
 
 /**
@@ -119,27 +185,24 @@ function findLineCommentStart(text: string, position: number): number {
  * Returns the new position (may be < 0 if we reached the start).
  */
 function skipBackwardWhitespaceAndComments(text: string, position: number): number {
-  while (position >= 0) {
-    if (/\s/.test(text[position])) {
-      position--
-      continue
-    }
-    // Check for end of block comment: */ (scanned backward = we see '/' then '*')
-    if (position >= 1 && text[position] === '/' && text[position - 1] === '*') {
-      position -= BLOCK_COMMENT_DELIMITER_LENGTH
-      while (position >= 0 && !(text[position] === '/' && text[position + 1] === '*')) position--
-      if (position >= 0) position-- // skip past '/'
-      continue
-    }
-    // Check if pos is inside a line comment (-- or #)
-    const lineCommentStart = findLineCommentStart(text, position)
-    if (lineCommentStart >= 0 && lineCommentStart <= position) {
-      position = lineCommentStart - 1
-      continue
-    }
-    break
+  let scanPosition = position
+  while (scanPosition >= 0) {
+    const nextPosition = stepBackOverTrivia(text, scanPosition)
+    if (nextPosition === null) return scanPosition
+    scanPosition = nextPosition
   }
-  return position
+  return scanPosition
+}
+
+function stepForwardOverTrivia(text: string, position: number): number | null {
+  if (/\s/.test(text[position])) return position + 1
+  if (isBlockCommentOpenAt(text, position)) {
+    const contentStart = position + BLOCK_COMMENT_DELIMITER_LENGTH
+    const closeIndex = findBlockCommentCloseForward(text, contentStart, text.length)
+    return closeIndex + BLOCK_COMMENT_DELIMITER_LENGTH
+  }
+  if (isLineCommentMarkerAt(text, position)) return skipToLineEnd(text, position, text.length)
+  return null
 }
 
 /**
@@ -149,35 +212,13 @@ function skipBackwardWhitespaceAndComments(text: string, position: number): numb
  * Exported with `_` prefix for potential future use and test access.
  */
 export function _skipForwardWhitespaceAndComments(text: string, position: number): number {
-  while (position < text.length) {
-    if (/\s/.test(text[position])) {
-      position++
-      continue
-    }
-    if (text[position] === '/' && position + 1 < text.length && text[position + 1] === '*') {
-      position += BLOCK_COMMENT_DELIMITER_LENGTH
-      while (position + 1 < text.length && !(text[position] === '*' && text[position + 1] === '/'))
-        position++
-      position += BLOCK_COMMENT_DELIMITER_LENGTH
-      continue
-    }
-    if (
-      text[position] === '-' &&
-      position + 1 < text.length &&
-      text[position + 1] === '-' &&
-      position + LINE_COMMENT_DASHES_LENGTH < text.length &&
-      isWhitespaceOrControl(text[position + LINE_COMMENT_DASHES_LENGTH])
-    ) {
-      while (position < text.length && text[position] !== '\n') position++
-      continue
-    }
-    if (text[position] === '#') {
-      while (position < text.length && text[position] !== '\n') position++
-      continue
-    }
-    break
+  let scanPosition = position
+  while (scanPosition < text.length) {
+    const nextPosition = stepForwardOverTrivia(text, scanPosition)
+    if (nextPosition === null) return scanPosition
+    scanPosition = nextPosition
   }
-  return position
+  return scanPosition
 }
 
 /**
@@ -200,12 +241,24 @@ function readIdentifierBackward(
     return { name: text.slice(start + 1, position), end: start - 1 }
   }
 
-  if (/[a-zA-Z0-9_$]/.test(character)) {
+  if (IDENTIFIER_CHARACTER.test(character)) {
     let start = position
-    while (start > 0 && /[a-zA-Z0-9_$]/.test(text[start - 1])) start--
+    while (start > 0 && IDENTIFIER_CHARACTER.test(text[start - 1])) start--
     return { name: text.slice(start, position + 1), end: start - 1 }
   }
 
+  return null
+}
+
+function skipNonCodeForward(text: string, index: number, cursorPosition: number): number | null {
+  const character = text[index]
+  if (isQuoteCharacter(character)) return skipQuotedForward(text, index, cursorPosition)
+  if (character === '`') return skipBacktickForward(text, index, cursorPosition)
+  if (isBlockCommentOpenAt(text, index)) {
+    const contentStart = index + BLOCK_COMMENT_DELIMITER_LENGTH
+    return findBlockCommentCloseForward(text, contentStart, cursorPosition) + 1
+  }
+  if (isLineCommentMarkerAt(text, index)) return skipToLineEnd(text, index, cursorPosition)
   return null
 }
 
@@ -221,68 +274,124 @@ function countActiveParameter(
   let activeParameter = 0
   let depth = 0
   for (let scanIndex = openParenPosition + 1; scanIndex < cursorPosition; scanIndex++) {
-    const character = text[scanIndex]
-    if (character === "'") {
-      scanIndex++
-      while (scanIndex < cursorPosition) {
-        if (text[scanIndex] === "'" && !isEscapedChar(text, scanIndex)) {
-          // Check for doubled-quote escape ''
-          if (scanIndex + 1 < cursorPosition && text[scanIndex + 1] === "'") {
-            scanIndex += DOUBLED_QUOTE_LENGTH
-            continue
-          }
-          break // end of string
-        }
-        scanIndex++
-      }
-    } else if (character === '"') {
-      scanIndex++
-      while (scanIndex < cursorPosition) {
-        if (text[scanIndex] === '"' && !isEscapedChar(text, scanIndex)) {
-          // Check for doubled-quote escape ""
-          if (scanIndex + 1 < cursorPosition && text[scanIndex + 1] === '"') {
-            scanIndex += DOUBLED_QUOTE_LENGTH
-            continue
-          }
-          break // end of string
-        }
-        scanIndex++
-      }
-    } else if (character === '`') {
-      scanIndex++
-      while (scanIndex < cursorPosition && text[scanIndex] !== '`') scanIndex++
-    } else if (character === '/' && scanIndex + 1 < text.length && text[scanIndex + 1] === '*') {
-      scanIndex += BLOCK_COMMENT_DELIMITER_LENGTH
-      while (
-        scanIndex + 1 < cursorPosition &&
-        !(text[scanIndex] === '*' && text[scanIndex + 1] === '/')
-      )
-        scanIndex++
-      scanIndex++ // skip the /
-    } else if (
-      character === '-' &&
-      scanIndex + 1 < text.length &&
-      text[scanIndex + 1] === '-' &&
-      scanIndex + LINE_COMMENT_DASHES_LENGTH < text.length &&
-      isWhitespaceOrControl(text[scanIndex + LINE_COMMENT_DASHES_LENGTH])
-    ) {
-      while (scanIndex < cursorPosition && text[scanIndex] !== '\n') scanIndex++
-    } else if (character === '#') {
-      while (scanIndex < cursorPosition && text[scanIndex] !== '\n') scanIndex++
-    } else if (character === '(') {
-      depth++
-    } else if (character === ')') {
-      depth--
-    } else if (character === ',' && depth === 0) {
-      activeParameter++
+    const skippedTo = skipNonCodeForward(text, scanIndex, cursorPosition)
+    if (skippedTo !== null) {
+      scanIndex = skippedTo
+      continue
     }
+    const character = text[scanIndex]
+    depth += PAREN_DEPTH_CHANGE_FORWARD[character] ?? 0
+    if (character === ',' && depth === 0) activeParameter++
   }
   return activeParameter
 }
 
-// ---------------------------------------------------------------------------
-// Text parsing — find function context at cursor
-// ---------------------------------------------------------------------------
+function skipQuotedBackward(text: string, closingIndex: number): number {
+  const quote = text[closingIndex]
+  let scanIndex = closingIndex - 1
+  while (scanIndex >= 0) {
+    if (text[scanIndex] !== quote || isEscapedChar(text, scanIndex)) {
+      scanIndex--
+      continue
+    }
+    if (scanIndex >= 1 && text[scanIndex - 1] === quote) {
+      scanIndex -= DOUBLED_QUOTE_LENGTH
+      continue
+    }
+    return scanIndex
+  }
+  return scanIndex
+}
+
+function skipBacktickBackward(text: string, closingIndex: number): number {
+  let scanIndex = closingIndex - 1
+  while (scanIndex >= 0 && text[scanIndex] !== '`') scanIndex--
+  return scanIndex
+}
+
+function skipNonCodeBackward(text: string, index: number): number | null {
+  const character = text[index]
+  if (isQuoteCharacter(character)) return skipQuotedBackward(text, index)
+  if (character === '`') return skipBacktickBackward(text, index)
+  if (isBlockCommentCloseAt(text, index)) return findBlockCommentOpenBackward(text, index)
+  return null
+}
+
+function findEnclosingOpenParen(text: string, cursorOffset: number): number {
+  let depth = 0
+  let scanIndex = cursorOffset - 1
+  // Line comments end at \n, so the costly line-comment scan only reruns after crossing a line.
+  let needLineCommentCheck = true
+
+  while (scanIndex >= 0) {
+    if (needLineCommentCheck) {
+      const commentJump = lineCommentJumpTarget(text, scanIndex)
+      if (commentJump !== null) {
+        scanIndex = commentJump
+        continue
+      }
+      needLineCommentCheck = false
+    }
+
+    const literalStart = skipNonCodeBackward(text, scanIndex)
+    if (literalStart !== null) {
+      scanIndex = literalStart - 1
+      needLineCommentCheck = true
+      continue
+    }
+
+    const character = text[scanIndex]
+    if (character === '(' && depth === 0) return scanIndex
+    depth += PAREN_DEPTH_CHANGE_BACKWARD[character] ?? 0
+    if (character === '\n') needLineCommentCheck = true
+    scanIndex--
+  }
+  return NOT_FOUND
+}
+
+interface QualifiedFunctionName {
+  functionName: string
+  database: string | null
+  positionBeforeName: number
+}
+
+function readDatabaseQualifier(
+  text: string,
+  nameEnd: number
+): { database: string | null; positionBeforeName: number } {
+  const positionBeforeName = skipBackwardWhitespaceAndComments(text, nameEnd)
+  if (positionBeforeName < 0 || text[positionBeforeName] !== '.') {
+    return { database: null, positionBeforeName: nameEnd }
+  }
+  const qualifierEnd = skipBackwardWhitespaceAndComments(text, positionBeforeName - 1)
+  const qualifier = readIdentifierBackward(text, qualifierEnd)
+  if (!qualifier) return { database: null, positionBeforeName: qualifierEnd }
+  return { database: qualifier.name, positionBeforeName: qualifier.end }
+}
+
+function readQualifiedFunctionName(
+  text: string,
+  openParenPosition: number
+): QualifiedFunctionName | null {
+  const nameEnd = skipBackwardWhitespaceAndComments(text, openParenPosition - 1)
+  if (nameEnd < 0) return null
+  const identifier = readIdentifierBackward(text, nameEnd)
+  if (!identifier?.name) return null
+  const qualifier = readDatabaseQualifier(text, identifier.end)
+  return {
+    functionName: identifier.name,
+    database: qualifier.database,
+    positionBeforeName: qualifier.positionBeforeName,
+  }
+}
+
+function isPrecededByCallKeyword(text: string, position: number): boolean {
+  const checkPosition = skipBackwardWhitespaceAndComments(text, position)
+  const keywordStart = checkPosition - CALL_KEYWORD.length + 1
+  if (keywordStart < 0) return false
+  if (text.slice(keywordStart, checkPosition + 1).toUpperCase() !== CALL_KEYWORD) return false
+  return keywordStart === 0 || !IDENTIFIER_CHARACTER.test(text[keywordStart - 1])
+}
 
 /**
  * Parse backward from `cursorOffset` in `statementText` to find the function
@@ -300,131 +409,15 @@ export function _parseFunctionContext(
   activeParameter: number
   isCall: boolean
 } | null {
-  // Step 1: scan backward from cursorOffset-1 to find the opening (
-  let depth = 0
-  let scanIndex = cursorOffset - 1
-  let openParenPosition = -1
-
-  // Performance optimisation: only call findLineCommentStart() when we might
-  // be on a new line.  Line comments end at \n, so if position i+1 was NOT in
-  // a comment and we haven't crossed a \n boundary, position i on the same
-  // line cannot be inside a comment either.
-  let needLineCommentCheck = true
-
-  while (scanIndex >= 0) {
-    const character = statementText[scanIndex]
-
-    // Check if inside a line comment (-- or #) — only when needed
-    if (needLineCommentCheck) {
-      const lineCommentStart = findLineCommentStart(statementText, scanIndex)
-      if (lineCommentStart >= 0 && lineCommentStart <= scanIndex) {
-        scanIndex = lineCommentStart - 1
-        needLineCommentCheck = true // jumped to a new position
-        continue
-      }
-      needLineCommentCheck = false
-    }
-
-    if (character === "'") {
-      // skip string literal backward
-      scanIndex--
-      while (scanIndex >= 0) {
-        if (statementText[scanIndex] === "'" && !isEscapedChar(statementText, scanIndex)) {
-          // check for '' escape
-          if (scanIndex >= 1 && statementText[scanIndex - 1] === "'") {
-            scanIndex -= DOUBLED_QUOTE_LENGTH
-            continue
-          }
-          break
-        }
-        scanIndex--
-      }
-      needLineCommentCheck = true // may have crossed line boundaries
-    } else if (character === '"') {
-      // skip double-quoted string/identifier backward (handles \" and "" escapes)
-      scanIndex--
-      while (scanIndex >= 0) {
-        if (statementText[scanIndex] === '"' && !isEscapedChar(statementText, scanIndex)) {
-          // check for "" escape
-          if (scanIndex >= 1 && statementText[scanIndex - 1] === '"') {
-            scanIndex -= DOUBLED_QUOTE_LENGTH
-            continue
-          }
-          break
-        }
-        scanIndex--
-      }
-      needLineCommentCheck = true
-    } else if (character === '`') {
-      scanIndex--
-      while (scanIndex >= 0 && statementText[scanIndex] !== '`') scanIndex--
-      needLineCommentCheck = true
-    } else if (character === '/' && scanIndex > 0 && statementText[scanIndex - 1] === '*') {
-      // end of block comment — scan backward to /*
-      scanIndex -= BLOCK_COMMENT_DELIMITER_LENGTH
-      while (
-        scanIndex >= 0 &&
-        !(statementText[scanIndex] === '/' && statementText[scanIndex + 1] === '*')
-      )
-        scanIndex--
-      needLineCommentCheck = true
-    } else if (character === ')') {
-      depth++
-    } else if (character === '(') {
-      if (depth === 0) {
-        openParenPosition = scanIndex
-        break
-      }
-      depth--
-    } else if (character === '\n') {
-      // Crossing a line boundary — need to re-check for line comments
-      needLineCommentCheck = true
-    }
-    scanIndex--
-  }
-
+  const openParenPosition = findEnclosingOpenParen(statementText, cursorOffset)
   if (openParenPosition < 0) return null
-
-  // Step 2: scan backward from openParenPos-1 to extract function name
-  const nameEnd = skipBackwardWhitespaceAndComments(statementText, openParenPosition - 1)
-  if (nameEnd < 0) return null
-
-  const ident = readIdentifierBackward(statementText, nameEnd)
-  if (!ident || !ident.name) return null
-  const rawName = ident.name
-  const nameStart = ident.end + 1
-
-  // Check for database qualifier: `db`.`func` or db.func
-  let database: string | null = null
-  let position = skipBackwardWhitespaceAndComments(statementText, ident.end)
-  if (position >= 0 && statementText[position] === '.') {
-    position = skipBackwardWhitespaceAndComments(statementText, position - 1)
-    const dbIdent = readIdentifierBackward(statementText, position)
-    if (dbIdent) {
-      database = dbIdent.name
-      position = dbIdent.end
-    }
-  } else {
-    position = nameStart - 1 // reset for CALL check
-  }
-
-  // Step 3: check for CALL keyword (skip whitespace + comments before the name)
-  const checkPosition = skipBackwardWhitespaceAndComments(statementText, position)
-  const keywordStart = checkPosition - CALL_KEYWORD.length + 1
-  const characterBeforeKeyword = statementText[keywordStart - 1]
-  const isCall =
-    keywordStart >= 0 &&
-    statementText.slice(keywordStart, checkPosition + 1).toUpperCase() === CALL_KEYWORD &&
-    (keywordStart === 0 || !/[a-zA-Z0-9_$]/.test(characterBeforeKeyword))
-
-  // Step 4: count active parameter
-  const activeParameter = countActiveParameter(statementText, openParenPosition, cursorOffset)
-
+  const name = readQualifiedFunctionName(statementText, openParenPosition)
+  if (!name) return null
   return {
-    functionName: rawName,
-    database: database,
-    activeParameter: activeParameter,
-    isCall: isCall,
+    functionName: name.functionName,
+    database: name.database,
+    activeParameter: countActiveParameter(statementText, openParenPosition, cursorOffset),
+    isCall: isPrecededByCallKeyword(statementText, name.positionBeforeName),
   }
 }
 
@@ -467,121 +460,158 @@ function buildRoutineSignatureResult(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Signature help provider
-// ---------------------------------------------------------------------------
+type FunctionContext = NonNullable<ReturnType<typeof _parseFunctionContext>>
+
+interface RoutineLookup {
+  connectionId: string
+  functionName: string
+  routineType: 'FUNCTION' | 'PROCEDURE'
+  activeParameter: number
+}
+
+function parseFunctionContextAtCursor(
+  model: editor.ITextModel,
+  position: Position
+): FunctionContext | null {
+  const fullSql = model.getValue()
+  const cursorOffset = model.getOffsetAt(position)
+  const statement = findStatementAtCursor(splitStatements(fullSql), cursorOffset)
+  if (!statement) return null
+  // Parse the raw slice: statement.sql is trimmed and would shift the cursor offset.
+  const statementSlice = fullSql.slice(statement.start, statement.end)
+  return _parseFunctionContext(statementSlice, cursorOffset - statement.start)
+}
+
+function isBuiltinCandidate(context: FunctionContext): boolean {
+  return !context.isCall && context.database === null
+}
+
+function buildBuiltinSignatureResult(
+  functionName: string,
+  activeParameter: number
+): monaco.languages.SignatureHelpResult | null {
+  const builtinSignature = getBuiltinSignature(functionName)
+  if (!builtinSignature) return null
+  return {
+    value: {
+      signatures: [
+        {
+          label: builtinSignature.label,
+          documentation: {
+            value: `→ ${builtinSignature.returnType}\n\n${builtinSignature.documentation}`,
+          },
+          parameters: builtinSignature.parameters.map((parameter) => ({
+            label: parameter.label,
+            documentation: parameter.documentation ? { value: parameter.documentation } : undefined,
+          })),
+        },
+      ],
+      activeSignature: 0,
+      activeParameter: activeParameter,
+    },
+    dispose: () => {},
+  }
+}
+
+function isPresentDatabase(database: string | null | undefined): database is string {
+  return Boolean(database)
+}
+
+function routineSearchDatabases(connectionId: string): string[] {
+  const connection = useConnectionStore.getState().activeConnections[connectionId]
+  const candidates = [
+    connection?.sessionDatabase,
+    connection?.profile?.defaultDatabase,
+    getSelectedDatabase(connectionId),
+  ]
+  return [...new Set(candidates.filter(isPresentDatabase))]
+}
+
+async function awaitSchemaCache(connectionId: string, token: CancellationToken): Promise<boolean> {
+  const pending = getPendingLoad(connectionId)
+  if (pending) await pending
+  if (token.isCancellationRequested) return false
+  if (getCache(connectionId).status !== 'empty') return true
+  const pendingBootstrap = getPendingBootstrap(connectionId)
+  if (pendingBootstrap) await pendingBootstrap
+  return !token.isCancellationRequested
+}
+
+function hasCachedRoutine(
+  cache: ReturnType<typeof getCache>,
+  database: string,
+  lookup: RoutineLookup
+): boolean {
+  const routines = cache.routines[database] ?? []
+  const functionNameLower = lookup.functionName.toLowerCase()
+  return routines.some(
+    (routine) =>
+      routine.name.toLowerCase() === functionNameLower &&
+      routine.routineType.toUpperCase() === lookup.routineType.toUpperCase()
+  )
+}
+
+async function findCachedRoutineDatabase(
+  lookup: RoutineLookup,
+  searchDatabases: string[],
+  token: CancellationToken
+): Promise<string | null> {
+  const isCacheReady = await awaitSchemaCache(lookup.connectionId, token)
+  if (!isCacheReady) return null
+  const cache = getCache(lookup.connectionId)
+  const database = searchDatabases.find((candidate) => hasCachedRoutine(cache, candidate, lookup))
+  return database ?? null
+}
+
+async function fetchRoutineSignature(
+  lookup: RoutineLookup,
+  database: string,
+  token: CancellationToken
+): Promise<monaco.languages.SignatureHelpResult | undefined> {
+  const entry = await getRoutineParameters(
+    lookup.connectionId,
+    database,
+    lookup.functionName,
+    lookup.routineType
+  )
+  if (token.isCancellationRequested) return undefined
+  if (entry === null) return undefined
+  return buildRoutineSignatureResult(lookup.functionName, entry, lookup.activeParameter)
+}
 
 async function provideSignatureHelp(
   model: editor.ITextModel,
   position: Position,
   token: CancellationToken
 ): Promise<monaco.languages.SignatureHelpResult | null | undefined> {
-  const fullSql = model.getValue()
-  const cursorOffset = model.getOffsetAt(position)
-
-  // Use splitStatements + findStatementAtCursor to scope to current statement
-  const statements = splitStatements(fullSql)
-  const statement = findStatementAtCursor(statements, cursorOffset)
-  if (!statement) return undefined
-
-  // Parse on the raw slice (NOT statement.sql which is trimmed)
-  const statementSlice = fullSql.slice(statement.start, statement.end)
-  const sliceCursorOffset = cursorOffset - statement.start
-
-  const context = _parseFunctionContext(statementSlice, sliceCursorOffset)
+  const context = parseFunctionContextAtCursor(model, position)
   if (!context) return undefined
 
-  const { functionName, database, activeParameter, isCall } = context
-
-  // 1. Check built-in functions — only for unqualified, non-CALL names.
-  //    When isCall is true or the name is database-qualified, skip the built-in
-  //    map so the user's stored routine is looked up instead.
-  if (!isCall && database === null) {
-    const builtinSignature = getBuiltinSignature(functionName)
-    if (builtinSignature) {
-      return {
-        value: {
-          signatures: [
-            {
-              label: builtinSignature.label,
-              documentation: {
-                value: `→ ${builtinSignature.returnType}\n\n${builtinSignature.documentation}`,
-              },
-              parameters: builtinSignature.parameters.map((parameter) => ({
-                label: parameter.label,
-                documentation: parameter.documentation
-                  ? { value: parameter.documentation }
-                  : undefined,
-              })),
-            },
-          ],
-          activeSignature: 0,
-          activeParameter: activeParameter,
-        },
-        dispose: () => {},
-      }
-    }
+  // A CALL or database-qualified name targets a stored routine, never a built-in.
+  if (isBuiltinCandidate(context)) {
+    const builtinResult = buildBuiltinSignatureResult(context.functionName, context.activeParameter)
+    if (builtinResult) return builtinResult
   }
 
-  // 2. Stored routine lookup — need a connectionId
   const connectionId = getModelConnectionId(model.uri.toString())
   if (!connectionId) return undefined
-
   if (token.isCancellationRequested) return undefined
 
-  // Resolve database(s) to search
-  const connectionState = useConnectionStore.getState()
-  const connection = connectionState.activeConnections[connectionId]
-  const sessionDb = connection?.sessionDatabase ?? null
-  const profileDb = connection?.profile?.defaultDatabase ?? null
-  const schemaTreeDb = getSelectedDatabase(connectionId)
-
-  // Deduce routine type
-  const routineType: 'FUNCTION' | 'PROCEDURE' = isCall ? 'PROCEDURE' : 'FUNCTION'
-
-  // For database-qualified names: fetch directly without requiring schema cache
-  if (database !== null) {
-    const entry = await getRoutineParameters(connectionId, database, functionName, routineType)
-    if (token.isCancellationRequested) return undefined
-    if (entry === null) return undefined
-    return buildRoutineSignatureResult(functionName, entry, activeParameter)
+  const searchDatabases = routineSearchDatabases(connectionId)
+  const lookup: RoutineLookup = {
+    connectionId: connectionId,
+    functionName: context.functionName,
+    routineType: context.isCall ? 'PROCEDURE' : 'FUNCTION',
+    activeParameter: context.activeParameter,
   }
 
-  // For unqualified names: check schema metadata cache
-  // Await cache readiness (mirrors completion-service.ts pattern)
-  const pending = getPendingLoad(connectionId)
-  if (pending) await pending
-  if (token.isCancellationRequested) return undefined
-
-  // If cache is still empty, await the in-flight bootstrap (snapshot hydration)
-  const earlyCache = getCache(connectionId)
-  if (earlyCache.status === 'empty') {
-    const pendingBootstrap = getPendingBootstrap(connectionId)
-    if (pendingBootstrap) await pendingBootstrap
-    if (token.isCancellationRequested) return undefined
+  if (context.database !== null) {
+    return fetchRoutineSignature(lookup, context.database, token)
   }
 
-  const cache = getCache(connectionId)
-  if (token.isCancellationRequested) return undefined
-
-  // Search databases in order: sessionDb → profileDb → schemaTreeDb
-  const searchDbs = [...new Set([sessionDb, profileDb, schemaTreeDb].filter(Boolean) as string[])]
-  for (const db of searchDbs) {
-    const routines = cache.routines[db] ?? []
-    const routine = routines.find(
-      (routine) =>
-        routine.name.toLowerCase() === functionName.toLowerCase() &&
-        routine.routineType.toUpperCase() === routineType.toUpperCase()
-    )
-    if (routine) {
-      const entry = await getRoutineParameters(connectionId, db, functionName, routineType)
-      if (token.isCancellationRequested) return undefined
-      if (entry === null) return undefined
-      return buildRoutineSignatureResult(functionName, entry, activeParameter)
-    }
-  }
-
-  return undefined
+  const database = await findCachedRoutineDatabase(lookup, searchDatabases, token)
+  if (database === null) return undefined
+  return fetchRoutineSignature(lookup, database, token)
 }
 
 // ---------------------------------------------------------------------------

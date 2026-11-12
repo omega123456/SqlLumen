@@ -209,6 +209,469 @@ function SslFileField({
   )
 }
 
+type UpdateField = <K extends keyof ConnectionFormData>(
+  field: K,
+  value: ConnectionFormData[K]
+) => void
+
+type SslPathField = 'sslCaPath' | 'sslCertPath' | 'sslKeyPath'
+
+type PendingAction = 'test' | 'save' | 'connect' | 'delete'
+
+interface FormFields {
+  formData: ConnectionFormData
+  errors: FormErrors
+  updateField: UpdateField
+}
+
+interface PasswordControls {
+  showPassword: boolean
+  hasSavedPassword: boolean
+  clearSavedPassword: boolean
+  showDuplicateHint: boolean
+  onPasswordChange: (value: string) => void
+  onToggleShowPassword: () => void
+  onClearSavedPasswordChange: (checked: boolean) => void
+}
+
+const SAVED_PASSWORD_MASK = '••••••••'
+
+function formDataFromConnection(connection: SavedConnection): ConnectionFormData {
+  return {
+    name: connection.name,
+    host: connection.host,
+    port: connection.port,
+    username: connection.username,
+    password: '',
+    defaultDatabase: connection.defaultDatabase,
+    sslEnabled: connection.sslEnabled,
+    sslCaPath: connection.sslCaPath,
+    sslCertPath: connection.sslCertPath,
+    sslKeyPath: connection.sslKeyPath,
+    color: connection.color,
+    groupId: connection.groupId,
+    readOnly: connection.readOnly,
+    connectTimeoutSecs: connection.connectTimeoutSecs,
+    keepaliveIntervalSecs: connection.keepaliveIntervalSecs,
+  }
+}
+
+function seededFormData(initialData: ConnectionFormSeed | undefined): ConnectionFormData {
+  if (!initialData) return getDefaultFormData()
+  return { ...initialData.data }
+}
+
+interface CurrentConnectionInputs {
+  savedId: string | null
+  editingConnection: SavedConnection | undefined
+  deletedConnectionId: string | null
+}
+
+function resolveCurrentConnectionId(inputs: CurrentConnectionInputs): string | null {
+  if (inputs.savedId) return inputs.savedId
+  const editingId = inputs.editingConnection?.id
+  if (!editingId) return null
+  if (editingId === inputs.deletedConnectionId) return null
+  return editingId
+}
+
+interface DuplicateHintInputs {
+  editingConnection: SavedConnection | undefined
+  savedId: string | null
+  initialData: ConnectionFormSeed | undefined
+}
+
+function shouldShowDuplicatePasswordHint(inputs: DuplicateHintInputs): boolean {
+  if (inputs.editingConnection) return false
+  if (inputs.savedId !== null) return false
+  return inputs.initialData?.sourceHadPassword === true
+}
+
+function connectionTitle(formData: ConnectionFormData): string {
+  return formData.name.trim() || formData.host.trim() || 'New connection'
+}
+
+function connectionSubtitle(formData: ConnectionFormData): string {
+  const host = formData.host.trim()
+  if (!host) return 'Configure the parameters for your MySQL instance.'
+  const username = formData.username.trim()
+  const userPrefix = username ? `${username}@` : ''
+  return `${userPrefix}${host}:${formData.port}`
+}
+
+function deleteTargetName(formData: ConnectionFormData): string {
+  return formData.name.trim() || formData.host
+}
+
+function savedPasswordPlaceholder(password: PasswordControls): string {
+  if (!password.hasSavedPassword) return ''
+  if (password.clearSavedPassword) return ''
+  return SAVED_PASSWORD_MASK
+}
+
+function ConnectionFormHeader({ formData }: { formData: ConnectionFormData }) {
+  return (
+    <header className={styles.formHeader} data-testid="connection-form-header">
+      <div className={styles.formHeaderText}>
+        <h3 className={styles.formHeaderName}>{connectionTitle(formData)}</h3>
+        <span className={styles.formHeaderMeta}>{connectionSubtitle(formData)}</span>
+      </div>
+    </header>
+  )
+}
+
+interface PasswordFieldProps {
+  value: string
+  password: PasswordControls
+}
+
+function PasswordField({ value, password }: PasswordFieldProps) {
+  return (
+    <FormField id="conn-password" label="Password">
+      <div className={styles.passwordWrapper}>
+        <TextInput
+          id="conn-password"
+          type={password.showPassword ? 'text' : 'password'}
+          passwordToggleGutter
+          value={value}
+          onChange={(event) => password.onPasswordChange(event.target.value)}
+          placeholder={savedPasswordPlaceholder(password)}
+          disabled={password.clearSavedPassword}
+        />
+        <IconButton
+          size="sm"
+          className={styles.passwordToggle}
+          onClick={password.onToggleShowPassword}
+          aria-label={password.showPassword ? 'Hide password' : 'Show password'}
+        >
+          {password.showPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
+        </IconButton>
+      </div>
+      {password.showDuplicateHint && (
+        <span className={styles.fieldHint} data-testid="duplicate-password-hint">
+          Password is not copied — enter it to save.
+        </span>
+      )}
+      {password.hasSavedPassword && (
+        <label className={styles.label}>
+          <Checkbox
+            checked={password.clearSavedPassword}
+            onChange={(event) => password.onClearSavedPasswordChange(event.target.checked)}
+          />{' '}
+          Use no password (remove saved password)
+        </label>
+      )}
+    </FormField>
+  )
+}
+
+interface GeneralPanelProps {
+  fields: FormFields
+  nameAutoFocus: boolean
+  password: PasswordControls
+}
+
+function GeneralPanel({ fields, nameAutoFocus, password }: GeneralPanelProps) {
+  return (
+    <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-general">
+      <FormField id="conn-name" label="Connection name" error={fields.errors.name}>
+        <TextInput
+          id="conn-name"
+          type="text"
+          invalid={!!fields.errors.name}
+          value={fields.formData.name}
+          onChange={(event) => fields.updateField('name', event.target.value)}
+          placeholder="My production server"
+          autoFocus={nameAutoFocus}
+        />
+      </FormField>
+
+      <div className={styles.row2}>
+        <FormField id="conn-host" label="Host address" error={fields.errors.host}>
+          <TextInput
+            id="conn-host"
+            type="text"
+            variant="mono"
+            invalid={!!fields.errors.host}
+            value={fields.formData.host}
+            onChange={(event) => fields.updateField('host', event.target.value)}
+            placeholder="localhost"
+          />
+        </FormField>
+        <FormField id="conn-port" label="Port" error={fields.errors.port}>
+          <TextInput
+            id="conn-port"
+            type="number"
+            variant="mono"
+            invalid={!!fields.errors.port}
+            value={fields.formData.port}
+            onChange={(event) => fields.updateField('port', parseInt(event.target.value, 10) || 0)}
+            min={1}
+            max={65535}
+            placeholder="3306"
+          />
+        </FormField>
+      </div>
+
+      <div className={styles.rowUserPass}>
+        <FormField id="conn-username" label="Username" error={fields.errors.username}>
+          <TextInput
+            id="conn-username"
+            type="text"
+            variant="mono"
+            invalid={!!fields.errors.username}
+            value={fields.formData.username}
+            onChange={(event) => fields.updateField('username', event.target.value)}
+            placeholder="root"
+          />
+        </FormField>
+        <PasswordField value={fields.formData.password} password={password} />
+      </div>
+
+      <FormField id="conn-database" label="Default database">
+        <TextInput
+          id="conn-database"
+          type="text"
+          variant="mono"
+          value={fields.formData.defaultDatabase ?? ''}
+          onChange={(event) => fields.updateField('defaultDatabase', event.target.value || null)}
+          placeholder="mydb"
+        />
+      </FormField>
+    </div>
+  )
+}
+
+interface SslPanelProps {
+  fields: FormFields
+  onBrowseFile: (field: SslPathField) => void
+}
+
+function SslPanel({ fields, onBrowseFile }: SslPanelProps) {
+  return (
+    <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-ssl">
+      <div className={styles.sslBlock}>
+        <div className={styles.sslCheckboxWrap}>
+          <Checkbox
+            id="ssl-enabled"
+            checked={fields.formData.sslEnabled}
+            onChange={(event) => fields.updateField('sslEnabled', event.target.checked)}
+            aria-label="Use SSL / TLS"
+          />
+        </div>
+        <div className={styles.sslCopy}>
+          <span className={styles.sslTitle}>Use SSL / TLS</span>
+          <span className={styles.sslHint}>Required for AWS RDS and many managed clusters.</span>
+        </div>
+      </div>
+
+      <div className={styles.sslFiles} data-testid="ssl-certificate-section">
+        <SslFileField
+          id="ssl-ca"
+          label="CA certificate"
+          value={fields.formData.sslCaPath ?? ''}
+          onChange={(value) => fields.updateField('sslCaPath', value || null)}
+          onBrowse={() => onBrowseFile('sslCaPath')}
+          disabled={!fields.formData.sslEnabled}
+          browseLabel="Browse CA certificate"
+          placeholder="/path/to/ca.pem"
+        />
+        <SslFileField
+          id="ssl-cert"
+          label="Client certificate"
+          value={fields.formData.sslCertPath ?? ''}
+          onChange={(value) => fields.updateField('sslCertPath', value || null)}
+          onBrowse={() => onBrowseFile('sslCertPath')}
+          disabled={!fields.formData.sslEnabled}
+          browseLabel="Browse client certificate"
+          placeholder="/path/to/client-cert.pem"
+        />
+        <SslFileField
+          id="ssl-key"
+          label="Client key"
+          value={fields.formData.sslKeyPath ?? ''}
+          onChange={(value) => fields.updateField('sslKeyPath', value || null)}
+          onBrowse={() => onBrowseFile('sslKeyPath')}
+          disabled={!fields.formData.sslEnabled}
+          browseLabel="Browse client key"
+          placeholder="/path/to/client-key.pem"
+        />
+      </div>
+    </div>
+  )
+}
+
+interface AdvancedPanelProps {
+  fields: FormFields
+  groupDropdownOptions: { value: string; label: string }[]
+}
+
+function AdvancedPanel({ fields, groupDropdownOptions }: AdvancedPanelProps) {
+  return (
+    <div className={styles.tabPanel} role="tabpanel" data-testid="connection-form-panel-advanced">
+      <div className={styles.rowEvenSplit}>
+        <div className={styles.fieldGroup}>
+          <label id="conn-group-label" htmlFor="conn-group" className={styles.labelCaps}>
+            Group
+          </label>
+          <Dropdown
+            id="conn-group"
+            labelledBy="conn-group-label"
+            listAriaLabel="Group"
+            options={groupDropdownOptions}
+            value={fields.formData.groupId ?? ''}
+            onChange={(value) => fields.updateField('groupId', value || null)}
+          />
+        </div>
+        <div className={styles.fieldGroup}>
+          <label id="conn-access-label" htmlFor="conn-access" className={styles.labelCaps}>
+            Access mode
+          </label>
+          <Dropdown
+            id="conn-access"
+            labelledBy="conn-access-label"
+            options={ACCESS_MODE_OPTIONS}
+            value={fields.formData.readOnly ? 'ro' : 'rw'}
+            onChange={(value) => fields.updateField('readOnly', value === 'ro')}
+          />
+        </div>
+      </div>
+
+      <div className={styles.fieldGroup}>
+        <span className={styles.labelCaps}>Tab color</span>
+        <div className={styles.tabColorRow}>
+          <ColorPickerPopover
+            color={fields.formData.color}
+            onChange={(color) => fields.updateField('color', color)}
+          />
+          <span className={styles.tabColorValue}>{fields.formData.color ?? 'No color set'}</span>
+        </div>
+      </div>
+
+      <div className={styles.rowTimeouts}>
+        <FormField
+          id="connect-timeout"
+          label="Connect timeout"
+          error={fields.errors.connectTimeoutSecs}
+        >
+          <div className={styles.numberInputRow}>
+            <TextInput
+              id="connect-timeout"
+              type="number"
+              variant="mono"
+              className={styles.numberField}
+              invalid={!!fields.errors.connectTimeoutSecs}
+              value={fields.formData.connectTimeoutSecs}
+              onChange={(event) =>
+                fields.updateField(
+                  'connectTimeoutSecs',
+                  parseInt(event.target.value, 10) || DEFAULT_CONNECT_TIMEOUT_SECONDS
+                )
+              }
+              min={1}
+              max={300}
+            />
+            <span className={styles.unitLabel}>seconds</span>
+          </div>
+        </FormField>
+        <FormField
+          id="keepalive"
+          label="Keepalive interval"
+          error={fields.errors.keepaliveIntervalSecs}
+        >
+          <div className={styles.numberInputRow}>
+            <TextInput
+              id="keepalive"
+              type="number"
+              variant="mono"
+              className={styles.numberField}
+              invalid={!!fields.errors.keepaliveIntervalSecs}
+              value={fields.formData.keepaliveIntervalSecs}
+              onChange={(event) =>
+                fields.updateField(
+                  'keepaliveIntervalSecs',
+                  parseInt(event.target.value, 10) || DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+                )
+              }
+              min={0}
+              max={3600}
+            />
+            <span className={styles.unitLabel}>seconds</span>
+          </div>
+        </FormField>
+      </div>
+    </div>
+  )
+}
+
+const PENDING_ACTION_LABELS: Record<Exclude<PendingAction, 'delete'>, string> = {
+  test: 'Testing…',
+  connect: 'Connecting…',
+  save: 'Saving…',
+}
+
+interface ActionLabelInputs {
+  pendingAction: PendingAction | null
+  action: Exclude<PendingAction, 'delete'>
+  idleLabel: string
+}
+
+function actionLabel(inputs: ActionLabelInputs): string {
+  if (inputs.pendingAction === inputs.action) return PENDING_ACTION_LABELS[inputs.action]
+  return inputs.idleLabel
+}
+
+interface ConnectionFormFooterProps {
+  pendingAction: PendingAction | null
+  canDelete: boolean
+  onTest: () => void
+  onDeleteRequest: () => void
+  onConnect: () => void
+  onSave: () => void
+}
+
+function ConnectionFormFooter({
+  pendingAction,
+  canDelete,
+  onTest,
+  onDeleteRequest,
+  onConnect,
+  onSave,
+}: ConnectionFormFooterProps) {
+  const isAnyPending = pendingAction !== null
+  return (
+    <footer className={styles.formFooter}>
+      <div className={styles.footerActionsLeft}>
+        <Button onClick={onTest} disabled={isAnyPending}>
+          <Plug size={16} weight="regular" aria-hidden />
+          {actionLabel({
+            pendingAction: pendingAction,
+            action: 'test',
+            idleLabel: 'Test connection',
+          })}
+        </Button>
+        {canDelete ? (
+          <Button variant="danger" onClick={onDeleteRequest} disabled={isAnyPending}>
+            Delete
+          </Button>
+        ) : null}
+      </div>
+      <div className={styles.footerActionsRight}>
+        <Button variant="accent" onClick={onConnect} disabled={isAnyPending}>
+          {actionLabel({
+            pendingAction: pendingAction,
+            action: 'connect',
+            idleLabel: 'Save and connect',
+          })}
+        </Button>
+        <Button onClick={onSave} disabled={isAnyPending}>
+          {actionLabel({ pendingAction: pendingAction, action: 'save', idleLabel: 'Save' })}
+        </Button>
+      </div>
+    </footer>
+  )
+}
+
 export function ConnectionForm({
   editingConnection,
   onDeleteConnection,
@@ -223,9 +686,7 @@ export function ConnectionForm({
   const [hasSavedPassword, setHasSavedPassword] = useState(false)
   const [clearSavedPassword, setClearSavedPassword] = useState(false)
   const [testResult, setTestResult] = useState<TestConnectionResultType | null>(null)
-  const [pendingAction, setPendingAction] = useState<'test' | 'save' | 'connect' | 'delete' | null>(
-    null
-  )
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
   const [deletedConnectionId, setDeletedConnectionId] = useState<string | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -256,42 +717,22 @@ export function ConnectionForm({
   // Populate form when editingConnection or the duplicate seed changes.
   // Precedence: editing > duplicate seed > defaults.
   useEffect(() => {
-    if (editingConnection) {
-      setDeletedConnectionId(null)
-      setFormData({
-        name: editingConnection.name,
-        host: editingConnection.host,
-        port: editingConnection.port,
-        username: editingConnection.username,
-        password: '',
-        defaultDatabase: editingConnection.defaultDatabase,
-        sslEnabled: editingConnection.sslEnabled,
-        sslCaPath: editingConnection.sslCaPath,
-        sslCertPath: editingConnection.sslCertPath,
-        sslKeyPath: editingConnection.sslKeyPath,
-        color: editingConnection.color,
-        groupId: editingConnection.groupId,
-        readOnly: editingConnection.readOnly,
-        connectTimeoutSecs: editingConnection.connectTimeoutSecs,
-        keepaliveIntervalSecs: editingConnection.keepaliveIntervalSecs,
-      })
-      setSavedId(editingConnection.id)
-      setHasSavedPassword(editingConnection.hasPassword)
-      setClearSavedPassword(false)
-      setDeleteConfirmOpen(false)
-      setDeleteConfirmError(null)
-    } else {
-      setFormData(initialData ? { ...initialData.data } : getDefaultFormData())
-      setSavedId(null)
-      setHasSavedPassword(false)
-      setClearSavedPassword(false)
-      setDeletedConnectionId(null)
-      setDeleteConfirmOpen(false)
-      setDeleteConfirmError(null)
-    }
+    setDeletedConnectionId(null)
+    setClearSavedPassword(false)
+    setDeleteConfirmOpen(false)
+    setDeleteConfirmError(null)
     setErrors({})
     setTestResult(null)
     setActiveTab('general')
+    if (editingConnection) {
+      setFormData(formDataFromConnection(editingConnection))
+      setSavedId(editingConnection.id)
+      setHasSavedPassword(editingConnection.hasPassword)
+      return
+    }
+    setFormData(seededFormData(initialData))
+    setSavedId(null)
+    setHasSavedPassword(false)
   }, [editingConnection, initialData])
 
   useEffect(() => {
@@ -312,7 +753,7 @@ export function ConnectionForm({
     }
   }
 
-  const handleBrowseFile = async (field: 'sslCaPath' | 'sslCertPath' | 'sslKeyPath') => {
+  const handleBrowseFile = async (field: SslPathField) => {
     try {
       const selected = await open({
         multiple: false,
@@ -326,12 +767,33 @@ export function ConnectionForm({
     }
   }
 
-  const isAnyPending = pendingAction !== null
-  const currentConnectionId =
-    savedId ??
-    (editingConnection && editingConnection.id !== deletedConnectionId
-      ? editingConnection.id
-      : null)
+  const currentConnectionId = resolveCurrentConnectionId({
+    savedId: savedId,
+    editingConnection: editingConnection,
+    deletedConnectionId: deletedConnectionId,
+  })
+
+  const handlePasswordChange = (value: string) => {
+    updateField('password', value)
+    if (clearSavedPassword) {
+      setClearSavedPassword(false)
+    }
+  }
+
+  const handleClearSavedPasswordChange = (checked: boolean) => {
+    setClearSavedPassword(checked)
+    if (checked && formData.password) {
+      updateField('password', '')
+    }
+  }
+
+  const cancelDeleteConfirm = () => {
+    if (pendingAction === 'delete') {
+      return
+    }
+    setDeleteConfirmOpen(false)
+    setDeleteConfirmError(null)
+  }
 
   function runValidation(): boolean {
     const errs = validate(formData)
@@ -463,18 +925,7 @@ export function ConnectionForm({
   return (
     <div ref={rootRef} className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
-        <header className={styles.formHeader} data-testid="connection-form-header">
-          <div className={styles.formHeaderText}>
-            <h3 className={styles.formHeaderName}>
-              {formData.name.trim() || formData.host.trim() || 'New connection'}
-            </h3>
-            <span className={styles.formHeaderMeta}>
-              {formData.host.trim()
-                ? `${formData.username.trim() ? `${formData.username.trim()}@` : ''}${formData.host.trim()}:${formData.port}`
-                : 'Configure the parameters for your MySQL instance.'}
-            </span>
-          </div>
-        </header>
+        <ConnectionFormHeader formData={formData} />
         <form
           className={styles.formInner}
           autoComplete="off"
@@ -505,314 +956,55 @@ export function ConnectionForm({
           ) : null}
 
           {activeTab === 'general' && (
-            <div
-              className={styles.tabPanel}
-              role="tabpanel"
-              data-testid="connection-form-panel-general"
-            >
-              <FormField id="conn-name" label="Connection name" error={errors.name}>
-                <TextInput
-                  id="conn-name"
-                  type="text"
-                  invalid={!!errors.name}
-                  value={formData.name}
-                  onChange={(event) => updateField('name', event.target.value)}
-                  placeholder="My production server"
-                  autoFocus={nameAutoFocusRef.current}
-                />
-              </FormField>
-
-              <div className={styles.row2}>
-                <FormField id="conn-host" label="Host address" error={errors.host}>
-                  <TextInput
-                    id="conn-host"
-                    type="text"
-                    variant="mono"
-                    invalid={!!errors.host}
-                    value={formData.host}
-                    onChange={(event) => updateField('host', event.target.value)}
-                    placeholder="localhost"
-                  />
-                </FormField>
-                <FormField id="conn-port" label="Port" error={errors.port}>
-                  <TextInput
-                    id="conn-port"
-                    type="number"
-                    variant="mono"
-                    invalid={!!errors.port}
-                    value={formData.port}
-                    onChange={(event) => updateField('port', parseInt(event.target.value, 10) || 0)}
-                    min={1}
-                    max={65535}
-                    placeholder="3306"
-                  />
-                </FormField>
-              </div>
-
-              <div className={styles.rowUserPass}>
-                <FormField id="conn-username" label="Username" error={errors.username}>
-                  <TextInput
-                    id="conn-username"
-                    type="text"
-                    variant="mono"
-                    invalid={!!errors.username}
-                    value={formData.username}
-                    onChange={(event) => updateField('username', event.target.value)}
-                    placeholder="root"
-                  />
-                </FormField>
-                <FormField id="conn-password" label="Password">
-                  <div className={styles.passwordWrapper}>
-                    <TextInput
-                      id="conn-password"
-                      type={showPassword ? 'text' : 'password'}
-                      passwordToggleGutter
-                      value={formData.password}
-                      onChange={(event) => {
-                        updateField('password', event.target.value)
-                        if (clearSavedPassword) {
-                          setClearSavedPassword(false)
-                        }
-                      }}
-                      placeholder={hasSavedPassword && !clearSavedPassword ? '••••••••' : ''}
-                      disabled={clearSavedPassword}
-                    />
-                    <IconButton
-                      size="sm"
-                      className={styles.passwordToggle}
-                      onClick={() => setShowPassword((previous) => !previous)}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
-                    </IconButton>
-                  </div>
-                  {!editingConnection && savedId === null && initialData?.sourceHadPassword && (
-                    <span className={styles.fieldHint} data-testid="duplicate-password-hint">
-                      Password is not copied — enter it to save.
-                    </span>
-                  )}
-                  {hasSavedPassword && (
-                    <label className={styles.label}>
-                      <Checkbox
-                        checked={clearSavedPassword}
-                        onChange={(event) => {
-                          const checked = event.target.checked
-                          setClearSavedPassword(checked)
-                          if (checked && formData.password) {
-                            updateField('password', '')
-                          }
-                        }}
-                      />{' '}
-                      Use no password (remove saved password)
-                    </label>
-                  )}
-                </FormField>
-              </div>
-
-              <FormField id="conn-database" label="Default database">
-                <TextInput
-                  id="conn-database"
-                  type="text"
-                  variant="mono"
-                  value={formData.defaultDatabase ?? ''}
-                  onChange={(event) => updateField('defaultDatabase', event.target.value || null)}
-                  placeholder="mydb"
-                />
-              </FormField>
-            </div>
+            <GeneralPanel
+              fields={{ formData: formData, errors: errors, updateField: updateField }}
+              nameAutoFocus={nameAutoFocusRef.current}
+              password={{
+                showPassword: showPassword,
+                hasSavedPassword: hasSavedPassword,
+                clearSavedPassword: clearSavedPassword,
+                showDuplicateHint: shouldShowDuplicatePasswordHint({
+                  editingConnection: editingConnection,
+                  savedId: savedId,
+                  initialData: initialData,
+                }),
+                onPasswordChange: handlePasswordChange,
+                onToggleShowPassword: () => setShowPassword((previous) => !previous),
+                onClearSavedPasswordChange: handleClearSavedPasswordChange,
+              }}
+            />
           )}
 
           {activeTab === 'ssl' && (
-            <div
-              className={styles.tabPanel}
-              role="tabpanel"
-              data-testid="connection-form-panel-ssl"
-            >
-              <div className={styles.sslBlock}>
-                <div className={styles.sslCheckboxWrap}>
-                  <Checkbox
-                    id="ssl-enabled"
-                    checked={formData.sslEnabled}
-                    onChange={(event) => updateField('sslEnabled', event.target.checked)}
-                    aria-label="Use SSL / TLS"
-                  />
-                </div>
-                <div className={styles.sslCopy}>
-                  <span className={styles.sslTitle}>Use SSL / TLS</span>
-                  <span className={styles.sslHint}>
-                    Required for AWS RDS and many managed clusters.
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.sslFiles} data-testid="ssl-certificate-section">
-                <SslFileField
-                  id="ssl-ca"
-                  label="CA certificate"
-                  value={formData.sslCaPath ?? ''}
-                  onChange={(value) => updateField('sslCaPath', value || null)}
-                  onBrowse={() => void handleBrowseFile('sslCaPath')}
-                  disabled={!formData.sslEnabled}
-                  browseLabel="Browse CA certificate"
-                  placeholder="/path/to/ca.pem"
-                />
-                <SslFileField
-                  id="ssl-cert"
-                  label="Client certificate"
-                  value={formData.sslCertPath ?? ''}
-                  onChange={(value) => updateField('sslCertPath', value || null)}
-                  onBrowse={() => void handleBrowseFile('sslCertPath')}
-                  disabled={!formData.sslEnabled}
-                  browseLabel="Browse client certificate"
-                  placeholder="/path/to/client-cert.pem"
-                />
-                <SslFileField
-                  id="ssl-key"
-                  label="Client key"
-                  value={formData.sslKeyPath ?? ''}
-                  onChange={(value) => updateField('sslKeyPath', value || null)}
-                  onBrowse={() => void handleBrowseFile('sslKeyPath')}
-                  disabled={!formData.sslEnabled}
-                  browseLabel="Browse client key"
-                  placeholder="/path/to/client-key.pem"
-                />
-              </div>
-            </div>
+            <SslPanel
+              fields={{ formData: formData, errors: errors, updateField: updateField }}
+              onBrowseFile={(field) => void handleBrowseFile(field)}
+            />
           )}
 
           {activeTab === 'advanced' && (
-            <div
-              className={styles.tabPanel}
-              role="tabpanel"
-              data-testid="connection-form-panel-advanced"
-            >
-              <div className={styles.rowEvenSplit}>
-                <div className={styles.fieldGroup}>
-                  <label id="conn-group-label" htmlFor="conn-group" className={styles.labelCaps}>
-                    Group
-                  </label>
-                  <Dropdown
-                    id="conn-group"
-                    labelledBy="conn-group-label"
-                    listAriaLabel="Group"
-                    options={groupDropdownOptions}
-                    value={formData.groupId ?? ''}
-                    onChange={(value) => updateField('groupId', value || null)}
-                  />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label id="conn-access-label" htmlFor="conn-access" className={styles.labelCaps}>
-                    Access mode
-                  </label>
-                  <Dropdown
-                    id="conn-access"
-                    labelledBy="conn-access-label"
-                    options={ACCESS_MODE_OPTIONS}
-                    value={formData.readOnly ? 'ro' : 'rw'}
-                    onChange={(value) => updateField('readOnly', value === 'ro')}
-                  />
-                </div>
-              </div>
-
-              <div className={styles.fieldGroup}>
-                <span className={styles.labelCaps}>Tab color</span>
-                <div className={styles.tabColorRow}>
-                  <ColorPickerPopover
-                    color={formData.color}
-                    onChange={(color) => updateField('color', color)}
-                  />
-                  <span className={styles.tabColorValue}>{formData.color ?? 'No color set'}</span>
-                </div>
-              </div>
-
-              <div className={styles.rowTimeouts}>
-                <FormField
-                  id="connect-timeout"
-                  label="Connect timeout"
-                  error={errors.connectTimeoutSecs}
-                >
-                  <div className={styles.numberInputRow}>
-                    <TextInput
-                      id="connect-timeout"
-                      type="number"
-                      variant="mono"
-                      className={styles.numberField}
-                      invalid={!!errors.connectTimeoutSecs}
-                      value={formData.connectTimeoutSecs}
-                      onChange={(event) =>
-                        updateField(
-                          'connectTimeoutSecs',
-                          parseInt(event.target.value, 10) || DEFAULT_CONNECT_TIMEOUT_SECONDS
-                        )
-                      }
-                      min={1}
-                      max={300}
-                    />
-                    <span className={styles.unitLabel}>seconds</span>
-                  </div>
-                </FormField>
-                <FormField
-                  id="keepalive"
-                  label="Keepalive interval"
-                  error={errors.keepaliveIntervalSecs}
-                >
-                  <div className={styles.numberInputRow}>
-                    <TextInput
-                      id="keepalive"
-                      type="number"
-                      variant="mono"
-                      className={styles.numberField}
-                      invalid={!!errors.keepaliveIntervalSecs}
-                      value={formData.keepaliveIntervalSecs}
-                      onChange={(event) =>
-                        updateField(
-                          'keepaliveIntervalSecs',
-                          parseInt(event.target.value, 10) || DEFAULT_KEEPALIVE_INTERVAL_SECONDS
-                        )
-                      }
-                      min={0}
-                      max={3600}
-                    />
-                    <span className={styles.unitLabel}>seconds</span>
-                  </div>
-                </FormField>
-              </div>
-            </div>
+            <AdvancedPanel
+              fields={{ formData: formData, errors: errors, updateField: updateField }}
+              groupDropdownOptions={groupDropdownOptions}
+            />
           )}
         </form>
       </div>
 
-      <footer className={styles.formFooter}>
-        <div className={styles.footerActionsLeft}>
-          <Button onClick={() => void handleTestConnection()} disabled={isAnyPending}>
-            <Plug size={16} weight="regular" aria-hidden />
-            {pendingAction === 'test' ? 'Testing…' : 'Test connection'}
-          </Button>
-          {currentConnectionId ? (
-            <Button
-              variant="danger"
-              onClick={() => setDeleteConfirmOpen(true)}
-              disabled={isAnyPending}
-            >
-              Delete
-            </Button>
-          ) : null}
-        </div>
-        <div className={styles.footerActionsRight}>
-          <Button variant="accent" onClick={() => void handleConnect()} disabled={isAnyPending}>
-            {pendingAction === 'connect' ? 'Connecting…' : 'Save and connect'}
-          </Button>
-          <Button onClick={() => void handleSave()} disabled={isAnyPending}>
-            {pendingAction === 'save' ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      </footer>
+      <ConnectionFormFooter
+        pendingAction={pendingAction}
+        canDelete={currentConnectionId !== null}
+        onTest={() => void handleTestConnection()}
+        onDeleteRequest={() => setDeleteConfirmOpen(true)}
+        onConnect={() => void handleConnect()}
+        onSave={() => void handleSave()}
+      />
       <ConfirmDialog
         isOpen={deleteConfirmOpen}
         title="Delete connection"
         message={
           <>
-            Delete saved connection <strong>{formData.name.trim() || formData.host}</strong>?
+            Delete saved connection <strong>{deleteTargetName(formData)}</strong>?
           </>
         }
         portalRoot={dialogPortalRoot}
@@ -822,13 +1014,7 @@ export function ConnectionForm({
         error={deleteConfirmError}
         nonDismissible={pendingAction === 'delete'}
         onConfirm={() => void handleDelete()}
-        onCancel={() => {
-          if (pendingAction === 'delete') {
-            return
-          }
-          setDeleteConfirmOpen(false)
-          setDeleteConfirmError(null)
-        }}
+        onCancel={cancelDeleteConfirm}
       />
     </div>
   )

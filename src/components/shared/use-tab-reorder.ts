@@ -15,6 +15,15 @@ export interface ComputeHorizontalTabReorderTargetArgs {
   targetRect: Pick<DOMRect, 'left' | 'width'>
 }
 
+function isNoOpDrop(
+  indicator: TabDropIndicator,
+  draggingIndex: number,
+  targetIndex: number
+): boolean {
+  if (indicator === 'after') return draggingIndex === targetIndex + 1
+  return draggingIndex === targetIndex || draggingIndex + 1 === targetIndex
+}
+
 /**
  * Computes where a dragged tab should be inserted in a horizontal tab list.
  */
@@ -30,11 +39,7 @@ export function computeHorizontalTabReorderTarget(
   const indicator: TabDropIndicator = pointerClientX < midpoint ? 'before' : 'after'
   const insertIndex = indicator === 'before' ? targetIndex : targetIndex + 1
 
-  if (
-    (indicator === 'before' && draggingIndex === targetIndex) ||
-    (indicator === 'before' && draggingIndex + 1 === targetIndex) ||
-    (indicator === 'after' && draggingIndex === targetIndex + 1)
-  ) {
+  if (isNoOpDrop(indicator, draggingIndex, targetIndex)) {
     return null
   }
 

@@ -74,6 +74,218 @@ function isNewIndex(tabState: TableDesignerTabState, index: TableDesignerIndexDe
   )
 }
 
+interface IndexRowPosition {
+  storeIndex: number
+  visibleIndex: number
+  isSelected: boolean
+  isNew: boolean
+}
+
+interface IndexRowContext {
+  tabId: string
+  columnNames: string[]
+  validationErrors: Record<string, string>
+  updateIndex: (
+    tabId: string,
+    indexPosition: number,
+    field: keyof TableDesignerIndexDef,
+    value: unknown
+  ) => void
+  onSelect: (storeIndex: number) => void
+  onDelete: (storeIndex: number) => void
+}
+
+interface IndexRowProps {
+  index: TableDesignerIndexDef
+  position: IndexRowPosition
+  context: IndexRowContext
+}
+
+function indexRowStripeClassName(isSelected: boolean, displayIndex: number): string {
+  if (isSelected) return styles.selectedRow
+  return isEven(displayIndex) ? styles.evenRow : styles.oddRow
+}
+
+function indexInputClassName(isSelected: boolean): string {
+  return isSelected ? styles.activeInput : styles.inactiveInput
+}
+
+function errorClassName(error: string | undefined): string {
+  return error ? styles.inputError : ''
+}
+
+function ariaInvalidFor(error: string | undefined): 'true' | 'false' {
+  return error ? 'true' : 'false'
+}
+
+function stopRowSelection(event: React.MouseEvent): void {
+  event.stopPropagation()
+}
+
+function FieldError({ error, testId }: { error: string | undefined; testId: string }) {
+  if (!error) return null
+  return (
+    <div className={styles.errorText} data-testid={testId}>
+      {error}
+    </div>
+  )
+}
+
+interface IndexColumnsSelectorProps {
+  index: TableDesignerIndexDef
+  position: IndexRowPosition
+  context: IndexRowContext
+  columnsError: string | undefined
+}
+
+function IndexColumnsSelector({
+  index,
+  position,
+  context,
+  columnsError,
+}: IndexColumnsSelectorProps) {
+  const { tabId, columnNames } = context
+  const { storeIndex, visibleIndex } = position
+  const selectRow = (event: React.MouseEvent) => {
+    event.stopPropagation()
+    context.onSelect(storeIndex)
+  }
+
+  if (columnNames.length === 0) {
+    return (
+      <Button
+        type="button"
+        className={`${styles.columnButton} ${errorClassName(columnsError)}`}
+        aria-invalid={ariaInvalidFor(columnsError)}
+        title={columnsError}
+        data-testid={`index-columns-button-${visibleIndex}`}
+        onClick={selectRow}
+      >
+        Add columns first
+      </Button>
+    )
+  }
+
+  const summaryClassName =
+    index.columns.length > MAX_LISTED_COLUMN_LABELS ? styles.columnButtonSummary : ''
+  return (
+    <Dropdown
+      id={`index-columns-${tabId}-${visibleIndex}`}
+      ariaLabel="Index columns"
+      listAriaLabel="Index columns"
+      options={columnNames.map((columnName) => ({
+        value: columnName,
+        label: columnName,
+      }))}
+      multiple
+      value={index.columns}
+      data-testid={`index-columns-button-${visibleIndex}`}
+      closeOnSelect={false}
+      focusListOnOpen={false}
+      renderTriggerValue={formatSelectedColumnsSummary}
+      renderOptionLabel={(option) => <span>{option.label}</span>}
+      triggerClassName={`${styles.columnButton} ${styles.columnButtonFixed} ${summaryClassName} ${errorClassName(columnsError)}`}
+      triggerProps={{
+        'aria-invalid': ariaInvalidFor(columnsError),
+        title: columnsError,
+        onClick: selectRow,
+      }}
+      onChange={(nextColumns) => {
+        context.updateIndex(
+          tabId,
+          storeIndex,
+          'columns',
+          columnNames.filter((name) => nextColumns.includes(name))
+        )
+      }}
+    />
+  )
+}
+
+function IndexRow({ index, position, context }: IndexRowProps) {
+  const { tabId } = context
+  const { storeIndex, visibleIndex, isSelected } = position
+  const displayIndex = visibleIndex + FIRST_SECONDARY_INDEX_ROW_NUMBER
+  const nameError = context.validationErrors[`indexes.${storeIndex}.name`]
+  const columnsError = context.validationErrors[`indexes.${storeIndex}.columns`]
+  const newRowClassName = position.isNew ? styles.newRow : ''
+
+  return (
+    <tr
+      className={`${styles.row} ${indexRowStripeClassName(isSelected, displayIndex)} ${newRowClassName}`}
+      data-testid={`index-row-${visibleIndex}`}
+      onClick={() => context.onSelect(storeIndex)}
+    >
+      <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
+        <span className={styles.rowAccent} aria-hidden />
+      </td>
+      <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{displayIndex}</td>
+      <td className={styles.bodyCell}>
+        <TextInput
+          type="text"
+          variant="tableCell"
+          value={index.name}
+          invalid={!!nameError}
+          className={indexInputClassName(isSelected)}
+          aria-invalid={ariaInvalidFor(nameError)}
+          title={nameError}
+          data-testid={`index-name-${visibleIndex}`}
+          onClick={stopRowSelection}
+          onChange={(event) => context.updateIndex(tabId, storeIndex, 'name', event.target.value)}
+        />
+        <FieldError error={nameError} testId={`index-name-error-${visibleIndex}`} />
+      </td>
+      <td className={styles.bodyCell}>
+        <div onClick={stopRowSelection}>
+          <Dropdown
+            id={`index-type-${tabId}-${visibleIndex}`}
+            ariaLabel="Index type"
+            options={INDEX_TYPE_DROPDOWN_OPTIONS}
+            value={index.indexType}
+            data-testid={`index-type-${visibleIndex}`}
+            onChange={(value) =>
+              context.updateIndex(
+                tabId,
+                storeIndex,
+                'indexType',
+                value as TableDesignerIndexDef['indexType']
+              )
+            }
+            triggerClassName={`${styles.cellSelect} ${indexInputClassName(isSelected)}`}
+          />
+        </div>
+      </td>
+      <td className={styles.bodyCell}>
+        <div className={styles.columnSelector} onClick={stopRowSelection}>
+          <IndexColumnsSelector
+            index={index}
+            position={position}
+            context={context}
+            columnsError={columnsError}
+          />
+        </div>
+        <FieldError error={columnsError} testId={`index-columns-error-${visibleIndex}`} />
+      </td>
+      <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
+        <Button
+          variant="subtle"
+          size="sm"
+          dangerText
+          iconOnly
+          aria-label={`Delete index ${index.name || visibleIndex + 1}`}
+          data-testid={`index-delete-${visibleIndex}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            context.onDelete(storeIndex)
+          }}
+        >
+          <Trash size={14} weight="bold" />
+        </Button>
+      </td>
+    </tr>
+  )
+}
+
 export function IndexEditor({ tabId }: IndexEditorProps) {
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
   const addIndex = useTableDesignerStore((state) => state.addIndex)
@@ -129,6 +341,15 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
   const handleDelete = (storeIndex: number) => {
     deleteIndex(tabId, storeIndex)
     setSelectedRow((current) => (current === storeIndex ? null : current))
+  }
+
+  const rowContext: IndexRowContext = {
+    tabId: tabId,
+    columnNames: columnNames,
+    validationErrors: tabState.validationErrors,
+    updateIndex: updateIndex,
+    onSelect: setSelectedRow,
+    onDelete: handleDelete,
   }
 
   return (
@@ -200,163 +421,19 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                 <td className={`${styles.bodyCell} ${styles.deleteCell}`} />
               </tr>
 
-              {visibleIndexes.map(({ index, storeIndex }, visibleIndex) => {
-                const displayIndex = visibleIndex + FIRST_SECONDARY_INDEX_ROW_NUMBER
-                const isSelected = effectiveSelectedRow === storeIndex
-                const newRow = isNewIndex(tabState, index)
-                const nameError = tabState.validationErrors[`indexes.${storeIndex}.name`]
-                const columnsError = tabState.validationErrors[`indexes.${storeIndex}.columns`]
-
-                return (
-                  <tr
-                    key={`index-${storeIndex}`}
-                    className={`${styles.row} ${
-                      isSelected
-                        ? styles.selectedRow
-                        : isEven(displayIndex)
-                          ? styles.evenRow
-                          : styles.oddRow
-                    } ${newRow ? styles.newRow : ''}`}
-                    data-testid={`index-row-${visibleIndex}`}
-                    onClick={() => setSelectedRow(storeIndex)}
-                  >
-                    <td className={`${styles.bodyCell} ${styles.indicatorCell}`}>
-                      <span className={styles.rowAccent} aria-hidden />
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{displayIndex}</td>
-                    <td className={styles.bodyCell}>
-                      <TextInput
-                        type="text"
-                        variant="tableCell"
-                        value={index.name}
-                        invalid={!!nameError}
-                        className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
-                        aria-invalid={nameError ? 'true' : 'false'}
-                        title={nameError}
-                        data-testid={`index-name-${visibleIndex}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) =>
-                          updateIndex(tabId, storeIndex, 'name', event.target.value)
-                        }
-                      />
-                      {nameError && (
-                        <div
-                          className={styles.errorText}
-                          data-testid={`index-name-error-${visibleIndex}`}
-                        >
-                          {nameError}
-                        </div>
-                      )}
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <div onClick={(event) => event.stopPropagation()}>
-                        <Dropdown
-                          id={`index-type-${tabId}-${visibleIndex}`}
-                          ariaLabel="Index type"
-                          options={INDEX_TYPE_DROPDOWN_OPTIONS}
-                          value={index.indexType}
-                          data-testid={`index-type-${visibleIndex}`}
-                          onChange={(value) =>
-                            updateIndex(
-                              tabId,
-                              storeIndex,
-                              'indexType',
-                              value as TableDesignerIndexDef['indexType']
-                            )
-                          }
-                          triggerClassName={`${styles.cellSelect} ${
-                            isSelected ? styles.activeInput : styles.inactiveInput
-                          }`}
-                        />
-                      </div>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <div
-                        className={styles.columnSelector}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        {columnNames.length > 0 ? (
-                          <Dropdown
-                            id={`index-columns-${tabId}-${visibleIndex}`}
-                            ariaLabel="Index columns"
-                            listAriaLabel="Index columns"
-                            options={columnNames.map((columnName) => ({
-                              value: columnName,
-                              label: columnName,
-                            }))}
-                            multiple
-                            value={index.columns}
-                            data-testid={`index-columns-button-${visibleIndex}`}
-                            closeOnSelect={false}
-                            focusListOnOpen={false}
-                            renderTriggerValue={formatSelectedColumnsSummary}
-                            renderOptionLabel={(option) => <span>{option.label}</span>}
-                            triggerClassName={`${styles.columnButton} ${styles.columnButtonFixed} ${
-                              index.columns.length > MAX_LISTED_COLUMN_LABELS
-                                ? styles.columnButtonSummary
-                                : ''
-                            } ${columnsError ? styles.inputError : ''}`}
-                            triggerProps={{
-                              'aria-invalid': columnsError ? 'true' : 'false',
-                              title: columnsError,
-                              onClick: (event) => {
-                                event.stopPropagation()
-                                setSelectedRow(storeIndex)
-                              },
-                            }}
-                            onChange={(nextColumns) => {
-                              updateIndex(
-                                tabId,
-                                storeIndex,
-                                'columns',
-                                columnNames.filter((name) => nextColumns.includes(name))
-                              )
-                            }}
-                          />
-                        ) : (
-                          <Button
-                            type="button"
-                            className={`${styles.columnButton} ${columnsError ? styles.inputError : ''}`}
-                            aria-invalid={columnsError ? 'true' : 'false'}
-                            title={columnsError}
-                            data-testid={`index-columns-button-${visibleIndex}`}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setSelectedRow(storeIndex)
-                            }}
-                          >
-                            Add columns first
-                          </Button>
-                        )}
-                      </div>
-                      {columnsError && (
-                        <div
-                          className={styles.errorText}
-                          data-testid={`index-columns-error-${visibleIndex}`}
-                        >
-                          {columnsError}
-                        </div>
-                      )}
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                      <Button
-                        variant="subtle"
-                        size="sm"
-                        dangerText
-                        iconOnly
-                        aria-label={`Delete index ${index.name || visibleIndex + 1}`}
-                        data-testid={`index-delete-${visibleIndex}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDelete(storeIndex)
-                        }}
-                      >
-                        <Trash size={14} weight="bold" />
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
+              {visibleIndexes.map(({ index, storeIndex }, visibleIndex) => (
+                <IndexRow
+                  key={`index-${storeIndex}`}
+                  index={index}
+                  position={{
+                    storeIndex: storeIndex,
+                    visibleIndex: visibleIndex,
+                    isSelected: effectiveSelectedRow === storeIndex,
+                    isNew: isNewIndex(tabState, index),
+                  }}
+                  context={rowContext}
+                />
+              ))}
             </tbody>
           </table>
         </div>

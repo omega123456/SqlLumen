@@ -15,7 +15,7 @@ import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
 import sharedToolbarStyles from '../shared/toolbar/toolbar-items.module.css'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../stores/toast-store'
-import type { KillResult } from '../../lib/processlist-commands'
+import type { KillResult, ProcessRow } from '../../lib/processlist-commands'
 import styles from './ProcessListToolbar.module.css'
 import { toErrorMessage } from '../../lib/error-message'
 
@@ -23,7 +23,7 @@ const SQL_PREVIEW_MAX_LENGTH = 80
 const TRUNCATION_ELLIPSIS = '...'
 
 const emptySet = new Set<number>()
-const emptyRows: import('../../lib/processlist-commands').ProcessRow[] = []
+const emptyRows: ProcessRow[] = []
 
 const INTERVAL_OPTIONS = [
   { label: 'Off', value: '0' },
@@ -43,10 +43,45 @@ const EXCLUDE_IDLE_FILTER_VALUE = 'exclude-idle'
 const SHOW_ALL_FILTER_VALUE = 'show-all'
 
 function truncateSql(sql: string | null): string {
-  if (!sql) return '(no active query)'
+  if (!sql) return NO_ACTIVE_QUERY_LABEL
   return sql.length > SQL_PREVIEW_MAX_LENGTH
     ? sql.slice(0, SQL_PREVIEW_MAX_LENGTH) + TRUNCATION_ELLIPSIS
     : sql
+}
+
+const NO_ACTIVE_QUERY_LABEL = '(no active query)'
+
+function killButtonLabel(selectedCount: number): string {
+  if (selectedCount === 0) return 'Kill query'
+  return `Kill ${selectedCount} ${selectedCount === 1 ? 'Query' : 'Queries'}`
+}
+
+function processSql(rows: ProcessRow[], id: number): string {
+  const row = rows.find((candidate) => candidate.id === id)
+  if (!row) return NO_ACTIVE_QUERY_LABEL
+  return truncateSql(row.info)
+}
+
+interface KillConfirmMessageProps {
+  isOpen: boolean
+  selectedIds: Set<number>
+  rows: ProcessRow[]
+}
+
+function KillConfirmMessage({ isOpen, selectedIds, rows }: KillConfirmMessageProps) {
+  if (!isOpen || selectedIds.size === 0) return null
+  return (
+    <>
+      Kill {selectedIds.size} process{selectedIds.size === 1 ? '' : 'es'}?
+      <ul style={{ margin: '8px 0 0', paddingLeft: '20px', textAlign: 'left' }}>
+        {[...selectedIds].map((id) => (
+          <li key={id}>
+            ID {id}: {processSql(rows, id)}
+          </li>
+        ))}
+      </ul>
+    </>
+  )
 }
 
 export interface ProcessListToolbarProps {
@@ -92,8 +127,9 @@ export function ProcessListToolbar({
   const setSelectedIds = useProcessListStore((state) => state.setSelectedIds)
   const fetchProcessList = useProcessListStore((state) => state.fetchProcessList)
 
-  const activeConnections = useConnectionStore((state) => state.activeConnections)
-  const isReadOnly = activeConnections[connectionId]?.profile.readOnly ?? false
+  const isReadOnly = useConnectionStore(
+    (state) => state.activeConnections[connectionId]?.profile.readOnly ?? false
+  )
   const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
   const selectedCount = selectedIds.size
   const rowCount = visibleRows.length
@@ -203,31 +239,7 @@ export function ProcessListToolbar({
     fetchProcessList(connectionId, sessionId, true)
   }, [connectionId, sessionId, setSummaryDialogOpen, setSelectedIds, fetchProcessList])
 
-  const killLabel =
-    selectedCount > 0
-      ? `Kill ${selectedCount} ${selectedCount === 1 ? 'Query' : 'Queries'}`
-      : 'Kill query'
-
-  // Build the confirm content with truncated SQL for each selected process
-  const confirmMessage =
-    isConfirmDialogOpen && selectedIds.size > 0 ? (
-      <>
-        Kill {selectedIds.size} process{selectedIds.size === 1 ? '' : 'es'}?
-        <ul style={{ margin: '8px 0 0', paddingLeft: '20px', textAlign: 'left' }}>
-          {[...selectedIds].map((id) => {
-            const row = rows.find((candidate) => candidate.id === id)
-            const sql = row ? truncateSql(row.info) : '(no active query)'
-            return (
-              <li key={id}>
-                ID {id}: {sql}
-              </li>
-            )
-          })}
-        </ul>
-      </>
-    ) : (
-      ''
-    )
+  const killLabel = killButtonLabel(selectedCount)
 
   return (
     <div className={styles.toolbar} data-testid="processlist-toolbar">
@@ -306,7 +318,9 @@ export function ProcessListToolbar({
       <ConfirmDialog
         isOpen={isConfirmDialogOpen}
         title="Kill processes"
-        message={confirmMessage}
+        message={
+          <KillConfirmMessage isOpen={isConfirmDialogOpen} selectedIds={selectedIds} rows={rows} />
+        }
         confirmLabel="Kill"
         isDestructive
         isLoading={isKilling}

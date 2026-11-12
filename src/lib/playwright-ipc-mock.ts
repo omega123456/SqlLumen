@@ -290,535 +290,409 @@ async function maybeDelaySchemaMetadata(): Promise<void> {
   })
 }
 
-/**
- * IPC handler for `mockIPC` when the app runs under Playwright (VITE_PLAYWRIGHT).
- * Returns stable, deterministic data so UI flows and visual snapshots do not flap.
- */
-export function playwrightIpcMockHandler(command: string, args?: Record<string, unknown>): unknown {
-  switch (command) {
-    // --- Tauri event system (captures listener callback IDs for AI streaming) ---
-    case 'plugin:event|listen': {
-      const eventName = args?.event as string | undefined
-      const handlerId = args?.handler as number | undefined
-      if (eventName && typeof handlerId === 'number') {
-        const ids = eventListenerCallbackIds.get(eventName) ?? []
-        ids.push(handlerId)
-        eventListenerCallbackIds.set(eventName, ids)
-      }
-      // Return the handler ID as the event ID (used by unlisten)
-      return handlerId ?? null
-    }
-    case 'plugin:event|unlisten': {
-      const eventName = args?.event as string | undefined
-      const eventId = args?.eventId as number | undefined
-      if (eventName && typeof eventId === 'number') {
-        const ids = eventListenerCallbackIds.get(eventName)
-        if (ids) {
-          const index = ids.indexOf(eventId)
-          if (index !== -1) ids.splice(index, 1)
-        }
-      }
-      return null
-    }
-
-    // --- Tauri plugins: updater/process ---
-    case 'plugin:updater|check':
-      return getMockUpdateMetadata()
-    case 'plugin:updater|download_and_install':
-      emitUpdaterDownload(args, getStaticFixture('update').installChunkLengths)
-      return null
-    case 'plugin:updater|download':
-      emitUpdaterDownload(args, getStaticFixture('update').downloadChunkLengths)
-      return getStaticFixture('update').downloadRid
-    case 'plugin:updater|install':
-      return null
-    case 'plugin:os|platform':
-      return getStaticFixture('platform')
-    case 'plugin:process|restart':
-    case 'plugin:process|relaunch':
-      return null
-
-    // --- Settings ---
-    case 'get_setting': {
-      const key = args?.key as string
-      if (key === COMMAND_PALETTE_RECENTS_SETTING_KEY) {
-        return getCommandPaletteRecentsValue()
-      }
-      return getAiDefaultSettingFixture(key)
-    }
-    case 'set_setting':
-      return null
-    case 'get_all_settings':
-      return {
-        ...getStaticFixture('appSettings'),
-        [COMMAND_PALETTE_RECENTS_SETTING_KEY]: getCommandPaletteRecentsValue(),
-      }
-
-    case 'log_frontend':
-      return null
-    case 'list_logs': {
-      const page = Number((args as Record<string, unknown>)?.page ?? 1)
-      const level = (args as Record<string, unknown>)?.level
-      const normalizedLevel =
-        typeof level === 'string' && PLAYWRIGHT_LOG_LEVEL_FILTERS.includes(level as LogLevelFilter)
-          ? (level as LogLevelFilter)
-          : 'all'
-      return getLogsPageFixture(page, normalizedLevel)
-    }
-    case 'export_logs': {
-      const startTimestamp = (args as Record<string, unknown>)?.startTimestamp
-      const endTimestamp = (args as Record<string, unknown>)?.endTimestamp
-      return getExportLogsFixture(
-        typeof startTimestamp === 'string' ? startTimestamp : '',
-        typeof endTimestamp === 'string' ? endTimestamp : ''
-      )
-    }
-
-    // --- App info ---
-    case 'get_app_info':
-      return getStaticFixture('appInfo')
-
-    // --- Window chrome ---
-    case 'set_window_theme':
-    case 'plugin:webview|set_webview_zoom':
-      return null
-    case 'get_window_backdrop':
-      return getWindowBackdropFixture()
-
-    // --- Connection management ---
-    case 'list_connections':
-      return [getStaticFixture('savedConnection')]
-    case 'list_connection_groups':
-      return []
-    case 'list_open_connection_sessions':
-      return getOpenConnectionSessionsFixture()
-    case 'open_connection':
-      activeMockDatabase = defaultMockDatabase()
-      return {
-        sessionId: allocatePlaywrightSessionId(),
-        serverVersion: getStaticFixture('serverVersion'),
-      }
-    case 'select_database':
-      activeMockDatabase =
-        ((args as Record<string, unknown>)?.databaseName as string | null) ?? null
-      return null
-    case 'test_connection':
-      return getStaticFixture('testConnection')
-    case 'save_connection':
-      return getStaticFixture('newConnectionId')
-    case 'update_connection':
-      return null
-    case 'delete_connection':
-      return null
-    case 'get_connection':
-      return getStaticFixture('savedConnection')
-    case 'create_connection_group':
-      return getStaticFixture('newConnectionGroupId')
-    case 'update_connection_group':
-      return null
-    case 'delete_connection_group':
-      return null
-    case 'close_connection':
-      return null
-    case 'get_connection_status':
-      return 'connected'
-    case 'load_schema_cache_snapshot':
-      return null
-    case 'save_schema_cache_snapshot':
-      return null
-
-    // --- Schema read commands ---
-    case 'list_databases':
-      return getTargetDatabasesFixture()
-    case 'list_copyable_objects': {
-      const database = (args as Record<string, unknown>)?.database
-      return getCopyableObjectsFixture(typeof database === 'string' ? database : undefined)
-    }
-    case 'list_schema_objects': {
-      const objectType = (args as Record<string, unknown>)?.objectType
-      return getSchemaObjectsFixture(typeof objectType === 'string' ? objectType : undefined)
-    }
-    case 'list_columns': {
-      const table = (args as Record<string, unknown>)?.table
-      return getColumnsFixture(typeof table === 'string' ? table : undefined)
-    }
-    case 'get_schema_info': {
-      const objectType = (args as Record<string, unknown>)?.objectType ?? 'table'
-      return getSchemaInfoFixture(String(objectType))
-    }
-    case 'get_database_details':
-      return getStaticFixture('databaseDetails')
-    case 'list_charsets':
-      return getStaticFixture('charsets')
-    case 'list_collations':
-      return getStaticFixture('collations')
-
-    // --- Copy to another host ---
-    case 'start_copy_to_host':
-      return getCopyToHostStartFixture()
-    case 'get_copy_progress': {
-      const jobId = (args as Record<string, unknown>)?.jobId
-      return getCopyProgressFixture(typeof jobId === 'string' ? jobId : undefined)
-    }
-    case 'cancel_copy': {
-      const jobId = (args as Record<string, unknown>)?.jobId
-      return getCancelCopyFixture(typeof jobId === 'string' ? jobId : undefined)
-    }
-
-    // --- Table designer ---
-    case 'load_table_for_designer':
-      return getStaticFixture('tableDesignerSchema')
-    case 'generate_table_ddl': {
-      const request = (args as Record<string, unknown>)?.request as { mode?: string } | undefined
-      return getTableDdlPreviewFixture(request?.mode)
-    }
-    case 'apply_table_ddl':
-      return undefined
-
-    // --- Schema mutating commands ---
-    case 'create_database':
-    case 'drop_database':
-    case 'alter_database':
-    case 'rename_database':
-    case 'drop_table':
-    case 'truncate_table':
-    case 'rename_table':
-    case 'invalidate_metadata_cache':
-      return null
-
-    // --- Query execution ---
-    case 'execute_query': {
-      // Support error simulation for Playwright tests
-      if (readMockWindowFlag('__mockQueryError__')) {
-        throw new Error(getStaticFixture('querySimulation').errorMessage)
-      }
-
-      // Build the windowed result for this request (used for both immediate and delayed paths)
-      const result = executeQueryFixture({
-        tabId: String(args?.tabId ?? ''),
-        sql: String(args?.sql ?? ''),
-        activeMockDb: activeMockDatabase,
-        viewSpec: (args?.viewSpec as Parameters<typeof executeQueryFixture>[0]['viewSpec']) ?? null,
-      })
-
-      // Support configurable delay for Playwright E2E tests (running indicator + cancel flow)
-      const delay = readMockWindowFlag('__mockQueryDelay__')
-      if (typeof delay === 'number' && delay > 0) {
-        return new Promise((resolve, reject) => {
-          writeMockWindowFlag('__pendingQueryReject__', reject)
-          setTimeout(() => {
-            writeMockWindowFlag('__pendingQueryReject__', null)
-            resolve(result)
-          }, delay)
-        })
-      }
-
-      return result
-    }
-
-    // Windowed results: fixture data and view/window logic live in the registry.
-    case 'execute_multi_query':
-      return executeMultiQueryFixture({ tabId: String(args?.tabId ?? '') })
-
-    case 'execute_call_query':
-      return executeCallQueryFixture({
-        tabId: String(args?.tabId ?? ''),
-        sql: String(args?.sql ?? ''),
-      })
-
-    case 'reexecute_single_result':
-      return reexecuteSingleResultFixture({
-        tabId: String(args?.tabId ?? ''),
-        resultIndex: Number(args?.resultIndex ?? 0),
-        sql: String(args?.sql ?? 'SELECT 1'),
-        viewSpec:
-          (args?.viewSpec as Parameters<typeof reexecuteSingleResultFixture>[0]['viewSpec']) ??
-          null,
-      })
-
-    case 'set_result_view':
-      return setResultViewFixture(args as unknown as Parameters<typeof setResultViewFixture>[0])
-
-    case 'fetch_result_window':
-      return fetchResultWindowFixture(
-        args as unknown as Parameters<typeof fetchResultWindowFixture>[0]
-      )
-
-    case 'remove_result_rows':
-      return removeResultRowsFixture(
-        args as unknown as Parameters<typeof removeResultRowsFixture>[0]
-      )
-
-    case 'evict_results':
-      return null
-
-    case 'cancel_query': {
-      const pendingReject = readMockWindowFlag('__pendingQueryReject__')
-      if (pendingReject) {
-        writeMockWindowFlag('__pendingQueryReject__', null)
-        pendingReject(new Error(getStaticFixture('querySimulation').cancelledMessage))
-      }
-      return true
-    }
-
-    case 'analyze_query_for_edit':
-      return getAnalyzeQueryForEditFixture(args?.sql as string | null | undefined)
-
-    case 'update_result_cell':
-      return null
-
-    case 'touch_results':
-      return { status: 'available' }
-
-    case 'export_results':
-      return getStaticFixture('exportResults')
-
-    case 'start_result_export':
-      return getResultExportStartFixture()
-
-    case 'get_result_export_progress':
-      return getResultExportProgressFixture(args?.jobId as string | null | undefined)
-
-    case 'cancel_result_export':
-      return getCancelResultExportFixture(args?.jobId as string | null | undefined)
-
-    case 'fetch_schema_metadata':
-      return (
-        readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__') ??
-        getStaticFixture('schemaMetadata')
-      )
-
-    case 'fetch_schema_metadata_full': {
-      const fixtureMetadata = getSchemaMetadataFullFixture()
-      const baseMetadata = readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__')
-      return maybeDelaySchemaMetadata().then((): SchemaMetadataFull => ({
-        databases: baseMetadata?.databases ?? fixtureMetadata.databases,
-        tables: baseMetadata?.tables ?? fixtureMetadata.tables,
-        views: fixtureMetadata.views,
-        columns: baseMetadata?.columns ?? fixtureMetadata.columns,
-        routines: baseMetadata?.routines ?? fixtureMetadata.routines,
-        triggers: fixtureMetadata.triggers,
-        foreignKeys: fixtureMetadata.foreignKeys,
-        indexes: fixtureMetadata.indexes,
-      }))
-    }
-
-    // --- Table data browser/editor ---
-    case 'fetch_table_data': {
-      const payload = args?.payload as Record<string, unknown> | undefined
-      return getTableDataFixture(String(payload?.table))
-    }
-
-    case 'touch_table_data':
-      return { status: 'available' }
-
-    case 'evict_table_data':
-      return null
-
-    case 'restore_table_data_cache': {
-      const table = (args as Record<string, unknown>)?.table
-      return {
-        status: 'available',
-        data: getTableDataFixture(String(table)),
-      }
-    }
-
-    case 'get_table_foreign_keys': {
-      const table = (args as Record<string, unknown>)?.table
-      return getForeignKeysFixture(String(table))
-    }
-
-    case 'sync_table_data_cache_after_insert':
-    case 'sync_table_data_cache_after_update':
-    case 'sync_table_data_cache_after_delete': {
-      const payload = args?.payload as Record<string, unknown> | undefined
-      void getTableDataFixture(String(payload?.table))
-      return { status: 'synced' }
-    }
-
-    case 'update_table_row':
-      return null
-
-    case 'insert_table_row':
-      return getStaticFixture('insertedRow')
-
-    case 'delete_table_row':
-      return null
-
-    case 'export_table_data':
-      return null
-
-    case 'fetch_blob_value': {
-      const column = (args as Record<string, unknown>)?.column
-      return getBlobValueFixture(String(column))
-    }
-
-    case 'read_file_bytes':
-      // Default: same 1x1 PNG bytes the blob fixture serves, base64-encoded.
-      return getBlobValueFixture('default').base64 ?? ''
-
-    case 'write_file_bytes':
-      return null
-
-    // --- Object editor commands (Phase 8) ---
-    case 'get_object_body': {
-      const objectType = (args as Record<string, unknown>)?.objectType as string | undefined
-      return getObjectBodyFixture(objectType)
-    }
-
-    case 'save_object':
-      return getStaticFixture('savedObject')
-
-    case 'drop_object':
-      return undefined
-
-    case 'get_routine_parameters':
-      return getStaticFixture('routineParameters')
-
-    case 'get_routine_parameters_with_return_type': {
-      const rtType = (args as Record<string, unknown>)?.routineType
-      return getRoutineParamsFixture(String(rtType))
-    }
-
-    case 'read_file':
-      return getStaticFixture('openedFileContent')
-
-    case 'write_file':
-      return null
-
-    // --- SQL Dump Export (Phase 9.5a) ---
-    case 'list_exportable_objects':
-      return getStaticFixture('exportableDatabases')
-
-    case 'start_sql_dump':
-      return getStaticFixture('sqlDumpJobId')
-
-    case 'get_dump_progress': {
-      const jobId = (args as Record<string, unknown>)?.jobId
-      return getSqlDumpProgressFixture(typeof jobId === 'string' ? jobId : undefined)
-    }
-
-    case 'cancel_dump':
-      return null
-
-    // --- SQL Import (Phase 9.5b) ---
-    case 'start_sql_import':
-      return getStaticFixture('sqlImportJobId')
-
-    case 'get_import_progress': {
-      const jobId = (args as Record<string, unknown>)?.jobId
-      return getSqlImportProgressFixture(typeof jobId === 'string' ? jobId : undefined)
-    }
-
-    case 'cancel_import':
-      return null
-
-    // --- Process List ---
-    case 'get_processlist':
-      return getStaticFixture('processList')
-
-    case 'kill_queries': {
-      const ids = (args as Record<string, unknown>)?.ids as number[] | undefined
-      return (ids ?? []).map((id: number) => ({ id: id, success: true, error: null }))
-    }
-
-    // --- Query History & Favorites (Phase 9.3) ---
-    case 'list_history':
-      return getStaticFixture('historyPage')
-
-    case 'delete_history_entry':
-      return true
-
-    case 'clear_history':
-      return getStaticFixture('historyPage').total
-
-    case 'create_favorite':
-      return getStaticFixture('createdFavoriteId')
-
-    case 'list_favorites':
-      return getStaticFixture('favorites')
-
-    case 'update_favorite':
-      return true
-
-    case 'delete_favorite':
-      return true
-
-    // --- AI commands ---
-    case 'ai_chat': {
-      const request = args?.request as { streamId?: string } | undefined
-      const streamId = request?.streamId ?? getStaticFixture('aiChat').fallbackStreamId
-
-      if (readMockWindowFlag('__mockAiError__')) {
-        scheduleAiStreamError(streamId)
-        return null
-      }
-
-      if (readMockWindowFlag('__mockAiThinking__')) {
-        scheduleAiThinkingStream(streamId)
-        return null
-      }
-
-      scheduleAiContentStream(streamId, AI_STREAM_START_DELAY_MS)
-      return null
-    }
-
-    case 'ai_cancel':
-      return null
-
-    case 'list_ai_models':
-      return {
-        models: getAiModelsFixture(args?.endpoint as string | null | undefined),
-      }
-
-    case 'ai_query_expand':
-      return getStaticFixture('aiQueryExpansion')
-
-    // --- Schema index commands ---
-    case 'build_schema_index':
-      return null
-    case 'force_rebuild_schema_index':
-      return null
-    case 'semantic_search':
-      return getStaticFixture('semanticSearchResults')
-    case 'get_index_status':
-      return getStaticFixture('schemaIndexStatus')
-    case 'invalidate_schema_index':
-      return null
-    case 'list_indexed_tables':
-      return []
-
-    // --- AI Memory commands ---
-    case 'save_memory':
-      return getSavedMemoryFixture(args)
-    case 'list_global_memories':
-      return getGlobalMemoriesFixture()
-    case 'list_group_memories':
-      return getGroupMemoriesFixture((args as Record<string, unknown>)?.groupId as string | null)
-    case 'list_connection_memories':
-      return getConnectionMemoriesFixture(
-        (args as Record<string, unknown>)?.connectionId as string | null
-      )
-    case 'move_memory':
-      return getMovedMemoryFixture(args)
-    case 'delete_memory':
-      return null
-    case 'search_memories':
-      return []
-    case 'reembed_all_memories':
-      return null
-
-    // --- Session snapshots ---
-    case 'create_session_snapshot':
-      return getSnapshotCreatedIdFixture()
-    case 'list_session_snapshots':
-      return getSnapshotListFixture()
-    case 'get_session_snapshot':
-      return getSnapshotStateFixture((args as Record<string, unknown>)?.id as number | null)
-    case 'delete_session_snapshot':
-      return null
-
-    default:
-      return null
+type PlaywrightIpcArgs = Record<string, unknown> | undefined
+type PlaywrightIpcHandler = (args: PlaywrightIpcArgs) => unknown
+type PlaywrightIpcHandlerTable = Record<string, PlaywrightIpcHandler>
+
+function returnNull(): null {
+  return null
+}
+
+function returnTrue(): boolean {
+  return true
+}
+
+function returnUndefined(): undefined {
+  return undefined
+}
+
+function returnEmptyList(): never[] {
+  return []
+}
+
+function returnAvailableStatus(): { status: string } {
+  return { status: 'available' }
+}
+
+function optionalStringArg(args: PlaywrightIpcArgs, key: string): string | undefined {
+  const value = args?.[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function stringArgOrEmpty(args: PlaywrightIpcArgs, key: string): string {
+  return optionalStringArg(args, key) ?? ''
+}
+
+function isPlaywrightLogLevelFilter(level: unknown): level is LogLevelFilter {
+  return typeof level === 'string' && PLAYWRIGHT_LOG_LEVEL_FILTERS.includes(level as LogLevelFilter)
+}
+
+function hasEventListenerIds(eventName: string | undefined, callbackId: number | undefined) {
+  return Boolean(eventName) && typeof callbackId === 'number'
+}
+
+function listenToMockEvent(args: PlaywrightIpcArgs): unknown {
+  const eventName = args?.event as string | undefined
+  const handlerId = args?.handler as number | undefined
+  if (!hasEventListenerIds(eventName, handlerId)) {
+    return handlerId ?? null
   }
+  const ids = eventListenerCallbackIds.get(eventName as string) ?? []
+  ids.push(handlerId as number)
+  eventListenerCallbackIds.set(eventName as string, ids)
+  return handlerId
+}
+
+function unlistenFromMockEvent(args: PlaywrightIpcArgs): null {
+  const eventName = args?.event as string | undefined
+  const eventId = args?.eventId as number | undefined
+  if (!hasEventListenerIds(eventName, eventId)) {
+    return null
+  }
+  const ids = eventListenerCallbackIds.get(eventName as string) ?? []
+  const index = ids.indexOf(eventId as number)
+  if (index !== -1) ids.splice(index, 1)
+  return null
+}
+
+const TAURI_PLUGIN_HANDLERS: PlaywrightIpcHandlerTable = {
+  'plugin:event|listen': listenToMockEvent,
+  'plugin:event|unlisten': unlistenFromMockEvent,
+  'plugin:updater|check': () => getMockUpdateMetadata(),
+  'plugin:updater|download_and_install': (args) => {
+    emitUpdaterDownload(args, getStaticFixture('update').installChunkLengths)
+    return null
+  },
+  'plugin:updater|download': (args) => {
+    emitUpdaterDownload(args, getStaticFixture('update').downloadChunkLengths)
+    return getStaticFixture('update').downloadRid
+  },
+  'plugin:updater|install': returnNull,
+  'plugin:os|platform': () => getStaticFixture('platform'),
+  'plugin:process|restart': returnNull,
+  'plugin:process|relaunch': returnNull,
+  'plugin:webview|set_webview_zoom': returnNull,
+}
+
+function getMockSetting(args: PlaywrightIpcArgs): unknown {
+  const key = args?.key as string
+  if (key === COMMAND_PALETTE_RECENTS_SETTING_KEY) {
+    return getCommandPaletteRecentsValue()
+  }
+  return getAiDefaultSettingFixture(key)
+}
+
+function listMockLogs(args: PlaywrightIpcArgs): unknown {
+  const page = Number(args?.page ?? 1)
+  const level = args?.level
+  const normalizedLevel = isPlaywrightLogLevelFilter(level) ? level : 'all'
+  return getLogsPageFixture(page, normalizedLevel)
+}
+
+const APP_HANDLERS: PlaywrightIpcHandlerTable = {
+  get_setting: getMockSetting,
+  set_setting: returnNull,
+  get_all_settings: () => ({
+    ...getStaticFixture('appSettings'),
+    [COMMAND_PALETTE_RECENTS_SETTING_KEY]: getCommandPaletteRecentsValue(),
+  }),
+  log_frontend: returnNull,
+  list_logs: listMockLogs,
+  export_logs: (args) =>
+    getExportLogsFixture(
+      stringArgOrEmpty(args, 'startTimestamp'),
+      stringArgOrEmpty(args, 'endTimestamp')
+    ),
+  get_app_info: () => getStaticFixture('appInfo'),
+  set_window_theme: returnNull,
+  get_window_backdrop: () => getWindowBackdropFixture(),
+}
+
+const CONNECTION_HANDLERS: PlaywrightIpcHandlerTable = {
+  list_connections: () => [getStaticFixture('savedConnection')],
+  list_connection_groups: returnEmptyList,
+  list_open_connection_sessions: () => getOpenConnectionSessionsFixture(),
+  open_connection: () => {
+    activeMockDatabase = defaultMockDatabase()
+    return {
+      sessionId: allocatePlaywrightSessionId(),
+      serverVersion: getStaticFixture('serverVersion'),
+    }
+  },
+  select_database: (args) => {
+    activeMockDatabase = (args?.databaseName as string | null) ?? null
+    return null
+  },
+  test_connection: () => getStaticFixture('testConnection'),
+  save_connection: () => getStaticFixture('newConnectionId'),
+  update_connection: returnNull,
+  delete_connection: returnNull,
+  get_connection: () => getStaticFixture('savedConnection'),
+  create_connection_group: () => getStaticFixture('newConnectionGroupId'),
+  update_connection_group: returnNull,
+  delete_connection_group: returnNull,
+  close_connection: returnNull,
+  get_connection_status: () => 'connected',
+  load_schema_cache_snapshot: returnNull,
+  save_schema_cache_snapshot: returnNull,
+}
+
+function fetchMockSchemaMetadataFull(): Promise<SchemaMetadataFull> {
+  const fixtureMetadata = getSchemaMetadataFullFixture()
+  const baseMetadata = readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__')
+  return maybeDelaySchemaMetadata().then((): SchemaMetadataFull => ({
+    databases: baseMetadata?.databases ?? fixtureMetadata.databases,
+    tables: baseMetadata?.tables ?? fixtureMetadata.tables,
+    views: fixtureMetadata.views,
+    columns: baseMetadata?.columns ?? fixtureMetadata.columns,
+    routines: baseMetadata?.routines ?? fixtureMetadata.routines,
+    triggers: fixtureMetadata.triggers,
+    foreignKeys: fixtureMetadata.foreignKeys,
+    indexes: fixtureMetadata.indexes,
+  }))
+}
+
+const SCHEMA_HANDLERS: PlaywrightIpcHandlerTable = {
+  list_databases: () => getTargetDatabasesFixture(),
+  list_copyable_objects: (args) => getCopyableObjectsFixture(optionalStringArg(args, 'database')),
+  list_schema_objects: (args) => getSchemaObjectsFixture(optionalStringArg(args, 'objectType')),
+  list_columns: (args) => getColumnsFixture(optionalStringArg(args, 'table')),
+  get_schema_info: (args) => getSchemaInfoFixture(String(args?.objectType ?? 'table')),
+  get_database_details: () => getStaticFixture('databaseDetails'),
+  list_charsets: () => getStaticFixture('charsets'),
+  list_collations: () => getStaticFixture('collations'),
+  load_table_for_designer: () => getStaticFixture('tableDesignerSchema'),
+  generate_table_ddl: (args) => {
+    const request = args?.request as { mode?: string } | undefined
+    return getTableDdlPreviewFixture(request?.mode)
+  },
+  apply_table_ddl: returnUndefined,
+  create_database: returnNull,
+  drop_database: returnNull,
+  alter_database: returnNull,
+  rename_database: returnNull,
+  drop_table: returnNull,
+  truncate_table: returnNull,
+  rename_table: returnNull,
+  invalidate_metadata_cache: returnNull,
+  fetch_schema_metadata: () =>
+    readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__') ??
+    getStaticFixture('schemaMetadata'),
+  fetch_schema_metadata_full: fetchMockSchemaMetadataFull,
+}
+
+const COPY_TO_HOST_HANDLERS: PlaywrightIpcHandlerTable = {
+  start_copy_to_host: () => getCopyToHostStartFixture(),
+  get_copy_progress: (args) => getCopyProgressFixture(optionalStringArg(args, 'jobId')),
+  cancel_copy: (args) => getCancelCopyFixture(optionalStringArg(args, 'jobId')),
+}
+
+function delayedQueryResult(result: unknown, delayMs: number): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    writeMockWindowFlag('__pendingQueryReject__', reject)
+    setTimeout(() => {
+      writeMockWindowFlag('__pendingQueryReject__', null)
+      resolve(result)
+    }, delayMs)
+  })
+}
+
+function executeMockQuery(args: PlaywrightIpcArgs): unknown {
+  if (readMockWindowFlag('__mockQueryError__')) {
+    throw new Error(getStaticFixture('querySimulation').errorMessage)
+  }
+  const result = executeQueryFixture({
+    tabId: String(args?.tabId ?? ''),
+    sql: String(args?.sql ?? ''),
+    activeMockDb: activeMockDatabase,
+    viewSpec: (args?.viewSpec as Parameters<typeof executeQueryFixture>[0]['viewSpec']) ?? null,
+  })
+  const delay = readMockWindowFlag('__mockQueryDelay__')
+  const hasQueryDelay = typeof delay === 'number' && delay > 0
+  if (hasQueryDelay) {
+    return delayedQueryResult(result, delay)
+  }
+  return result
+}
+
+function cancelMockQuery(): boolean {
+  const pendingReject = readMockWindowFlag('__pendingQueryReject__')
+  if (pendingReject) {
+    writeMockWindowFlag('__pendingQueryReject__', null)
+    pendingReject(new Error(getStaticFixture('querySimulation').cancelledMessage))
+  }
+  return true
+}
+
+const QUERY_HANDLERS: PlaywrightIpcHandlerTable = {
+  execute_query: executeMockQuery,
+  execute_multi_query: (args) => executeMultiQueryFixture({ tabId: String(args?.tabId ?? '') }),
+  execute_call_query: (args) =>
+    executeCallQueryFixture({
+      tabId: String(args?.tabId ?? ''),
+      sql: String(args?.sql ?? ''),
+    }),
+  reexecute_single_result: (args) =>
+    reexecuteSingleResultFixture({
+      tabId: String(args?.tabId ?? ''),
+      resultIndex: Number(args?.resultIndex ?? 0),
+      sql: String(args?.sql ?? 'SELECT 1'),
+      viewSpec:
+        (args?.viewSpec as Parameters<typeof reexecuteSingleResultFixture>[0]['viewSpec']) ?? null,
+    }),
+  set_result_view: (args) =>
+    setResultViewFixture(args as unknown as Parameters<typeof setResultViewFixture>[0]),
+  fetch_result_window: (args) =>
+    fetchResultWindowFixture(args as unknown as Parameters<typeof fetchResultWindowFixture>[0]),
+  remove_result_rows: (args) =>
+    removeResultRowsFixture(args as unknown as Parameters<typeof removeResultRowsFixture>[0]),
+  evict_results: returnNull,
+  cancel_query: cancelMockQuery,
+  analyze_query_for_edit: (args) =>
+    getAnalyzeQueryForEditFixture(args?.sql as string | null | undefined),
+  update_result_cell: returnNull,
+  touch_results: returnAvailableStatus,
+  export_results: () => getStaticFixture('exportResults'),
+  start_result_export: () => getResultExportStartFixture(),
+  get_result_export_progress: (args) =>
+    getResultExportProgressFixture(args?.jobId as string | null | undefined),
+  cancel_result_export: (args) =>
+    getCancelResultExportFixture(args?.jobId as string | null | undefined),
+}
+
+function payloadTableName(args: PlaywrightIpcArgs): string {
+  const payload = args?.payload as Record<string, unknown> | undefined
+  return String(payload?.table)
+}
+
+function syncMockTableDataCache(args: PlaywrightIpcArgs): { status: string } {
+  void getTableDataFixture(payloadTableName(args))
+  return { status: 'synced' }
+}
+
+const TABLE_DATA_HANDLERS: PlaywrightIpcHandlerTable = {
+  fetch_table_data: (args) => getTableDataFixture(payloadTableName(args)),
+  touch_table_data: returnAvailableStatus,
+  evict_table_data: returnNull,
+  restore_table_data_cache: (args) => ({
+    status: 'available',
+    data: getTableDataFixture(String(args?.table)),
+  }),
+  get_table_foreign_keys: (args) => getForeignKeysFixture(String(args?.table)),
+  sync_table_data_cache_after_insert: syncMockTableDataCache,
+  sync_table_data_cache_after_update: syncMockTableDataCache,
+  sync_table_data_cache_after_delete: syncMockTableDataCache,
+  update_table_row: returnNull,
+  insert_table_row: () => getStaticFixture('insertedRow'),
+  delete_table_row: returnNull,
+  export_table_data: returnNull,
+  fetch_blob_value: (args) => getBlobValueFixture(String(args?.column)),
+  read_file_bytes: () => getBlobValueFixture('default').base64 ?? '',
+  write_file_bytes: returnNull,
+}
+
+const OBJECT_EDITOR_HANDLERS: PlaywrightIpcHandlerTable = {
+  get_object_body: (args) => getObjectBodyFixture(args?.objectType as string | undefined),
+  save_object: () => getStaticFixture('savedObject'),
+  drop_object: returnUndefined,
+  get_routine_parameters: () => getStaticFixture('routineParameters'),
+  get_routine_parameters_with_return_type: (args) =>
+    getRoutineParamsFixture(String(args?.routineType)),
+  read_file: () => getStaticFixture('openedFileContent'),
+  write_file: returnNull,
+}
+
+const DUMP_AND_IMPORT_HANDLERS: PlaywrightIpcHandlerTable = {
+  list_exportable_objects: () => getStaticFixture('exportableDatabases'),
+  start_sql_dump: () => getStaticFixture('sqlDumpJobId'),
+  get_dump_progress: (args) => getSqlDumpProgressFixture(optionalStringArg(args, 'jobId')),
+  cancel_dump: returnNull,
+  start_sql_import: () => getStaticFixture('sqlImportJobId'),
+  get_import_progress: (args) => getSqlImportProgressFixture(optionalStringArg(args, 'jobId')),
+  cancel_import: returnNull,
+}
+
+function killMockQueries(args: PlaywrightIpcArgs): unknown {
+  const ids = args?.ids as number[] | undefined
+  return (ids ?? []).map((id: number) => ({ id: id, success: true, error: null }))
+}
+
+const PROCESS_LIST_AND_HISTORY_HANDLERS: PlaywrightIpcHandlerTable = {
+  get_processlist: () => getStaticFixture('processList'),
+  kill_queries: killMockQueries,
+  list_history: () => getStaticFixture('historyPage'),
+  delete_history_entry: returnTrue,
+  clear_history: () => getStaticFixture('historyPage').total,
+  create_favorite: () => getStaticFixture('createdFavoriteId'),
+  list_favorites: () => getStaticFixture('favorites'),
+  update_favorite: returnTrue,
+  delete_favorite: returnTrue,
+}
+
+function startMockAiChat(args: PlaywrightIpcArgs): null {
+  const request = args?.request as { streamId?: string } | undefined
+  const streamId = request?.streamId ?? getStaticFixture('aiChat').fallbackStreamId
+  if (readMockWindowFlag('__mockAiError__')) {
+    scheduleAiStreamError(streamId)
+    return null
+  }
+  if (readMockWindowFlag('__mockAiThinking__')) {
+    scheduleAiThinkingStream(streamId)
+    return null
+  }
+  scheduleAiContentStream(streamId, AI_STREAM_START_DELAY_MS)
+  return null
+}
+
+const AI_HANDLERS: PlaywrightIpcHandlerTable = {
+  ai_chat: startMockAiChat,
+  ai_cancel: returnNull,
+  list_ai_models: (args) => ({
+    models: getAiModelsFixture(args?.endpoint as string | null | undefined),
+  }),
+  ai_query_expand: () => getStaticFixture('aiQueryExpansion'),
+  build_schema_index: returnNull,
+  force_rebuild_schema_index: returnNull,
+  semantic_search: () => getStaticFixture('semanticSearchResults'),
+  get_index_status: () => getStaticFixture('schemaIndexStatus'),
+  invalidate_schema_index: returnNull,
+  list_indexed_tables: returnEmptyList,
+  save_memory: (args) => getSavedMemoryFixture(args),
+  list_global_memories: () => getGlobalMemoriesFixture(),
+  list_group_memories: (args) => getGroupMemoriesFixture(args?.groupId as string | null),
+  list_connection_memories: (args) =>
+    getConnectionMemoriesFixture(args?.connectionId as string | null),
+  move_memory: (args) => getMovedMemoryFixture(args),
+  delete_memory: returnNull,
+  search_memories: returnEmptyList,
+  reembed_all_memories: returnNull,
+}
+
+const SESSION_SNAPSHOT_HANDLERS: PlaywrightIpcHandlerTable = {
+  create_session_snapshot: () => getSnapshotCreatedIdFixture(),
+  list_session_snapshots: () => getSnapshotListFixture(),
+  get_session_snapshot: (args) => getSnapshotStateFixture(args?.id as number | null),
+  delete_session_snapshot: returnNull,
+}
+
+const PLAYWRIGHT_IPC_HANDLERS = new Map<string, PlaywrightIpcHandler>(
+  Object.entries({
+    ...TAURI_PLUGIN_HANDLERS,
+    ...APP_HANDLERS,
+    ...CONNECTION_HANDLERS,
+    ...SCHEMA_HANDLERS,
+    ...COPY_TO_HOST_HANDLERS,
+    ...QUERY_HANDLERS,
+    ...TABLE_DATA_HANDLERS,
+    ...OBJECT_EDITOR_HANDLERS,
+    ...DUMP_AND_IMPORT_HANDLERS,
+    ...PROCESS_LIST_AND_HISTORY_HANDLERS,
+    ...AI_HANDLERS,
+    ...SESSION_SNAPSHOT_HANDLERS,
+  })
+)
+
+export function playwrightIpcMockHandler(command: string, args?: Record<string, unknown>): unknown {
+  const handler = PLAYWRIGHT_IPC_HANDLERS.get(command) ?? returnNull
+  return handler(args)
 }

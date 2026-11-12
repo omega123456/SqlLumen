@@ -1,4 +1,11 @@
-import { Gear, MathOperations, Lightning, CalendarBlank, Eye } from '@phosphor-icons/react'
+import {
+  Gear,
+  MathOperations,
+  Lightning,
+  CalendarBlank,
+  Eye,
+  type Icon,
+} from '@phosphor-icons/react'
 import type { EditableObjectType } from '../../types/schema'
 import { Button } from '../common/Button'
 import { OBJECT_TYPE_LABELS } from './object-editor-constants'
@@ -14,19 +21,17 @@ export interface ObjectEditorToolbarProps {
   onSave: () => void
 }
 
+const OBJECT_TYPE_ICONS: Record<EditableObjectType, Icon> = {
+  procedure: Gear,
+  function: MathOperations,
+  trigger: Lightning,
+  event: CalendarBlank,
+  view: Eye,
+}
+
 function getObjectTypeIcon(type: EditableObjectType) {
-  switch (type) {
-    case 'procedure':
-      return <Gear size={20} weight="regular" />
-    case 'function':
-      return <MathOperations size={20} weight="regular" />
-    case 'trigger':
-      return <Lightning size={20} weight="regular" />
-    case 'event':
-      return <CalendarBlank size={20} weight="regular" />
-    case 'view':
-      return <Eye size={20} weight="regular" />
-  }
+  const ObjectTypeIcon = OBJECT_TYPE_ICONS[type]
+  return <ObjectTypeIcon size={20} weight="regular" />
 }
 
 export function ObjectEditorToolbar({

@@ -1,25 +1,464 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Database, CheckCircle, WarningCircle, ArrowsClockwise } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useQueryStore, getActiveResult } from '../../stores/query-store'
+import { useQueryStore, getActiveResult, type SingleResultState } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
-import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import { useSchemaIndexStore, type ConnectionIndexState } from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import { formatRowCountParts } from '../../lib/format-row-count'
 import { Button } from '../common/Button'
+import type { TableDataTabState, WorkspaceTab } from '../../types/schema'
 import styles from './StatusBar.module.css'
 
 const READY_FLASH_DURATION_MS = 2000
 const STATUS_FLASH_DURATION_MS = 3000
 const FLASH_FADE_OUT_MS = 500
+const PREPARING_PHASE = 'preparing'
 
 const statusLabel: Record<string, string> = {
   connected: 'Connected',
   reconnecting: 'Reconnecting...',
   disconnected: 'Disconnected',
+}
+
+type FlashType = 'ready' | 'error'
+
+const FLASH_DURATION_MS: Record<FlashType, number> = {
+  ready: READY_FLASH_DURATION_MS,
+  error: STATUS_FLASH_DURATION_MS,
+}
+
+const INDEX_FLASH_DISPLAY: Record<
+  FlashType,
+  { testId: string; icon: typeof CheckCircle; toneClassName: string; text: string }
+> = {
+  ready: {
+    testId: 'indexing-ready',
+    icon: CheckCircle,
+    toneClassName: styles.indexingReady,
+    text: 'Index ready',
+  },
+  error: {
+    testId: 'indexing-error',
+    icon: WarningCircle,
+    toneClassName: styles.indexingError,
+    text: 'Index error',
+  },
+}
+
+type ScheduledFlash = {
+  frame: number | undefined
+  flashTimer: ReturnType<typeof setTimeout> | undefined
+  fadeTimer: ReturnType<typeof setTimeout> | undefined
+}
+
+function isFlashStatus(status: string | undefined): status is FlashType {
+  return status === 'ready' || status === 'error'
+}
+
+function isFlashTransition(
+  previousStatus: string | undefined,
+  status: string | undefined
+): status is FlashType {
+  if (!isFlashStatus(status)) return false
+  return previousStatus !== undefined && previousStatus !== status
+}
+
+function cancelScheduledFlash(scheduled: ScheduledFlash): void {
+  if (scheduled.frame !== undefined) cancelAnimationFrame(scheduled.frame)
+  if (scheduled.flashTimer !== undefined) clearTimeout(scheduled.flashTimer)
+  if (scheduled.fadeTimer !== undefined) clearTimeout(scheduled.fadeTimer)
+}
+
+function useIndexFlash(indexStatus: string | undefined) {
+  const [flashType, setFlashType] = useState<FlashType | null>(null)
+  const [fadingOut, setFadingOut] = useState(false)
+  const previousStatusRef = useRef<string | undefined>(undefined)
+
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current
+    previousStatusRef.current = indexStatus
+
+    const scheduled: ScheduledFlash = {
+      frame: undefined,
+      flashTimer: undefined,
+      fadeTimer: undefined,
+    }
+
+    if (isFlashTransition(previousStatus, indexStatus)) {
+      scheduled.frame = requestAnimationFrame(() => {
+        setFlashType(indexStatus)
+        setFadingOut(false)
+        scheduled.flashTimer = setTimeout(() => {
+          setFadingOut(true)
+          scheduled.fadeTimer = setTimeout(() => {
+            setFlashType(null)
+            setFadingOut(false)
+          }, FLASH_FADE_OUT_MS)
+        }, FLASH_DURATION_MS[indexStatus])
+      })
+    }
+    if (indexStatus === 'building') {
+      scheduled.frame = requestAnimationFrame(() => {
+        setFlashType(null)
+        setFadingOut(false)
+      })
+    }
+
+    return () => cancelScheduledFlash(scheduled)
+  }, [indexStatus])
+
+  return { flashType: flashType, fadingOut: fadingOut }
+}
+
+function findTab(tabs: WorkspaceTab[] | undefined, tabId: string): WorkspaceTab | null {
+  return tabs?.find((tab) => tab.id === tabId) ?? null
+}
+
+function tableDataTabShownIn(activeTab: WorkspaceTab | null): string | null {
+  if (!activeTab) return null
+  if (activeTab.type === 'table-data') return activeTab.id
+  if (activeTab.type !== 'query-editor') return null
+  const bottomPanelItem = useQueryStore.getState().tabs[activeTab.id]?.activeBottomPanelItem
+  if (bottomPanelItem?.type !== 'table-data') return null
+  return bottomPanelItem.tabId
+}
+
+interface IndexingProgress {
+  phase: ConnectionIndexState['phase']
+  isCountBased: boolean
+  label: string
+}
+
+function indexingLabel(indexState: ConnectionIndexState | undefined): string {
+  if (!indexState) return 'Preparing index...'
+  const hasTableTotals = indexState.tablesTotal > 0
+  if (indexState.phase === 'finalizing' && hasTableTotals) {
+    return `Finalizing ${indexState.tablesDone}/${indexState.tablesTotal}`
+  }
+  if (indexState.phase === 'embedding' && hasTableTotals) {
+    return `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
+  }
+  if (indexState.phase === 'loading_schema' && indexState.tablesDone > 0) {
+    return `Reading schema (${indexState.tablesDone} tables)...`
+  }
+  return 'Reading schema...'
+}
+
+function resolveIndexingProgress(indexState: ConnectionIndexState | undefined): IndexingProgress {
+  const phase = indexState?.phase ?? null
+  const hasTableTotals = (indexState?.tablesTotal ?? 0) > 0
+  const isCountBasedPhase = phase === 'embedding' || phase === 'finalizing'
+  return {
+    phase: phase,
+    isCountBased: isCountBasedPhase && hasTableTotals,
+    label: indexingLabel(indexState),
+  }
+}
+
+function hasVisibleTableGrid(tableData: TableDataTabState | null): tableData is TableDataTabState {
+  if (tableData?.viewMode !== 'grid') return false
+  return tableData.columns.length > 0 && tableData.error === null
+}
+
+function queryRowCountOf(result: SingleResultState) {
+  return formatRowCountParts({
+    viewRowCount: result.viewRowCount,
+    totalRows: result.totalRows,
+    isFiltered: result.filterModel.length > 0,
+    truncated: result.truncated,
+    autoLimitApplied: result.autoLimitApplied,
+    appliedRowLimit: result.appliedRowLimit,
+  })
+}
+
+function useActiveWorkspaceTab(connectionTabId: string | null) {
+  const activeWorkspaceTabId = useWorkspaceStore((state) =>
+    connectionTabId ? (state.activeTabByConnection[connectionTabId] ?? null) : null
+  )
+  const activeWorkspaceTabType = useWorkspaceStore((state) => {
+    if (!connectionTabId || !activeWorkspaceTabId) return null
+    return findTab(state.tabsByConnection[connectionTabId], activeWorkspaceTabId)?.type ?? null
+  })
+  const activeTableDataTabId = useWorkspaceStore((state) => {
+    if (!connectionTabId || !activeWorkspaceTabId) return null
+    return tableDataTabShownIn(
+      findTab(state.tabsByConnection[connectionTabId], activeWorkspaceTabId)
+    )
+  })
+  return {
+    activeWorkspaceTabId: activeWorkspaceTabId,
+    isQueryEditorTab: activeWorkspaceTabType === 'query-editor',
+    activeTableDataTabId: activeTableDataTabId,
+  }
+}
+
+function IndexBuildingIndicator({
+  indexState,
+  progress,
+}: {
+  indexState: ConnectionIndexState
+  progress: IndexingProgress
+}) {
+  const phase = progress.phase ?? PREPARING_PHASE
+  const accessibilityProps = progress.isCountBased
+    ? {
+        role: 'progressbar',
+        'aria-valuenow': indexState.tablesDone,
+        'aria-valuemin': 0,
+        'aria-valuemax': indexState.tablesTotal,
+        'aria-valuetext': `Schema indexing progress: ${indexState.tablesDone} of ${indexState.tablesTotal}`,
+      }
+    : { role: 'status', 'aria-label': progress.label }
+  return (
+    <div
+      className={styles.indexingIndicator}
+      data-testid="indexing-indicator"
+      data-phase={phase}
+      {...accessibilityProps}
+    >
+      <Database size={12} className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`} />
+      <span className={styles.indexingText} data-testid="indexing-text">
+        {progress.label}
+      </span>
+    </div>
+  )
+}
+
+function IndexFlashIndicator({
+  flashType,
+  fadingOut,
+}: {
+  flashType: FlashType
+  fadingOut: boolean
+}) {
+  const display = INDEX_FLASH_DISPLAY[flashType]
+  const Icon = display.icon
+  const fadeClassName = fadingOut ? styles.indexingFadeOut : ''
+  return (
+    <div className={`${styles.indexingIndicator} ${fadeClassName}`} data-testid={display.testId}>
+      <Icon size={12} weight="fill" className={`${styles.indexingIcon} ${display.toneClassName}`} />
+      <span className={`${styles.indexingText} ${display.toneClassName}`}>{display.text}</span>
+    </div>
+  )
+}
+
+function QueryRunningInfo() {
+  return (
+    <div className={styles.queryRunningInfo} data-testid="query-running-info">
+      <span className={styles.queryRunningSpinner} />
+      <span className={styles.queryRunningText}>Running...</span>
+    </div>
+  )
+}
+
+function TableDataInfo({ visibleRows }: { visibleRows: number }) {
+  return (
+    <div className={styles.queryInfo} data-testid="table-data-info">
+      <span className={styles.queryInfoItem} data-testid="table-data-rows">
+        <span className={styles.queryInfoLabel}>Rows</span>{' '}
+        <b className={styles.queryInfoTime}>{visibleRows}</b>
+      </span>
+    </div>
+  )
+}
+
+type RowCountParts = ReturnType<typeof formatRowCountParts>
+
+function rowCountText(rowCount: RowCountParts): string {
+  if (!rowCount.segment) return String(rowCount.count)
+  return `${rowCount.count} · ${rowCount.segment}`
+}
+
+function QueryInfo({ result, rowCount }: { result: SingleResultState; rowCount: RowCountParts }) {
+  return (
+    <div className={styles.queryInfo} data-testid="query-info">
+      <span className={styles.queryInfoItem} data-testid="query-rows">
+        <b className={`${styles.queryInfoTime} ${styles.queryRowCount}`}>
+          {rowCount.segmentKind === 'truncated' && (
+            <WarningCircle
+              size={12}
+              weight="fill"
+              className={styles.queryRowCountWarning}
+              aria-hidden="true"
+              data-testid="query-rows-truncated-icon"
+            />
+          )}
+          {rowCountText(rowCount)}
+        </b>
+      </span>
+      <span className={styles.queryInfoItem} data-testid="query-time">
+        <span className={styles.queryInfoLabel}>Exec</span>{' '}
+        <b className={styles.queryInfoTime}>{result.executionTimeMs} ms</b>
+      </span>
+      <span className={styles.queryInfoItem} data-testid="query-total-time">
+        <span className={styles.queryInfoLabel}>Total</span>{' '}
+        <b className={styles.queryInfoTime}>{result.totalTimeMs} ms</b>
+      </span>
+    </div>
+  )
+}
+
+function UpdateIndicator({ onOpenUpdates }: { onOpenUpdates: () => void }) {
+  return (
+    <Button
+      variant="bare"
+      className={styles.updateButton}
+      data-testid="status-bar-update-indicator"
+      aria-label="Update available, click to open update settings"
+      onClick={onOpenUpdates}
+    >
+      <ArrowsClockwise size={12} weight="fill" className={styles.indexingIcon} />
+      <span className={styles.updateButtonText}>Update available</span>
+    </Button>
+  )
+}
+
+function IdleStatusBar({ updateIndicator }: { updateIndicator: ReactNode }) {
+  return (
+    <div className={styles.statusBar} data-testid="status-bar">
+      <div className={styles.left}>
+        <span className={styles.statusText}>Ready</span>
+      </div>
+      <div className={styles.spacer} />
+      <div className={styles.right}>
+        <div className={styles.activity} aria-live="polite">
+          {updateIndicator}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface QueryPane {
+  isActive: boolean
+  result: SingleResultState | null
+  tabStatus: string | undefined
+}
+
+interface VisibleFlash {
+  flashType: FlashType
+  fadingOut: boolean
+}
+
+interface QueryInfoState {
+  result: SingleResultState
+  rowCount: RowCountParts
+}
+
+interface StatusActivity {
+  buildingIndex: ConnectionIndexState | null
+  flash: VisibleFlash | null
+  showRunningInfo: boolean
+  tableRows: number | null
+  queryInfo: QueryInfoState | null
+}
+
+interface StatusActivityInputs {
+  indexState: ConnectionIndexState | undefined
+  flash: { flashType: FlashType | null; fadingOut: boolean }
+  queryPane: QueryPane
+  tableData: TableDataTabState | null
+}
+
+function buildingIndexOf(indexState: ConnectionIndexState | undefined) {
+  if (indexState?.status !== 'building') return null
+  return indexState
+}
+
+function resolveVisibleFlash(
+  isBuilding: boolean,
+  flash: StatusActivityInputs['flash']
+): VisibleFlash | null {
+  if (isBuilding) return null
+  if (!flash.flashType) return null
+  return { flashType: flash.flashType, fadingOut: flash.fadingOut }
+}
+
+function visibleTableRows(tableData: TableDataTabState | null): number | null {
+  if (!hasVisibleTableGrid(tableData)) return null
+  return tableData.rows.length
+}
+
+// Query info follows the active result's status, not the tab-level status, which may be
+// 'success' even for partial-error multi-results.
+function resolveQueryInfo(queryPane: QueryPane): QueryInfoState | null {
+  if (!queryPane.isActive) return null
+  const result = queryPane.result
+  if (result?.resultStatus !== 'success') return null
+  return { result: result, rowCount: queryRowCountOf(result) }
+}
+
+function resolveStatusActivity(inputs: StatusActivityInputs): StatusActivity {
+  const buildingIndex = buildingIndexOf(inputs.indexState)
+  return {
+    buildingIndex: buildingIndex,
+    flash: resolveVisibleFlash(buildingIndex !== null, inputs.flash),
+    showRunningInfo: inputs.queryPane.isActive && inputs.queryPane.tabStatus === 'running',
+    tableRows: visibleTableRows(inputs.tableData),
+    queryInfo: resolveQueryInfo(inputs.queryPane),
+  }
+}
+
+function hasAnyActivity(activity: StatusActivity): boolean {
+  return [
+    activity.buildingIndex !== null,
+    activity.flash !== null,
+    activity.showRunningInfo,
+    activity.queryInfo !== null,
+    activity.tableRows !== null,
+  ].some(Boolean)
+}
+
+function ActivityRegion({ activity }: { activity: StatusActivity }) {
+  return (
+    <div className={styles.activity} aria-live="polite">
+      {activity.buildingIndex && (
+        <IndexBuildingIndicator
+          indexState={activity.buildingIndex}
+          progress={resolveIndexingProgress(activity.buildingIndex)}
+        />
+      )}
+      {activity.flash && (
+        <IndexFlashIndicator
+          flashType={activity.flash.flashType}
+          fadingOut={activity.flash.fadingOut}
+        />
+      )}
+      {activity.showRunningInfo && <QueryRunningInfo />}
+      {activity.tableRows !== null && <TableDataInfo visibleRows={activity.tableRows} />}
+    </div>
+  )
+}
+
+interface StatusBarTrailingProps {
+  activity: StatusActivity
+  updateIndicator: ReactNode
+  serverVersion: string
+}
+
+function StatusBarTrailing({ activity, updateIndicator, serverVersion }: StatusBarTrailingProps) {
+  const hasActivity = hasAnyActivity(activity)
+  const hasUpdateIndicator = updateIndicator !== null
+  return (
+    <div className={styles.right}>
+      <ActivityRegion activity={activity} />
+      {/* Query row count, Exec and Total sit outside the polite live region so count
+          changes aren't re-announced (wireframe 3). */}
+      {activity.queryInfo && (
+        <QueryInfo result={activity.queryInfo.result} rowCount={activity.queryInfo.rowCount} />
+      )}
+      {hasActivity && hasUpdateIndicator && <span className={styles.divider} aria-hidden="true" />}
+      {updateIndicator}
+      {(hasActivity || hasUpdateIndicator) && (
+        <span className={styles.divider} aria-hidden="true" />
+      )}
+      <span className={styles.statusText}>{serverVersion}</span>
+    </div>
+  )
 }
 
 export function StatusBar() {
@@ -28,44 +467,11 @@ export function StatusBar() {
   const updateStatus = useUpdateStore((state) => state.status)
   const openSettingsDialog = useSettingsStore((state) => state.openDialog)
 
-  // Active workspace tab ID for the current connection
-  const activeWorkspaceTabId = useWorkspaceStore((state) =>
-    connectionTabId ? (state.activeTabByConnection[connectionTabId] ?? null) : null
-  )
+  const { activeWorkspaceTabId, isQueryEditorTab, activeTableDataTabId } =
+    useActiveWorkspaceTab(connectionTabId)
 
-  // Check the type of the active workspace tab
-  const activeWorkspaceTabType = useWorkspaceStore((state) => {
-    if (!connectionTabId || !activeWorkspaceTabId) return null
-    const tabs = state.tabsByConnection[connectionTabId]
-    return tabs?.find((tab) => tab.id === activeWorkspaceTabId)?.type ?? null
-  })
-
-  const activeTableDataTabId = useWorkspaceStore((state) => {
-    if (!connectionTabId || !activeWorkspaceTabId) return null
-
-    const tabs = state.tabsByConnection[connectionTabId] ?? []
-    const activeTab = tabs.find((tab) => tab.id === activeWorkspaceTabId) ?? null
-    if (!activeTab) return null
-
-    if (activeTab.type === 'table-data') {
-      return activeTab.id
-    }
-
-    if (activeTab.type !== 'query-editor') {
-      return null
-    }
-
-    const queryTab = useQueryStore.getState().tabs[activeTab.id]
-    if (queryTab?.activeBottomPanelItem?.type !== 'table-data') {
-      return null
-    }
-
-    return queryTab.activeBottomPanelItem.tabId
-  })
-
-  // Get query state for the active workspace tab — read from active result
-  const queryState = useQueryStore((state) =>
-    activeWorkspaceTabId ? (state.tabs[activeWorkspaceTabId] ?? null) : null
+  const queryTabStatus = useQueryStore((state) =>
+    activeWorkspaceTabId ? state.tabs[activeWorkspaceTabId]?.tabStatus : undefined
   )
   const activeResultState = useQueryStore((state) =>
     activeWorkspaceTabId ? getActiveResult(state.tabs[activeWorkspaceTabId]) : null
@@ -78,152 +484,29 @@ export function StatusBar() {
   const indexState = useSchemaIndexStore((state) =>
     connectionTabId ? state.connections[connectionTabId] : undefined
   )
-  const indexStatus = indexState?.status
-
-  // Flash logic — show brief completion/error indicators after status transitions.
-  const [flashType, setFlashType] = useState<'ready' | 'error' | null>(null)
-  const [fadingOut, setFadingOut] = useState(false)
-  const previousStatusRef = useRef<string | undefined>(undefined)
-
-  useEffect(() => {
-    const previousStatus = previousStatusRef.current
-    previousStatusRef.current = indexStatus
-
-    let frame: number | undefined
-    let flashTimer: ReturnType<typeof setTimeout> | undefined
-    let fadeTimer: ReturnType<typeof setTimeout> | undefined
-
-    if (
-      (indexStatus === 'ready' || indexStatus === 'error') &&
-      previousStatus !== undefined &&
-      previousStatus !== indexStatus
-    ) {
-      frame = requestAnimationFrame(() => {
-        setFlashType(indexStatus)
-        setFadingOut(false)
-        const duration =
-          indexStatus === 'ready' ? READY_FLASH_DURATION_MS : STATUS_FLASH_DURATION_MS
-        flashTimer = setTimeout(() => {
-          setFadingOut(true)
-          fadeTimer = setTimeout(() => {
-            setFlashType(null)
-            setFadingOut(false)
-          }, FLASH_FADE_OUT_MS)
-        }, duration)
-      })
-    } else if (indexStatus === 'building') {
-      frame = requestAnimationFrame(() => {
-        setFlashType(null)
-        setFadingOut(false)
-      })
-    }
-
-    return () => {
-      if (frame !== undefined) cancelAnimationFrame(frame)
-      if (flashTimer !== undefined) clearTimeout(flashTimer)
-      if (fadeTimer !== undefined) clearTimeout(fadeTimer)
-    }
-  }, [indexStatus])
+  const flash = useIndexFlash(indexState?.status)
 
   const activeConnection = connectionTabId ? activeConnections[connectionTabId] : null
-
-  const isQueryEditorTab = activeWorkspaceTabType === 'query-editor'
   const isShowingTableData = activeTableDataTabId !== null
 
-  // Show query info only for query-editor tabs when the active result is successful
-  // (not the tab-level status, which may be 'success' even for partial-error multi-results)
-  const showQueryInfo =
-    isQueryEditorTab && !isShowingTableData && activeResultState?.resultStatus === 'success'
-
-  // Show running indicator for query-editor tabs with tabStatus === 'running'
-  const showRunningInfo =
-    isQueryEditorTab && !isShowingTableData && queryState?.tabStatus === 'running'
-
-  const showTableInfo =
-    isShowingTableData &&
-    activeTableDataState?.viewMode === 'grid' &&
-    activeTableDataState.columns.length > 0 &&
-    activeTableDataState.error === null
-
-  const visibleTableRows = activeTableDataState?.rows.length ?? 0
-
-  // The same unified row-count string as the result toolbar (wireframe 3).
-  const queryRowCount = activeResultState
-    ? formatRowCountParts({
-        viewRowCount: activeResultState.viewRowCount,
-        totalRows: activeResultState.totalRows,
-        isFiltered: activeResultState.filterModel.length > 0,
-        truncated: activeResultState.truncated,
-        autoLimitApplied: activeResultState.autoLimitApplied,
-        appliedRowLimit: activeResultState.appliedRowLimit,
-      })
-    : null
-
-  const showIndexBuilding = indexStatus === 'building'
-  const showIndexReady = flashType === 'ready' && !showIndexBuilding
-  const showIndexError = flashType === 'error' && !showIndexBuilding
-
-  const indexPhase = indexState?.phase ?? null
-  const hasTableTotals = (indexState?.tablesTotal ?? 0) > 0
-  const isEmbeddingPhase = indexPhase === 'embedding' && (indexState?.tablesTotal ?? 0) > 0
-  const isFinalizingPhase = indexPhase === 'finalizing' && hasTableTotals
-  const isCountBasedProgressPhase = isEmbeddingPhase || isFinalizingPhase
-
-  function buildIndexingLabel(): string {
-    if (!indexState) {
-      return 'Preparing index...'
-    }
-    if (isFinalizingPhase) {
-      return `Finalizing ${indexState.tablesDone}/${indexState.tablesTotal}`
-    }
-    if (isEmbeddingPhase) {
-      return `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
-    }
-    // loading_schema or unknown pre-progress phase
-    if (indexPhase === 'loading_schema' && indexState.tablesDone > 0) {
-      return `Reading schema (${indexState.tablesDone} tables)...`
-    }
-    return 'Reading schema...'
-  }
-
-  const indexingLabel = buildIndexingLabel()
+  const activity = resolveStatusActivity({
+    indexState: indexState,
+    flash: flash,
+    queryPane: {
+      isActive: isQueryEditorTab && !isShowingTableData,
+      result: activeResultState,
+      tabStatus: queryTabStatus,
+    },
+    tableData: activeTableDataState,
+  })
 
   const updateIndicator =
     updateStatus === 'available' ? (
-      <Button
-        variant="bare"
-        className={styles.updateButton}
-        data-testid="status-bar-update-indicator"
-        aria-label="Update available, click to open update settings"
-        onClick={() => openSettingsDialog('updates')}
-      >
-        <ArrowsClockwise size={12} weight="fill" className={styles.indexingIcon} />
-        <span className={styles.updateButtonText}>Update available</span>
-      </Button>
+      <UpdateIndicator onOpenUpdates={() => openSettingsDialog('updates')} />
     ) : null
 
-  const hasActivity =
-    showIndexBuilding ||
-    showIndexReady ||
-    showIndexError ||
-    showRunningInfo ||
-    showQueryInfo ||
-    showTableInfo
-
   if (!activeConnection) {
-    return (
-      <div className={styles.statusBar} data-testid="status-bar">
-        <div className={styles.left}>
-          <span className={styles.statusText}>Ready</span>
-        </div>
-        <div className={styles.spacer} />
-        <div className={styles.right}>
-          <div className={styles.activity} aria-live="polite">
-            {updateIndicator}
-          </div>
-        </div>
-      </div>
-    )
+    return <IdleStatusBar updateIndicator={updateIndicator} />
   }
 
   return (
@@ -242,122 +525,11 @@ export function StatusBar() {
 
       <div className={styles.spacer} />
 
-      <div className={styles.right}>
-        <div className={styles.activity} aria-live="polite">
-          {showIndexBuilding &&
-            indexState &&
-            (isCountBasedProgressPhase ? (
-              <div
-                className={styles.indexingIndicator}
-                data-testid="indexing-indicator"
-                data-phase={indexPhase ?? 'preparing'}
-                role="progressbar"
-                aria-valuenow={indexState.tablesDone}
-                aria-valuemin={0}
-                aria-valuemax={indexState.tablesTotal}
-                aria-valuetext={`Schema indexing progress: ${indexState.tablesDone} of ${indexState.tablesTotal}`}
-              >
-                <Database
-                  size={12}
-                  className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
-                />
-                <span className={styles.indexingText} data-testid="indexing-text">
-                  {indexingLabel}
-                </span>
-              </div>
-            ) : (
-              <div
-                className={styles.indexingIndicator}
-                data-testid="indexing-indicator"
-                data-phase={indexPhase ?? 'preparing'}
-                role="status"
-                aria-label={indexingLabel}
-              >
-                <Database
-                  size={12}
-                  className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
-                />
-                <span className={styles.indexingText} data-testid="indexing-text">
-                  {indexingLabel}
-                </span>
-              </div>
-            ))}
-          {showIndexReady && (
-            <div
-              className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}
-              data-testid="indexing-ready"
-            >
-              <CheckCircle
-                size={12}
-                weight="fill"
-                className={`${styles.indexingIcon} ${styles.indexingReady}`}
-              />
-              <span className={`${styles.indexingText} ${styles.indexingReady}`}>Index ready</span>
-            </div>
-          )}
-          {showIndexError && (
-            <div
-              className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}
-              data-testid="indexing-error"
-            >
-              <WarningCircle
-                size={12}
-                weight="fill"
-                className={`${styles.indexingIcon} ${styles.indexingError}`}
-              />
-              <span className={`${styles.indexingText} ${styles.indexingError}`}>Index error</span>
-            </div>
-          )}
-          {showRunningInfo && (
-            <div className={styles.queryRunningInfo} data-testid="query-running-info">
-              <span className={styles.queryRunningSpinner} />
-              <span className={styles.queryRunningText}>Running...</span>
-            </div>
-          )}
-          {showTableInfo && (
-            <div className={styles.queryInfo} data-testid="table-data-info">
-              <span className={styles.queryInfoItem} data-testid="table-data-rows">
-                <span className={styles.queryInfoLabel}>Rows</span>{' '}
-                <b className={styles.queryInfoTime}>{visibleTableRows}</b>
-              </span>
-            </div>
-          )}
-        </div>
-        {/* Query row count, Exec and Total sit outside the polite live region so count
-            changes aren't re-announced (wireframe 3). */}
-        {showQueryInfo && activeResultState && queryRowCount && (
-          <div className={styles.queryInfo} data-testid="query-info">
-            <span className={styles.queryInfoItem} data-testid="query-rows">
-              <b className={`${styles.queryInfoTime} ${styles.queryRowCount}`}>
-                {queryRowCount.segmentKind === 'truncated' && (
-                  <WarningCircle
-                    size={12}
-                    weight="fill"
-                    className={styles.queryRowCountWarning}
-                    aria-hidden="true"
-                    data-testid="query-rows-truncated-icon"
-                  />
-                )}
-                {queryRowCount.segment
-                  ? `${queryRowCount.count} · ${queryRowCount.segment}`
-                  : queryRowCount.count}
-              </b>
-            </span>
-            <span className={styles.queryInfoItem} data-testid="query-time">
-              <span className={styles.queryInfoLabel}>Exec</span>{' '}
-              <b className={styles.queryInfoTime}>{activeResultState.executionTimeMs} ms</b>
-            </span>
-            <span className={styles.queryInfoItem} data-testid="query-total-time">
-              <span className={styles.queryInfoLabel}>Total</span>{' '}
-              <b className={styles.queryInfoTime}>{activeResultState.totalTimeMs} ms</b>
-            </span>
-          </div>
-        )}
-        {hasActivity && updateIndicator && <span className={styles.divider} aria-hidden="true" />}
-        {updateIndicator}
-        {(hasActivity || updateIndicator) && <span className={styles.divider} aria-hidden="true" />}
-        <span className={styles.statusText}>{activeConnection.serverVersion}</span>
-      </div>
+      <StatusBarTrailing
+        activity={activity}
+        updateIndicator={updateIndicator}
+        serverVersion={activeConnection.serverVersion}
+      />
     </div>
   )
 }

@@ -12,7 +12,11 @@ import { useQueryStore, hasAnyUnsavedEdits } from '../../stores/query-store'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
-import { useUpdateStore } from '../../stores/update-store'
+import {
+  useUpdateStore,
+  type ReadyToFinishAction,
+  type UpdateStatus,
+} from '../../stores/update-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import styles from './UpdatesSettings.module.css'
 
@@ -26,54 +30,224 @@ function pluralize(count: number, singular: string, plural = `${singular}s`): st
   return `${count} ${count === 1 ? singular : plural}`
 }
 
+type WorkspaceTabType = ReturnType<
+  typeof useWorkspaceStore.getState
+>['tabsByConnection'][string][number]['type']
+
+const UNSAVED_TAB_CHECKS: Partial<Record<WorkspaceTabType, (tabId: string) => boolean>> = {
+  'table-data': (tabId) => {
+    const editState = useTableDataStore.getState().tabs[tabId]?.editState
+    if (!editState) return false
+    return editState.isNewRow || editState.modifiedColumns.size > 0
+  },
+  'table-designer': (tabId) => useTableDesignerStore.getState().tabs[tabId]?.isDirty === true,
+  'object-editor': (tabId) => useObjectEditorStore.getState().isDirty(tabId),
+}
+
+function countQueryTabWork() {
+  const queryTabs = Object.values(useQueryStore.getState().tabs)
+  return {
+    runningQueries: queryTabs.filter((tab) => tab.tabStatus === 'running').length,
+    unsavedTabs: queryTabs.filter(hasAnyUnsavedEdits).length,
+  }
+}
+
+function countUnsavedWorkspaceTabs(): number {
+  const workspaceTabs = Object.values(useWorkspaceStore.getState().tabsByConnection).flat()
+  return workspaceTabs.filter((tab) => UNSAVED_TAB_CHECKS[tab.type]?.(tab.id) === true).length
+}
+
 function buildPendingWorkSummary(): PendingWorkSummary {
-  const connectionState = useConnectionStore.getState()
-  const queryState = useQueryStore.getState()
-  const workspaceState = useWorkspaceStore.getState()
-  const tableDataState = useTableDataStore.getState()
-  const tableDesignerState = useTableDesignerStore.getState()
-  const objectEditorState = useObjectEditorStore.getState()
-
-  let runningQueries = 0
-  let unsavedTabs = 0
-
-  for (const tab of Object.values(queryState.tabs)) {
-    if (tab.tabStatus === 'running') {
-      runningQueries += 1
-    }
-    if (hasAnyUnsavedEdits(tab)) {
-      unsavedTabs += 1
-    }
-  }
-
-  for (const workspaceTabs of Object.values(workspaceState.tabsByConnection)) {
-    for (const tab of workspaceTabs) {
-      if (tab.type === 'table-data') {
-        const editState = tableDataState.tabs[tab.id]?.editState
-        if (editState && (editState.isNewRow || editState.modifiedColumns.size > 0)) {
-          unsavedTabs += 1
-        }
-      } else if (tab.type === 'table-designer') {
-        if (tableDesignerState.tabs[tab.id]?.isDirty) {
-          unsavedTabs += 1
-        }
-      } else if (tab.type === 'object-editor' && objectEditorState.isDirty(tab.id)) {
-        unsavedTabs += 1
-      }
-    }
-  }
-
-  const activeConnections = Object.keys(connectionState.activeConnections).length
+  const queryWork = countQueryTabWork()
+  const unsavedTabs = queryWork.unsavedTabs + countUnsavedWorkspaceTabs()
+  const activeConnections = Object.keys(useConnectionStore.getState().activeConnections).length
 
   const items: string[] = []
   if (activeConnections > 0) items.push(pluralize(activeConnections, 'active database connection'))
-  if (runningQueries > 0) items.push(pluralize(runningQueries, 'running query'))
+  if (queryWork.runningQueries > 0) items.push(pluralize(queryWork.runningQueries, 'running query'))
   if (unsavedTabs > 0) items.push(pluralize(unsavedTabs, 'unsaved tab'))
 
   return {
     hasWork: items.length > 0,
     items: items,
   }
+}
+
+type ConfirmAction = 'download' | 'restart'
+
+const CONFIRM_ACTION_COPY: Record<
+  ConfirmAction,
+  { title: string; intro: string; confirmLabel: string }
+> = {
+  download: {
+    title: 'Download update?',
+    intro: 'Downloading the update may interrupt:',
+    confirmLabel: 'Download update',
+  },
+  restart: {
+    title: 'Restart app?',
+    intro: 'Restarting SqlLumen will interrupt:',
+    confirmLabel: 'Restart app',
+  },
+}
+
+interface SoftwareUpdateViewProps {
+  appVersion: string
+  availableVersion: string | null
+  downloadProgress: number
+  errorMessage: string | null
+  readyToFinish: { action: ReadyToFinishAction; cta: string; message: string }
+  checkForUpdatesButton: React.ReactNode
+  handlers: {
+    onManualCheck: () => void
+    onDownloadUpdate: () => void
+    onRestartAction: () => void
+    onLater: () => void
+  }
+}
+
+function UpToDateView({ appVersion, checkForUpdatesButton }: SoftwareUpdateViewProps) {
+  return (
+    <div className={styles.statusRow} data-testid="updates-up-to-date">
+      <span className={`${styles.statusMessage} ${styles.upToDate}`}>
+        <CheckCircle size={16} weight="fill" />
+        You're up to date (v{appVersion})
+      </span>
+      {checkForUpdatesButton}
+    </div>
+  )
+}
+
+function UpdateAvailableView({ availableVersion, handlers }: SoftwareUpdateViewProps) {
+  return (
+    <div
+      className={`${styles.updateCard} ui-elevated-surface`}
+      data-testid="updates-available-card"
+    >
+      <div className={styles.cardTitle}>Version {availableVersion ?? 'new'} is available</div>
+      <div>
+        <Button
+          variant="accent"
+          onClick={handlers.onDownloadUpdate}
+          data-testid="updates-download-button"
+        >
+          <DownloadSimple size={16} weight="regular" /> Download update
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function InstallingView({ availableVersion, downloadProgress }: SoftwareUpdateViewProps) {
+  return (
+    <div
+      className={`${styles.updateCard} ui-elevated-surface`}
+      data-testid="updates-installing-card"
+    >
+      <div className={styles.cardTitle}>Downloading version {availableVersion ?? 'update'}...</div>
+      <div
+        className={styles.progressTrack}
+        data-testid="updates-progress-track"
+        role="progressbar"
+        aria-valuenow={downloadProgress}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className={styles.progressFill}
+          data-testid="updates-progress-fill"
+          style={{ width: `${downloadProgress}%` }}
+        />
+      </div>
+      <div className={styles.progressMeta}>
+        <span>Downloading update</span>
+        <span data-testid="updates-progress-text">{downloadProgress}%</span>
+      </div>
+    </div>
+  )
+}
+
+function ReadyToFinishView({ readyToFinish, errorMessage, handlers }: SoftwareUpdateViewProps) {
+  const isManualQuit = readyToFinish.action === 'manual-quit'
+  return (
+    <div
+      className={`${styles.updateCard} ui-elevated-surface`}
+      data-testid="updates-ready-card"
+      aria-live="polite"
+    >
+      <div className={styles.cardTitle}>
+        {isManualQuit ? 'Restart required' : 'Update downloaded'}
+      </div>
+      <div className={styles.cardBody} data-testid="updates-ready-message">
+        {readyToFinish.message}
+      </div>
+      {errorMessage ? (
+        <div
+          className={`${styles.statusMessage} ${styles.errorMessage}`}
+          data-testid="updates-ready-error"
+        >
+          <WarningCircle size={16} weight="fill" /> Restart failed: {errorMessage}
+        </div>
+      ) : null}
+      <div className={styles.cardActions}>
+        <Button
+          variant="accent"
+          onClick={handlers.onRestartAction}
+          data-testid="updates-restart-button"
+        >
+          {isManualQuit ? (
+            <CheckCircle size={16} weight="regular" />
+          ) : (
+            <ArrowsClockwise size={16} weight="regular" />
+          )}
+          {readyToFinish.cta}
+        </Button>
+        <Button onClick={handlers.onLater} data-testid="updates-later-button">
+          Later
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function UpdateErrorView({ errorMessage, handlers }: SoftwareUpdateViewProps) {
+  return (
+    <div className={styles.statusRow} data-testid="updates-error-state">
+      <span className={`${styles.statusMessage} ${styles.errorMessage}`}>
+        <WarningCircle size={16} weight="fill" />
+        {errorMessage ?? 'Update check failed'}
+      </span>
+      <Button onClick={handlers.onManualCheck} data-testid="updates-try-again-button">
+        Try again
+      </Button>
+    </div>
+  )
+}
+
+function CheckingView() {
+  return (
+    <Button disabled data-testid="updates-checking-button">
+      <ArrowsClockwise size={16} weight="regular" className={styles.spinningIcon} />
+      Checking…
+    </Button>
+  )
+}
+
+function IdleView({ checkForUpdatesButton }: SoftwareUpdateViewProps) {
+  return <>{checkForUpdatesButton}</>
+}
+
+const SOFTWARE_UPDATE_VIEWS: Record<
+  UpdateStatus,
+  (props: SoftwareUpdateViewProps) => React.ReactNode
+> = {
+  checking: CheckingView,
+  'up-to-date': UpToDateView,
+  available: UpdateAvailableView,
+  installing: InstallingView,
+  'ready-to-finish': ReadyToFinishView,
+  error: UpdateErrorView,
+  idle: IdleView,
 }
 
 export function UpdatesSettings() {
@@ -93,7 +267,7 @@ export function UpdatesSettings() {
 
   const [appVersion, setAppVersion] = useState('Loading…')
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<'download' | 'restart'>('download')
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>('download')
   const [isConfirmingAction, setIsConfirmingAction] = useState(false)
 
   const recheckAnnouncedUpdate = useEffectEvent(() => {
@@ -174,129 +348,8 @@ export function UpdatesSettings() {
     })
   }
 
-  const renderSoftwareUpdates = (): React.ReactNode => {
-    switch (status) {
-      case 'checking':
-        return (
-          <Button disabled data-testid="updates-checking-button">
-            <ArrowsClockwise size={16} weight="regular" className={styles.spinningIcon} />
-            Checking…
-          </Button>
-        )
-      case 'up-to-date':
-        return (
-          <div className={styles.statusRow} data-testid="updates-up-to-date">
-            <span className={`${styles.statusMessage} ${styles.upToDate}`}>
-              <CheckCircle size={16} weight="fill" />
-              You're up to date (v{appVersion})
-            </span>
-            {checkForUpdatesButton}
-          </div>
-        )
-      case 'available':
-        return (
-          <div
-            className={`${styles.updateCard} ui-elevated-surface`}
-            data-testid="updates-available-card"
-          >
-            <div className={styles.cardTitle}>Version {availableVersion ?? 'new'} is available</div>
-            <div>
-              <Button
-                variant="accent"
-                onClick={handleDownloadUpdate}
-                data-testid="updates-download-button"
-              >
-                <DownloadSimple size={16} weight="regular" /> Download update
-              </Button>
-            </div>
-          </div>
-        )
-      case 'installing':
-        return (
-          <div
-            className={`${styles.updateCard} ui-elevated-surface`}
-            data-testid="updates-installing-card"
-          >
-            <div className={styles.cardTitle}>
-              Downloading version {availableVersion ?? 'update'}...
-            </div>
-            <div
-              className={styles.progressTrack}
-              data-testid="updates-progress-track"
-              role="progressbar"
-              aria-valuenow={downloadProgress}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div
-                className={styles.progressFill}
-                data-testid="updates-progress-fill"
-                style={{ width: `${downloadProgress}%` }}
-              />
-            </div>
-            <div className={styles.progressMeta}>
-              <span>Downloading update</span>
-              <span data-testid="updates-progress-text">{downloadProgress}%</span>
-            </div>
-          </div>
-        )
-      case 'ready-to-finish':
-        return (
-          <div
-            className={`${styles.updateCard} ui-elevated-surface`}
-            data-testid="updates-ready-card"
-            aria-live="polite"
-          >
-            <div className={styles.cardTitle}>
-              {readyToFinishAction === 'manual-quit' ? 'Restart required' : 'Update downloaded'}
-            </div>
-            <div className={styles.cardBody} data-testid="updates-ready-message">
-              {readyToFinishMessage}
-            </div>
-            {errorMessage ? (
-              <div
-                className={`${styles.statusMessage} ${styles.errorMessage}`}
-                data-testid="updates-ready-error"
-              >
-                <WarningCircle size={16} weight="fill" /> Restart failed: {errorMessage}
-              </div>
-            ) : null}
-            <div className={styles.cardActions}>
-              <Button
-                variant="accent"
-                onClick={handleRestartAction}
-                data-testid="updates-restart-button"
-              >
-                {readyToFinishAction === 'manual-quit' ? (
-                  <CheckCircle size={16} weight="regular" />
-                ) : (
-                  <ArrowsClockwise size={16} weight="regular" />
-                )}
-                {readyToFinishCta}
-              </Button>
-              <Button onClick={closeSettingsDialog} data-testid="updates-later-button">
-                Later
-              </Button>
-            </div>
-          </div>
-        )
-      case 'error':
-        return (
-          <div className={styles.statusRow} data-testid="updates-error-state">
-            <span className={`${styles.statusMessage} ${styles.errorMessage}`}>
-              <WarningCircle size={16} weight="fill" />
-              {errorMessage ?? 'Update check failed'}
-            </span>
-            <Button onClick={handleManualCheck} data-testid="updates-try-again-button">
-              Try again
-            </Button>
-          </div>
-        )
-      case 'idle':
-      default:
-        return checkForUpdatesButton
-    }
-  }
+  const SoftwareUpdateView = SOFTWARE_UPDATE_VIEWS[status]
+  const confirmCopy = CONFIRM_ACTION_COPY[confirmAction]
 
   return (
     <div data-testid="settings-updates">
@@ -310,7 +363,24 @@ export function UpdatesSettings() {
         title="Software updates"
         description="Check if a newer version of SqlLumen is available."
       >
-        {renderSoftwareUpdates()}
+        <SoftwareUpdateView
+          appVersion={appVersion}
+          availableVersion={availableVersion}
+          downloadProgress={downloadProgress}
+          errorMessage={errorMessage}
+          readyToFinish={{
+            action: readyToFinishAction,
+            cta: readyToFinishCta,
+            message: readyToFinishMessage,
+          }}
+          checkForUpdatesButton={checkForUpdatesButton}
+          handlers={{
+            onManualCheck: handleManualCheck,
+            onDownloadUpdate: handleDownloadUpdate,
+            onRestartAction: handleRestartAction,
+            onLater: closeSettingsDialog,
+          }}
+        />
       </SettingsSection>
 
       <SettingsSection
@@ -334,12 +404,10 @@ export function UpdatesSettings() {
 
       <ConfirmDialog
         isOpen={confirmOpen}
-        title={confirmAction === 'download' ? 'Download update?' : 'Restart app?'}
+        title={confirmCopy.title}
         message={
           <div>
-            {confirmAction === 'download'
-              ? 'Downloading the update may interrupt:'
-              : 'Restarting SqlLumen will interrupt:'}
+            {confirmCopy.intro}
             <ul className={styles.confirmList}>
               {pendingWork.items.map((item) => (
                 <li key={item}>{item}</li>
@@ -347,7 +415,7 @@ export function UpdatesSettings() {
             </ul>
           </div>
         }
-        confirmLabel={confirmAction === 'download' ? 'Download update' : 'Restart app'}
+        confirmLabel={confirmCopy.confirmLabel}
         isDestructive
         warningText={null}
         isLoading={isConfirmingAction}

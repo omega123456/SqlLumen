@@ -17,7 +17,7 @@
  * Reads per-result state from the active result via getActiveResult.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { Copy, FloppyDisk, Trash, WarningCircle } from '@phosphor-icons/react'
 import {
   BULK_DELETE_WARNING_ROWS,
@@ -113,6 +113,252 @@ function getDeleteDialogCopy(count: number, tableName: string): DeleteDialogCopy
   }
 }
 
+type ActiveResult = ReturnType<typeof getActiveResult>
+type RowCountParts = ReturnType<typeof formatRowCountParts>
+type RowActionProgress = NonNullable<ActiveResult['rowActionProgress']>
+
+const STATUS_AREA_BY_RESULT_STATUS: Record<ActiveResult['resultStatus'], StatusType> = {
+  idle: 'idle',
+  running: 'idle',
+  success: 'success',
+  error: 'error',
+}
+
+function resolveStatusAreaStatus(
+  showActionProgress: boolean,
+  status: ActiveResult['resultStatus']
+): StatusType {
+  return showActionProgress ? 'loading' : STATUS_AREA_BY_RESULT_STATUS[status]
+}
+
+function truncateErrorMessage(errorMessage: string | null): string | undefined {
+  if (!errorMessage) return undefined
+  if (errorMessage.length <= ERROR_PREVIEW_MAX_LENGTH) return errorMessage
+  return errorMessage.slice(0, ERROR_PREVIEW_MAX_LENGTH) + '…'
+}
+
+function editTableNameOf(result: ActiveResult): string {
+  if (!result.editMode) return ''
+  return result.editTableMetadata[result.editMode]?.table ?? result.editMode
+}
+
+function sortedCheckedRanges(result: ActiveResult): ActiveResult['checkedRanges'] {
+  if (result.checkedViewVersion !== result.viewVersion) return []
+  return [...result.checkedRanges].sort((left, right) => left[0] - right[0])
+}
+
+function ResultRowCount({ rowCount }: { rowCount: RowCountParts }) {
+  if (rowCount.segmentKind !== 'truncated') {
+    return <span data-testid="result-row-count">{rowCount.count}</span>
+  }
+  return (
+    <span className={styles.truncatedCount} data-testid="result-row-count">
+      <WarningCircle size={12} weight="fill" className={styles.truncatedIcon} aria-hidden="true" />
+      {rowCount.count} · {rowCount.segment}
+    </span>
+  )
+}
+
+interface StatusCounts {
+  statusTotalRows: number | undefined
+  countLabel: ReactNode
+}
+
+function resolveStatusCounts(result: ActiveResult, rowCount: RowCountParts): StatusCounts {
+  if (result.resultStatus !== 'success')
+    return { statusTotalRows: undefined, countLabel: undefined }
+  if (result.columns.length > 0) {
+    return { statusTotalRows: undefined, countLabel: <ResultRowCount rowCount={rowCount} /> }
+  }
+  if (result.affectedRows > 0)
+    return { statusTotalRows: result.affectedRows, countLabel: undefined }
+  return { statusTotalRows: undefined, countLabel: undefined }
+}
+
+function rowActionLabel(progress: RowActionProgress | null): string | undefined {
+  if (!progress) return undefined
+  return `${progress.verb}… ${formatCount(progress.done)} of ${formatCount(progress.total)}`
+}
+
+function windowLoadingLabel(range: ActiveResult['pendingWindowRange']): string | null {
+  if (!range) return null
+  return `Loading rows ${formatRowRange(range[0] + 1, range[1])}…`
+}
+
+interface AnnouncementInputs {
+  showActionProgress: boolean
+  rowActionProgress: RowActionProgress | null
+  windowLabel: string | null
+  hasResults: boolean
+}
+
+function resolveAnnouncement(inputs: AnnouncementInputs): string {
+  const { rowActionProgress, windowLabel } = inputs
+  if (inputs.showActionProgress) {
+    return `${rowActionProgress?.verb}… ${formatCount(rowActionProgress?.total ?? 0)} rows`
+  }
+  if (windowLabel && inputs.hasResults) return windowLabel
+  return ''
+}
+
+interface StatusDetailsProps {
+  rowCount: RowCountParts
+  isFiltering: boolean
+  windowLabel: string | null
+}
+
+function ResultStatusDetails({ rowCount, isFiltering, windowLabel }: StatusDetailsProps) {
+  return (
+    <>
+      {rowCount.segmentKind === 'autoLimit' && (
+        <span className={styles.autoLimit}>· {rowCount.segment}</span>
+      )}
+      {isFiltering && (
+        <span className={styles.statusNote} data-testid="result-filtering-status">
+          Filtering…
+        </span>
+      )}
+      {windowLabel && (
+        <span className={styles.windowLoading} data-testid="result-window-loading">
+          <span className={styles.miniSpinner} aria-hidden="true" />
+          <span>{windowLabel}</span>
+        </span>
+      )}
+    </>
+  )
+}
+
+interface CustomContentInputs {
+  result: ActiveResult
+  showActionProgress: boolean
+  details: StatusDetailsProps
+  onCancelRowAction: () => void
+}
+
+function resolveStatusCustomContent(inputs: CustomContentInputs): ReactNode {
+  const { result } = inputs
+  if (inputs.showActionProgress) {
+    if (!result.rowActionProgress?.cancellable) return undefined
+    return (
+      <Button
+        variant="subtle"
+        size="sm"
+        onClick={inputs.onCancelRowAction}
+        data-testid="row-action-cancel"
+      >
+        Cancel
+      </Button>
+    )
+  }
+  const showsRowDetails = result.resultStatus === 'success' && result.columns.length > 0
+  if (!showsRowDetails) return undefined
+  return <ResultStatusDetails {...inputs.details} />
+}
+
+function copiedRowsToast(
+  wasVisible: boolean,
+  rowCount: number
+): { title: string; message: string } {
+  if (wasVisible) {
+    return { title: 'Copied', message: `${formatCount(rowCount)} rows copied to clipboard.` }
+  }
+  return { title: 'Selected rows copied', message: `${rowCount} row(s) copied to clipboard.` }
+}
+
+function pluralSuffix(count: number): string {
+  return count === 1 ? '' : 's'
+}
+
+interface CopySelectedAvailability {
+  hasResults: boolean
+  checkedCount: number
+  isRowActionPending: boolean
+}
+
+function isCopySelectedDisabled(availability: CopySelectedAvailability): boolean {
+  if (!availability.hasResults) return true
+  return availability.checkedCount === 0 || availability.isRowActionPending
+}
+
+function CloneActionGroup({ isDisabled, onClone }: { isDisabled: boolean; onClone: () => void }) {
+  return (
+    <div className={styles.editActionsGroup} data-testid="clone-actions-group">
+      <Button
+        variant="bare"
+        className={styles.cloneButton}
+        onClick={onClone}
+        title="Clone selected row; primary key fields are left blank."
+        data-testid="query-clone-button"
+        disabled={isDisabled}
+      >
+        <Copy size={16} weight="regular" />
+        <span>Clone</span>
+      </Button>
+    </div>
+  )
+}
+
+interface DeleteRowsActionGroupProps {
+  editMode: string | null
+  checkedCount: number
+  onDelete: () => void
+}
+
+function DeleteRowsActionGroup({ editMode, checkedCount, onDelete }: DeleteRowsActionGroupProps) {
+  if (editMode === null || checkedCount === 0) return null
+  const formattedCount = formatCount(checkedCount)
+  return (
+    <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
+      <Button
+        variant="bare"
+        className={styles.discardButton}
+        onClick={onDelete}
+        title={`Delete ${formattedCount} selected row${pluralSuffix(checkedCount)} from the database`}
+        data-testid="query-delete-rows-button"
+      >
+        <Trash size={16} weight="regular" />
+        <span>Delete ({formattedCount})</span>
+      </Button>
+    </div>
+  )
+}
+
+interface SaveDiscardActionGroupProps {
+  editState: ActiveResult['editState']
+  onSave: () => void
+  onDiscard: () => void
+}
+
+function SaveDiscardActionGroup({ editState, onSave, onDiscard }: SaveDiscardActionGroupProps) {
+  if (editState === null) return null
+  const hasModifications = editState.modifiedColumns.size > 0
+  return (
+    <div className={styles.editActionsGroup} data-testid="edit-actions-group">
+      {hasModifications && (
+        <Button
+          variant="bare"
+          className={styles.saveButton}
+          onClick={onSave}
+          title="Save changes"
+          data-testid="query-save-button"
+        >
+          <FloppyDisk size={16} weight="regular" />
+          <span>Save</span>
+        </Button>
+      )}
+      <Button
+        variant="bare"
+        className={styles.discardButton}
+        onClick={onDiscard}
+        title="Discard changes"
+        data-testid="query-discard-button"
+      >
+        <span>Discard</span>
+      </Button>
+    </div>
+  )
+}
+
 export function ResultToolbar({
   tabId,
   connectionId,
@@ -138,134 +384,44 @@ export function ResultToolbar({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const status = activeResult.resultStatus
-  const totalRows = activeResult.totalRows
-  const affectedRows = activeResult.affectedRows
   const columnsCount = activeResult.columns.length
-  // The toolbar badge shows the combined (total) timing, unchanged in magnitude
-  // from before the execution/total split — so feed totalTimeMs into StatusArea.
-  const totalTimeMs = activeResult.totalTimeMs
-  const errorMessage = activeResult.errorMessage
-  const viewMode = activeResult.viewMode
-  const rowActionProgress = activeResult.rowActionProgress
-  const pendingWindowRange = activeResult.pendingWindowRange
-  const isFiltering = activeResult.isFiltering
+  const { viewMode, rowActionProgress, editState, editMode } = activeResult
+  const editTableName = editTableNameOf(activeResult)
 
-  // Edit state for Save/Discard buttons
-  const editState = activeResult.editState
-  const editMode = activeResult.editMode
-  const hasModifications = editState !== null && editState.modifiedColumns.size > 0
-  const editTableName = editMode
-    ? (activeResult.editTableMetadata[editMode]?.table ?? editMode)
-    : ''
-
-  // Checked rows are view ranges of the current view (D17).
-  const checkedRanges = useMemo(
-    () =>
-      activeResult.checkedViewVersion === activeResult.viewVersion
-        ? [...activeResult.checkedRanges].sort((left, right) => left[0] - right[0])
-        : [],
-    [activeResult.checkedRanges, activeResult.checkedViewVersion, activeResult.viewVersion]
-  )
+  const checkedRanges = useMemo(() => sortedCheckedRanges(activeResult), [activeResult])
   const checkedCount = countRanges(checkedRanges)
   const isRowActionPending = rowActionProgress !== null
-
-  const truncatedError =
-    errorMessage && errorMessage.length > ERROR_PREVIEW_MAX_LENGTH
-      ? errorMessage.slice(0, ERROR_PREVIEW_MAX_LENGTH) + '…'
-      : errorMessage
-
   const hasResults = status === 'success'
   const showActionProgress = rowActionProgress?.visible === true
 
-  // Map query status to StatusArea status type
-  const statusAreaStatus: StatusType = showActionProgress
-    ? 'loading'
-    : status === 'success'
-      ? 'success'
-      : status === 'error'
-        ? 'error'
-        : 'idle'
-
-  // Unified row-count string (wireframe 3) for row-bearing results; DML keeps
-  // the numeric affected-rows count.
   const rowCount = formatRowCountParts({
     viewRowCount: activeResult.viewRowCount,
-    totalRows: totalRows,
+    totalRows: activeResult.totalRows,
     isFiltered: filterModel.length > 0,
     truncated: activeResult.truncated,
     autoLimitApplied: activeResult.autoLimitApplied,
     appliedRowLimit: activeResult.appliedRowLimit,
   })
-  let statusTotalRows: number | undefined = undefined
-  let countLabel: React.ReactNode = undefined
-  if (status === 'success') {
-    if (columnsCount > 0) {
-      countLabel =
-        rowCount.segmentKind === 'truncated' ? (
-          <span className={styles.truncatedCount} data-testid="result-row-count">
-            <WarningCircle
-              size={12}
-              weight="fill"
-              className={styles.truncatedIcon}
-              aria-hidden="true"
-            />
-            {rowCount.count} · {rowCount.segment}
-          </span>
-        ) : (
-          <span data-testid="result-row-count">{rowCount.count}</span>
-        )
-    } else if (affectedRows > 0) {
-      statusTotalRows = affectedRows
-    }
-  }
-
-  const actionLabel = rowActionProgress
-    ? `${rowActionProgress.verb}… ${formatCount(rowActionProgress.done)} of ${formatCount(
-        rowActionProgress.total
-      )}`
-    : null
-  const windowLabel = pendingWindowRange
-    ? `Loading rows ${formatRowRange(pendingWindowRange[0] + 1, pendingWindowRange[1])}…`
-    : null
-  // Announced once when the status appears, never per chunk.
-  const announcement = showActionProgress
-    ? `${rowActionProgress?.verb}… ${formatCount(rowActionProgress?.total ?? 0)} rows`
-    : windowLabel && hasResults
-      ? windowLabel
-      : ''
-
-  let customContent: React.ReactNode = undefined
-  if (showActionProgress) {
-    customContent = rowActionProgress?.cancellable ? (
-      <Button
-        variant="subtle"
-        size="sm"
-        onClick={() => cancelRowAction(tabId)}
-        data-testid="row-action-cancel"
-      >
-        Cancel
-      </Button>
-    ) : undefined
-  } else if (status === 'success' && columnsCount > 0) {
-    customContent = (
-      <>
-        {rowCount.segmentKind === 'autoLimit' && (
-          <span className={styles.autoLimit}>· {rowCount.segment}</span>
-        )}
-        {isFiltering && (
-          <span className={styles.statusNote} data-testid="result-filtering-status">
-            Filtering…
-          </span>
-        )}
-        {windowLabel && (
-          <span className={styles.windowLoading} data-testid="result-window-loading">
-            <span className={styles.miniSpinner} aria-hidden="true" />
-            <span>{windowLabel}</span>
-          </span>
-        )}
-      </>
-    )
-  }
+  const { statusTotalRows, countLabel } = resolveStatusCounts(activeResult, rowCount)
+  const windowLabel = windowLoadingLabel(activeResult.pendingWindowRange)
+  const announcement = resolveAnnouncement({
+    showActionProgress: showActionProgress,
+    rowActionProgress: rowActionProgress,
+    windowLabel: windowLabel,
+    hasResults: hasResults,
+  })
+  const customContent = resolveStatusCustomContent({
+    result: activeResult,
+    showActionProgress: showActionProgress,
+    details: {
+      rowCount: rowCount,
+      isFiltering: activeResult.isFiltering,
+      windowLabel: windowLabel,
+    },
+    onCancelRowAction: () => cancelRowAction(tabId),
+  })
+  // The badge shows the combined timing, so totalTimeMs (not executionTimeMs) feeds StatusArea.
+  const totalTimeMs = activeResult.totalTimeMs
 
   const handleViewMode = useCallback(
     (mode: ViewMode) => {
@@ -322,11 +478,8 @@ export function ResultToolbar({
           rows.map((row) => row.row)
         )
       )
-      if (wasVisible) {
-        showSuccess('Copied', `${formatCount(rows.length)} rows copied to clipboard.`)
-      } else {
-        showSuccess('Selected rows copied', `${rows.length} row(s) copied to clipboard.`)
-      }
+      const toast = copiedRowsToast(wasVisible, rows.length)
+      showSuccess(toast.title, toast.message)
     } catch (error) {
       logFrontend('warn', `[result-toolbar] clipboard write failed: ${toErrorMessage(error)}`)
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
@@ -385,78 +538,25 @@ export function ResultToolbar({
       {/* Edit mode dropdown — between view mode and status area */}
       <EditModeDropdown tabId={tabId} connectionId={connectionId} />
 
-      {/* Clone is independently visible whenever editable query-result mode is active. */}
-      {isCloneVisible && (
-        <div className={styles.editActionsGroup} data-testid="clone-actions-group">
-          <Button
-            variant="bare"
-            className={styles.cloneButton}
-            onClick={handleClone}
-            title="Clone selected row; primary key fields are left blank."
-            data-testid="query-clone-button"
-            disabled={isCloneDisabled}
-          >
-            <Copy size={16} weight="regular" />
-            <span>Clone</span>
-          </Button>
-        </div>
-      )}
+      {isCloneVisible && <CloneActionGroup isDisabled={isCloneDisabled} onClone={handleClone} />}
 
-      {/* Delete checked rows — real DB delete against the bound source table.
-          Only available in edit mode (a table with a primary/unique key whose
-          key columns are present), matching the cell-edit gating. The button
-          stays enabled at every count so keyboard users reach the explanation. */}
-      {editMode !== null && checkedCount > 0 && (
-        <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
-          <Button
-            variant="bare"
-            className={styles.discardButton}
-            onClick={handleDeleteChecked}
-            title={`Delete ${formatCount(checkedCount)} selected row${checkedCount === 1 ? '' : 's'} from the database`}
-            data-testid="query-delete-rows-button"
-          >
-            <Trash size={16} weight="regular" />
-            <span>Delete ({formatCount(checkedCount)})</span>
-          </Button>
-        </div>
-      )}
+      <DeleteRowsActionGroup
+        editMode={editMode}
+        checkedCount={checkedCount}
+        onDelete={handleDeleteChecked}
+      />
 
-      {/* Save/Discard buttons — visible only during active editing */}
-      {editState !== null && (
-        <div className={styles.editActionsGroup} data-testid="edit-actions-group">
-          {hasModifications && (
-            <Button
-              variant="bare"
-              className={styles.saveButton}
-              onClick={handleSave}
-              title="Save changes"
-              data-testid="query-save-button"
-            >
-              <FloppyDisk size={16} weight="regular" />
-              <span>Save</span>
-            </Button>
-          )}
-          <Button
-            variant="bare"
-            className={styles.discardButton}
-            onClick={handleDiscard}
-            title="Discard changes"
-            data-testid="query-discard-button"
-          >
-            <span>Discard</span>
-          </Button>
-        </div>
-      )}
+      <SaveDiscardActionGroup editState={editState} onSave={handleSave} onDiscard={handleDiscard} />
 
       {/* Center-left: status — shared component */}
       <div className={styles.statusWrapper}>
         <StatusArea
-          status={statusAreaStatus}
+          status={resolveStatusAreaStatus(showActionProgress, status)}
           totalRows={statusTotalRows}
           countLabel={countLabel}
-          loadingLabel={actionLabel ?? undefined}
+          loadingLabel={rowActionLabel(rowActionProgress)}
           executionTimeMs={totalTimeMs > 0 ? totalTimeMs : undefined}
-          errorMessage={truncatedError || undefined}
+          errorMessage={truncateErrorMessage(activeResult.errorMessage)}
           customContent={customContent}
         />
         <span className={styles.srOnly} role="status" aria-live="polite">
@@ -476,7 +576,11 @@ export function ResultToolbar({
       <ExportButton disabled={!hasResults} onClick={handleExport} testId="export-button" />
 
       <CopySelectedRowsButton
-        disabled={!hasResults || checkedCount === 0 || isRowActionPending}
+        disabled={isCopySelectedDisabled({
+          hasResults: hasResults,
+          checkedCount: checkedCount,
+          isRowActionPending: isRowActionPending,
+        })}
         onClick={() => void handleCopySelectedRows()}
       />
 

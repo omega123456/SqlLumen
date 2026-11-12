@@ -201,9 +201,9 @@ impl MessageVisitor {
     fn record_debug_value(&mut self, field: &Field, value: &dyn fmt::Debug) {
         if field.name() == "message" {
             self.message = Some(format!("{value:?}").trim_matches('"').to_string());
-        } else {
-            self.fields.push(format!("{}={value:?}", field.name()));
+            return;
         }
+        self.fields.push(format!("{}={value:?}", field.name()));
     }
 }
 
@@ -215,9 +215,9 @@ impl Visit for MessageVisitor {
     fn record_str(&mut self, field: &Field, value: &str) {
         if field.name() == "message" {
             self.message = Some(value.to_string());
-        } else {
-            self.fields.push(format!("{}={value}", field.name()));
+            return;
         }
+        self.fields.push(format!("{}={value}", field.name()));
     }
 
     fn record_bool(&mut self, field: &Field, value: bool) {

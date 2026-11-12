@@ -15,15 +15,14 @@ pub const VEC_SCHEMA_VERSION: u32 = 2;
 /// Sanitize an ID string for use in a SQL table name by replacing
 /// non-alphanumeric characters with underscores.
 pub fn sanitize_table_name(id: &str) -> String {
-    id.chars()
-        .map(|character| {
-            if character.is_alphanumeric() {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    id.chars().map(table_name_safe_char).collect()
+}
+
+fn table_name_safe_char(character: char) -> char {
+    if character.is_alphanumeric() {
+        return character;
+    }
+    '_'
 }
 
 /// Compute the per-profile vec0 virtual table name.
@@ -336,14 +335,8 @@ fn ensure_vec_schema_version_column(conn: &Connection) -> Result<()> {
     );
     match res {
         Ok(_) => Ok(()),
-        Err(error) => {
-            let msg = error.to_string();
-            if msg.contains("duplicate column name") {
-                Ok(())
-            } else {
-                Err(error)
-            }
-        }
+        Err(error) if error.to_string().contains("duplicate column name") => Ok(()),
+        Err(error) => Err(error),
     }
 }
 

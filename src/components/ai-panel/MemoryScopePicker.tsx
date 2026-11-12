@@ -42,6 +42,20 @@ const BASE_OPTIONS: ScopeOption[] = [
  * look + keyboard model; the Group option is visible but unselectable and
  * skipped in arrow-key navigation when the active connection has no group.
  */
+interface PickerKeyHandlers {
+  moveHighlight: (delta: number) => void
+  selectIndex: (index: number) => void
+  highlightedIndex: number
+  onCancel: () => void
+}
+
+const PICKER_KEY_ACTIONS: Record<string, (handlers: PickerKeyHandlers) => void> = {
+  ArrowDown: (handlers) => handlers.moveHighlight(1),
+  ArrowUp: (handlers) => handlers.moveHighlight(-1),
+  Enter: (handlers) => handlers.selectIndex(handlers.highlightedIndex),
+  Escape: (handlers) => handlers.onCancel(),
+}
+
 export function MemoryScopePicker({
   hasGroup,
   defaultScope,
@@ -129,20 +143,10 @@ export function MemoryScopePicker({
       if (event.timeStamp <= attachedAt) {
         return
       }
-      const handlers = handlersRef.current
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        handlers.moveHighlight(1)
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        handlers.moveHighlight(-1)
-      } else if (event.key === 'Enter') {
-        event.preventDefault()
-        handlers.selectIndex(handlers.highlightedIndex)
-      } else if (event.key === 'Escape') {
-        event.preventDefault()
-        handlers.onCancel()
-      }
+      const keyAction = PICKER_KEY_ACTIONS[event.key]
+      if (!keyAction) return
+      event.preventDefault()
+      keyAction(handlersRef.current)
     }
 
     document.addEventListener('keydown', handleKeyDown)

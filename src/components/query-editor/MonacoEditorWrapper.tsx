@@ -124,21 +124,20 @@ function getMonacoKeyCode(key: string, monacoInstance: typeof MonacoType): numbe
   return null
 }
 
+const MONACO_KEY_MOD_BY_MODIFIER: Partial<Record<string, 'CtrlCmd' | 'Shift' | 'Alt'>> = {
+  ctrl: 'CtrlCmd',
+  shift: 'Shift',
+  alt: 'Alt',
+}
+
 function getMonacoModifierMask(
   modifiers: ShortcutBinding['modifiers'],
   monacoInstance: typeof MonacoType
 ): number {
   return modifiers.reduce((mask, modifier) => {
-    switch (modifier) {
-      case 'ctrl':
-        return mask | monacoInstance.KeyMod.CtrlCmd
-      case 'shift':
-        return mask | monacoInstance.KeyMod.Shift
-      case 'alt':
-        return mask | monacoInstance.KeyMod.Alt
-      default:
-        return mask
-    }
+    const keyModName = MONACO_KEY_MOD_BY_MODIFIER[modifier]
+    if (!keyModName) return mask
+    return mask | monacoInstance.KeyMod[keyModName]
   }, 0)
 }
 
@@ -152,6 +151,101 @@ function getMonacoKeybinding(
   }
 
   return getMonacoModifierMask(binding.modifiers, monacoInstance) | keyCode
+}
+
+type StandaloneEditor = MonacoType.editor.IStandaloneCodeEditor
+
+function restoreCursorPosition(editor: StandaloneEditor, tabId: string): void {
+  const savedPosition = useQueryStore.getState().tabs[tabId]?.cursorPosition
+  if (!savedPosition) return
+  editor.setPosition(savedPosition)
+  editor.revealPositionInCenter(savedPosition)
+}
+
+function saveFavoriteFromEditor(
+  editor: MonacoType.editor.ICodeEditor,
+  connectionId: string | undefined
+): void {
+  const model = editor.getModel()
+  if (!model) return
+
+  const selection = editor.getSelection()
+  const selectedText = selection ? model.getValueInRange(selection) : ''
+  const position = editor.getPosition()
+  const sql = resolveFavoriteSql(
+    model.getValue(),
+    selectedText,
+    position ? { lineNumber: position.lineNumber, column: position.column } : null
+  )
+  if (!sql) return
+
+  useFavoritesStore.getState().openDialog(buildFavoriteDraft(sql, connectionId ?? null))
+}
+
+function syncAttachedContextToEditor(editor: StandaloneEditor, tabId: string): void {
+  const context = useAiStore.getState().tabs[tabId]?.attachedContext
+  if (!context) return
+  const editorModel = editor.getModel()
+  if (!editorModel) return
+  const lineCount = editorModel.getLineCount()
+  useAiStore.getState().setAttachedContext(tabId, {
+    sql: editorModel.getValue(),
+    range: {
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: lineCount,
+      endColumn: editorModel.getLineLength(lineCount) + 1,
+    },
+  })
+}
+
+interface QueryStoreEditorBinding {
+  editor: StandaloneEditor
+  tabId: string
+  connectionId: string | undefined
+  syncSelectedText: () => void
+}
+
+function bindQueryStoreEditorEvents(binding: QueryStoreEditorBinding): MonacoType.IDisposable[] {
+  const { editor, tabId } = binding
+  const cursorDisposable = editor.onDidChangeCursorPosition((event) => {
+    useQueryStore.getState().setCursorPosition(tabId, {
+      lineNumber: event.position.lineNumber,
+      column: event.position.column,
+    })
+  })
+  const selectionDisposable = editor.onDidChangeCursorSelection(() => {
+    binding.syncSelectedText()
+  })
+  binding.syncSelectedText()
+
+  // Right-click "Save as favorite" — pre-populates the favorites dialog
+  // with the current selection, or the statement under the cursor.
+  const saveFavoriteActionDisposable = editor.addAction({
+    id: 'sqllumen.save-as-favorite',
+    label: 'Save as favorite',
+    contextMenuGroupId: 'navigation',
+    contextMenuOrder: 1.5,
+    run: (codeEditor) => saveFavoriteFromEditor(codeEditor, binding.connectionId),
+  })
+  return [cursorDisposable, selectionDisposable, saveFavoriteActionDisposable]
+}
+
+function registerShortcutCommands(
+  editor: StandaloneEditor,
+  monacoInstance: typeof MonacoType,
+  bindings: Record<(typeof MONACO_SHORTCUT_ACTIONS)[number], ShortcutBinding>
+): void {
+  for (const actionId of MONACO_SHORTCUT_ACTIONS) {
+    const keybinding = getMonacoKeybinding(bindings[actionId], monacoInstance)
+    if (keybinding === null) {
+      continue
+    }
+
+    editor.addCommand(keybinding, () => {
+      useShortcutStore.getState().dispatchAction(actionId)
+    })
+  }
 }
 
 export function MonacoEditorWrapper({
@@ -174,7 +268,6 @@ export function MonacoEditorWrapper({
   const content = useQueryStore((state) => state.tabs[tabId]?.content ?? '')
   const status = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
   const setContent = useQueryStore((state) => state.setContent)
-  const setCursorPosition = useQueryStore((state) => state.setCursorPosition)
   const setSelectedText = useQueryStore((state) => state.setSelectedText)
 
   // Read editor settings from the settings store
@@ -272,17 +365,9 @@ export function MonacoEditorWrapper({
 
     // Restore cursor position from the store if available (only in query-store mode)
     if (!isOverrideMode) {
-      const savedPosition = useQueryStore.getState().tabs[tabId]?.cursorPosition
-      if (savedPosition) {
-        editor.setPosition(savedPosition)
-        editor.revealPositionInCenter(savedPosition)
-      }
+      restoreCursorPosition(editor, tabId)
     }
 
-    // Track cursor position changes and persist to store (only in query-store mode)
-    let cursorDisposable: MonacoType.IDisposable | null = null
-    let selectionDisposable: MonacoType.IDisposable | null = null
-    let saveFavoriteActionDisposable: MonacoType.IDisposable | null = null
     const syncSelectedText = () => {
       if (isOverrideMode) return
 
@@ -291,45 +376,15 @@ export function MonacoEditorWrapper({
       setSelectedText(tabId, model && selection ? model.getValueInRange(selection) : '')
     }
 
-    if (!isOverrideMode) {
-      cursorDisposable = editor.onDidChangeCursorPosition((event) => {
-        setCursorPosition(tabId, {
-          lineNumber: event.position.lineNumber,
-          column: event.position.column,
+    // Track cursor position changes and persist to store (only in query-store mode)
+    const queryStoreDisposables = isOverrideMode
+      ? []
+      : bindQueryStoreEditorEvents({
+          editor: editor,
+          tabId: tabId,
+          connectionId: connectionId,
+          syncSelectedText: syncSelectedText,
         })
-      })
-
-      selectionDisposable = editor.onDidChangeCursorSelection(() => {
-        syncSelectedText()
-      })
-
-      syncSelectedText()
-
-      // Right-click "Save as favorite" — pre-populates the favorites dialog
-      // with the current selection, or the statement under the cursor.
-      saveFavoriteActionDisposable = editor.addAction({
-        id: 'sqllumen.save-as-favorite',
-        label: 'Save as favorite',
-        contextMenuGroupId: 'navigation',
-        contextMenuOrder: 1.5,
-        run: (ed) => {
-          const model = ed.getModel()
-          if (!model) return
-
-          const selection = ed.getSelection()
-          const selectedText = selection ? model.getValueInRange(selection) : ''
-          const position = ed.getPosition()
-          const sql = resolveFavoriteSql(
-            model.getValue(),
-            selectedText,
-            position ? { lineNumber: position.lineNumber, column: position.column } : null
-          )
-          if (!sql) return
-
-          useFavoritesStore.getState().openDialog(buildFavoriteDraft(sql, connectionId ?? null))
-        },
-      })
-    }
 
     // Keep the selection and AI attached context in sync when the user edits inline.
     // (Monaco's CodeLens controller already refreshes this editor's lenses on edit.)
@@ -339,25 +394,7 @@ export function MonacoEditorWrapper({
       // If there is an attached AI context for this tab, update its SQL to
       // reflect the current editor content so that followup AI prompts
       // reference the latest text, not a stale snapshot.
-      const aiTab = useAiStore.getState().tabs[tabId]
-      const context = aiTab?.attachedContext
-      if (context) {
-        const editorModel = editor.getModel()
-        if (editorModel) {
-          const fullContent = editorModel.getValue()
-          const lineCount = editorModel.getLineCount()
-          const lastLineLength = editorModel.getLineLength(lineCount)
-          useAiStore.getState().setAttachedContext(tabId, {
-            sql: fullContent,
-            range: {
-              startLineNumber: 1,
-              startColumn: 1,
-              endLineNumber: lineCount,
-              endColumn: lastLineLength + 1,
-            },
-          })
-        }
-      }
+      syncAttachedContextToEditor(editor, tabId)
     })
 
     // Ctrl+H / Ctrl+Shift+R open find & replace. Bound to both Ctrl and Cmd,
@@ -374,9 +411,7 @@ export function MonacoEditorWrapper({
     })
 
     editor.onDidDispose(() => {
-      cursorDisposable?.dispose()
-      selectionDisposable?.dispose()
-      saveFavoriteActionDisposable?.dispose()
+      queryStoreDisposables.forEach((disposable) => disposable.dispose())
       findReplaceActionDisposable.dispose()
       contentChangeDisposable.dispose()
       // Unregister using the captured URI — model may already be disposed
@@ -386,17 +421,7 @@ export function MonacoEditorWrapper({
     // Register Monaco-local keybindings so they are dispatched through the
     // shortcut system even when the editor captures key events before the
     // global listener.
-    for (const actionId of MONACO_SHORTCUT_ACTIONS) {
-      const binding = monacoShortcutBindings[actionId]
-      const keybinding = getMonacoKeybinding(binding, monacoInstance)
-      if (keybinding === null) {
-        continue
-      }
-
-      editor.addCommand(keybinding, () => {
-        useShortcutStore.getState().dispatchAction(actionId)
-      })
-    }
+    registerShortcutCommands(editor, monacoInstance, monacoShortcutBindings)
 
     if (onMount) onMount(editor)
   }
@@ -432,9 +457,9 @@ export function MonacoEditorWrapper({
       const editorValue = value ?? ''
       if (overrideOnChange) {
         overrideOnChange(editorValue)
-      } else {
-        setContent(tabId, editorValue)
+        return
       }
+      setContent(tabId, editorValue)
     },
     [overrideOnChange, setContent, tabId]
   )

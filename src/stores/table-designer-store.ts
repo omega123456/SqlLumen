@@ -192,21 +192,95 @@ function normalizeLoadedSchema(schema: TableDesignerSchema): TableDesignerSchema
   }
 }
 
+function columnNameError(name: string, seenNames: Set<string>): string | null {
+  if (!name) return 'Column name is required'
+  if (name.length > MYSQL_IDENTIFIER_MAX_LENGTH) {
+    return `Column name must not exceed ${MYSQL_IDENTIFIER_MAX_LENGTH} characters`
+  }
+  if (seenNames.has(name.toLowerCase())) return 'Duplicate column name'
+  return null
+}
+
+const AUTO_INCREMENT_CAPABLE_TYPE =
+  /^(INT|TINYINT|SMALLINT|MEDIUMINT|BIGINT|DECIMAL|FLOAT|DOUBLE|BIT|BOOLEAN)$/i
+
+interface PreviousColumnIdentity {
+  type: string
+  name: string
+}
+
+interface ColumnFieldChange {
+  schema: TableDesignerSchema
+  column: TableDesignerColumnDef
+  previous: PreviousColumnIdentity
+  text: string
+}
+
+function fieldValueAsText(value: unknown): string {
+  return typeof value === 'string' ? value : String(value ?? '')
+}
+
+function canKeepAutoIncrement(column: TableDesignerColumnDef): boolean {
+  if (!column.isPrimaryKey) return false
+  return AUTO_INCREMENT_CAPABLE_TYPE.test(column.type.trim())
+}
+
+function applyColumnTypeChange({ column, previous, text }: ColumnFieldChange): void {
+  column.type = text
+  column.length =
+    text === previous.type ? clampLengthForType(text, column.length) : getDefaultLengthForType(text)
+  column.typeModifier = normalizeTypeModifier(text, column.typeModifier)
+  if (column.isAutoIncrement && !canKeepAutoIncrement(column)) {
+    column.isAutoIncrement = false
+  }
+}
+
+function applyColumnLengthChange({ column, text }: ColumnFieldChange): void {
+  column.length = clampLengthForType(column.type, text)
+}
+
+function applyColumnTypeModifierChange({ column, text }: ColumnFieldChange): void {
+  column.typeModifier = normalizeTypeModifier(column.type, text)
+}
+
+function applyColumnRename({ schema, column, previous, text }: ColumnFieldChange): void {
+  const renameColumn = (name: string) => (name === previous.name ? text : name)
+  column.name = text
+  schema.indexes = schema.indexes.map((index) => ({
+    ...index,
+    columns: index.columns.map(renameColumn),
+  }))
+  schema.foreignKeys = schema.foreignKeys.map((foreignKey) => ({
+    ...foreignKey,
+    sourceColumn: renameColumn(foreignKey.sourceColumn),
+  }))
+}
+
+const COLUMN_FIELD_NORMALIZERS: Partial<
+  Record<keyof TableDesignerColumnDef, (change: ColumnFieldChange) => void>
+> = {
+  type: applyColumnTypeChange,
+  length: applyColumnLengthChange,
+  typeModifier: applyColumnTypeModifierChange,
+  name: applyColumnRename,
+}
+
+function resetSchemaFor(tab: TableDesignerTabState): TableDesignerSchema {
+  if (tab.mode !== 'alter') return createBlankSchema()
+  return cloneValue(tab.originalSchema ?? tab.currentSchema)
+}
+
 function validateColumns(columns: TableDesignerColumnDef[]): Record<string, string> {
   const errors: Record<string, string> = {}
   const names = new Set<string>()
 
   columns.forEach((column, columnIndex) => {
-    if (!column.name) {
-      errors[`columns.${columnIndex}.name`] = 'Column name is required'
-    } else if (column.name.length > MYSQL_IDENTIFIER_MAX_LENGTH) {
-      errors[`columns.${columnIndex}.name`] =
-        `Column name must not exceed ${MYSQL_IDENTIFIER_MAX_LENGTH} characters`
-    } else if (names.has(column.name.toLowerCase())) {
-      errors[`columns.${columnIndex}.name`] = 'Duplicate column name'
-    } else {
-      names.add(column.name.toLowerCase())
+    const nameError = columnNameError(column.name, names)
+    if (nameError) {
+      errors[`columns.${columnIndex}.name`] = nameError
+      return
     }
+    names.add(column.name.toLowerCase())
   })
 
   return errors
@@ -507,58 +581,16 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
         const schema = cloneValue(tab.currentSchema)
         const column = schema.columns[columnIndex]
-        const previousType = column.type
-        const oldName = column.name
+        const previous: PreviousColumnIdentity = { type: column.type, name: column.name }
 
         ;(column[field] as unknown) = value
 
-        if (field === 'type') {
-          const nextType = typeof value === 'string' ? value : String(value ?? '')
-          column.type = nextType
-          column.length =
-            nextType === previousType
-              ? clampLengthForType(nextType, column.length)
-              : getDefaultLengthForType(nextType)
-          column.typeModifier = normalizeTypeModifier(nextType, column.typeModifier)
-          if (
-            column.isAutoIncrement &&
-            (!column.isPrimaryKey ||
-              !column.type
-                .trim()
-                .match(
-                  /^(INT|TINYINT|SMALLINT|MEDIUMINT|BIGINT|DECIMAL|FLOAT|DOUBLE|BIT|BOOLEAN)$/i
-                ))
-          ) {
-            column.isAutoIncrement = false
-          }
-        }
-
-        if (field === 'length') {
-          column.length = clampLengthForType(
-            column.type,
-            typeof value === 'string' ? value : String(value ?? '')
-          )
-        }
-
-        if (field === 'typeModifier') {
-          column.typeModifier = normalizeTypeModifier(
-            column.type,
-            typeof value === 'string' ? value : String(value ?? '')
-          )
-        }
-
-        if (field === 'name') {
-          const nextName = typeof value === 'string' ? value : String(value ?? '')
-          column.name = nextName
-          schema.indexes = schema.indexes.map((index) => ({
-            ...index,
-            columns: index.columns.map((name) => (name === oldName ? nextName : name)),
-          }))
-          schema.foreignKeys = schema.foreignKeys.map((foreignKey) => ({
-            ...foreignKey,
-            sourceColumn: foreignKey.sourceColumn === oldName ? nextName : foreignKey.sourceColumn,
-          }))
-        }
+        COLUMN_FIELD_NORMALIZERS[field]?.({
+          schema: schema,
+          column: column,
+          previous: previous,
+          text: fieldValueAsText(value),
+        })
 
         return {
           schema: schema,
@@ -845,12 +877,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
           return state
         }
 
-        const currentSchema =
-          existing.mode === 'alter'
-            ? existing.originalSchema
-              ? cloneValue(existing.originalSchema)
-              : cloneValue(existing.currentSchema)
-            : createBlankSchema()
+        const currentSchema = resetSchemaFor(existing)
 
         const nextTab: TableDesignerTabState = {
           ...existing,

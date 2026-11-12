@@ -48,6 +48,32 @@ interface ProcessListState {
   resetConnection: (connectionId: string) => void
 }
 
+function isToastCooldownOver(lastToastAt: number | null, now: number): boolean {
+  return lastToastAt === null || now - lastToastAt > ERROR_TOAST_COOLDOWN_MS
+}
+
+function reportAutoRefreshFailure(connectionId: string, message: string): void {
+  logFrontend('warn', `[processlist] Auto-refresh failed for ${connectionId}: ${message}`)
+  const state = useProcessListStore.getState()
+  const lastToastAt = state.lastErrorToastAtByConnection[connectionId] ?? null
+  const now = Date.now()
+  if (!isToastCooldownOver(lastToastAt, now)) return
+  showErrorToast('Process list refresh failed', message)
+  useProcessListStore.setState({
+    lastErrorToastAtByConnection: { ...state.lastErrorToastAtByConnection, [connectionId]: now },
+  })
+}
+
+function withMembershipToggled(ids: Set<number>, id: number): Set<number> {
+  const next = new Set(ids)
+  if (next.has(id)) {
+    next.delete(id)
+    return next
+  }
+  next.add(id)
+  return next
+}
+
 export const useProcessListStore = create<ProcessListState>()((set, get) => ({
   rowsByConnection: {},
   lastRefreshedAtByConnection: {},
@@ -125,20 +151,9 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
 
       if (isManual) {
         showErrorToast('Failed to fetch process list', message)
-      } else {
-        logFrontend('warn', `[processlist] Auto-refresh failed for ${connectionId}: ${message}`)
-        const lastToastAt = get().lastErrorToastAtByConnection[connectionId] ?? null
-        const now = Date.now()
-        if (lastToastAt === null || now - lastToastAt > ERROR_TOAST_COOLDOWN_MS) {
-          showErrorToast('Process list refresh failed', message)
-          set({
-            lastErrorToastAtByConnection: {
-              ...get().lastErrorToastAtByConnection,
-              [connectionId]: now,
-            },
-          })
-        }
+        return
       }
+      reportAutoRefreshFailure(connectionId, message)
     }
   },
 
@@ -162,12 +177,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
 
   toggleSelectedId: (connectionId: string, id: number) => {
     const current = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-    const next = new Set(current)
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
+    const next = withMembershipToggled(current, id)
     set({
       selectedIdsByConnection: {
         ...get().selectedIdsByConnection,

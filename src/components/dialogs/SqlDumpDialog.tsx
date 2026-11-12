@@ -20,7 +20,7 @@ import styles from './SqlDumpDialog.module.css'
 import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
 import { toErrorMessage } from '../../lib/error-message'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
-import { progressPercent } from '../../lib/job-progress'
+import { isCancelInFlight, progressPercent } from '../../lib/job-progress'
 import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
 import { useBrowseFilePath } from '../../hooks/useBrowseFilePath'
 
@@ -40,6 +40,259 @@ function buildInitialTableSelection({
   if (!database) return {}
   if (initialTable) return { [initialDatabase]: new Set([initialTable]) }
   return { [initialDatabase]: new Set(database.tables.map((table) => table.name)) }
+}
+
+type TableSelection = Record<string, Set<string>>
+
+function toggleTableSelection(
+  selection: TableSelection,
+  dbName: string,
+  tableName: string
+): TableSelection {
+  const copy = { ...selection }
+  const tableNames = new Set(copy[dbName] ?? [])
+  const wasSelected = tableNames.has(tableName)
+  if (wasSelected) tableNames.delete(tableName)
+  if (!wasSelected) tableNames.add(tableName)
+  delete copy[dbName]
+  if (tableNames.size > 0) copy[dbName] = tableNames
+  return copy
+}
+
+function toggleDatabaseSelection(
+  selection: TableSelection,
+  database: ExportableDatabase
+): TableSelection {
+  const copy = { ...selection }
+  const allTableNames = database.tables.map((table) => table.name)
+  const isFullySelected = copy[database.name]?.size === allTableNames.length
+  delete copy[database.name]
+  if (!isFullySelected) copy[database.name] = new Set(allTableNames)
+  return copy
+}
+
+function dumpDefaultFileName(initialDatabase: string | undefined, timestamp: number): string {
+  if (initialDatabase) return `${initialDatabase}_dump_${timestamp}.sql`
+  return `sql_dump_${timestamp}.sql`
+}
+
+function objectCountLabel(count: number): string {
+  return `${count} ${count === 1 ? 'object' : 'objects'}`
+}
+
+interface DumpOptionCheckboxProps {
+  id: string
+  label: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
+
+function DumpOptionCheckbox({ id, label, checked, onChange }: DumpOptionCheckboxProps) {
+  return (
+    <div className={styles.checkboxRow}>
+      <Checkbox
+        id={id}
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        data-testid={id}
+      />
+      <label htmlFor={id} className={styles.checkboxLabel}>
+        {label}
+      </label>
+    </div>
+  )
+}
+
+interface DatabaseObjectGroupProps {
+  database: ExportableDatabase
+  selectedTableNames: Set<string> | undefined
+  onToggleDatabase: (dbName: string) => void
+  onToggleTable: (dbName: string, tableName: string) => void
+}
+
+function DatabaseObjectGroup({
+  database,
+  selectedTableNames,
+  onToggleDatabase,
+  onToggleTable,
+}: DatabaseObjectGroupProps) {
+  const selectedCount = selectedTableNames?.size ?? 0
+  const tableCount = database.tables.length
+  const allSelected = tableCount > 0 && selectedCount === tableCount
+  const someSelected = selectedCount > 0 && !allSelected
+
+  return (
+    <div className={styles.objectGroup}>
+      <div className={styles.objectGroupHeader}>
+        <Checkbox
+          checked={allSelected}
+          ref={(element) => {
+            if (element) element.indeterminate = someSelected
+          }}
+          onChange={() => onToggleDatabase(database.name)}
+          data-testid={`dump-db-${database.name}`}
+        />
+        <span className={styles.objectGroupLabel}>{database.name}</span>
+        <span className={styles.objectGroupCount}>({objectCountLabel(tableCount)})</span>
+      </div>
+      {database.tables.map((table) => (
+        <div key={table.name} className={styles.objectItem}>
+          <Checkbox
+            checked={selectedTableNames?.has(table.name) ?? false}
+            onChange={() => onToggleTable(database.name, table.name)}
+            data-testid={`dump-table-${database.name}-${table.name}`}
+          />
+          <span className={styles.objectItemLabel}>{table.name}</span>
+          <span className={styles.objectItemType}>{table.objectType}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+interface DumpObjectListProps {
+  loadingObjects: boolean
+  loadError: string | null
+  databases: ExportableDatabase[]
+  selectedTables: TableSelection
+  onToggleDatabase: (dbName: string) => void
+  onToggleTable: (dbName: string, tableName: string) => void
+}
+
+function DumpObjectList({
+  loadingObjects,
+  loadError,
+  databases,
+  selectedTables,
+  onToggleDatabase,
+  onToggleTable,
+}: DumpObjectListProps) {
+  if (loadingObjects) {
+    return (
+      <div className={styles.loadingObjects} data-testid="dump-loading-objects">
+        Loading objects...
+      </div>
+    )
+  }
+  if (loadError) {
+    return (
+      <div className={styles.error} data-testid="dump-load-error">
+        {loadError}
+      </div>
+    )
+  }
+  if (databases.length === 0) {
+    return <div className={styles.loadingObjects}>No databases found</div>
+  }
+  return (
+    <div className={styles.objectTree} data-testid="dump-object-tree">
+      {databases.map((database) => (
+        <DatabaseObjectGroup
+          key={database.name}
+          database={database}
+          selectedTableNames={selectedTables[database.name]}
+          onToggleDatabase={onToggleDatabase}
+          onToggleTable={onToggleTable}
+        />
+      ))}
+    </div>
+  )
+}
+
+function dumpDialogTitle(schemaOnly: boolean): string {
+  if (schemaOnly) return 'Export schema DDL'
+  return 'Export SQL dump'
+}
+
+function selectionCountSuffix(selectedCount: number): string {
+  if (selectedCount === 0) return ''
+  return ` (${selectedCount})`
+}
+
+function DumpProgressPanel({ progress }: { progress: DumpJobProgress }) {
+  const tablesPercent = progressPercent(progress.tablesDone, progress.tablesTotal)
+  return (
+    <div className={styles.progressSection} data-testid="dump-progress">
+      <div className={styles.progressRow}>
+        <span className={styles.progressLabel}>Tables</span>
+        <div className={styles.progressBar}>
+          <div className={styles.progressFill} style={{ width: `${tablesPercent}%` }} />
+        </div>
+        <span className={styles.progressCount}>
+          {progress.tablesDone} / {progress.tablesTotal}
+        </span>
+      </div>
+      {progress.currentTable && (
+        <div className={styles.progressRow}>
+          <span className={styles.progressLabel}>{progress.currentTable}</span>
+          <span className={styles.rowCount} data-testid="dump-row-count">
+            {progress.rowsExported.toLocaleString()} rows
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DumpFooterMessage({ schemaOnly }: { schemaOnly: boolean }) {
+  if (!schemaOnly) {
+    return <>Keep this dialog open while the export runs. Use Cancel export to stop it.</>
+  }
+  return (
+    <>
+      Only <span className={styles.footerTextBold}>DDL statements</span> will be exported (no data).
+      Useful for version-controlling schema changes.
+    </>
+  )
+}
+
+interface DumpActionsProps {
+  isExporting: boolean
+  isCancelling: boolean
+  canExport: boolean
+  onCancelExport: () => void
+  onExport: () => void
+  onClose: () => void
+}
+
+function DumpActions({
+  isExporting,
+  isCancelling,
+  canExport,
+  onCancelExport,
+  onExport,
+  onClose,
+}: DumpActionsProps) {
+  if (isExporting) {
+    return (
+      <div className={styles.actions}>
+        <Button
+          type="button"
+          onClick={onCancelExport}
+          disabled={isCancelling}
+          data-testid="dump-cancel-export-button"
+        >
+          {isCancelling ? 'Cancelling...' : 'Cancel export'}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.actions}>
+      <Button
+        type="button"
+        variant="accent"
+        onClick={onExport}
+        disabled={!canExport}
+        data-testid="dump-submit-button"
+      >
+        Export
+      </Button>
+      <Button type="button" onClick={onClose} data-testid="dump-cancel-button">
+        Cancel
+      </Button>
+    </div>
+  )
 }
 
 export interface SqlDumpDialogProps {
@@ -74,7 +327,7 @@ export default function SqlDumpDialog({
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // Selection: dbName → Set<tableName>. If the set contains all tables for a DB, the whole DB is selected.
-  const [selectedTables, setSelectedTables] = useState<Record<string, Set<string>>>({})
+  const [selectedTables, setSelectedTables] = useState<TableSelection>({})
 
   // Export state
   const [isExporting, setIsExporting] = useState(false)
@@ -145,41 +398,15 @@ export default function SqlDumpDialog({
 
   // Toggle a single table
   const toggleTable = useCallback((dbName: string, tableName: string) => {
-    setSelectedTables((previous) => {
-      const copy = { ...previous }
-      const existing = copy[dbName] ? new Set(copy[dbName]) : new Set<string>()
-      if (existing.has(tableName)) {
-        existing.delete(tableName)
-      } else {
-        existing.add(tableName)
-      }
-      if (existing.size === 0) {
-        delete copy[dbName]
-      } else {
-        copy[dbName] = existing
-      }
-      return copy
-    })
+    setSelectedTables((previous) => toggleTableSelection(previous, dbName, tableName))
   }, [])
 
   // Toggle an entire database
   const toggleDatabase = useCallback(
     (dbName: string) => {
-      setSelectedTables((previous) => {
-        const copy = { ...previous }
-        const db = databases.find((database) => database.name === dbName)
-        if (!db) return previous
-        const allTableNames = db.tables.map((table) => table.name)
-        const existing = copy[dbName]
-        if (existing && existing.size === allTableNames.length) {
-          // Deselect all
-          delete copy[dbName]
-        } else {
-          // Select all
-          copy[dbName] = new Set(allTableNames)
-        }
-        return copy
-      })
+      const database = databases.find((candidate) => candidate.name === dbName)
+      if (!database) return
+      setSelectedTables((previous) => toggleDatabaseSelection(previous, database))
     },
     [databases]
   )
@@ -195,9 +422,7 @@ export default function SqlDumpDialog({
   }, [selectedTables])
 
   const handleBrowse = useCallback(() => {
-    const defaultName = initialDatabase
-      ? `${initialDatabase}_dump_${Date.now()}.sql`
-      : `sql_dump_${Date.now()}.sql`
+    const defaultName = dumpDefaultFileName(initialDatabase, Date.now())
     return browseForFilePath({
       defaultPath: defaultName,
       filterName: 'SQL files',
@@ -277,9 +502,8 @@ export default function SqlDumpDialog({
     }
   }, [jobId, connectionId, cancelPending])
 
-  const tablesPercent = progressPercent(progress?.tablesDone, progress?.tablesTotal)
-
-  const canExport = filePath && hasSelection && !isExporting
+  const canExport = Boolean(filePath) && hasSelection && !isExporting
+  const isCancelling = isCancelInFlight(cancelPending, progress)
 
   return (
     <DialogShell
@@ -294,7 +518,7 @@ export default function SqlDumpDialog({
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
-          <h2 className={styles.title}>{schemaOnly ? 'Export schema DDL' : 'Export SQL dump'}</h2>
+          <h2 className={styles.title}>{dumpDialogTitle(schemaOnly)}</h2>
           {!isExporting && (
             <Button
               variant="bare"
@@ -315,114 +539,47 @@ export default function SqlDumpDialog({
           <div className={styles.fieldGroup}>
             <span className={styles.label}>Options</span>
             <div className={styles.optionsRow}>
-              <div className={styles.checkboxRow}>
-                <Checkbox
-                  id="dump-include-structure"
-                  checked={includeStructure}
-                  onChange={(event) => setIncludeStructure(event.target.checked)}
-                  data-testid="dump-include-structure"
-                />
-                <label htmlFor="dump-include-structure" className={styles.checkboxLabel}>
-                  Structure
-                </label>
-              </div>
-              <div className={styles.checkboxRow}>
-                <Checkbox
-                  id="dump-include-data"
-                  checked={includeData}
-                  onChange={(event) => setIncludeData(event.target.checked)}
-                  data-testid="dump-include-data"
-                />
-                <label htmlFor="dump-include-data" className={styles.checkboxLabel}>
-                  Data
-                </label>
-              </div>
-              <div className={styles.checkboxRow}>
-                <Checkbox
-                  id="dump-include-drop"
-                  checked={includeDrop}
-                  onChange={(event) => setIncludeDrop(event.target.checked)}
-                  data-testid="dump-include-drop"
-                />
-                <label htmlFor="dump-include-drop" className={styles.checkboxLabel}>
-                  DROP IF EXISTS
-                </label>
-              </div>
-              <div className={styles.checkboxRow}>
-                <Checkbox
-                  id="dump-use-transaction"
-                  checked={useTransaction}
-                  onChange={(event) => setUseTransaction(event.target.checked)}
-                  data-testid="dump-use-transaction"
-                />
-                <label htmlFor="dump-use-transaction" className={styles.checkboxLabel}>
-                  Transaction
-                </label>
-              </div>
+              <DumpOptionCheckbox
+                id="dump-include-structure"
+                label="Structure"
+                checked={includeStructure}
+                onChange={setIncludeStructure}
+              />
+              <DumpOptionCheckbox
+                id="dump-include-data"
+                label="Data"
+                checked={includeData}
+                onChange={setIncludeData}
+              />
+              <DumpOptionCheckbox
+                id="dump-include-drop"
+                label="DROP IF EXISTS"
+                checked={includeDrop}
+                onChange={setIncludeDrop}
+              />
+              <DumpOptionCheckbox
+                id="dump-use-transaction"
+                label="Transaction"
+                checked={useTransaction}
+                onChange={setUseTransaction}
+              />
             </div>
           </div>
 
           {/* Objects */}
           <div className={styles.fieldGroup}>
             <span className={styles.label}>
-              Objects to Export{hasSelection ? ` (${selectedCount})` : ''}
+              Objects to Export{selectionCountSuffix(selectedCount)}
             </span>
 
-            {loadingObjects && (
-              <div className={styles.loadingObjects} data-testid="dump-loading-objects">
-                Loading objects...
-              </div>
-            )}
-
-            {loadError && (
-              <div className={styles.error} data-testid="dump-load-error">
-                {loadError}
-              </div>
-            )}
-
-            {!loadingObjects && !loadError && databases.length === 0 && (
-              <div className={styles.loadingObjects}>No databases found</div>
-            )}
-
-            {!loadingObjects && !loadError && databases.length > 0 && (
-              <div className={styles.objectTree} data-testid="dump-object-tree">
-                {databases.map((db) => {
-                  const dbSelected = selectedTables[db.name]
-                  const allSelected = dbSelected?.size === db.tables.length && db.tables.length > 0
-                  const someSelected = dbSelected && dbSelected.size > 0 && !allSelected
-
-                  return (
-                    <div key={db.name} className={styles.objectGroup}>
-                      <div className={styles.objectGroupHeader}>
-                        <Checkbox
-                          checked={allSelected}
-                          ref={(element) => {
-                            if (element) element.indeterminate = !!someSelected
-                          }}
-                          onChange={() => toggleDatabase(db.name)}
-                          data-testid={`dump-db-${db.name}`}
-                        />
-                        <span className={styles.objectGroupLabel}>{db.name}</span>
-                        <span className={styles.objectGroupCount}>
-                          ({db.tables.length} {db.tables.length === 1 ? 'object' : 'objects'})
-                        </span>
-                      </div>
-                      {db.tables.map((table) => (
-                        <div key={table.name} className={styles.objectItem}>
-                          <Checkbox
-                            checked={dbSelected?.has(table.name) ?? false}
-                            onChange={() => toggleTable(db.name, table.name)}
-                            data-testid={`dump-table-${db.name}-${table.name}`}
-                          />
-                          <span className={styles.objectItemLabel}>{table.name}</span>
-                          <span className={styles.objectItemType}>{table.objectType}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <DumpObjectList
+              loadingObjects={loadingObjects}
+              loadError={loadError}
+              databases={databases}
+              selectedTables={selectedTables}
+              onToggleDatabase={toggleDatabase}
+              onToggleTable={toggleTable}
+            />
           </div>
 
           {/* Destination */}
@@ -457,27 +614,7 @@ export default function SqlDumpDialog({
           </div>
 
           {/* Progress */}
-          {isExporting && progress && (
-            <div className={styles.progressSection} data-testid="dump-progress">
-              <div className={styles.progressRow}>
-                <span className={styles.progressLabel}>Tables</span>
-                <div className={styles.progressBar}>
-                  <div className={styles.progressFill} style={{ width: `${tablesPercent}%` }} />
-                </div>
-                <span className={styles.progressCount}>
-                  {progress.tablesDone} / {progress.tablesTotal}
-                </span>
-              </div>
-              {progress.currentTable && (
-                <div className={styles.progressRow}>
-                  <span className={styles.progressLabel}>{progress.currentTable}</span>
-                  <span className={styles.rowCount} data-testid="dump-row-count">
-                    {progress.rowsExported.toLocaleString()} rows
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+          {isExporting && progress && <DumpProgressPanel progress={progress} />}
 
           {/* Error */}
           {error && (
@@ -488,49 +625,19 @@ export default function SqlDumpDialog({
 
           <InfoBar
             severity="info"
-            message={
-              <>
-                {schemaOnly ? (
-                  <>
-                    Only <span className={styles.footerTextBold}>DDL statements</span> will be
-                    exported (no data). Useful for version-controlling schema changes.
-                  </>
-                ) : (
-                  <>Keep this dialog open while the export runs. Use Cancel export to stop it.</>
-                )}
-              </>
-            }
+            message={<DumpFooterMessage schemaOnly={schemaOnly} />}
             data-testid="dump-footer-text"
           />
 
           {/* Buttons */}
-          <div className={styles.actions}>
-            {isExporting ? (
-              <Button
-                type="button"
-                onClick={handleCancel}
-                disabled={cancelPending || progress?.cancelRequested}
-                data-testid="dump-cancel-export-button"
-              >
-                {cancelPending || progress?.cancelRequested ? 'Cancelling...' : 'Cancel export'}
-              </Button>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  variant="accent"
-                  onClick={handleExport}
-                  disabled={!canExport}
-                  data-testid="dump-submit-button"
-                >
-                  Export
-                </Button>
-                <Button type="button" onClick={onClose} data-testid="dump-cancel-button">
-                  Cancel
-                </Button>
-              </>
-            )}
-          </div>
+          <DumpActions
+            isExporting={isExporting}
+            isCancelling={isCancelling}
+            canExport={canExport}
+            onCancelExport={handleCancel}
+            onExport={handleExport}
+            onClose={onClose}
+          />
         </div>
       </div>
     </DialogShell>

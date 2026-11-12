@@ -8,6 +8,8 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
+  type SyntheticEvent,
 } from 'react'
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
 import { useElementSize } from '../../hooks/use-element-size'
@@ -45,6 +47,21 @@ export interface UnderlineTabBarProps {
    * (`data-overflowing`), count chips at each end show and scroll to the hidden tabs. */
   scrollable?: boolean
   variant?: UnderlineTabVariant
+}
+
+interface ViewportBounds {
+  left: number
+  right: number
+  atStart: boolean
+  atEnd: boolean
+}
+
+const HIDDEN_EDGE_TOLERANCE_PX = 1
+
+function hiddenTabSide(tabRect: DOMRect, bounds: ViewportBounds): 'start' | 'end' | null {
+  if (!bounds.atStart && tabRect.left < bounds.left - HIDDEN_EDGE_TOLERANCE_PX) return 'start'
+  if (!bounds.atEnd && tabRect.right > bounds.right + HIDDEN_EDGE_TOLERANCE_PX) return 'end'
+  return null
 }
 
 export function UnderlineTabBar(props: UnderlineTabBarProps) {
@@ -121,12 +138,13 @@ function ScrollableTabBar({
     const atStart = scrollLeft <= 1
     const atEnd = scrollLeft + clientWidth >= scrollWidth - 1
     const { left, right } = viewport.getBoundingClientRect()
+    const bounds: ViewportBounds = { left: left, right: right, atStart: atStart, atEnd: atEnd }
     let start = 0
     let end = 0
     for (const tab of tabItems(content)) {
-      const rect = tab.getBoundingClientRect()
-      if (!atStart && rect.left < left - 1) start++
-      else if (!atEnd && rect.right > right + 1) end++
+      const hiddenSide = hiddenTabSide(tab.getBoundingClientRect(), bounds)
+      if (hiddenSide === 'start') start++
+      if (hiddenSide === 'end') end++
     }
     setHidden((previous) =>
       previous[0] === start && previous[1] === end ? previous : [start, end]
@@ -278,30 +296,183 @@ export interface UnderlineTabProps {
   variant?: UnderlineTabVariant
 }
 
+const DROP_INDICATOR_CLASS: Record<NonNullable<UnderlineTabProps['dropIndicator']>, string> = {
+  before: styles.dropBefore,
+  after: styles.dropAfter,
+}
+const MIDDLE_MOUSE_BUTTON = 1
+
+type ResolvedUnderlineTabProps = UnderlineTabProps &
+  Required<Pick<UnderlineTabProps, 'active' | 'dragging' | 'variant'>>
+
+interface ResolvedTabViewProps {
+  props: ResolvedUnderlineTabProps
+  elementRef: RefObject<HTMLDivElement | HTMLButtonElement | null>
+}
+
+function joinClassNames(classNames: string[]): string {
+  return classNames.filter(Boolean).join(' ')
+}
+
+function dropIndicatorClassName(dropIndicator: UnderlineTabProps['dropIndicator']): string {
+  if (!dropIndicator) return ''
+  return DROP_INDICATOR_CLASS[dropIndicator]
+}
+
+function activeDataAttribute(active: boolean): true | undefined {
+  if (!active) return undefined
+  return true
+}
+
+function preventMiddleMouseDown(event: MouseEvent<HTMLElement>): void {
+  if (event.button === MIDDLE_MOUSE_BUTTON) event.preventDefault()
+}
+
+function middleMouseDownHandler(
+  onAuxClick: UnderlineTabProps['onAuxClick']
+): ((event: MouseEvent<HTMLElement>) => void) | undefined {
+  if (!onAuxClick) return undefined
+  return preventMiddleMouseDown
+}
+
+function tabStateClassNames(props: ResolvedUnderlineTabProps, activeClassName: string): string[] {
+  return [
+    TAB_VARIANT_CLASS[props.variant],
+    props.active ? activeClassName : '',
+    props.dragging ? styles.dragging : '',
+    dropIndicatorClassName(props.dropIndicator),
+  ]
+}
+
+function onlyFromContainer<Event extends SyntheticEvent<HTMLElement>>(
+  handler: ((event: Event) => void) | undefined
+): (event: Event) => void {
+  return (event) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+    handler?.(event)
+  }
+}
+
+function selectHandler(props: UnderlineTabProps): (() => void) | undefined {
+  return props.onSelect ?? props.onClick
+}
+
+function TabSuffixSlot({ props }: { props: ResolvedUnderlineTabProps }) {
+  if (props.suffix == null) return null
+  return (
+    <div
+      className={styles.suffixSlot}
+      onPointerDown={props.onPointerDown}
+      onDragStart={props.onDragStart}
+      onDragOver={props.onDragOver}
+      onDragEnd={props.onDragEnd}
+      onDrop={props.onDrop}
+      draggable={props.draggable}
+    >
+      {props.suffix}
+    </div>
+  )
+}
+
+function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
+  const handleSelect = selectHandler(props)
+  const cellClass = joinClassNames([
+    styles.cell,
+    ...tabStateClassNames(props, styles.cellActive),
+    props.className ?? '',
+  ])
+
+  const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    props.onKeyDown?.(event as KeyboardEvent<HTMLElement>)
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return
+    }
+    event.preventDefault()
+    handleSelect?.()
+  }
+
+  return (
+    <div
+      ref={elementRef as React.RefObject<HTMLDivElement>}
+      className={cellClass}
+      data-active={activeDataAttribute(props.active)}
+      data-testid={props['data-testid']}
+      title={props.title}
+      onAuxClick={props.onAuxClick}
+      onContextMenu={props.onContextMenu}
+      onPointerDown={onlyFromContainer(props.onPointerDown)}
+      onDragStart={onlyFromContainer(props.onDragStart)}
+      onDragOver={onlyFromContainer(props.onDragOver)}
+      onDragEnd={onlyFromContainer(props.onDragEnd)}
+      onDrop={onlyFromContainer(props.onDrop)}
+      draggable={props.draggable}
+      onMouseDown={middleMouseDownHandler(props.onAuxClick)}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={props['aria-label']}
+        aria-selected={props.active}
+        className={styles.labelButton}
+        onClick={handleSelect}
+        onKeyDown={onLabelKeyDown}
+        onPointerDown={props.onPointerDown}
+        onDragStart={props.onDragStart}
+        onDragOver={props.onDragOver}
+        onDragEnd={props.onDragEnd}
+        onDrop={props.onDrop}
+        draggable={props.draggable}
+      >
+        {props.prefix}
+        {props.children}
+      </div>
+      <TabSuffixSlot props={props} />
+    </div>
+  )
+}
+
+function SimpleUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
+  const simpleClass = joinClassNames([
+    styles.simple,
+    ...tabStateClassNames(props, styles.simpleActive),
+    props.className ?? '',
+  ])
+
+  return (
+    <button
+      ref={elementRef as React.RefObject<HTMLButtonElement>}
+      type="button"
+      className={simpleClass}
+      data-active={activeDataAttribute(props.active)}
+      data-testid={props['data-testid']}
+      aria-label={props['aria-label']}
+      aria-selected={props.active}
+      title={props.title}
+      onClick={selectHandler(props)}
+      onAuxClick={props.onAuxClick}
+      onContextMenu={props.onContextMenu}
+      onKeyDown={props.onKeyDown}
+      onPointerDown={props.onPointerDown}
+      onDragStart={props.onDragStart}
+      onDragOver={props.onDragOver}
+      onDragEnd={props.onDragEnd}
+      onDrop={props.onDrop}
+      draggable={props.draggable}
+      onMouseDown={middleMouseDownHandler(props.onAuxClick)}
+    >
+      {props.children}
+    </button>
+  )
+}
+
 export function UnderlineTab({
   active = false,
-  children,
-  className,
-  'data-testid': testId,
-  'aria-label': ariaLabel,
-  title,
   autoScrollOnActive = true,
-  onClick,
-  onSelect,
-  onAuxClick,
-  onContextMenu,
-  onKeyDown,
-  onPointerDown,
-  onDragStart,
-  onDragOver,
-  onDragEnd,
-  onDrop,
-  draggable,
   dragging = false,
-  dropIndicator,
-  prefix,
-  suffix,
   variant = 'default',
+  ...props
 }: UnderlineTabProps) {
   const elementRef = useRef<HTMLDivElement | HTMLButtonElement>(null)
 
@@ -311,170 +482,13 @@ export function UnderlineTab({
     }
   }, [active, autoScrollOnActive])
 
-  const split = prefix != null || suffix != null
-  const handleSelect = onSelect ?? onClick
-  const dropIndicatorClass =
-    dropIndicator === 'before'
-      ? styles.dropBefore
-      : dropIndicator === 'after'
-        ? styles.dropAfter
-        : ''
-
-  if (split) {
-    const cellClass = [
-      styles.cell,
-      TAB_VARIANT_CLASS[variant],
-      active ? styles.cellActive : '',
-      dragging ? styles.dragging : '',
-      dropIndicatorClass,
-      className ?? '',
-    ]
-      .filter(Boolean)
-      .join(' ')
-
-    const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-      onKeyDown?.(event as KeyboardEvent<HTMLElement>)
-      if (event.key !== 'Enter' && event.key !== ' ') {
-        return
-      }
-      event.preventDefault()
-      handleSelect?.()
-    }
-
-    const onContainerDragStart = (event: DragEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) {
-        return
-      }
-      onDragStart?.(event as DragEvent<HTMLElement>)
-    }
-
-    const onContainerDragOver = (event: DragEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) {
-        return
-      }
-      onDragOver?.(event as DragEvent<HTMLElement>)
-    }
-
-    const onContainerDragEnd = (event: DragEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) {
-        return
-      }
-      onDragEnd?.(event as DragEvent<HTMLElement>)
-    }
-
-    const onContainerDrop = (event: DragEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) {
-        return
-      }
-      onDrop?.(event as DragEvent<HTMLElement>)
-    }
-
-    const onContainerPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-      if (event.target !== event.currentTarget) {
-        return
-      }
-      onPointerDown?.(event as PointerEvent<HTMLElement>)
-    }
-
-    return (
-      <div
-        ref={elementRef as React.RefObject<HTMLDivElement>}
-        className={cellClass}
-        data-active={active ? true : undefined}
-        data-testid={testId}
-        title={title}
-        onAuxClick={onAuxClick}
-        onContextMenu={onContextMenu}
-        onPointerDown={onContainerPointerDown}
-        onDragStart={onContainerDragStart}
-        onDragOver={onContainerDragOver}
-        onDragEnd={onContainerDragEnd}
-        onDrop={onContainerDrop}
-        draggable={draggable}
-        onMouseDown={
-          onAuxClick
-            ? (event) => {
-                if (event.button === 1) event.preventDefault()
-              }
-            : undefined
-        }
-      >
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={ariaLabel}
-          aria-selected={active}
-          className={styles.labelButton}
-          onClick={handleSelect}
-          onKeyDown={onLabelKeyDown}
-          onPointerDown={onPointerDown}
-          onDragStart={onDragStart}
-          onDragOver={onDragOver}
-          onDragEnd={onDragEnd}
-          onDrop={onDrop}
-          draggable={draggable}
-        >
-          {prefix}
-          {children}
-        </div>
-        {suffix != null ? (
-          <div
-            className={styles.suffixSlot}
-            onPointerDown={onPointerDown}
-            onDragStart={onDragStart}
-            onDragOver={onDragOver}
-            onDragEnd={onDragEnd}
-            onDrop={onDrop}
-            draggable={draggable}
-          >
-            {suffix}
-          </div>
-        ) : null}
-      </div>
-    )
+  const resolvedProps: ResolvedUnderlineTabProps = {
+    ...props,
+    active: active,
+    dragging: dragging,
+    variant: variant,
   }
-
-  const simpleClass = [
-    styles.simple,
-    TAB_VARIANT_CLASS[variant],
-    active ? styles.simpleActive : '',
-    className ?? '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-  const finalSimpleClass = [simpleClass, dragging ? styles.dragging : '', dropIndicatorClass]
-    .filter(Boolean)
-    .join(' ')
-
-  return (
-    <button
-      ref={elementRef as React.RefObject<HTMLButtonElement>}
-      type="button"
-      className={finalSimpleClass}
-      data-active={active ? true : undefined}
-      data-testid={testId}
-      aria-label={ariaLabel}
-      aria-selected={active}
-      title={title}
-      onClick={handleSelect}
-      onAuxClick={onAuxClick}
-      onContextMenu={onContextMenu}
-      onKeyDown={onKeyDown}
-      onPointerDown={onPointerDown}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragEnd={onDragEnd}
-      onDrop={onDrop}
-      draggable={draggable}
-      onMouseDown={
-        onAuxClick
-          ? (event) => {
-              if (event.button === 1) event.preventDefault()
-            }
-          : undefined
-      }
-    >
-      {children}
-    </button>
-  )
+  const isSplit = props.prefix != null || props.suffix != null
+  if (isSplit) return <SplitUnderlineTab props={resolvedProps} elementRef={elementRef} />
+  return <SimpleUnderlineTab props={resolvedProps} elementRef={elementRef} />
 }

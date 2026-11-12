@@ -30,7 +30,7 @@ import { fetchResultWindow, type ResultSlotRef } from './query-commands'
 import { normalizeTinyIntRows } from './table-data-commands'
 import { logFrontend } from './app-log-commands'
 import { HALF_DIVISOR } from './units'
-import type { ColumnMeta, ResultWindow } from '../types/schema'
+import type { ColumnMeta, FetchResultWindowResult, ResultWindow } from '../types/schema'
 import { toErrorMessage } from './error-message'
 
 /** Extra information passed to range listeners. */
@@ -189,9 +189,20 @@ function normalizeRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
 
 function notify(surface: Surface, range: ViewRange, info?: WindowNotifyInfo): void {
   for (const listener of surface.listeners) {
-    if (info) listener(range, info)
-    else listener(range)
+    notifyListener(listener, range, info)
   }
+}
+
+function notifyListener(
+  listener: WindowRangeListener,
+  range: ViewRange,
+  info: WindowNotifyInfo | undefined
+): void {
+  if (info) {
+    listener(range, info)
+    return
+  }
+  listener(range)
 }
 
 function reportStatus(
@@ -264,15 +275,8 @@ function settlePending(surface: Surface): void {
   }
 }
 
-/**
- * Seed (or re-seed) a surface from an execute or view response. Clears every
- * page and in-flight request of the previous query / view.
- */
-export function seedResultWindow(params: SeedResultWindowParams): void {
-  const key = resultSurfaceKey(params.tabId, params.resultIndex)
-  const previous = surfaces.get(key)
-  if (previous) clearPendingTimer(previous)
-  const surface: Surface = {
+function freshSurface(params: SeedResultWindowParams): Surface {
+  return {
     slot: {
       connectionId: params.connectionId,
       tabId: params.tabId,
@@ -284,17 +288,43 @@ export function seedResultWindow(params: SeedResultWindowParams): void {
     viewRowCount: params.viewRowCount,
     pages: new Map(),
     inflight: new Set(),
-    generation: (previous?.generation ?? 0) + 1,
-    lastRequested: previous?.slot.queryId === params.queryId ? previous.lastRequested : null,
+    generation: 1,
+    lastRequested: null,
     failedRange: null,
     pendingRange: null,
     pendingTimer: null,
-    listeners: previous?.listeners ?? new Set(),
-    rowPatchListeners: previous?.rowPatchListeners ?? new Set(),
+    listeners: new Set(),
+    rowPatchListeners: new Set(),
   }
+}
+
+function reseededSurface(params: SeedResultWindowParams, previous: Surface): Surface {
+  const isSameQuery = previous.slot.queryId === params.queryId
+  return {
+    ...freshSurface(params),
+    generation: previous.generation + 1,
+    lastRequested: isSameQuery ? previous.lastRequested : null,
+    listeners: previous.listeners,
+    rowPatchListeners: previous.rowPatchListeners,
+  }
+}
+
+function hasWindowStatus(surface: Surface): boolean {
+  return Boolean(surface.pendingRange || surface.failedRange)
+}
+
+/**
+ * Seed (or re-seed) a surface from an execute or view response. Clears every
+ * page and in-flight request of the previous query / view.
+ */
+export function seedResultWindow(params: SeedResultWindowParams): void {
+  const key = resultSurfaceKey(params.tabId, params.resultIndex)
+  const previous = surfaces.get(key)
+  if (previous) clearPendingTimer(previous)
+  const surface = previous ? reseededSurface(params, previous) : freshSurface(params)
   storeWindow(surface, params.window)
   surfaces.set(key, surface)
-  if (previous?.pendingRange || previous?.failedRange) {
+  if (previous && hasWindowStatus(previous)) {
     reportStatus(surface, { pendingWindowRange: null, failedWindowRange: null })
   }
   // A mounted grid re-requests its visible range on `reseeded`: after a re-run
@@ -411,68 +441,102 @@ export function subscribeToRowPatches(
   }
 }
 
+function isSurfaceCurrent(surface: Surface, generation: number): boolean {
+  return surface.generation === generation && surfaces.get(keyOf(surface)) === surface
+}
+
+function schedulePendingStatus(surface: Surface, fetchedRange: ViewRange): void {
+  if (surface.pendingTimer || surface.pendingRange) return
+  surface.pendingTimer = setTimeout(() => {
+    surface.pendingTimer = null
+    if (surface.inflight.size === 0 || surfaces.get(keyOf(surface)) !== surface) return
+    surface.pendingRange = surface.lastRequested ?? fetchedRange
+    reportStatus(surface, { pendingWindowRange: surface.pendingRange })
+  }, RESULT_LOADING_STATUS_DELAY_MS)
+}
+
+function paintFetchedWindow(surface: Surface, response: FetchResultWindowResult): boolean {
+  // A response for an old view is never painted.
+  if (response.viewVersion !== surface.viewVersion) return false
+  storeWindow(surface, response)
+  evictPages(surface)
+  notify(surface, [response.offset, response.offset + response.rows.length])
+  return true
+}
+
+interface WindowFetchFailure {
+  error: unknown
+  range: ViewRange
+}
+
+function handleWindowFetchFailure(surface: Surface, failure: WindowFetchFailure): void {
+  const [start, end] = failure.range
+  if (isViewStaleError(failure.error)) {
+    // A newer view is being painted; its own response re-seeds the surface.
+    logFrontend(
+      'debug',
+      `[result-window-cache] discarding a stale window for ${keyOf(surface)} rows ${start}-${end}: ${toErrorMessage(failure.error)}`
+    )
+    return
+  }
+  if (isResultsExpiredError(failure.error)) {
+    expiredHandler?.(surface.slot.tabId)
+    return
+  }
+  const message = toErrorMessage(failure.error)
+  if (message.startsWith('Results were refreshed')) {
+    logFrontend('info', `[result-window-cache] discarding window for a replaced query: ${message}`)
+    return
+  }
+  logFrontend(
+    'warn',
+    `[result-window-cache] window fetch failed for ${keyOf(surface)} rows ${start}-${end}: ${message}`
+  )
+  const failed: ViewRange = surface.lastRequested ?? failure.range
+  surface.failedRange = failed
+  reportStatus(surface, { failedWindowRange: failed }, { message })
+}
+
+interface PageFetchOutcome {
+  generation: number
+  pageIndex: number
+  continueFilling: boolean
+}
+
+function finishPageFetch(surface: Surface, outcome: PageFetchOutcome): void {
+  // After a generation bump the in-flight set was cleared, and a newer fetch
+  // of the same page may have re-added it: only the current fetch removes it.
+  if (surface.generation === outcome.generation) surface.inflight.delete(outcome.pageIndex)
+  if (!isSurfaceCurrent(surface, outcome.generation)) return
+  settlePending(surface)
+  if (outcome.continueFilling && surface.lastRequested) {
+    requestPages(surface, surface.lastRequested)
+  }
+}
+
 async function fetchPage(surface: Surface, pageIndex: number): Promise<void> {
   const generation = surface.generation
   const viewVersion = surface.viewVersion
-  const [start, end] = pageRange(surface, pageIndex)
+  const range = pageRange(surface, pageIndex)
+  const [start, end] = range
   surface.inflight.add(pageIndex)
-  if (!surface.pendingTimer && !surface.pendingRange) {
-    surface.pendingTimer = setTimeout(() => {
-      surface.pendingTimer = null
-      if (surface.inflight.size === 0 || surfaces.get(keyOf(surface)) !== surface) return
-      surface.pendingRange = surface.lastRequested ?? [start, end]
-      reportStatus(surface, { pendingWindowRange: surface.pendingRange })
-    }, RESULT_LOADING_STATUS_DELAY_MS)
-  }
+  schedulePendingStatus(surface, range)
   // Only a successful, current response continues filling the visible range;
   // stale or failed responses must not re-issue the same request.
   let continueFilling = false
   try {
     const response = await fetchResultWindow(surface.slot, viewVersion, start, end - start)
-    if (surface.generation !== generation || surfaces.get(keyOf(surface)) !== surface) return
-    // A response for an old view is never painted.
-    if (response.viewVersion !== surface.viewVersion) return
-    storeWindow(surface, response)
-    evictPages(surface)
-    notify(surface, [response.offset, response.offset + response.rows.length])
-    continueFilling = true
+    if (!isSurfaceCurrent(surface, generation)) return
+    continueFilling = paintFetchedWindow(surface, response)
   } catch (error) {
-    if (surface.generation !== generation || surfaces.get(keyOf(surface)) !== surface) return
-    if (isViewStaleError(error)) {
-      // A newer view is being painted; its own response re-seeds the surface.
-      logFrontend(
-        'debug',
-        `[result-window-cache] discarding a stale window for ${keyOf(surface)} rows ${start}-${end}: ${toErrorMessage(error)}`
-      )
-      return
-    }
-    if (isResultsExpiredError(error)) {
-      expiredHandler?.(surface.slot.tabId)
-      return
-    }
-    const message = toErrorMessage(error)
-    if (message.startsWith('Results were refreshed')) {
-      logFrontend(
-        'info',
-        `[result-window-cache] discarding window for a replaced query: ${message}`
-      )
-      return
-    }
-    logFrontend(
-      'warn',
-      `[result-window-cache] window fetch failed for ${keyOf(surface)} rows ${start}-${end}: ${message}`
-    )
-    const failed: ViewRange = surface.lastRequested ?? [start, end]
-    surface.failedRange = failed
-    reportStatus(surface, { failedWindowRange: failed }, { message })
+    if (!isSurfaceCurrent(surface, generation)) return
+    handleWindowFetchFailure(surface, { error: error, range: range })
   } finally {
-    // After a generation bump the in-flight set was cleared, and a newer fetch
-    // of the same page may have re-added it: only the current fetch removes it.
-    if (surface.generation === generation) surface.inflight.delete(pageIndex)
-    if (surfaces.get(keyOf(surface)) === surface && surface.generation === generation) {
-      settlePending(surface)
-      if (continueFilling && surface.lastRequested) requestPages(surface, surface.lastRequested)
-    }
+    finishPageFetch(surface, {
+      generation: generation,
+      pageIndex: pageIndex,
+      continueFilling: continueFilling,
+    })
   }
 }
 
@@ -597,6 +661,28 @@ function loadedRun(surface: Surface, start: number, end: number): CachedRow[] | 
   return out
 }
 
+interface ViewChunkRequest {
+  viewVersion: number
+  range: ViewRange
+  signal: AbortSignal | undefined
+}
+
+async function fetchViewChunk(surface: Surface, request: ViewChunkRequest): Promise<CachedRow[]> {
+  const [chunkStart, chunkEnd] = request.range
+  const response = await fetchResultWindow(
+    surface.slot,
+    request.viewVersion,
+    chunkStart,
+    chunkEnd - chunkStart
+  )
+  throwIfAborted(request.signal)
+  if (response.viewVersion !== request.viewVersion) {
+    throw new Error(`${VIEW_STALE_PREFIX} the result view changed while rows were loading`)
+  }
+  const rows = normalizeRows(surface.columns, response.rows)
+  return rows.map((row, index) => ({ row: row, baseIndex: response.baseIndices[index] }))
+}
+
 /**
  * Resolve every row of `range` in the current view, in view order. Loaded rows
  * are reused; missing rows are fetched in 2,000-row chunks. Does not populate
@@ -619,23 +705,15 @@ export async function readViewRange(
   for (let chunkStart = start; chunkStart < end; chunkStart += RESULT_MAX_CHUNK_ROWS) {
     throwIfAborted(options.signal)
     const chunkEnd = Math.min(end, chunkStart + RESULT_MAX_CHUNK_ROWS)
-    const loaded = loadedRun(surface, chunkStart, chunkEnd)
-    if (loaded) {
-      out.push(...loaded)
-    } else {
-      const response = await fetchResultWindow(
-        surface.slot,
-        viewVersion,
-        chunkStart,
-        chunkEnd - chunkStart
-      )
-      throwIfAborted(options.signal)
-      if (response.viewVersion !== viewVersion) {
-        throw new Error(`${VIEW_STALE_PREFIX} the result view changed while rows were loading`)
-      }
-      const rows = normalizeRows(surface.columns, response.rows)
-      rows.forEach((row, index) => out.push({ row: row, baseIndex: response.baseIndices[index] }))
-    }
+    const chunkRange: ViewRange = [chunkStart, chunkEnd]
+    const chunkRows =
+      loadedRun(surface, chunkStart, chunkEnd) ??
+      (await fetchViewChunk(surface, {
+        viewVersion: viewVersion,
+        range: chunkRange,
+        signal: options.signal,
+      }))
+    out.push(...chunkRows)
     options.onProgress?.({ done: out.length, total: total })
   }
   return out

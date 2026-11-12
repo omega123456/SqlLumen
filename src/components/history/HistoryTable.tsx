@@ -21,6 +21,138 @@ export interface HistoryTableProps {
   onRetry?: () => void
 }
 
+const EMPTY_DATABASE_PLACEHOLDER = '—'
+
+function entryCountLabel(count: number): string {
+  return `${count} ${count === 1 ? 'entry' : 'entries'}`
+}
+
+function emptyHistoryMessage(search: string): string {
+  if (search) return `No queries match "${search}"`
+  return 'History is empty. Queries you run appear here.'
+}
+
+function StatusDot({ success }: { success: boolean }) {
+  const statusClassName = success ? dotStyles.statusDotOk : dotStyles.statusDotError
+  return (
+    <span
+      className={`${dotStyles.statusDot} ${statusClassName}`}
+      title={success ? 'Succeeded' : 'Failed'}
+    >
+      {success ? '✓' : '✕'}
+    </span>
+  )
+}
+
+interface HistoryRowActions {
+  selectedEntryId: number | null
+  onSelectEntry: (id: number) => void
+  onOpenInEditor: (entry: HistoryEntry) => void
+}
+
+function HistoryTableRow({
+  entry,
+  rowActions,
+}: {
+  entry: HistoryEntry
+  rowActions: HistoryRowActions
+}) {
+  const isSelected = entry.id === rowActions.selectedEntryId
+  return (
+    <tr
+      className={isSelected ? styles.rowSelected : undefined}
+      onClick={() => rowActions.onSelectEntry(entry.id)}
+      onDoubleClick={() => rowActions.onOpenInEditor(entry)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          rowActions.onSelectEntry(entry.id)
+        }
+      }}
+      tabIndex={0}
+      role="row"
+      data-testid={`history-table-row-${entry.id}`}
+      aria-selected={isSelected}
+    >
+      <td className={styles.ui}>{formatTableTimestamp(entry.timestamp)}</td>
+      <td className={styles.ui}>{entry.databaseName ?? EMPTY_DATABASE_PLACEHOLDER}</td>
+      <td className={styles.sql}>{entry.sqlText}</td>
+      <td className={styles.ui}>
+        <StatusDot success={entry.success} />
+      </td>
+      <td className={styles.ui}>
+        <Button
+          variant="subtle"
+          size="sm"
+          iconOnly
+          className={styles.openButton}
+          onClick={(event) => {
+            event.stopPropagation()
+            rowActions.onOpenInEditor(entry)
+          }}
+          aria-label="Open in editor"
+          title="Open in editor"
+          data-testid={`history-action-open-${entry.id}`}
+        >
+          <ArrowSquareOutIcon size={16} weight="regular" />
+        </Button>
+      </td>
+    </tr>
+  )
+}
+
+interface HistoryListContentProps {
+  entries: HistoryEntry[]
+  listState: { error: string | null; isLoading: boolean; search: string }
+  rowActions: HistoryRowActions
+  onRetry: (() => void) | undefined
+}
+
+function HistoryListContent({ entries, listState, rowActions, onRetry }: HistoryListContentProps) {
+  if (listState.error) {
+    return (
+      <div className={styles.message} data-testid="history-error">
+        <p className={styles.errorMessage}>{listState.error}</p>
+        <Button variant="subtle" size="sm" onClick={onRetry} data-testid="history-retry">
+          Retry
+        </Button>
+      </div>
+    )
+  }
+  if (listState.isLoading && entries.length === 0) {
+    return (
+      <div className={styles.message} data-testid="history-loading">
+        Loading history...
+      </div>
+    )
+  }
+  if (entries.length === 0) {
+    return (
+      <div className={styles.message} data-testid="history-table-empty">
+        {emptyHistoryMessage(listState.search)}
+      </div>
+    )
+  }
+  return (
+    <table className={styles.table}>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Database</th>
+          <th className={styles.thSql}>Statement</th>
+          <th>Status</th>
+          <th aria-label="Actions" />
+        </tr>
+      </thead>
+      <tbody>
+        {entries.map((entry) => (
+          <HistoryTableRow key={entry.id} entry={entry} rowActions={rowActions} />
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 export function HistoryTable({
   entries,
   selectedEntryId,
@@ -50,96 +182,6 @@ export function HistoryTable({
     }
   }, [hasMore, isLoadingMore, loadMore, connectionId])
 
-  let list
-  if (error) {
-    list = (
-      <div className={styles.message} data-testid="history-error">
-        <p className={styles.errorMessage}>{error}</p>
-        <Button variant="subtle" size="sm" onClick={onRetry} data-testid="history-retry">
-          Retry
-        </Button>
-      </div>
-    )
-  } else if (isLoading && entries.length === 0) {
-    list = (
-      <div className={styles.message} data-testid="history-loading">
-        Loading history...
-      </div>
-    )
-  } else if (entries.length === 0) {
-    list = (
-      <div className={styles.message} data-testid="history-table-empty">
-        {search ? `No queries match "${search}"` : 'History is empty. Queries you run appear here.'}
-      </div>
-    )
-  } else {
-    list = (
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Database</th>
-            <th className={styles.thSql}>Statement</th>
-            <th>Status</th>
-            <th aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((entry) => {
-            const isSelected = entry.id === selectedEntryId
-            return (
-              <tr
-                key={entry.id}
-                className={isSelected ? styles.rowSelected : undefined}
-                onClick={() => onSelectEntry(entry.id)}
-                onDoubleClick={() => onOpenInEditor(entry)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
-                    onSelectEntry(entry.id)
-                  }
-                }}
-                tabIndex={0}
-                role="row"
-                data-testid={`history-table-row-${entry.id}`}
-                aria-selected={isSelected}
-              >
-                <td className={styles.ui}>{formatTableTimestamp(entry.timestamp)}</td>
-                <td className={styles.ui}>{entry.databaseName ?? '—'}</td>
-                <td className={styles.sql}>{entry.sqlText}</td>
-                <td className={styles.ui}>
-                  <span
-                    className={`${dotStyles.statusDot} ${entry.success ? dotStyles.statusDotOk : dotStyles.statusDotError}`}
-                    title={entry.success ? 'Succeeded' : 'Failed'}
-                  >
-                    {entry.success ? '✓' : '✕'}
-                  </span>
-                </td>
-                <td className={styles.ui}>
-                  <Button
-                    variant="subtle"
-                    size="sm"
-                    iconOnly
-                    className={styles.openButton}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onOpenInEditor(entry)
-                    }}
-                    aria-label="Open in editor"
-                    title="Open in editor"
-                    data-testid={`history-action-open-${entry.id}`}
-                  >
-                    <ArrowSquareOutIcon size={16} weight="regular" />
-                  </Button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    )
-  }
-
   return (
     <div className={styles.container} data-testid="history-table">
       <div className={styles.toolbar}>
@@ -155,7 +197,7 @@ export function HistoryTable({
           />
         </div>
         <span className={styles.badge} data-testid="history-count-badge">
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+          {entryCountLabel(entries.length)}
         </span>
         <span className={styles.spacer} />
         <Button
@@ -171,7 +213,18 @@ export function HistoryTable({
         </Button>
       </div>
 
-      <div className={styles.tableWrapper}>{list}</div>
+      <div className={styles.tableWrapper}>
+        <HistoryListContent
+          entries={entries}
+          listState={{ error: error, isLoading: isLoading, search: search }}
+          rowActions={{
+            selectedEntryId: selectedEntryId,
+            onSelectEntry: onSelectEntry,
+            onOpenInEditor: onOpenInEditor,
+          }}
+          onRetry={onRetry}
+        />
+      </div>
 
       {hasMore && (
         <div className={styles.footer}>

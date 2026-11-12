@@ -30,6 +30,45 @@ export function quoteIdentifier(name: string): string {
   return `\`${escaped}\``
 }
 
+const PRIMARY_INDEX_NAME = 'PRIMARY'
+
+interface TableMetadata {
+  columns: ColumnMeta[]
+  indexes: IndexInfo[]
+  foreignKeys: ForeignKeyInfo[]
+}
+
+function columnDefinition(column: ColumnMeta): string {
+  return `${quoteIdentifier(column.name)} ${column.dataType}`
+}
+
+function secondaryIndexDefinition(index: IndexInfo): string {
+  const prefix = index.isUnique ? 'UNIQUE INDEX' : 'INDEX'
+  const indexColumns = index.columns.map((columnName) => quoteIdentifier(columnName)).join(', ')
+  return `${prefix} ${quoteIdentifier(index.name)} (${indexColumns})`
+}
+
+function foreignKeyDefinition(foreignKey: ForeignKeyInfo): string {
+  const refDb = quoteIdentifier(foreignKey.referencedDatabase)
+  const refTable = quoteIdentifier(foreignKey.referencedTable)
+  const refColumn = quoteIdentifier(foreignKey.referencedColumn)
+  return `CONSTRAINT ${quoteIdentifier(foreignKey.name)} FOREIGN KEY (${quoteIdentifier(foreignKey.columnName)}) REFERENCES ${refDb}.${refTable}(${refColumn}) ON DELETE ${foreignKey.onDelete} ON UPDATE ${foreignKey.onUpdate}`
+}
+
+function compactCreateTableStatement(
+  dbName: string,
+  tableName: string,
+  metadata: TableMetadata
+): string {
+  const secondaryIndexes = metadata.indexes.filter((index) => index.name !== PRIMARY_INDEX_NAME)
+  const parts = [
+    ...metadata.columns.map(columnDefinition),
+    ...secondaryIndexes.map(secondaryIndexDefinition),
+    ...metadata.foreignKeys.map(foreignKeyDefinition),
+  ]
+  return `CREATE TABLE ${quoteIdentifier(dbName)}.${quoteIdentifier(tableName)} (${parts.join(', ')});`
+}
+
 /**
  * Compact schema metadata into minimal single-line CREATE TABLE statements
  * suitable for inclusion in an AI system prompt.
@@ -59,41 +98,12 @@ export function compactSchemaDdl(
   for (const [dbName, dbTables] of Object.entries(tables)) {
     for (const table of dbTables) {
       const columnKey = `${dbName}.${table.name}`
-      const tableColumns = columns[columnKey] ?? []
-      const tableIndexes = indexes[columnKey] ?? []
-      const tableForeignKeys = foreignKeys[columnKey] ?? []
-
-      const quotedDb = quoteIdentifier(dbName)
-      const quotedTable = quoteIdentifier(table.name)
-
-      const parts: string[] = []
-
-      // Column definitions
-      for (const column of tableColumns) {
-        parts.push(`${quoteIdentifier(column.name)} ${column.dataType}`)
+      const metadata: TableMetadata = {
+        columns: columns[columnKey] ?? [],
+        indexes: indexes[columnKey] ?? [],
+        foreignKeys: foreignKeys[columnKey] ?? [],
       }
-
-      // Non-PRIMARY indexes
-      for (const index of tableIndexes) {
-        if (index.name === 'PRIMARY') continue
-        const prefix = index.isUnique ? 'UNIQUE INDEX' : 'INDEX'
-        const indexColumns = index.columns
-          .map((columnName) => quoteIdentifier(columnName))
-          .join(', ')
-        parts.push(`${prefix} ${quoteIdentifier(index.name)} (${indexColumns})`)
-      }
-
-      // Foreign key constraints
-      for (const foreignKey of tableForeignKeys) {
-        const refDb = quoteIdentifier(foreignKey.referencedDatabase)
-        const refTable = quoteIdentifier(foreignKey.referencedTable)
-        const refColumn = quoteIdentifier(foreignKey.referencedColumn)
-        parts.push(
-          `CONSTRAINT ${quoteIdentifier(foreignKey.name)} FOREIGN KEY (${quoteIdentifier(foreignKey.columnName)}) REFERENCES ${refDb}.${refTable}(${refColumn}) ON DELETE ${foreignKey.onDelete} ON UPDATE ${foreignKey.onUpdate}`
-        )
-      }
-
-      statements.push(`CREATE TABLE ${quotedDb}.${quotedTable} (${parts.join(', ')});`)
+      statements.push(compactCreateTableStatement(dbName, table.name, metadata))
     }
   }
 

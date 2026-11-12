@@ -159,6 +159,13 @@ pub fn parse_ddl_name(body: &str) -> Result<(Option<String>, String, String), St
     Ok((db, name, type_keyword))
 }
 
+fn object_name_label(is_view: bool) -> &'static str {
+    if is_view {
+        return "View";
+    }
+    "Object"
+}
+
 /// Validate that a view DDL statement has the correct prefix for the given mode.
 ///
 /// - **alter**: must start with `CREATE OR REPLACE [ALGORITHM=...] [DEFINER=...] [SQL SECURITY ...] VIEW`
@@ -299,7 +306,7 @@ pub async fn save_object_impl(
 
     // Name mismatch validation for alter mode
     if request.mode == "alter" && !parsed_name.eq_ignore_ascii_case(&request.object_name) {
-        let label = if is_view { "View" } else { "Object" };
+        let label = object_name_label(is_view);
         return Err(format!(
             "{label} name mismatch: expected '{}' but DDL defines '{}'",
             request.object_name, parsed_name
@@ -451,7 +458,7 @@ pub async fn save_object_impl(
 
     // Name mismatch validation for alter mode
     if request.mode == "alter" && !parsed_name.eq_ignore_ascii_case(&request.object_name) {
-        let label = if is_view { "View" } else { "Object" };
+        let label = object_name_label(is_view);
         return Err(format!(
             "{label} name mismatch: expected '{}' but DDL defines '{}'",
             request.object_name, parsed_name
@@ -522,18 +529,14 @@ async fn get_routine_parameters_inner(
     include_return_type: bool,
 ) -> Result<Vec<RoutineParameter>, String> {
     let pool = get_pool(state, connection_id)?;
-    let rows = if include_return_type {
-        schema_queries::query_routine_parameters_with_return_type(
-            &pool,
-            database,
-            routine_name,
-            routine_type,
-        )
-        .await?
-    } else {
-        schema_queries::query_routine_parameters(&pool, database, routine_name, routine_type)
-            .await?
-    };
+    let rows = schema_queries::query_routine_parameters_inner(
+        &pool,
+        database,
+        routine_name,
+        routine_type,
+        include_return_type,
+    )
+    .await?;
     Ok(rows
         .into_iter()
         .map(|parameter| RoutineParameter {
@@ -596,12 +599,12 @@ pub async fn get_routine_parameters_with_return_type_impl(
     // When the parameters query returns zero rows, we cannot distinguish between
     // "routine exists but has no parameters" and "routine does not exist" using
     // INFORMATION_SCHEMA.PARAMETERS alone. Check INFORMATION_SCHEMA.ROUTINES.
-    let found = if params.is_empty() {
+    let mut found = true;
+    if params.is_empty() {
         let pool = get_pool(state, connection_id)?;
-        schema_queries::query_routine_exists(&pool, database, routine_name, routine_type).await?
-    } else {
-        true
-    };
+        found = schema_queries::query_routine_exists(&pool, database, routine_name, routine_type)
+            .await?;
+    }
 
     Ok(RoutineParametersWithFoundResponse {
         parameters: params,
@@ -663,7 +666,9 @@ pub async fn get_object_body(
             database_name,
             sql_text,
             duration_ms: Some(duration_ms),
-            row_count: Some(if result.is_ok() { 1 } else { 0 }),
+            row_count: Some(crate::commands::query_history_bridge::single_row_count(
+                result.is_ok(),
+            )),
             affected_rows: Some(0),
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),

@@ -12,7 +12,7 @@ import type * as Monaco from 'monaco-editor'
 import { normalizeJson, prettyPrintJson } from '../../lib/json-text'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 import { useThemeStore } from '../../stores/theme-store'
-import { useEditorCallbacks } from './editor-callbacks-context'
+import { useCellStoreSync } from './editor-callbacks-context'
 import type { CellEditorBaseProps } from './grid-cell-editors'
 import { Button } from '../common/Button'
 import styles from './JsonCellEditor.module.css'
@@ -77,62 +77,20 @@ function isNullToggleTarget(target: EventTarget | null, wrapper: HTMLDivElement 
   return toggle != null && wrapper.contains(toggle)
 }
 
-export default function JsonCellEditor(props: CellEditorBaseProps) {
-  const { row, column, onRowChange, onClose } = props
-  const fieldName = column.key
-  const isNullable = props.isNullable ?? false
-  const rawValue = row[fieldName]
-  const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
-    ? props.cancelRestoreValue
-    : rawValue
-  const initialNull = isNullish(restoreValue)
-  const originalValue = initialNull ? null : String(restoreValue ?? '')
-  const initialInputValue = props.initialInputValue
-  const prettyPrintedOriginal = useMemo(
-    () => (originalValue === null ? '' : prettyPrintJson(originalValue)),
-    [originalValue]
-  )
-  const fallbackValue = useMemo(
-    () => getJsonFallbackValue(originalValue, prettyPrintedOriginal),
-    [originalValue, prettyPrintedOriginal]
-  )
+function resolveRestoreValue(props: CellEditorBaseProps): unknown {
+  const hasExplicitRestoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
+  if (hasExplicitRestoreValue) return props.cancelRestoreValue
+  return props.row[props.column.key]
+}
 
-  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
-  const [value, setValue] = useState(
-    initialInputValue != null ? initialInputValue : prettyPrintedOriginal
-  )
+function originalJsonText(restoreValue: unknown): string | null {
+  if (isNullish(restoreValue)) return null
+  return String(restoreValue)
+}
+
+function useJsonEditorThemeName(): string {
   const [domTheme, setDomTheme] = useState<'light' | 'dark'>(() => getCurrentDomTheme())
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const monacoRef = useRef<typeof Monaco | null>(null)
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
-  const isCancellingRef = useRef(false)
-  const ignoreNextBlurRef = useRef(false)
-  const blurListenerDisposeRef = useRef<(() => void) | null>(null)
-
-  const contextCallbacks = useEditorCallbacks()
-  const tabId = props.tabId || contextCallbacks?.tabId || ''
-  const updateCellValue = props.tabId
-    ? props.updateCellValue
-    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
-  const syncCellValue = props.tabId
-    ? props.syncCellValue
-    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
-
   const theme = useThemeStore((state) => state.theme)
-  const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
-  const effectiveResolvedTheme = domTheme ?? resolvedTheme
-  const effectiveTheme = theme === 'system' ? theme : effectiveResolvedTheme
-  const monacoThemeName = getMonacoThemeName(effectiveTheme, effectiveResolvedTheme === 'dark')
-
-  const syncToStore = useCallback(
-    (nextValue: unknown) => {
-      if (tabId && fieldName && updateCellValue) {
-        updateCellValue(tabId, fieldName, nextValue)
-        syncCellValue?.(tabId, row, fieldName, nextValue)
-      }
-    },
-    [fieldName, row, syncCellValue, tabId, updateCellValue]
-  )
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -146,6 +104,64 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
 
     return () => observer.disconnect()
   }, [])
+
+  const effectiveTheme = theme === 'system' ? theme : domTheme
+  return getMonacoThemeName(effectiveTheme, domTheme === 'dark')
+}
+
+interface NullToggleButtonProps {
+  isNull: boolean
+  onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>) => void
+  onToggle: () => void
+}
+
+function NullToggleButton({ isNull, onMouseDown, onToggle }: NullToggleButtonProps) {
+  const activeClassName = isNull ? 'td-null-active' : ''
+  return (
+    <Button
+      variant="bare"
+      className={`td-null-toggle click-outside-ignore ${activeClassName}`}
+      onMouseDown={onMouseDown}
+      onClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        onToggle()
+      }}
+      tabIndex={-1}
+    >
+      NULL
+    </Button>
+  )
+}
+
+export default function JsonCellEditor(props: CellEditorBaseProps) {
+  const { row, column, onRowChange, onClose } = props
+  const fieldName = column.key
+  const isNullable = props.isNullable ?? false
+  const restoreValue = resolveRestoreValue(props)
+  const originalValue = originalJsonText(restoreValue)
+  const initialNull = originalValue === null
+  const initialInputValue = props.initialInputValue
+  const prettyPrintedOriginal = useMemo(
+    () => (originalValue === null ? '' : prettyPrintJson(originalValue)),
+    [originalValue]
+  )
+  const fallbackValue = useMemo(
+    () => getJsonFallbackValue(originalValue, prettyPrintedOriginal),
+    [originalValue, prettyPrintedOriginal]
+  )
+
+  const [isNull, setIsNull] = useState(initialInputValue == null && initialNull)
+  const [value, setValue] = useState(initialInputValue ?? prettyPrintedOriginal)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const monacoRef = useRef<typeof Monaco | null>(null)
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const isCancellingRef = useRef(false)
+  const ignoreNextBlurRef = useRef(false)
+  const blurListenerDisposeRef = useRef<(() => void) | null>(null)
+
+  const monacoThemeName = useJsonEditorThemeName()
+  const syncToStore = useCellStoreSync(props)
 
   useEffect(() => {
     if (monacoRef.current) {
@@ -294,6 +310,13 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
     [cancelEdit, commitValue]
   )
 
+  const handleNullToggleClick = () => {
+    handleToggleNull()
+    queueMicrotask(() => {
+      ignoreNextBlurRef.current = false
+    })
+  }
+
   const handleInternalControlMouseDown = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
       ignoreNextBlurRef.current = true
@@ -348,22 +371,11 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
       </div>
       <div className={styles.editorMarkerGroup}>
         {isNullable ? (
-          <Button
-            variant="bare"
-            className={`td-null-toggle click-outside-ignore ${isNull ? 'td-null-active' : ''}`}
+          <NullToggleButton
+            isNull={isNull}
             onMouseDown={handleInternalControlMouseDown}
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              handleToggleNull()
-              queueMicrotask(() => {
-                ignoreNextBlurRef.current = false
-              })
-            }}
-            tabIndex={-1}
-          >
-            NULL
-          </Button>
+            onToggle={handleNullToggleClick}
+          />
         ) : null}
       </div>
     </div>

@@ -161,14 +161,18 @@ async fn run_vacuum_pass(
 }
 
 #[cfg(not(any(test, coverage)))]
-fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+fn prevent_default_flags() -> tauri_plugin_prevent_default::Flags {
     use tauri_plugin_prevent_default::Flags;
 
-    let flags = if cfg!(debug_assertions) {
-        Flags::all().difference(Flags::DEV_TOOLS)
-    } else {
-        Flags::all()
-    };
+    if cfg!(debug_assertions) {
+        return Flags::all().difference(Flags::DEV_TOOLS);
+    }
+    Flags::all()
+}
+
+#[cfg(not(any(test, coverage)))]
+fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    let flags = prevent_default_flags();
 
     #[cfg(target_os = "windows")]
     {

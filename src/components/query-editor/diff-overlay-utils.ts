@@ -17,6 +17,103 @@ export interface LineChange {
   modifiedEndLineNumber: number
 }
 
+interface HunkEdit {
+  range: monaco.IRange
+  text: string
+}
+
+function modifiedHunkText(change: LineChange, modifiedModel: monaco.editor.ITextModel): string {
+  if (change.modifiedEndLineNumber === 0) return ''
+  return modifiedModel.getValueInRange({
+    startLineNumber: change.modifiedStartLineNumber,
+    startColumn: 1,
+    endLineNumber: change.modifiedEndLineNumber,
+    endColumn: modifiedModel.getLineMaxColumn(change.modifiedEndLineNumber),
+  })
+}
+
+function fullLinesRange(
+  model: monaco.editor.ITextModel,
+  startLineNumber: number,
+  endLineNumber: number
+): monaco.IRange {
+  return {
+    startLineNumber: startLineNumber,
+    startColumn: 1,
+    endLineNumber: endLineNumber,
+    endColumn: model.getLineMaxColumn(endLineNumber),
+  }
+}
+
+function insertionEdit(
+  change: LineChange,
+  originalModel: monaco.editor.ITextModel,
+  text: string
+): HunkEdit {
+  const lineCount = originalModel.getLineCount()
+  if (change.originalStartLineNumber >= lineCount) {
+    const lastColumn = originalModel.getLineMaxColumn(lineCount)
+    return {
+      range: {
+        startLineNumber: lineCount,
+        startColumn: lastColumn,
+        endLineNumber: lineCount,
+        endColumn: lastColumn,
+      },
+      text: '\n' + text,
+    }
+  }
+  const insertLineNumber = change.originalStartLineNumber + 1
+  return {
+    range: {
+      startLineNumber: insertLineNumber,
+      startColumn: 1,
+      endLineNumber: insertLineNumber,
+      endColumn: 1,
+    },
+    text: text + '\n',
+  }
+}
+
+function deletionRange(change: LineChange, originalModel: monaco.editor.ITextModel): monaco.IRange {
+  const { originalStartLineNumber, originalEndLineNumber } = change
+  if (originalEndLineNumber < originalModel.getLineCount()) {
+    return {
+      startLineNumber: originalStartLineNumber,
+      startColumn: 1,
+      endLineNumber: originalEndLineNumber + 1,
+      endColumn: 1,
+    }
+  }
+  if (originalStartLineNumber > 1) {
+    const previousLineNumber = originalStartLineNumber - 1
+    return {
+      startLineNumber: previousLineNumber,
+      startColumn: originalModel.getLineMaxColumn(previousLineNumber),
+      endLineNumber: originalEndLineNumber,
+      endColumn: originalModel.getLineMaxColumn(originalEndLineNumber),
+    }
+  }
+  return fullLinesRange(originalModel, originalStartLineNumber, originalEndLineNumber)
+}
+
+function resolveHunkEdit(
+  change: LineChange,
+  originalModel: monaco.editor.ITextModel,
+  text: string
+): HunkEdit {
+  if (change.originalEndLineNumber === 0) return insertionEdit(change, originalModel, text)
+  if (change.modifiedEndLineNumber === 0) {
+    return { range: deletionRange(change, originalModel), text: text }
+  }
+  const range = fullLinesRange(
+    originalModel,
+    change.originalStartLineNumber,
+    change.originalEndLineNumber
+  )
+  return { range: range, text: text }
+}
+
 /**
  * Apply a single hunk from the modified model into the original model.
  * After applying, the diff editor will update to reflect the remaining differences.
@@ -26,81 +123,8 @@ export function applyHunkToOriginal(
   origModel: monaco.editor.ITextModel,
   modifiedModel: monaco.editor.ITextModel
 ): void {
-  const {
-    modifiedStartLineNumber,
-    modifiedEndLineNumber,
-    originalStartLineNumber,
-    originalEndLineNumber,
-  } = change
-
-  let newText: string
-  if (modifiedEndLineNumber === 0) {
-    newText = ''
-  } else {
-    newText = modifiedModel.getValueInRange({
-      startLineNumber: modifiedStartLineNumber,
-      startColumn: 1,
-      endLineNumber: modifiedEndLineNumber,
-      endColumn: modifiedModel.getLineMaxColumn(modifiedEndLineNumber),
-    })
-  }
-
-  let targetRange: monaco.IRange
-  if (originalEndLineNumber === 0) {
-    const lineCount = origModel.getLineCount()
-    if (originalStartLineNumber >= lineCount) {
-      const lastColumn = origModel.getLineMaxColumn(lineCount)
-      targetRange = {
-        startLineNumber: lineCount,
-        startColumn: lastColumn,
-        endLineNumber: lineCount,
-        endColumn: lastColumn,
-      }
-      newText = '\n' + newText
-    } else {
-      targetRange = {
-        startLineNumber: originalStartLineNumber + 1,
-        startColumn: 1,
-        endLineNumber: originalStartLineNumber + 1,
-        endColumn: 1,
-      }
-      newText = newText + '\n'
-    }
-  } else if (modifiedEndLineNumber === 0) {
-    const lineCount = origModel.getLineCount()
-    if (originalEndLineNumber < lineCount) {
-      targetRange = {
-        startLineNumber: originalStartLineNumber,
-        startColumn: 1,
-        endLineNumber: originalEndLineNumber + 1,
-        endColumn: 1,
-      }
-    } else if (originalStartLineNumber > 1) {
-      const previousLineMaxColumn = origModel.getLineMaxColumn(originalStartLineNumber - 1)
-      targetRange = {
-        startLineNumber: originalStartLineNumber - 1,
-        startColumn: previousLineMaxColumn,
-        endLineNumber: originalEndLineNumber,
-        endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
-      }
-    } else {
-      targetRange = {
-        startLineNumber: originalStartLineNumber,
-        startColumn: 1,
-        endLineNumber: originalEndLineNumber,
-        endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
-      }
-    }
-  } else {
-    targetRange = {
-      startLineNumber: originalStartLineNumber,
-      startColumn: 1,
-      endLineNumber: originalEndLineNumber,
-      endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
-    }
-  }
-
-  origModel.pushEditOperations([], [{ range: targetRange, text: newText }], () => null)
+  const edit = resolveHunkEdit(change, origModel, modifiedHunkText(change, modifiedModel))
+  origModel.pushEditOperations([], [edit], () => null)
 }
 
 export interface PlainRange {

@@ -38,11 +38,12 @@ export function useFetchModels(url: string): UseFetchModelsResult {
       if (result.error) {
         setError(result.error)
       }
-      if (result.models.length === 0 && !result.error) {
+      const foundNoModels = result.models.length === 0 && !result.error
+      if (foundNoModels) {
         setError('No models found at this endpoint.')
-      } else {
-        setModels(result.models)
+        return
       }
+      setModels(result.models)
     } catch (error) {
       if (thisRequest !== fetchCounterRef.current) return // stale
       setError(error instanceof Error ? error.message : 'Failed to fetch models')

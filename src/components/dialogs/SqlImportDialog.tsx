@@ -49,6 +49,125 @@ function announceImportOutcome(progress: ImportJobProgress): void {
   )
 }
 
+const PATH_SEPARATOR_PATTERN = /[\\/]/
+
+function fileNameFromPath(filePath: string): string {
+  return filePath.split(PATH_SEPARATOR_PATTERN).pop() ?? filePath
+}
+
+function isCleanCompletion(progress: ImportJobProgress): boolean {
+  return progress.status === 'completed' && progress.errors.length === 0
+}
+
+function ImportOutcomeText({ progress }: { progress: ImportJobProgress }) {
+  if (isCleanCompletion(progress)) {
+    return <>Import completed successfully ({progress.statementsDone} statements executed)</>
+  }
+  if (progress.status === 'completed') {
+    return (
+      <>
+        Import completed with {progress.errors.length} error
+        {pluralSuffix(progress.errors.length)}
+      </>
+    )
+  }
+  if (progress.status === 'failed') {
+    return <>Import stopped due to error (stop-on-error enabled)</>
+  }
+  if (progress.status === 'cancelled') {
+    return <>Import was cancelled</>
+  }
+  return null
+}
+
+function ImportStatusMessage({ progress }: { progress: ImportJobProgress }) {
+  const successClassName = isCleanCompletion(progress) ? styles.statusSuccess : ''
+  return (
+    <div className={`${styles.statusMessage} ${successClassName}`} data-testid="import-status">
+      <ImportOutcomeText progress={progress} />
+    </div>
+  )
+}
+
+function ImportProgressPanel({ progress }: { progress: ImportJobProgress }) {
+  const statementsPercent = progressPercent(progress.statementsDone, progress.statementsTotal)
+  return (
+    <div className={styles.progressSection} data-testid="import-progress">
+      <div className={styles.progressBar}>
+        <div className={styles.progressFill} style={{ width: `${statementsPercent}%` }} />
+      </div>
+      <span className={styles.progressText}>
+        {progress.statementsDone} / {progress.statementsTotal} statements — {statementsPercent}%
+      </span>
+    </div>
+  )
+}
+
+function ImportErrorList({ errors }: { errors: ImportJobProgress['errors'] }) {
+  if (errors.length === 0) return null
+  return (
+    <div className={styles.errorList} data-testid="import-error-list">
+      {errors.map((error, index) => (
+        <div key={index} className={styles.errorItem} data-testid={`import-error-${index}`}>
+          <strong>Statement #{error.statementIndex + 1}:</strong> {error.errorMessage}
+          {error.sqlPreview && <span className={styles.errorSql}>{error.sqlPreview}</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+interface ImportActionsProps {
+  isImporting: boolean
+  isTerminal: boolean
+  onImport: () => void
+  onCancelImport: () => void
+  onClose: () => void
+}
+
+function ImportActions({
+  isImporting,
+  isTerminal,
+  onImport,
+  onCancelImport,
+  onClose,
+}: ImportActionsProps) {
+  const cancelImportButton = (
+    <Button type="button" onClick={onCancelImport} data-testid="import-cancel-button">
+      Cancel import
+    </Button>
+  )
+  if (isTerminal) {
+    return (
+      <div className={styles.actions}>
+        {isImporting && cancelImportButton}
+        <Button type="button" onClick={onClose} data-testid="import-done-button">
+          Close
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.actions}>
+      <Button
+        type="button"
+        variant="accent"
+        onClick={onImport}
+        disabled={isImporting}
+        data-testid="import-submit-button"
+      >
+        {isImporting ? 'Importing...' : 'Import'}
+      </Button>
+      {isImporting && cancelImportButton}
+      {!isImporting && (
+        <Button type="button" onClick={onClose} data-testid="import-dismiss-button">
+          Cancel
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export interface SqlImportDialogProps {
   connectionId: string
   filePath: string
@@ -104,10 +223,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
     }
   }, [jobId])
 
-  const statementsPercent = progressPercent(progress?.statementsDone, progress?.statementsTotal)
-
-  // File name from path
-  const fileName = filePath.split(/[\\/]/).pop() ?? filePath
+  const fileName = fileNameFromPath(filePath)
 
   return (
     <DialogShell
@@ -164,56 +280,11 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
             </div>
           </div>
 
-          {/* Progress */}
-          {progress && (
-            <div className={styles.progressSection} data-testid="import-progress">
-              <div className={styles.progressBar}>
-                <div className={styles.progressFill} style={{ width: `${statementsPercent}%` }} />
-              </div>
-              <span className={styles.progressText}>
-                {progress.statementsDone} / {progress.statementsTotal} statements —{' '}
-                {statementsPercent}%
-              </span>
-            </div>
-          )}
+          {progress && <ImportProgressPanel progress={progress} />}
 
-          {/* Status message */}
-          {isTerminal && progress && (
-            <div
-              className={`${styles.statusMessage} ${
-                progress.status === 'completed' && progress.errors.length === 0
-                  ? styles.statusSuccess
-                  : ''
-              }`}
-              data-testid="import-status"
-            >
-              {progress.status === 'completed' && progress.errors.length === 0 && (
-                <>Import completed successfully ({progress.statementsDone} statements executed)</>
-              )}
-              {progress.status === 'completed' && progress.errors.length > 0 && (
-                <>
-                  Import completed with {progress.errors.length} error
-                  {pluralSuffix(progress.errors.length)}
-                </>
-              )}
-              {progress.status === 'failed' && (
-                <>Import stopped due to error (stop-on-error enabled)</>
-              )}
-              {progress.status === 'cancelled' && <>Import was cancelled</>}
-            </div>
-          )}
+          {isTerminal && progress && <ImportStatusMessage progress={progress} />}
 
-          {/* Error list */}
-          {progress && progress.errors.length > 0 && (
-            <div className={styles.errorList} data-testid="import-error-list">
-              {progress.errors.map((error, index) => (
-                <div key={index} className={styles.errorItem} data-testid={`import-error-${index}`}>
-                  <strong>Statement #{error.statementIndex + 1}:</strong> {error.errorMessage}
-                  {error.sqlPreview && <span className={styles.errorSql}>{error.sqlPreview}</span>}
-                </div>
-              ))}
-            </div>
-          )}
+          {progress && <ImportErrorList errors={progress.errors} />}
 
           <InfoBar
             severity="info"
@@ -226,35 +297,13 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
             data-testid="import-footer-text"
           />
 
-          {/* Buttons */}
-          <div className={styles.actions}>
-            {!isTerminal && (
-              <Button
-                type="button"
-                variant="accent"
-                onClick={handleImport}
-                disabled={isImporting}
-                data-testid="import-submit-button"
-              >
-                {isImporting ? 'Importing...' : 'Import'}
-              </Button>
-            )}
-            {isImporting && (
-              <Button type="button" onClick={handleCancel} data-testid="import-cancel-button">
-                Cancel import
-              </Button>
-            )}
-            {isTerminal && (
-              <Button type="button" onClick={onClose} data-testid="import-done-button">
-                Close
-              </Button>
-            )}
-            {!isImporting && !isTerminal && (
-              <Button type="button" onClick={onClose} data-testid="import-dismiss-button">
-                Cancel
-              </Button>
-            )}
-          </div>
+          <ImportActions
+            isImporting={isImporting}
+            isTerminal={isTerminal}
+            onImport={handleImport}
+            onCancelImport={handleCancel}
+            onClose={onClose}
+          />
         </div>
       </div>
     </DialogShell>

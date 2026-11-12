@@ -138,8 +138,8 @@ pub fn list_logs(
     )?;
     let universe_size = last_24h_count.max(LOG_VIEWER_MIN_UNIVERSE);
 
-    let total = if let Some(threshold) = level_num {
-        conn.query_row(
+    let total = match level_num {
+        Some(threshold) => conn.query_row(
             "SELECT COUNT(*) FROM (
                 SELECT id, level_num
                 FROM log_entries
@@ -149,9 +149,8 @@ pub fn list_logs(
             WHERE level_num >= ?2",
             params![universe_size, threshold],
             |row| row.get(0),
-        )?
-    } else {
-        conn.query_row(
+        )?,
+        None => conn.query_row(
             "SELECT COUNT(*) FROM (
                 SELECT id
                 FROM log_entries
@@ -160,12 +159,13 @@ pub fn list_logs(
             ) universe",
             params![universe_size],
             |row| row.get(0),
-        )?
+        )?,
     };
 
-    let entries = if let Some(threshold) = level_num {
-        let mut stmt = conn.prepare(
-            "SELECT id, timestamp, level, target, message
+    let entries = match level_num {
+        Some(threshold) => {
+            let mut stmt = conn.prepare(
+                "SELECT id, timestamp, level, target, message
              FROM (
                 SELECT id, timestamp, level, level_num, target, message
                 FROM log_entries
@@ -175,15 +175,16 @@ pub fn list_logs(
              WHERE level_num >= ?2
              ORDER BY timestamp DESC, id DESC
              LIMIT ?3 OFFSET ?4",
-        )?;
-        let rows = stmt.query_map(
-            params![universe_size, threshold, LOG_PAGE_SIZE, offset],
-            map_log_row,
-        )?;
-        rows.collect::<Result<Vec<_>>>()?
-    } else {
-        let mut stmt = conn.prepare(
-            "SELECT id, timestamp, level, target, message
+            )?;
+            let rows = stmt.query_map(
+                params![universe_size, threshold, LOG_PAGE_SIZE, offset],
+                map_log_row,
+            )?;
+            rows.collect::<Result<Vec<_>>>()?
+        }
+        None => {
+            let mut stmt = conn.prepare(
+                "SELECT id, timestamp, level, target, message
              FROM (
                 SELECT id, timestamp, level, target, message
                 FROM log_entries
@@ -192,9 +193,11 @@ pub fn list_logs(
              ) universe
              ORDER BY timestamp DESC, id DESC
              LIMIT ?2 OFFSET ?3",
-        )?;
-        let rows = stmt.query_map(params![universe_size, LOG_PAGE_SIZE, offset], map_log_row)?;
-        rows.collect::<Result<Vec<_>>>()?
+            )?;
+            let rows =
+                stmt.query_map(params![universe_size, LOG_PAGE_SIZE, offset], map_log_row)?;
+            rows.collect::<Result<Vec<_>>>()?
+        }
     };
 
     Ok(LogPage {

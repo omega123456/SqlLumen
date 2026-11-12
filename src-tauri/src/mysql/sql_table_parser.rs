@@ -163,13 +163,11 @@ fn match_join_keyword(chars: &[char], position: usize) -> Option<usize> {
     if matches_keyword_at(chars, position, "NATURAL") {
         let mut pos = position + 7;
         pos = skip_whitespace(chars, pos);
-        // Optional LEFT/RIGHT
-        if matches_keyword_at(chars, pos, "LEFT") {
-            pos += 4;
-            pos = skip_whitespace(chars, pos);
-        } else if matches_keyword_at(chars, pos, "RIGHT") {
-            pos += 5;
-            pos = skip_whitespace(chars, pos);
+        let side_keyword = ["LEFT", "RIGHT"]
+            .into_iter()
+            .find(|keyword| matches_keyword_at(chars, pos, keyword));
+        if let Some(keyword) = side_keyword {
+            pos = skip_whitespace(chars, pos + keyword.len());
         }
         // Optional OUTER
         if matches_keyword_at(chars, pos, "OUTER") {
@@ -347,33 +345,15 @@ fn parse_table_list(
             break;
         }
 
-        // Check for parenthesized expression (could be subquery or join group)
         if chars[position] == '(' {
-            // Look ahead: is this a subquery?
-            let inner_start = skip_whitespace(chars, position + 1);
-            if is_subquery_start(chars, inner_start) {
-                // Skip the entire parenthesized subquery
-                position = skip_parenthesized(chars, position);
-                // Skip optional alias after subquery
-                position = skip_alias(chars, position);
-                // Check for comma to continue
-                position = skip_whitespace(chars, position);
-                if position < chars.len() && chars[position] == ',' {
-                    position += 1;
-                    continue;
-                }
-                break;
-            } else {
-                // Parenthesized join group — skip it (handle gracefully)
-                position = skip_parenthesized(chars, position);
-                position = skip_alias(chars, position);
-                position = skip_whitespace(chars, position);
-                if position < chars.len() && chars[position] == ',' {
-                    position += 1;
-                    continue;
-                }
-                break;
+            position = skip_parenthesized(chars, position);
+            position = skip_alias(chars, position);
+            position = skip_whitespace(chars, position);
+            if position < chars.len() && chars[position] == ',' {
+                position += 1;
+                continue;
             }
+            break;
         }
 
         // Check if we've hit a stop keyword or JOIN before reading a table
@@ -449,35 +429,29 @@ fn parse_single_table_ref(
     let first_ident = first_ident.unwrap();
     position = after_first;
 
-    // Check for dot (schema.table)
-    if position < chars.len() && chars[position] == '.' {
-        position += 1; // skip dot
-        let (second_ident, after_second) = read_identifier(chars, position);
-        if let Some(table_name) = second_ident {
-            tables.push(TableReference {
-                database: Some(first_ident),
-                table: table_name,
-            });
-            position = after_second;
-        } else {
-            // Dot but no table name — treat first_ident as table
-            tables.push(TableReference {
-                database: None,
-                table: first_ident,
-            });
-        }
-    } else {
-        // No dot — first_ident is the table
+    let has_schema_dot = position < chars.len() && chars[position] == '.';
+    if !has_schema_dot {
         tables.push(TableReference {
             database: None,
             table: first_ident,
         });
+        return skip_alias(chars, position);
     }
 
-    // Skip alias
-    position = skip_alias(chars, position);
-
-    position
+    position += 1;
+    let (second_ident, after_second) = read_identifier(chars, position);
+    let Some(table_name) = second_ident else {
+        tables.push(TableReference {
+            database: None,
+            table: first_ident,
+        });
+        return skip_alias(chars, position);
+    };
+    tables.push(TableReference {
+        database: Some(first_ident),
+        table: table_name,
+    });
+    skip_alias(chars, after_second)
 }
 
 /// Read an identifier (plain or backtick-quoted) at position `i`.
@@ -488,50 +462,47 @@ fn read_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
     }
 
     if chars[position] == '`' {
-        // Backtick-quoted identifier
-        let mut pos = position + 1;
-        let mut name = String::new();
-        while pos < chars.len() {
-            if chars[pos] == '`' {
-                // Check for doubled backtick (escaped)
-                if pos + 1 < chars.len() && chars[pos + 1] == '`' {
-                    name.push('`');
-                    pos += 2;
-                    continue;
-                }
-                // Empty backtick identifier is not a valid table name
-                if name.is_empty() {
-                    return (None, pos + 1);
-                }
-                return (Some(name), pos + 1);
-            }
-            name.push(chars[pos]);
-            pos += 1;
-        }
-        // Unterminated backtick — return what we have
-        if name.is_empty() {
-            (None, pos)
-        } else {
-            (Some(name), pos)
-        }
-    } else if chars[position].is_alphabetic() || chars[position] == '_' {
-        // Plain identifier
-        let mut pos = position;
-        let mut name = String::new();
-        while pos < chars.len()
-            && (chars[pos].is_alphanumeric() || chars[pos] == '_' || chars[pos] == '$')
-        {
-            name.push(chars[pos]);
-            pos += 1;
-        }
-        if name.is_empty() {
-            (None, pos)
-        } else {
-            (Some(name), pos)
-        }
-    } else {
-        (None, position)
+        return read_backtick_identifier(chars, position);
     }
+    if chars[position].is_alphabetic() || chars[position] == '_' {
+        return read_plain_identifier(chars, position);
+    }
+    (None, position)
+}
+
+fn read_backtick_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
+    let mut pos = position + 1;
+    let mut name = String::new();
+    while pos < chars.len() {
+        if chars[pos] != '`' {
+            name.push(chars[pos]);
+            pos += 1;
+            continue;
+        }
+        let is_escaped_backtick = pos + 1 < chars.len() && chars[pos + 1] == '`';
+        if !is_escaped_backtick {
+            return (non_empty_name(name), pos + 1);
+        }
+        name.push('`');
+        pos += 2;
+    }
+    (non_empty_name(name), pos)
+}
+
+fn read_plain_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
+    let mut pos = position;
+    let mut name = String::new();
+    while pos < chars.len()
+        && (chars[pos].is_alphanumeric() || chars[pos] == '_' || chars[pos] == '$')
+    {
+        name.push(chars[pos]);
+        pos += 1;
+    }
+    (non_empty_name(name), pos)
+}
+
+fn non_empty_name(name: String) -> Option<String> {
+    Some(name).filter(|name| !name.is_empty())
 }
 
 /// Skip an optional alias (AS alias_name or just alias_name).
@@ -620,10 +591,9 @@ fn deduplicate(tables: &mut Vec<TableReference>) {
     tables.retain(|table| {
         let key = (table.database.clone(), table.table.clone());
         if seen.contains(&key) {
-            false
-        } else {
-            seen.push(key);
-            true
+            return false;
         }
+        seen.push(key);
+        true
     });
 }

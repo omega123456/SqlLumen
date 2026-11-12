@@ -1,4 +1,12 @@
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { Warning, Info } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
@@ -27,7 +35,7 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import { logFrontendError } from '../../lib/app-log-commands'
 import styles from './CopyToHostDialog.module.css'
-import { isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
+import { isCancelInFlight, isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
 import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
 import { toErrorMessage } from '../../lib/error-message'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
@@ -98,6 +106,556 @@ function categoryNames(objects: CopyableObjects, category: CopyObjectCategory): 
   return objects[category]
 }
 
+interface CopyDialogOptions {
+  copyType: CopyType
+  dropIfExists: boolean
+  createIfNotExists: boolean
+  insertMode: CopyInsertMode
+  truncateBeforeInsert: boolean
+  ignoreDefiner: boolean
+}
+
+const DEFAULT_COPY_OPTIONS: CopyDialogOptions = {
+  copyType: 'both',
+  dropIfExists: true,
+  createIfNotExists: true,
+  insertMode: 'insert',
+  truncateBeforeInsert: false,
+  ignoreDefiner: true,
+}
+
+type UpdateCopyOption = <Key extends keyof CopyDialogOptions>(
+  key: Key,
+  value: CopyDialogOptions[Key]
+) => void
+
+function toCopyToHostOptions(options: CopyDialogOptions): CopyToHostOptions {
+  return {
+    copyStructure: options.copyType !== 'dataOnly',
+    copyData: options.copyType !== 'structureOnly',
+    dropIfExists: options.dropIfExists,
+    createIfNotExists: options.createIfNotExists,
+    truncateBeforeInsert: options.truncateBeforeInsert,
+    insertMode: options.insertMode,
+    ignoreDefiner: options.ignoreDefiner,
+  }
+}
+
+interface PreselectionKey {
+  category: CopyObjectCategory | null
+  name: string | null
+}
+
+function preselectionKey(preSelectedObject: CopyObjectSelection | undefined): PreselectionKey {
+  if (!preSelectedObject) return { category: null, name: null }
+  return { category: preSelectedObject.category, name: preSelectedObject.name }
+}
+
+function initialExpandedCategories(
+  preSelectedCategory: CopyObjectCategory | null
+): Set<CopyObjectCategory> {
+  if (!preSelectedCategory) return new Set()
+  return new Set([preSelectedCategory])
+}
+
+function toggledSetMember<Member>(members: Set<Member>, member: Member): Set<Member> {
+  const next = new Set(members)
+  if (next.has(member)) {
+    next.delete(member)
+    return next
+  }
+  next.add(member)
+  return next
+}
+
+function objectCountText(count: number): string {
+  return `${count} ${count === 1 ? 'object' : 'objects'}`
+}
+
+function objectsSectionTitle(selectedCount: number): string {
+  if (selectedCount === 0) return 'Objects'
+  return `Objects (${selectedCount})`
+}
+
+interface CopyReadinessInputs {
+  targetConnectionId: string
+  targetDatabase: string
+  selectedCount: number
+  isCopying: boolean
+}
+
+function canStartCopy(inputs: CopyReadinessInputs): boolean {
+  if (!inputs.targetConnectionId) return false
+  if (!inputs.targetDatabase) return false
+  return inputs.selectedCount > 0 && !inputs.isCopying
+}
+
+function dimmedWhen(isDimmed: boolean): string {
+  if (!isDimmed) return styles.optionGroup
+  return `${styles.optionGroup} ${styles.dimmed}`
+}
+
+interface CopyTargetState {
+  connectionOptions: DropdownOption[]
+  connectionId: string
+  databaseOptions: DropdownOption[]
+  databaseValue: string
+  newDatabaseName: string
+  notice: string | null
+  isSameHost: boolean
+}
+
+interface CopyTargetHandlers {
+  onConnectionChange: (connectionId: string) => void
+  onDatabaseChange: (value: string) => void
+  onNewDatabaseNameChange: (name: string) => void
+}
+
+interface CopyTargetSectionProps {
+  target: CopyTargetState
+  newDatabaseInputRef: RefObject<HTMLInputElement | null>
+  handlers: CopyTargetHandlers
+}
+
+function CopyTargetSection({ target, newDatabaseInputRef, handlers }: CopyTargetSectionProps) {
+  return (
+    <Section title="Target" testId="copy-target-section">
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel} id="copy-target-connection-label">
+          Connection
+        </label>
+        <Dropdown
+          id="copy-target-connection"
+          labelledBy="copy-target-connection-label"
+          options={target.connectionOptions}
+          value={target.connectionId}
+          onChange={handlers.onConnectionChange}
+          data-testid="copy-target-connection"
+        />
+      </div>
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel} id="copy-target-database-label">
+          Database
+        </label>
+        <Dropdown
+          id="copy-target-database"
+          labelledBy="copy-target-database-label"
+          options={target.databaseOptions}
+          value={target.databaseValue}
+          disabled={!target.connectionId}
+          onChange={handlers.onDatabaseChange}
+          data-testid="copy-target-database"
+        />
+        {target.databaseValue === NEW_DB_SENTINEL && (
+          <div className={styles.newDbGroup}>
+            <TextInput
+              ref={newDatabaseInputRef}
+              value={target.newDatabaseName}
+              onChange={(event) => handlers.onNewDatabaseNameChange(event.target.value)}
+              placeholder="new_database_name"
+              aria-label="New database name"
+              data-testid="copy-new-database-name"
+            />
+          </div>
+        )}
+        {target.notice && (
+          <p className={styles.infoNote} data-testid="copy-target-database-notice">
+            <Info size={14} weight="fill" className={styles.infoIcon} />
+            {target.notice}
+          </p>
+        )}
+      </div>
+      {target.isSameHost && (
+        <p className={styles.warningNote} data-testid="copy-same-host-warning">
+          <Warning size={14} weight="fill" className={styles.warningIcon} />
+          The target resolves to the same host as the source. Choose a different host.
+        </p>
+      )}
+    </Section>
+  )
+}
+
+interface CopyObjectTreeProps {
+  objects: CopyableObjects | null
+  selected: Record<CopyObjectCategory, Set<string>>
+  expandedCategories: Set<CopyObjectCategory>
+  onToggleExpanded: (category: CopyObjectCategory) => void
+  onToggleCategory: (category: CopyObjectCategory) => void
+  onToggleObject: (category: CopyObjectCategory, name: string) => void
+}
+
+interface CopyObjectCategoryGroupProps {
+  category: CopyObjectCategory
+  names: string[]
+  tree: CopyObjectTreeProps
+}
+
+function CopyObjectCategoryGroup({ category, names, tree }: CopyObjectCategoryGroupProps) {
+  const selectedSet = tree.selected[category]
+  const isEmpty = names.length === 0
+  const allSelected = !isEmpty && selectedSet.size === names.length
+  const someSelected = selectedSet.size > 0 && !allSelected
+  const isExpanded = tree.expandedCategories.has(category)
+  const expandVerb = isExpanded ? 'Collapse' : 'Expand'
+  const caretClassName = isExpanded ? `${styles.caret} ${styles.caretOpen}` : styles.caret
+
+  return (
+    <div className={styles.objectCategory}>
+      <div className={styles.objectCategoryHeader}>
+        <Button
+          variant="subtle"
+          size="sm"
+          className={styles.caretButton}
+          onClick={() => tree.onToggleExpanded(category)}
+          aria-expanded={isExpanded}
+          aria-label={`${expandVerb} ${CATEGORY_LABELS[category]}`}
+          data-testid={`copy-category-toggle-${category}`}
+        >
+          <svg
+            className={caretClassName}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </Button>
+        <Checkbox
+          checked={allSelected}
+          disabled={isEmpty}
+          ref={(element) => {
+            if (element) element.indeterminate = someSelected
+          }}
+          onChange={() => tree.onToggleCategory(category)}
+          aria-label={`Select all ${CATEGORY_LABELS[category]}`}
+          data-testid={`copy-category-${category}`}
+        />
+        <span className={styles.objectCategoryLabel}>{CATEGORY_LABELS[category]}</span>
+        <span className={styles.objectCategoryCount}>({names.length})</span>
+      </div>
+      {isExpanded && !isEmpty && (
+        <div className={styles.objectItems}>
+          {names.map((name) => (
+            <div key={name} className={styles.objectItem}>
+              <Checkbox
+                checked={selectedSet.has(name)}
+                onChange={() => tree.onToggleObject(category, name)}
+                aria-label={name}
+                data-testid={`copy-object-${category}-${name}`}
+              />
+              <span className={styles.objectItemLabel}>{name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface CopyObjectsBodyProps {
+  loadingObjects: boolean
+  loadError: string | null
+  tree: CopyObjectTreeProps
+}
+
+function CopyObjectsBody({ loadingObjects, loadError, tree }: CopyObjectsBodyProps) {
+  const objects = tree.objects
+  return (
+    <>
+      {loadingObjects && (
+        <div className={styles.loading} data-testid="copy-loading-objects">
+          Loading objects…
+        </div>
+      )}
+      {loadError && (
+        <div className={styles.error} data-testid="copy-load-error">
+          {loadError}
+        </div>
+      )}
+      {!loadingObjects && !loadError && objects && (
+        <div className={styles.objectTree} data-testid="copy-object-tree">
+          {CATEGORY_ORDER.map((category) => (
+            <CopyObjectCategoryGroup
+              key={category}
+              category={category}
+              names={categoryNames(objects, category)}
+              tree={tree}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+interface CopyOptionsSectionProps {
+  options: CopyDialogOptions
+  onOptionChange: UpdateCopyOption
+}
+
+function CopyOptionsSection({ options, onOptionChange }: CopyOptionsSectionProps) {
+  const structureDisabled = options.copyType === 'dataOnly'
+  const dataDisabled = options.copyType === 'structureOnly'
+  return (
+    <Section title="Options" testId="copy-options-section">
+      <div className={styles.fieldGroup}>
+        <label className={styles.fieldLabel} id="copy-type-label">
+          Copy type
+        </label>
+        <Dropdown
+          id="copy-type"
+          labelledBy="copy-type-label"
+          options={COPY_TYPE_OPTIONS}
+          value={options.copyType}
+          onChange={(value) => onOptionChange('copyType', value as CopyType)}
+          data-testid="copy-type"
+        />
+      </div>
+
+      <div
+        className={dimmedWhen(structureDisabled)}
+        aria-disabled={structureDisabled}
+        data-testid="copy-structure-group"
+      >
+        <span className={styles.optionGroupLabel}>Structure</span>
+        <div className={`${styles.checkboxRow} ${styles.warningAccent}`}>
+          <Warning size={14} weight="fill" className={styles.warningIcon} />
+          <Checkbox
+            id="copy-drop-if-exists"
+            checked={options.dropIfExists}
+            disabled={structureDisabled}
+            onChange={(event) => onOptionChange('dropIfExists', event.target.checked)}
+            data-testid="copy-drop-if-exists"
+          />
+          <label htmlFor="copy-drop-if-exists" className={styles.checkboxLabel}>
+            DROP … IF EXISTS first
+          </label>
+        </div>
+        <div className={styles.checkboxRow}>
+          <Checkbox
+            id="copy-create-if-not-exists"
+            checked={options.createIfNotExists}
+            disabled={structureDisabled}
+            onChange={(event) => onOptionChange('createIfNotExists', event.target.checked)}
+            data-testid="copy-create-if-not-exists"
+          />
+          <label htmlFor="copy-create-if-not-exists" className={styles.checkboxLabel}>
+            CREATE TABLE IF NOT EXISTS
+          </label>
+        </div>
+        {structureDisabled && (
+          <p className={styles.notApplicable} data-testid="copy-structure-na">
+            Not applicable for Data only
+          </p>
+        )}
+      </div>
+
+      <div className={styles.divider} role="separator" />
+
+      <div
+        className={dimmedWhen(dataDisabled)}
+        aria-disabled={dataDisabled}
+        data-testid="copy-data-group"
+      >
+        <span className={styles.optionGroupLabel}>Data</span>
+        <div className={styles.fieldGroup}>
+          <label className={styles.fieldLabel} id="copy-insert-mode-label">
+            Insert mode
+          </label>
+          <Dropdown
+            id="copy-insert-mode"
+            labelledBy="copy-insert-mode-label"
+            options={INSERT_MODE_OPTIONS}
+            value={options.insertMode}
+            disabled={dataDisabled}
+            onChange={(value) => onOptionChange('insertMode', value as CopyInsertMode)}
+            data-testid="copy-insert-mode"
+          />
+        </div>
+        <div className={`${styles.checkboxRow} ${styles.warningAccent}`}>
+          <Warning size={14} weight="fill" className={styles.warningIcon} />
+          <Checkbox
+            id="copy-truncate"
+            checked={options.truncateBeforeInsert}
+            disabled={dataDisabled}
+            onChange={(event) => onOptionChange('truncateBeforeInsert', event.target.checked)}
+            data-testid="copy-truncate"
+          />
+          <label htmlFor="copy-truncate" className={styles.checkboxLabel}>
+            Truncate target table before insert
+          </label>
+        </div>
+        {dataDisabled && (
+          <p className={styles.notApplicable} data-testid="copy-data-na">
+            Not applicable for Structure only
+          </p>
+        )}
+      </div>
+
+      <div className={styles.divider} role="separator" />
+
+      <div className={styles.checkboxRow}>
+        <Checkbox
+          id="copy-ignore-definer"
+          checked={options.ignoreDefiner}
+          onChange={(event) => onOptionChange('ignoreDefiner', event.target.checked)}
+          data-testid="copy-ignore-definer"
+        />
+        <label htmlFor="copy-ignore-definer" className={styles.checkboxLabel}>
+          Ignore Definer (strip DEFINER from routines/triggers/events)
+        </label>
+      </div>
+    </Section>
+  )
+}
+
+function isRunningTableWithKnownRows(progress: CopyProgress): boolean {
+  if (progress.status !== 'running') return false
+  return progress.currentObjectType === 'table' && Boolean(progress.rowsTotal)
+}
+
+function isRunningObjectWithType(progress: CopyProgress): boolean {
+  if (progress.status !== 'running') return false
+  return Boolean(progress.currentObject) && Boolean(progress.currentObjectType)
+}
+
+function CurrentObjectDetail({ progress }: { progress: CopyProgress }) {
+  if (isRunningTableWithKnownRows(progress)) {
+    return (
+      <span className={styles.progressCount} data-testid="copy-row-count">
+        {(progress.rowsDone ?? 0).toLocaleString()} / {(progress.rowsTotal ?? 0).toLocaleString()}
+      </span>
+    )
+  }
+  if (isRunningObjectWithType(progress)) {
+    return (
+      <span className={styles.typeBadge} data-testid="copy-type-badge">
+        {progress.currentObjectType}
+      </span>
+    )
+  }
+  return null
+}
+
+function CopyOutcomeStatus({ progress }: { progress: CopyProgress }) {
+  if (progress.status === 'completed') {
+    return (
+      <p className={styles.statusSuccess} data-testid="copy-status-success">
+        Completed — {objectCountText(progress.objectsDone)} copied
+      </p>
+    )
+  }
+  if (progress.status === 'cancelled') {
+    return (
+      <p className={styles.statusCancel} data-testid="copy-status-cancel">
+        Cancelled — {progress.objectsDone} of {progress.objectsTotal} objects copied
+      </p>
+    )
+  }
+  if (progress.status !== 'failed') return null
+  const failedObjectSuffix = progress.currentObject ? ` on ${progress.currentObject}` : ''
+  return (
+    <div className={styles.statusError} data-testid="copy-status-error">
+      Failed
+      {failedObjectSuffix}:
+      <br />
+      {progress.errorMessage ?? 'Unknown error'}
+    </div>
+  )
+}
+
+function CopyProgressPanel({ progress }: { progress: CopyProgress }) {
+  const objectsPercent = progressPercent(progress.objectsDone, progress.objectsTotal)
+  const rowsPercent = progressPercent(progress.rowsDone, progress.rowsTotal)
+  return (
+    <div className={styles.progressSection} data-testid="copy-progress">
+      <div className={styles.progressRow}>
+        <span className={styles.progressLabel}>Objects</span>
+        <div className={styles.macroBar}>
+          <div className={styles.macroFill} style={{ width: `${objectsPercent}%` }} />
+        </div>
+        <span className={styles.progressCount}>
+          {progress.objectsDone} / {progress.objectsTotal}
+        </span>
+      </div>
+
+      {progress.currentObject && (
+        <div className={styles.progressRow}>
+          <span className={styles.currentObjectName}>{progress.currentObject}</span>
+          <CurrentObjectDetail progress={progress} />
+        </div>
+      )}
+
+      {isRunningTableWithKnownRows(progress) && (
+        <div className={styles.microBar}>
+          <div className={styles.microFill} style={{ width: `${rowsPercent}%` }} />
+        </div>
+      )}
+
+      <CopyOutcomeStatus progress={progress} />
+    </div>
+  )
+}
+
+interface CopyFooterHandlers {
+  onClose: () => void
+  onCancel: () => void
+  onCopy: () => void
+}
+
+interface CopyFooterActionsProps {
+  showProgress: boolean
+  isTerminal: boolean
+  isCancelling: boolean
+  canCopy: boolean
+  handlers: CopyFooterHandlers
+}
+
+function progressActionLabel(isTerminal: boolean, isCancelling: boolean): string {
+  if (isTerminal) return 'Close'
+  if (isCancelling) return 'Cancelling…'
+  return 'Cancel'
+}
+
+function CopyFooterActions({
+  showProgress,
+  isTerminal,
+  isCancelling,
+  canCopy,
+  handlers,
+}: CopyFooterActionsProps) {
+  if (showProgress) {
+    return (
+      <div className={styles.footerActions}>
+        <Button
+          variant={isTerminal ? 'default' : 'danger'}
+          onClick={isTerminal ? handlers.onClose : handlers.onCancel}
+          disabled={!isTerminal && isCancelling}
+          data-testid="copy-progress-action"
+        >
+          {progressActionLabel(isTerminal, isCancelling)}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.footerActions}>
+      <Button
+        variant="accent"
+        onClick={handlers.onCopy}
+        disabled={!canCopy}
+        data-testid="copy-submit-button"
+      >
+        Copy
+      </Button>
+      <Button onClick={handlers.onClose} data-testid="copy-cancel-button">
+        Cancel
+      </Button>
+    </div>
+  )
+}
+
 export default function CopyToHostDialog({
   isOpen,
   onClose,
@@ -121,17 +679,11 @@ export default function CopyToHostDialog({
   const [loadingObjects, setLoadingObjects] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [selected, setSelected] = useState(createEmptyCopySelection)
-  const [expandedCategories, setExpandedCategories] = useState<Set<CopyObjectCategory>>(
-    () => new Set(preSelectedObject ? [preSelectedObject.category] : [])
+  const [expandedCategories, setExpandedCategories] = useState<Set<CopyObjectCategory>>(() =>
+    initialExpandedCategories(preSelectedObject?.category ?? null)
   )
 
-  // Options
-  const [copyType, setCopyType] = useState<CopyType>('both')
-  const [dropIfExists, setDropIfExists] = useState(true)
-  const [createIfNotExists, setCreateIfNotExists] = useState(true)
-  const [insertMode, setInsertMode] = useState<CopyInsertMode>('insert')
-  const [truncateBeforeInsert, setTruncateBeforeInsert] = useState(false)
-  const [ignoreDefiner, setIgnoreDefiner] = useState(true)
+  const [copyOptions, setCopyOptions] = useState<CopyDialogOptions>(DEFAULT_COPY_OPTIONS)
 
   // Copy run state
   const [isCopying, setIsCopying] = useState(false)
@@ -143,8 +695,8 @@ export default function CopyToHostDialog({
 
   // Capture the pre-selected object's primitive fields so the load effect depends on stable values
   // (not a fresh object reference on every render).
-  const preSelectedCategory = preSelectedObject?.category ?? null
-  const preSelectedName = preSelectedObject?.name ?? null
+  const { category: preSelectedCategory, name: preSelectedName } =
+    preselectionKey(preSelectedObject)
 
   useEffect(() => {
     if (!isOpen) {
@@ -157,13 +709,8 @@ export default function CopyToHostDialog({
     setTargetDatabases([])
     setTargetDatabaseNotice(null)
     setSelected(createEmptyCopySelection())
-    setExpandedCategories(new Set(preSelectedCategory ? [preSelectedCategory] : []))
-    setCopyType('both')
-    setDropIfExists(true)
-    setCreateIfNotExists(true)
-    setInsertMode('insert')
-    setTruncateBeforeInsert(false)
-    setIgnoreDefiner(true)
+    setExpandedCategories(initialExpandedCategories(preSelectedCategory))
+    setCopyOptions(DEFAULT_COPY_OPTIONS)
     setIsCopying(false)
     setJobId(null)
     setProgress(null)
@@ -290,10 +837,7 @@ export default function CopyToHostDialog({
   const handleCopyFinished = (finishedProgress: CopyProgress) => {
     setIsCopying(false)
     if (finishedProgress.status === 'completed') {
-      showSuccessToast(
-        'Copy completed',
-        `${finishedProgress.objectsDone} ${finishedProgress.objectsDone === 1 ? 'object' : 'objects'} copied`
-      )
+      showSuccessToast('Copy completed', `${objectCountText(finishedProgress.objectsDone)} copied`)
       return
     }
     if (finishedProgress.status === 'cancelled') {
@@ -353,25 +897,19 @@ export default function CopyToHostDialog({
 
   const selectedCount = useMemo(() => countCopySelection(selected), [selected])
 
-  const canCopy =
-    !!targetConnectionId && !!effectiveTargetDatabase && selectedCount > 0 && !isCopying
-
-  const structureDisabled = copyType === 'dataOnly'
-  const dataDisabled = copyType === 'structureOnly'
+  const canCopy = canStartCopy({
+    targetConnectionId: targetConnectionId,
+    targetDatabase: effectiveTargetDatabase,
+    selectedCount: selectedCount,
+    isCopying: isCopying,
+  })
 
   // Toggle a single object within a category.
   const toggleObject = useCallback((category: CopyObjectCategory, name: string) => {
-    setSelected((previous) => {
-      const next = { ...previous }
-      const set = new Set(previous[category])
-      if (set.has(name)) {
-        set.delete(name)
-      } else {
-        set.add(name)
-      }
-      next[category] = set
-      return next
-    })
+    setSelected((previous) => ({
+      ...previous,
+      [category]: toggledSetMember(previous[category], name),
+    }))
   }, [])
 
   // Toggle all objects within a category (select-all checkbox).
@@ -389,15 +927,7 @@ export default function CopyToHostDialog({
   )
 
   const toggleCategoryExpanded = useCallback((category: CopyObjectCategory) => {
-    setExpandedCategories((previous) => {
-      const next = new Set(previous)
-      if (next.has(category)) {
-        next.delete(category)
-      } else {
-        next.add(category)
-      }
-      return next
-    })
+    setExpandedCategories((previous) => toggledSetMember(previous, category))
   }, [])
 
   // Start the copy job.
@@ -408,15 +938,7 @@ export default function CopyToHostDialog({
 
     const copyObjects = assembleCopyObjects(selected)
 
-    const options: CopyToHostOptions = {
-      copyStructure: copyType !== 'dataOnly',
-      copyData: copyType !== 'structureOnly',
-      dropIfExists: dropIfExists,
-      createIfNotExists: createIfNotExists,
-      truncateBeforeInsert: truncateBeforeInsert,
-      insertMode: insertMode,
-      ignoreDefiner: ignoreDefiner,
-    }
+    const options = toCopyToHostOptions(copyOptions)
 
     try {
       const id = await startCopyToHost({
@@ -437,12 +959,7 @@ export default function CopyToHostDialog({
   }, [
     canCopy,
     selected,
-    copyType,
-    dropIfExists,
-    createIfNotExists,
-    truncateBeforeInsert,
-    insertMode,
-    ignoreDefiner,
+    copyOptions,
     sourceConnectionId,
     sourceDatabase,
     targetConnectionId,
@@ -464,30 +981,20 @@ export default function CopyToHostDialog({
   }, [jobId, cancelPending])
 
   const isTerminal = isTerminalJobStatus(progress?.status)
+  const showProgress = isCopying || progress !== null
 
-  const objectsPercent = useMemo(() => {
-    return progressPercent(progress?.objectsDone, progress?.objectsTotal)
-  }, [progress])
+  const updateCopyOption = useCallback(
+    <Key extends keyof CopyDialogOptions>(key: Key, value: CopyDialogOptions[Key]) => {
+      setCopyOptions((previous) => ({ ...previous, [key]: value }))
+    },
+    []
+  )
 
-  const rowsPercent = useMemo(() => {
-    return progressPercent(progress?.rowsDone, progress?.rowsTotal)
-  }, [progress])
-
-  // Show the row-level micro bar only for an in-progress table with a known total.
-  const showRowBar =
-    !!progress &&
-    progress.status === 'running' &&
-    progress.currentObjectType === 'table' &&
-    !!progress.rowsTotal
-
-  const showTypeBadge =
-    !!progress &&
-    progress.status === 'running' &&
-    !!progress.currentObject &&
-    !showRowBar &&
-    !!progress.currentObjectType
-
-  const showProgress = isCopying || !!progress
+  const handleTargetConnectionChange = (connectionId: string) => {
+    setTargetConnectionId(connectionId)
+    setTargetDatabaseValue('')
+    setNewDatabaseName('')
+  }
 
   return (
     <DialogShell
@@ -551,351 +1058,52 @@ export default function CopyToHostDialog({
             </div>
           </Section>
 
-          {/* Target */}
-          <Section title="Target" testId="copy-target-section">
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} id="copy-target-connection-label">
-                Connection
-              </label>
-              <Dropdown
-                id="copy-target-connection"
-                labelledBy="copy-target-connection-label"
-                options={targetConnectionOptions}
-                value={targetConnectionId}
-                onChange={(value) => {
-                  setTargetConnectionId(value)
-                  setTargetDatabaseValue('')
-                  setNewDatabaseName('')
-                }}
-                data-testid="copy-target-connection"
-              />
-            </div>
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} id="copy-target-database-label">
-                Database
-              </label>
-              <Dropdown
-                id="copy-target-database"
-                labelledBy="copy-target-database-label"
-                options={targetDatabaseOptions}
-                value={targetDatabaseValue}
-                disabled={!targetConnectionId}
-                onChange={setTargetDatabaseValue}
-                data-testid="copy-target-database"
-              />
-              {targetDatabaseValue === NEW_DB_SENTINEL && (
-                <div className={styles.newDbGroup}>
-                  <TextInput
-                    ref={newDbInputRef}
-                    value={newDatabaseName}
-                    onChange={(event) => setNewDatabaseName(event.target.value)}
-                    placeholder="new_database_name"
-                    aria-label="New database name"
-                    data-testid="copy-new-database-name"
-                  />
-                </div>
-              )}
-              {targetDatabaseNotice && (
-                <p className={styles.infoNote} data-testid="copy-target-database-notice">
-                  <Info size={14} weight="fill" className={styles.infoIcon} />
-                  {targetDatabaseNotice}
-                </p>
-              )}
-            </div>
-            {targetIsSameHost && (
-              <p className={styles.warningNote} data-testid="copy-same-host-warning">
-                <Warning size={14} weight="fill" className={styles.warningIcon} />
-                The target resolves to the same host as the source. Choose a different host.
-              </p>
-            )}
+          <CopyTargetSection
+            target={{
+              connectionOptions: targetConnectionOptions,
+              connectionId: targetConnectionId,
+              databaseOptions: targetDatabaseOptions,
+              databaseValue: targetDatabaseValue,
+              newDatabaseName: newDatabaseName,
+              notice: targetDatabaseNotice,
+              isSameHost: targetIsSameHost,
+            }}
+            newDatabaseInputRef={newDbInputRef}
+            handlers={{
+              onConnectionChange: handleTargetConnectionChange,
+              onDatabaseChange: setTargetDatabaseValue,
+              onNewDatabaseNameChange: setNewDatabaseName,
+            }}
+          />
+
+          <Section title={objectsSectionTitle(selectedCount)} testId="copy-objects-section">
+            <CopyObjectsBody
+              loadingObjects={loadingObjects}
+              loadError={loadError}
+              tree={{
+                objects: objects,
+                selected: selected,
+                expandedCategories: expandedCategories,
+                onToggleExpanded: toggleCategoryExpanded,
+                onToggleCategory: toggleCategory,
+                onToggleObject: toggleObject,
+              }}
+            />
           </Section>
 
-          {/* Objects */}
-          <Section
-            title={`Objects${selectedCount > 0 ? ` (${selectedCount})` : ''}`}
-            testId="copy-objects-section"
-          >
-            {loadingObjects && (
-              <div className={styles.loading} data-testid="copy-loading-objects">
-                Loading objects…
-              </div>
-            )}
-            {loadError && (
-              <div className={styles.error} data-testid="copy-load-error">
-                {loadError}
-              </div>
-            )}
-            {!loadingObjects && !loadError && objects && (
-              <div className={styles.objectTree} data-testid="copy-object-tree">
-                {CATEGORY_ORDER.map((category) => {
-                  const names = categoryNames(objects, category)
-                  const selectedSet = selected[category]
-                  const allSelected = names.length > 0 && selectedSet.size === names.length
-                  const someSelected = selectedSet.size > 0 && !allSelected
-                  const isEmpty = names.length === 0
-                  const isExpanded = expandedCategories.has(category)
-
-                  return (
-                    <div key={category} className={styles.objectCategory}>
-                      <div className={styles.objectCategoryHeader}>
-                        <Button
-                          variant="subtle"
-                          size="sm"
-                          className={styles.caretButton}
-                          onClick={() => toggleCategoryExpanded(category)}
-                          aria-expanded={isExpanded}
-                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${CATEGORY_LABELS[category]}`}
-                          data-testid={`copy-category-toggle-${category}`}
-                        >
-                          <svg
-                            className={`${styles.caret} ${isExpanded ? styles.caretOpen : ''}`}
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path d="M9 6l6 6-6 6" />
-                          </svg>
-                        </Button>
-                        <Checkbox
-                          checked={allSelected}
-                          disabled={isEmpty}
-                          ref={(element) => {
-                            if (element) element.indeterminate = someSelected
-                          }}
-                          onChange={() => toggleCategory(category)}
-                          aria-label={`Select all ${CATEGORY_LABELS[category]}`}
-                          data-testid={`copy-category-${category}`}
-                        />
-                        <span className={styles.objectCategoryLabel}>
-                          {CATEGORY_LABELS[category]}
-                        </span>
-                        <span className={styles.objectCategoryCount}>({names.length})</span>
-                      </div>
-                      {isExpanded && !isEmpty && (
-                        <div className={styles.objectItems}>
-                          {names.map((name) => (
-                            <div key={name} className={styles.objectItem}>
-                              <Checkbox
-                                checked={selectedSet.has(name)}
-                                onChange={() => toggleObject(category, name)}
-                                aria-label={name}
-                                data-testid={`copy-object-${category}-${name}`}
-                              />
-                              <span className={styles.objectItemLabel}>{name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </Section>
-
-          {/* Options */}
-          <Section title="Options" testId="copy-options-section">
-            <div className={styles.fieldGroup}>
-              <label className={styles.fieldLabel} id="copy-type-label">
-                Copy type
-              </label>
-              <Dropdown
-                id="copy-type"
-                labelledBy="copy-type-label"
-                options={COPY_TYPE_OPTIONS}
-                value={copyType}
-                onChange={(value) => setCopyType(value as CopyType)}
-                data-testid="copy-type"
-              />
-            </div>
-
-            {/* Structure group */}
-            <div
-              className={`${styles.optionGroup} ${structureDisabled ? styles.dimmed : ''}`}
-              aria-disabled={structureDisabled}
-              data-testid="copy-structure-group"
-            >
-              <span className={styles.optionGroupLabel}>Structure</span>
-              <div className={`${styles.checkboxRow} ${styles.warningAccent}`}>
-                <Warning size={14} weight="fill" className={styles.warningIcon} />
-                <Checkbox
-                  id="copy-drop-if-exists"
-                  checked={dropIfExists}
-                  disabled={structureDisabled}
-                  onChange={(event) => setDropIfExists(event.target.checked)}
-                  data-testid="copy-drop-if-exists"
-                />
-                <label htmlFor="copy-drop-if-exists" className={styles.checkboxLabel}>
-                  DROP … IF EXISTS first
-                </label>
-              </div>
-              <div className={styles.checkboxRow}>
-                <Checkbox
-                  id="copy-create-if-not-exists"
-                  checked={createIfNotExists}
-                  disabled={structureDisabled}
-                  onChange={(event) => setCreateIfNotExists(event.target.checked)}
-                  data-testid="copy-create-if-not-exists"
-                />
-                <label htmlFor="copy-create-if-not-exists" className={styles.checkboxLabel}>
-                  CREATE TABLE IF NOT EXISTS
-                </label>
-              </div>
-              {structureDisabled && (
-                <p className={styles.notApplicable} data-testid="copy-structure-na">
-                  Not applicable for Data only
-                </p>
-              )}
-            </div>
-
-            <div className={styles.divider} role="separator" />
-
-            {/* Data group */}
-            <div
-              className={`${styles.optionGroup} ${dataDisabled ? styles.dimmed : ''}`}
-              aria-disabled={dataDisabled}
-              data-testid="copy-data-group"
-            >
-              <span className={styles.optionGroupLabel}>Data</span>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel} id="copy-insert-mode-label">
-                  Insert mode
-                </label>
-                <Dropdown
-                  id="copy-insert-mode"
-                  labelledBy="copy-insert-mode-label"
-                  options={INSERT_MODE_OPTIONS}
-                  value={insertMode}
-                  disabled={dataDisabled}
-                  onChange={(value) => setInsertMode(value as CopyInsertMode)}
-                  data-testid="copy-insert-mode"
-                />
-              </div>
-              <div className={`${styles.checkboxRow} ${styles.warningAccent}`}>
-                <Warning size={14} weight="fill" className={styles.warningIcon} />
-                <Checkbox
-                  id="copy-truncate"
-                  checked={truncateBeforeInsert}
-                  disabled={dataDisabled}
-                  onChange={(event) => setTruncateBeforeInsert(event.target.checked)}
-                  data-testid="copy-truncate"
-                />
-                <label htmlFor="copy-truncate" className={styles.checkboxLabel}>
-                  Truncate target table before insert
-                </label>
-              </div>
-              {dataDisabled && (
-                <p className={styles.notApplicable} data-testid="copy-data-na">
-                  Not applicable for Structure only
-                </p>
-              )}
-            </div>
-
-            <div className={styles.divider} role="separator" />
-
-            <div className={styles.checkboxRow}>
-              <Checkbox
-                id="copy-ignore-definer"
-                checked={ignoreDefiner}
-                onChange={(event) => setIgnoreDefiner(event.target.checked)}
-                data-testid="copy-ignore-definer"
-              />
-              <label htmlFor="copy-ignore-definer" className={styles.checkboxLabel}>
-                Ignore Definer (strip DEFINER from routines/triggers/events)
-              </label>
-            </div>
-          </Section>
+          <CopyOptionsSection options={copyOptions} onOptionChange={updateCopyOption} />
         </div>
 
         {/* Progress — pinned above the footer so it stays visible while copying. */}
-        {showProgress && progress && (
-          <div className={styles.progressSection} data-testid="copy-progress">
-            <div className={styles.progressRow}>
-              <span className={styles.progressLabel}>Objects</span>
-              <div className={styles.macroBar}>
-                <div className={styles.macroFill} style={{ width: `${objectsPercent}%` }} />
-              </div>
-              <span className={styles.progressCount}>
-                {progress.objectsDone} / {progress.objectsTotal}
-              </span>
-            </div>
+        {progress && <CopyProgressPanel progress={progress} />}
 
-            {progress.currentObject && (
-              <div className={styles.progressRow}>
-                <span className={styles.currentObjectName}>{progress.currentObject}</span>
-                {showRowBar ? (
-                  <span className={styles.progressCount} data-testid="copy-row-count">
-                    {(progress.rowsDone ?? 0).toLocaleString()} /{' '}
-                    {(progress.rowsTotal ?? 0).toLocaleString()}
-                  </span>
-                ) : showTypeBadge ? (
-                  <span className={styles.typeBadge} data-testid="copy-type-badge">
-                    {progress.currentObjectType}
-                  </span>
-                ) : null}
-              </div>
-            )}
-
-            {showRowBar && (
-              <div className={styles.microBar}>
-                <div className={styles.microFill} style={{ width: `${rowsPercent}%` }} />
-              </div>
-            )}
-
-            {progress.status === 'completed' && (
-              <p className={styles.statusSuccess} data-testid="copy-status-success">
-                Completed — {progress.objectsDone}{' '}
-                {progress.objectsDone === 1 ? 'object' : 'objects'} copied
-              </p>
-            )}
-            {progress.status === 'cancelled' && (
-              <p className={styles.statusCancel} data-testid="copy-status-cancel">
-                Cancelled — {progress.objectsDone} of {progress.objectsTotal} objects copied
-              </p>
-            )}
-            {progress.status === 'failed' && (
-              <div className={styles.statusError} data-testid="copy-status-error">
-                Failed
-                {progress.currentObject ? ` on ${progress.currentObject}` : ''}:
-                <br />
-                {progress.errorMessage ?? 'Unknown error'}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Footer actions */}
-        <div className={styles.footerActions}>
-          {showProgress ? (
-            <Button
-              variant={isTerminal ? 'default' : 'danger'}
-              onClick={isTerminal ? onClose : handleCancel}
-              disabled={!isTerminal && (cancelPending || progress?.cancelRequested)}
-              data-testid="copy-progress-action"
-            >
-              {isTerminal
-                ? 'Close'
-                : cancelPending || progress?.cancelRequested
-                  ? 'Cancelling…'
-                  : 'Cancel'}
-            </Button>
-          ) : (
-            <>
-              <Button
-                variant="accent"
-                onClick={handleCopy}
-                disabled={!canCopy}
-                data-testid="copy-submit-button"
-              >
-                Copy
-              </Button>
-              <Button onClick={onClose} data-testid="copy-cancel-button">
-                Cancel
-              </Button>
-            </>
-          )}
-        </div>
+        <CopyFooterActions
+          showProgress={showProgress}
+          isTerminal={isTerminal}
+          isCancelling={isCancelInFlight(cancelPending, progress)}
+          canCopy={canCopy}
+          handlers={{ onClose: onClose, onCancel: handleCancel, onCopy: handleCopy }}
+        />
 
         {/* Footer hint */}
         <div className={styles.footer}>

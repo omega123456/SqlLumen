@@ -58,25 +58,30 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'ai.retrieval.recentQueryWindow': '20',
 }
 
+const GENERAL_SETTING_KEYS = new Set([
+  'theme',
+  'session.restore',
+  'session.state',
+  'snapshots.frequency',
+  'snapshots.keep',
+])
+
+const SECTION_BY_KEY_PREFIX: Record<string, SettingsSection> = {
+  'connection.': 'general',
+  'appearance.': 'general',
+  'editor.': 'editor',
+  'results.': 'results',
+  'log.': 'logging',
+  'ai.': 'ai',
+  'updates.': 'updates',
+}
+
 /** Maps a settings key prefix to its SettingsSection. */
 function sectionForKey(key: string): SettingsSection | null {
-  if (
-    key === 'theme' ||
-    key === 'session.restore' ||
-    key === 'session.state' ||
-    key === 'snapshots.frequency' ||
-    key === 'snapshots.keep' ||
-    key.startsWith('connection.') ||
-    key.startsWith('appearance.')
-  )
-    return 'general'
-  if (key.startsWith('editor.')) return 'editor'
-  if (key.startsWith('results.')) return 'results'
-  if (key.startsWith('log.')) return 'logging'
+  if (GENERAL_SETTING_KEYS.has(key)) return 'general'
   if (key === 'shortcuts') return 'shortcuts'
-  if (key.startsWith('ai.')) return 'ai'
-  if (key.startsWith('updates.')) return 'updates'
-  return null
+  const prefix = Object.keys(SECTION_BY_KEY_PREFIX).find((candidate) => key.startsWith(candidate))
+  return prefix ? SECTION_BY_KEY_PREFIX[prefix] : null
 }
 
 /** Smallest accepted `results.maxRows` (Rust clamps to the same range). */
@@ -183,8 +188,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     const current = get().validationErrors
     if (error === (current[key] ?? null)) return error === null
     const next = { ...current }
+    delete next[key]
     if (error) next[key] = error
-    else delete next[key]
     set({ validationErrors: next })
     return error === null
   },
@@ -208,31 +213,22 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       }
     }
 
-    if (errors.length > 0) {
-      // Keep failed entries in pendingChanges
-      const remaining: Record<string, string> = {}
-      for (const settingKey of errors) {
-        remaining[settingKey] = state.pendingChanges[settingKey]
-      }
-      const updatedSettings = { ...state.settings }
-      for (const [key, value] of entries) {
-        if (!errors.includes(key)) {
-          updatedSettings[key] = value
-        }
-      }
-      set({
-        settings: updatedSettings,
-        pendingChanges: remaining,
-        isDirty: Object.keys(remaining).length > 0,
-      })
-    } else {
-      // All succeeded
-      const updatedSettings = { ...state.settings }
-      for (const [key, value] of entries) {
+    const failedKeys = new Set(errors)
+    const remaining: Record<string, string> = {}
+    for (const settingKey of errors) {
+      remaining[settingKey] = state.pendingChanges[settingKey]
+    }
+    const updatedSettings = { ...state.settings }
+    for (const [key, value] of entries) {
+      if (!failedKeys.has(key)) {
         updatedSettings[key] = value
       }
-      set({ settings: updatedSettings, pendingChanges: {}, isDirty: false })
     }
+    set({
+      settings: updatedSettings,
+      pendingChanges: remaining,
+      isDirty: Object.keys(remaining).length > 0,
+    })
   },
 
   discard: () => {

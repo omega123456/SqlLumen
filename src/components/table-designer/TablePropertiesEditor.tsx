@@ -54,6 +54,26 @@ function parseAutoIncrement(value: string): number | null {
   return parsed
 }
 
+const DEFAULT_AUTO_INCREMENT = 1
+
+function collationOf(properties: TableDesignerProperties | undefined): string {
+  return properties?.collation ?? ''
+}
+
+function resolveSelectedCharset(properties: TableDesignerProperties | undefined): string {
+  if (!properties) return ''
+  return properties.charset || deriveCharsetFromCollation(properties.collation)
+}
+
+function autoIncrementInputValue(properties: TableDesignerProperties): string {
+  return String(properties.autoIncrement ?? DEFAULT_AUTO_INCREMENT)
+}
+
+function LabelSpinner({ isLoading }: { isLoading: boolean }) {
+  if (!isLoading) return null
+  return <SpinnerGap size={12} className={styles.spinner} aria-hidden />
+}
+
 export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEditorProps) {
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
   const updateProperties = useTableDesignerStore((state) => state.updateProperties)
@@ -64,10 +84,8 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
   const [isCollationsLoading, setIsCollationsLoading] = useState(false)
 
   const properties = tabState?.currentSchema.properties
-  const currentCollation = properties?.collation ?? ''
-
-  const selectedCharset =
-    properties?.charset || deriveCharsetFromCollation(properties?.collation ?? undefined)
+  const currentCollation = collationOf(properties)
+  const selectedCharset = resolveSelectedCharset(properties)
 
   useEffect(() => {
     let cancelled = false
@@ -205,7 +223,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
     if (isCollationsLoading) {
       return [
         {
-          value: properties?.collation ?? '',
+          value: currentCollation,
           label: 'Loading collations...',
           disabled: true,
         },
@@ -215,7 +233,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
       return [{ value: '', label: 'No collations available', disabled: true }]
     }
     return collationOptions
-  }, [collationOptions, isCollationsLoading, properties?.collation])
+  }, [collationOptions, isCollationsLoading, currentCollation])
 
   if (!properties) {
     return null
@@ -251,7 +269,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
           <div className={styles.fieldGroup}>
             <label className={styles.label} id={`table-properties-charset-label-${tabId}`}>
               <span>Character set</span>
-              {isCharsetsLoading && <SpinnerGap size={12} className={styles.spinner} aria-hidden />}
+              <LabelSpinner isLoading={isCharsetsLoading} />
             </label>
             <Dropdown
               id={`table-properties-charset-${tabId}`}
@@ -269,9 +287,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
           <div className={styles.fieldGroup}>
             <label className={styles.label} id={`table-properties-collation-label-${tabId}`}>
               <span>Collation</span>
-              {isCollationsLoading && (
-                <SpinnerGap size={12} className={styles.spinner} aria-hidden />
-              )}
+              <LabelSpinner isLoading={isCollationsLoading} />
             </label>
             <Dropdown
               id={`table-properties-collation-${tabId}`}
@@ -296,7 +312,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               type="number"
               min="1"
               className={`ui-field-chrome ${styles.control}`}
-              value={String(properties.autoIncrement ?? 1)}
+              value={autoIncrementInputValue(properties)}
               data-testid="table-properties-auto-increment"
               onChange={(event) =>
                 handlePropertyChange('autoIncrement', parseAutoIncrement(event.target.value))

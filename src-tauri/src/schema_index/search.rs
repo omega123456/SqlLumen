@@ -229,11 +229,10 @@ fn normalize_result_ddl(
     chunk_type: &str,
     ddl_text: String,
 ) -> String {
-    if chunk_type == "table" {
-        normalize_table_ddl(db_name, table_name, &ddl_text)
-    } else {
-        ddl_text
+    if chunk_type != "table" {
+        return ddl_text;
     }
+    normalize_table_ddl(db_name, table_name, &ddl_text)
 }
 
 /// Map a row from `schema_index_chunks` (columns: id, chunk_key, db_name,
@@ -440,10 +439,10 @@ pub fn multi_query_search_configured(
         .unwrap_or(1)
         .max(1);
 
-    // Compute lexical scores for all table chunks, then blend
-    let mut best_scores: HashMap<i64, f64> = HashMap::new();
+    let mut best_scores: HashMap<i64, f64> = rrf_accum;
 
-    if !direct_table_candidates.is_empty() || !identifier_tokens.is_empty() {
+    let has_lexical_signals = !direct_table_candidates.is_empty() || !identifier_tokens.is_empty();
+    if has_lexical_signals {
         let lexical_matches = collect_lexical_table_matches(
             conn,
             connection_id,
@@ -454,9 +453,9 @@ pub fn multi_query_search_configured(
         )?;
 
         // Blend: for chunks with RRF, add λ·lexical; for lexical-only, use λ·lexical
-        for (chunk_id, rrf_score) in &rrf_accum {
+        for (chunk_id, blended_score) in best_scores.iter_mut() {
             let lexical = lexical_matches.get(chunk_id).copied().unwrap_or(0.0);
-            best_scores.insert(*chunk_id, rrf_score + config.lexical_weight * lexical);
+            *blended_score += config.lexical_weight * lexical;
         }
         // Lexical-only entries (not in KNN)
         for (chunk_id, lexical_score) in &lexical_matches {
@@ -472,9 +471,6 @@ pub fn multi_query_search_configured(
             candidate_count = best_scores.len(),
             "multi_query_search: step 2b — blended lexical boosts applied"
         );
-    } else {
-        // No lexical signals — just use RRF scores directly
-        best_scores = rrf_accum;
     }
 
     // ── Step 2c: Database-affinity boost ───────────────────────────────
@@ -1015,11 +1011,11 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
 
 /// Naive plural normalization: strip trailing 's' if the word is long enough.
 fn normalize_plural(word: &str) -> &str {
-    if word.len() >= MIN_PLURAL_WORD_CHARS && word.ends_with('s') {
-        &word[..word.len() - 1]
-    } else {
-        word
+    let is_plural = word.len() >= MIN_PLURAL_WORD_CHARS && word.ends_with('s');
+    if !is_plural {
+        return word;
     }
+    &word[..word.len() - 1]
 }
 
 /// Compute IDF weight for a segment: log(N / df).
@@ -1029,6 +1025,13 @@ fn idf_weight(segment: &str, segment_df: &HashMap<String, usize>, total_tables: 
     let raw_idf = (total_tables as f64 / df as f64).ln();
     // Normalize: cap at a reasonable max so IDF doesn't blow up scores
     raw_idf.clamp(0.0, MAX_RAW_IDF) / MAX_RAW_IDF
+}
+
+fn segment_idf(segment: &str, segment_df: &HashMap<String, usize>, total_tables: usize) -> f64 {
+    if segment_df.is_empty() {
+        return 1.0;
+    }
+    idf_weight(segment, segment_df, total_tables)
 }
 
 fn token_length_factor(token: &str) -> f64 {
@@ -1067,11 +1070,7 @@ fn lexical_score_for_table(
     for token in identifier_tokens {
         let quality = fuzzy_name_match(table_name, token);
         if quality > 0.0 {
-            let idf = if segment_df.is_empty() {
-                1.0
-            } else {
-                idf_weight(token, segment_df, total_tables)
-            };
+            let idf = segment_idf(token, segment_df, total_tables);
             let len_factor = token_length_factor(token);
             let score = IDENTIFIER_EXACT_MATCH_SCORE * quality * idf * len_factor;
             if score > best_fuzzy_score {
@@ -1083,11 +1082,7 @@ fn lexical_score_for_table(
     for candidate in direct_table_candidates {
         let quality = fuzzy_name_match(table_name, &candidate.table_name);
         if quality > 0.0 {
-            let idf = if segment_df.is_empty() {
-                1.0
-            } else {
-                idf_weight(&candidate.table_name, segment_df, total_tables)
-            };
+            let idf = segment_idf(&candidate.table_name, segment_df, total_tables);
             let len_factor = token_length_factor(&candidate.table_name);
             let score = DIRECT_TABLE_SEGMENT_MATCH_SCORE * quality * idf * len_factor;
             if score > best_fuzzy_score {
@@ -1100,11 +1095,7 @@ fn lexical_score_for_table(
     if best_fuzzy_score == 0.0 {
         for candidate in direct_table_candidates {
             if table_name_segment_matches(table_name, &candidate.table_name) {
-                let idf = if segment_df.is_empty() {
-                    1.0
-                } else {
-                    idf_weight(&candidate.table_name, segment_df, total_tables)
-                };
+                let idf = segment_idf(&candidate.table_name, segment_df, total_tables);
                 let len_factor = token_length_factor(&candidate.table_name);
                 return DIRECT_TABLE_SEGMENT_MATCH_SCORE * idf * len_factor;
             }
@@ -1112,11 +1103,7 @@ fn lexical_score_for_table(
 
         for token in identifier_tokens {
             if table_name_segment_matches(table_name, token) {
-                let idf = if segment_df.is_empty() {
-                    1.0
-                } else {
-                    idf_weight(token, segment_df, total_tables)
-                };
+                let idf = segment_idf(token, segment_df, total_tables);
                 let len_factor = token_length_factor(token);
                 return IDENTIFIER_SEGMENT_MATCH_SCORE * idf * len_factor;
             }

@@ -76,20 +76,15 @@ export class JsonSyntaxHighlighter {
         nodes.push(json.slice(lastIndex, index))
       }
 
-      if (keyToken) {
-        nodes.push(
-          <span
-            key={`token-${matchIndex}`}
-            className={JsonSyntaxHighlighter.joinClasses(classNames?.key, 'key')}
-          >
-            {keyToken}
-          </span>
-        )
-      } else {
-        nodes.push(
-          JsonSyntaxHighlighter.renderToken(token, `token-${matchIndex}`, classNames ?? {})
-        )
-      }
+      const tokenKey = `token-${matchIndex}`
+      const tokenNode = keyToken ? (
+        <span key={tokenKey} className={JsonSyntaxHighlighter.joinClasses(classNames?.key, 'key')}>
+          {keyToken}
+        </span>
+      ) : (
+        JsonSyntaxHighlighter.renderToken(token, tokenKey, classNames ?? {})
+      )
+      nodes.push(tokenNode)
 
       lastIndex = index + token.length
       matchIndex += 1

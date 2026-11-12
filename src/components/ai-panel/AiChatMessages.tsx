@@ -67,9 +67,9 @@ export function AiChatMessages({
     (text: string) => {
       if (onSuggestionFill) {
         onSuggestionFill(text)
-      } else {
-        setInternalSuggestion(text)
+        return
       }
+      setInternalSuggestion(text)
     },
     [onSuggestionFill]
   )

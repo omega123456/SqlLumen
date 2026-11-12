@@ -318,29 +318,18 @@ function getNextStackRecency(
   for (const [stackKey, tabId] of Object.entries(nextRecency) as Array<
     [WorkspaceTabStackKey, string]
   >) {
-    if (memberIds[stackKey].has(tabId)) {
+    const retainedTabId = retainedRecencyTabId(tabId, memberIds[stackKey], remappedTableTabIds)
+    if (!retainedTabId) {
+      delete nextRecency[stackKey]
       continue
     }
-
-    const remappedTabId = remappedTableTabIds?.get(tabId)
-    if (remappedTabId && memberIds[stackKey].has(remappedTabId)) {
-      nextRecency[stackKey] = remappedTabId
-      continue
-    }
-
-    delete nextRecency[stackKey]
+    nextRecency[stackKey] = retainedTabId
   }
 
-  if (activeTabId) {
-    const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
-    const activeStackKey = activeTab
-      ? getWorkspaceStackKeyForTab(activeTab, {
-          hideScopedTableDataTabs: isTableTabsInBottomPanelEnabled(),
-        })
-      : null
-    if (activeStackKey) {
-      nextRecency[activeStackKey] = activeTabId
-    }
+  if (!activeTabId) return nextRecency
+  const activeStackKey = stackKeyOfTab(tabs, activeTabId)
+  if (activeStackKey) {
+    nextRecency[activeStackKey] = activeTabId
   }
 
   return nextRecency
@@ -652,17 +641,17 @@ function activateWorkspaceTab(connectionId: string, tabId: string): void {
   finalizeWorkspaceActivation(connectionId, previousSurface, tabId)
 }
 
+const UNSAVED_CHANGE_CHECKS: Partial<Record<WorkspaceTab['type'], (tabId: string) => boolean>> = {
+  'table-data': (tabId) =>
+    (useTableDataStore.getState().tabs[tabId]?.editState?.modifiedColumns.size ?? 0) > 0,
+  'table-designer': (tabId) => useTableDesignerStore.getState().tabs[tabId]?.isDirty ?? false,
+  'object-editor': (tabId) => useObjectEditorStore.getState().isDirty(tabId),
+}
+
 function hasUnsavedChanges(tab: WorkspaceTab): boolean {
-  switch (tab.type) {
-    case 'table-data':
-      return (useTableDataStore.getState().tabs[tab.id]?.editState?.modifiedColumns.size ?? 0) > 0
-    case 'table-designer':
-      return useTableDesignerStore.getState().tabs[tab.id]?.isDirty ?? false
-    case 'object-editor':
-      return useObjectEditorStore.getState().isDirty(tab.id)
-    default:
-      return false
-  }
+  const hasUnsavedChangesInTab = UNSAVED_CHANGE_CHECKS[tab.type]
+  if (!hasUnsavedChangesInTab) return false
+  return hasUnsavedChangesInTab(tab.id)
 }
 
 /**
@@ -692,6 +681,393 @@ function enforceTabLimit(connectionId: string, newTabId: string): void {
     .forEach((tab) => forceCloseTab(connectionId, tab.id))
 }
 
+type CloseOutcome = 'proceed' | 'handled'
+type ClosePreparer = (
+  connectionId: string,
+  closingTab: WorkspaceTab,
+  tabs: WorkspaceTab[]
+) => CloseOutcome
+type TabStoreCleanup = (connectionId: string, tabId: string) => void
+
+interface GuardedTabStore {
+  isDirty: (tabId: string) => boolean
+  requestNavigationAction: (tabId: string, action: () => void) => void
+  cleanupTab: (tabId: string) => void
+}
+
+interface DroppedObjectTarget {
+  databaseName: string
+  objectName: string
+  objectType?: EditableObjectType
+}
+
+interface WorkspaceTabRemoval {
+  connectionId: string
+  closingTab: WorkspaceTab
+  afterSurfaceCaptured?: () => void
+}
+
+function forceCloseWorkspaceTab(connectionId: string, tabId: string): void {
+  useWorkspaceStore.getState().forceCloseTab(connectionId, tabId)
+}
+
+function isUnclosableTab(tab: WorkspaceTab): boolean {
+  return tab.type === 'history' || tab.type === 'processlist'
+}
+
+function hasModifiedTableDataRow(tabId: string): boolean {
+  const modifiedColumnCount =
+    useTableDataStore.getState().tabs[tabId]?.editState?.modifiedColumns.size ?? 0
+  return modifiedColumnCount > 0
+}
+
+function hasModifiedResultRow(result: {
+  editState?: { modifiedColumns: Set<string> } | null
+}): boolean {
+  return (result.editState?.modifiedColumns.size ?? 0) > 0
+}
+
+function markTabPendingClose(connectionId: string, tabId: string): void {
+  useWorkspaceStore.setState((state) => ({
+    tabsByConnection: {
+      ...state.tabsByConnection,
+      [connectionId]: (state.tabsByConnection[connectionId] || []).map((tab) =>
+        tab.id === tabId ? { ...tab, pendingClose: true } : tab
+      ),
+    },
+  }))
+}
+
+function tableDataGuard(): GuardedTabStore {
+  const store = useTableDataStore.getState()
+  return {
+    isDirty: hasModifiedTableDataRow,
+    requestNavigationAction: store.requestNavigationAction,
+    cleanupTab: store.cleanupTab,
+  }
+}
+
+function tableDesignerGuard(): GuardedTabStore {
+  const store = useTableDesignerStore.getState()
+  return {
+    isDirty: (tabId) => store.tabs[tabId]?.isDirty === true,
+    requestNavigationAction: store.requestNavigationAction,
+    cleanupTab: store.cleanupTab,
+  }
+}
+
+function objectEditorGuard(): GuardedTabStore {
+  const store = useObjectEditorStore.getState()
+  return {
+    isDirty: store.isDirty,
+    requestNavigationAction: store.requestNavigationAction,
+    cleanupTab: store.cleanupTab,
+  }
+}
+
+function prepareGuardedClose(
+  connectionId: string,
+  tabId: string,
+  guard: GuardedTabStore
+): CloseOutcome {
+  if (guard.isDirty(tabId)) {
+    markTabPendingClose(connectionId, tabId)
+    guard.requestNavigationAction(tabId, () => forceCloseWorkspaceTab(connectionId, tabId))
+    return 'handled'
+  }
+  guard.cleanupTab(tabId)
+  useAiStore.getState().cleanupTab(tabId)
+  return 'proceed'
+}
+
+function dirtyQueryResultLabels(queryTabId: string): string[] {
+  const results = useQueryStore.getState().tabs[queryTabId]?.results ?? []
+  return results.flatMap((result, index) =>
+    hasModifiedResultRow(result) ? [`Result ${index + 1}`] : []
+  )
+}
+
+function closeQueryTabWithScopedTables(
+  connectionId: string,
+  queryTabId: string,
+  scopedTableTabs: TableDataTab[]
+): void {
+  const closeQueryTabAndChildren = () => {
+    for (const childTab of scopedTableTabs) {
+      forceCloseWorkspaceTab(connectionId, childTab.id)
+    }
+    forceCloseWorkspaceTab(connectionId, queryTabId)
+  }
+  const queryResultItems = dirtyQueryResultLabels(queryTabId)
+  const tableDataItems = scopedTableTabs
+    .filter((tab) => hasModifiedTableDataRow(tab.id))
+    .map((tab) => tab.label)
+  const hasDirtyItems = queryResultItems.length > 0 || tableDataItems.length > 0
+  if (!hasDirtyItems) {
+    closeQueryTabAndChildren()
+    return
+  }
+  useWorkspaceStore.setState({
+    pendingCascadeClose: {
+      queryTabId: queryTabId,
+      queryResultItems: queryResultItems,
+      tableDataItems: tableDataItems,
+      onConfirm: () => {
+        useWorkspaceStore.setState({ pendingCascadeClose: null })
+        closeQueryTabAndChildren()
+      },
+      onCancel: () => useWorkspaceStore.setState({ pendingCascadeClose: null }),
+    },
+  })
+}
+
+function closeNextDirtyResultOrTab(connectionId: string, queryTabId: string): void {
+  const queryTab = useQueryStore.getState().tabs[queryTabId]
+  const nextDirtyIndex = queryTab?.results?.findIndex(hasModifiedResultRow) ?? -1
+  if (!queryTab || nextDirtyIndex < 0) {
+    forceCloseWorkspaceTab(connectionId, queryTabId)
+    return
+  }
+  if (nextDirtyIndex !== (queryTab.activeResultIndex ?? 0)) {
+    useQueryStore.getState().setActiveResultIndex(queryTabId, nextDirtyIndex)
+  }
+  useQueryStore
+    .getState()
+    .requestNavigationAction(queryTabId, () => closeNextDirtyResultOrTab(connectionId, queryTabId))
+}
+
+function prepareQueryEditorClose(
+  connectionId: string,
+  closingTab: WorkspaceTab,
+  tabs: WorkspaceTab[]
+): CloseOutcome {
+  const scopedTableTabs = getScopedTableDataChildren(tabs, closingTab.id)
+  if (scopedTableTabs.length > 0) {
+    closeQueryTabWithScopedTables(connectionId, closingTab.id, scopedTableTabs)
+    return 'handled'
+  }
+  if (dirtyQueryResultLabels(closingTab.id).length > 0) {
+    markTabPendingClose(connectionId, closingTab.id)
+    closeNextDirtyResultOrTab(connectionId, closingTab.id)
+    return 'handled'
+  }
+  return 'proceed'
+}
+
+const CLOSE_PREPARERS: Partial<Record<WorkspaceTab['type'], ClosePreparer>> = {
+  'table-data': (connectionId, closingTab) =>
+    prepareGuardedClose(connectionId, closingTab.id, tableDataGuard()),
+  'table-designer': (connectionId, closingTab) =>
+    prepareGuardedClose(connectionId, closingTab.id, tableDesignerGuard()),
+  'object-editor': (connectionId, closingTab) =>
+    prepareGuardedClose(connectionId, closingTab.id, objectEditorGuard()),
+  'query-editor': prepareQueryEditorClose,
+}
+
+const TAB_STORE_CLEANUPS: Partial<Record<WorkspaceTab['type'], TabStoreCleanup>> = {
+  'table-data': (_connectionId, tabId) => useTableDataStore.getState().cleanupTab(tabId),
+  'query-editor': (connectionId, tabId) => useQueryStore.getState().cleanupTab(connectionId, tabId),
+  'table-designer': (_connectionId, tabId) => useTableDesignerStore.getState().cleanupTab(tabId),
+  'object-editor': (_connectionId, tabId) => useObjectEditorStore.getState().cleanupTab(tabId),
+}
+
+function cleanupTabStore(connectionId: string, tab: WorkspaceTab): void {
+  TAB_STORE_CLEANUPS[tab.type]?.(connectionId, tab.id)
+}
+
+function cleanupClosedQueryTab(connectionId: string, closingTab: WorkspaceTab): void {
+  if (closingTab.type !== 'query-editor') return
+  useQueryStore.getState().cleanupTab(connectionId, closingTab.id)
+  useAiStore.getState().cleanupTab(closingTab.id)
+}
+
+function activeTabIdAfterRemoval(
+  activeTabId: string | null,
+  closingTab: WorkspaceTab,
+  tabs: WorkspaceTab[]
+): string | null {
+  if (activeTabId !== closingTab.id) return activeTabId
+  const remaining = tabs.filter((tab) => tab.id !== closingTab.id)
+  const closingIndex = tabs.findIndex((tab) => tab.id === closingTab.id)
+  return getNextActiveTabIdAfterClose(remaining, closingTab, closingIndex)
+}
+
+function removeWorkspaceTab(removal: WorkspaceTabRemoval): void {
+  const { connectionId, closingTab } = removal
+  const state = useWorkspaceStore.getState()
+  const tabs = state.tabsByConnection[connectionId] || []
+  const remaining = tabs.filter((tab) => tab.id !== closingTab.id)
+  const currentActiveTabId = state.activeTabByConnection[connectionId]
+  const wasActive = currentActiveTabId === closingTab.id
+  const previousSurface = wasActive
+    ? getVisibleWorkspaceSurface(connectionId, closingTab.id)
+    : { kind: 'none' as const }
+  const newActive = activeTabIdAfterRemoval(currentActiveTabId, closingTab, tabs)
+  removal.afterSurfaceCaptured?.()
+  const nextActiveTabId = normalizeWorkspaceActiveTab(remaining, newActive)
+
+  useWorkspaceStore.setState((current) => ({
+    stackRecencyByConnection: {
+      ...current.stackRecencyByConnection,
+      [connectionId]: getNextStackRecency(
+        remaining,
+        current.stackRecencyByConnection[connectionId],
+        nextActiveTabId
+      ),
+    },
+    pendingCascadeClose:
+      current.pendingCascadeClose?.queryTabId === closingTab.id
+        ? null
+        : current.pendingCascadeClose,
+    tabsByConnection: {
+      ...current.tabsByConnection,
+      [connectionId]: remaining,
+    },
+    activeTabByConnection: {
+      ...current.activeTabByConnection,
+      [connectionId]: nextActiveTabId,
+    },
+  }))
+
+  if (wasActive) {
+    finalizeWorkspaceActivation(connectionId, previousSurface, nextActiveTabId)
+  }
+}
+
+function isTabForObject(tab: WorkspaceTab, target: DroppedObjectTarget): tab is ObjectScopedTab {
+  if (!isObjectScopedTab(tab)) return false
+  return tab.databaseName === target.databaseName && tab.objectName === target.objectName
+}
+
+function isViewTableDataTab(tab: ObjectScopedTab): boolean {
+  return tab.type === 'table-data' && tab.objectType === 'view'
+}
+
+function isTableBoundTab(tab: ObjectScopedTab): boolean {
+  return tab.type === 'table-data' || tab.type === 'table-designer'
+}
+
+function hasTypedObject(tab: ObjectScopedTab): tab is ObjectEditorTab | SchemaInfoTab {
+  return tab.type === 'object-editor' || tab.type === 'schema-info'
+}
+
+function shouldRemoveTabForDroppedObject(tab: WorkspaceTab, target: DroppedObjectTarget): boolean {
+  if (!isTabForObject(tab, target)) return false
+  const { objectType } = target
+  if (!objectType) return true
+  // Table tabs survive a non-table drop with the same name, except view data tabs when a view drops.
+  if (isTableBoundTab(tab)) return objectType === 'view' && isViewTableDataTab(tab)
+  if (hasTypedObject(tab)) return tab.objectType === objectType
+  return true
+}
+
+function applyScopedTableNormalization(
+  connectionId: string,
+  currentTabs: WorkspaceTab[]
+): WorkspaceTab[] {
+  const normalized = normalizeScopedTableDataTabs(currentTabs)
+  if (normalized.tabs === currentTabs) return currentTabs
+  useWorkspaceStore.setState((state) => {
+    const previousActiveTabId = state.activeTabByConnection[connectionId] ?? null
+    const standaloneTarget = getStandaloneTableActivationTarget(
+      connectionId,
+      currentTabs,
+      previousActiveTabId,
+      normalized.remappedTableTabIds
+    )
+    const nextActiveTabId =
+      standaloneTarget ?? normalizeWorkspaceActiveTab(normalized.tabs, previousActiveTabId)
+    return {
+      stackRecencyByConnection: {
+        ...state.stackRecencyByConnection,
+        [connectionId]: getNextStackRecency(
+          normalized.tabs,
+          state.stackRecencyByConnection[connectionId],
+          nextActiveTabId,
+          normalized.remappedTableTabIds
+        ),
+      },
+      tabsByConnection: {
+        ...state.tabsByConnection,
+        [connectionId]: normalized.tabs,
+      },
+      activeTabByConnection: {
+        ...state.activeTabByConnection,
+        [connectionId]: nextActiveTabId,
+      },
+    }
+  })
+  cleanupRemovedTableTabs(normalized.removedTableTabIds)
+  return normalized.tabs
+}
+
+function resolveParentQueryTabId(connectionId: string, tabs: WorkspaceTab[]): string {
+  const activeTabId = useWorkspaceStore.getState().activeTabByConnection[connectionId] ?? null
+  const activeTab = tabs.find((candidate) => candidate.id === activeTabId)
+  if (activeTab?.type === 'query-editor') return activeTab.id
+  return useWorkspaceStore.getState().openQueryTab(connectionId)
+}
+
+function isSameObjectTab(
+  candidate: ObjectScopedTab,
+  tab: OpenableTab,
+  parentQueryTabId: string | undefined
+): boolean {
+  if (candidate.type === 'object-editor' && tab.type === 'object-editor') {
+    return candidate.objectType === tab.objectType
+  }
+  if (candidate.type === 'table-data') {
+    return candidate.parentQueryTabId === parentQueryTabId
+  }
+  return true
+}
+
+function findOpenObjectTab(
+  tabs: WorkspaceTab[],
+  tab: OpenableTab,
+  parentQueryTabId: string | undefined
+): ObjectScopedTab | undefined {
+  return tabs.find(
+    (candidate): candidate is ObjectScopedTab =>
+      isObjectScopedTab(candidate) &&
+      candidate.databaseName === tab.databaseName &&
+      candidate.objectName === tab.objectName &&
+      candidate.type === tab.type &&
+      isSameObjectTab(candidate, tab, parentQueryTabId)
+  )
+}
+
+function workspaceActivationTarget(tab: WorkspaceTab): string {
+  if (tab.type === 'table-data' && tab.parentQueryTabId) return tab.parentQueryTabId
+  return tab.id
+}
+
+function showScopedTableInBottomPanel(tab: WorkspaceTab): void {
+  if (tab.type !== 'table-data' || !tab.parentQueryTabId) return
+  useQueryStore
+    .getState()
+    .setActiveBottomPanelItem(tab.parentQueryTabId, { type: 'table-data', tabId: tab.id })
+}
+
+function retainedRecencyTabId(
+  tabId: string,
+  members: Set<string>,
+  remappedTableTabIds: Map<string, string> | undefined
+): string | undefined {
+  if (members.has(tabId)) return tabId
+  const remappedTabId = remappedTableTabIds?.get(tabId)
+  if (remappedTabId && members.has(remappedTabId)) return remappedTabId
+  return undefined
+}
+
+function stackKeyOfTab(tabs: WorkspaceTab[], tabId: string): WorkspaceTabStackKey | null {
+  const tab = tabs.find((candidate) => candidate.id === tabId)
+  if (!tab) return null
+  return getWorkspaceStackKeyForTab(tab, {
+    hideScopedTableDataTabs: isTableTabsInBottomPanelEnabled(),
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -709,95 +1085,22 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   // ------ openTab (with dedup for object-scoped tabs) ------
 
   openTab: (tab: OpenableTab) => {
-    const { connectionId, databaseName, objectName, type } = tab
+    const { connectionId, type } = tab
     const bottomPanelEnabled = isTableTabsInBottomPanelEnabled()
     const currentTabs = get().tabsByConnection[connectionId] || []
-    const normalizedCurrentTabs = bottomPanelEnabled
-      ? {
-          tabs: currentTabs,
-          removedTableTabIds: [],
-          remappedTableTabIds: new Map<string, string>(),
-        }
-      : normalizeScopedTableDataTabs(currentTabs)
-    const tabs = normalizedCurrentTabs.tabs
-    if (tabs !== currentTabs) {
-      set((state) => ({
-        stackRecencyByConnection: {
-          ...state.stackRecencyByConnection,
-          [connectionId]: getNextStackRecency(
-            tabs,
-            state.stackRecencyByConnection[connectionId],
-            getStandaloneTableActivationTarget(
-              connectionId,
-              currentTabs,
-              state.activeTabByConnection[connectionId] ?? null,
-              normalizedCurrentTabs.remappedTableTabIds
-            ) ??
-              normalizeWorkspaceActiveTab(tabs, state.activeTabByConnection[connectionId] ?? null),
-            normalizedCurrentTabs.remappedTableTabIds
-          ),
-        },
-        tabsByConnection: {
-          ...state.tabsByConnection,
-          [connectionId]: tabs,
-        },
-        activeTabByConnection: {
-          ...state.activeTabByConnection,
-          [connectionId]:
-            getStandaloneTableActivationTarget(
-              connectionId,
-              currentTabs,
-              state.activeTabByConnection[connectionId] ?? null,
-              normalizedCurrentTabs.remappedTableTabIds
-            ) ??
-            normalizeWorkspaceActiveTab(tabs, state.activeTabByConnection[connectionId] ?? null),
-        },
-      }))
-      cleanupRemovedTableTabs(normalizedCurrentTabs.removedTableTabIds)
-    }
+    const tabs = bottomPanelEnabled
+      ? currentTabs
+      : applyScopedTableNormalization(connectionId, currentTabs)
 
-    let parentQueryTabId: string | undefined
-    if (type === 'table-data' && bottomPanelEnabled) {
-      const activeTabId = get().activeTabByConnection[connectionId] ?? null
-      const activeTab = tabs.find((candidate) => candidate.id === activeTabId) ?? null
-      if (activeTab?.type === 'query-editor') {
-        parentQueryTabId = activeTab.id
-      } else {
-        parentQueryTabId = get().openQueryTab(connectionId)
-      }
-    }
+    const opensScopedTable = type === 'table-data' && bottomPanelEnabled
+    const parentQueryTabId = opensScopedTable
+      ? resolveParentQueryTabId(connectionId, tabs)
+      : undefined
 
-    const existing = tabs.find((candidate) => {
-      if (!isObjectScopedTab(candidate)) return false
-      if (
-        candidate.databaseName !== databaseName ||
-        candidate.objectName !== objectName ||
-        candidate.type !== type
-      ) {
-        return false
-      }
-      // For object-editor tabs, also match objectType to allow different types with same name
-      if (type === 'object-editor' && candidate.type === 'object-editor') {
-        return candidate.objectType === (tab as DistributiveOmit<ObjectEditorTab, 'id'>).objectType
-      }
-      if (type === 'table-data' && candidate.type === 'table-data') {
-        return candidate.parentQueryTabId === parentQueryTabId
-      }
-      return true
-    })
-
+    const existing = findOpenObjectTab(tabs, tab, parentQueryTabId)
     if (existing) {
-      const activationTarget =
-        existing.type === 'table-data' && existing.parentQueryTabId
-          ? existing.parentQueryTabId
-          : existing.id
-      activateWorkspaceTab(connectionId, activationTarget)
-      if (existing.type === 'table-data' && existing.parentQueryTabId) {
-        useQueryStore.getState().setActiveBottomPanelItem(existing.parentQueryTabId, {
-          type: 'table-data',
-          tabId: existing.id,
-        })
-      }
+      activateWorkspaceTab(connectionId, workspaceActivationTarget(existing))
+      showScopedTableInBottomPanel(existing)
       return
     }
 
@@ -812,16 +1115,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
       },
     }))
-    activateWorkspaceTab(
-      connectionId,
-      newTab.type === 'table-data' && newTab.parentQueryTabId ? newTab.parentQueryTabId : newTab.id
-    )
+    activateWorkspaceTab(connectionId, workspaceActivationTarget(newTab))
     enforceTabLimit(connectionId, newTab.id)
-    if (newTab.type === 'table-data' && newTab.parentQueryTabId) {
-      useQueryStore
-        .getState()
-        .setActiveBottomPanelItem(newTab.parentQueryTabId, { type: 'table-data', tabId: newTab.id })
-    }
+    showScopedTableInBottomPanel(newTab)
   },
 
   restoreTableDataTab: (tab: Omit<TableDataTab, 'id'>) => {
@@ -1032,288 +1328,30 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   // ------ closeTab ------
 
   closeTab: (connectionId: string, tabId: string) => {
-    const state = get()
-    const tabs = state.tabsByConnection[connectionId] || []
-    const index = tabs.findIndex((tab) => tab.id === tabId)
-    if (index === -1) return
+    const tabs = get().tabsByConnection[connectionId] || []
+    const closingTab = tabs.find((tab) => tab.id === tabId)
+    if (!closingTab || isUnclosableTab(closingTab)) return
 
-    const closingTab = tabs[index]
+    const prepareClose = CLOSE_PREPARERS[closingTab.type]
+    if (prepareClose?.(connectionId, closingTab, tabs) === 'handled') return
 
-    // History and processlist tabs are not closable
-    if (closingTab.type === 'history' || closingTab.type === 'processlist') return
-
-    if (closingTab.type === 'table-data') {
-      const tableDataState = useTableDataStore.getState().tabs[tabId]
-      if (tableDataState?.editState && tableDataState.editState.modifiedColumns.size > 0) {
-        set((state) => ({
-          tabsByConnection: {
-            ...state.tabsByConnection,
-            [connectionId]: (state.tabsByConnection[connectionId] || []).map((tab) =>
-              tab.id === tabId ? { ...tab, pendingClose: true } : tab
-            ),
-          },
-        }))
-        useTableDataStore.getState().requestNavigationAction(tabId, () => {
-          get().forceCloseTab(connectionId, tabId)
-        })
-        return
-      }
-
-      useTableDataStore.getState().cleanupTab(tabId)
-      useAiStore.getState().cleanupTab(tabId)
-    }
-
-    if (closingTab.type === 'table-designer') {
-      const designerTabState = useTableDesignerStore.getState().tabs[tabId]
-      if (designerTabState?.isDirty) {
-        set((state) => ({
-          tabsByConnection: {
-            ...state.tabsByConnection,
-            [connectionId]: (state.tabsByConnection[connectionId] || []).map((tab) =>
-              tab.id === tabId ? { ...tab, pendingClose: true } : tab
-            ),
-          },
-        }))
-        useTableDesignerStore.getState().requestNavigationAction(tabId, () => {
-          get().forceCloseTab(connectionId, tabId)
-        })
-        return
-      }
-
-      useTableDesignerStore.getState().cleanupTab(tabId)
-      useAiStore.getState().cleanupTab(tabId)
-    }
-
-    if (closingTab.type === 'object-editor') {
-      if (useObjectEditorStore.getState().isDirty(tabId)) {
-        set((state) => ({
-          tabsByConnection: {
-            ...state.tabsByConnection,
-            [connectionId]: (state.tabsByConnection[connectionId] || []).map((tab) =>
-              tab.id === tabId ? { ...tab, pendingClose: true } : tab
-            ),
-          },
-        }))
-        useObjectEditorStore.getState().requestNavigationAction(tabId, () => {
-          get().forceCloseTab(connectionId, tabId)
-        })
-        return
-      }
-
-      useObjectEditorStore.getState().cleanupTab(tabId)
-      useAiStore.getState().cleanupTab(tabId)
-    }
-
-    if (closingTab.type === 'query-editor') {
-      const scopedTableTabs = getScopedTableDataChildren(tabs, tabId)
-      if (scopedTableTabs.length > 0) {
-        const queryTabState = useQueryStore.getState().tabs[tabId]
-        const dirtyQueryResultItems =
-          queryTabState?.results
-            ?.map((result, index) =>
-              result.editState && result.editState.modifiedColumns.size > 0
-                ? `Result ${index + 1}`
-                : null
-            )
-            .filter((label): label is string => label != null) ?? []
-        const dirtyTableDataItems = scopedTableTabs
-          .filter((tab) => {
-            const tableDataState = useTableDataStore.getState().tabs[tab.id]
-            return (tableDataState?.editState?.modifiedColumns.size ?? 0) > 0
-          })
-          .map((tab) => tab.label)
-
-        const closeScopedChildren = () => {
-          for (const childTab of scopedTableTabs) {
-            get().forceCloseTab(connectionId, childTab.id)
-          }
-        }
-
-        if (dirtyQueryResultItems.length > 0 || dirtyTableDataItems.length > 0) {
-          const onCancel = () => set({ pendingCascadeClose: null })
-          const onConfirm = () => {
-            set({ pendingCascadeClose: null })
-            closeScopedChildren()
-            get().forceCloseTab(connectionId, tabId)
-          }
-          set({
-            pendingCascadeClose: {
-              queryTabId: tabId,
-              queryResultItems: dirtyQueryResultItems,
-              tableDataItems: dirtyTableDataItems,
-              onConfirm: onConfirm,
-              onCancel: onCancel,
-            },
-          })
-          return
-        }
-
-        closeScopedChildren()
-        get().forceCloseTab(connectionId, tabId)
-        return
-      }
-
-      const queryTabState = useQueryStore.getState().tabs[tabId]
-      const hasUnsavedEdits =
-        queryTabState?.results?.some(
-          (result) => result.editState && result.editState.modifiedColumns.size > 0
-        ) ?? false
-      if (hasUnsavedEdits) {
-        set((state) => ({
-          tabsByConnection: {
-            ...state.tabsByConnection,
-            [connectionId]: (state.tabsByConnection[connectionId] || []).map((tab) =>
-              tab.id === tabId ? { ...tab, pendingClose: true } : tab
-            ),
-          },
-        }))
-
-        // Looping close helper: finds the next dirty result, switches to it,
-        // and defers close. When no dirty results remain, force-closes the tab.
-        const checkAndCloseOrDefer = () => {
-          const currentQueryTab = useQueryStore.getState().tabs[tabId]
-          if (!currentQueryTab) {
-            // Tab state already cleaned up
-            get().forceCloseTab(connectionId, tabId)
-            return
-          }
-          const nextDirtyIndex =
-            currentQueryTab.results?.findIndex(
-              (result) => result.editState && result.editState.modifiedColumns.size > 0
-            ) ?? -1
-
-          if (nextDirtyIndex < 0) {
-            // No more dirty results — safe to close
-            get().forceCloseTab(connectionId, tabId)
-            return
-          }
-
-          const currentActiveIndex = currentQueryTab.activeResultIndex ?? 0
-          if (nextDirtyIndex !== currentActiveIndex) {
-            useQueryStore.getState().setActiveResultIndex(tabId, nextDirtyIndex)
-            useQueryStore.getState().requestNavigationAction(tabId, checkAndCloseOrDefer)
-          } else {
-            // Dirty result IS the active result — use requestNavigationAction
-            useQueryStore.getState().requestNavigationAction(tabId, checkAndCloseOrDefer)
-          }
-        }
-
-        // Kick off the first iteration
-        checkAndCloseOrDefer()
-        return
-      }
-    }
-
-    const remaining = tabs.filter((tab) => tab.id !== tabId)
-    const wasActive = state.activeTabByConnection[connectionId] === tabId
-    const previousSurface = wasActive
-      ? getVisibleWorkspaceSurface(connectionId, tabId)
-      : { kind: 'none' as const }
-    let newActive = state.activeTabByConnection[connectionId]
-
-    if (newActive === tabId) {
-      newActive = getNextActiveTabIdAfterClose(remaining, closingTab, index)
-    }
-
-    if (closingTab.type === 'query-editor') {
-      useQueryStore.getState().cleanupTab(connectionId, tabId)
-      useAiStore.getState().cleanupTab(tabId)
-    }
-
-    set((state) => ({
-      stackRecencyByConnection: {
-        ...state.stackRecencyByConnection,
-        [connectionId]: getNextStackRecency(
-          remaining,
-          state.stackRecencyByConnection[connectionId],
-          normalizeWorkspaceActiveTab(remaining, newActive)
-        ),
-      },
-      pendingCascadeClose:
-        state.pendingCascadeClose?.queryTabId === tabId ? null : state.pendingCascadeClose,
-      tabsByConnection: {
-        ...state.tabsByConnection,
-        [connectionId]: remaining,
-      },
-      activeTabByConnection: {
-        ...state.activeTabByConnection,
-        [connectionId]: normalizeWorkspaceActiveTab(remaining, newActive),
-      },
-    }))
-
-    if (wasActive) {
-      finalizeWorkspaceActivation(
-        connectionId,
-        previousSurface,
-        normalizeWorkspaceActiveTab(remaining, newActive)
-      )
-    }
+    removeWorkspaceTab({
+      connectionId: connectionId,
+      closingTab: closingTab,
+      afterSurfaceCaptured: () => cleanupClosedQueryTab(connectionId, closingTab),
+    })
   },
 
   // ------ forceCloseTab (removes tab without unsaved-edit checks) ------
 
   forceCloseTab: (connectionId: string, tabId: string) => {
-    const state = get()
-    const tabs = state.tabsByConnection[connectionId] || []
-    const index = tabs.findIndex((tab) => tab.id === tabId)
-    if (index === -1) return
+    const tabs = get().tabsByConnection[connectionId] || []
+    const closingTab = tabs.find((tab) => tab.id === tabId)
+    if (!closingTab || isUnclosableTab(closingTab)) return
 
-    const closingTab = tabs[index]
-
-    // History and processlist tabs are not closable
-    if (closingTab.type === 'history' || closingTab.type === 'processlist') return
-
-    if (closingTab.type === 'table-data') {
-      useTableDataStore.getState().cleanupTab(tabId)
-    } else if (closingTab.type === 'query-editor') {
-      useQueryStore.getState().cleanupTab(connectionId, tabId)
-    } else if (closingTab.type === 'table-designer') {
-      useTableDesignerStore.getState().cleanupTab(tabId)
-    } else if (closingTab.type === 'object-editor') {
-      useObjectEditorStore.getState().cleanupTab(tabId)
-    }
-    // Always clean up AI state regardless of tab type
+    cleanupTabStore(connectionId, closingTab)
     useAiStore.getState().cleanupTab(tabId)
-
-    const remaining = tabs.filter((tab) => tab.id !== tabId)
-    const wasActive = state.activeTabByConnection[connectionId] === tabId
-    const previousSurface = wasActive
-      ? getVisibleWorkspaceSurface(connectionId, tabId)
-      : { kind: 'none' as const }
-    let newActive = state.activeTabByConnection[connectionId]
-
-    if (newActive === tabId) {
-      newActive = getNextActiveTabIdAfterClose(remaining, closingTab, index)
-    }
-
-    set((state) => ({
-      stackRecencyByConnection: {
-        ...state.stackRecencyByConnection,
-        [connectionId]: getNextStackRecency(
-          remaining,
-          state.stackRecencyByConnection[connectionId],
-          normalizeWorkspaceActiveTab(remaining, newActive)
-        ),
-      },
-      pendingCascadeClose:
-        state.pendingCascadeClose?.queryTabId === tabId ? null : state.pendingCascadeClose,
-      tabsByConnection: {
-        ...state.tabsByConnection,
-        [connectionId]: remaining,
-      },
-      activeTabByConnection: {
-        ...state.activeTabByConnection,
-        [connectionId]: normalizeWorkspaceActiveTab(remaining, newActive),
-      },
-    }))
-
-    if (wasActive) {
-      finalizeWorkspaceActivation(
-        connectionId,
-        previousSurface,
-        normalizeWorkspaceActiveTab(remaining, newActive)
-      )
-    }
+    removeWorkspaceTab({ connectionId: connectionId, closingTab: closingTab })
   },
 
   // ------ setActiveTab ------
@@ -1509,87 +1547,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   ) => {
     const state = get()
     const tabs = state.tabsByConnection[connectionId] || []
-
-    // Only clean up table-data and table-designer tabs when no objectType is
-    // specified (backward-compatible "close everything for this name" path).
-    // When objectType IS provided it is always a non-table type (procedure,
-    // function, view, trigger, event) so table-data / table-designer tabs
-    // must be left alone — they belong to a table with the same name.
-    // EXCEPTION: views open as table-data tabs with objectType 'view', so
-    // those must be closed when dropping a view.
-    if (!objectType) {
-      tabs
-        .filter(
-          (tab) =>
-            tab.type === 'table-data' &&
-            tab.databaseName === databaseName &&
-            tab.objectName === objectName
-        )
-        .forEach((tab) => useTableDataStore.getState().cleanupTab(tab.id))
-
-      tabs
-        .filter(
-          (tab) =>
-            tab.type === 'table-designer' &&
-            tab.databaseName === databaseName &&
-            tab.objectName === objectName
-        )
-        .forEach((tab) => useTableDesignerStore.getState().cleanupTab(tab.id))
-    } else if (objectType === 'view') {
-      // Views open as table-data tabs with objectType 'view' — clean those up
-      tabs
-        .filter(
-          (tab) =>
-            tab.type === 'table-data' &&
-            tab.databaseName === databaseName &&
-            tab.objectName === objectName &&
-            tab.objectType === 'view'
-        )
-        .forEach((tab) => useTableDataStore.getState().cleanupTab(tab.id))
+    const target: DroppedObjectTarget = {
+      databaseName: databaseName,
+      objectName: objectName,
+      objectType: objectType,
     }
-
-    // Cleanup object-editor tabs (filtered by objectType if provided)
-    tabs
-      .filter((tab) => {
-        if (tab.type !== 'object-editor') return false
-        if (tab.databaseName !== databaseName || tab.objectName !== objectName) return false
-        if (objectType && tab.objectType !== objectType) return false
-        return true
-      })
-      .forEach((tab) => useObjectEditorStore.getState().cleanupTab(tab.id))
-
-    // Clean up AI state for all tabs that will be removed.
-    // Use the same filter logic as the set() call below to identify removed tabs.
-    tabs
-      .filter((tab) => {
-        if (!isObjectScopedTab(tab)) return false
-        if (tab.databaseName !== databaseName || tab.objectName !== objectName) return false
-        if (objectType && (tab.type === 'table-data' || tab.type === 'table-designer')) {
-          if (objectType === 'view' && tab.type === 'table-data' && tab.objectType === 'view')
-            return true
-          return false
-        }
-        if (objectType && tab.type === 'object-editor' && tab.objectType !== objectType)
-          return false
-        if (objectType && tab.type === 'schema-info' && tab.objectType !== objectType) return false
-        return true
-      })
-      .forEach((tab) => useAiStore.getState().cleanupTab(tab.id))
-
-    const shouldRemove = (tab: WorkspaceTab): boolean => {
-      if (!isObjectScopedTab(tab)) return false
-      if (tab.databaseName !== databaseName || tab.objectName !== objectName) return false
-      // When objectType is provided, preserve table-data and table-designer
-      // tabs — they always belong to tables, not to the non-table object
-      // being dropped. EXCEPTION: views open as table-data tabs with
-      // objectType 'view', so those must be removed when dropping a view.
-      if (objectType && (tab.type === 'table-data' || tab.type === 'table-designer')) {
-        return objectType === 'view' && tab.type === 'table-data' && tab.objectType === 'view'
-      }
-      if (objectType && tab.type === 'object-editor' && tab.objectType !== objectType) return false
-      if (objectType && tab.type === 'schema-info' && tab.objectType !== objectType) return false
-      return true
-    }
+    const shouldRemove = (tab: WorkspaceTab): boolean =>
+      shouldRemoveTabForDroppedObject(tab, target)
+    const removedTabs = tabs.filter(shouldRemove)
+    removedTabs.forEach((tab) => cleanupTabStore(connectionId, tab))
+    removedTabs.forEach((tab) => useAiStore.getState().cleanupTab(tab.id))
 
     const previousActiveTabId = state.activeTabByConnection[connectionId] ?? null
     const previousSurface = previousActiveTabId

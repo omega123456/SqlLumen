@@ -98,6 +98,29 @@ function formatTimeInput(date: Date | null): string {
   return date ? formatTime(date) : MIDNIGHT_TIME_INPUT
 }
 
+const CALENDAR_COLUMN_TYPES = new Set<TemporalColumnType>(['DATE', 'DATETIME', 'TIMESTAMP'])
+const TIME_OF_DAY_COLUMN_TYPES = new Set<TemporalColumnType>(['DATETIME', 'TIMESTAMP', 'TIME'])
+
+function copyTimeOfDay(target: Date, source: Date): void {
+  target.setHours(source.getHours(), source.getMinutes(), source.getSeconds())
+}
+
+interface CurrentTimeOfDay {
+  localDate: Date | null
+  timeInput: string
+}
+
+function applyCurrentTimeOfDay(target: Date, current: CurrentTimeOfDay): void {
+  if (current.localDate) {
+    copyTimeOfDay(target, current.localDate)
+    return
+  }
+  const parsed = parseTimeInput(current.timeInput)
+  if (parsed) {
+    target.setHours(parsed.hours, parsed.minutes, parsed.seconds)
+  }
+}
+
 function shouldFlipAbove(anchorRect: DOMRect): boolean {
   const spaceBelow = window.innerHeight - anchorRect.bottom
   const fitsBelow = spaceBelow >= ESTIMATED_POPUP_HEIGHT_PX
@@ -202,9 +225,8 @@ export function DateTimePicker({
     [externalPopupRef]
   )
 
-  const showCalendar =
-    columnType === 'DATE' || columnType === 'DATETIME' || columnType === 'TIMESTAMP'
-  const showTime = columnType === 'DATETIME' || columnType === 'TIMESTAMP' || columnType === 'TIME'
+  const showCalendar = CALENDAR_COLUMN_TYPES.has(columnType)
+  const showTime = TIME_OF_DAY_COLUMN_TYPES.has(columnType)
 
   const [syncedValue, setSyncedValue] = useState(value)
   const applyExternalValue = (externalValue: string | null) => {
@@ -299,16 +321,8 @@ export function DateTimePicker({
       }
 
       const nextDate = new Date(date)
-
-      // Preserve time from current localDate if we have one
-      if (showTime && localDate) {
-        nextDate.setHours(localDate.getHours(), localDate.getMinutes(), localDate.getSeconds())
-      } else if (showTime) {
-        // Apply time from timeInput
-        const parsed = parseTimeInput(timeInput)
-        if (parsed) {
-          nextDate.setHours(parsed.hours, parsed.minutes, parsed.seconds)
-        }
+      if (showTime) {
+        applyCurrentTimeOfDay(nextDate, { localDate: localDate, timeInput: timeInput })
       }
 
       setLocalDate(nextDate)
@@ -340,16 +354,16 @@ export function DateTimePicker({
     if (columnType === 'TIME') {
       setLocalDate(now)
       setTimeInput(formatTime(now))
-    } else {
-      // Set to today, preserving current time if applicable
-      const today = new Date()
-      if (showTime && localDate) {
-        today.setHours(localDate.getHours(), localDate.getMinutes(), localDate.getSeconds())
-      }
-      setLocalDate(today)
-      if (showTime) {
-        setTimeInput(formatTime(today))
-      }
+      return
+    }
+    // Set to today, preserving current time if applicable
+    const today = new Date()
+    if (showTime && localDate) {
+      copyTimeOfDay(today, localDate)
+    }
+    setLocalDate(today)
+    if (showTime) {
+      setTimeInput(formatTime(today))
     }
   }, [columnType, showTime, localDate])
 

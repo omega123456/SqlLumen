@@ -335,15 +335,17 @@ pub fn strip_definer(ddl: &str) -> String {
         match quote {
             Some(open_quote) => {
                 position += 1;
-                if byte == open_quote {
-                    // MySQL escapes quote characters in quoted identifiers by
-                    // doubling them; keep the doubled pair inside the quote.
-                    if position < bytes.len() && bytes[position] == open_quote {
-                        position += 1;
-                    } else {
-                        quote = None;
-                    }
+                if byte != open_quote {
+                    continue;
                 }
+                // MySQL escapes quote characters in quoted identifiers by
+                // doubling them; keep the doubled pair inside the quote.
+                let is_doubled_quote = position < bytes.len() && bytes[position] == open_quote;
+                if is_doubled_quote {
+                    position += 1;
+                    continue;
+                }
+                quote = None;
             }
             None => {
                 if byte.is_ascii_whitespace() {
@@ -487,18 +489,17 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
         .take_while(|byte| byte.is_ascii_whitespace())
         .count();
     let dot_pos = first_end + ws_after_first;
-    if ddl[dot_pos..].starts_with('.') {
-        let after_dot = dot_pos + 1;
-        let ws_after_dot = ddl[after_dot..]
-            .bytes()
-            .take_while(|byte| byte.is_ascii_whitespace())
-            .count();
-        let object_start = after_dot + ws_after_dot;
-        let object_end = parse_mysql_identifier_end(ddl, object_start)?;
-        Some((name_start, object_end))
-    } else {
-        Some((name_start, first_end))
+    if !ddl[dot_pos..].starts_with('.') {
+        return Some((name_start, first_end));
     }
+    let after_dot = dot_pos + 1;
+    let ws_after_dot = ddl[after_dot..]
+        .bytes()
+        .take_while(|byte| byte.is_ascii_whitespace())
+        .count();
+    let object_start = after_dot + ws_after_dot;
+    let object_end = parse_mysql_identifier_end(ddl, object_start)?;
+    Some((name_start, object_end))
 }
 
 fn parse_mysql_identifier_end(sql: &str, start: usize) -> Option<usize> {
@@ -518,14 +519,12 @@ fn parse_mysql_identifier_end(sql: &str, start: usize) -> Option<usize> {
         return None;
     }
 
-    let mut end = start;
-    for (offset, ch) in sql[start..].char_indices() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' {
-            end = start + offset + ch.len_utf8();
-        } else {
-            break;
-        }
-    }
+    let identifier_len: usize = sql[start..]
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '$')
+        .map(char::len_utf8)
+        .sum();
+    let end = start + identifier_len;
     (end > start).then_some(end)
 }
 
@@ -545,6 +544,13 @@ pub fn qualified_drop_if_exists_statement(
     }
 }
 
+fn create_table_prefix_len(lower_ddl: &str) -> Option<usize> {
+    ["create table if not exists", "create table"]
+        .into_iter()
+        .find(|prefix| lower_ddl.starts_with(prefix))
+        .map(str::len)
+}
+
 /// Qualify an unqualified `CREATE TABLE` header with the selected target schema.
 ///
 /// `SHOW CREATE TABLE` commonly returns `CREATE TABLE `name` ...` without a
@@ -561,11 +567,7 @@ pub fn qualify_table_ddl_schema(ddl: &str, target_database: &str, table_name: &s
     let trimmed_start = ddl.trim_start();
     let leading_len = ddl.len() - trimmed_start.len();
     let lower = trimmed_start.to_ascii_lowercase();
-    let prefix_len = if lower.starts_with("create table if not exists") {
-        "create table if not exists".len()
-    } else if lower.starts_with("create table") {
-        "create table".len()
-    } else {
+    let Some(prefix_len) = create_table_prefix_len(&lower) else {
         return ddl.to_string();
     };
 
@@ -633,6 +635,15 @@ pub fn render_row(row: &[SqlDumpValue]) -> (String, usize) {
     (tuple, len)
 }
 
+const TUPLE_SEPARATOR: &str = ", ";
+
+pub fn tuple_separator_len(tuples_in_batch: usize) -> usize {
+    if tuples_in_batch == 0 {
+        return 0;
+    }
+    TUPLE_SEPARATOR.len()
+}
+
 /// Decide whether a current batch must be closed before adding the next row.
 pub fn should_start_new_batch(
     current_count: usize,
@@ -641,8 +652,7 @@ pub fn should_start_new_batch(
     byte_budget: usize,
     row_cap: usize,
 ) -> bool {
-    let sep = if current_count == 0 { 0 } else { 2 };
-    let prospective = current_bytes + sep + next_row_bytes;
+    let prospective = current_bytes + tuple_separator_len(current_count) + next_row_bytes;
     let row_cap_hit = current_count >= row_cap.max(1);
     let budget_hit = current_count > 0 && prospective > byte_budget;
 
@@ -683,14 +693,11 @@ pub fn plan_batches(
             // Close the current batch [start, idx) and start a new one at idx.
             batches.push((start, index));
             start = index;
-            acc = prefix_len + row_len;
-            count = 1;
-        } else {
-            let sep = if count == 0 { 0 } else { 2 };
-            let prospective = acc + sep + row_len;
-            acc = prospective;
-            count += 1;
+            acc = prefix_len;
+            count = 0;
         }
+        acc += tuple_separator_len(count) + row_len;
+        count += 1;
     }
     batches.push((start, rows.len()));
     batches
@@ -1014,10 +1021,9 @@ mod engine {
         }
 
         let ddl = ddl.trim_end().trim_end_matches(';');
-        let ddl = if object_type == CopyObjectType::Table {
-            qualify_table_ddl_schema(ddl, target_database, name)
-        } else {
-            ddl.to_string()
+        let ddl = match object_type {
+            CopyObjectType::Table => qualify_table_ddl_schema(ddl, target_database, name),
+            _ => ddl.to_string(),
         };
         run_target_statement(&mut *target, &ddl).await
     }
@@ -1161,14 +1167,10 @@ mod engine {
                 )
                 .await?;
                 batch.clear();
-                acc = prefix.as_deref().map(str::len).unwrap_or(0) + tuple_len;
-                batch.push((tuple, tuple_len));
-            } else {
-                let sep = if batch.is_empty() { 0 } else { 2 };
-                let prospective = acc + sep + tuple_len;
-                acc = prospective;
-                batch.push((tuple, tuple_len));
+                acc = prefix.as_deref().map(str::len).unwrap_or(0);
             }
+            acc += tuple_separator_len(batch.len()) + tuple_len;
+            batch.push((tuple, tuple_len));
         }
 
         // Flush any remaining partial batch.
@@ -1350,11 +1352,10 @@ mod engine {
         let opts = &params.options;
 
         for (object_type, name) in work {
-            let rows_total = if object_type == CopyObjectType::Table && opts.copy_data {
-                Some(count_source_rows(source, &params.source_database, &name).await?)
-            } else {
-                None
-            };
+            let mut rows_total = None;
+            if object_type == CopyObjectType::Table && opts.copy_data {
+                rows_total = Some(count_source_rows(source, &params.source_database, &name).await?);
+            }
 
             // Cancel checkpoint at object boundary.
             {

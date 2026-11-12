@@ -26,21 +26,17 @@ const ICONS: Record<PaletteResultType, typeof Table> = {
   trigger: Lightning,
 }
 
+const TYPE_CLASS_NAMES: Record<PaletteResultType, string> = {
+  table: styles.table,
+  column: styles.column,
+  view: styles.view,
+  procedure: styles.procedure,
+  function: styles.function,
+  trigger: styles.trigger,
+}
+
 function getTypeClassName(objectType: PaletteResultType): string {
-  switch (objectType) {
-    case 'table':
-      return styles.table
-    case 'column':
-      return styles.column
-    case 'view':
-      return styles.view
-    case 'procedure':
-      return styles.procedure
-    case 'function':
-      return styles.function
-    case 'trigger':
-      return styles.trigger
-  }
+  return TYPE_CLASS_NAMES[objectType]
 }
 
 export function ObjectTypeIcon({

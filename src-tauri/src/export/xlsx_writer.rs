@@ -81,17 +81,18 @@ pub fn write_xlsx_cell(
 ) -> Result<(), String> {
     match value {
         serde_json::Value::Null => {} // empty cell
-        serde_json::Value::Number(number) => {
-            if let Some(float) = number.as_f64() {
+        serde_json::Value::Number(number) => match number.as_f64() {
+            Some(float) => {
                 worksheet
                     .write_number(row, col, float)
                     .map_err(|error| error.to_string())?;
-            } else {
+            }
+            None => {
                 worksheet
                     .write_string(row, col, number.to_string())
                     .map_err(|error| error.to_string())?;
             }
-        }
+        },
         serde_json::Value::String(text) => {
             worksheet
                 .write_string(row, col, text)

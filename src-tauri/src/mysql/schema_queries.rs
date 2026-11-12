@@ -758,23 +758,27 @@ pub struct RoutineParameterRow {
     pub ordinal_position: i32,
 }
 
+#[cfg(not(coverage))]
+fn routine_parameter_ordinal_filter(include_return_type: bool) -> &'static str {
+    if include_return_type {
+        return "ORDINAL_POSITION >= 0";
+    }
+    "ORDINAL_POSITION > 0"
+}
+
 /// Internal helper that queries INFORMATION_SCHEMA.PARAMETERS.
 ///
 /// When `include_return_type` is `true`, includes the `ORDINAL_POSITION = 0` row
 /// (function return type). When `false`, excludes it.
 #[cfg(not(coverage))]
-async fn query_routine_parameters_inner(
+pub(crate) async fn query_routine_parameters_inner(
     pool: &MySqlPool,
     database: &str,
     routine_name: &str,
     routine_type: &str,
     include_return_type: bool,
 ) -> Result<Vec<RoutineParameterRow>, String> {
-    let ordinal_filter = if include_return_type {
-        "ORDINAL_POSITION >= 0"
-    } else {
-        "ORDINAL_POSITION > 0"
-    };
+    let ordinal_filter = routine_parameter_ordinal_filter(include_return_type);
     let sql = format!(
         "SELECT \
         PARAMETER_NAME, DTD_IDENTIFIER, PARAMETER_MODE, \

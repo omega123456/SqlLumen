@@ -46,11 +46,13 @@ impl MetadataCache {
             ))
             .cloned();
 
-        if value.is_some() {
-            tracing::debug!(connection_id, database, table, "metadata cache hit");
-        } else {
-            tracing::debug!(connection_id, database, table, "metadata cache miss");
-        }
+        let lookup_outcome = cache_lookup_outcome(value.is_some());
+        tracing::debug!(
+            connection_id,
+            database,
+            table,
+            "metadata cache {lookup_outcome}"
+        );
 
         value
     }
@@ -229,4 +231,11 @@ pub fn evict_metadata_cache_for_tables(
     };
     emit_metadata_cache_invalidated(state, &payload);
     payload
+}
+
+fn cache_lookup_outcome(is_hit: bool) -> &'static str {
+    if is_hit {
+        return "hit";
+    }
+    "miss"
 }

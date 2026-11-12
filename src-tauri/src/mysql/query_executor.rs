@@ -254,99 +254,87 @@ pub struct QueryTableEditInfo {
 /// Removes standard block comments (`/* ... */`), line comments (`-- ...`), and hash comments (`# ...`).
 pub fn strip_non_executable_comments(sql: &str) -> String {
     let mut result = String::with_capacity(sql.len());
-    let mut iter = sql.char_indices().peekable();
+    let mut chars = sql.chars().peekable();
 
-    while let Some((_, ch)) = iter.next() {
-        // Check for block comment start `/*`
-        if ch == '/' && iter.peek().map(|&(_, character)| character) == Some('*') {
-            iter.next(); // consume '*'
-                         // Check if it's an executable comment `/*!` or hint `/*+`
-            if iter
-                .peek()
-                .map(|&(_, character)| character == '!' || character == '+')
-                .unwrap_or(false)
-            {
-                let (_, special) = iter.next().unwrap(); // safe: peek above confirmed element exists
-                                                         // Preserve this comment — copy until closing `*/`
-                result.push('/');
-                result.push('*');
-                result.push(special);
-                while let Some((_, character)) = iter.next() {
-                    if character == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
-                        result.push('*');
-                        result.push('/');
-                        iter.next(); // consume '/'
-                        break;
-                    }
-                    result.push(character);
-                }
-            } else {
-                // Standard block comment — skip until `*/`
-                while let Some((_, character)) = iter.next() {
-                    if character == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
-                        iter.next(); // consume '/'
-                        break;
-                    }
-                }
-                // Replace the comment with a space to avoid joining tokens
-                result.push(' ');
-            }
+    while let Some(ch) = chars.next() {
+        let next_char = chars.peek().copied();
+        if ch == '/' && next_char == Some('*') {
+            chars.next();
+            copy_or_drop_block_comment(&mut chars, &mut result);
+            continue;
         }
-        // Line comment `--`
-        else if ch == '-' && iter.peek().map(|&(_, character)| character) == Some('-') {
-            iter.next(); // consume second '-'
-                         // Skip until end of line
-            while iter
-                .peek()
-                .map(|&(_, character)| character != '\n')
-                .unwrap_or(false)
-            {
-                iter.next();
-            }
-            // Keep the newline if present
-            if iter.peek().map(|&(_, character)| character) == Some('\n') {
-                iter.next(); // consume '\n'
-                result.push('\n');
-            }
+        if ch == '-' && next_char == Some('-') {
+            chars.next();
+            drop_line_comment(&mut chars, &mut result);
+            continue;
         }
-        // Hash comment `#`
-        else if ch == '#' {
-            // Skip until end of line
-            while iter
-                .peek()
-                .map(|&(_, character)| character != '\n')
-                .unwrap_or(false)
-            {
-                iter.next();
-            }
-            if iter.peek().map(|&(_, character)| character) == Some('\n') {
-                iter.next(); // consume '\n'
-                result.push('\n');
-            }
+        if ch == '#' {
+            drop_line_comment(&mut chars, &mut result);
+            continue;
         }
-        // String literal — skip to preserve content
-        else if ch == '\'' || ch == '"' || ch == '`' {
-            let quote = ch;
-            result.push(ch);
-            while let Some((_, character)) = iter.next() {
-                if character == '\\' {
-                    result.push(character);
-                    if let Some((_, escaped)) = iter.next() {
-                        result.push(escaped);
-                    }
-                    continue;
-                }
-                result.push(character);
-                if character == quote {
-                    break;
-                }
-            }
-        } else {
-            result.push(ch);
+        if matches!(ch, '\'' | '"' | '`') {
+            copy_quoted_literal(ch, &mut chars, &mut result);
+            continue;
         }
+        result.push(ch);
     }
 
     result
+}
+
+type SqlChars<'a> = std::iter::Peekable<std::str::Chars<'a>>;
+
+fn copy_or_drop_block_comment(chars: &mut SqlChars<'_>, result: &mut String) {
+    let is_executable_or_hint = chars
+        .peek()
+        .is_some_and(|&character| character == '!' || character == '+');
+    if !is_executable_or_hint {
+        skip_past_block_comment_end(chars);
+        result.push(' ');
+        return;
+    }
+    result.push('/');
+    result.push('*');
+    while let Some(character) = chars.next() {
+        let closes_comment = character == '*' && chars.peek() == Some(&'/');
+        if closes_comment {
+            chars.next();
+            result.push_str("*/");
+            return;
+        }
+        result.push(character);
+    }
+}
+
+fn skip_past_block_comment_end(chars: &mut SqlChars<'_>) {
+    while let Some(character) = chars.next() {
+        let closes_comment = character == '*' && chars.peek() == Some(&'/');
+        if closes_comment {
+            chars.next();
+            return;
+        }
+    }
+}
+
+fn drop_line_comment(chars: &mut SqlChars<'_>, result: &mut String) {
+    while chars.next_if(|&character| character != '\n').is_some() {}
+    if chars.next_if_eq(&'\n').is_some() {
+        result.push('\n');
+    }
+}
+
+fn copy_quoted_literal(quote: char, chars: &mut SqlChars<'_>, result: &mut String) {
+    result.push(quote);
+    while let Some(character) = chars.next() {
+        result.push(character);
+        if character == '\\' {
+            result.extend(chars.next());
+            continue;
+        }
+        if character == quote {
+            return;
+        }
+    }
 }
 
 /// Get the first SQL keyword from a (comment-stripped) SQL string.
@@ -394,11 +382,10 @@ pub fn find_with_main_keyword(sql: &str) -> String {
 
     // Skip past "WITH" keyword
     let remaining: String = chars[position..].iter().collect();
-    if remaining.to_uppercase().starts_with("WITH") {
-        position += 4;
-    } else {
+    if !remaining.to_uppercase().starts_with("WITH") {
         return String::new();
     }
+    position += 4;
 
     while position < len {
         // Skip string literals
@@ -432,19 +419,22 @@ pub fn find_with_main_keyword(sql: &str) -> String {
             continue;
         }
 
-        if depth == 0 && chars[position].is_alphabetic() {
-            let start = position;
-            while position < len && (chars[position].is_alphanumeric() || chars[position] == '_') {
-                position += 1;
-            }
-            let word: String = chars[start..position].iter().collect();
-            let upper_word = word.to_uppercase();
-            match upper_word.as_str() {
-                "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "REPLACE" => return upper_word,
-                _ => continue,
-            }
-        } else {
+        let starts_top_level_word = depth == 0 && chars[position].is_alphabetic();
+        if !starts_top_level_word {
             position += 1;
+            continue;
+        }
+        let start = position;
+        while position < len && (chars[position].is_alphanumeric() || chars[position] == '_') {
+            position += 1;
+        }
+        let word: String = chars[start..position].iter().collect();
+        let upper_word = word.to_uppercase();
+        if matches!(
+            upper_word.as_str(),
+            "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "REPLACE"
+        ) {
+            return upper_word;
         }
     }
 
@@ -570,85 +560,7 @@ pub fn has_locking_clause(sql: &str) -> bool {
     // when followed by whitespace, a control character or the end of input, and
     // backticks have no backslash escapes. The contents of executable comments
     // (`/*! */`) and optimizer hints (`/*+ */`) are scanned like normal SQL.
-    // Uppercased words; `None` marks punctuation that breaks a keyword sequence.
-    let mut tokens: Vec<Option<String>> = Vec::new();
-    let mut word = String::new();
-    let mut chars = sql.chars().peekable();
-    let flush = |word: &mut String, tokens: &mut Vec<Option<String>>| {
-        if !word.is_empty() {
-            tokens.push(Some(word.to_ascii_uppercase()));
-            word.clear();
-        }
-    };
-    let skip_line = |chars: &mut std::iter::Peekable<std::str::Chars<'_>>| {
-        while chars.peek().is_some_and(|&character| character != '\n') {
-            chars.next();
-        }
-    };
-    while let Some(ch) = chars.next() {
-        if matches!(ch, '\'' | '"' | '`') {
-            flush(&mut word, &mut tokens);
-            tokens.push(None);
-            while let Some(character) = chars.next() {
-                if character == '\\' && ch != '`' {
-                    chars.next();
-                } else if character == ch {
-                    if chars.peek() == Some(&ch) {
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-            }
-        } else if ch == '#' {
-            flush(&mut word, &mut tokens);
-            tokens.push(None);
-            skip_line(&mut chars);
-        } else if ch == '-' && chars.peek() == Some(&'-') {
-            let mut ahead = chars.clone();
-            ahead.next();
-            if ahead
-                .peek()
-                .is_none_or(|character| character.is_whitespace() || character.is_control())
-            {
-                flush(&mut word, &mut tokens);
-                tokens.push(None);
-                skip_line(&mut chars);
-            } else {
-                // `a--1` is `a - -1`, not a comment.
-                flush(&mut word, &mut tokens);
-                tokens.push(None);
-            }
-        } else if ch == '/' && chars.peek() == Some(&'*') {
-            chars.next();
-            flush(&mut word, &mut tokens);
-            tokens.push(None);
-            if chars
-                .peek()
-                .is_some_and(|&character| character == '!' || character == '+')
-            {
-                // Executable comment or hint: scan its contents; the closing
-                // `*/` is ordinary punctuation.
-                chars.next();
-                continue;
-            }
-            let mut previous = '\0';
-            for character in chars.by_ref() {
-                if previous == '*' && character == '/' {
-                    break;
-                }
-                previous = character;
-            }
-        } else if ch.is_alphanumeric() || ch == '_' || ch == '$' {
-            word.push(ch);
-        } else {
-            flush(&mut word, &mut tokens);
-            if !ch.is_whitespace() {
-                tokens.push(None);
-            }
-        }
-    }
-    flush(&mut word, &mut tokens);
+    let tokens = LockingClauseTokenizer::new(sql).tokenize();
 
     let is = |token_index: usize, kw: &str| {
         tokens.get(token_index).and_then(|token| token.as_deref()) == Some(kw)
@@ -662,23 +574,158 @@ pub fn has_locking_clause(sql: &str) -> bool {
     })
 }
 
+struct LockingClauseTokenizer<'a> {
+    chars: SqlChars<'a>,
+    word: String,
+    tokens: Vec<Option<String>>,
+}
+
+impl<'a> LockingClauseTokenizer<'a> {
+    fn new(sql: &'a str) -> Self {
+        Self {
+            chars: sql.chars().peekable(),
+            word: String::new(),
+            tokens: Vec::new(),
+        }
+    }
+
+    fn tokenize(mut self) -> Vec<Option<String>> {
+        while let Some(ch) = self.chars.next() {
+            self.consume(ch);
+        }
+        self.flush_word();
+        self.tokens
+    }
+
+    fn consume(&mut self, ch: char) {
+        let next_char = self.chars.peek().copied();
+        if matches!(ch, '\'' | '"' | '`') {
+            self.break_keyword_sequence();
+            self.skip_quoted(ch);
+            return;
+        }
+        if ch == '#' {
+            self.break_keyword_sequence();
+            self.skip_line();
+            return;
+        }
+        if ch == '-' && next_char == Some('-') {
+            self.break_keyword_sequence();
+            self.skip_dash_dash_comment();
+            return;
+        }
+        if ch == '/' && next_char == Some('*') {
+            self.chars.next();
+            self.break_keyword_sequence();
+            self.skip_block_comment();
+            return;
+        }
+        if ch.is_alphanumeric() || ch == '_' || ch == '$' {
+            self.word.push(ch);
+            return;
+        }
+        self.flush_word();
+        if !ch.is_whitespace() {
+            self.tokens.push(None);
+        }
+    }
+
+    fn flush_word(&mut self) {
+        if self.word.is_empty() {
+            return;
+        }
+        self.tokens.push(Some(self.word.to_ascii_uppercase()));
+        self.word.clear();
+    }
+
+    fn break_keyword_sequence(&mut self) {
+        self.flush_word();
+        self.tokens.push(None);
+    }
+
+    fn skip_line(&mut self) {
+        while self.chars.next_if(|&character| character != '\n').is_some() {}
+    }
+
+    fn skip_quoted(&mut self, quote: char) {
+        while let Some(character) = self.chars.next() {
+            let is_backslash_escape = character == '\\' && quote != '`';
+            if is_backslash_escape {
+                self.chars.next();
+                continue;
+            }
+            if character != quote {
+                continue;
+            }
+            if self.chars.next_if_eq(&quote).is_none() {
+                return;
+            }
+        }
+    }
+
+    fn skip_dash_dash_comment(&mut self) {
+        let mut ahead = self.chars.clone();
+        ahead.next();
+        let starts_comment = ahead
+            .peek()
+            .is_none_or(|character| character.is_whitespace() || character.is_control());
+        if starts_comment {
+            self.skip_line();
+        }
+    }
+
+    fn skip_block_comment(&mut self) {
+        let is_executable_or_hint = self
+            .chars
+            .next_if(|&character| character == '!' || character == '+')
+            .is_some();
+        if is_executable_or_hint {
+            return;
+        }
+        let mut previous = '\0';
+        for character in self.chars.by_ref() {
+            if previous == '*' && character == '/' {
+                return;
+            }
+            previous = character;
+        }
+    }
+}
+
+pub const DEFAULT_ROW_LIMIT: usize = 1000;
+
+pub fn requested_row_limit(row_limit: usize) -> usize {
+    if row_limit == 0 {
+        return DEFAULT_ROW_LIMIT;
+    }
+    row_limit
+}
+
+pub fn returns_result_set(stripped_sql: &str) -> bool {
+    let keyword = get_first_keyword(stripped_sql);
+    if keyword != "WITH" {
+        return is_select_like(&keyword);
+    }
+    let main_keyword = find_with_main_keyword(stripped_sql);
+    is_select_like(&main_keyword) || main_keyword.is_empty()
+}
+
 /// The auto-LIMIT actually injected for a requested `row_limit`: `0` falls back
 /// to 1,000 (as before), and the result is clamped to the hard row ceiling.
 /// Only the injected LIMIT uses this; decoding is capped by the ceiling itself.
 pub fn effective_row_limit(row_limit: usize, ceiling: usize) -> usize {
-    let requested = if row_limit == 0 { 1000 } else { row_limit };
-    requested.min(ceiling.max(1))
+    requested_row_limit(row_limit).min(ceiling.max(1))
 }
 
 /// The blocked reason implied by a statement alone (before truncation is known).
 pub fn statement_blocked_reason(sql: &str, is_call: bool) -> Option<FullExportBlockedReason> {
     if is_call {
-        Some(FullExportBlockedReason::Call)
-    } else if has_locking_clause(sql) {
-        Some(FullExportBlockedReason::Locking)
-    } else {
-        None
+        return Some(FullExportBlockedReason::Call);
     }
+    if has_locking_clause(sql) {
+        return Some(FullExportBlockedReason::Locking);
+    }
+    None
 }
 
 /// Returns true if the statement is SELECT-like (returns rows).
@@ -699,14 +746,17 @@ pub fn needs_auto_limit(sql: &str) -> bool {
         "WITH" => {
             // Only auto-limit if the main verb after CTEs is SELECT
             let main_kw = find_with_main_keyword(&stripped);
-            if main_kw == "SELECT" {
-                !has_top_level_limit(&stripped)
-            } else {
-                false
-            }
+            main_kw == "SELECT" && !has_top_level_limit(&stripped)
         }
         _ => false,
     }
+}
+
+pub fn sql_with_auto_limit(sql: &str, auto_limit_applied: bool, limit: usize) -> String {
+    if !auto_limit_applied {
+        return sql.to_string();
+    }
+    inject_limit_into_select(sql, limit)
 }
 
 /// Injects `LIMIT {limit}` into a SELECT statement at the correct position.
@@ -880,17 +930,8 @@ pub async fn execute_query_impl(
     let query_id = Uuid::new_v4().to_string();
     // Exercise the same pure-function paths as the real impl so they are
     // covered without a live MySQL connection.
-    let stripped = strip_non_executable_comments(sql);
-    let keyword = get_first_keyword(&stripped);
-    let _is_result = if keyword == "WITH" {
-        let main_kw = find_with_main_keyword(&stripped);
-        is_select_like(&main_kw) || main_kw.is_empty()
-    } else {
-        is_select_like(&keyword)
-    };
-    if auto_limit_applied {
-        let _sql_to_execute = inject_limit_into_select(sql, row_limit);
-    }
+    let _is_result = returns_result_set(&strip_non_executable_comments(sql));
+    let _sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit);
 
     // Track a dummy thread ID to exercise the running_queries path
     let key = (connection_id.to_string(), tab_id.to_string());
@@ -1390,6 +1431,32 @@ pub fn compare_json_values(
 /// Extracts table references from the SQL, resolves their databases, and
 /// fetches primary key / column metadata for each table via `fetch_table_pk_impl`.
 #[cfg(not(coverage))]
+async fn query_session_current_database(pool: &sqlx::MySqlPool) -> Option<String> {
+    match sqlx::query("SELECT DATABASE()").fetch_one(pool).await {
+        Ok(row) => match row.try_get::<String, _>(0) {
+            Ok(db) => {
+                tracing::debug!(database = %db, "analyze_query_for_edit: resolved current database via SELECT DATABASE()");
+                Some(db)
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "analyze_query_for_edit: SELECT DATABASE() returned non-string (NULL?)"
+                );
+                None
+            }
+        },
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "analyze_query_for_edit: SELECT DATABASE() query failed"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(not(coverage))]
 pub async fn analyze_query_for_edit_impl(
     state: &AppState,
     connection_id: &str,
@@ -1416,33 +1483,9 @@ pub async fn analyze_query_for_edit_impl(
     let params = state.registry.get_connection_params(connection_id);
     let default_database = params.and_then(|params| params.default_database);
 
-    // Fallback: if no default database stored in registry, query the MySQL
-    // session's current database via SELECT DATABASE().
-    let default_database = if default_database.is_some() {
-        default_database
-    } else {
-        match sqlx::query("SELECT DATABASE()").fetch_one(&pool).await {
-            Ok(row) => match row.try_get::<String, _>(0) {
-                Ok(db) => {
-                    tracing::debug!(database = %db, "analyze_query_for_edit: resolved current database via SELECT DATABASE()");
-                    Some(db)
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        error = %error,
-                        "analyze_query_for_edit: SELECT DATABASE() returned non-string (NULL?)"
-                    );
-                    None
-                }
-            },
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "analyze_query_for_edit: SELECT DATABASE() query failed"
-                );
-                None
-            }
-        }
+    let default_database = match default_database {
+        Some(database) => Some(database),
+        None => query_session_current_database(&pool).await,
     };
 
     tracing::debug!(
@@ -1857,17 +1900,8 @@ pub async fn reexecute_single_result_impl(
     let ceiling = state.result_cache.row_ceiling();
     let row_limit = effective_row_limit(row_limit, ceiling);
     let auto_limit_applied = needs_auto_limit(sql);
-    let stripped = strip_non_executable_comments(sql);
-    let keyword = get_first_keyword(&stripped);
-    let _is_result = if keyword == "WITH" {
-        let main_kw = find_with_main_keyword(&stripped);
-        is_select_like(&main_kw) || main_kw.is_empty()
-    } else {
-        is_select_like(&keyword)
-    };
-    if auto_limit_applied {
-        let _sql_to_execute = inject_limit_into_select(sql, row_limit);
-    }
+    let _is_result = returns_result_set(&strip_non_executable_comments(sql));
+    let _sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit);
 
     let expected_query_id = capture_reexecute_target(state, connection_id, tab_id, result_index)?;
 
@@ -1993,18 +2027,9 @@ pub async fn execute_multi_query_impl(
 
         // Exercise statement classification
         let is_call = crate::mysql::multi_result::is_call_statement(sql);
-        let stripped = strip_non_executable_comments(sql);
-        let keyword = get_first_keyword(&stripped);
-        let _is_result_set = if keyword == "WITH" {
-            let main_kw = find_with_main_keyword(&stripped);
-            is_select_like(&main_kw) || main_kw.is_empty()
-        } else {
-            is_select_like(&keyword)
-        };
+        let _is_result_set = returns_result_set(&strip_non_executable_comments(sql));
         let auto_limit_applied = needs_auto_limit(sql);
-        if auto_limit_applied {
-            let _sql_to_execute = inject_limit_into_select(sql, row_limit);
-        }
+        let _sql_to_execute = sql_with_auto_limit(sql, auto_limit_applied, row_limit);
 
         let mut stored = StoredResult::empty(uuid::Uuid::new_v4().to_string());
         stored.auto_limit_applied = auto_limit_applied;

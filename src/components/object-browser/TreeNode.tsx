@@ -174,39 +174,116 @@ export interface TreeNodeProps {
   onRevealPinned?: (nodeId: string) => void
 }
 
-function getNodeIcon(
-  type: NodeType,
-  isExpanded: boolean
-): { icon: React.ReactNode; className: string } {
-  switch (type) {
-    case 'database':
-      return { icon: <Database size={16} weight="regular" />, className: styles.iconDatabase }
-    case 'table':
-      return { icon: <Table size={16} weight="regular" />, className: styles.iconTable }
-    case 'view':
-      return { icon: <Eye size={16} weight="regular" />, className: styles.iconView }
-    case 'procedure':
-      return { icon: <Gear size={16} weight="regular" />, className: styles.iconProcedure }
-    case 'function':
-      return { icon: <MathOperations size={16} weight="regular" />, className: styles.iconFunction }
-    case 'trigger':
-      return { icon: <Lightning size={16} weight="regular" />, className: styles.iconTrigger }
-    case 'event':
-      return { icon: <CalendarBlank size={16} weight="regular" />, className: styles.iconEvent }
-    case 'column':
-      return { icon: <Columns size={14} weight="regular" />, className: styles.iconColumn }
-    case 'category':
-      return {
-        icon: isExpanded ? (
-          <FolderOpen size={16} weight="fill" />
-        ) : (
-          <Folder size={16} weight="fill" />
-        ),
-        className: styles.iconCategory,
-      }
-    default:
-      return { icon: <Database size={16} weight="regular" />, className: '' }
+interface NodeIcon {
+  icon: React.ReactNode
+  className: string
+}
+
+const NODE_ICONS: Partial<Record<NodeType, NodeIcon>> = {
+  database: { icon: <Database size={16} weight="regular" />, className: styles.iconDatabase },
+  table: { icon: <Table size={16} weight="regular" />, className: styles.iconTable },
+  view: { icon: <Eye size={16} weight="regular" />, className: styles.iconView },
+  procedure: { icon: <Gear size={16} weight="regular" />, className: styles.iconProcedure },
+  function: { icon: <MathOperations size={16} weight="regular" />, className: styles.iconFunction },
+  trigger: { icon: <Lightning size={16} weight="regular" />, className: styles.iconTrigger },
+  event: { icon: <CalendarBlank size={16} weight="regular" />, className: styles.iconEvent },
+  column: { icon: <Columns size={14} weight="regular" />, className: styles.iconColumn },
+}
+
+const DEFAULT_NODE_ICON: NodeIcon = { icon: <Database size={16} weight="regular" />, className: '' }
+
+function getNodeIcon(type: NodeType, isExpanded: boolean): NodeIcon {
+  if (type !== 'category') return NODE_ICONS[type] ?? DEFAULT_NODE_ICON
+  return {
+    icon: isExpanded ? <FolderOpen size={16} weight="fill" /> : <Folder size={16} weight="fill" />,
+    className: styles.iconCategory,
   }
+}
+
+function isFilterExpanded(filterDrivesExpand: boolean, isSuppressedByScope: boolean): boolean {
+  return filterDrivesExpand && !isSuppressedByScope
+}
+
+function focusSiblingTreeItem(event: React.KeyboardEvent, delta: 1 | -1): void {
+  event.preventDefault()
+  const tree = event.currentTarget.closest('[role="tree"]')
+  if (!tree) return
+  const allItems = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
+  const currentIndex = allItems.indexOf(event.currentTarget as HTMLElement)
+  if (currentIndex < 0) return
+  allItems[currentIndex + delta]?.focus()
+}
+
+function selectableClassName(
+  baseClassName: string,
+  selectedClassName: string,
+  isSelected: boolean
+) {
+  return [baseClassName, isSelected ? selectedClassName : ''].filter(Boolean).join(' ')
+}
+
+interface ChildVisibility {
+  hasChildren: boolean
+  isExpanded: boolean
+  filterDrivesExpand: boolean
+  childCount: number
+}
+
+function shouldShowChildren(visibility: ChildVisibility): boolean {
+  if (!visibility.hasChildren || visibility.childCount === 0) return false
+  return visibility.isExpanded || visibility.filterDrivesExpand
+}
+
+function treeItemTabIndex(
+  isSelected: boolean,
+  isFirstVisible: boolean | undefined,
+  selectedNodeIsVisible: boolean
+): 0 | -1 {
+  if (isSelected) return 0
+  return isFirstVisible && !selectedNodeIsVisible ? 0 : -1
+}
+
+function databaseLabelTitle(node: TreeNodeData): string | undefined {
+  return node.type === 'database' ? node.label : undefined
+}
+
+interface TreeNodeChevronProps {
+  hasChildren: boolean
+  isLoading: boolean
+  showExpandedChrome: boolean
+  onClick: (event: React.MouseEvent) => void
+}
+
+function TreeNodeChevron({
+  hasChildren,
+  isLoading,
+  showExpandedChrome,
+  onClick,
+}: TreeNodeChevronProps) {
+  if (!hasChildren) return <span className={styles.chevronPlaceholder} />
+  if (isLoading) {
+    return (
+      <span className={styles.spinner} data-testid="tree-node-spinner">
+        <CircleNotch size={12} weight="regular" />
+      </span>
+    )
+  }
+  return (
+    <span
+      className={`${styles.chevron} ${showExpandedChrome ? styles.chevronExpanded : ''}`}
+      onClick={onClick}
+      role="presentation"
+      data-testid="tree-node-chevron"
+    >
+      <CaretRight size={12} weight="bold" />
+    </span>
+  )
+}
+
+function ColumnTypeAnnotation({ node }: { node: TreeNodeData }) {
+  const columnType = node.type === 'column' ? node.metadata?.columnType : undefined
+  if (!columnType) return null
+  return <span className={styles.columnType}>{columnType}</span>
 }
 
 export function TreeNode({
@@ -330,7 +407,7 @@ export function TreeNode({
   }
 
   const { hasChildren } = node
-  const showExpandedChrome = isExpanded || (filterDrivesExpand && !isSuppressedByScope)
+  const showExpandedChrome = isExpanded || isFilterExpanded(filterDrivesExpand, isSuppressedByScope)
   const { icon, className: iconClassName } = getNodeIcon(node.type, showExpandedChrome)
 
   const activateNode = () => {
@@ -345,8 +422,18 @@ export function TreeNode({
   const collapseOrClearFilter = () => {
     if (!isExpanded && filterDrivesExpand) {
       onClearFilter?.()
-    } else {
-      toggleExpand(nodeId, connectionId)
+      return
+    }
+    toggleExpand(nodeId, connectionId)
+  }
+
+  const activateOrToggleNode = () => {
+    if (isKeyboardActivatableNodeType(node.type)) {
+      activateNode()
+      return
+    }
+    if (hasChildren) {
+      collapseOrClearFilter()
     }
   }
 
@@ -391,69 +478,41 @@ export function TreeNode({
     }
   }
 
+  const keyHandlers: Record<string, (event: React.KeyboardEvent) => void> = {
+    Enter: (event) => {
+      selectCurrentNode()
+      activateOrToggleNode()
+      event.preventDefault()
+    },
+    ArrowRight: (event) => {
+      if (!hasChildren || isExpanded || filterDrivesExpand) return
+      toggleExpand(nodeId, connectionId)
+      event.preventDefault()
+    },
+    ArrowLeft: (event) => {
+      if (!hasChildren) return
+      if (!isExpanded && !filterDrivesExpand) return
+      collapseOrClearFilter()
+      event.preventDefault()
+    },
+    ArrowDown: (event) => focusSiblingTreeItem(event, 1),
+    ArrowUp: (event) => focusSiblingTreeItem(event, -1),
+  }
+
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    switch (event.key) {
-      case 'Enter':
-        selectCurrentNode()
-        if (isKeyboardActivatableNodeType(node.type)) {
-          activateNode()
-        } else if (hasChildren) {
-          collapseOrClearFilter()
-        }
-        event.preventDefault()
-        break
-      case 'ArrowRight':
-        if (hasChildren && !isExpanded && !filterDrivesExpand) {
-          toggleExpand(nodeId, connectionId)
-          event.preventDefault()
-        }
-        break
-      case 'ArrowLeft':
-        if (hasChildren && (isExpanded || filterDrivesExpand)) {
-          collapseOrClearFilter()
-          event.preventDefault()
-        }
-        break
-      case 'ArrowDown': {
-        event.preventDefault()
-        const tree = event.currentTarget.closest('[role="tree"]')
-        if (!tree) break
-        const allItems = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
-        const currentIndex = allItems.indexOf(event.currentTarget as HTMLElement)
-        if (currentIndex >= 0 && currentIndex < allItems.length - 1) {
-          allItems[currentIndex + 1].focus()
-        }
-        break
-      }
-      case 'ArrowUp': {
-        event.preventDefault()
-        const tree = event.currentTarget.closest('[role="tree"]')
-        if (!tree) break
-        const allItems = Array.from(tree.querySelectorAll<HTMLElement>('[role="treeitem"]'))
-        const currentIndex = allItems.indexOf(event.currentTarget as HTMLElement)
-        if (currentIndex > 0) {
-          allItems[currentIndex - 1].focus()
-        }
-        break
-      }
-    }
+    keyHandlers[event.key]?.(event)
   }
 
   const indentPx = level * INDENT_PER_LEVEL_PX
 
-  const rowClassName = [styles.nodeRow, isSelected ? styles.nodeRowSelected : '']
-    .filter(Boolean)
-    .join(' ')
-
-  const labelClassName = [styles.label, isSelected ? styles.labelSelected : '']
-    .filter(Boolean)
-    .join(' ')
-
-  // Determine if we should show expanded children (either normally expanded or forced by filter)
-  const showChildren =
-    hasChildren &&
-    (isExpanded || (filterDrivesExpand && childIds.length > 0)) &&
-    childIds.length > 0
+  const rowClassName = selectableClassName(styles.nodeRow, styles.nodeRowSelected, isSelected)
+  const labelClassName = selectableClassName(styles.label, styles.labelSelected, isSelected)
+  const showChildren = shouldShowChildren({
+    hasChildren: hasChildren,
+    isExpanded: isExpanded,
+    filterDrivesExpand: filterDrivesExpand,
+    childCount: childIds.length,
+  })
 
   const row = (
     <div
@@ -463,7 +522,7 @@ export function TreeNode({
       aria-expanded={hasChildren ? showChildren : undefined}
       aria-level={level + 1}
       aria-selected={isSelected}
-      tabIndex={isSelected || (isFirstVisible && !selectedNodeIsVisible) ? 0 : -1}
+      tabIndex={treeItemTabIndex(isSelected, isFirstVisible, selectedNodeIsVisible)}
       style={{ paddingLeft: `${indentPx}px` }}
       onClick={handleRowClick}
       onContextMenu={handleContextMenu}
@@ -471,38 +530,22 @@ export function TreeNode({
       onKeyDown={handleKeyDown}
       data-testid={`tree-node-${nodeId}`}
     >
-      {/* Chevron / spinner / placeholder */}
-      {hasChildren ? (
-        isLoading ? (
-          <span className={styles.spinner} data-testid="tree-node-spinner">
-            <CircleNotch size={12} weight="regular" />
-          </span>
-        ) : (
-          <span
-            className={`${styles.chevron} ${showExpandedChrome ? styles.chevronExpanded : ''}`}
-            onClick={handleChevronClick}
-            role="presentation"
-            data-testid="tree-node-chevron"
-          >
-            <CaretRight size={12} weight="bold" />
-          </span>
-        )
-      ) : (
-        <span className={styles.chevronPlaceholder} />
-      )}
+      <TreeNodeChevron
+        hasChildren={hasChildren}
+        isLoading={isLoading}
+        showExpandedChrome={showExpandedChrome}
+        onClick={handleChevronClick}
+      />
 
       {/* Icon */}
       <span className={`${styles.icon} ${iconClassName}`}>{icon}</span>
 
       {/* Label */}
-      <span className={labelClassName} title={node.type === 'database' ? node.label : undefined}>
+      <span className={labelClassName} title={databaseLabelTitle(node)}>
         {node.label}
       </span>
 
-      {/* Column type annotation */}
-      {node.type === 'column' && node.metadata?.columnType && (
-        <span className={styles.columnType}>{node.metadata.columnType}</span>
-      )}
+      <ColumnTypeAnnotation node={node} />
     </div>
   )
 

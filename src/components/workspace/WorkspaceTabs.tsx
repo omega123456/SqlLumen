@@ -25,7 +25,9 @@ import {
   getWorkspaceStackKeyForTab,
   groupWorkspaceTabsByStack,
   isPinnedWorkspaceTab,
+  type WorkspaceTabStackGroup,
   type WorkspaceTabStackKey,
+  type WorkspaceTabStackResolutionOptions,
 } from '../../lib/workspace-tab-stacks'
 import { WorkspaceGroupRail } from './WorkspaceGroupRail'
 import styles from './WorkspaceTabs.module.css'
@@ -52,6 +54,40 @@ export interface WorkspaceTabsProps {
   onRequestReorderTab?: (tabId: string, insertIndex: number) => void
   /** The workspace body, laid out under the strip and beside the rail. */
   children?: ReactNode
+}
+
+function pinnedTabIdOf(activeTab: WorkspaceTab | null): string | null {
+  if (!activeTab || !isPinnedWorkspaceTab(activeTab)) return null
+  return activeTab.id
+}
+
+function unpinnedStackKeyOf(
+  activeTab: WorkspaceTab | null,
+  options: WorkspaceTabStackResolutionOptions
+): WorkspaceTabStackKey | null {
+  if (!activeTab || isPinnedWorkspaceTab(activeTab)) return null
+  return getWorkspaceStackKeyForTab(activeTab, options)
+}
+
+interface ShownStackInputs {
+  activeStackKey: WorkspaceTabStackKey | null
+  lastStackKey: WorkspaceTabStackKey | null
+  stackGroups: WorkspaceTabStackGroup[]
+}
+
+function resolveShownStackKey(inputs: ShownStackInputs): WorkspaceTabStackKey | null {
+  const { activeStackKey, lastStackKey, stackGroups } = inputs
+  if (activeStackKey) return activeStackKey
+  const isLastStackStillShown = stackGroups.some((group) => group.key === lastStackKey)
+  if (isLastStackStillShown && lastStackKey) return lastStackKey
+  return stackGroups[0]?.key ?? null
+}
+
+function stackTabsFor(
+  stackGroups: WorkspaceTabStackGroup[],
+  stackKey: WorkspaceTabStackKey | null
+): WorkspaceTab[] {
+  return stackGroups.find((group) => group.key === stackKey)?.tabs ?? EMPTY_TABS
 }
 
 export function WorkspaceTabs({
@@ -89,25 +125,21 @@ export function WorkspaceTabs({
     [hideTableDataTabs, visibleNonPinnedTabs]
   )
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null
-  const activePinnedTabId = activeTab && isPinnedWorkspaceTab(activeTab) ? activeTab.id : null
-  const activeStackKey =
-    activeTab && !activePinnedTabId
-      ? getWorkspaceStackKeyForTab(activeTab, {
-          hideScopedTableDataTabs: hideTableDataTabs,
-        })
-      : null
+  const activePinnedTabId = pinnedTabIdOf(activeTab)
+  const activeStackKey = unpinnedStackKeyOf(activeTab, {
+    hideScopedTableDataTabs: hideTableDataTabs,
+  })
   // While a pinned tab is selected, remember the last group so the rail can hand focus back to it.
   const [lastStackKey, setLastStackKey] = useState(activeStackKey)
   if (activeStackKey && activeStackKey !== lastStackKey) {
     setLastStackKey(activeStackKey)
   }
-  const shownStackKey =
-    activeStackKey ??
-    (stackGroups.some((group) => group.key === lastStackKey) ? lastStackKey : null) ??
-    stackGroups[0]?.key ??
-    null
-  const shownStackTabs =
-    stackGroups.find((group) => group.key === shownStackKey)?.tabs ?? EMPTY_TABS
+  const shownStackKey = resolveShownStackKey({
+    activeStackKey: activeStackKey,
+    lastStackKey: lastStackKey,
+    stackGroups: stackGroups,
+  })
+  const shownStackTabs = stackTabsFor(stackGroups, shownStackKey)
 
   const allMovableTabIds = useMemo(
     () =>
@@ -160,7 +192,7 @@ export function WorkspaceTabs({
   }
 
   const focusStackMembers = (stackKey: WorkspaceTabStackKey) => {
-    const targetStackTabs = stackGroups.find((group) => group.key === stackKey)?.tabs ?? EMPTY_TABS
+    const targetStackTabs = stackTabsFor(stackGroups, stackKey)
     const targetTabId =
       getWorkspaceStackActivationTarget(
         stackKey,

@@ -39,6 +39,20 @@ export function openObjectDefaultTab(
   })
 }
 
+async function ensureDatabaseNodeLoaded(connectionId: string, database: string): Promise<void> {
+  const databaseNodeId = makeNodeId('database', database, database)
+  const getDatabaseNode = () =>
+    useSchemaStore.getState().connectionStates[connectionId]?.nodes[databaseNodeId]
+
+  if (!getDatabaseNode()) {
+    await useSchemaStore.getState().loadDatabases(connectionId)
+  }
+
+  if (!getDatabaseNode()?.isLoaded) {
+    await useSchemaStore.getState().loadChildren(connectionId, databaseNodeId)
+  }
+}
+
 /**
  * Load, expand and select an object's node in the object browser tree.
  * Resolves to true when the node exists and was selected.
@@ -49,20 +63,12 @@ export async function revealObjectInTree(
   objectType: ObjectType,
   name: string
 ): Promise<boolean> {
-  const schemaStore = useSchemaStore.getState()
-  const databaseNodeId = makeNodeId('database', database, database)
   const categoryNodeId = makeNodeId('category', database, objectType)
   const objectNodeId = makeNodeId(objectType, database, name)
 
   const getConnectionState = () => useSchemaStore.getState().connectionStates[connectionId]
 
-  if (!getConnectionState()?.nodes[databaseNodeId]) {
-    await schemaStore.loadDatabases(connectionId)
-  }
-
-  if (!getConnectionState()?.nodes[databaseNodeId]?.isLoaded) {
-    await useSchemaStore.getState().loadChildren(connectionId, databaseNodeId)
-  }
+  await ensureDatabaseNodeLoaded(connectionId, database)
 
   const categoryNode = getConnectionState()?.nodes[categoryNodeId]
   if (!categoryNode) {

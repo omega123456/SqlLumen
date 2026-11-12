@@ -12,14 +12,29 @@ import TsWorkerUrl from 'monaco-editor/esm/vs/language/typescript/ts.worker?work
 // Custom single-step MySQL worker — see src/workers/mysql-language.worker.ts
 import MySQLLanguageWorker from '../workers/mysql-language.worker?worker'
 
+type WorkerConstructor = new () => Worker
+
+const WORKER_BY_LANGUAGE_LABEL: Partial<Record<string, WorkerConstructor>> = {
+  json: JsonWorkerUrl,
+  css: CssWorkerUrl,
+  scss: CssWorkerUrl,
+  less: CssWorkerUrl,
+  html: HtmlWorkerUrl,
+  handlebars: HtmlWorkerUrl,
+  razor: HtmlWorkerUrl,
+  typescript: TsWorkerUrl,
+  javascript: TsWorkerUrl,
+  mysql: MySQLLanguageWorker,
+}
+
+function workerForLanguageLabel(label: string): WorkerConstructor {
+  return WORKER_BY_LANGUAGE_LABEL[label] ?? EditorWorkerUrl
+}
+
 // Monaco global — self.MonacoEnvironment configures worker instantiation
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
-    if (label === 'json') return new JsonWorkerUrl()
-    if (label === 'css' || label === 'scss' || label === 'less') return new CssWorkerUrl()
-    if (label === 'html' || label === 'handlebars' || label === 'razor') return new HtmlWorkerUrl()
-    if (label === 'typescript' || label === 'javascript') return new TsWorkerUrl()
-    if (label === 'mysql') return new MySQLLanguageWorker()
-    return new EditorWorkerUrl()
+    const WorkerForLabel = workerForLanguageLabel(label)
+    return new WorkerForLabel()
   },
 }

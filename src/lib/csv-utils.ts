@@ -1,16 +1,15 @@
 function csvValue(value: unknown): string {
   if (value == null) return ''
 
-  const text =
-    typeof value === 'boolean'
-      ? value
-        ? '1'
-        : '0'
-      : typeof value === 'object'
-        ? (JSON.stringify(value) ?? '')
-        : String(value)
+  const text = csvCellText(value)
 
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function csvCellText(value: unknown): string {
+  if (typeof value === 'boolean') return value ? '1' : '0'
+  if (typeof value === 'object') return JSON.stringify(value) ?? ''
+  return String(value)
 }
 
 export function serializeCsv(

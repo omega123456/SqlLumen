@@ -17,9 +17,14 @@
  * then the window-fetch or view-change failure band with Retry (wireframe 2).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Play, ClockCountdown } from '@phosphor-icons/react'
-import { useQueryStore, getActiveResult } from '../../stores/query-store'
+import {
+  useQueryStore,
+  getActiveResult,
+  hasUnsavedModifications,
+  type SingleResultState,
+} from '../../stores/query-store'
 import type { GridRowActions } from '../shared/glide/CanvasBaseGridView'
 import { formatCount, formatRowRange } from '../../lib/format-row-count'
 import { readViewRange, type CachedRow } from '../../lib/result-window-cache'
@@ -40,9 +45,10 @@ import { InfoBar } from '../common/InfoBar'
 import ExportDialog from '../dialogs/ExportDialog'
 import { FilterDialog } from '../dialogs/FilterDialog'
 import type {
-  ColumnMeta,
   FilterCondition,
   ForeignKeyColumnInfo,
+  PrimaryKeyInfo,
+  RowEditState,
   TableDataColumnMeta,
 } from '../../types/schema'
 import { columnIndexFromKey } from '../../lib/col-key-utils'
@@ -59,13 +65,7 @@ interface ResultPanelProps {
 }
 
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
-const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 const EMPTY_RESULTS: readonly unknown[] = []
-const EMPTY_COLUMNS: ColumnMeta[] = []
-const EMPTY_FILTER_MODEL: FilterCondition[] = []
-const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
-const EMPTY_BINDINGS = new Map<number, string>()
-const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
 
 /** Truncation band message per full-export-blocked reason (wireframes 1 and 1b). */
 const TRUNCATION_MESSAGES: Record<FullExportBlockedReason | 'none', string> = {
@@ -83,6 +83,272 @@ function cachedRowFromRowData(
   columnCount: number
 ): CachedRow | null {
   return typeof rowData.__baseIdx === 'number' ? toCachedRow(rowData, columnCount) : null
+}
+
+type DisplayStatus = SingleResultState['resultStatus'] | 'running' | 'restoring' | 'idle'
+
+interface DisplayStatusInputs {
+  tabStatus: string
+  rowResidencyStatus: string
+  resultStatus: SingleResultState['resultStatus']
+}
+
+function resolveDisplayStatus(inputs: DisplayStatusInputs): DisplayStatus {
+  if (inputs.tabStatus === 'running') return 'running'
+  if (inputs.rowResidencyStatus === 'restoring') return 'restoring'
+  if (inputs.tabStatus === 'idle') return 'idle'
+  return inputs.resultStatus
+}
+
+function hasPendingRowEdit(editState: RowEditState | null): boolean {
+  if (editState === null) return false
+  return editState.isNewRow || editState.modifiedColumns.size > 0
+}
+
+function isSelectedRowInView(selectedRowIndex: number | null, viewRowCount: number): boolean {
+  if (selectedRowIndex === null) return false
+  return selectedRowIndex >= 0 && selectedRowIndex < viewRowCount
+}
+
+function hasInsertEligibleNonPrimaryColumns(
+  editTableColumns: TableDataColumnMeta[],
+  editBoundColumnIndexMap: Map<string, number>
+): boolean {
+  return editTableColumns.some(
+    (column) => !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
+  )
+}
+
+interface CloneAvailability {
+  result: SingleResultState
+  displayStatus: DisplayStatus
+  editTableColumns: TableDataColumnMeta[]
+  primaryKey: PrimaryKeyInfo | null
+}
+
+function isCloneBlockedByEditing(result: SingleResultState): boolean {
+  const selectedRowIsDraft =
+    result.editState?.isNewRow === true && result.editingRowIndex === result.selectedRowIndex
+  return hasPendingRowEdit(result.editState) || selectedRowIsDraft
+}
+
+function isCloneDisabled(availability: CloneAvailability): boolean {
+  const { result, primaryKey } = availability
+  if (result.editMode === null) return true
+  if (availability.displayStatus !== 'success') return true
+  if (result.isAnalyzingQuery || result.viewMode === 'text') return true
+  if (isCloneBlockedByEditing(result)) return true
+  if (!isSelectedRowInView(result.selectedRowIndex, result.viewRowCount)) return true
+  if (!primaryKey || primaryKey.isUniqueKeyFallback) return true
+  return !hasInsertEligibleNonPrimaryColumns(
+    availability.editTableColumns,
+    result.editBoundColumnIndexMap
+  )
+}
+
+function gridTabPanelClassNameFor(viewMode: string, columnCount: number): string {
+  const isGridWithColumns = viewMode === 'grid' && columnCount > 0
+  return isGridWithColumns ? `${styles.tabPanel} ${styles.gridTabPanel}` : styles.tabPanel
+}
+
+interface TabPanelAttributes {
+  role?: string
+  id?: string
+  'aria-labelledby'?: string
+}
+
+function resultTabPanelAttributes(
+  hideSubTabs: boolean,
+  panelId: string,
+  labelledBy: string | undefined
+): TabPanelAttributes {
+  if (hideSubTabs) return {}
+  return { role: 'tabpanel', id: panelId, 'aria-labelledby': labelledBy }
+}
+
+function dmlSuccessMessage(affectedRows: number): string {
+  if (affectedRows <= 0) return 'Query executed successfully'
+  return `${affectedRows} ${affectedRows === 1 ? 'row' : 'rows'} affected`
+}
+
+function rowIndexFromRowData(rowData: Record<string, unknown>): number {
+  const rowIndexRaw = rowData.__rowIdx
+  return typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
+}
+
+interface LookupRowRequest {
+  tabId: string
+  resultIndex: number
+  rowIndex: number
+}
+
+async function resolveLookupRow(
+  rowData: Record<string, unknown>,
+  columnCount: number,
+  request: LookupRowRequest
+): Promise<CachedRow | undefined> {
+  const fromGrid = cachedRowFromRowData(rowData, columnCount)
+  if (fromGrid) return fromGrid
+  const { tabId, resultIndex, rowIndex } = request
+  try {
+    const fetched = await readViewRange(tabId, resultIndex, [rowIndex, rowIndex + 1])
+    return fetched[0]
+  } catch (error) {
+    logFrontend(
+      'warn',
+      `[result-panel] FK lookup could not load row ${rowIndex + 1}: ${toErrorMessage(error)}`
+    )
+    return undefined
+  }
+}
+
+function readEditTable(result: SingleResultState) {
+  const editTable = result.editMode ? result.editTableMetadata[result.editMode] : undefined
+  return {
+    editTable: editTable,
+    primaryKey: editTable?.primaryKey ?? null,
+    editTableColumns: editTable?.columns ?? EMPTY_TABLE_COLUMNS,
+  }
+}
+
+function hasVisibleSubTabs(hideSubTabs: boolean, resultCount: number): boolean {
+  return !hideSubTabs && resultCount > 1
+}
+
+function subTabLabelledBy(
+  showsSubTabs: boolean,
+  tabId: string,
+  resultIndex: number
+): string | undefined {
+  return showsSubTabs ? `result-tab-${tabId}-${resultIndex}` : undefined
+}
+
+function shouldShowExpiredState(isExpired: boolean, displayStatus: DisplayStatus): boolean {
+  return isExpired && displayStatus !== 'running'
+}
+
+interface ForeignKeyLookupContext {
+  columnKey: string
+  sourceColumn: string
+  currentValue: unknown
+  foreignKey: ForeignKeyColumnInfo
+  rowData: Record<string, unknown>
+}
+
+interface ForeignKeyLookupTargetInputs {
+  isOpen: boolean
+  context: ForeignKeyLookupContext | null
+  editMode: string | null
+  editTable: ReturnType<typeof readEditTable>['editTable']
+}
+
+function resolveForeignKeyLookupTarget(inputs: ForeignKeyLookupTargetInputs) {
+  const { context, editMode, editTable } = inputs
+  if (!inputs.isOpen || !context || !editMode) return null
+  return {
+    context: context,
+    database: context.foreignKey.referencedDatabase || editTable?.database || '',
+    sourceTable: editTable?.table ?? editMode,
+  }
+}
+
+function EmptyResultState({ isRunning }: { isRunning: boolean }) {
+  if (isRunning) {
+    return (
+      <div className={styles.emptyState}>
+        <div className={styles.spinner} />
+        <span>Executing query...</span>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.emptyState}>
+      <Play size={32} weight="duotone" className={styles.emptyIcon} />
+      <span>Run a query to see results</span>
+    </div>
+  )
+}
+
+function ResultStatusOverlay({ testId, label }: { testId: string; label: string }) {
+  return (
+    <div
+      className={styles.restoringOverlay}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      data-testid={testId}
+    >
+      <div className={styles.spinner} aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function ResultActivityOverlay({
+  displayStatus,
+  isSorting,
+}: {
+  displayStatus: DisplayStatus
+  isSorting: boolean
+}) {
+  if (displayStatus === 'restoring') {
+    return (
+      <ResultStatusOverlay
+        testId="query-result-restore-overlay"
+        label="Restoring cached results…"
+      />
+    )
+  }
+  if (!isSorting) return null
+  return <ResultStatusOverlay testId="query-result-sort-overlay" label="Sorting…" />
+}
+
+function ExpiredResultState({
+  isRestoring,
+  onRetry,
+}: {
+  isRestoring: boolean
+  onRetry: () => void
+}) {
+  return (
+    <div className={styles.emptyState} style={{ height: '100%' }}>
+      <ClockCountdown
+        weight="duotone"
+        size={32}
+        aria-hidden="true"
+        style={{ opacity: 0.35, color: 'var(--on-surface-variant)' }}
+      />
+      <div style={{ maxWidth: 320, textAlign: 'center' }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: 'var(--on-surface)',
+          }}
+        >
+          Results expired
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.6,
+            color: 'var(--on-surface-variant)',
+            marginTop: 4,
+          }}
+        >
+          Cached results are no longer available.
+        </div>
+      </div>
+      <Button
+        onClick={onRetry}
+        disabled={isRestoring}
+        style={{ marginTop: 8 }}
+        data-testid="retry-expired-button"
+      >
+        Re-run query
+      </Button>
+    </div>
+  )
 }
 
 export function ResultPanel({
@@ -119,53 +385,43 @@ export function ResultPanel({
   const beginRowAction = useQueryStore((state) => state.beginRowAction)
   const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
 
-  // Read from active result
-  const resultStatus = activeResult.resultStatus
-  const columns = (activeResult.columns ?? EMPTY_COLUMNS) as ColumnMeta[]
-  const viewRowCount = activeResult.viewRowCount ?? 0
-  const viewVersion = activeResult.viewVersion ?? 0
-  const queryId = activeResult.queryId ?? null
-  const draftRow = activeResult.draftRow ?? null
-  const truncated = activeResult.truncated ?? false
-  const rowCeiling = activeResult.rowCeiling ?? 0
-  const fullExportBlockedReason = activeResult.fullExportBlockedReason ?? null
-  const failedWindowRange = activeResult.failedWindowRange ?? null
-  const viewError = activeResult.viewError ?? null
-  const affectedRows = activeResult.affectedRows ?? 0
-  const viewMode = activeResult.viewMode ?? 'grid'
-  const sortColumn = activeResult.sortColumn ?? null
-  const sortDirection = activeResult.sortDirection ?? null
-  const selectedRowIndex = activeResult.selectedRowIndex ?? null
-  const exportDialogOpen = activeResult.exportDialogOpen ?? false
-  const isExpired = activeResult.isExpired ?? false
-  const rowResidencyStatus = activeResult.rowResidency?.status ?? 'resident'
-  const isSorting = activeResult.isSorting ?? false
-
-  // Edit mode state from active result
-  const editMode = activeResult.editMode ?? null
-  const editableColumnMap = activeResult.editableColumnMap ?? EMPTY_EDITABLE_MAP
-  const editColumnBindings = activeResult.editColumnBindings ?? EMPTY_BINDINGS
-  const editBoundColumnIndexMap =
-    activeResult.editBoundColumnIndexMap ?? EMPTY_BOUND_COLUMN_INDEX_MAP
-  const editState = activeResult.editState ?? null
-  const editingRowIndex = activeResult.editingRowIndex ?? null
-  const editingBaseIndex = activeResult.editingBaseIndex ?? null
-  const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
-  const saveError = activeResult.saveError ?? null
-  const isAnalyzingQuery = activeResult.isAnalyzingQuery ?? false
-  const primaryKey = editMode
-    ? (activeResult.editTableMetadata?.[editMode]?.primaryKey ?? null)
-    : null
-  const editTableColumns =
-    editMode && activeResult.editTableMetadata?.[editMode]?.columns
-      ? activeResult.editTableMetadata[editMode].columns
-      : EMPTY_TABLE_COLUMNS
+  const {
+    resultStatus,
+    columns,
+    viewRowCount,
+    viewVersion,
+    queryId,
+    draftRow,
+    truncated,
+    rowCeiling,
+    fullExportBlockedReason,
+    failedWindowRange,
+    viewError,
+    affectedRows,
+    viewMode,
+    sortColumn,
+    sortDirection,
+    selectedRowIndex,
+    exportDialogOpen,
+    isExpired,
+    isSorting,
+    editMode,
+    editableColumnMap,
+    editColumnBindings,
+    editState,
+    editingRowIndex,
+    editingBaseIndex,
+    editForeignKeys,
+    saveError,
+    filterModel,
+    selectedCell,
+  } = activeResult
+  const rowResidencyStatus = activeResult.rowResidency.status
+  const { editTable, primaryKey, editTableColumns } = readEditTable(activeResult)
 
   // Filter state
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
-  const filterModel: FilterCondition[] = activeResult.filterModel ?? EMPTY_FILTER_MODEL
   const filterColumns = useMemo(() => columns.map((column) => column.name), [columns])
-  const selectedCell = activeResult?.selectedCell ?? null
 
   const showSuccess = useToastStore((state) => state.showSuccess)
 
@@ -279,7 +535,7 @@ export function ResultPanel({
       setIsFilterDialogOpen(false)
       applyQueryFilters(tabId, activeResultIndex, conditions)
     },
-    [tabId, activeResultIndex, applyQueryFilters]
+    [tabId, activeResultIndex, applyQueryFilters, setIsFilterDialogOpen]
   )
 
   const handleClearFilter = useCallback(() => {
@@ -288,16 +544,11 @@ export function ResultPanel({
   }, [tabId, activeResultIndex, applyQueryFilters, showSuccess])
 
   // Determine if editing is active (used to disable filter buttons)
-  const isEditingActive = activeResult?.editState !== null && activeResult?.editState !== undefined
+  const isEditingActive = editState !== null
 
   const [foreignKeyLookupOpen, setForeignKeyLookupOpen] = useState(false)
-  const [foreignKeyLookupContext, setForeignKeyLookupContext] = useState<{
-    columnKey: string
-    sourceColumn: string
-    currentValue: unknown
-    foreignKey: ForeignKeyColumnInfo
-    rowData: Record<string, unknown>
-  } | null>(null)
+  const [foreignKeyLookupContext, setForeignKeyLookupContext] =
+    useState<ForeignKeyLookupContext | null>(null)
 
   useEffect(() => {
     if (isActive) return
@@ -327,49 +578,37 @@ export function ResultPanel({
     [editColumnBindings, resultForeignKeyLookup]
   )
 
+  const leaveCurrentEditingRow = useCallback(
+    async (currentResult: SingleResultState): Promise<boolean> => {
+      if (hasUnsavedModifications(currentResult)) return saveCurrentRow(tabId)
+      discardCurrentRow(tabId)
+      return true
+    },
+    [discardCurrentRow, saveCurrentRow, tabId]
+  )
+
   const handleForeignKeyLookup = useCallback(
     async (args: FkLookupArgs) => {
       const resolved = resolveResultForeignKey(args.columnKey)
       if (!resolved || !editMode) return
 
       const { sourceColumnName, foreignKey } = resolved
+      const rowIndex = rowIndexFromRowData(args.rowData)
+      const currentActiveResult = getActiveResult(useQueryStore.getState().tabs[tabId])
+      const currentEditingRow = currentActiveResult.editingRowIndex
 
-      const rowIndexRaw = args.rowData.__rowIdx
-      const rowIndex = typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
-
-      const currentTab = useQueryStore.getState().tabs[tabId]
-      const currentActiveResult = getActiveResult(currentTab)
-      const currentEditingRow = currentActiveResult.editingRowIndex ?? null
-      const currentEditState = currentActiveResult.editState ?? null
-
-      // The lookup row may not be in the page cache (e.g. evicted): use the
-      // row the grid handed over, or fetch it by view position.
-      const resolveRow = async (): Promise<CachedRow | undefined> => {
-        const fromGrid = cachedRowFromRowData(args.rowData, currentActiveResult.columns.length)
-        if (fromGrid) return fromGrid
-        try {
-          const fetched = await readViewRange(tabId, activeResultIndex, [rowIndex, rowIndex + 1])
-          return fetched[0]
-        } catch (error) {
-          logFrontend(
-            'warn',
-            `[result-panel] FK lookup could not load row ${rowIndex + 1}: ${toErrorMessage(error)}`
-          )
-          return undefined
-        }
+      const isEditingOtherRow = currentEditingRow !== null && currentEditingRow !== rowIndex
+      if (isEditingOtherRow) {
+        const canSwitchRows = await leaveCurrentEditingRow(currentActiveResult)
+        if (!canSwitchRows) return
       }
-
-      if (currentEditingRow !== null && currentEditingRow !== rowIndex) {
-        if (currentEditState && currentEditState.modifiedColumns.size > 0) {
-          const saveSucceeded = await saveCurrentRow(tabId)
-          if (!saveSucceeded) return
-        } else {
-          discardCurrentRow(tabId)
-        }
-
-        startEditingRow(tabId, rowIndex, await resolveRow())
-      } else if (currentEditingRow === null) {
-        startEditingRow(tabId, rowIndex, await resolveRow())
+      if (currentEditingRow !== rowIndex) {
+        const lookupRow = await resolveLookupRow(args.rowData, currentActiveResult.columns.length, {
+          tabId: tabId,
+          resultIndex: activeResultIndex,
+          rowIndex: rowIndex,
+        })
+        startEditingRow(tabId, rowIndex, lookupRow)
       }
 
       handleRowSelected(rowIndex)
@@ -388,10 +627,10 @@ export function ResultPanel({
       editMode,
       tabId,
       activeResultIndex,
-      saveCurrentRow,
-      discardCurrentRow,
+      leaveCurrentEditingRow,
       handleRowSelected,
       startEditingRow,
+      setForeignKeyLookupOpen,
     ]
   )
 
@@ -399,8 +638,7 @@ export function ResultPanel({
     (selectedValue: unknown) => {
       if (!foreignKeyLookupContext) return
 
-      const rowIndexRaw = foreignKeyLookupContext.rowData.__rowIdx
-      const rowIndex = typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
+      const rowIndex = rowIndexFromRowData(foreignKeyLookupContext.rowData)
       const resultColumnIndex = columnIndexFromKey(foreignKeyLookupContext.columnKey)
       if (resultColumnIndex < 0) {
         setForeignKeyLookupOpen(false)
@@ -441,48 +679,31 @@ export function ResultPanel({
       handleRowSelected,
       startEditingRow,
       syncCellValue,
+      setForeignKeyLookupOpen,
     ]
   )
 
-  // Determine which status to show for the result area
-  // Tab-level 'running' takes precedence; otherwise use active result's status
-  const displayStatus =
-    tabStatus === 'running'
-      ? 'running'
-      : rowResidencyStatus === 'restoring'
-        ? 'restoring'
-        : tabStatus === 'idle'
-          ? 'idle'
-          : resultStatus
+  const displayStatus = resolveDisplayStatus({
+    tabStatus: tabStatus,
+    rowResidencyStatus: rowResidencyStatus,
+    resultStatus: resultStatus,
+  })
   const cloneVisible = editMode !== null
-  const selectedRowExists =
-    selectedRowIndex !== null && selectedRowIndex >= 0 && selectedRowIndex < viewRowCount
-  const selectedRowIsDraft = !!editState?.isNewRow && editingRowIndex === selectedRowIndex
-  const hasBlockingPendingEdit =
-    editState !== null && (editState.isNewRow || editState.modifiedColumns.size > 0)
-  const hasInsertEligibleNonPrimaryCloneColumns =
-    editMode !== null &&
-    editTableColumns.some(
-      (column) => !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
-    )
-  const cloneDisabled =
-    !cloneVisible ||
-    displayStatus !== 'success' ||
-    isAnalyzingQuery ||
-    viewMode === 'text' ||
-    hasBlockingPendingEdit ||
-    !selectedRowExists ||
-    selectedRowIsDraft ||
-    !primaryKey ||
-    primaryKey.isUniqueKeyFallback ||
-    !hasInsertEligibleNonPrimaryCloneColumns
-  const gridTabPanelClassName =
-    viewMode === 'grid' && columns.length > 0
-      ? `${styles.tabPanel} ${styles.gridTabPanel}`
-      : styles.tabPanel
+  const cloneDisabled = isCloneDisabled({
+    result: activeResult,
+    displayStatus: displayStatus,
+    editTableColumns: editTableColumns,
+    primaryKey: primaryKey,
+  })
+  const gridTabPanelClassName = gridTabPanelClassNameFor(viewMode, columns.length)
   const resultPanelId = `result-tabpanel-${tabId}-${activeResultIndex}`
-  const resultPanelLabelledBy =
-    !hideSubTabs && results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
+  const showsSubTabs = hasVisibleSubTabs(hideSubTabs, results.length)
+  const resultPanelLabelledBy = subTabLabelledBy(showsSubTabs, tabId, activeResultIndex)
+  const tabPanelAttributes = resultTabPanelAttributes(
+    hideSubTabs,
+    resultPanelId,
+    resultPanelLabelledBy
+  )
 
   const isFiltered = filterModel.length > 0
   const isTabRunning = tabStatus === 'running'
@@ -560,13 +781,7 @@ export function ResultPanel({
   }
 
   const renderResultBody = (className: string) => (
-    <div
-      role={hideSubTabs ? undefined : 'tabpanel'}
-      id={hideSubTabs ? undefined : resultPanelId}
-      aria-labelledby={hideSubTabs ? undefined : resultPanelLabelledBy}
-      className={className}
-      aria-busy={displayStatus === 'restoring'}
-    >
+    <div {...tabPanelAttributes} className={className} aria-busy={displayStatus === 'restoring'}>
       <ResultToolbar
         tabId={tabId}
         connectionId={connectionId}
@@ -655,11 +870,7 @@ export function ResultPanel({
           <InfoBar
             severity="success"
             title="Query OK"
-            message={
-              affectedRows > 0
-                ? `${affectedRows} ${affectedRows === 1 ? 'row' : 'rows'} affected`
-                : 'Query executed successfully'
-            }
+            message={dmlSuccessMessage(affectedRows)}
             data-testid="dml-success"
           />
         </div>
@@ -668,12 +879,7 @@ export function ResultPanel({
   )
 
   const renderErrorBody = () => (
-    <div
-      role={hideSubTabs ? undefined : 'tabpanel'}
-      id={hideSubTabs ? undefined : resultPanelId}
-      aria-labelledby={hideSubTabs ? undefined : resultPanelLabelledBy}
-      className={styles.tabPanel}
-    >
+    <div {...tabPanelAttributes} className={styles.tabPanel}>
       <ResultToolbar
         tabId={tabId}
         connectionId={connectionId}
@@ -699,6 +905,33 @@ export function ResultPanel({
     void retryExpiredResult(tabId)
   }, [retryExpiredResult, tabId])
 
+  const foreignKeyLookupTarget = resolveForeignKeyLookupTarget({
+    isOpen: foreignKeyLookupOpen,
+    context: foreignKeyLookupContext,
+    editMode: editMode,
+    editTable: editTable,
+  })
+  const subTabs = showsSubTabs ? <ResultSubTabs tabId={tabId} /> : null
+  const renderStatusView = (): ReactNode => {
+    if (displayStatus === 'idle') return <EmptyResultState isRunning={false} />
+    if (displayStatus === 'running') return <EmptyResultState isRunning={true} />
+    if (displayStatus === 'error') {
+      return (
+        <>
+          {subTabs}
+          {renderErrorBody()}
+        </>
+      )
+    }
+    return (
+      <>
+        {subTabs}
+        {renderResultBody(gridTabPanelClassName)}
+        <ResultActivityOverlay displayStatus={displayStatus} isSorting={isSorting} />
+      </>
+    )
+  }
+
   return (
     <div
       className={styles.container}
@@ -706,103 +939,15 @@ export function ResultPanel({
       aria-busy={displayStatus === 'restoring'}
     >
       <div role="status" aria-live="polite" aria-atomic="true" data-testid="expired-status">
-        {isExpired && displayStatus !== 'running' && (
-          <div className={styles.emptyState} style={{ height: '100%' }}>
-            <ClockCountdown
-              weight="duotone"
-              size={32}
-              aria-hidden="true"
-              style={{ opacity: 0.35, color: 'var(--on-surface-variant)' }}
-            />
-            <div style={{ maxWidth: 320, textAlign: 'center' }}>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: 'var(--on-surface)',
-                }}
-              >
-                Results expired
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  opacity: 0.6,
-                  color: 'var(--on-surface-variant)',
-                  marginTop: 4,
-                }}
-              >
-                Cached results are no longer available.
-              </div>
-            </div>
-            <Button
-              onClick={handleRetryExpired}
-              disabled={displayStatus === 'restoring'}
-              style={{ marginTop: 8 }}
-              data-testid="retry-expired-button"
-            >
-              Re-run query
-            </Button>
-          </div>
+        {shouldShowExpiredState(isExpired, displayStatus) && (
+          <ExpiredResultState
+            isRestoring={displayStatus === 'restoring'}
+            onRetry={handleRetryExpired}
+          />
         )}
       </div>
 
-      {!isExpired && displayStatus === 'idle' && (
-        <div className={styles.emptyState}>
-          <Play size={32} weight="duotone" className={styles.emptyIcon} />
-          <span>Run a query to see results</span>
-        </div>
-      )}
-
-      {!isExpired && displayStatus === 'running' && (
-        <div className={styles.emptyState}>
-          <div className={styles.spinner} />
-          <span>Executing query...</span>
-        </div>
-      )}
-
-      {!isExpired && displayStatus === 'restoring' && (
-        <>
-          {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
-          {renderResultBody(gridTabPanelClassName)}
-          <div
-            className={styles.restoringOverlay}
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            data-testid="query-result-restore-overlay"
-          >
-            <div className={styles.spinner} aria-hidden="true" />
-            <span>Restoring cached results…</span>
-          </div>
-        </>
-      )}
-
-      {!isExpired && displayStatus === 'success' && (
-        <>
-          {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
-          {renderResultBody(gridTabPanelClassName)}
-          {isSorting && (
-            <div
-              className={styles.restoringOverlay}
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              data-testid="query-result-sort-overlay"
-            >
-              <div className={styles.spinner} aria-hidden="true" />
-              <span>Sorting…</span>
-            </div>
-          )}
-        </>
-      )}
-
-      {!isExpired && displayStatus === 'error' && (
-        <>
-          {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
-          {renderErrorBody()}
-        </>
-      )}
+      {!isExpired && renderStatusView()}
 
       {exportDialogOpen && (
         <ExportDialog
@@ -831,22 +976,18 @@ export function ResultPanel({
         />
       )}
 
-      {foreignKeyLookupOpen && foreignKeyLookupContext && editMode && (
+      {foreignKeyLookupTarget && (
         <FkLookupDialog
           isOpen={foreignKeyLookupOpen}
           onClose={() => setForeignKeyLookupOpen(false)}
           onApply={handleForeignKeyApply}
           connectionId={connectionId}
-          database={
-            foreignKeyLookupContext.foreignKey.referencedDatabase ||
-            activeResult.editTableMetadata?.[editMode]?.database ||
-            ''
-          }
-          sourceTable={activeResult.editTableMetadata?.[editMode]?.table ?? editMode}
-          sourceColumn={foreignKeyLookupContext.sourceColumn}
-          currentValue={foreignKeyLookupContext.currentValue}
-          referencedTable={foreignKeyLookupContext.foreignKey.referencedTable}
-          referencedColumn={foreignKeyLookupContext.foreignKey.referencedColumn}
+          database={foreignKeyLookupTarget.database}
+          sourceTable={foreignKeyLookupTarget.sourceTable}
+          sourceColumn={foreignKeyLookupTarget.context.sourceColumn}
+          currentValue={foreignKeyLookupTarget.context.currentValue}
+          referencedTable={foreignKeyLookupTarget.context.foreignKey.referencedTable}
+          referencedColumn={foreignKeyLookupTarget.context.foreignKey.referencedColumn}
           isReadOnly={false}
         />
       )}

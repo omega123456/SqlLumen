@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BaseFormView } from '../shared/BaseFormView'
-import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
+import { QueryResultBlobDialog, type QueryResultBlobContext } from './QueryResultBlobDialog'
 import { columnKey, columnIndexFromKey } from '../../lib/col-key-utils'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import { isBinaryDataType } from '../../lib/blob-utils'
@@ -94,36 +94,78 @@ const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
 
 // ---------------------------------------------------------------------------
-// Component
+// Helpers
 // ---------------------------------------------------------------------------
 
-export function ResultFormView({
-  columns,
-  resultIndex,
-  queryId,
-  viewVersion,
-  viewRowCount,
-  draftRow = null,
-  selectedRowIndex,
-  onNavigate,
-  tabId,
-  editMode = null,
-  editableColumnMap = EMPTY_EDITABLE_MAP,
-  editState = null,
-  editingRowIndex = null,
-  editTableColumns = EMPTY_TABLE_COLUMNS,
-  editForeignKeys = EMPTY_FOREIGN_KEYS,
-  editColumnBindings = EMPTY_BINDINGS,
-  onStartEdit,
-  onUpdateCell,
-  onSaveRow,
-  onDiscardRow,
-}: ResultFormViewProps) {
+type ResolvedColumn = ReturnType<typeof resolveQueryResultColumns>[number]
+
+interface FormEditProps {
+  editMode: string | null
+  editableColumnMap: Map<number, boolean>
+  editState: RowEditState | null
+  editingRowIndex: number | null
+  editTableColumns: TableDataColumnMeta[]
+  editForeignKeys: ForeignKeyColumnInfo[]
+  editColumnBindings: Map<number, string>
+}
+
+function resolveFormEditProps(props: ResultFormViewProps): FormEditProps {
+  return {
+    editMode: props.editMode ?? null,
+    editableColumnMap: props.editableColumnMap ?? EMPTY_EDITABLE_MAP,
+    editState: props.editState ?? null,
+    editingRowIndex: props.editingRowIndex ?? null,
+    editTableColumns: props.editTableColumns ?? EMPTY_TABLE_COLUMNS,
+    editForeignKeys: props.editForeignKeys ?? EMPTY_FOREIGN_KEYS,
+    editColumnBindings: props.editColumnBindings ?? EMPTY_BINDINGS,
+  }
+}
+
+interface FormRowPosition {
+  totalRows: number
+  currentIndex: number
+  clampedIndex: number
+  isDraftPosition: boolean
+}
+
+function resolveFormRowPosition(props: ResultFormViewProps): FormRowPosition {
+  const hasDraftRow = props.draftRow != null
+  const totalRows = props.viewRowCount + (hasDraftRow ? 1 : 0)
   // Form view can render the first row as a visual fallback before store selection exists.
   // Clone enablement is handled upstream by checking whether selectedRowIndex is committed.
-  const totalRows = viewRowCount + (draftRow ? 1 : 0)
-  const currentIndex = selectedRowIndex ?? 0
+  const currentIndex = props.selectedRowIndex ?? 0
   const clampedIndex = Math.max(0, Math.min(currentIndex, totalRows - 1))
+  return {
+    totalRows: totalRows,
+    currentIndex: currentIndex,
+    clampedIndex: clampedIndex,
+    isDraftPosition: hasDraftRow && clampedIndex === props.viewRowCount,
+  }
+}
+
+interface FetchedRow {
+  key: string
+  row: CachedRow
+}
+
+function fetchedRowFor(fetched: FetchedRow | null, fetchKey: string): CachedRow | null {
+  if (fetched?.key !== fetchKey) return null
+  return fetched.row
+}
+
+function patchFetchedRow(
+  current: FetchedRow | null,
+  baseIndex: number,
+  apply: (row: unknown[]) => unknown[]
+): FetchedRow | null {
+  if (current?.row.baseIndex !== baseIndex) return current
+  return { ...current, row: { baseIndex: baseIndex, row: apply(current.row.row) } }
+}
+
+function useFormCurrentRow(props: ResultFormViewProps, position: FormRowPosition) {
+  const { tabId, resultIndex, queryId, viewVersion } = props
+  const { clampedIndex, isDraftPosition, totalRows } = position
+  const draftRow = props.draftRow ?? null
   const markResultsExpired = useQueryStore((state) => state.markResultsExpired)
 
   // Re-render when the page holding the current row loads or is patched.
@@ -138,20 +180,15 @@ export function ResultFormView({
 
   // A row outside the loaded pages is fetched by view range.
   const fetchKey = `${queryId ?? ''}:${viewVersion}:${clampedIndex}`
-  const [fetched, setFetched] = useState<{ key: string; row: CachedRow } | null>(null)
+  const [fetched, setFetched] = useState<FetchedRow | null>(null)
   // A saved edit of the fetched row (which isn't in the page cache) patches it here.
   useEffect(
     () =>
       subscribeToRowPatches(tabId, resultIndex, (baseIndex, apply) => {
-        setFetched((current) =>
-          current && current.row.baseIndex === baseIndex
-            ? { ...current, row: { baseIndex: baseIndex, row: apply(current.row.row) } }
-            : current
-        )
+        setFetched((current) => patchFetchedRow(current, baseIndex, apply))
       }),
     [resultIndex, tabId]
   )
-  const isDraftPosition = draftRow !== null && clampedIndex === viewRowCount
   const loadedRow = useMemo(() => {
     void windowTick
     if (isDraftPosition || totalRows === 0) return null
@@ -181,118 +218,189 @@ export function ResultFormView({
     }
   }, [clampedIndex, fetchKey, fetched, markResultsExpired, needsFetch, resultIndex, tabId])
 
-  const currentCached = useMemo<CachedRow | null>(
-    () =>
-      isDraftPosition
-        ? { row: draftRow, baseIndex: -1 }
-        : (loadedRow ?? (fetched?.key === fetchKey ? fetched.row : null)),
-    [draftRow, fetchKey, fetched, isDraftPosition, loadedRow]
-  )
+  return useMemo<CachedRow | null>(() => {
+    if (isDraftPosition && draftRow) return { row: draftRow, baseIndex: -1 }
+    return loadedRow ?? fetchedRowFor(fetched, fetchKey)
+  }, [draftRow, fetchKey, fetched, isDraftPosition, loadedRow])
+}
+
+interface RowEditOverlay {
+  editState: RowEditState | null
+  editingRowIndex: number | null
+  editColumnBindings: Map<number, string>
+}
+
+interface FormRowDataInputs {
+  currentCached: CachedRow | null
+  columnCount: number
+  clampedIndex: number
+  rowEdit: RowEditOverlay
+}
+
+function applyEditedValues(rowData: Record<string, unknown>, inputs: FormRowDataInputs): void {
+  const edit = inputs.rowEdit
+  if (edit.editingRowIndex !== inputs.clampedIndex || !edit.editState) return
+  const currentValues = edit.editState.currentValues
+  for (let columnIndex = 0; columnIndex < inputs.columnCount; columnIndex++) {
+    const boundName = edit.editColumnBindings.get(columnIndex)
+    if (boundName && boundName in currentValues) {
+      rowData[columnKey(columnIndex)] = currentValues[boundName]
+    }
+  }
+}
+
+function buildFormRowData(inputs: FormRowDataInputs): Record<string, unknown> | null {
+  const currentRow = inputs.currentCached?.row ?? null
+  if (currentRow === null) return null
+
+  const rowData: Record<string, unknown> = {
+    __rowIdx: inputs.clampedIndex,
+    __baseIdx: inputs.currentCached?.baseIndex ?? -1,
+  }
+  for (let columnIndex = 0; columnIndex < inputs.columnCount; columnIndex++) {
+    rowData[columnKey(columnIndex)] = currentRow[columnIndex] ?? null
+  }
+  applyEditedValues(rowData, inputs)
+  return rowData
+}
+
+function columnKeyFlags(meta: TableDataColumnMeta | undefined) {
+  return {
+    isNullable: meta?.isNullable ?? false,
+    isPrimaryKey: meta?.isPrimaryKey ?? false,
+    isUniqueKey: meta?.isUniqueKey ?? false,
+  }
+}
+
+interface DescriptorContext {
+  isEditing: boolean
+  editColumnBindings: Map<number, string>
+}
+
+function toGridColumnDescriptor(
+  column: ResolvedColumn,
+  columnIndex: number,
+  context: DescriptorContext
+): GridColumnDescriptor {
+  const meta = column.tableColumnMeta
+  const isBinary = meta?.isBinary ?? isBinaryDataType(column.dataType)
+  const isBoundForEdit = context.isEditing && context.editColumnBindings.has(columnIndex)
+  return {
+    key: column.key,
+    displayName: column.displayName,
+    dataType: meta?.dataType ?? column.dataType,
+    editable: column.editable,
+    isBinary: isBinary,
+    blobViewer: isBinary,
+    blobViewerEditable: isBinary && isBoundForEdit,
+    ...columnKeyFlags(meta),
+    enumValues: meta?.enumValues,
+    tableColumnMeta: meta,
+    foreignKey: column.foreignKey,
+  }
+}
+
+function toSharedEditState(
+  editState: RowEditState,
+  columnCount: number,
+  editColumnBindings: Map<number, string>
+): SharedRowEditState {
+  const currentValues: Record<string, unknown> = {}
+  const originalValues: Record<string, unknown> = {}
+
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+    const columnName = editColumnBindings.get(columnIndex)
+    if (!columnName) continue
+    const key = columnKey(columnIndex)
+    if (columnName in editState.currentValues) {
+      currentValues[key] = editState.currentValues[columnName]
+    }
+    if (columnName in editState.originalValues) {
+      originalValues[key] = editState.originalValues[columnName]
+    }
+  }
+
+  return {
+    rowKey: JSON.stringify(editState.rowKey),
+    currentValues: currentValues,
+    originalValues: originalValues,
+  }
+}
+
+function hasModifiedColumns(editState: RowEditState | null): boolean {
+  return (editState?.modifiedColumns.size ?? 0) > 0
+}
+
+interface BlobContext extends QueryResultBlobContext {
+  columnIndex: number
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function ResultFormView(props: ResultFormViewProps) {
+  const { columns, onNavigate, onStartEdit, onUpdateCell, onSaveRow, onDiscardRow } = props
+  const edit = resolveFormEditProps(props)
+  const { editMode, editState, editingRowIndex, editColumnBindings } = edit
+  const position = resolveFormRowPosition(props)
+  const { totalRows, currentIndex, clampedIndex } = position
+
+  const currentCached = useFormCurrentRow(props, position)
   const currentRow = currentCached?.row ?? null
-  const currentRowData = useMemo(() => {
-    if (currentRow === null) return null
-
-    const rowData: Record<string, unknown> = {
-      __rowIdx: clampedIndex,
-      __baseIdx: currentCached?.baseIndex ?? -1,
-    }
-    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-      rowData[columnKey(columnIndex)] = currentRow[columnIndex] ?? null
-    }
-
-    if (editingRowIndex === clampedIndex && editState) {
-      for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-        const boundName = editColumnBindings.get(columnIndex)
-        if (boundName && boundName in editState.currentValues) {
-          rowData[columnKey(columnIndex)] = editState.currentValues[boundName]
-        }
-      }
-    }
-
-    return rowData
-  }, [
-    columns,
-    currentCached?.baseIndex,
-    currentRow,
-    editState,
-    editingRowIndex,
-    clampedIndex,
-    editColumnBindings,
-  ])
+  const currentRowData = useMemo(
+    () =>
+      buildFormRowData({
+        currentCached: currentCached,
+        columnCount: columns.length,
+        clampedIndex: clampedIndex,
+        rowEdit: {
+          editState: editState,
+          editingRowIndex: editingRowIndex,
+          editColumnBindings: editColumnBindings,
+        },
+      }),
+    [columns, currentCached, editState, editingRowIndex, clampedIndex, editColumnBindings]
+  )
 
   const isInEditMode = editMode !== null
   const isEditingCurrentRow = editState !== null && editingRowIndex === clampedIndex
-  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
-  const [blobContext, setBlobContext] = useState<{
-    columnIndex: number
-    columnLabel: string
-    base64: string | null
-    editable: boolean
-  } | null>(null)
-
-  void tabId
+  const [blobContext, setBlobContext] = useState<BlobContext | null>(null)
 
   const resolvedColumns = useMemo(
     () =>
       resolveQueryResultColumns({
         resultColumns: columns,
         editMode: editMode,
-        editableColumnMap: editableColumnMap,
-        editTableColumns: editTableColumns,
-        editForeignKeys: editForeignKeys,
+        editableColumnMap: edit.editableColumnMap,
+        editTableColumns: edit.editTableColumns,
+        editForeignKeys: edit.editForeignKeys,
         editColumnBindings: editColumnBindings,
       }),
-    [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings]
+    [
+      columns,
+      editMode,
+      edit.editableColumnMap,
+      edit.editTableColumns,
+      edit.editForeignKeys,
+      editColumnBindings,
+    ]
   )
 
   // --- Transform columns → GridColumnDescriptor[] ---
 
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return resolvedColumns.map((column, columnIndex) => {
-      const isBinary = column.tableColumnMeta?.isBinary ?? isBinaryDataType(column.dataType)
-      return {
-        key: column.key,
-        displayName: column.displayName,
-        dataType: column.tableColumnMeta?.dataType ?? column.dataType,
-        editable: column.editable,
-        isBinary: isBinary,
-        blobViewer: isBinary,
-        blobViewerEditable: isBinary && editMode !== null && editColumnBindings.has(columnIndex),
-        isNullable: column.tableColumnMeta?.isNullable ?? false,
-        isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
-        isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
-        enumValues: column.tableColumnMeta?.enumValues,
-        tableColumnMeta: column.tableColumnMeta,
-        foreignKey: column.foreignKey,
-      }
-    })
+    const context = { isEditing: editMode !== null, editColumnBindings: editColumnBindings }
+    return resolvedColumns.map((column, columnIndex) =>
+      toGridColumnDescriptor(column, columnIndex, context)
+    )
   }, [editColumnBindings, editMode, resolvedColumns])
 
   // --- Transform edit state: remap real column name keys → col_N keys ---
 
   const sharedEditState: SharedRowEditState | null = useMemo(() => {
     if (!isEditingCurrentRow || !editState) return null
-
-    const currentValues: Record<string, unknown> = {}
-    const originalValues: Record<string, unknown> = {}
-
-    for (let columnIndex = 0; columnIndex < columns.length; columnIndex++) {
-      const columnName = editColumnBindings.get(columnIndex)
-      if (!columnName) continue
-      const key = columnKey(columnIndex)
-      if (columnName in editState.currentValues) {
-        currentValues[key] = editState.currentValues[columnName]
-      }
-      if (columnName in editState.originalValues) {
-        originalValues[key] = editState.originalValues[columnName]
-      }
-    }
-
-    return {
-      rowKey: JSON.stringify(editState.rowKey),
-      currentValues: currentValues,
-      originalValues: originalValues,
-    }
+    return toSharedEditState(editState, columns.length, editColumnBindings)
   }, [isEditingCurrentRow, editState, columns, editColumnBindings])
 
   // --- Edit callbacks (translate col_N → real column name) ---
@@ -334,13 +442,11 @@ export function ResultFormView({
         base64: typeof cellValue === 'string' ? cellValue : null,
         editable: column.blobViewerEditable === true,
       })
-      setBlobDialogOpen(true)
     },
     []
   )
 
   const closeBlobDialog = useCallback(() => {
-    setBlobDialogOpen(false)
     setBlobContext(null)
   }, [])
 
@@ -359,14 +465,13 @@ export function ResultFormView({
 
   const navigateWithAutoSave = useCallback(
     async (direction: 'prev' | 'next') => {
-      if (isInEditMode && editState) {
-        if (editState.modifiedColumns.size > 0 && onSaveRow) {
-          const success = await onSaveRow()
-          if (!success) return
-        } else {
-          onDiscardRow?.()
-        }
+      const pendingEdit = isInEditMode ? editState : null
+      if (hasModifiedColumns(pendingEdit) && onSaveRow) {
+        const saved = await onSaveRow()
+        if (saved) onNavigate(direction)
+        return
       }
+      if (pendingEdit) onDiscardRow?.()
       onNavigate(direction)
     },
     [isInEditMode, editState, onSaveRow, onDiscardRow, onNavigate]
@@ -378,6 +483,15 @@ export function ResultFormView({
   )
 
   const handleNavigateNext = useCallback(() => navigateWithAutoSave('next'), [navigateWithAutoSave])
+
+  const editHandlers = isInEditMode
+    ? {
+        onEnsureEditing: handleEnsureEditing,
+        onUpdateCell: handleUpdateCell,
+        onSave: handleSave,
+        onDiscard: handleDiscard,
+      }
+    : {}
 
   // --- Render ---
 
@@ -394,24 +508,16 @@ export function ResultFormView({
         onNavigatePrev={handleNavigatePrevious}
         onNavigateNext={handleNavigateNext}
         editState={sharedEditState}
-        onEnsureEditing={isInEditMode ? handleEnsureEditing : undefined}
-        onUpdateCell={isInEditMode ? handleUpdateCell : undefined}
-        onSave={isInEditMode ? handleSave : undefined}
-        onDiscard={isInEditMode ? handleDiscard : undefined}
+        {...editHandlers}
         readOnly={!isInEditMode}
         testId="result-form-view"
         onBlobView={handleBlobView}
       />
-      {blobDialogOpen && blobContext && (
-        <BlobViewerDialog
-          isOpen={blobDialogOpen}
-          onClose={closeBlobDialog}
-          mode={blobContext.editable ? 'edit' : 'view'}
-          columnLabel={blobContext.columnLabel}
-          initialBase64={blobContext.base64}
-          onApply={blobContext.editable ? handleBlobApply : undefined}
-        />
-      )}
+      <QueryResultBlobDialog
+        blobContext={blobContext}
+        onClose={closeBlobDialog}
+        onApply={handleBlobApply}
+      />
     </>
   )
 }

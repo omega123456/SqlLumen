@@ -11,7 +11,7 @@ import { PERCENT_SCALE } from '../lib/units'
 import { toErrorMessage } from '../lib/error-message'
 
 const UP_TO_DATE_STATUS_RESET_DELAY_MS = 5_000
-type UpdateStatus =
+export type UpdateStatus =
   'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'ready-to-finish' | 'error'
 
 type UpdateProgressEvent =
@@ -20,7 +20,7 @@ type UpdateProgressEvent =
   | { event: 'Finished' }
 
 type UpdatePlatform = 'macos' | 'windows' | 'linux' | 'unknown'
-type ReadyToFinishAction = 'relaunch' | 'manual-quit'
+export type ReadyToFinishAction = 'relaunch' | 'manual-quit'
 
 let periodicTimer: ReturnType<typeof setInterval> | null = null
 let resetStatusTimer: ReturnType<typeof setTimeout> | null = null
@@ -132,6 +132,84 @@ function scheduleUpToDateReset(set: (partial: Partial<UpdateState>) => void): vo
   }, UP_TO_DATE_STATUS_RESET_DELAY_MS)
 }
 
+type UpdateStateSetter = (partial: Partial<UpdateState>) => void
+
+const BUSY_UPDATE_STATUSES = new Set<UpdateStatus>(['checking', 'installing', 'ready-to-finish'])
+
+interface UpdateCheckContext {
+  manual: boolean
+  wasAvailable: boolean
+}
+
+interface UpdateCheckFailure {
+  context: UpdateCheckContext
+  error: unknown
+}
+
+async function checkForAvailableUpdate(): Promise<Update | null> {
+  return (await check()) as Update | null
+}
+
+function markUpdateChecking(set: UpdateStateSetter): void {
+  set({
+    status: 'checking',
+    availableVersion: null,
+    downloadProgress: 0,
+    errorMessage: null,
+    updateObject: null,
+    ...getPlatformState(useUpdateStore.getState().currentPlatform, null),
+  })
+}
+
+function markUpdateAvailable(set: UpdateStateSetter, update: Update): void {
+  const availableVersion = update.version ?? null
+  set({
+    status: 'available',
+    availableVersion: availableVersion,
+    errorMessage: null,
+    downloadProgress: 0,
+    updateObject: update,
+    ...getPlatformState(useUpdateStore.getState().currentPlatform, availableVersion),
+  })
+}
+
+function settleNoUpdateFound(set: UpdateStateSetter, context: UpdateCheckContext): void {
+  if (context.wasAvailable) {
+    return
+  }
+
+  if (context.manual) {
+    scheduleUpToDateReset(set)
+    return
+  }
+
+  resetUpdateState(set)
+}
+
+function settleUpdateCheckFailure(set: UpdateStateSetter, failure: UpdateCheckFailure): void {
+  const { context } = failure
+  const message = toErrorMessage(failure.error)
+  const checkKind = context.manual ? 'Manual' : 'Automatic'
+  logFrontend('error', `[update-store] ${checkKind} update check failed: ${message}`)
+
+  if (context.wasAvailable) {
+    return
+  }
+
+  if (context.manual) {
+    set({
+      status: 'error',
+      errorMessage: message,
+      availableVersion: null,
+      updateObject: null,
+      ...getPlatformState(useUpdateStore.getState().currentPlatform, null),
+    })
+    return
+  }
+
+  resetUpdateState(set)
+}
+
 interface UpdateState {
   status: UpdateStatus
   currentPlatform: UpdatePlatform
@@ -168,82 +246,35 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
 
   checkForUpdate: async (manual: boolean) => {
     const state = get()
-    if (
-      state.status === 'checking' ||
-      state.status === 'installing' ||
-      state.status === 'ready-to-finish'
-    ) {
+    if (BUSY_UPDATE_STATUSES.has(state.status)) {
       return
     }
 
-    const wasAvailable = state.status === 'available'
+    const checkContext: UpdateCheckContext = {
+      manual: manual,
+      wasAvailable: state.status === 'available',
+    }
 
     clearResetStatusTimer()
 
     if (!hasTauriApis()) {
-      if (!wasAvailable) resetUpdateState(set)
+      if (!checkContext.wasAvailable) resetUpdateState(set)
       return
     }
 
-    if (!wasAvailable) {
-      set({
-        status: 'checking',
-        availableVersion: null,
-        downloadProgress: 0,
-        errorMessage: null,
-        updateObject: null,
-        ...getPlatformState(get().currentPlatform, null),
-      })
+    if (!checkContext.wasAvailable) {
+      markUpdateChecking(set)
     }
 
     try {
-      const update = (await check()) as Update | null
-
+      const update = await checkForAvailableUpdate()
       if (update) {
-        set({
-          status: 'available',
-          availableVersion: update.version ?? null,
-          errorMessage: null,
-          downloadProgress: 0,
-          updateObject: update,
-          ...getPlatformState(get().currentPlatform, update.version ?? null),
-        })
+        markUpdateAvailable(set, update)
         return
       }
-
-      if (wasAvailable) {
-        return
-      }
-
-      if (manual) {
-        scheduleUpToDateReset(set)
-        return
-      }
-
-      resetUpdateState(set)
+      settleNoUpdateFound(set, checkContext)
     } catch (error) {
-      const message = toErrorMessage(error)
-      logFrontend(
-        'error',
-        `[update-store] ${manual ? 'Manual' : 'Automatic'} update check failed: ${message}`
-      )
-
-      if (wasAvailable) {
-        return
-      }
-
-      if (manual) {
-        set({
-          status: 'error',
-          errorMessage: message,
-          availableVersion: null,
-          updateObject: null,
-          ...getPlatformState(get().currentPlatform, null),
-        })
-        return
-      }
-
-      resetUpdateState(set)
+      settleUpdateCheckFailure(set, { context: checkContext, error: error })
     }
   },
 

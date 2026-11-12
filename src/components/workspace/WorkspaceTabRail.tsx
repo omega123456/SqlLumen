@@ -17,7 +17,7 @@
  *   - Keyboard: Enter/Space activation, F2 rename, Shift+F10/ContextMenu key
  */
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import type { WorkspaceTab } from '../../types/schema'
+import type { ShortcutBinding, WorkspaceTab } from '../../types/schema'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -25,7 +25,7 @@ import { useShortcutStore } from '../../stores/shortcut-store'
 import { UnderlineTab } from '../common/UnderlineTabs'
 import { TextInput } from '../common/TextInput'
 import { IconButton } from '../common/IconButton'
-import { TabContextMenu } from '../shared/TabContextMenu'
+import { TabContextMenu, type TabContextMenuItem } from '../shared/TabContextMenu'
 import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
 import {
   ArrowLineLeftIcon,
@@ -153,6 +153,182 @@ function WorkspaceTabLabel({ tab }: { tab: WorkspaceTab }) {
   )
 }
 
+interface TabIdLists {
+  visibleTabIds: string[]
+  allMovableTabIds: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Safe subset reorder: translate visible-group index → allMovableTabIds index
+//
+// When this rail shows a filtered subset of all movable tabs, dragging tab A
+// before tab B (within the subset) must not disturb unrelated movable tabs.
+// Strategy: for a given subset insertIndex, find the full-list position by
+// looking at the neighbours in the visible group and inserting relative to
+// them in the full list.
+// ---------------------------------------------------------------------------
+
+/**
+ * Given an insertIndex relative to the visible group (visibleTabIds), returns
+ * the insertIndex relative to allMovableTabIds (the full movable list).
+ *
+ * Examples (subset = [A, C], full = [A, B, C, D]):
+ *   subsetInsert=0 → fullInsert=0  (before A)
+ *   subsetInsert=1 → fullInsert=2  (after A, before B = slot between A and C)
+ *   subsetInsert=2 → fullInsert=3  (after C, before D)
+ */
+function translateSubsetInsertIndex(tabIdLists: TabIdLists, subsetInsertIndex: number): number {
+  const { visibleTabIds, allMovableTabIds } = tabIdLists
+  // If the visible set IS the full movable set there's nothing to translate
+  if (visibleTabIds.length === allMovableTabIds.length) {
+    return subsetInsertIndex
+  }
+
+  if (subsetInsertIndex <= 0) {
+    // Insert before the first visible tab — find its full-list position
+    const firstVisibleId = visibleTabIds[0]
+    if (!firstVisibleId) {
+      return 0
+    }
+    const fullIndex = allMovableTabIds.indexOf(firstVisibleId)
+    return fullIndex >= 0 ? fullIndex : 0
+  }
+
+  if (subsetInsertIndex >= visibleTabIds.length) {
+    // Insert after the last visible tab — find its full-list position + 1
+    const lastVisibleId = visibleTabIds[visibleTabIds.length - 1]
+    if (!lastVisibleId) {
+      return allMovableTabIds.length
+    }
+    const fullIndex = allMovableTabIds.indexOf(lastVisibleId)
+    return fullIndex >= 0 ? fullIndex + 1 : allMovableTabIds.length
+  }
+
+  // Insert between subset[subsetInsertIndex-1] and subset[subsetInsertIndex].
+  // We want to place the tab right before subset[subsetInsertIndex] in the full list.
+  const beforeId = visibleTabIds[subsetInsertIndex]
+  const fullIndex = allMovableTabIds.indexOf(beforeId)
+  return fullIndex >= 0 ? fullIndex : subsetInsertIndex
+}
+
+interface TabContextMenuState {
+  tabId: string
+  x: number
+  y: number
+  portalRoot: HTMLElement
+  invokerTabId: string
+}
+
+interface TabMenuTarget {
+  tab: WorkspaceTab | null
+  visibleIndex: number
+  visibleTabIds: string[]
+  revealShortcut: string | undefined
+}
+
+interface TabMenuActions {
+  rename: () => void
+  moveToVisibleSlot: (visibleInsertIndex: number) => void
+  moveOneSlot: (direction: 'left' | 'right') => void
+  closeTabs: (tabIds: string[]) => void
+}
+
+function findTabById(tabs: WorkspaceTab[], tabId: string): WorkspaceTab | null {
+  return tabs.find((tab) => tab.id === tabId) ?? null
+}
+
+function revealShortcutLabel(binding: ShortcutBinding | null): string | undefined {
+  if (!binding?.key) return undefined
+  return shortcutLabelParts(binding).join(' ')
+}
+
+// "Reveal in object browser" applies to tabs that show a database object;
+// it is disabled for create-mode tabs whose object does not exist yet.
+function revealMenuItems(target: TabMenuTarget): TabContextMenuItem[] {
+  const { tab } = target
+  if (!tab || !isObjectTab(tab)) return []
+  return [
+    {
+      key: 'reveal-in-object-browser',
+      label: 'Reveal in object browser',
+      icon: <CrosshairIcon size={14} weight="regular" />,
+      shortcut: target.revealShortcut,
+      disabled: getTabRevealTarget(tab) === null,
+      separatorAfter: true,
+      onSelect: () => {
+        void revealTabInObjectBrowser(tab)
+      },
+    },
+  ]
+}
+
+function isLastOrOutsideVisibleGroup(target: TabMenuTarget): boolean {
+  return target.visibleIndex < 0 || target.visibleIndex >= target.visibleTabIds.length - 1
+}
+
+function buildTabMenuItems(target: TabMenuTarget, actions: TabMenuActions): TabContextMenuItem[] {
+  const { visibleIndex, visibleTabIds } = target
+  const isFirstVisible = visibleIndex <= 0
+  const isLastVisible = isLastOrOutsideVisibleGroup(target)
+  return [
+    ...revealMenuItems(target),
+    {
+      key: 'rename',
+      label: 'Rename',
+      icon: <PencilSimpleIcon size={14} weight="regular" />,
+      disabled: target.tab?.type !== 'query-editor',
+      onSelect: actions.rename,
+    },
+    {
+      key: 'move-start',
+      label: 'Move to start',
+      icon: <CaretLineLeftIcon size={14} weight="regular" />,
+      disabled: isFirstVisible,
+      onSelect: () => actions.moveToVisibleSlot(0),
+    },
+    {
+      key: 'move-left',
+      label: 'Move left',
+      icon: <CaretLeftIcon size={14} weight="regular" />,
+      disabled: isFirstVisible,
+      onSelect: () => actions.moveOneSlot('left'),
+    },
+    {
+      key: 'move-right',
+      label: 'Move right',
+      icon: <CaretRightIcon size={14} weight="regular" />,
+      disabled: isLastVisible,
+      onSelect: () => actions.moveOneSlot('right'),
+    },
+    {
+      key: 'move-end',
+      label: 'Move to end',
+      icon: <CaretLineRightIcon size={14} weight="regular" />,
+      disabled: isLastVisible,
+      onSelect: () => actions.moveToVisibleSlot(visibleTabIds.length),
+    },
+    {
+      key: 'close-left',
+      label: 'Close tabs to the left',
+      icon: <ArrowLineLeftIcon size={14} weight="regular" />,
+      disabled: isFirstVisible,
+      onSelect: () => actions.closeTabs(visibleTabIds.slice(0, visibleIndex)),
+    },
+    {
+      key: 'close-right',
+      label: 'Close tabs to the right',
+      icon: <ArrowLineRightIcon size={14} weight="regular" />,
+      disabled: isLastVisible,
+      onSelect: () => actions.closeTabs(visibleTabIds.slice(visibleIndex + 1)),
+    },
+  ]
+}
+
+const VISIBLE_SLOT_OFFSET_FOR_DIRECTION: Record<'left' | 'right', number> = {
+  left: -1,
+  right: MOVE_ONE_SLOT_RIGHT_INSERT_OFFSET,
+}
+
 // ---------------------------------------------------------------------------
 // WorkspaceTabRail (main export)
 // ---------------------------------------------------------------------------
@@ -178,26 +354,13 @@ export function WorkspaceTabRail({
   const skipNextRenameBlurCommitRef = useRef(false)
   const railRef = useRef<HTMLDivElement | null>(null)
 
-  const [contextMenu, setContextMenu] = useState<{
-    tabId: string
-    x: number
-    y: number
-    portalRoot: HTMLElement
-    invokerTabId: string
-  } | null>(null)
+  const [contextMenu, setContextMenu] = useState<TabContextMenuState | null>(null)
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
 
   // The tab IDs visible in this rail (in order)
   const visibleTabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs])
 
-  // The context menu tab's index within the visible group (for move enabled/disabled state)
-  const contextMenuVisibleIndex = contextMenu
-    ? visibleTabIds.findIndex((id) => id === contextMenu.tabId)
-    : -1
-  const contextMenuTab = contextMenu
-    ? (tabs.find((tab) => tab.id === contextMenu.tabId) ?? null)
-    : null
   const revealBinding = useShortcutStore(
     (state) => state.shortcuts['reveal-in-object-browser'] ?? null
   )
@@ -239,60 +402,13 @@ export function WorkspaceTabRail({
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Safe subset reorder: translate visible-group index → allMovableTabIds index
-  //
-  // When this rail shows a filtered subset of all movable tabs, dragging tab A
-  // before tab B (within the subset) must not disturb unrelated movable tabs.
-  // Strategy: for a given subset insertIndex, find the full-list position by
-  // looking at the neighbours in the visible group and inserting relative to
-  // them in the full list.
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Given an insertIndex relative to the visible group (visibleTabIds), returns
-   * the insertIndex relative to allMovableTabIds (the full movable list).
-   *
-   * Examples (subset = [A, C], full = [A, B, C, D]):
-   *   subsetInsert=0 → fullInsert=0  (before A)
-   *   subsetInsert=1 → fullInsert=2  (after A, before B = slot between A and C)
-   *   subsetInsert=2 → fullInsert=3  (after C, before D)
-   */
-  const translateSubsetInsertIndex = (subsetInsertIndex: number): number => {
-    // If the visible set IS the full movable set there's nothing to translate
-    if (visibleTabIds.length === allMovableTabIds.length) {
-      return subsetInsertIndex
-    }
-
-    if (subsetInsertIndex <= 0) {
-      // Insert before the first visible tab — find its full-list position
-      const firstVisibleId = visibleTabIds[0]
-      if (!firstVisibleId) {
-        return 0
-      }
-      const fullIndex = allMovableTabIds.indexOf(firstVisibleId)
-      return fullIndex >= 0 ? fullIndex : 0
-    }
-
-    if (subsetInsertIndex >= visibleTabIds.length) {
-      // Insert after the last visible tab — find its full-list position + 1
-      const lastVisibleId = visibleTabIds[visibleTabIds.length - 1]
-      if (!lastVisibleId) {
-        return allMovableTabIds.length
-      }
-      const fullIndex = allMovableTabIds.indexOf(lastVisibleId)
-      return fullIndex >= 0 ? fullIndex + 1 : allMovableTabIds.length
-    }
-
-    // Insert between subset[subsetInsertIndex-1] and subset[subsetInsertIndex].
-    // We want to place the tab right before subset[subsetInsertIndex] in the full list.
-    const beforeId = visibleTabIds[subsetInsertIndex]
-    const fullIndex = allMovableTabIds.indexOf(beforeId)
-    return fullIndex >= 0 ? fullIndex : subsetInsertIndex
+  const tabIdLists: TabIdLists = {
+    visibleTabIds: visibleTabIds,
+    allMovableTabIds: allMovableTabIds,
   }
 
   const commitTabReorder = (tabId: string, visibleInsertIndex: number) => {
-    const fullInsertIndex = translateSubsetInsertIndex(visibleInsertIndex)
+    const fullInsertIndex = translateSubsetInsertIndex(tabIdLists, visibleInsertIndex)
     if (onRequestReorderTab) {
       onRequestReorderTab(tabId, fullInsertIndex)
       return
@@ -366,122 +482,33 @@ export function WorkspaceTabRail({
     })
   }
 
-  // "Reveal in object browser" applies to tabs that show a database object;
-  // it is disabled for create-mode tabs whose object does not exist yet.
-  const revealItems =
-    contextMenuTab && isObjectTab(contextMenuTab)
-      ? [
-          {
-            key: 'reveal-in-object-browser',
-            label: 'Reveal in object browser',
-            icon: <CrosshairIcon size={14} weight="regular" />,
-            shortcut: revealBinding?.key ? shortcutLabelParts(revealBinding).join(' ') : undefined,
-            disabled: getTabRevealTarget(contextMenuTab) === null,
-            separatorAfter: true,
-            onSelect: () => {
-              void revealTabInObjectBrowser(contextMenuTab)
-            },
-          },
-        ]
-      : []
-
-  // Build context menu items when a menu is open
-  const contextMenuItems = contextMenu
-    ? [
-        ...revealItems,
-        {
-          key: 'rename',
-          label: 'Rename',
-          icon: <PencilSimpleIcon size={14} weight="regular" />,
-          disabled: contextMenuTab?.type !== 'query-editor',
-          onSelect: () => startRename(contextMenu.tabId),
-        },
-        {
-          key: 'move-start',
-          label: 'Move to start',
-          icon: <CaretLineLeftIcon size={14} weight="regular" />,
-          disabled: contextMenuVisibleIndex <= 0,
-          onSelect: () => {
-            const fullInsert = translateSubsetInsertIndex(0)
-            if (onRequestReorderTab) {
-              onRequestReorderTab(contextMenu.tabId, fullInsert)
-              return
-            }
-            reorderWorkspaceTab(connectionId, contextMenu.tabId, fullInsert)
-          },
-        },
-        {
-          key: 'move-left',
-          label: 'Move left',
-          icon: <CaretLeftIcon size={14} weight="regular" />,
-          disabled: contextMenuVisibleIndex <= 0,
-          onSelect: () => {
-            if (onRequestMoveTab) {
-              onRequestMoveTab(contextMenu.tabId, 'left')
-              return
-            }
-            // Translate: move one slot left in the visible group → full list
-            const fullInsert = translateSubsetInsertIndex(contextMenuVisibleIndex - 1)
-            reorderWorkspaceTab(connectionId, contextMenu.tabId, fullInsert)
-          },
-        },
-        {
-          key: 'move-right',
-          label: 'Move right',
-          icon: <CaretRightIcon size={14} weight="regular" />,
-          disabled:
-            contextMenuVisibleIndex < 0 || contextMenuVisibleIndex >= visibleTabIds.length - 1,
-          onSelect: () => {
-            if (onRequestMoveTab) {
-              onRequestMoveTab(contextMenu.tabId, 'right')
-              return
-            }
-            const fullInsert = translateSubsetInsertIndex(
-              contextMenuVisibleIndex + MOVE_ONE_SLOT_RIGHT_INSERT_OFFSET
-            )
-            reorderWorkspaceTab(connectionId, contextMenu.tabId, fullInsert)
-          },
-        },
-        {
-          key: 'move-end',
-          label: 'Move to end',
-          icon: <CaretLineRightIcon size={14} weight="regular" />,
-          disabled:
-            contextMenuVisibleIndex < 0 || contextMenuVisibleIndex >= visibleTabIds.length - 1,
-          onSelect: () => {
-            const fullInsert = translateSubsetInsertIndex(visibleTabIds.length)
-            if (onRequestReorderTab) {
-              onRequestReorderTab(contextMenu.tabId, fullInsert)
-              return
-            }
-            reorderWorkspaceTab(connectionId, contextMenu.tabId, fullInsert)
-          },
-        },
-        {
-          key: 'close-left',
-          label: 'Close tabs to the left',
-          icon: <ArrowLineLeftIcon size={14} weight="regular" />,
-          disabled: contextMenuVisibleIndex <= 0,
-          onSelect: () => {
-            for (const id of visibleTabIds.slice(0, contextMenuVisibleIndex)) {
-              closeTab(connectionId, id)
-            }
-          },
-        },
-        {
-          key: 'close-right',
-          label: 'Close tabs to the right',
-          icon: <ArrowLineRightIcon size={14} weight="regular" />,
-          disabled:
-            contextMenuVisibleIndex < 0 || contextMenuVisibleIndex >= visibleTabIds.length - 1,
-          onSelect: () => {
-            for (const id of visibleTabIds.slice(contextMenuVisibleIndex + 1)) {
-              closeTab(connectionId, id)
-            }
-          },
-        },
-      ]
-    : []
+  const buildContextMenuItems = (menu: TabContextMenuState): TabContextMenuItem[] => {
+    const visibleIndex = visibleTabIds.indexOf(menu.tabId)
+    const target: TabMenuTarget = {
+      tab: findTabById(tabs, menu.tabId),
+      visibleIndex: visibleIndex,
+      visibleTabIds: visibleTabIds,
+      revealShortcut: revealShortcutLabel(revealBinding),
+    }
+    return buildTabMenuItems(target, {
+      rename: () => startRename(menu.tabId),
+      moveToVisibleSlot: (visibleInsertIndex) => commitTabReorder(menu.tabId, visibleInsertIndex),
+      moveOneSlot: (direction) => {
+        if (onRequestMoveTab) {
+          onRequestMoveTab(menu.tabId, direction)
+          return
+        }
+        const visibleInsertIndex = visibleIndex + VISIBLE_SLOT_OFFSET_FOR_DIRECTION[direction]
+        const fullInsert = translateSubsetInsertIndex(tabIdLists, visibleInsertIndex)
+        reorderWorkspaceTab(connectionId, menu.tabId, fullInsert)
+      },
+      closeTabs: (tabIds) => {
+        for (const id of tabIds) {
+          closeTab(connectionId, id)
+        }
+      },
+    })
+  }
 
   // ---------------------------------------------------------------------------
   // Render individual tab
@@ -624,7 +651,7 @@ export function WorkspaceTabRail({
           x={contextMenu.x}
           y={contextMenu.y}
           portalRoot={contextMenu.portalRoot}
-          items={contextMenuItems}
+          items={buildContextMenuItems(contextMenu)}
           onClose={() => {
             const invokerTabId = contextMenu.invokerTabId
             setContextMenu(null)

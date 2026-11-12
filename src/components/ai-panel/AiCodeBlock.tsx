@@ -7,6 +7,40 @@ import styles from './AiCodeBlock.module.css'
 import { logFrontendError } from '../../lib/app-log-commands'
 
 const COPIED_FEEDBACK_DURATION_MS = 2000
+const SQL_LANGUAGE_LABEL = 'SQL'
+const FALLBACK_LANGUAGE_LABEL = 'code'
+
+function codeLanguageLabel(language: string | undefined, isSql: boolean): string {
+  if (isSql) return SQL_LANGUAGE_LABEL
+  return language ?? FALLBACK_LANGUAGE_LABEL
+}
+
+function codeLanguageClassName(language: string | undefined): string | undefined {
+  return language ? `language-${language}` : undefined
+}
+
+interface CopyCodeButtonProps {
+  copied: boolean
+  onCopy: () => void
+}
+
+function CopyCodeButton({ copied, onCopy }: CopyCodeButtonProps) {
+  const copiedLabel = 'Copied!'
+  return (
+    <Button
+      variant="subtle"
+      size="sm"
+      onClick={onCopy}
+      title={copied ? copiedLabel : 'Copy code'}
+      aria-label={copied ? copiedLabel : 'Copy SQL'}
+      data-testid="ai-code-copy-button"
+    >
+      <Copy size={16} />
+      {copied ? copiedLabel : 'Copy'}
+    </Button>
+  )
+}
+
 export interface AiCodeBlockProps {
   language?: string
   children: ReactNode
@@ -78,7 +112,7 @@ export function AiCodeBlock({
   return (
     <div className={styles.codeBlock} data-testid="ai-code-block">
       <div className={styles.header}>
-        <span className={styles.language}>{isSql ? 'SQL' : (language ?? 'code')}</span>
+        <span className={styles.language}>{codeLanguageLabel(language, isSql)}</span>
         <div className={styles.actions}>
           {showDiffButton && isSql && isSingleStatement && onTriggerDiff && (
             <Button
@@ -93,21 +127,11 @@ export function AiCodeBlock({
               Diff
             </Button>
           )}
-          <Button
-            variant="subtle"
-            size="sm"
-            onClick={handleCopy}
-            title={copied ? 'Copied!' : 'Copy code'}
-            aria-label={copied ? 'Copied!' : 'Copy SQL'}
-            data-testid="ai-code-copy-button"
-          >
-            <Copy size={16} />
-            {copied ? 'Copied!' : 'Copy'}
-          </Button>
+          <CopyCodeButton copied={copied} onCopy={handleCopy} />
         </div>
       </div>
       <pre className={styles.pre}>
-        <code className={language ? `language-${language}` : undefined}>{children}</code>
+        <code className={codeLanguageClassName(language)}>{children}</code>
       </pre>
     </div>
   )

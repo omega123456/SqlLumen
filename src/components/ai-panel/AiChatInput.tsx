@@ -25,6 +25,142 @@ const TRUNCATION_ELLIPSIS = '...'
 /** One line of the 32px Fluent field (prototype `.ai-row .fld`). */
 const MIN_TEXTAREA_HEIGHT_PX = 32
 const MAX_TEXTAREA_HEIGHT_PX = 140
+const SCOPE_PICKER_OWNED_KEYS = new Set(['Enter', 'Escape', 'ArrowUp', 'ArrowDown'])
+const SLASH_COMMAND_LISTBOX_ID = 'slash-command-listbox'
+const NO_HIGHLIGHT = -1
+
+type DropdownKeyAction = 'next' | 'previous' | 'select' | 'close'
+
+function resolveDropdownKeyAction(
+  event: KeyboardEvent<HTMLTextAreaElement>,
+  highlightedIndex: number
+): DropdownKeyAction | null {
+  if (event.key === 'ArrowDown') return 'next'
+  if (event.key === 'ArrowUp') return 'previous'
+  if (event.key === 'Escape') return 'close'
+  if (highlightedIndex < 0) return null
+  if (event.key === 'Tab') return 'select'
+  if (event.key === 'Enter' && !event.shiftKey) return 'select'
+  return null
+}
+
+function nextHighlightIndex(previous: number, commandCount: number): number {
+  return previous < commandCount - 1 ? previous + 1 : 0
+}
+
+function previousHighlightIndex(previous: number, commandCount: number): number {
+  return previous > 0 ? previous - 1 : commandCount - 1
+}
+
+interface PlaceholderInputs {
+  externalPlaceholder: string | undefined
+  aiEnabled: boolean
+  isConfigured: boolean
+}
+
+function resolvePlaceholder(inputs: PlaceholderInputs): string {
+  if (inputs.externalPlaceholder) return inputs.externalPlaceholder
+  if (!inputs.aiEnabled) return 'AI is disabled — enable it in settings'
+  if (!inputs.isConfigured) return 'Configure AI endpoint and model in settings'
+  return 'Ask about your SQL or schema'
+}
+
+function truncateContextSql(sql: string): string {
+  if (sql.length <= CONTEXT_CHIP_MAX_LENGTH) return sql
+  return sql.slice(0, CONTEXT_CHIP_MAX_LENGTH - TRUNCATION_ELLIPSIS.length) + TRUNCATION_ELLIPSIS
+}
+
+function slashCommandComboboxProps(
+  showDropdown: boolean,
+  highlightedCommand: SlashCommand | undefined
+) {
+  if (!showDropdown) return {}
+  return {
+    role: 'combobox',
+    'aria-expanded': true,
+    'aria-controls': SLASH_COMMAND_LISTBOX_ID,
+    'aria-activedescendant': highlightedCommand
+      ? `slash-cmd-${highlightedCommand.name}`
+      : undefined,
+  }
+}
+
+function useAiChatReadiness() {
+  const aiEnabled = useSettingsStore(
+    (state) =>
+      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
+  )
+  const hasEndpoint = useSettingsStore(
+    (state) => !!(state.pendingChanges['ai.endpoint'] ?? state.settings['ai.endpoint'] ?? '')
+  )
+  const hasModel = useSettingsStore(
+    (state) => !!(state.pendingChanges['ai.model'] ?? state.settings['ai.model'] ?? '')
+  )
+  const isConfigured = hasEndpoint && hasModel
+  return { aiEnabled: aiEnabled, isConfigured: isConfigured, isReady: aiEnabled && isConfigured }
+}
+
+interface AttachedContextChipProps {
+  sql: string
+  onRemove: () => void
+}
+
+function AttachedContextChip({ sql, onRemove }: AttachedContextChipProps) {
+  return (
+    <div className={styles.contextChip} data-testid="ai-context-chip">
+      <span className={styles.contextChipText} title={sql}>
+        {truncateContextSql(sql)}
+      </span>
+      <IconButton
+        size="sm"
+        className={styles.contextChipRemove}
+        onClick={onRemove}
+        title="Remove context"
+        aria-label="Remove attached SQL context"
+        data-testid="ai-context-chip-remove"
+      >
+        <XIcon size={12} />
+      </IconButton>
+    </div>
+  )
+}
+
+interface SendOrStopButtonProps {
+  isGenerating: boolean
+  canSend: boolean
+  onSend: () => void
+  onStop: () => void
+}
+
+function SendOrStopButton({ isGenerating, canSend, onSend, onStop }: SendOrStopButtonProps) {
+  if (isGenerating) {
+    return (
+      <Button
+        variant="danger"
+        iconOnly
+        onClick={onStop}
+        title="Stop generation"
+        aria-label="Stop generation"
+        data-testid="ai-stop-button"
+      >
+        <StopIcon size={16} weight="fill" />
+      </Button>
+    )
+  }
+  return (
+    <Button
+      variant="accent"
+      iconOnly
+      onClick={onSend}
+      disabled={!canSend}
+      title="Send message"
+      aria-label="Send message"
+      data-testid="ai-send-button"
+    >
+      <PaperPlaneRightIcon size={16} weight="regular" />
+    </Button>
+  )
+}
 
 export interface AiChatInputProps {
   tabId: string
@@ -71,16 +207,7 @@ export function AiChatInput({
   const isGenerating = useAiStore((state) => state.tabs[tabId]?.isGenerating ?? false)
   const attachedContext = useAiStore((state) => state.tabs[tabId]?.attachedContext ?? null)
 
-  const aiEnabled = useSettingsStore(
-    (state) =>
-      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
-  )
-  const hasEndpoint = useSettingsStore(
-    (state) => !!(state.pendingChanges['ai.endpoint'] ?? state.settings['ai.endpoint'] ?? '')
-  )
-  const hasModel = useSettingsStore(
-    (state) => !!(state.pendingChanges['ai.model'] ?? state.settings['ai.model'] ?? '')
-  )
+  const readiness = useAiChatReadiness()
   // Saved default `/remember` scope, used to seed the scope-picker highlight.
   // Only a concrete level is passed through; `'ask'` (or anything else) lets
   // the picker fall back to Connection.
@@ -91,13 +218,9 @@ export function AiChatInput({
       : undefined
   })
 
-  const canSend =
-    !externalDisabled &&
-    aiEnabled &&
-    hasEndpoint &&
-    hasModel &&
-    value.trim().length > 0 &&
-    !isGenerating
+  const hasMessage = value.trim().length > 0
+  const isInputLocked = Boolean(externalDisabled) || isGenerating
+  const canSend = readiness.isReady && hasMessage && !isInputLocked
 
   // Consume external suggestion text
   useEffect(() => {
@@ -149,17 +272,11 @@ export function AiChatInput({
   }, [workspaceTabId])
 
   const updateDropdown = useCallback((text: string) => {
-    if (text.startsWith('/') && !text.includes(' ')) {
-      const prefix = text.slice(1)
-      const commands = filterCommands(prefix)
-      setFilteredCommands(commands)
-      setShowDropdown(commands.length > 0)
-      setHighlightedIndex(-1)
-    } else {
-      setShowDropdown(false)
-      setFilteredCommands([])
-      setHighlightedIndex(-1)
-    }
+    const isSlashCommandPrefix = text.startsWith('/') && !text.includes(' ')
+    const commands = isSlashCommandPrefix ? filterCommands(text.slice(1)) : []
+    setFilteredCommands(commands)
+    setShowDropdown(commands.length > 0)
+    setHighlightedIndex(NO_HIGHLIGHT)
   }, [])
 
   const handleChange = useCallback(
@@ -294,66 +411,42 @@ export function AiChatInput({
     useAiStore.getState().cancelStream(tabId)
   }, [tabId])
 
+  const runDropdownKeyAction = useCallback(
+    (action: DropdownKeyAction) => {
+      const commandCount = filteredCommands.length
+      const dropdownKeyActions: Record<DropdownKeyAction, () => void> = {
+        next: () => setHighlightedIndex((previous) => nextHighlightIndex(previous, commandCount)),
+        previous: () =>
+          setHighlightedIndex((previous) => previousHighlightIndex(previous, commandCount)),
+        select: () => selectCommand(filteredCommands[highlightedIndex]),
+        close: () => setShowDropdown(false),
+      }
+      dropdownKeyActions[action]()
+    },
+    [filteredCommands, highlightedIndex, selectCommand]
+  )
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       // While the "Always ask" scope picker is open it owns Enter/Arrow/Escape
       // (handled at the document level inside MemoryScopePicker); swallow those
       // keys here so they neither send a message nor insert a newline.
       if (pendingRememberContent !== null) {
-        if (
-          event.key === 'Enter' ||
-          event.key === 'Escape' ||
-          event.key === 'ArrowUp' ||
-          event.key === 'ArrowDown'
-        ) {
-          event.preventDefault()
-        }
+        if (SCOPE_PICKER_OWNED_KEYS.has(event.key)) event.preventDefault()
         return
       }
-      if (showDropdown) {
-        if (event.key === 'ArrowDown') {
-          event.preventDefault()
-          setHighlightedIndex((previous) =>
-            previous < filteredCommands.length - 1 ? previous + 1 : 0
-          )
-          return
-        }
-        if (event.key === 'ArrowUp') {
-          event.preventDefault()
-          setHighlightedIndex((previous) =>
-            previous > 0 ? previous - 1 : filteredCommands.length - 1
-          )
-          return
-        }
-        if (event.key === 'Enter' && !event.shiftKey && highlightedIndex >= 0) {
-          event.preventDefault()
-          selectCommand(filteredCommands[highlightedIndex])
-          return
-        }
-        if (event.key === 'Tab' && highlightedIndex >= 0) {
-          event.preventDefault()
-          selectCommand(filteredCommands[highlightedIndex])
-          return
-        }
-        if (event.key === 'Escape') {
-          event.preventDefault()
-          setShowDropdown(false)
-          return
-        }
+      const dropdownAction = showDropdown ? resolveDropdownKeyAction(event, highlightedIndex) : null
+      if (dropdownAction) {
+        event.preventDefault()
+        runDropdownKeyAction(dropdownAction)
+        return
       }
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
         handleSend()
       }
     },
-    [
-      pendingRememberContent,
-      showDropdown,
-      filteredCommands,
-      highlightedIndex,
-      selectCommand,
-      handleSend,
-    ]
+    [pendingRememberContent, showDropdown, highlightedIndex, runDropdownKeyAction, handleSend]
   )
 
   const handleRemoveContext = useCallback(() => {
@@ -380,26 +473,7 @@ export function AiChatInput({
           />
         )}
         {attachedContext && (
-          <div className={styles.contextChip} data-testid="ai-context-chip">
-            <span className={styles.contextChipText} title={attachedContext.sql}>
-              {attachedContext.sql.length > CONTEXT_CHIP_MAX_LENGTH
-                ? attachedContext.sql.slice(
-                    0,
-                    CONTEXT_CHIP_MAX_LENGTH - TRUNCATION_ELLIPSIS.length
-                  ) + TRUNCATION_ELLIPSIS
-                : attachedContext.sql}
-            </span>
-            <IconButton
-              size="sm"
-              className={styles.contextChipRemove}
-              onClick={handleRemoveContext}
-              title="Remove context"
-              aria-label="Remove attached SQL context"
-              data-testid="ai-context-chip-remove"
-            >
-              <XIcon size={12} />
-            </IconButton>
-          </div>
+          <AttachedContextChip sql={attachedContext.sql} onRemove={handleRemoveContext} />
         )}
         <Textarea
           ref={textareaRef}
@@ -408,53 +482,24 @@ export function AiChatInput({
           onChange={handleChange}
           onFocus={handleFocus}
           onKeyDown={handleKeyDown}
-          role={showDropdown ? 'combobox' : undefined}
-          aria-expanded={showDropdown ? true : undefined}
-          aria-controls={showDropdown ? 'slash-command-listbox' : undefined}
-          aria-activedescendant={
-            showDropdown && highlightedIndex >= 0
-              ? `slash-cmd-${filteredCommands[highlightedIndex]?.name}`
-              : undefined
-          }
-          placeholder={
-            externalPlaceholder
-              ? externalPlaceholder
-              : !aiEnabled
-                ? 'AI is disabled — enable it in settings'
-                : !hasEndpoint || !hasModel
-                  ? 'Configure AI endpoint and model in settings'
-                  : 'Ask about your SQL or schema'
-          }
-          disabled={externalDisabled || isGenerating}
+          {...slashCommandComboboxProps(showDropdown, filteredCommands[highlightedIndex])}
+          placeholder={resolvePlaceholder({
+            externalPlaceholder: externalPlaceholder,
+            aiEnabled: readiness.aiEnabled,
+            isConfigured: readiness.isConfigured,
+          })}
+          disabled={isInputLocked}
           rows={1}
           data-testid="ai-chat-textarea"
         />
       </div>
 
-      {isGenerating ? (
-        <Button
-          variant="danger"
-          iconOnly
-          onClick={handleCancel}
-          title="Stop generation"
-          aria-label="Stop generation"
-          data-testid="ai-stop-button"
-        >
-          <StopIcon size={16} weight="fill" />
-        </Button>
-      ) : (
-        <Button
-          variant="accent"
-          iconOnly
-          onClick={handleSend}
-          disabled={!canSend}
-          title="Send message"
-          aria-label="Send message"
-          data-testid="ai-send-button"
-        >
-          <PaperPlaneRightIcon size={16} weight="regular" />
-        </Button>
-      )}
+      <SendOrStopButton
+        isGenerating={isGenerating}
+        canSend={canSend}
+        onSend={handleSend}
+        onStop={handleCancel}
+      />
     </div>
   )
 }

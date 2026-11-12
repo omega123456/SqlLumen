@@ -645,13 +645,12 @@ pub async fn semantic_search_impl(
 
     // Check cache for each query
     for (index, query) in queries.iter().enumerate() {
-        if let Some(cached_vec) = state.embedding_cache.get(&embedding_model, query) {
-            query_vectors.push(cached_vec);
-        } else {
-            query_vectors.push(Vec::new()); // placeholder
+        let cached_vec = state.embedding_cache.get(&embedding_model, query);
+        if cached_vec.is_none() {
             uncached_indices.push(index);
             uncached_texts.push(query.clone());
         }
+        query_vectors.push(cached_vec.unwrap_or_default());
     }
 
     // Embed only cache misses
@@ -923,13 +922,11 @@ pub async fn invalidate_schema_index_impl(
     let parsed_tables: Vec<(String, String)> = tables
         .iter()
         .filter_map(|qualified_table| {
-            let parts: Vec<&str> = qualified_table.splitn(2, '.').collect();
-            if parts.len() == 2 {
-                Some((parts[0].to_string(), parts[1].to_string()))
-            } else {
+            let Some((db_name, table_name)) = qualified_table.split_once('.') else {
                 tracing::warn!(table = %qualified_table, "Invalid table format, expected 'db_name.table_name'");
-                None
-            }
+                return None;
+            };
+            Some((db_name.to_string(), table_name.to_string()))
         })
         .collect();
 

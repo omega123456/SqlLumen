@@ -11,6 +11,70 @@ export interface ConnectionHeaderProps {
   onToggleFavourites: () => void
 }
 
+const CONNECTION_STATUS_DISPLAY: Record<string, { className: string; label: string }> = {
+  connected: { className: styles.statusConnected, label: 'Connected' },
+  reconnecting: { className: styles.statusReconnecting, label: 'Reconnecting' },
+  disconnected: { className: styles.statusDisconnected, label: 'Disconnected' },
+}
+
+const FALLBACK_SERVER_VERSION = 'MySQL server'
+
+function connectionStatusDisplay(status: string) {
+  return CONNECTION_STATUS_DISPLAY[status] ?? CONNECTION_STATUS_DISPLAY.disconnected
+}
+
+function connectionColorStyle(color: string | null | undefined): CSSProperties | undefined {
+  if (!color) return undefined
+  return { '--connection-color': color } as CSSProperties
+}
+
+function ActiveDatabaseBadge({ activeDatabase }: { activeDatabase: string | null }) {
+  if (!activeDatabase) {
+    return (
+      <span
+        className={`${styles.activeDatabase} ${styles.activeDatabaseEmpty}`}
+        title="No active database"
+        data-testid="connection-active-database"
+      >
+        <Database size={12} weight="regular" className={styles.activeDatabaseIcon} aria-hidden />
+        <span className={styles.activeDatabaseName}>No database selected</span>
+      </span>
+    )
+  }
+  return (
+    <span
+      className={styles.activeDatabase}
+      title={`Active database: ${activeDatabase}`}
+      data-testid="connection-active-database"
+    >
+      <Database size={12} weight="regular" className={styles.activeDatabaseIcon} aria-hidden />
+      <span className={styles.activeDatabaseName}>
+        <span className={styles.srOnly}>Active database: </span>
+        {activeDatabase}
+      </span>
+    </span>
+  )
+}
+
+function FavouritesToggle({
+  favouritesOpen,
+  onToggle,
+}: {
+  favouritesOpen: boolean
+  onToggle: () => void
+}) {
+  const label = favouritesOpen ? 'Show object browser' : 'Show favourites'
+  return (
+    <IconButton onClick={onToggle} aria-label={label} title={label} data-testid="favourites-toggle">
+      {favouritesOpen ? (
+        <Database size={16} weight="regular" />
+      ) : (
+        <Star size={16} weight="regular" />
+      )}
+    </IconButton>
+  )
+}
+
 export function ConnectionHeader({
   connectionId,
   favouritesOpen,
@@ -24,24 +88,10 @@ export function ConnectionHeader({
   if (!activeConnection) return null
 
   const connectionName = activeConnection.profile.name
-  const serverVersion = activeConnection.serverVersion || 'MySQL server'
-  const connectionStatus = activeConnection.status
+  const serverVersion = activeConnection.serverVersion || FALLBACK_SERVER_VERSION
+  const statusDisplay = connectionStatusDisplay(activeConnection.status)
   const activeDatabase =
     activeConnection.sessionDatabase ?? activeConnection.profile.defaultDatabase ?? null
-
-  const statusClass =
-    connectionStatus === 'connected'
-      ? styles.statusConnected
-      : connectionStatus === 'reconnecting'
-        ? styles.statusReconnecting
-        : styles.statusDisconnected
-
-  const statusLabel =
-    connectionStatus === 'connected'
-      ? 'Connected'
-      : connectionStatus === 'reconnecting'
-        ? 'Reconnecting'
-        : 'Disconnected'
 
   const handleRefresh = () => {
     void refreshAll(connectionId)
@@ -51,11 +101,7 @@ export function ConnectionHeader({
     <div className={styles.header} data-testid="connection-header">
       <div
         className={styles.iconWrapper}
-        style={
-          activeConnection.profile.color
-            ? ({ '--connection-color': activeConnection.profile.color } as CSSProperties)
-            : undefined
-        }
+        style={connectionColorStyle(activeConnection.profile.color)}
       >
         <Database size={16} weight="regular" />
       </div>
@@ -63,57 +109,15 @@ export function ConnectionHeader({
         <span className={styles.connectionName}>{connectionName}</span>
         <span className={styles.versionRow}>
           <span
-            className={`${styles.statusDot} ${statusClass}`}
-            title={statusLabel}
+            className={`${styles.statusDot} ${statusDisplay.className}`}
+            title={statusDisplay.label}
             data-testid="connection-status-indicator"
           />
           <span className={styles.serverVersion}>{serverVersion}</span>
         </span>
-        {activeDatabase ? (
-          <span
-            className={styles.activeDatabase}
-            title={`Active database: ${activeDatabase}`}
-            data-testid="connection-active-database"
-          >
-            <Database
-              size={12}
-              weight="regular"
-              className={styles.activeDatabaseIcon}
-              aria-hidden
-            />
-            <span className={styles.activeDatabaseName}>
-              <span className={styles.srOnly}>Active database: </span>
-              {activeDatabase}
-            </span>
-          </span>
-        ) : (
-          <span
-            className={`${styles.activeDatabase} ${styles.activeDatabaseEmpty}`}
-            title="No active database"
-            data-testid="connection-active-database"
-          >
-            <Database
-              size={12}
-              weight="regular"
-              className={styles.activeDatabaseIcon}
-              aria-hidden
-            />
-            <span className={styles.activeDatabaseName}>No database selected</span>
-          </span>
-        )}
+        <ActiveDatabaseBadge activeDatabase={activeDatabase} />
       </div>
-      <IconButton
-        onClick={onToggleFavourites}
-        aria-label={favouritesOpen ? 'Show object browser' : 'Show favourites'}
-        title={favouritesOpen ? 'Show object browser' : 'Show favourites'}
-        data-testid="favourites-toggle"
-      >
-        {favouritesOpen ? (
-          <Database size={16} weight="regular" />
-        ) : (
-          <Star size={16} weight="regular" />
-        )}
-      </IconButton>
+      <FavouritesToggle favouritesOpen={favouritesOpen} onToggle={onToggleFavourites} />
       <IconButton
         onClick={handleRefresh}
         aria-label="Refresh all databases"

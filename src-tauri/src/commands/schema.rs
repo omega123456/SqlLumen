@@ -873,34 +873,34 @@ pub async fn rename_database(
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
 
-    if let Some(conn_id) = conn_id {
-        // Rename database involves CREATE + RENAME TABLE(s) + DROP — log as a batch
-        let stmts = vec![
-            format!("CREATE DATABASE `{new_name}`"),
-            format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
-            format!("DROP DATABASE `{old_name}`"),
-        ];
-        let entries: Vec<NewHistoryEntry> = stmts
-            .into_iter()
-            .map(|sql_text| NewHistoryEntry {
-                connection_id: conn_id.clone(),
-                database_name: database_name.clone(),
-                sql_text,
-                duration_ms: Some(duration_ms),
-                row_count: Some(0),
-                affected_rows: Some(0),
-                success: result.is_ok(),
-                error_message: result.as_ref().err().cloned(),
-            })
-            .collect();
-
-        log_batch_entries(&state.db, entries);
-    } else {
+    let Some(conn_id) = conn_id else {
         tracing::warn!(
             session_id = %connection_id,
             "skipping query history logging: no saved connection id resolved for session"
         );
-    }
+        return result;
+    };
+    // Rename database involves CREATE + RENAME TABLE(s) + DROP — log as a batch
+    let stmts = vec![
+        format!("CREATE DATABASE `{new_name}`"),
+        format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
+        format!("DROP DATABASE `{old_name}`"),
+    ];
+    let entries: Vec<NewHistoryEntry> = stmts
+        .into_iter()
+        .map(|sql_text| NewHistoryEntry {
+            connection_id: conn_id.clone(),
+            database_name: database_name.clone(),
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        })
+        .collect();
+
+    log_batch_entries(&state.db, entries);
 
     result
 }

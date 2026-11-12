@@ -72,6 +72,132 @@ function findRowIndexByKey(
   return rows.findIndex((row) => isSameRowKey(getRowKey(row, primaryKeyColumns), targetKey))
 }
 
+type RowKey = Record<string, unknown>
+type TableDataTabState = NonNullable<ReturnType<typeof useTableDataStore.getState>['tabs'][string]>
+type TableEditState = TableDataTabState['editState']
+
+interface TableDataGridView {
+  columns: TableDataColumnMeta[]
+  rows: unknown[][]
+  primaryKey: TableDataTabState['primaryKey']
+  editState: TableEditState
+  sort: TableDataTabState['sort']
+  selectedRowKey: RowKey | null
+  selectedCell: TableDataTabState['selectedCell']
+  foreignKeys: NonNullable<TableDataTabState['foreignKeys']>
+  columnWidths: Record<string, number>
+  checkedRowCount: number
+  scrollRow: number
+  scrollCol: number
+}
+
+const EMPTY_GRID_VIEW: TableDataGridView = {
+  columns: [],
+  rows: [],
+  primaryKey: null,
+  editState: null,
+  sort: null,
+  selectedRowKey: null,
+  selectedCell: null,
+  foreignKeys: [],
+  columnWidths: {},
+  checkedRowCount: 0,
+  scrollRow: 0,
+  scrollCol: 0,
+}
+
+function readGridTabView(tabState: TableDataTabState | undefined): TableDataGridView {
+  if (!tabState) return EMPTY_GRID_VIEW
+  return {
+    columns: tabState.columns,
+    rows: tabState.rows,
+    primaryKey: tabState.primaryKey,
+    editState: tabState.editState,
+    sort: tabState.sort,
+    selectedRowKey: tabState.selectedRowKey,
+    selectedCell: tabState.selectedCell,
+    foreignKeys: tabState.foreignKeys ?? EMPTY_GRID_VIEW.foreignKeys,
+    columnWidths: tabState.columnWidths ?? EMPTY_GRID_VIEW.columnWidths,
+    checkedRowCount: tabState.checkedRowKeys?.length ?? 0,
+    scrollRow: tabState.scrollRow,
+    scrollCol: tabState.scrollCol,
+  }
+}
+
+function draftTempIdOf(rowKey: RowKey | null): unknown {
+  if (!rowKey || !('__tempId' in rowKey)) return null
+  return rowKey.__tempId
+}
+
+function editingRowClasses(editState: TableEditState, rowKey: RowKey): string[] {
+  if (!editState || !isSameRowKey(rowKey, editState.rowKey)) return []
+  if (editState.isNewRow) return ['grid-editing-row', 'grid-new-row']
+  return ['grid-editing-row']
+}
+
+function isDraftRowIndex(editState: TableEditState, rowIndex: number, rowCount: number): boolean {
+  const hasDraftTempId = editState?.isNewRow === true && Boolean(editState.tempId)
+  return hasDraftTempId && rowIndex === rowCount - 1
+}
+
+interface TableDataRowSource {
+  rows: unknown[][]
+  columns: TableDataColumnMeta[]
+  primaryKeyColumns: string[]
+  editState: TableEditState
+}
+
+function buildTableDataRow(source: TableDataRowSource, rowIndex: number): TableDataRow {
+  const { rows, columns, editState } = source
+  const row = rows[rowIndex]
+  const object: TableDataRow = { __rowIndex: rowIndex }
+  columns.forEach((column, columnIndex) => {
+    object[column.name] = row[columnIndex] ?? null
+  })
+  if (isDraftRowIndex(editState, rowIndex, rows.length)) {
+    object.__tempId = editState?.tempId
+  }
+  if (!editState) return object
+  const rowKey = getRowKey(object, source.primaryKeyColumns)
+  if (!isSameRowKey(rowKey, editState.rowKey)) return object
+  object.__editingRowKey = editState.rowKey
+  for (const [columnName, value] of Object.entries(editState.currentValues)) {
+    object[columnName] = value
+  }
+  return object
+}
+
+function resolveRestoreRowIndex(
+  currentState: TableDataTabState | undefined,
+  fallbackRowIndex: number
+): number {
+  const editState = currentState?.editState
+  if (!currentState || !editState) return fallbackRowIndex
+  if ('__tempId' in editState.rowKey) return Math.max(0, currentState.rows.length - 1)
+  const matchedRowIndex = findStoreRowIndexByKey(
+    currentState.rows,
+    currentState.columns,
+    editState.rowKey
+  )
+  return matchedRowIndex >= 0 ? matchedRowIndex : fallbackRowIndex
+}
+
+function gridSortProps(sort: TableDataTabState['sort']) {
+  if (!sort) return { sortColumn: null, sortDirection: null }
+  return {
+    sortColumn: sort.column,
+    sortDirection: sort.direction.toUpperCase() as 'ASC' | 'DESC',
+  }
+}
+
+function draftScrollRowIndex(editState: TableEditState, rowCount: number): number | null {
+  return editState?.isNewRow ? rowCount - 1 : null
+}
+
+function isPointerOrUnknownSource(source: CellClickGuardArgs['source']): boolean {
+  return !source || source === 'grid-pointer'
+}
+
 // ---------------------------------------------------------------------------
 // TableDataGrid component
 // ---------------------------------------------------------------------------
@@ -101,7 +227,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
   const columnJumpRequest = useTableDataStore((state) => state.columnJumpRequests[tabId])
   const highlightedColumnKey = useTableDataStore(
-    (state) => state.highlightedColumnByTab[tabId] ?? null
+    (state) => state.highlightedColumnByTab[tabId] ?? undefined
   )
   const consumeColumnJump = useTableDataStore((state) => state.consumeColumnJump)
   const clearColumnHighlight = useTableDataStore((state) => state.clearColumnHighlight)
@@ -110,40 +236,30 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const showError = useToastStore((state) => state.showError)
   const showSuccess = useToastStore((state) => state.showSuccess)
 
-  const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
-  const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
-  const primaryKey = tabState?.primaryKey ?? null
-  const editState = tabState?.editState ?? null
-  const sort = tabState?.sort ?? null
-  const selectedRowKey = tabState?.selectedRowKey ?? null
-  const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
-  const columnWidths = useMemo(() => tabState?.columnWidths ?? {}, [tabState?.columnWidths])
-
+  const view = readGridTabView(tabState)
+  const { columns, rows, primaryKey, editState, sort, selectedRowKey, foreignKeys, columnWidths } =
+    view
   const primaryKeyColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPrimaryKey = primaryKey !== null
+  const canEditRows = !isReadOnly && hasPrimaryKey
 
   // ---------------------------------------------------------------------------
   // Scroll to newly inserted row at the bottom
   // ---------------------------------------------------------------------------
   const autoSelectedDraftTempIdRef = useRef<string | null>(null)
   useEffect(() => {
-    const selectedDraftTempId =
-      selectedRowKey && '__tempId' in selectedRowKey ? selectedRowKey.__tempId : null
-    if (
-      editState?.isNewRow &&
-      selectedDraftTempId === editState.tempId &&
-      rows.length > 0 &&
-      autoSelectedDraftTempIdRef.current !== editState.tempId
-    ) {
-      const draftRowIndex = rows.length - 1
-      autoSelectedDraftTempIdRef.current = editState.tempId ?? null
-      requestAnimationFrame(() => {
-        gridRef.current?.selectCell({ rowIdx: draftRowIndex, idx: 0 }, { shouldFocusCell: true })
-      })
-    }
     if (!editState?.isNewRow) {
       autoSelectedDraftTempIdRef.current = null
+      return
     }
+    const isDraftSelected = draftTempIdOf(selectedRowKey) === editState.tempId
+    if (!isDraftSelected || rows.length === 0) return
+    if (autoSelectedDraftTempIdRef.current === editState.tempId) return
+    const draftRowIndex = rows.length - 1
+    autoSelectedDraftTempIdRef.current = editState.tempId ?? null
+    requestAnimationFrame(() => {
+      gridRef.current?.selectCell({ rowIdx: draftRowIndex, idx: 0 }, { shouldFocusCell: true })
+    })
   }, [editState?.isNewRow, editState?.tempId, rows.length, selectedRowKey])
 
   // ---------------------------------------------------------------------------
@@ -184,7 +300,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // Uses the documented "adjust state during render" pattern: track the
   // previous count in state and bump the reset key on the non-empty→empty
   // transition, so the signal is computed synchronously without an effect.
-  const checkedRowCount = tabState?.checkedRowKeys?.length ?? 0
+  const checkedRowCount = view.checkedRowCount
   const [selectionResetState, setSelectionResetState] = useState({ resetKey: 0, prevCount: 0 })
   if (selectionResetState.prevCount !== checkedRowCount) {
     setSelectionResetState((current) => ({
@@ -243,26 +359,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // Overlays editState current values, __editingRowKey, and __tempId.
   // ---------------------------------------------------------------------------
   const rowData: TableDataRow[] = useMemo(() => {
-    return rows.map((row, rowIndex) => {
-      const object: TableDataRow = { __rowIndex: rowIndex }
-      columns.forEach((column, columnIndex) => {
-        object[column.name] = row[columnIndex] ?? null
-      })
-      // Carry forward __tempId for new rows
-      if (editState?.isNewRow && editState.tempId && rowIndex === rows.length - 1) {
-        object.__tempId = editState.tempId
-      }
-      if (editState) {
-        const rowKey = getRowKey(object, primaryKeyColumns)
-        if (isSameRowKey(rowKey, editState.rowKey)) {
-          object.__editingRowKey = editState.rowKey
-          for (const [columnName, value] of Object.entries(editState.currentValues)) {
-            object[columnName] = value
-          }
-        }
-      }
-      return object
-    })
+    const source = { rows, columns, primaryKeyColumns, editState }
+    return rows.map((_, rowIndex) => buildTableDataRow(source, rowIndex))
   }, [rows, columns, primaryKeyColumns, editState])
 
   // Keep a ref to the latest rowData for post-async lookups
@@ -278,20 +376,23 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     )
     if (index < 0) return
 
-    if (tabState?.selectedCell && selectedRowKey) {
-      const rowIndex = findRowIndexByKey(rowData, selectedRowKey, primaryKeyColumns)
-      const row = rowData[rowIndex]
-      if (row && tabState.selectedCell.columnKey !== columnJumpRequest.columnKey) {
-        setSelectedCell(tabId, {
-          columnKey: columnJumpRequest.columnKey,
-          value: row[columnJumpRequest.columnKey],
-        })
-      } else {
-        gridRef.current?.scrollToCell({ idx: index }, 'horizontal')
-      }
-    } else {
-      gridRef.current?.scrollToCell({ idx: index }, 'horizontal')
+    const selectedCell = tabState?.selectedCell
+    const jumpRow = selectedRowKey
+      ? rowData[findRowIndexByKey(rowData, selectedRowKey, primaryKeyColumns)]
+      : undefined
+    const movesSelectedCell =
+      selectedCell != null &&
+      jumpRow !== undefined &&
+      selectedCell.columnKey !== columnJumpRequest.columnKey
+    if (movesSelectedCell) {
+      setSelectedCell(tabId, {
+        columnKey: columnJumpRequest.columnKey,
+        value: jumpRow[columnJumpRequest.columnKey],
+      })
+      consumeColumnJump(tabId)
+      return
     }
+    gridRef.current?.scrollToCell({ idx: index }, 'horizontal')
     consumeColumnJump(tabId)
   }, [
     columnJumpRequest,
@@ -349,17 +450,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // ---------------------------------------------------------------------------
   const getRowClass = useCallback(
     (row: TableDataRow) => {
-      const classes: string[] = []
       const rowKey = getRowKey(row, primaryKeyColumns)
-
-      if (editState) {
-        const isEditing = isSameRowKey(rowKey, editState.rowKey)
-        if (isEditing && editState.isNewRow) {
-          classes.push('grid-editing-row', 'grid-new-row')
-        } else if (isEditing) {
-          classes.push('grid-editing-row')
-        }
-      }
+      const classes = editingRowClasses(editState, rowKey)
 
       if (selectedRowKey && isSameRowKey(rowKey, selectedRowKey)) {
         classes.push('grid-row-precision-selected')
@@ -502,6 +594,30 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
    * row if switching rows. Returns `true` if the guard passed (or no commit
    * was needed), `false` if it failed (validation error or save error).
    */
+  const commitEditingRowBeforeSwitch = useCallback(
+    async (currentEditState: NonNullable<TableEditState>, targetRowKey: RowKey) => {
+      if (reportInvalidTemporalValue(currentEditState, columns)) {
+        setSelectedRow(tabId, currentEditState.rowKey)
+        return false
+      }
+      const hadPendingChanges = currentEditState.modifiedColumns.size > 0
+      await commitEditingRowIfNeeded(tabId, targetRowKey)
+      const updatedState = useTableDataStore.getState().tabs[tabId]
+      if (updatedState?.saveError) {
+        showError('Save failed', updatedState.saveError)
+        if (updatedState.editState) {
+          setSelectedRow(tabId, updatedState.editState.rowKey)
+        }
+        return false
+      }
+      if (hadPendingChanges) {
+        showSuccess('Row saved', 'Changes saved successfully.')
+      }
+      return true
+    },
+    [tabId, columns, commitEditingRowIfNeeded, setSelectedRow, showError, showSuccess]
+  )
+
   const validateAndCommitCurrentEdit = useCallback(
     async (
       targetRowKey: Record<string, unknown>,
@@ -511,69 +627,22 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     ): Promise<{ passed: boolean; result?: CellClickGuardResult }> => {
       const currentState = useTableDataStore.getState().tabs[tabId]
       const currentEditState = currentState?.editState ?? null
-      const currentEditRowKey = currentEditState?.rowKey ?? null
-      const restoreRowIndex = (() => {
-        if (!currentState?.editState) return fallbackRowIndex
-        if ('__tempId' in currentState.editState.rowKey) {
-          return Math.max(0, currentState.rows.length - 1)
-        }
+      const isSwitchingRows =
+        currentEditState !== null && !isSameRowKey(targetRowKey, currentEditState.rowKey)
+      if (!isSwitchingRows) return { passed: true }
 
-        const matchedRowIndex = findStoreRowIndexByKey(
-          currentState.rows,
-          currentState.columns,
-          currentState.editState.rowKey
-        )
-
-        return matchedRowIndex >= 0 ? matchedRowIndex : fallbackRowIndex
-      })()
-      const buildRestoreFocusResult = (): CellClickGuardResult => ({
+      const restoreFocusResult: CellClickGuardResult = {
         proceed: false,
-        targetRowIdx: restoreRowIndex,
+        targetRowIdx: resolveRestoreRowIndex(currentState, fallbackRowIndex),
         targetColIdx: targetColumnIndex,
         enableEditor: options.enableEditorOnRestore,
         restoreFocus: true,
-      })
-
-      if (!isSameRowKey(targetRowKey, currentEditRowKey) && currentEditRowKey !== null) {
-        const validationError = reportInvalidTemporalValue(currentEditState, columns)
-        if (validationError) {
-          // Snap selection back to the editing row
-          if (currentEditState) {
-            setSelectedRow(tabId, currentEditState.rowKey)
-          }
-          return {
-            passed: false,
-            result: buildRestoreFocusResult(),
-          }
-        }
-
-        const hadPendingChanges = (currentEditState?.modifiedColumns.size ?? 0) > 0
-
-        // Commit the old row first (async save)
-        await commitEditingRowIfNeeded(tabId, targetRowKey)
-
-        // Check if save failed
-        const updatedState = useTableDataStore.getState().tabs[tabId]
-        if (updatedState?.saveError) {
-          showError('Save failed', updatedState.saveError)
-          // Snap selection back to the editing row
-          if (updatedState.editState) {
-            setSelectedRow(tabId, updatedState.editState.rowKey)
-          }
-          return {
-            passed: false,
-            result: buildRestoreFocusResult(),
-          }
-        }
-
-        if (hadPendingChanges) {
-          showSuccess('Row saved', 'Changes saved successfully.')
-        }
       }
-
+      const committed = await commitEditingRowBeforeSwitch(currentEditState, targetRowKey)
+      if (!committed) return { passed: false, result: restoreFocusResult }
       return { passed: true }
     },
-    [tabId, columns, commitEditingRowIfNeeded, setSelectedRow, showError, showSuccess]
+    [tabId, commitEditingRowBeforeSwitch]
   )
 
   /** Find the current row index for a given row key in the latest rowData snapshot. */
@@ -586,7 +655,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
   const handleCellClickGuard = useCallback(
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
-      if (!args.source || args.source === 'grid-pointer') {
+      if (isPointerOrUnknownSource(args.source)) {
         clearColumnHighlight(tabId)
       }
       const row = args.rowData
@@ -669,44 +738,38 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // ---------------------------------------------------------------------------
   // onRowsChange: called when an editor commits — used to clear no-op edits
   // ---------------------------------------------------------------------------
+  const syncCommittedEditorValue = useCallback(
+    (row: TableDataRow, changedColumnKey: string) => {
+      const currentEditState = useTableDataStore.getState().tabs[tabId]?.editState
+      if (!currentEditState) return
+      const rowKey =
+        (row.__editingRowKey as RowKey | undefined) ?? getRowKey(row, primaryKeyColumns)
+      if (!isSameRowKey(rowKey, currentEditState.rowKey)) return
+      useTableDataStore
+        .getState()
+        .syncCellValue(
+          tabId,
+          { ...row, __editingRowKey: rowKey },
+          changedColumnKey,
+          row[changedColumnKey],
+          rowKey
+        )
+    },
+    [primaryKeyColumns, tabId]
+  )
+
   const handleRowsChange = useCallback(
     (newRows: TableDataRow[], data: { indexes: number[]; column?: { key: string } }) => {
       const changedColumnKey = data.column?.key
-
+      const changedRows = data.indexes.map((index) => newRows[index]).filter(Boolean)
       if (changedColumnKey) {
-        for (const index of data.indexes) {
-          const row = newRows[index]
-          if (!row) continue
-
-          const currentEditState = useTableDataStore.getState().tabs[tabId]?.editState
-          if (!currentEditState) continue
-
-          const rowKey =
-            (row.__editingRowKey as Record<string, unknown> | undefined) ??
-            getRowKey(row, primaryKeyColumns)
-          if (!isSameRowKey(rowKey, currentEditState.rowKey)) continue
-
-          const nextValue = row[changedColumnKey]
-          useTableDataStore
-            .getState()
-            .syncCellValue(
-              tabId,
-              { ...row, __editingRowKey: rowKey },
-              changedColumnKey,
-              nextValue,
-              rowKey
-            )
-        }
+        changedRows.forEach((row) => syncCommittedEditorValue(row, changedColumnKey))
       }
-
-      for (const index of data.indexes) {
-        const row = newRows[index]
-        if (!row) continue
-        const rowKey = getRowKey(row, primaryKeyColumns)
-        clearEditStateIfUnmodified(tabId, rowKey)
-      }
+      changedRows.forEach((row) =>
+        clearEditStateIfUnmodified(tabId, getRowKey(row, primaryKeyColumns))
+      )
     },
-    [primaryKeyColumns, tabId, clearEditStateIfUnmodified]
+    [primaryKeyColumns, tabId, clearEditStateIfUnmodified, syncCommittedEditorValue]
   )
 
   const handleCellClipboardEdit = useCallback(
@@ -941,8 +1004,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           rows={rowData}
           columns={descriptorColumns}
           editState={sharedEditState}
-          sortColumn={sort?.column ?? null}
-          sortDirection={sort ? (sort.direction.toUpperCase() as 'ASC' | 'DESC') : null}
+          {...gridSortProps(sort)}
           onSortChange={handleSortChange}
           onCellClickGuard={handleCellClickGuard}
           onCellClipboardEdit={handleCellClipboardEdit}
@@ -952,13 +1014,13 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           getRowClass={getRowClass}
           isModifiedCell={isModifiedCell}
           autoSizeConfig={autoSizeConfig}
-          isEditMode={!isReadOnly && hasPrimaryKey}
+          isEditMode={canEditRows}
           editableColumnKeys={editableColumnKeys}
-          runCellClickGuardOnKeyboardSelection={!isReadOnly && hasPrimaryKey}
+          runCellClickGuardOnKeyboardSelection={canEditRows}
           selectedCellPosition={selectedCellPosition}
-          highlightColumnKey={highlightedColumnKey ?? undefined}
+          highlightColumnKey={highlightedColumnKey}
           onCellSelectionChange={(args) => {
-            if (!args.source || args.source === 'grid-pointer') {
+            if (isPointerOrUnknownSource(args.source)) {
               clearColumnHighlight(tabId)
             }
           }}
@@ -972,11 +1034,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           }}
           onColumnResize={handleColumnResize}
           onScrollCellChange={handleScrollCellChange}
-          initialScrollCell={{
-            scrollRow: tabState?.scrollRow ?? 0,
-            scrollCol: tabState?.scrollCol ?? 0,
-          }}
-          scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
+          initialScrollCell={{ scrollRow: view.scrollRow, scrollCol: view.scrollCol }}
+          scrollToRowIndex={draftScrollRowIndex(editState, rows.length)}
           onFkCellAction={handleForeignKeyCellAction}
           onCellDoubleClick={handleCellDoubleClick}
           rowMarkers="checkbox"
@@ -989,7 +1048,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           <ForeignKeyLookupTargetDialog
             target={foreignKeyLookupTarget}
             tableLocation={tabState}
-            isReadOnly={isReadOnly || !hasPrimaryKey}
+            isReadOnly={!canEditRows}
             onClose={handleForeignKeyLookupClose}
             onApply={handleForeignKeyApply}
           />

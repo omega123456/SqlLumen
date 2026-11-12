@@ -242,6 +242,119 @@ async function fetchChildren(
 // Store
 // ---------------------------------------------------------------------------
 
+type ChildLoader = (connectionId: string, nodeId: string) => Promise<TreeNode[]>
+
+function databaseNode(databaseName: string, existing: TreeNode | undefined): TreeNode {
+  if (existing?.isLoaded) return existing
+  return {
+    id: makeNodeId('database', databaseName, databaseName),
+    label: databaseName,
+    type: 'database',
+    parentId: null,
+    hasChildren: true,
+    isLoaded: false,
+    databaseName: databaseName,
+    objectName: databaseName,
+  }
+}
+
+function mergeDatabaseNodes(
+  existingNodes: Record<string, TreeNode>,
+  databases: string[]
+): Record<string, TreeNode> {
+  const databaseIds = new Set<string>()
+  const mergedNodes: Record<string, TreeNode> = {}
+  for (const databaseName of databases) {
+    const id = makeNodeId('database', databaseName, databaseName)
+    databaseIds.add(id)
+    mergedNodes[id] = databaseNode(databaseName, existingNodes[id])
+  }
+  for (const [nodeId, node] of Object.entries(existingNodes)) {
+    if (node.type === 'database') continue
+    const databaseId = makeNodeId('database', node.databaseName!, node.databaseName!)
+    if (databaseIds.has(databaseId)) {
+      mergedNodes[nodeId] = node
+    }
+  }
+  return mergedNodes
+}
+
+async function loadCategoryChildren(connectionId: string, nodeId: string): Promise<TreeNode[]> {
+  const parsed = parseNodeId(nodeId)
+  const databaseName = parsed.database
+  const categoryType = parsed.name
+  const objectNames = await listSchemaObjects(connectionId, databaseName, categoryType)
+  const objectType = categoryType as TreeNode['type']
+  return objectNames.map((objectName) => ({
+    id: makeNodeId(objectType, databaseName, objectName),
+    label: objectName,
+    type: objectType,
+    parentId: nodeId,
+    hasChildren: objectType === 'table',
+    isLoaded: false,
+    databaseName: databaseName,
+    objectName: objectName,
+    metadata: { databaseName: databaseName },
+  }))
+}
+
+async function loadTableColumns(connectionId: string, nodeId: string): Promise<TreeNode[]> {
+  const parsed = parseNodeId(nodeId)
+  const databaseName = parsed.database
+  const tableName = parsed.name
+  const columns = await listColumns(connectionId, databaseName, tableName)
+  return columns.map((column) => ({
+    id: makeNodeId('column', databaseName, `${tableName}.${column.name}`),
+    label: column.name,
+    type: 'column' as const,
+    parentId: nodeId,
+    hasChildren: false,
+    isLoaded: true,
+    databaseName: databaseName,
+    objectName: column.name,
+    metadata: { columnType: column.dataType, databaseName: databaseName },
+  }))
+}
+
+const CHILD_LOADERS: Partial<Record<TreeNode['type'], ChildLoader>> = {
+  category: loadCategoryChildren,
+  table: loadTableColumns,
+}
+
+function isOutsideDatabase(nodeId: string, databaseName: string): boolean {
+  return parseNodeId(nodeId).database !== databaseName
+}
+
+function nodesWithDatabaseReset(
+  nodes: Record<string, TreeNode>,
+  databaseNodeId: string,
+  databaseName: string
+): Record<string, TreeNode> {
+  const newNodes: Record<string, TreeNode> = {}
+  for (const [id, node] of Object.entries(nodes)) {
+    if (id === databaseNodeId) {
+      newNodes[id] = { ...node, isLoaded: false }
+      continue
+    }
+    if (isOutsideDatabase(id, databaseName) || node.type === 'database') {
+      newNodes[id] = node
+    }
+  }
+  return newNodes
+}
+
+function idsOutsideDatabase(ids: Set<string>, databaseName: string): Set<string> {
+  return new Set([...ids].filter((id) => isOutsideDatabase(id, databaseName)))
+}
+
+function retainedSelectedNodeId(
+  selectedNodeId: string | null,
+  nodes: Record<string, TreeNode>
+): string | null {
+  if (selectedNodeId && !nodes[selectedNodeId]) return null
+  return selectedNodeId
+}
+
 export const useSchemaStore = create<SchemaState>()((set, get) => ({
   connectionStates: {},
   revealRequest: null,
@@ -263,44 +376,7 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     const current = get().connectionStates[connectionId]
     if (!current || current.loadGeneration !== gen) return
 
-    const existingNodes = get().connectionStates[connectionId]?.nodes ?? {}
-
-    // Build set of new database IDs
-    const newDbIds = new Set<string>()
-    const mergedNodes: Record<string, TreeNode> = {}
-
-    for (const dbName of databases) {
-      const id = makeNodeId('database', dbName, dbName)
-      newDbIds.add(id)
-
-      const existing = existingNodes[id]
-      if (existing && existing.isLoaded) {
-        // Preserve the existing database node (and we'll keep its descendants below)
-        mergedNodes[id] = existing
-      } else {
-        mergedNodes[id] = {
-          id: id,
-          label: dbName,
-          type: 'database',
-          parentId: null,
-          hasChildren: true,
-          isLoaded: false,
-          databaseName: dbName,
-          objectName: dbName,
-        }
-      }
-    }
-
-    // Keep all descendant nodes of databases that still exist
-    for (const [nodeId, node] of Object.entries(existingNodes)) {
-      if (node.type === 'database') continue // already handled above
-      // Check if this node belongs to a database that still exists
-      const dbId = makeNodeId('database', node.databaseName!, node.databaseName!)
-      if (newDbIds.has(dbId)) {
-        mergedNodes[nodeId] = node
-      }
-    }
-
+    const mergedNodes = mergeDatabaseNodes(current.nodes, databases)
     const childIdsByParentId = buildChildIndex(mergedNodes)
 
     set((state) =>
@@ -352,52 +428,9 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
       return
     }
 
-    if (node.type === 'category') {
-      const parsed = parseNodeId(nodeId)
-      const dbName = parsed.database
-      const categoryType = parsed.name // e.g. 'table', 'view', etc.
-
-      await fetchChildren(get, set, connectionId, nodeId, async () => {
-        const objectNames = await listSchemaObjects(connectionId, dbName, categoryType)
-        const objectType = categoryType as TreeNode['type']
-        return objectNames.map((objectName) => {
-          const objectId = makeNodeId(objectType, dbName, objectName)
-          return {
-            id: objectId,
-            label: objectName,
-            type: objectType,
-            parentId: nodeId,
-            hasChildren: objectType === 'table',
-            isLoaded: false,
-            databaseName: dbName,
-            objectName: objectName,
-            metadata: { databaseName: dbName },
-          }
-        })
-      })
-    } else if (node.type === 'table') {
-      const parsed = parseNodeId(nodeId)
-      const dbName = parsed.database
-      const tableName = parsed.name
-
-      await fetchChildren(get, set, connectionId, nodeId, async () => {
-        const columns = await listColumns(connectionId, dbName, tableName)
-        return columns.map((column) => {
-          const columnId = makeNodeId('column', dbName, `${tableName}.${column.name}`)
-          return {
-            id: columnId,
-            label: column.name,
-            type: 'column' as const,
-            parentId: nodeId,
-            hasChildren: false,
-            isLoaded: true,
-            databaseName: dbName,
-            objectName: column.name,
-            metadata: { columnType: column.dataType, databaseName: dbName },
-          }
-        })
-      })
-    }
+    const loadChildNodes = CHILD_LOADERS[node.type]
+    if (!loadChildNodes) return
+    await fetchChildren(get, set, connectionId, nodeId, () => loadChildNodes(connectionId, nodeId))
   },
 
   // ------ toggleExpand ------
@@ -410,21 +443,17 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
     const isExpanded = connectionState.expandedNodes.has(nodeId)
 
+    const newExpanded = new Set(connectionState.expandedNodes)
     if (isExpanded) {
-      // Collapse
-      const newExpanded = new Set(connectionState.expandedNodes)
       newExpanded.delete(nodeId)
       set((state) => setConnectionState(state, connectionId, { expandedNodes: newExpanded }))
-    } else {
-      // Expand
-      const newExpanded = new Set(connectionState.expandedNodes)
-      newExpanded.add(nodeId)
-      set((state) => setConnectionState(state, connectionId, { expandedNodes: newExpanded }))
+      return
+    }
 
-      if (!node.isLoaded) {
-        // Fire-and-forget the async load
-        void get().loadChildren(connectionId, nodeId)
-      }
+    newExpanded.add(nodeId)
+    set((state) => setConnectionState(state, connectionId, { expandedNodes: newExpanded }))
+    if (!node.isLoaded) {
+      void get().loadChildren(connectionId, nodeId)
     }
   },
 
@@ -482,50 +511,14 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     const connectionState = getConnectionState(state, connectionId)
     const dbNodeId = makeNodeId('database', databaseName, databaseName)
 
-    // Remove all children of this database node and mark it as not loaded
-    const newNodes: Record<string, TreeNode> = {}
-    for (const [id, node] of Object.entries(connectionState.nodes)) {
-      if (id === dbNodeId) {
-        newNodes[id] = { ...node, isLoaded: false }
-      } else {
-        // Keep nodes that don't belong to this database
-        const parsed = parseNodeId(id)
-        if (parsed.database !== databaseName || node.type === 'database') {
-          newNodes[id] = node
-        }
-      }
+    const newNodes = nodesWithDatabaseReset(connectionState.nodes, dbNodeId, databaseName)
+    const newExpanded = idsOutsideDatabase(connectionState.expandedNodes, databaseName)
+    if (connectionState.expandedNodes.has(dbNodeId)) {
+      newExpanded.add(dbNodeId)
     }
-
-    // Keep the database expanded if it was, remove child nodes from expanded
-    const newExpanded = new Set<string>()
-    for (const nid of connectionState.expandedNodes) {
-      if (nid === dbNodeId) {
-        // Keep the database node expanded
-        newExpanded.add(nid)
-        continue
-      }
-      const parsed = parseNodeId(nid)
-      if (parsed.database !== databaseName) {
-        newExpanded.add(nid)
-      }
-    }
-
-    // Clear loading state for nodes belonging to this database
-    const newLoadingNodes = new Set<string>()
-    for (const nid of connectionState.loadingNodes) {
-      const parsed = parseNodeId(nid)
-      if (parsed.database !== databaseName) {
-        newLoadingNodes.add(nid)
-      }
-    }
-
+    const newLoadingNodes = idsOutsideDatabase(connectionState.loadingNodes, databaseName)
     const childIdsByParentId = buildChildIndex(newNodes)
-
-    // Clear selectedNodeId if it points to a node that was removed
-    const newSelectedNodeId =
-      connectionState.selectedNodeId && !newNodes[connectionState.selectedNodeId]
-        ? null
-        : connectionState.selectedNodeId
+    const newSelectedNodeId = retainedSelectedNodeId(connectionState.selectedNodeId, newNodes)
 
     set((state) =>
       setConnectionState(state, connectionId, {

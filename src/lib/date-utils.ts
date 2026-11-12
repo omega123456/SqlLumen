@@ -14,6 +14,13 @@ import { format, parse, isValid, startOfToday } from 'date-fns'
 /** MySQL temporal column types supported by the date picker. */
 export type TemporalColumnType = 'DATE' | 'DATETIME' | 'TIMESTAMP' | 'TIME' | null
 
+const TEMPORAL_COLUMN_TYPES_BY_NAME = new Map<string, TemporalColumnType>([
+  ['DATE', 'DATE'],
+  ['DATETIME', 'DATETIME'],
+  ['TIMESTAMP', 'TIMESTAMP'],
+  ['TIME', 'TIME'],
+])
+
 // ---------------------------------------------------------------------------
 // Temporal configuration — single source of truth for format strings
 // ---------------------------------------------------------------------------
@@ -72,18 +79,7 @@ export function getTemporalColumnType(dataType: string): TemporalColumnType {
     .toUpperCase()
     .replace(/\(\d+\)/, '')
 
-  switch (normalized) {
-    case 'DATE':
-      return 'DATE'
-    case 'DATETIME':
-      return 'DATETIME'
-    case 'TIMESTAMP':
-      return 'TIMESTAMP'
-    case 'TIME':
-      return 'TIME'
-    default:
-      return null
-  }
+  return TEMPORAL_COLUMN_TYPES_BY_NAME.get(normalized) ?? null
 }
 
 /**

@@ -22,6 +22,13 @@ use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 /// Fire-and-forget: insert a single history entry.
+pub(crate) fn single_row_count(succeeded: bool) -> i64 {
+    if succeeded {
+        return 1;
+    }
+    0
+}
+
 pub(crate) fn log_single_entry(db: &Arc<Mutex<Connection>>, entry: NewHistoryEntry) {
     let db = Arc::clone(db);
     tauri::async_runtime::spawn(async move {

@@ -34,11 +34,10 @@ fn default_env_filter() -> EnvFilter {
 }
 
 fn env_filter_from_rust_log() -> Option<EnvFilter> {
-    if std::env::var("RUST_LOG").is_ok() {
-        EnvFilter::try_from_default_env().ok()
-    } else {
-        None
+    if std::env::var("RUST_LOG").is_err() {
+        return None;
     }
+    EnvFilter::try_from_default_env().ok()
 }
 
 /// Parse a `log.level` setting value into an `EnvFilter` (with `sqlx=warn`).
@@ -151,18 +150,23 @@ where
         event: &tracing::Event<'_>,
     ) -> std::fmt::Result {
         let level = event.metadata().level();
-        if self.colored {
-            write!(
-                writer,
-                "{}[{}]{} ",
-                level_ansi_prefix(level),
-                level.as_str(),
-                ANSI_RESET
-            )?;
-        } else {
-            write!(writer, "[{}] ", level.as_str())?;
-        }
+        self.write_level_tag(&mut writer, level)?;
         self.inner.format_event(context, writer, event)
+    }
+}
+
+impl BracketLevelFormat {
+    fn write_level_tag(&self, writer: &mut Writer<'_>, level: &tracing::Level) -> std::fmt::Result {
+        if !self.colored {
+            return write!(writer, "[{}] ", level.as_str());
+        }
+        write!(
+            writer,
+            "{}[{}]{} ",
+            level_ansi_prefix(level),
+            level.as_str(),
+            ANSI_RESET
+        )
     }
 }
 

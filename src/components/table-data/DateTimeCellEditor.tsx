@@ -144,18 +144,13 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     (event: React.KeyboardEvent) => {
       if (event.key === 'Escape') {
         if (pickerOpen) {
-          // First Escape: just close the picker, keep cell editing active.
-          // stopPropagation prevents the DateTimePicker's document-level Escape
-          // handler from also firing.
+          // Stops the DateTimePicker's document-level Escape handler from also closing the edit.
           event.stopPropagation()
           setPickerOpen(false)
-        } else {
-          // Picker already closed (or was never open): cancel the cell edit
-          // and restore the original value.
-          restoreOriginalValue()
-          // Discard edit, don't refocus grid
-          props.onClose(false, false)
+          return
         }
+        restoreOriginalValue()
+        props.onClose(false, false)
         return
       }
       if (event.key === 'Tab' || event.key === 'Enter') {

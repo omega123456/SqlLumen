@@ -247,9 +247,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         const sessions = (newProfileToSessions[profileId] ?? []).filter(
           (otherSessionId) => otherSessionId !== sessionId
         )
-        if (sessions.length === 0) {
-          delete newProfileToSessions[profileId]
-        } else {
+        delete newProfileToSessions[profileId]
+        if (sessions.length > 0) {
           newProfileToSessions[profileId] = sessions
         }
 

@@ -21,6 +21,7 @@ import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
 import { normalizeActiveConnectionOrder, useConnectionStore } from '../../stores/connection-store'
 import type { Theme } from '../../stores/theme-store'
+import type { ActiveConnection } from '../../types/connection'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
@@ -32,17 +33,176 @@ import styles from './ConnectionTabBar.module.css'
 
 const CONNECTION_TAB_TEST_ID_PREFIX = 'connection-session-tab-'
 
+const UNNAMED_CONNECTION_LABEL = 'Unnamed connection'
+const CONNECTION_EDGE_WIDTH = '2px'
+const MIDDLE_MOUSE_BUTTON = 1
+
+interface PendingConnectionClose {
+  id: string
+  displayName: string
+  hostPort: string
+}
+
+function hostPortOf(connection: ActiveConnection): string {
+  return `${connection.profile.host}:${connection.profile.port}`
+}
+
+function connectionBaseName(connection: ActiveConnection): string {
+  const trimmedName = connection.profile.name.trim()
+  if (trimmedName === '') return UNNAMED_CONNECTION_LABEL
+  return trimmedName
+}
+
+function connectionTabDisplayName(
+  connection: ActiveConnection,
+  tabsByProfileId: Map<string, ActiveConnection[]>
+): string {
+  const baseName = connectionBaseName(connection)
+  const siblings = tabsByProfileId.get(connection.profile.id) ?? []
+  const position = siblings.findIndex((sibling) => sibling.id === connection.id) + 1
+  if (position <= 1) return baseName
+  return `${baseName} (${position})`
+}
+
+function groupTabsByProfile(tabs: ActiveConnection[]): Map<string, ActiveConnection[]> {
+  const tabsByProfileId = new Map<string, ActiveConnection[]>()
+  for (const connection of tabs) {
+    const profileId = connection.profile.id
+    const profileTabs = tabsByProfileId.get(profileId) ?? []
+    profileTabs.push(connection)
+    tabsByProfileId.set(profileId, profileTabs)
+  }
+  return tabsByProfileId
+}
+
+function connectionEdgeColor(activeConnection: ActiveConnection | undefined): string | null {
+  return activeConnection?.profile.color || null
+}
+
+function connectionTabTitle(displayName: string, connection: ActiveConnection): string {
+  const readOnlySuffix = connection.profile.readOnly ? ' — Read-only' : ''
+  return `${displayName} (${hostPortOf(connection)})${readOnlySuffix}`
+}
+
+function connectionEdgeStyle(edgeColor: string | null): CSSProperties {
+  if (!edgeColor) return {}
+  return {
+    '--connection-edge-color': edgeColor,
+    '--connection-edge-width': CONNECTION_EDGE_WIDTH,
+  } as CSSProperties
+}
+
+function isContextMenuKey(event: React.KeyboardEvent): boolean {
+  return event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')
+}
+
+function ConnectionTabPrefix({ connection }: { connection: ActiveConnection }) {
+  return (
+    <>
+      {connection.profile.color ? (
+        <span
+          className={styles.colorMarker}
+          style={{ backgroundColor: connection.profile.color }}
+          data-testid={`connection-color-marker-${connection.id}`}
+          aria-hidden
+        />
+      ) : null}
+      <ConnectionStatusIndicator status={connection.status} size={8} />
+      {connection.profile.readOnly ? (
+        <LockIcon
+          className={styles.readOnlyIcon}
+          size={12}
+          weight="fill"
+          aria-label="Read-only connection"
+        />
+      ) : null}
+    </>
+  )
+}
+
+function ThemeToggleButton({
+  resolvedTheme,
+  onToggle,
+}: {
+  resolvedTheme: Theme
+  onToggle: () => void
+}) {
+  const isLight = resolvedTheme === 'light'
+  const label = isLight ? 'Switch to dark mode' : 'Switch to light mode'
+  return (
+    <IconButton
+      size="lg"
+      aria-label={label}
+      title={label}
+      onClick={onToggle}
+      data-testid="theme-toggle"
+    >
+      {isLight ? <SunIcon size={16} weight="regular" /> : <MoonIcon size={16} weight="regular" />}
+    </IconButton>
+  )
+}
+
+function CloseConnectionMessage({ pending }: { pending: PendingConnectionClose | null }) {
+  if (!pending) return null
+  return (
+    <>
+      Disconnect <strong>{pending.displayName}</strong> ({pending.hostPort})? Open workspace tabs
+      for this connection will be closed.
+    </>
+  )
+}
+
+interface MoveMenuInputs {
+  sessionId: string
+  tabIndex: number
+  tabCount: number
+  reorder: (sessionId: string, index: number) => void
+  move: (sessionId: string, direction: 'left' | 'right') => void
+}
+
+function connectionMoveMenuItems(inputs: MoveMenuInputs) {
+  const isFirstOrMissing = inputs.tabIndex <= 0
+  const isLastOrMissing = inputs.tabIndex < 0 || inputs.tabIndex >= inputs.tabCount - 1
+  return [
+    {
+      key: 'move-start',
+      label: 'Move to start',
+      icon: <CaretLineLeftIcon size={14} weight="regular" />,
+      disabled: isFirstOrMissing,
+      onSelect: () => inputs.reorder(inputs.sessionId, 0),
+    },
+    {
+      key: 'move-left',
+      label: 'Move left',
+      icon: <CaretLeftIcon size={14} weight="regular" />,
+      disabled: isFirstOrMissing,
+      onSelect: () => inputs.move(inputs.sessionId, 'left'),
+    },
+    {
+      key: 'move-right',
+      label: 'Move right',
+      icon: <CaretRightIcon size={14} weight="regular" />,
+      disabled: isLastOrMissing,
+      onSelect: () => inputs.move(inputs.sessionId, 'right'),
+    },
+    {
+      key: 'move-end',
+      label: 'Move to end',
+      icon: <CaretLineRightIcon size={14} weight="regular" />,
+      disabled: isLastOrMissing,
+      onSelect: () => inputs.reorder(inputs.sessionId, inputs.tabCount),
+    },
+  ]
+}
+
 export interface ConnectionTabBarProps {
   onOpenSettings?: () => void
   onOpenSnapshots?: () => void
 }
 
 export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: ConnectionTabBarProps) {
-  const [pendingConnectionClose, setPendingConnectionClose] = useState<{
-    id: string
-    displayName: string
-    hostPort: string
-  } | null>(null)
+  const [pendingConnectionClose, setPendingConnectionClose] =
+    useState<PendingConnectionClose | null>(null)
   const [isClosingConnection, setIsClosingConnection] = useState(false)
   const [contextMenu, setContextMenu] = useState<{
     sessionId: string
@@ -91,26 +251,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
       onReorder: reorderActiveConnection,
     })
   const contextMenuTabIndex = contextMenu ? sessionIds.indexOf(contextMenu.sessionId) : -1
-  const tabsByProfileId = new Map<string, typeof tabs>()
-  for (const connection of tabs) {
-    const pid = connection.profile.id
-    const list = tabsByProfileId.get(pid) ?? []
-    list.push(connection)
-    tabsByProfileId.set(pid, list)
-  }
-  const tabDisplayName = (connection: (typeof tabs)[0]) => {
-    const baseName =
-      connection.profile.name.trim() !== '' ? connection.profile.name.trim() : 'Unnamed connection'
-    const list = tabsByProfileId.get(connection.profile.id) ?? []
-    if (list.length <= 1) {
-      return baseName
-    }
-    const index = list.findIndex((otherConnection) => otherConnection.id === connection.id) + 1
-    if (index === 1) {
-      return baseName
-    }
-    return `${baseName} (${index})`
-  }
+  const tabsByProfileId = groupTabsByProfile(tabs)
 
   const handleConfirmCloseConnection = async () => {
     if (!pendingConnectionClose) {
@@ -165,10 +306,8 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
   }
 
   const activeConnection = activeTabId ? activeConnections[activeTabId] : undefined
-  const edgeColor = activeConnection?.profile.color || null
-  const stripStyle = (
-    edgeColor ? { '--connection-edge-color': edgeColor, '--connection-edge-width': '2px' } : {}
-  ) as CSSProperties
+  const edgeColor = connectionEdgeColor(activeConnection)
+  const stripStyle = connectionEdgeStyle(edgeColor)
 
   return (
     <div
@@ -181,7 +320,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
         <UnderlineTabBar variant="document" className={styles.connectionTabRail}>
           {tabs.map((connection) => {
             const isActive = connection.id === activeTabId
-            const displayName = tabDisplayName(connection)
+            const displayName = connectionTabDisplayName(connection, tabsByProfileId)
             return (
               <UnderlineTab
                 key={connection.id}
@@ -207,7 +346,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                   )
                 }}
                 onKeyDown={(event) => {
-                  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
+                  if (!isContextMenuKey(event)) {
                     return
                   }
                   event.preventDefault()
@@ -223,38 +362,16 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                 dragging={draggingTabId === connection.id}
                 dropIndicator={dropIndicatorFor(connection.id)}
                 onAuxClick={(event) => {
-                  if (event.button !== 1) return
+                  if (event.button !== MIDDLE_MOUSE_BUTTON) return
                   event.preventDefault()
                   setPendingConnectionClose({
                     id: connection.id,
                     displayName: displayName,
-                    hostPort: `${connection.profile.host}:${connection.profile.port}`,
+                    hostPort: hostPortOf(connection),
                   })
                 }}
-                title={`${displayName} (${connection.profile.host}:${connection.profile.port})${
-                  connection.profile.readOnly ? ' — Read-only' : ''
-                }`}
-                prefix={
-                  <>
-                    {connection.profile.color ? (
-                      <span
-                        className={styles.colorMarker}
-                        style={{ backgroundColor: connection.profile.color }}
-                        data-testid={`connection-color-marker-${connection.id}`}
-                        aria-hidden
-                      />
-                    ) : null}
-                    <ConnectionStatusIndicator status={connection.status} size={8} />
-                    {connection.profile.readOnly ? (
-                      <LockIcon
-                        className={styles.readOnlyIcon}
-                        size={12}
-                        weight="fill"
-                        aria-label="Read-only connection"
-                      />
-                    ) : null}
-                  </>
-                }
+                title={connectionTabTitle(displayName, connection)}
+                prefix={<ConnectionTabPrefix connection={connection} />}
                 suffix={
                   <IconButton
                     size="sm"
@@ -301,19 +418,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
         ) : null}
       </Button>
       <div className={styles.tools}>
-        <IconButton
-          size="lg"
-          aria-label={resolvedTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-          title={resolvedTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-          onClick={handleThemeToggle}
-          data-testid="theme-toggle"
-        >
-          {resolvedTheme === 'light' ? (
-            <SunIcon size={16} weight="regular" />
-          ) : (
-            <MoonIcon size={16} weight="regular" />
-          )}
-        </IconButton>
+        <ThemeToggleButton resolvedTheme={resolvedTheme} onToggle={handleThemeToggle} />
         <IconButton
           size="lg"
           aria-label="Session snapshots"
@@ -339,36 +444,13 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
           x={contextMenu.x}
           y={contextMenu.y}
           portalRoot={contextMenu.portalRoot}
-          items={[
-            {
-              key: 'move-start',
-              label: 'Move to start',
-              icon: <CaretLineLeftIcon size={14} weight="regular" />,
-              disabled: contextMenuTabIndex <= 0,
-              onSelect: () => reorderActiveConnection(contextMenu.sessionId, 0),
-            },
-            {
-              key: 'move-left',
-              label: 'Move left',
-              icon: <CaretLeftIcon size={14} weight="regular" />,
-              disabled: contextMenuTabIndex <= 0,
-              onSelect: () => moveActiveConnection(contextMenu.sessionId, 'left'),
-            },
-            {
-              key: 'move-right',
-              label: 'Move right',
-              icon: <CaretRightIcon size={14} weight="regular" />,
-              disabled: contextMenuTabIndex < 0 || contextMenuTabIndex >= sessionIds.length - 1,
-              onSelect: () => moveActiveConnection(contextMenu.sessionId, 'right'),
-            },
-            {
-              key: 'move-end',
-              label: 'Move to end',
-              icon: <CaretLineRightIcon size={14} weight="regular" />,
-              disabled: contextMenuTabIndex < 0 || contextMenuTabIndex >= sessionIds.length - 1,
-              onSelect: () => reorderActiveConnection(contextMenu.sessionId, sessionIds.length),
-            },
-          ]}
+          items={connectionMoveMenuItems({
+            sessionId: contextMenu.sessionId,
+            tabIndex: contextMenuTabIndex,
+            tabCount: sessionIds.length,
+            reorder: reorderActiveConnection,
+            move: moveActiveConnection,
+          })}
           onClose={() => {
             const invokerTabId = contextMenu.invokerTabId
             setContextMenu(null)
@@ -379,17 +461,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
       <ConfirmDialog
         isOpen={pendingConnectionClose != null}
         title="Close connection?"
-        message={
-          pendingConnectionClose ? (
-            <>
-              Disconnect <strong>{pendingConnectionClose.displayName}</strong> (
-              {pendingConnectionClose.hostPort})? Open workspace tabs for this connection will be
-              closed.
-            </>
-          ) : (
-            ''
-          )
-        }
+        message={<CloseConnectionMessage pending={pendingConnectionClose} />}
         confirmLabel="Close connection"
         isDestructive
         isLoading={isClosingConnection}

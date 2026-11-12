@@ -56,11 +56,14 @@ pub fn ai_cancel_impl(state: &AppState, stream_id: String) -> Result<(), String>
         .lock()
         .map_err(|error| format!("Failed to lock ai_requests: {error}"))?;
 
-    if let Some(token) = map.remove(&stream_id) {
-        token.cancel();
-        tracing::info!(stream_id = %stream_id, "AI stream cancelled");
-    } else {
-        tracing::info!(stream_id = %stream_id, "AI cancel: stream not found (may have already completed)");
+    match map.remove(&stream_id) {
+        Some(token) => {
+            token.cancel();
+            tracing::info!(stream_id = %stream_id, "AI stream cancelled");
+        }
+        None => {
+            tracing::info!(stream_id = %stream_id, "AI cancel: stream not found (may have already completed)");
+        }
     }
 
     Ok(())
@@ -251,16 +254,7 @@ pub async fn ai_query_expand_impl(
 
             send_query_expand_request(&retry_client, &req.endpoint, &body)
                 .await
-                .map_err(|retry_error| {
-                    if retry_error.is_timeout() {
-                        format!(
-                            "Query expand request timed out after {}s: {retry_error}",
-                            QUERY_EXPAND_TIMEOUT.as_secs()
-                        )
-                    } else {
-                        format!("Query expand HTTP request failed after retry: {retry_error}")
-                    }
-                })?
+                .map_err(query_expand_retry_error_message)?
         }
     };
 
@@ -285,6 +279,16 @@ pub async fn ai_query_expand_impl(
         .to_string();
 
     Ok(AiQueryExpandResponse { text })
+}
+
+fn query_expand_retry_error_message(retry_error: reqwest::Error) -> String {
+    if retry_error.is_timeout() {
+        return format!(
+            "Query expand request timed out after {}s: {retry_error}",
+            QUERY_EXPAND_TIMEOUT.as_secs()
+        );
+    }
+    format!("Query expand HTTP request failed after retry: {retry_error}")
 }
 
 async fn send_query_expand_request(

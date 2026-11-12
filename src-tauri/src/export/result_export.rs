@@ -459,12 +459,11 @@ impl ExportPipeline {
         outcome: ExportOutcome,
         restore_error: Option<String>,
     ) -> ResultExportStatus {
-        let outcome = if outcome == ExportOutcome::Completed
-            && is_cancel_requested(&self.jobs, &self.job_id)
-        {
-            ExportOutcome::Cancelled
-        } else {
-            outcome
+        let outcome = match outcome {
+            ExportOutcome::Completed if is_cancel_requested(&self.jobs, &self.job_id) => {
+                ExportOutcome::Cancelled
+            }
+            other => other,
         };
         let mut rows_written = self.sink.as_ref().map_or(0, RowSink::rows_written);
         let mut bytes_written = self.sink.as_ref().map_or(0, RowSink::bytes_written);
@@ -629,20 +628,20 @@ pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExp
 /// (and cleans up) without touching MySQL.
 #[cfg(coverage)]
 pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExport) {
-    let message = if state.registry.contains(&prepared.connection_id) {
-        "Full export needs a live MySQL session.".to_string()
-    } else {
-        format!(
-            "Connection '{}' not found in registry",
-            prepared.connection_id
-        )
-    };
-    let outcome = if is_cancel_requested(&prepared.jobs, &prepared.job_id) {
-        ExportOutcome::Cancelled
-    } else {
-        ExportOutcome::Failed(message)
-    };
-    ExportPipeline::new(&prepared).complete(outcome, None);
+    if is_cancel_requested(&prepared.jobs, &prepared.job_id) {
+        ExportPipeline::new(&prepared).complete(ExportOutcome::Cancelled, None);
+        return;
+    }
+    let message = missing_live_session_message(state, &prepared.connection_id);
+    ExportPipeline::new(&prepared).complete(ExportOutcome::Failed(message), None);
+}
+
+#[cfg(coverage)]
+fn missing_live_session_message(state: &AppState, connection_id: &str) -> String {
+    if state.registry.contains(connection_id) {
+        return "Full export needs a live MySQL session.".to_string();
+    }
+    format!("Connection '{connection_id}' not found in registry")
 }
 
 /// Acquire the editor session and stream the re-run into the pipeline.
@@ -829,13 +828,15 @@ async fn stream_rerun(
         Ok(result) => result,
         Err(error) => {
             let interrupted = is_query_interrupted(&error);
-            let outcome = if interrupted && cancel_requested() {
-                ExportOutcome::Cancelled
-            } else {
-                ExportOutcome::Failed(map_mysql_error(&error))
-            };
+            if interrupted && cancel_requested() {
+                return StreamEnd {
+                    outcome: ExportOutcome::Cancelled,
+                    interrupted,
+                    own_kill_sent: false,
+                };
+            }
             return StreamEnd {
-                outcome,
+                outcome: ExportOutcome::Failed(map_mysql_error(&error)),
                 interrupted,
                 own_kill_sent: false,
             };

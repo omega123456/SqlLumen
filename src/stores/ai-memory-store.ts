@@ -86,44 +86,44 @@ function cancelResetTimer(ownerKey: string): void {
   }
 }
 
+function setReembedStatus(ownerKey: string, status: ReembedStatus): void {
+  useAiMemoryStore.getState().setReembedStatus(ownerKey, status)
+}
+
+const IDLE_REEMBED_STATUS: ReembedStatus = { status: 'idle', done: 0, total: 0 }
+
+const REEMBED_PHASE_HANDLERS: Record<
+  MemoryReembedProgress['phase'],
+  (progress: MemoryReembedProgress) => void
+> = {
+  embedding: (progress) =>
+    setReembedStatus(progress.ownerKey, {
+      status: 'running',
+      done: progress.done,
+      total: progress.total,
+    }),
+  error: (progress) => {
+    logFrontend(
+      'warn',
+      `[ai-memory-store] Re-embed error for owner ${progress.ownerKey}: ${progress.error ?? 'unknown'}`
+    )
+    setReembedStatus(progress.ownerKey, IDLE_REEMBED_STATUS)
+  },
+  done: (progress) => {
+    resetTimers[progress.ownerKey] = setTimeout(() => {
+      delete resetTimers[progress.ownerKey]
+      setReembedStatus(progress.ownerKey, IDLE_REEMBED_STATUS)
+    }, REEMBED_STATUS_RESET_DELAY_MS)
+  },
+}
+
 function initEventListeners(): void {
   if (!hasTauriApis()) return
 
   listen<MemoryReembedProgress>('ai-memory-reembed-progress', (event) => {
-    const { ownerKey, phase, done, total } = event.payload
-
-    if (phase === 'embedding') {
-      cancelResetTimer(ownerKey)
-      useAiMemoryStore.setState((state) => ({
-        reembedStatus: {
-          ...state.reembedStatus,
-          [ownerKey]: { status: 'running', done: done, total: total },
-        },
-      }))
-    } else if (phase === 'error') {
-      cancelResetTimer(ownerKey)
-      logFrontend(
-        'warn',
-        `[ai-memory-store] Re-embed error for owner ${ownerKey}: ${event.payload.error ?? 'unknown'}`
-      )
-      useAiMemoryStore.setState((state) => ({
-        reembedStatus: {
-          ...state.reembedStatus,
-          [ownerKey]: { status: 'idle', done: 0, total: 0 },
-        },
-      }))
-    } else if (phase === 'done') {
-      cancelResetTimer(ownerKey)
-      resetTimers[ownerKey] = setTimeout(() => {
-        delete resetTimers[ownerKey]
-        useAiMemoryStore.setState((state) => ({
-          reembedStatus: {
-            ...state.reembedStatus,
-            [ownerKey]: { status: 'idle', done: 0, total: 0 },
-          },
-        }))
-      }, REEMBED_STATUS_RESET_DELAY_MS)
-    }
+    const progress = event.payload
+    cancelResetTimer(progress.ownerKey)
+    REEMBED_PHASE_HANDLERS[progress.phase](progress)
   }).catch((error: unknown) => {
     logFrontend(
       'warn',

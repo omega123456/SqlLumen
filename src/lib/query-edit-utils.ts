@@ -61,210 +61,105 @@ function splitQualifiedIdentifier(identifier: string): string[] {
   return parts
 }
 
+const QUOTE_CHARACTERS = new Set(["'", '"', '`'])
+const UNTERMINATED_COMMENT = -1
+const SELECT_KEYWORD_PATTERN = /^SELECT\b/i
+const FROM_KEYWORD_PATTERN = /^FROM\b/i
+
+function isQuoteEscapeAt(text: string, index: number, quote: string): boolean {
+  if (quote === '`') return text[index] === '`' && text[index + 1] === '`'
+  return text[index] === '\\'
+}
+
+function findQuotedLiteralEnd(text: string, openIndex: number): number {
+  const quote = text[openIndex]
+  let index = openIndex + 1
+  while (index < text.length) {
+    if (isQuoteEscapeAt(text, index, quote)) {
+      index += BACKTICK_PAIR_LENGTH
+      continue
+    }
+    if (text[index] === quote) return index
+    index++
+  }
+  return index
+}
+
+function blockCommentLastIndex(text: string, index: number): number {
+  const closeIndex = text.indexOf('*/', index + COMMENT_MARKER_LENGTH)
+  return closeIndex === -1 ? UNTERMINATED_COMMENT : closeIndex + 1
+}
+
+function commentEndIndex(text: string, index: number): number | null {
+  if (text.startsWith('/*', index)) return blockCommentLastIndex(text, index)
+  if (text.startsWith('--', index)) return text.indexOf('\n', index + COMMENT_MARKER_LENGTH)
+  if (text[index] === '#') return text.indexOf('\n', index + 1)
+  return null
+}
+
+function skipLiteralOrComment(text: string, index: number): number | null {
+  if (QUOTE_CHARACTERS.has(text[index])) return findQuotedLiteralEnd(text, index)
+  return commentEndIndex(text, index)
+}
+
+function nextParenDepth(depth: number, char: string): number {
+  if (char === '(') return depth + 1
+  if (char === ')') return Math.max(0, depth - 1)
+  return depth
+}
+
+function findTopLevelKeyword(
+  text: string,
+  keywordPattern: RegExp,
+  fromIndex: number
+): number | null {
+  let depth = 0
+  for (let index = fromIndex; index < text.length; index++) {
+    const skipEnd = skipLiteralOrComment(text, index)
+    if (skipEnd === UNTERMINATED_COMMENT) return null
+    if (skipEnd !== null) {
+      index = skipEnd
+      continue
+    }
+    depth = nextParenDepth(depth, text[index])
+    if (depth === 0 && keywordPattern.test(text.slice(index))) return index
+  }
+  return null
+}
+
 function extractTopLevelSelectList(sql: string): string | null {
   const trimmed = stripLeadingSqlComments(sql)
-  let depth = 0
-  let inSingle = false
-  let inDouble = false
-  let inBacktick = false
-  let selectStart = -1
-
-  for (let charIndex = 0; charIndex < trimmed.length; charIndex++) {
-    const char = trimmed[charIndex]
-    const next = trimmed[charIndex + 1] ?? ''
-
-    if (inSingle) {
-      if (char === '\\') {
-        charIndex++
-      } else if (char === "'") {
-        inSingle = false
-      }
-      continue
-    }
-
-    if (inDouble) {
-      if (char === '\\') {
-        charIndex++
-      } else if (char === '"') {
-        inDouble = false
-      }
-      continue
-    }
-
-    if (inBacktick) {
-      if (char === '`' && next === '`') {
-        charIndex++
-      } else if (char === '`') {
-        inBacktick = false
-      }
-      continue
-    }
-
-    if (char === "'") {
-      inSingle = true
-      continue
-    }
-
-    if (char === '"') {
-      inDouble = true
-      continue
-    }
-
-    if (char === '`') {
-      inBacktick = true
-      continue
-    }
-
-    if (char === '/' && next === '*') {
-      const end = trimmed.indexOf('*/', charIndex + COMMENT_MARKER_LENGTH)
-      if (end === -1) return null
-      charIndex = end + 1
-      continue
-    }
-
-    if (char === '-' && next === '-') {
-      const end = trimmed.indexOf('\n', charIndex + COMMENT_MARKER_LENGTH)
-      if (end === -1) return null
-      charIndex = end
-      continue
-    }
-
-    if (char === '#') {
-      const end = trimmed.indexOf('\n', charIndex + 1)
-      if (end === -1) return null
-      charIndex = end
-      continue
-    }
-
-    if (char === '(') {
-      depth++
-      continue
-    }
-
-    if (char === ')') {
-      depth = Math.max(0, depth - 1)
-      continue
-    }
-
-    if (depth !== 0) continue
-
-    const remaining = trimmed.slice(charIndex)
-    if (selectStart === -1 && /^SELECT\b/i.test(remaining)) {
-      selectStart = charIndex + SELECT_KEYWORD_LENGTH
-      charIndex += SELECT_KEYWORD_LENGTH - 1
-      continue
-    }
-
-    if (selectStart !== -1 && /^FROM\b/i.test(remaining)) {
-      return trimmed.slice(selectStart, charIndex).trim()
-    }
-  }
-
-  return null
+  const selectIndex = findTopLevelKeyword(trimmed, SELECT_KEYWORD_PATTERN, 0)
+  if (selectIndex === null) return null
+  const selectStart = selectIndex + SELECT_KEYWORD_LENGTH
+  const fromIndex = findTopLevelKeyword(trimmed, FROM_KEYWORD_PATTERN, selectStart)
+  if (fromIndex === null) return null
+  return trimmed.slice(selectStart, fromIndex).trim()
 }
 
 function splitTopLevelSelectItems(selectList: string): string[] {
   const items: string[] = []
   let current = ''
   let depth = 0
-  let inSingle = false
-  let inDouble = false
-  let inBacktick = false
 
   for (let index = 0; index < selectList.length; index++) {
     const char = selectList[index]
-    const next = selectList[index + 1] ?? ''
-
-    if (inSingle) {
-      current += char
-      if (char === '\\') {
-        current += next
-        index++
-      } else if (char === "'") {
-        inSingle = false
-      }
+    if (QUOTE_CHARACTERS.has(char)) {
+      const literalEnd = findQuotedLiteralEnd(selectList, index)
+      current += selectList.slice(index, literalEnd + 1)
+      index = literalEnd
       continue
     }
 
-    if (inDouble) {
-      current += char
-      if (char === '\\') {
-        current += next
-        index++
-      } else if (char === '"') {
-        inDouble = false
-      }
-      continue
-    }
-
-    if (inBacktick) {
-      current += char
-      if (char === '`' && next === '`') {
-        current += next
-        index++
-      } else if (char === '`') {
-        inBacktick = false
-      }
-      continue
-    }
-
-    if (char === "'") {
-      current += char
-      inSingle = true
-      continue
-    }
-
-    if (char === '"') {
-      current += char
-      inDouble = true
-      continue
-    }
-
-    if (char === '`') {
-      current += char
-      inBacktick = true
-      continue
-    }
-
-    if (char === '/' && next === '*') {
-      const end = selectList.indexOf('*/', index + COMMENT_MARKER_LENGTH)
-      if (end === -1) {
-        break
-      }
-      index = end + 1
-      continue
-    }
-
-    if (char === '-' && next === '-') {
-      const end = selectList.indexOf('\n', index + COMMENT_MARKER_LENGTH)
-      if (end === -1) {
-        break
-      }
-      index = end
-      continue
-    }
-
-    if (char === '#') {
-      const end = selectList.indexOf('\n', index + 1)
-      if (end === -1) {
-        break
-      }
-      index = end
+    const commentEnd = commentEndIndex(selectList, index)
+    if (commentEnd === UNTERMINATED_COMMENT) break
+    if (commentEnd !== null) {
+      index = commentEnd
       continue
     }
 
     current += char
-
-    if (char === '(') {
-      depth++
-      continue
-    }
-
-    if (char === ')') {
-      depth = Math.max(0, depth - 1)
-      continue
-    }
-
+    depth = nextParenDepth(depth, char)
     if (char === ',' && depth === 0) {
       items.push(current.slice(0, -1).trim())
       current = ''
@@ -343,6 +238,140 @@ function buildAliasMapFromSql(
   return map
 }
 
+type TableTargetsByAlias = Map<string, { database: string; table: string }>
+
+const QUALIFIED_WILDCARD_PATTERN =
+  /^((?:`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z_][\w$]*)){0,2})\s*\.\s*\*$/i
+const DIRECT_COLUMN_PATTERN =
+  /^((?:`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z_][\w$]*)){0,2})(?:\s+AS\s+(?:`[^`]+`|[A-Za-z_][\w$]*)|\s+(?:`[^`]+`|[A-Za-z_][\w$]*))?$/i
+
+interface ProjectionContext {
+  resultColumns: ColumnMeta[]
+  targetTable: QueryTableEditInfo
+  queryTablesInOrder: QueryTableEditInfo[]
+  aliasMap: TableTargetsByAlias
+  targetColumnLookup: Map<string, string>
+  bindings: QueryEditColumnBindings
+  resultIndex: number
+}
+
+function isTableNamed(table: QueryTableEditInfo, database: string, tableName: string): boolean {
+  const isSameDatabase = table.database.toLowerCase() === database.toLowerCase()
+  return isSameDatabase && table.table.toLowerCase() === tableName.toLowerCase()
+}
+
+function isSameTable(left: QueryTableEditInfo, right: QueryTableEditInfo): boolean {
+  return isTableNamed(right, left.database, left.table)
+}
+
+function isResultColumnNamed(resultName: string | undefined, columnName: string): boolean {
+  if (!resultName) return false
+  return resultName.toLowerCase() === columnName.toLowerCase()
+}
+
+function emitTableColumns(context: ProjectionContext, table: QueryTableEditInfo): boolean {
+  const bindToTarget = isSameTable(table, context.targetTable)
+  for (const column of table.columns) {
+    const actualResultName = context.resultColumns[context.resultIndex]?.name
+    if (!isResultColumnNamed(actualResultName, column.name)) return false
+    if (bindToTarget) {
+      context.bindings.set(context.resultIndex, column.name)
+    }
+    context.resultIndex++
+  }
+  return true
+}
+
+function bindAllTablesWildcard(context: ProjectionContext): boolean {
+  return context.queryTablesInOrder.every((table) => emitTableColumns(context, table))
+}
+
+function bindQualifiedWildcard(context: ProjectionContext, qualifier: string): boolean {
+  const qualifierParts = splitQualifiedIdentifier(qualifier)
+  const matchingTable = context.queryTablesInOrder.find((table) =>
+    matchesTableTarget(qualifierParts, table, context.aliasMap)
+  )
+  if (!matchingTable) return false
+  return emitTableColumns(context, matchingTable)
+}
+
+function resolveFullyQualifiedBinding(
+  context: ProjectionContext,
+  parts: string[]
+): string | undefined {
+  const [database, table, column] = parts
+  if (!isTableNamed(context.targetTable, database, table)) return undefined
+  return context.targetColumnLookup.get(column.toLowerCase())
+}
+
+function resolveTableQualifiedBinding(
+  context: ProjectionContext,
+  parts: string[]
+): string | undefined {
+  const [table, column] = parts
+  if (!matchesTableTarget([table], context.targetTable, context.aliasMap)) return undefined
+  return context.targetColumnLookup.get(column.toLowerCase())
+}
+
+function resolveUnqualifiedBinding(
+  context: ProjectionContext,
+  parts: string[]
+): string | undefined {
+  if (context.queryTablesInOrder.length !== 1) return undefined
+  return context.targetColumnLookup.get(parts[0].toLowerCase())
+}
+
+function resolveDirectColumnBinding(
+  context: ProjectionContext,
+  parts: string[]
+): string | undefined {
+  if (parts.length === DATABASE_TABLE_AND_COLUMN_PART_COUNT) {
+    return resolveFullyQualifiedBinding(context, parts)
+  }
+  if (parts.length === TABLE_AND_COLUMN_PART_COUNT) {
+    return resolveTableQualifiedBinding(context, parts)
+  }
+  if (parts.length === 1) {
+    return resolveUnqualifiedBinding(context, parts)
+  }
+  return undefined
+}
+
+function hasRemainingResultColumn(context: ProjectionContext): boolean {
+  return context.resultIndex < context.resultColumns.length
+}
+
+function bindDirectColumn(context: ProjectionContext, columnExpression: string): boolean {
+  if (!hasRemainingResultColumn(context)) return false
+  const parts = splitQualifiedIdentifier(columnExpression)
+  const boundName = resolveDirectColumnBinding(context, parts)
+  if (boundName) {
+    context.bindings.set(context.resultIndex, boundName)
+  }
+  context.resultIndex++
+  return true
+}
+
+function skipComputedColumn(context: ProjectionContext): boolean {
+  if (!hasRemainingResultColumn(context)) return false
+  context.resultIndex++
+  return true
+}
+
+function bindProjectionItem(context: ProjectionContext, item: string): boolean {
+  const trimmed = item.trim()
+  if (!trimmed) return true
+  if (trimmed === '*') return bindAllTablesWildcard(context)
+
+  const wildcardMatch = trimmed.match(QUALIFIED_WILDCARD_PATTERN)
+  if (wildcardMatch) return bindQualifiedWildcard(context, wildcardMatch[1])
+
+  const directColumnMatch = trimmed.match(DIRECT_COLUMN_PATTERN)
+  if (directColumnMatch) return bindDirectColumn(context, directColumnMatch[1])
+
+  return skipComputedColumn(context)
+}
+
 function buildProjectionBindings(
   sql: string | null,
   resultColumns: ColumnMeta[],
@@ -357,104 +386,22 @@ function buildProjectionBindings(
   const items = splitTopLevelSelectItems(selectList)
   if (items.length === 0) return new Map()
 
-  const targetColumnLookup = new Map(
-    targetTable.columns.map((column) => [column.name.toLowerCase(), column.name])
-  )
-  const aliasMap = buildAliasMapFromSql(queryTablesInOrder, sql)
-  const bindings: QueryEditColumnBindings = new Map()
-  let resultIndex = 0
-
-  const emitTableColumns = (table: QueryTableEditInfo, bindToTarget: boolean) => {
-    for (const column of table.columns) {
-      if (resultIndex >= resultColumns.length) return false
-      const actualResultName = resultColumns[resultIndex]?.name
-      if (!actualResultName || actualResultName.toLowerCase() !== column.name.toLowerCase()) {
-        return false
-      }
-      if (bindToTarget) {
-        bindings.set(resultIndex, column.name)
-      }
-      resultIndex++
-    }
-    return true
+  const context: ProjectionContext = {
+    resultColumns: resultColumns,
+    targetTable: targetTable,
+    queryTablesInOrder: queryTablesInOrder,
+    aliasMap: buildAliasMapFromSql(queryTablesInOrder, sql),
+    targetColumnLookup: new Map(
+      targetTable.columns.map((column) => [column.name.toLowerCase(), column.name])
+    ),
+    bindings: new Map(),
+    resultIndex: 0,
   }
-
-  const directColumnPattern =
-    /^((?:`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z_][\w$]*)){0,2})(?:\s+AS\s+(?:`[^`]+`|[A-Za-z_][\w$]*)|\s+(?:`[^`]+`|[A-Za-z_][\w$]*))?$/i
-
-  for (const item of items) {
-    const trimmed = item.trim()
-    if (!trimmed) continue
-
-    if (trimmed === '*') {
-      for (const table of queryTablesInOrder) {
-        const bindToTarget =
-          table.database.toLowerCase() === targetTable.database.toLowerCase() &&
-          table.table.toLowerCase() === targetTable.table.toLowerCase()
-        if (!emitTableColumns(table, bindToTarget)) return new Map()
-      }
-      continue
-    }
-
-    const wildcardMatch = trimmed.match(
-      /^((?:`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:`[^`]+`|[A-Za-z_][\w$]*)){0,2})\s*\.\s*\*$/i
-    )
-    if (wildcardMatch) {
-      const qualifierParts = splitQualifiedIdentifier(wildcardMatch[1])
-      const matchingTable = queryTablesInOrder.find((table) =>
-        matchesTableTarget(qualifierParts, table, aliasMap)
-      )
-      if (!matchingTable) return new Map()
-
-      const bindToTarget =
-        matchingTable.database.toLowerCase() === targetTable.database.toLowerCase() &&
-        matchingTable.table.toLowerCase() === targetTable.table.toLowerCase()
-      if (!emitTableColumns(matchingTable, bindToTarget)) return new Map()
-      continue
-    }
-
-    const directColumnMatch = trimmed.match(directColumnPattern)
-    if (directColumnMatch) {
-      if (resultIndex >= resultColumns.length) return new Map()
-      const parts = splitQualifiedIdentifier(directColumnMatch[1])
-
-      if (parts.length === DATABASE_TABLE_AND_COLUMN_PART_COUNT) {
-        if (
-          parts[0].toLowerCase() === targetTable.database.toLowerCase() &&
-          parts[1].toLowerCase() === targetTable.table.toLowerCase()
-        ) {
-          const boundName = targetColumnLookup.get(parts[2].toLowerCase())
-          if (boundName) {
-            bindings.set(resultIndex, boundName)
-          }
-        }
-      } else if (parts.length === TABLE_AND_COLUMN_PART_COUNT) {
-        if (matchesTableTarget([parts[0]], targetTable, aliasMap)) {
-          const boundName = targetColumnLookup.get(parts[1].toLowerCase())
-          if (boundName) {
-            bindings.set(resultIndex, boundName)
-          }
-        }
-      } else if (parts.length === 1 && queryTablesInOrder.length === 1) {
-        const boundName = targetColumnLookup.get(parts[0].toLowerCase())
-        if (boundName) {
-          bindings.set(resultIndex, boundName)
-        }
-      }
-
-      resultIndex++
-      continue
-    }
-
-    if (resultIndex >= resultColumns.length) return new Map()
-    resultIndex++
-  }
-
-  if (resultIndex !== resultColumns.length) {
+  const isEveryItemBound = items.every((item) => bindProjectionItem(context, item))
+  if (!isEveryItemBound || hasRemainingResultColumn(context)) {
     return new Map()
   }
-
-  return bindings
+  return context.bindings
 }
 
 function removeDuplicateBoundColumns(bindings: QueryEditColumnBindings): QueryEditColumnBindings {
@@ -579,6 +526,24 @@ export function findAmbiguousColumns(columns: ColumnMeta[]): Set<string> {
   return ambiguous
 }
 
+interface ResultColumnEditability {
+  boundName: string | undefined
+  resultColumnName: string
+  hasExplicitBindings: boolean
+  ambiguousNames: Set<string>
+  tableColumnLookup: Map<string, TableDataColumnMeta>
+}
+
+function isEditableResultColumn(check: ResultColumnEditability): boolean {
+  const { boundName } = check
+  if (check.hasExplicitBindings && !boundName) return false
+  const resultColumnNameLower = check.resultColumnName.toLowerCase()
+  if (!boundName && check.ambiguousNames.has(resultColumnNameLower)) return false
+  const tableColumn = check.tableColumnLookup.get(boundName?.toLowerCase() ?? resultColumnNameLower)
+  if (!tableColumn) return false
+  return !tableColumn.isBinary
+}
+
 /**
  * For a selected table, maps result column indices to whether they are editable.
  * A column is editable if:
@@ -602,35 +567,14 @@ export function buildEditableColumnMap(
   }
 
   for (let columnIndex = 0; columnIndex < resultColumns.length; columnIndex++) {
-    const boundName = columnBindings?.get(columnIndex)
-    if (hasExplicitBindings && !boundName) {
-      map.set(columnIndex, false)
-      continue
-    }
-    const resultColumnNameLower = resultColumns[columnIndex].name.toLowerCase()
-    const columnNameLower = boundName?.toLowerCase() ?? resultColumnNameLower
-
-    // Ambiguous columns can't be reliably mapped to a single source unless
-    // we have an explicit projection binding for this result index.
-    if (!boundName && ambiguousNames.has(resultColumnNameLower)) {
-      map.set(columnIndex, false)
-      continue
-    }
-
-    // Must match a column in the target table
-    const tableColumn = tableColumnLookup.get(columnNameLower)
-    if (!tableColumn) {
-      map.set(columnIndex, false)
-      continue
-    }
-
-    // Binary/blob columns aren't editable inline
-    if (tableColumn.isBinary) {
-      map.set(columnIndex, false)
-      continue
-    }
-
-    map.set(columnIndex, true)
+    const isEditable = isEditableResultColumn({
+      boundName: columnBindings?.get(columnIndex),
+      resultColumnName: resultColumns[columnIndex].name,
+      hasExplicitBindings: hasExplicitBindings,
+      ambiguousNames: ambiguousNames,
+      tableColumnLookup: tableColumnLookup,
+    })
+    map.set(columnIndex, isEditable)
   }
 
   return map

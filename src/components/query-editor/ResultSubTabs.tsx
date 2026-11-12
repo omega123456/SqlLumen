@@ -20,6 +20,7 @@ import { useQueryStore } from '../../stores/query-store'
 import type { SingleResultState } from '../../stores/query-store'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { Button } from '../common/Button'
+import { TAB_STRIP_NAVIGATION } from '../../lib/tab-strip-navigation'
 import styles from './ResultSubTabs.module.css'
 
 interface ResultSubTabsProps {
@@ -66,24 +67,10 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      let targetIndex: number | null = null
-      if (event.key === 'ArrowRight') {
-        event.preventDefault()
-        targetIndex = Math.min(activeResultIndex + 1, results.length - 1)
-      } else if (event.key === 'ArrowLeft') {
-        event.preventDefault()
-        targetIndex = Math.max(activeResultIndex - 1, 0)
-      } else if (event.key === 'Home') {
-        event.preventDefault()
-        targetIndex = 0
-      } else if (event.key === 'End') {
-        event.preventDefault()
-        targetIndex = results.length - 1
-      }
-
-      if (targetIndex !== null) {
-        setActiveResultIndex(tabId, targetIndex)
-      }
+      const resolveTargetIndex = TAB_STRIP_NAVIGATION[event.key]
+      if (!resolveTargetIndex) return
+      event.preventDefault()
+      setActiveResultIndex(tabId, resolveTargetIndex(activeResultIndex, results.length))
     },
     [activeResultIndex, results.length, setActiveResultIndex, tabId]
   )

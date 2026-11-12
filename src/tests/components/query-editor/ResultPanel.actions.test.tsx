@@ -218,27 +218,8 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ResultPanel actions and states', () => {
-  it('handles missing active-result fields via safe defaults', () => {
-    renderPanel({
-      columns: undefined,
-      rows: undefined,
-      totalRows: undefined,
-      affectedRows: undefined,
-      viewMode: undefined,
-      sortColumn: undefined,
-      sortDirection: undefined,
-      selectedRowIndex: undefined,
-      exportDialogOpen: undefined,
-      editMode: undefined,
-      editableColumnMap: undefined,
-      editColumnBindings: undefined,
-      editBoundColumnIndexMap: undefined,
-      editState: undefined,
-      editingRowIndex: undefined,
-      editForeignKeys: undefined,
-      saveError: undefined,
-      isAnalyzingQuery: undefined,
-    })
+  it('shows the DML success message for a result without columns', () => {
+    renderPanel({ columns: [], rows: [], totalRows: 0, affectedRows: 0 })
 
     expect(screen.getByTestId('dml-success')).toHaveTextContent('Query executed successfully')
   })

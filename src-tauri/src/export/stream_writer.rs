@@ -318,8 +318,7 @@ impl RowSink {
                 out.flush().map_err(io_err("Failed to flush file"))?;
             }
             SinkKind::Json { mut out, .. } => {
-                let tail: &[u8] = if rows_written == 0 { b"[]" } else { b"\n]" };
-                out.write_all(tail)
+                out.write_all(json_array_tail(rows_written))
                     .and_then(|()| out.flush())
                     .map_err(io_err("Failed to write JSON"))?;
             }
@@ -339,6 +338,20 @@ impl RowSink {
     }
 }
 
+fn json_array_tail(rows_written: u64) -> &'static [u8] {
+    if rows_written == 0 {
+        return b"[]";
+    }
+    b"\n]"
+}
+
+fn json_row_prefix(first: bool) -> &'static [u8] {
+    if first {
+        return b"[\n  ";
+    }
+    b",\n  "
+}
+
 /// Write one element of the top-level JSON array exactly as
 /// `serde_json::to_writer_pretty` lays it out inside an array: `[` and a
 /// newline before the first element, `,` and a newline between elements, and
@@ -350,7 +363,7 @@ fn write_json_row<W: Write>(
     object: &serde_json::Value,
 ) -> io::Result<()> {
     let pretty = serde_json::to_vec_pretty(object).map_err(io::Error::other)?;
-    out.write_all(if first { b"[\n  " } else { b",\n  " })?;
+    out.write_all(json_row_prefix(first))?;
     let mut lines = pretty.split(|&byte| byte == b'\n');
     if let Some(line) = lines.next() {
         out.write_all(line)?;

@@ -70,6 +70,24 @@ type ColumnFieldKey = keyof Pick<
 
 type EditableCellKey = 'name' | 'type' | 'length' | 'signedness' | 'default' | 'comment'
 
+interface RevertibleColumnField {
+  field: keyof TableDesignerColumnDef
+  parseBaseline: (originalValue: string) => unknown
+}
+
+const keepBaselineText = (originalValue: string): unknown => originalValue
+
+const REVERTIBLE_COLUMN_FIELDS: Partial<Record<EditableCellKey, RevertibleColumnField>> = {
+  name: { field: 'name', parseBaseline: keepBaselineText },
+  length: { field: 'length', parseBaseline: keepBaselineText },
+  signedness: { field: 'typeModifier', parseBaseline: keepBaselineText },
+  comment: { field: 'comment', parseBaseline: keepBaselineText },
+  default: {
+    field: 'defaultValue',
+    parseBaseline: (originalValue) => JSON.parse(originalValue) as DefaultValueModel,
+  },
+}
+
 interface ActiveCell {
   rowIndex: number
   cellKey: EditableCellKey
@@ -205,6 +223,58 @@ function CellFrame({
   )
 }
 
+const DEFAULT_VALUE_FACTORIES: Record<string, (text: string) => DefaultValueModel> = {
+  NO_DEFAULT: () => ({ tag: 'NO_DEFAULT' }),
+  NULL_DEFAULT: () => ({ tag: 'NULL_DEFAULT' }),
+  LITERAL: (text) => ({ tag: 'LITERAL', value: text }),
+  EXPRESSION: (text) => ({ tag: 'EXPRESSION', value: text }),
+}
+
+function defaultValueForMode(mode: string, text: string): DefaultValueModel {
+  const createDefault = DEFAULT_VALUE_FACTORIES[mode] ?? DEFAULT_VALUE_FACTORIES.EXPRESSION
+  return createDefault(text)
+}
+
+function isTextDefaultMode(mode: string): boolean {
+  return mode === 'LITERAL' || mode === 'EXPRESSION'
+}
+
+function defaultValueText(defaultValue: DefaultValueModel): string {
+  return 'value' in defaultValue ? defaultValue.value : ''
+}
+
+function dragShiftFor(drag: { from: number; to: number } | null, rowIndex: number): number {
+  return drag ? getDragShift(rowIndex, drag.from, drag.to) : 0
+}
+
+function columnRowClassName(isSelected: boolean, isDragSource: boolean): string {
+  return `${styles.row} ${isSelected ? styles.selectedRow : ''} ${
+    isDragSource ? styles.dragSource : ''
+  }`
+}
+
+function dragRowStyle(dragShift: number): React.CSSProperties | undefined {
+  if (!dragShift) return undefined
+  return { transform: `translateY(calc(${dragShift} * var(--drag-row-height)))` }
+}
+
+function ariaInvalidValue(error: string | undefined): 'true' | 'false' {
+  return error ? 'true' : 'false'
+}
+
+function selectedRowInputClass(isSelected: boolean, unselectedClass: string): string {
+  return isSelected ? styles.activeInput : unselectedClass
+}
+
+function selectionMoves(selectedIndex: number | null, columnCount: number) {
+  if (selectedIndex === null) return { canMoveUp: false, canMoveDown: false, canDelete: false }
+  return {
+    canMoveUp: selectedIndex > 0,
+    canMoveDown: selectedIndex < columnCount - 1,
+    canDelete: selectedIndex < columnCount,
+  }
+}
+
 export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
   const addColumn = useTableDesignerStore((state) => state.addColumn)
@@ -238,9 +308,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     return Math.min(selectedIndex, columns.length - 1)
   }, [columns.length, selectedIndex])
 
-  const canMoveUp = effectiveSelectedIndex !== null && effectiveSelectedIndex > 0
-  const canMoveDown = effectiveSelectedIndex !== null && effectiveSelectedIndex < columns.length - 1
-  const canDelete = effectiveSelectedIndex !== null && effectiveSelectedIndex < columns.length
+  const { canMoveUp, canMoveDown, canDelete } = selectionMoves(
+    effectiveSelectedIndex,
+    columns.length
+  )
 
   // Prototype `.dz-grid th`: #, Nullable, PK and AI are centred; the rest align left.
   const headerCells = useMemo(
@@ -386,26 +457,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
       return
     }
 
-    switch (cellKey) {
-      case 'name':
-        updateColumn(tabId, rowIndex, 'name', originalValue)
-        break
-      case 'length':
-        updateColumn(tabId, rowIndex, 'length', originalValue)
-        break
-      case 'signedness':
-        updateColumn(tabId, rowIndex, 'typeModifier', originalValue)
-        break
-      case 'comment':
-        updateColumn(tabId, rowIndex, 'comment', originalValue)
-        break
-      case 'default': {
-        const baseline = JSON.parse(originalValue) as DefaultValueModel
-        updateColumn(tabId, rowIndex, 'defaultValue', baseline)
-        break
-      }
-      default:
-        break
+    const revertField = REVERTIBLE_COLUMN_FIELDS[cellKey]
+    if (revertField) {
+      updateColumn(tabId, rowIndex, revertField.field, revertField.parseBaseline(originalValue))
     }
 
     clearEditStartValue(rowIndex, cellKey)
@@ -632,7 +686,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
               {columns.map((column, columnIndex) => {
                 const nameError = validationErrors[`columns.${columnIndex}.name`]
                 const isSelected = effectiveSelectedIndex === columnIndex
-                const dragShift = drag ? getDragShift(columnIndex, drag.from, drag.to) : 0
+                const dragShift = dragShiftFor(drag, columnIndex)
                 const lengthDisabled = isTypeWithoutLength(column.type)
                 const signednessDisabled = !supportsSignedness(column.type)
                 const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
@@ -640,11 +694,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
                 const isDefaultOverride = defaultModeOverrideIndex === columnIndex
                 const defaultMode = column.defaultValue.tag
-                const defaultText = 'value' in column.defaultValue ? column.defaultValue.value : ''
-                const showDefaultDropdown =
-                  isDefaultOverride ||
-                  defaultMode === 'NO_DEFAULT' ||
-                  defaultMode === 'NULL_DEFAULT'
+                const defaultText = defaultValueText(column.defaultValue)
+                const showDefaultDropdown = isDefaultOverride || !isTextDefaultMode(defaultMode)
 
                 const captureDefaultBaseline = () => {
                   cancelDefaultCellBlur(columnIndex)
@@ -655,15 +706,14 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                 }
 
                 const applyDefaultModeChange = (nextMode: string) => {
-                  let newDefault: DefaultValueModel
-                  if (nextMode === 'NO_DEFAULT') newDefault = { tag: 'NO_DEFAULT' }
-                  else if (nextMode === 'NULL_DEFAULT') newDefault = { tag: 'NULL_DEFAULT' }
-                  else if (nextMode === 'LITERAL')
-                    newDefault = { tag: 'LITERAL', value: defaultText }
-                  else newDefault = { tag: 'EXPRESSION', value: defaultText }
                   setDefaultModeOverrideIndex(null)
-                  updateColumn(tabId, columnIndex, 'defaultValue', newDefault)
-                  if (nextMode === 'LITERAL' || nextMode === 'EXPRESSION') {
+                  updateColumn(
+                    tabId,
+                    columnIndex,
+                    'defaultValue',
+                    defaultValueForMode(nextMode, defaultText)
+                  )
+                  if (isTextDefaultMode(nextMode)) {
                     setPendingFocusCell({ rowIndex: columnIndex, cellKey: 'default' })
                   }
                 }
@@ -671,14 +721,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                 return (
                   <tr
                     key={`${column.originalName || 'new'}-${columnIndex}`}
-                    className={`${styles.row} ${isSelected ? styles.selectedRow : ''} ${
-                      drag?.from === columnIndex ? styles.dragSource : ''
-                    }`}
-                    style={
-                      dragShift
-                        ? { transform: `translateY(calc(${dragShift} * var(--drag-row-height)))` }
-                        : undefined
-                    }
+                    className={columnRowClassName(isSelected, drag?.from === columnIndex)}
+                    style={dragRowStyle(dragShift)}
                     data-testid={`column-row-${columnIndex}`}
                     onClick={() => {
                       // The click that ends a drag must not select the row's old index
@@ -737,10 +781,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           variant="tableCell"
                           value={column.name}
                           invalid={!!nameError}
-                          className={`${
-                            isSelected ? styles.activeInput : getCellInputClass(columnIndex, 'name')
-                          } ${styles.nameInput}`}
-                          aria-invalid={nameError ? 'true' : 'false'}
+                          className={`${selectedRowInputClass(
+                            isSelected,
+                            getCellInputClass(columnIndex, 'name')
+                          )} ${styles.nameInput}`}
+                          aria-invalid={ariaInvalidValue(nameError)}
                           title={nameError}
                           data-row-index={columnIndex}
                           data-cell-key="name"
@@ -795,9 +840,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             onTriggerKeyDown={(event) =>
                               handleEditableKeyDown(event, columnIndex, 'type')
                             }
-                            triggerClassName={`${styles.cellInput} ${styles.typeInput} ${
-                              isSelected ? styles.activeInput : styles.inactiveInput
-                            }`}
+                            triggerClassName={`${styles.cellInput} ${styles.typeInput} ${selectedRowInputClass(
+                              isSelected,
+                              styles.inactiveInput
+                            )}`}
                           />
                         </div>
                       </CellFrame>
@@ -812,11 +858,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           variant="tableCell"
                           value={column.length}
                           disabled={lengthDisabled}
-                          className={`${
-                            isSelected
-                              ? styles.activeInput
-                              : getCellInputClass(columnIndex, 'length')
-                          } ${styles.lengthInput}`}
+                          className={`${selectedRowInputClass(
+                            isSelected,
+                            getCellInputClass(columnIndex, 'length')
+                          )} ${styles.lengthInput}`}
                           data-row-index={columnIndex}
                           data-cell-key="length"
                           data-testid={`column-length-${columnIndex}`}
@@ -871,9 +916,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           onTriggerKeyDown={(event) =>
                             handleEditableKeyDown(event, columnIndex, 'signedness')
                           }
-                          triggerClassName={`${styles.cellInput} ${styles.signedInput} ${
-                            isSelected ? styles.activeInput : styles.inactiveInput
-                          }`}
+                          triggerClassName={`${styles.cellInput} ${styles.signedInput} ${selectedRowInputClass(
+                            isSelected,
+                            styles.inactiveInput
+                          )}`}
                         />
                       </CellFrame>
                     </td>
@@ -906,7 +952,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             updateColumn(tabId, columnIndex, 'isPrimaryKey', checked)
                             if (checked) {
                               updateColumn(tabId, columnIndex, 'nullable', false)
-                            } else if (column.isAutoIncrement) {
+                              return
+                            }
+                            if (column.isAutoIncrement) {
                               updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
                             }
                           }}
@@ -958,9 +1006,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                                   event.stopPropagation()
                                 },
                               }}
-                              triggerClassName={`${styles.cellInput} ${
-                                isSelected ? styles.activeInput : styles.inactiveInput
-                              }`}
+                              triggerClassName={`${styles.cellInput} ${selectedRowInputClass(
+                                isSelected,
+                                styles.inactiveInput
+                              )}`}
                               onTriggerFocus={() => {
                                 captureDefaultBaseline()
                                 setSelectedIndex(columnIndex)
@@ -988,7 +1037,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                                   ? (open: boolean) => {
                                       if (open) {
                                         defaultOverrideOpenedRef.current = true
-                                      } else if (defaultOverrideOpenedRef.current) {
+                                        return
+                                      }
+                                      if (defaultOverrideOpenedRef.current) {
                                         setDefaultModeOverrideIndex(null)
                                       }
                                     }
@@ -1005,11 +1056,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                                 data-testid={`column-default-input-${columnIndex}`}
                                 data-row-index={columnIndex}
                                 data-cell-key="default"
-                                className={
-                                  isSelected
-                                    ? styles.activeInput
-                                    : getCellInputClass(columnIndex, 'default')
-                                }
+                                className={selectedRowInputClass(
+                                  isSelected,
+                                  getCellInputClass(columnIndex, 'default')
+                                )}
                                 onFocus={() => {
                                   captureDefaultBaseline()
                                   setSelectedIndex(columnIndex)
@@ -1055,11 +1105,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           type="text"
                           variant="tableCell"
                           value={column.comment}
-                          className={`${
-                            isSelected
-                              ? styles.activeInput
-                              : getCellInputClass(columnIndex, 'comment')
-                          } ${styles.commentInput}`}
+                          className={`${selectedRowInputClass(
+                            isSelected,
+                            getCellInputClass(columnIndex, 'comment')
+                          )} ${styles.commentInput}`}
                           data-row-index={columnIndex}
                           data-cell-key="comment"
                           data-testid={`column-comment-${columnIndex}`}

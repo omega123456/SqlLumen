@@ -9,6 +9,15 @@ const FOCUSABLE_SELECTOR =
  * On Tab/Shift+Tab: cycles focus within the element.
  * On close: restores focus to the previously-focused element.
  */
+function focusWrapTarget(
+  isBackward: boolean,
+  firstElement: HTMLElement,
+  lastElement: HTMLElement
+): HTMLElement | null {
+  if (isBackward) return document.activeElement === firstElement ? lastElement : null
+  return document.activeElement === lastElement ? firstElement : null
+}
+
 export function useFocusTrap(
   dialogRef: React.RefObject<HTMLElement | null>,
   isOpen: boolean,
@@ -56,19 +65,10 @@ export function useFocusTrap(
       const firstElement = focusableElements[0]
       const lastElement = focusableElements[focusableElements.length - 1]
 
-      if (event.shiftKey) {
-        // Shift+Tab: cycle backwards
-        if (document.activeElement === firstElement) {
-          event.preventDefault()
-          lastElement.focus()
-        }
-      } else {
-        // Tab: cycle forwards
-        if (document.activeElement === lastElement) {
-          event.preventDefault()
-          firstElement.focus()
-        }
-      }
+      const wrapTarget = focusWrapTarget(event.shiftKey, firstElement, lastElement)
+      if (!wrapTarget) return
+      event.preventDefault()
+      wrapTarget.focus()
     }
 
     document.addEventListener('keydown', handleKeyDown)

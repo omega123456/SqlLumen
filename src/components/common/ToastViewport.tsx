@@ -1,54 +1,54 @@
 import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
-import { X, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
+import { X, CheckCircle, Warning, XCircle, type Icon } from '@phosphor-icons/react'
 import { useToastStore, type ToastItem } from '../../stores/toast-store'
 import styles from './ToastViewport.module.css'
 
 const TOAST_ICON_SIZE = 24
 
+interface ToastVariantPresentation {
+  toastClassName: string
+  iconWellClassName: string
+  progressClassName: string
+  VariantIcon: Icon
+}
+
+const TOAST_VARIANT_PRESENTATION: Record<ToastItem['variant'], ToastVariantPresentation> = {
+  error: {
+    toastClassName: styles.toastError,
+    iconWellClassName: `${styles.iconWell} ${styles.iconWellError}`,
+    progressClassName: `${styles.progressFill} ${styles.progressError}`,
+    VariantIcon: XCircle,
+  },
+  success: {
+    toastClassName: styles.toastSuccess,
+    iconWellClassName: `${styles.iconWell} ${styles.iconWellSuccess}`,
+    progressClassName: `${styles.progressFill} ${styles.progressSuccess}`,
+    VariantIcon: CheckCircle,
+  },
+  warning: {
+    toastClassName: styles.toastWarning,
+    iconWellClassName: `${styles.iconWell} ${styles.iconWellWarning}`,
+    progressClassName: `${styles.progressFill} ${styles.progressWarning}`,
+    VariantIcon: Warning,
+  },
+}
+
 function variantClass(variant: ToastItem['variant']) {
-  switch (variant) {
-    case 'error':
-      return styles.toastError
-    case 'success':
-      return styles.toastSuccess
-    case 'warning':
-      return styles.toastWarning
-  }
+  return TOAST_VARIANT_PRESENTATION[variant].toastClassName
 }
 
 function iconWellClass(variant: ToastItem['variant']) {
-  switch (variant) {
-    case 'error':
-      return `${styles.iconWell} ${styles.iconWellError}`
-    case 'success':
-      return `${styles.iconWell} ${styles.iconWellSuccess}`
-    case 'warning':
-      return `${styles.iconWell} ${styles.iconWellWarning}`
-  }
+  return TOAST_VARIANT_PRESENTATION[variant].iconWellClassName
 }
 
 function progressClass(variant: ToastItem['variant']) {
-  switch (variant) {
-    case 'error':
-      return `${styles.progressFill} ${styles.progressError}`
-    case 'success':
-      return `${styles.progressFill} ${styles.progressSuccess}`
-    case 'warning':
-      return `${styles.progressFill} ${styles.progressWarning}`
-  }
+  return TOAST_VARIANT_PRESENTATION[variant].progressClassName
 }
 
 function ToastIcon({ variant }: { variant: ToastItem['variant'] }) {
-  const common = { size: TOAST_ICON_SIZE, weight: 'fill' as const }
-  switch (variant) {
-    case 'success':
-      return <CheckCircle {...common} aria-hidden />
-    case 'error':
-      return <XCircle {...common} aria-hidden />
-    case 'warning':
-      return <Warning {...common} aria-hidden />
-  }
+  const { VariantIcon } = TOAST_VARIANT_PRESENTATION[variant]
+  return <VariantIcon size={TOAST_ICON_SIZE} weight="fill" aria-hidden />
 }
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {

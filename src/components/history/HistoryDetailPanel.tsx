@@ -34,6 +34,59 @@ function formatRows(entry: HistoryEntry): string {
   return `${rowCount.toLocaleString()} ${rowCount === 1 ? 'row' : 'rows'}`
 }
 
+const MISSING_VALUE_PLACEHOLDER = '—'
+
+function HistoryStatusHeader({ entry }: { entry: HistoryEntry }) {
+  const statusClassName = entry.success ? dotStyles.statusDotOk : dotStyles.statusDotError
+  return (
+    <div className={styles.header}>
+      <span className={`${dotStyles.statusDot} ${statusClassName}`} aria-hidden="true">
+        {entry.success ? '✓' : '✕'}
+      </span>
+      <b>{entry.success ? 'Succeeded' : 'Failed'}</b>
+      <span className={styles.time}>{formatTableTimestamp(entry.timestamp)}</span>
+    </div>
+  )
+}
+
+function HistoryEntryFacts({
+  entry,
+  connectionName,
+}: {
+  entry: HistoryEntry
+  connectionName: string | undefined
+}) {
+  return (
+    <div className={styles.kv}>
+      <span>Database</span>
+      <span>{entry.databaseName ?? MISSING_VALUE_PLACEHOLDER}</span>
+      <span>Duration</span>
+      <span>{formatDuration(entry.durationMs)}</span>
+      <span>Rows</span>
+      <span>{formatRows(entry)}</span>
+      <span>Connection</span>
+      <span>{connectionName ?? MISSING_VALUE_PLACEHOLDER}</span>
+    </div>
+  )
+}
+
+function CopySqlButtonContent({ copied }: { copied: boolean }) {
+  if (copied) {
+    return (
+      <>
+        <CheckIcon size={16} weight="bold" />
+        Copied
+      </>
+    )
+  }
+  return (
+    <>
+      <CopySimpleIcon size={16} weight="regular" />
+      Copy SQL
+    </>
+  )
+}
+
 export function HistoryDetailPanel({
   entry,
   onOpenInEditor,
@@ -74,16 +127,7 @@ export function HistoryDetailPanel({
 
   return (
     <div className={styles.panel} data-testid="history-detail-panel">
-      <div className={styles.header}>
-        <span
-          className={`${dotStyles.statusDot} ${entry.success ? dotStyles.statusDotOk : dotStyles.statusDotError}`}
-          aria-hidden="true"
-        >
-          {entry.success ? '✓' : '✕'}
-        </span>
-        <b>{entry.success ? 'Succeeded' : 'Failed'}</b>
-        <span className={styles.time}>{formatTableTimestamp(entry.timestamp)}</span>
-      </div>
+      <HistoryStatusHeader entry={entry} />
 
       {!entry.success && (
         <div className={styles.errorBox} role="alert">
@@ -99,16 +143,7 @@ export function HistoryDetailPanel({
         </pre>
       </div>
 
-      <div className={styles.kv}>
-        <span>Database</span>
-        <span>{entry.databaseName ?? '—'}</span>
-        <span>Duration</span>
-        <span>{formatDuration(entry.durationMs)}</span>
-        <span>Rows</span>
-        <span>{formatRows(entry)}</span>
-        <span>Connection</span>
-        <span>{connectionName ?? '—'}</span>
-      </div>
+      <HistoryEntryFacts entry={entry} connectionName={connectionName} />
 
       <div className={styles.actions}>
         <Button
@@ -120,12 +155,7 @@ export function HistoryDetailPanel({
           Open in editor
         </Button>
         <Button onClick={handleCopy} data-testid="history-copy-sql">
-          {copied ? (
-            <CheckIcon size={16} weight="bold" />
-          ) : (
-            <CopySimpleIcon size={16} weight="regular" />
-          )}
-          {copied ? 'Copied' : 'Copy SQL'}
+          <CopySqlButtonContent copied={copied} />
         </Button>
       </div>
     </div>

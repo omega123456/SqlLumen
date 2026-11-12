@@ -176,30 +176,34 @@ fn parse_export_range(start_timestamp: &str, end_timestamp: &str) -> Result<Expo
     })
 }
 
+fn boundary_day_timestamp(date: NaiveDate, is_start: bool) -> Result<DateTime<Utc>, String> {
+    if is_start {
+        return Ok(Utc.from_utc_datetime(&date.and_time(NaiveTime::MIN)));
+    }
+    let end_of_day = date
+        .and_hms_milli_opt(23, 59, 59, 999)
+        .ok_or_else(|| "failed to resolve export end timestamp".to_string())?;
+    Ok(Utc.from_utc_datetime(&end_of_day))
+}
+
+fn boundary_label(is_start: bool) -> &'static str {
+    if is_start {
+        return "start";
+    }
+    "end"
+}
+
 fn parse_boundary_date(value: &str, is_start: bool) -> Result<ParsedBoundary, String> {
     let trimmed = value.trim();
     if let Ok(date) = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
-        let timestamp_utc = if is_start {
-            Utc.from_utc_datetime(&date.and_time(NaiveTime::MIN))
-        } else {
-            Utc.from_utc_datetime(
-                &date
-                    .and_hms_milli_opt(23, 59, 59, 999)
-                    .ok_or_else(|| "failed to resolve export end timestamp".to_string())?,
-            )
-        };
         return Ok(ParsedBoundary {
-            timestamp_utc,
+            timestamp_utc: boundary_day_timestamp(date, is_start)?,
             local_date: date,
         });
     }
 
-    let parsed = DateTime::parse_from_rfc3339(trimmed).map_err(|_| {
-        format!(
-            "invalid {} timestamp: {trimmed}",
-            if is_start { "start" } else { "end" }
-        )
-    })?;
+    let parsed = DateTime::parse_from_rfc3339(trimmed)
+        .map_err(|_| format!("invalid {} timestamp: {trimmed}", boundary_label(is_start)))?;
     Ok(ParsedBoundary {
         timestamp_utc: parsed.with_timezone(&Utc),
         local_date: parsed.date_naive(),

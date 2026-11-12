@@ -129,35 +129,14 @@ export function isEditableFieldElement(target: EventTarget | null): boolean {
  * Returns the host element to focus for cut/copy/paste, or null if we should not show the text menu.
  */
 export function resolveEditableFieldFromTarget(target: EventTarget | null): HTMLElement | null {
-  if (!target || !(target instanceof Node)) {
-    return null
-  }
-
-  const startElement =
-    target.nodeType === Node.TEXT_NODE
-      ? (target.parentElement as Element | null)
-      : (target as Element)
-
+  const startElement = startElementForTarget(target)
   if (!startElement) {
     return null
   }
 
   const inputOrTextarea = startElement.closest('input, textarea')
-  if (inputOrTextarea instanceof HTMLTextAreaElement) {
-    if (inputOrTextarea.disabled) {
-      return null
-    }
-    return inputOrTextarea
-  }
-  if (inputOrTextarea instanceof HTMLInputElement) {
-    if (inputOrTextarea.disabled) {
-      return null
-    }
-    const inputType = inputOrTextarea.type.toLowerCase()
-    if (!EDITABLE_INPUT_TYPES.has(inputType)) {
-      return null
-    }
-    return inputOrTextarea
+  if (inputOrTextarea) {
+    return editableTextControl(inputOrTextarea)
   }
 
   const contentHost = startElement.closest('[contenteditable]')
@@ -166,6 +145,33 @@ export function resolveEditableFieldFromTarget(target: EventTarget | null): HTML
   }
 
   return null
+}
+
+function startElementForTarget(target: EventTarget | null): Element | null {
+  if (!target || !(target instanceof Node)) {
+    return null
+  }
+  if (target.nodeType === Node.TEXT_NODE) {
+    return target.parentElement as Element | null
+  }
+  return target as Element
+}
+
+function editableTextControl(control: Element): HTMLElement | null {
+  if (control instanceof HTMLTextAreaElement) {
+    return control.disabled ? null : control
+  }
+  if (!(control instanceof HTMLInputElement)) {
+    return null
+  }
+  if (control.disabled) {
+    return null
+  }
+  const inputType = control.type.toLowerCase()
+  if (!EDITABLE_INPUT_TYPES.has(inputType)) {
+    return null
+  }
+  return control
 }
 
 /**

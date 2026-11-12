@@ -12,21 +12,15 @@ export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
   invalid?: boolean
 }
 
+const VARIANT_CLASSES: Record<TextareaVariant, string> = {
+  default: 'ui-textarea',
+  mono: mergeClassNames('ui-textarea', styles.mono),
+  formField: mergeClassNames('ui-field-chrome', styles.formField),
+  bare: '',
+}
+
 function variantClasses(variant: TextareaVariant): string {
-  switch (variant) {
-    case 'default': {
-      return 'ui-textarea'
-    }
-    case 'mono': {
-      return mergeClassNames('ui-textarea', styles.mono)
-    }
-    case 'formField': {
-      return mergeClassNames('ui-field-chrome', styles.formField)
-    }
-    case 'bare': {
-      return ''
-    }
-  }
+  return VARIANT_CLASSES[variant]
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(

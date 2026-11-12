@@ -23,6 +23,35 @@ function StateMessage({ icon, testId, title, body }: StateMessageProps) {
   )
 }
 
+type ResultsState = CommandPaletteResultsProps['state']
+
+const STATE_MESSAGES: Partial<Record<ResultsState, StateMessageProps>> = {
+  'no-connection': {
+    icon: <Plug size={18} weight="bold" />,
+    testId: 'command-palette-empty-state',
+    title: 'No active connection',
+    body: 'Connect to a server first to search schema objects for that session.',
+  },
+  empty: {
+    icon: <MagnifyingGlass size={18} weight="bold" />,
+    testId: 'command-palette-empty-state',
+    title: 'No recent objects yet',
+    body: 'Search for a table, view, procedure, function, or trigger to start building your recent list.',
+  },
+  'no-results': {
+    icon: <SmileySad size={18} weight="bold" />,
+    testId: 'command-palette-no-results',
+    title: 'No matching objects',
+    body: 'Try a shorter query or adjust your filters to widen the search.',
+  },
+}
+
+function resultsListLabels(isColumnScope: boolean, state: ResultsState) {
+  if (isColumnScope) return { header: 'Columns', list: 'Columns' }
+  if (state === 'recents') return { header: 'Recent', list: 'Recent objects' }
+  return { header: 'Objects', list: 'Schema objects' }
+}
+
 export function CommandPaletteResults({
   results,
   activeIndex,
@@ -41,15 +70,9 @@ export function CommandPaletteResults({
     activeOption?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex, results, state])
 
-  if (state === 'no-connection') {
-    return (
-      <StateMessage
-        icon={<Plug size={18} weight="bold" />}
-        testId="command-palette-empty-state"
-        title="No active connection"
-        body="Connect to a server first to search schema objects for that session."
-      />
-    )
+  const stateMessage = STATE_MESSAGES[state]
+  if (stateMessage) {
+    return <StateMessage {...stateMessage} />
   }
 
   if (state === 'loading') {
@@ -65,32 +88,13 @@ export function CommandPaletteResults({
     )
   }
 
-  if (state === 'empty') {
-    return (
-      <StateMessage
-        icon={<MagnifyingGlass size={18} weight="bold" />}
-        testId="command-palette-empty-state"
-        title="No recent objects yet"
-        body="Search for a table, view, procedure, function, or trigger to start building your recent list."
-      />
-    )
-  }
-
-  if (state === 'no-results') {
-    return (
-      <StateMessage
-        icon={<SmileySad size={18} weight="bold" />}
-        testId="command-palette-no-results"
-        title="No matching objects"
-        body="Try a shorter query or adjust your filters to widen the search."
-      />
-    )
-  }
+  const labels = resultsListLabels(isColumnScope, state)
+  const showsRecentMarker = state === 'recents' && !isColumnScope
 
   return (
     <div className={styles.resultsSurface}>
       <div className={styles.resultsHeader} data-testid="command-palette-group-header">
-        <span>{isColumnScope ? 'Columns' : state === 'recents' ? 'Recent' : 'Objects'}</span>
+        <span>{labels.header}</span>
         <span className={styles.resultsCount}>
           {results.length} result{results.length === 1 ? '' : 's'}
         </span>
@@ -99,9 +103,7 @@ export function CommandPaletteResults({
         ref={listRef}
         id="command-palette-results"
         role="listbox"
-        aria-label={
-          isColumnScope ? 'Columns' : state === 'recents' ? 'Recent objects' : 'Schema objects'
-        }
+        aria-label={labels.list}
         data-testid="command-palette-results"
         className={styles.resultsList}
       >
@@ -111,7 +113,7 @@ export function CommandPaletteResults({
             id={`command-palette-result-${index}`}
             result={result}
             isActive={index === activeIndex}
-            isRecent={state === 'recents' && !isColumnScope}
+            isRecent={showsRecentMarker}
             onSelect={onSelect}
           />
         ))}

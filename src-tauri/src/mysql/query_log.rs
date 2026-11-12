@@ -139,24 +139,23 @@ fn decode_temporal_debug_value(value: sqlx::mysql::MySqlValueRef<'_>) -> Option<
     sqlx::ValueRef::to_owned(&value).try_decode::<String>().ok()
 }
 
-fn format_mysql_time(value: sqlx::mysql::types::MySqlTime) -> String {
-    let sign = if value.sign().is_negative() { "-" } else { "" };
+pub(crate) fn format_mysql_time(value: sqlx::mysql::types::MySqlTime) -> String {
+    let sign = crate::mysql::multi_result::minus_sign(value.sign().is_negative());
     let hours = value.hours();
 
     if value.microseconds() == 0 {
-        format!(
+        return format!(
             "{sign}{hours:02}:{:02}:{:02}",
             value.minutes(),
             value.seconds()
-        )
-    } else {
-        format!(
-            "{sign}{hours:02}:{:02}:{:02}.{:06}",
-            value.minutes(),
-            value.seconds(),
-            value.microseconds()
-        )
+        );
     }
+    format!(
+        "{sign}{hours:02}:{:02}:{:02}.{:06}",
+        value.minutes(),
+        value.seconds(),
+        value.microseconds()
+    )
 }
 
 fn format_mysql_row(row: &MySqlRow) -> String {

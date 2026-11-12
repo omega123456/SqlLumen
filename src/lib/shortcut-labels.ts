@@ -2,36 +2,30 @@ import type { ShortcutBinding } from '../types/schema'
 
 const IS_MAC = typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.userAgent)
 
+const MODIFIER_LABELS: Partial<Record<string, string>> = {
+  ctrl: IS_MAC ? '⌘' : 'Ctrl',
+  shift: IS_MAC ? '⇧' : 'Shift',
+  alt: IS_MAC ? '⌥' : 'Alt',
+}
+
+const KEY_LABELS: Partial<Record<string, string>> = {
+  Enter: IS_MAC ? '↩' : 'Enter',
+  ' ': 'Space',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  Escape: 'Esc',
+}
+
 /** Map internal modifier names to display labels. */
 function modifierLabel(modifier: string): string {
-  switch (modifier) {
-    case 'ctrl':
-      return IS_MAC ? '⌘' : 'Ctrl'
-    case 'shift':
-      return IS_MAC ? '⇧' : 'Shift'
-    case 'alt':
-      return IS_MAC ? '⌥' : 'Alt'
-    default:
-      return modifier
-  }
+  return MODIFIER_LABELS[modifier] ?? modifier
 }
 
 /** Map key names to friendlier display labels. */
 function keyLabel(key: string): string {
-  switch (key) {
-    case 'Enter':
-      return IS_MAC ? '↩' : 'Enter'
-    case ' ':
-      return 'Space'
-    case 'ArrowUp':
-      return '↑'
-    case 'ArrowDown':
-      return '↓'
-    case 'Escape':
-      return 'Esc'
-    default:
-      return key.length === 1 ? key.toUpperCase() : key
-  }
+  const namedKeyLabel = KEY_LABELS[key]
+  if (namedKeyLabel) return namedKeyLabel
+  return key.length === 1 ? key.toUpperCase() : key
 }
 
 /** Display labels for a shortcut binding, modifiers first (e.g. `['Ctrl', 'K']`). */

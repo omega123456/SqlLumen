@@ -1,10 +1,13 @@
 import { Copy } from '@phosphor-icons/react'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
 import { SQL_HIGHLIGHT_CLASS_NAMES } from '../../lib/sql-highlight-class-names'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
-import { useTableDesignerStore } from '../../stores/table-designer-store'
+import {
+  useTableDesignerStore,
+  type TableDesignerTabState,
+} from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
 import styles from './DdlPreviewTab.module.css'
 
@@ -14,12 +17,61 @@ interface DdlPreviewTabProps {
   tabId: string
 }
 
+interface DdlPreviewState {
+  ddl: string
+  isDdlLoading: boolean
+  ddlError: string | null
+}
+
+const EMPTY_DDL_PREVIEW: DdlPreviewState = { ddl: '', isDdlLoading: false, ddlError: null }
+
+function ddlPreviewState(tabState: TableDesignerTabState | undefined): DdlPreviewState {
+  if (!tabState) return EMPTY_DDL_PREVIEW
+  return {
+    ddl: tabState.ddl,
+    isDdlLoading: tabState.isDdlLoading,
+    ddlError: tabState.ddlError,
+  }
+}
+
+function isShowingLiveDdl(preview: DdlPreviewState): boolean {
+  return !preview.isDdlLoading && !preview.ddlError
+}
+
+interface DdlPreviewBodyProps {
+  preview: DdlPreviewState
+  highlightedSql: ReactNode[]
+}
+
+function DdlPreviewBody({ preview, highlightedSql }: DdlPreviewBodyProps) {
+  if (preview.isDdlLoading) {
+    return (
+      <div className={styles.state} data-testid="ddl-preview-loading">
+        Generating...
+      </div>
+    )
+  }
+
+  if (preview.ddlError) {
+    return (
+      <div className={`${styles.state} ${styles.error}`} data-testid="ddl-preview-error">
+        {preview.ddlError}
+      </div>
+    )
+  }
+
+  return (
+    <pre className={styles.codeBlock} data-testid="ddl-preview-code">
+      <code>{highlightedSql}</code>
+    </pre>
+  )
+}
+
 export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
 
-  const ddl = tabState?.ddl ?? ''
-  const isDdlLoading = tabState?.isDdlLoading ?? false
-  const ddlError = tabState?.ddlError ?? null
+  const preview = ddlPreviewState(tabState)
+  const ddl = preview.ddl
 
   const highlightedSql = useMemo(
     () => SqlSyntaxHighlighter.highlightSql(ddl, SQL_HIGHLIGHT_CLASS_NAMES),
@@ -58,22 +110,10 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
       </div>
 
       <div className={styles.body}>
-        {isDdlLoading ? (
-          <div className={styles.state} data-testid="ddl-preview-loading">
-            Generating...
-          </div>
-        ) : ddlError ? (
-          <div className={`${styles.state} ${styles.error}`} data-testid="ddl-preview-error">
-            {ddlError}
-          </div>
-        ) : (
-          <pre className={styles.codeBlock} data-testid="ddl-preview-code">
-            <code>{highlightedSql}</code>
-          </pre>
-        )}
+        <DdlPreviewBody preview={preview} highlightedSql={highlightedSql} />
       </div>
 
-      {!isDdlLoading && !ddlError && (
+      {isShowingLiveDdl(preview) && (
         <div className={styles.footer}>Live updating as changes are detected</div>
       )}
     </div>

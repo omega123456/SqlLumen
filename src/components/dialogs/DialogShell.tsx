@@ -49,6 +49,90 @@ export interface DialogShellProps {
   children: React.ReactNode
 }
 
+interface DialogSizing {
+  maxWidth: number
+  panelWidth: string | undefined
+  panelHeight: string | undefined
+  fillMaxWidth: boolean
+  panelPadding: boolean
+}
+
+const VIEWPORT_WIDTH_CAP = '90vw'
+
+function baseDialogStyle(sizing: DialogSizing): CSSProperties {
+  if (sizing.panelWidth) return { width: sizing.panelWidth, maxWidth: sizing.panelWidth }
+  const widthCap = `min(${sizing.maxWidth}px, ${VIEWPORT_WIDTH_CAP})`
+  if (sizing.fillMaxWidth) return { width: widthCap, maxWidth: widthCap }
+  return { maxWidth: widthCap }
+}
+
+function resolveDialogStyle(sizing: DialogSizing): CSSProperties {
+  let dialogStyle = baseDialogStyle(sizing)
+  if (sizing.panelHeight) {
+    dialogStyle = {
+      ...dialogStyle,
+      height: sizing.panelHeight,
+      maxHeight: sizing.panelHeight,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }
+  }
+  if (!sizing.panelPadding) {
+    dialogStyle = { ...dialogStyle, padding: 0 }
+  }
+  return dialogStyle
+}
+
+function withOptionalClassName(baseClassName: string, extraClassName: string | undefined): string {
+  if (!extraClassName) return baseClassName
+  return `${baseClassName} ${extraClassName}`
+}
+
+function panelTestIdFor(testId: string | undefined): string | undefined {
+  if (testId === undefined) return undefined
+  return `${testId}-panel`
+}
+
+interface DialogPanelProps {
+  formProps: DialogShellProps['formProps']
+  className: string
+  style: CSSProperties
+  testId: string | undefined
+  panelRef: RefObject<HTMLDivElement | null>
+  setFormRef: (node: HTMLFormElement | null) => void
+  children: React.ReactNode
+}
+
+function DialogPanel({
+  formProps,
+  className,
+  style,
+  testId,
+  panelRef,
+  setFormRef,
+  children,
+}: DialogPanelProps) {
+  if (formProps) {
+    return (
+      <form
+        {...formProps}
+        className={className}
+        ref={setFormRef}
+        style={style}
+        data-testid={testId}
+      >
+        {children}
+      </form>
+    )
+  }
+  return (
+    <div className={className} ref={panelRef} style={style} data-testid={testId}>
+      {children}
+    </div>
+  )
+}
+
 /**
  * Shared modal shell for all dialog components.
  * Handles portal rendering, backdrop click-to-dismiss, Escape key, and focus trapping.
@@ -97,27 +181,13 @@ export function DialogShell({
 
   if (!isOpen) return null
 
-  const widthCap = `min(${maxWidth}px, 90vw)`
-  let dialogStyle: CSSProperties = panelWidth
-    ? { width: panelWidth, maxWidth: panelWidth }
-    : fillMaxWidth
-      ? { width: widthCap, maxWidth: widthCap }
-      : { maxWidth: widthCap }
-
-  if (panelHeight) {
-    dialogStyle = {
-      ...dialogStyle,
-      height: panelHeight,
-      maxHeight: panelHeight,
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-    }
-  }
-
-  if (!panelPadding) {
-    dialogStyle = { ...dialogStyle, padding: 0 }
-  }
+  const dialogStyle = resolveDialogStyle({
+    maxWidth: maxWidth,
+    panelWidth: panelWidth,
+    panelHeight: panelHeight,
+    fillMaxWidth: fillMaxWidth,
+    panelPadding: panelPadding,
+  })
 
   const handleBackdropClick = (event: React.MouseEvent) => {
     if (event.target === event.currentTarget && !nonDismissible) {
@@ -125,40 +195,30 @@ export function DialogShell({
     }
   }
 
-  const panelClassNameValue = `ui-elevated-surface ${styles.dialog}${
-    panelClassName !== undefined ? ` ${panelClassName}` : ''
-  }`
-  const panelTestId = testId !== undefined ? `${testId}-panel` : undefined
+  const panelClassNameValue = withOptionalClassName(
+    `ui-elevated-surface ${styles.dialog}`,
+    panelClassName
+  )
 
   return createPortal(
     <div
-      className={backdropClassName ? `${styles.backdrop} ${backdropClassName}` : styles.backdrop}
+      className={withOptionalClassName(styles.backdrop, backdropClassName)}
       data-testid={testId}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
     >
-      {formProps ? (
-        <form
-          {...formProps}
-          className={panelClassNameValue}
-          ref={setFormRef}
-          style={dialogStyle}
-          data-testid={panelTestId}
-        >
-          {children}
-        </form>
-      ) : (
-        <div
-          className={panelClassNameValue}
-          ref={dialogRef}
-          style={dialogStyle}
-          data-testid={panelTestId}
-        >
-          {children}
-        </div>
-      )}
+      <DialogPanel
+        formProps={formProps}
+        className={panelClassNameValue}
+        style={dialogStyle}
+        testId={panelTestIdFor(testId)}
+        panelRef={dialogRef}
+        setFormRef={setFormRef}
+      >
+        {children}
+      </DialogPanel>
     </div>,
     portalRoot ?? document.body
   )

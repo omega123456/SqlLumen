@@ -19,32 +19,38 @@ interface EditModeDropdownProps {
   connectionId: string
 }
 
+type ActiveResult = ReturnType<typeof getActiveResult>
+
+// Hidden when there are no columns, the query failed, the connection is read-only,
+// it is not a SELECT/WITH query, or the result is not re-executable.
+function isEditModeAvailable(result: ActiveResult, isConnectionReadOnly: boolean): boolean {
+  if (result.resultStatus !== 'success') return false
+  if (result.columns.length === 0) return false
+  if (isConnectionReadOnly) return false
+  return result.reExecutable && isEditableSelectSql(result.lastExecutedSql)
+}
+
+function editModeTriggerClassName(isAnalyzingQuery: boolean): string {
+  if (!isAnalyzingQuery) return `${styles.editModeSelect} `
+  return `${styles.editModeSelect} ${styles.editModeLoading}`
+}
+
 export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const setEditMode = useQueryStore((state) => state.setEditMode)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
 
-  const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
-  const isConnectionReadOnly = activeConnection?.profile?.readOnly ?? false
+  const isConnectionReadOnly = useConnectionStore(
+    (state) => state.activeConnections[connectionId]?.profile?.readOnly ?? false
+  )
 
-  const status = activeResult.resultStatus
-  const columnsCount = activeResult.columns.length
   const editTableMetadata = activeResult.editTableMetadata ?? {}
   const detectedTables = Object.values(editTableMetadata) as QueryTableEditInfo[]
   const isAnalyzingQuery = activeResult.isAnalyzingQuery
   const editMode = activeResult.editMode
   const editState = activeResult.editState
-  const lastExecutedSql = activeResult.lastExecutedSql
-  const reExecutable = activeResult.reExecutable
 
-  // Determine visibility: hidden when no columns, not success, read-only,
-  // not a SELECT/WITH query, or not re-executable
-  const isVisible =
-    status === 'success' &&
-    columnsCount > 0 &&
-    !isConnectionReadOnly &&
-    reExecutable &&
-    isEditableSelectSql(lastExecutedSql)
+  const isVisible = isEditModeAvailable(activeResult, isConnectionReadOnly)
 
   // Determine if table names need database prefix (when tables from multiple databases)
   const tableOptions = useMemo(() => {
@@ -63,13 +69,12 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
     (value: string) => {
       const newTableName = value === '' ? null : value
 
-      if (editState) {
-        if (editState.modifiedColumns.size > 0) {
-          requestNavigationAction(tabId, () => {
-            setEditMode(connectionId, tabId, newTableName)
-          })
-          return
-        }
+      const hasUnsavedEdits = (editState?.modifiedColumns.size ?? 0) > 0
+      if (hasUnsavedEdits) {
+        requestNavigationAction(tabId, () => {
+          setEditMode(connectionId, tabId, newTableName)
+        })
+        return
       }
 
       setEditMode(connectionId, tabId, newTableName)
@@ -99,7 +104,7 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
         onChange={handleChange}
         disabled={isAnalyzingQuery}
         data-testid="edit-mode-dropdown"
-        triggerClassName={`${styles.editModeSelect} ${isAnalyzingQuery ? styles.editModeLoading : ''}`}
+        triggerClassName={editModeTriggerClassName(isAnalyzingQuery)}
       />
     </div>
   )
