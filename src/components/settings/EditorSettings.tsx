@@ -1,7 +1,7 @@
-import { Dropdown } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { Slider } from '../common/Slider'
 import { SettingsSection } from './SettingsSection'
+import { SettingsDropdownField, SettingsFieldLabel } from './SettingsField'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 
@@ -29,29 +29,15 @@ export function EditorSettings() {
   return (
     <div data-testid="settings-editor">
       <SettingsSection title="Font" description="Customize the query editor font.">
+        <SettingsDropdownField
+          name="font-family"
+          label="Font family"
+          options={FONT_FAMILY_OPTIONS}
+          value={fontFamily}
+          onChange={(value) => setPendingChange('editor.fontFamily', value)}
+        />
         <div>
-          <label
-            id="font-family-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Font family
-          </label>
-          <Dropdown
-            id="settings-font-family"
-            labelledBy="font-family-label"
-            options={FONT_FAMILY_OPTIONS}
-            value={fontFamily}
-            onChange={(value) => setPendingChange('editor.fontFamily', value)}
-            data-testid="settings-font-family-dropdown"
-          />
-        </div>
-        <div>
-          <label
-            htmlFor="settings-font-size"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Font size (px)
-          </label>
+          <SettingsFieldLabel htmlFor="settings-font-size">Font size (px)</SettingsFieldLabel>
           <TextInput
             id="settings-font-size"
             type="number"

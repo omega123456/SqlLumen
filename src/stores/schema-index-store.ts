@@ -10,7 +10,8 @@ import {
 import { useSettingsStore } from './settings-store'
 import { hasTauriApis } from '../lib/tauri-env'
 
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontend, logFrontendError } from '../lib/app-log-commands'
+import { toErrorMessage } from '../lib/error-message'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,12 +130,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         event.payload.tablesTotal
       )
     }).catch((error) => {
-      logFrontend(
-        'error',
-        ['[schema-index-store] Failed to listen for schema-index-progress:', error]
-          .map(String)
-          .join(' ')
-      )
+      logFrontendError('[schema-index-store] Failed to listen for schema-index-progress:', error)
     })
 
     listen<{ profileId: string; tablesIndexed: number; durationMs: number }>(
@@ -143,23 +139,13 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         get()._handleComplete(event.payload.profileId)
       }
     ).catch((error) => {
-      logFrontend(
-        'error',
-        ['[schema-index-store] Failed to listen for schema-index-complete:', error]
-          .map(String)
-          .join(' ')
-      )
+      logFrontendError('[schema-index-store] Failed to listen for schema-index-complete:', error)
     })
 
     listen<{ profileId: string; error: string }>('schema-index-error', (event) => {
       get()._handleError(event.payload.profileId, event.payload.error)
     }).catch((error) => {
-      logFrontend(
-        'error',
-        ['[schema-index-store] Failed to listen for schema-index-error:', error]
-          .map(String)
-          .join(' ')
-      )
+      logFrontendError('[schema-index-store] Failed to listen for schema-index-error:', error)
     })
   }
 
@@ -181,15 +167,10 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         const allSessions = Object.keys(store.sessionToProfile)
         for (const sessionId of allSessions) {
           store.triggerBuild(sessionId).catch((error) => {
-            const message = error instanceof Error ? error.message : String(error)
-            logFrontend(
-              'error',
-              [
-                `[schema-index-store] Failed to rebuild index for session ${sessionId} after model change:`,
-                message,
-              ]
-                .map(String)
-                .join(' ')
+            const message = toErrorMessage(error)
+            logFrontendError(
+              `[schema-index-store] Failed to rebuild index for session ${sessionId} after model change:`,
+              message
             )
           })
         }
@@ -243,7 +224,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           })
         })
         .catch((error) => {
-          const message = error instanceof Error ? error.message : String(error)
+          const message = toErrorMessage(error)
           logFrontend(
             'warn',
             `[schema-index-store] Failed to get initial index status for ${sessionId}: ${message}`
@@ -365,11 +346,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           )
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        logFrontend(
-          'error',
-          ['[schema-index-store] Failed to trigger build:', message].map(String).join(' ')
-        )
+        const message = toErrorMessage(error)
+        logFrontendError('[schema-index-store] Failed to trigger build:', message)
         logFrontend('error', `[schema-index-store] Build failed for ${sessionId}: ${message}`)
 
         set((state) => ({
@@ -435,11 +413,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           )
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        logFrontend(
-          'error',
-          ['[schema-index-store] Failed to force rebuild:', message].map(String).join(' ')
-        )
+        const message = toErrorMessage(error)
+        logFrontendError('[schema-index-store] Failed to force rebuild:', message)
         logFrontend(
           'error',
           `[schema-index-store] Force rebuild failed for ${sessionId}: ${message}`
@@ -462,11 +437,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       try {
         await invalidateSchemaIndex(sessionId, tables)
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        logFrontend(
-          'error',
-          ['[schema-index-store] Failed to invalidate index:', message].map(String).join(' ')
-        )
+        const message = toErrorMessage(error)
+        logFrontendError('[schema-index-store] Failed to invalidate index:', message)
         logFrontend('warn', `[schema-index-store] Invalidation failed for ${sessionId}: ${message}`)
       }
     },

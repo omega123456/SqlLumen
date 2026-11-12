@@ -4,7 +4,7 @@ import { Button } from '../common/Button'
 import { splitStatements } from '../query-editor/sql-parser-utils'
 import styles from './AiCodeBlock.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendError } from '../../lib/app-log-commands'
 
 const COPIED_FEEDBACK_DURATION_MS = 2000
 export interface AiCodeBlockProps {
@@ -64,7 +64,7 @@ export function AiCodeBlock({
       setCopied(true)
       setTimeout(() => setCopied(false), COPIED_FEEDBACK_DURATION_MS)
     } catch (error) {
-      logFrontend('error', ['[ai-panel] Failed to copy code:', error].map(String).join(' '))
+      logFrontendError('[ai-panel] Failed to copy code:', error)
     }
   }, [getTextContent])
 

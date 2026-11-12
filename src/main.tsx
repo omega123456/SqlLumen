@@ -9,7 +9,7 @@ import { playwrightIpcMockHandler } from './lib/playwright-ipc-mock'
 import { useSettingsStore } from './stores/settings-store'
 import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
-import { hasTauriApis } from './lib/tauri-env'
+import { hasTauriApis, isPlaywrightBuild } from './lib/tauri-env'
 import { logBootstrapFailure, logFrontend } from './lib/app-log-commands'
 import type * as Monaco from 'monaco-editor'
 
@@ -74,7 +74,7 @@ import('monaco-editor').then(configureMonaco).catch(logBootstrapFailure)
 
 async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
-  if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
+  if (isPlaywrightBuild()) {
     mockIPC((command, args) => playwrightIpcMockHandler(command, args as Record<string, unknown>))
 
     // Expose stores for E2E tests to programmatically open tabs / toasts

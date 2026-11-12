@@ -1,9 +1,10 @@
 import type { SchemaMetadataFull } from '../../types/schema'
+import { PLAYWRIGHT_MOCK_CONNECTION_ID, PLAYWRIGHT_MOCK_DATABASE } from './connections'
 
 export const COMMAND_PALETTE_SCHEMA_FIXTURE: SchemaMetadataFull = {
-  databases: ['analytics_db', 'ecommerce_db', 'staging_db'],
+  databases: ['analytics_db', PLAYWRIGHT_MOCK_DATABASE, 'staging_db'],
   tables: {
-    ecommerce_db: [
+    [PLAYWRIGHT_MOCK_DATABASE]: [
       { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 1000, dataSize: 1048576 },
       {
         name: 'user_profiles',
@@ -28,7 +29,7 @@ export const COMMAND_PALETTE_SCHEMA_FIXTURE: SchemaMetadataFull = {
     ],
   },
   views: {
-    ecommerce_db: [{ name: 'user_summary_view' }],
+    [PLAYWRIGHT_MOCK_DATABASE]: [{ name: 'user_summary_view' }],
     analytics_db: [{ name: 'user_activity_rollup' }],
   },
   columns: {
@@ -74,14 +75,14 @@ export const COMMAND_PALETTE_SCHEMA_FIXTURE: SchemaMetadataFull = {
     ],
   },
   routines: {
-    ecommerce_db: [
+    [PLAYWRIGHT_MOCK_DATABASE]: [
       { name: 'sp_get_orders', routineType: 'PROCEDURE' },
       { name: 'fn_calculate_total', routineType: 'FUNCTION' },
     ],
     analytics_db: [{ name: 'sp_user_retention_rollup', routineType: 'PROCEDURE' }],
   },
   triggers: {
-    ecommerce_db: [{ name: 'trg_users_before_insert' }],
+    [PLAYWRIGHT_MOCK_DATABASE]: [{ name: 'trg_users_before_insert' }],
     analytics_db: [{ name: 'trg_user_journeys_after_insert' }],
   },
   foreignKeys: {},
@@ -89,7 +90,7 @@ export const COMMAND_PALETTE_SCHEMA_FIXTURE: SchemaMetadataFull = {
 }
 
 export const COMMAND_PALETTE_RECENTS_FIXTURE = JSON.stringify({
-  'conn-playwright-1': [
+  [PLAYWRIGHT_MOCK_CONNECTION_ID]: [
     {
       database: 'analytics_db',
       objectType: 'view',
@@ -97,13 +98,13 @@ export const COMMAND_PALETTE_RECENTS_FIXTURE = JSON.stringify({
       lastUsedAt: '2026-06-05T09:15:00.000Z',
     },
     {
-      database: 'ecommerce_db',
+      database: PLAYWRIGHT_MOCK_DATABASE,
       objectType: 'table',
       name: 'users',
       lastUsedAt: '2026-06-05T08:45:00.000Z',
     },
     {
-      database: 'ecommerce_db',
+      database: PLAYWRIGHT_MOCK_DATABASE,
       objectType: 'procedure',
       name: 'sp_get_orders',
       lastUsedAt: '2026-06-04T17:30:00.000Z',

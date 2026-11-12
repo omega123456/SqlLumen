@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { hasTauriApis } from '../../lib/tauri-env'
+import { hasTauriApis, isPlaywrightBuild } from '../../lib/tauri-env'
 
 describe('tauri-env', () => {
   it('returns false when Tauri internals are missing', () => {
@@ -15,5 +15,23 @@ describe('tauri-env', () => {
     expect(hasTauriApis()).toBe(true)
 
     delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  })
+})
+
+describe('isPlaywrightBuild', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('is true when the Playwright build flag is set', () => {
+    vi.stubEnv('VITE_PLAYWRIGHT', 'true')
+
+    expect(isPlaywrightBuild()).toBe(true)
+  })
+
+  it('is false otherwise', () => {
+    vi.stubEnv('VITE_PLAYWRIGHT', 'false')
+
+    expect(isPlaywrightBuild()).toBe(false)
   })
 })

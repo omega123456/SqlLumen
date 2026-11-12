@@ -1,3 +1,4 @@
+use crate::commands::helpers::lock_db;
 use crate::credentials;
 use crate::db::connections;
 #[cfg(not(coverage))]
@@ -8,19 +9,18 @@ use crate::mysql::pool;
 #[cfg(coverage)]
 use crate::mysql::pool::create_pool;
 #[cfg(not(coverage))]
-use crate::mysql::pool::ConnectionParams;
+use crate::mysql::pool::{ConnectionParams, SslSettings};
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::registry::ConnectionStatus;
 use crate::mysql::registry::OpenConnectionSession;
 #[cfg(not(coverage))]
-use crate::mysql::registry::{RegistryEntry, StoredConnectionParams};
+use crate::mysql::registry::RegistryEntry;
+use crate::mysql::registry::StoredConnectionParams;
 use crate::state::AppState;
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
 use sqlx::Row;
-use std::sync::MutexGuard;
 #[cfg(not(coverage))]
 use std::time::Instant;
 #[cfg(not(coverage))]
@@ -72,22 +72,6 @@ pub struct OpenConnectionResult {
 }
 
 // --- Testable implementations ---
-
-#[cfg(not(coverage))]
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
-#[cfg(coverage)]
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => Err(error.to_string()),
-    }
-}
 
 #[cfg(not(coverage))]
 fn health_monitor_token(
@@ -156,10 +140,12 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
         username: input.username,
         password,
         default_database: input.default_database,
-        ssl_enabled: input.ssl_enabled,
-        ssl_ca_path: input.ssl_ca_path,
-        ssl_cert_path: input.ssl_cert_path,
-        ssl_key_path: input.ssl_key_path,
+        ssl: SslSettings {
+            enabled: input.ssl_enabled,
+            ca_path: input.ssl_ca_path,
+            cert_path: input.ssl_cert_path,
+            key_path: input.ssl_key_path,
+        },
         connect_timeout_secs: input.connect_timeout_secs.unwrap_or(10).max(1),
     };
 
@@ -264,25 +250,8 @@ pub async fn open_connection_impl(
     // Retrieve password from secure storage/shared vault using the saved profile id.
     let password = credentials::resolve_password(profile_id, record.has_password)?;
 
-    let keepalive_secs = record.keepalive_interval_secs.unwrap_or(60).max(0) as u64;
-    let timeout_secs = record.connect_timeout_secs.unwrap_or(10).max(1) as u64;
-
-    // Build stored params first (for registry entry), then derive ConnectionParams from them.
-    let stored_params = StoredConnectionParams {
-        profile_id: profile_id.to_string(),
-        host: record.host,
-        port: record.port as u16,
-        username: record.username,
-        has_password: record.has_password,
-        keychain_ref: record.keychain_ref,
-        default_database: record.default_database,
-        ssl_enabled: record.ssl_enabled,
-        ssl_ca_path: record.ssl_ca_path,
-        ssl_cert_path: record.ssl_cert_path,
-        ssl_key_path: record.ssl_key_path,
-        connect_timeout_secs: timeout_secs,
-        keepalive_interval_secs: keepalive_secs,
-    };
+    let stored_params = StoredConnectionParams::from_connection_record(profile_id, &record);
+    let keepalive_secs = stored_params.keepalive_interval_secs;
 
     let params = stored_params.to_connection_params(password);
 
@@ -336,22 +305,8 @@ pub async fn open_connection_impl(
 
     let password = credentials::resolve_password(profile_id, record.has_password)?;
 
-    let params = crate::mysql::registry::StoredConnectionParams {
-        profile_id: profile_id.to_string(),
-        host: record.host,
-        port: record.port as u16,
-        username: record.username,
-        has_password: record.has_password,
-        keychain_ref: record.keychain_ref,
-        default_database: record.default_database,
-        ssl_enabled: record.ssl_enabled,
-        ssl_ca_path: record.ssl_ca_path,
-        ssl_cert_path: record.ssl_cert_path,
-        ssl_key_path: record.ssl_key_path,
-        connect_timeout_secs: record.connect_timeout_secs.unwrap_or(10).max(1) as u64,
-        keepalive_interval_secs: record.keepalive_interval_secs.unwrap_or(60).max(0) as u64,
-    }
-    .to_connection_params(password);
+    let params = StoredConnectionParams::from_connection_record(profile_id, &record)
+        .to_connection_params(password);
 
     let pool = create_pool(&params)
         .await

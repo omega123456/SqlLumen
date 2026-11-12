@@ -49,6 +49,7 @@ import { columnIndexFromKey } from '../../lib/col-key-utils'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
 import styles from './ResultPanel.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 interface ResultPanelProps {
   tabId: string
@@ -352,9 +353,7 @@ export function ResultPanel({
         } catch (error) {
           logFrontend(
             'warn',
-            `[result-panel] FK lookup could not load row ${rowIndex + 1}: ${
-              error instanceof Error ? error.message : String(error)
-            }`
+            `[result-panel] FK lookup could not load row ${rowIndex + 1}: ${toErrorMessage(error)}`
           )
           return undefined
         }

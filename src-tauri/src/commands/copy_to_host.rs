@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::export::copy_to_host::{
     new_running_progress, validate_selection_for_options, CopyToHostParams,
 };
+use crate::export::job_retention::cleanup_terminal_jobs;
 use crate::mysql::query_log;
 use crate::mysql::schema_queries::decode_mysql_text_cell_named;
 use crate::state::{AppState, CopyJobProgress};
@@ -349,7 +350,7 @@ pub fn start_copy_to_host_impl(
             .copy_jobs
             .write()
             .map_err(|error| format!("Failed to lock copy jobs: {error}"))?;
-        cleanup_stale_copy_jobs(&mut jobs);
+        cleanup_terminal_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
     }
 
@@ -365,7 +366,7 @@ pub fn get_copy_progress_impl(state: &AppState, job_id: &str) -> Result<CopyJobP
         .write()
         .map_err(|error| format!("Failed to lock copy jobs: {error}"))?;
     // Lazy cleanup of stale terminal entries, mirroring the dump job model.
-    cleanup_stale_copy_jobs(&mut jobs);
+    cleanup_terminal_jobs(&mut jobs);
     jobs.get(job_id)
         .cloned()
         .ok_or_else(|| format!("Copy job '{job_id}' not found"))
@@ -385,24 +386,6 @@ pub fn cancel_copy_impl(state: &AppState, job_id: &str) -> Result<(), String> {
         }
         None => Err(format!("Copy job '{job_id}' not found")),
     }
-}
-
-/// Duration after which terminal copy jobs are cleaned up (mirrors dump jobs).
-const COPY_JOB_STALE_DURATION: std::time::Duration = std::time::Duration::from_secs(5 * 60);
-
-/// Remove terminal copy jobs whose `completed_at` is older than the retention
-/// window so finished entries don't accumulate.
-pub fn cleanup_stale_copy_jobs(jobs: &mut std::collections::HashMap<String, CopyJobProgress>) {
-    jobs.retain(|_, progress| {
-        if let Some(completed_at) = progress.completed_at {
-            match std::time::SystemTime::now().duration_since(completed_at) {
-                Ok(age) => age < COPY_JOB_STALE_DURATION,
-                Err(_) => true,
-            }
-        } else {
-            true // Running jobs are always kept
-        }
-    });
 }
 
 /// Spawn the background copy engine task for an already-registered job.

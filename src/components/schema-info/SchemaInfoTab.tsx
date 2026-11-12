@@ -26,6 +26,7 @@ import { StatsRow } from './StatsRow'
 import { Button } from '../common/Button'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './SchemaInfoTab.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 export interface SchemaInfoTabProps {
   tab: SchemaInfoTabType
@@ -114,7 +115,7 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
       .catch((error: unknown) => {
         if (!cancelled) {
           loadedKeyRef.current = requestKey
-          setError(error instanceof Error ? error.message : String(error))
+          setError(toErrorMessage(error))
           setLoading(false)
         }
       })

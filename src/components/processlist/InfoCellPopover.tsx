@@ -6,6 +6,7 @@ import { writeClipboardText } from '../../lib/context-menu-utils'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import styles from './InfoCellPopover.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 const ANCHOR_GAP_PX = 4
 const VIEWPORT_MARGIN_PX = 8
@@ -47,7 +48,7 @@ export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCell
       await writeClipboardText(sql)
       showSuccessToast('Copied to clipboard')
     } catch (error) {
-      showErrorToast('Copy failed', error instanceof Error ? error.message : String(error))
+      showErrorToast('Copy failed', toErrorMessage(error))
     }
   }, [sql])
 

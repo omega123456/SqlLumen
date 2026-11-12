@@ -2,11 +2,11 @@
 
 use crate::common;
 
+use sqllumen_lib::mysql::cache_status::CacheStatus;
 use sqllumen_lib::mysql::query_executor::StoredResult;
 use sqllumen_lib::mysql::result_cache::{MemorySnapshot, ResultCache};
 use sqllumen_lib::mysql::table_data::{
-    evict_table_data_impl, restore_table_data_cache_impl, sync_table_data_cache_after_delete_impl,
-    sync_table_data_cache_after_insert_impl, sync_table_data_cache_after_update_impl,
+    evict_table_data_impl, restore_table_data_cache_impl, sync_table_data_cache_after_write_impl,
     touch_table_data_impl, PrimaryKeyInfo, SyncTableDataCacheRequest, TableDataColumnMeta,
     TableDataResponse,
 };
@@ -195,7 +195,7 @@ fn restore_returns_memory_hit_data() {
 
     let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
 
-    assert_eq!(result.status, "available");
+    assert_eq!(result.status, CacheStatus::Available);
     assert_eq!(result.data, Some(expected));
 }
 
@@ -216,7 +216,7 @@ fn restore_rewarms_spilled_entry_from_disk() {
 
     let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
 
-    assert_eq!(result.status, "available");
+    assert_eq!(result.status, CacheStatus::Available);
     assert_eq!(result.data, Some(sample_response(88)));
 }
 
@@ -226,7 +226,7 @@ fn restore_reports_missing_when_key_was_never_cached() {
 
     let result = restore_table_data_cache_impl(&state, "conn-1", "tab-missing", "app_db", "users");
 
-    assert_eq!(result.status, "missing");
+    assert_eq!(result.status, CacheStatus::Missing);
     assert_eq!(result.data, None);
 }
 
@@ -241,7 +241,7 @@ fn restore_reports_expired_when_cached_entry_and_spill_are_gone() {
 
     let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
 
-    assert_eq!(result.status, "expired");
+    assert_eq!(result.status, CacheStatus::Expired);
     assert_eq!(result.data, None);
 }
 
@@ -305,7 +305,7 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
         .remove_with_spill_cleanup("conn-1", "tab-1");
 
     let response = sample_response(9);
-    let synced = sync_table_data_cache_after_insert_impl(
+    let synced = sync_table_data_cache_after_write_impl(
         &state,
         SyncTableDataCacheRequest {
             connection_id: "conn-1".to_string(),
@@ -321,7 +321,7 @@ fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
         },
     );
 
-    assert_eq!(synced.status, "missing");
+    assert_eq!(synced.status, CacheStatus::Missing);
     assert_eq!(
         touch_table_data_impl(&state, "conn-1", "tab-1"),
         serde_json::json!({ "status": "missing" })
@@ -388,7 +388,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
     let sample_columns = sample_response(1).columns;
     let sample_primary_key = sample_response(1).primary_key;
 
-    let inserted = sync_table_data_cache_after_insert_impl(
+    let inserted = sync_table_data_cache_after_write_impl(
         &state,
         SyncTableDataCacheRequest {
             connection_id: "conn-1".to_string(),
@@ -406,7 +406,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
             execution_time_ms: 20,
         },
     );
-    assert_eq!(inserted.status, "synced");
+    assert_eq!(inserted.status, CacheStatus::Synced);
 
     let after_insert = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
         .data
@@ -417,7 +417,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         vec![serde_json::json!(2), serde_json::json!(9.5)]
     );
 
-    let updated = sync_table_data_cache_after_update_impl(
+    let updated = sync_table_data_cache_after_write_impl(
         &state,
         SyncTableDataCacheRequest {
             connection_id: "conn-1".to_string(),
@@ -435,7 +435,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
             execution_time_ms: 25,
         },
     );
-    assert_eq!(updated.status, "synced");
+    assert_eq!(updated.status, CacheStatus::Synced);
 
     let after_update = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
         .data
@@ -446,7 +446,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
     );
     assert_eq!(after_update.execution_time_ms, 25);
 
-    let deleted = sync_table_data_cache_after_delete_impl(
+    let deleted = sync_table_data_cache_after_write_impl(
         &state,
         SyncTableDataCacheRequest {
             connection_id: "conn-1".to_string(),
@@ -461,7 +461,7 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
             execution_time_ms: 30,
         },
     );
-    assert_eq!(deleted.status, "synced");
+    assert_eq!(deleted.status, CacheStatus::Synced);
 
     let after_delete = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
         .data

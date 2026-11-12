@@ -7,25 +7,23 @@
  * here (BaseFormView is store-free and toast-free).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { FALLBACK_ROW_LIMIT } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useToastStore } from '../../stores/toast-store'
-import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { BaseFormView } from '../shared/BaseFormView'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
-import { FkLookupDialog } from './FkLookupDialog'
-import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
-import { fetchBlobValue } from '../../lib/table-data-commands'
-import { buildEnvelopedPrimaryKeyPairs } from '../../lib/blob-utils'
+import { BlobViewerTargetDialog, ForeignKeyLookupTargetDialog } from './TableDataCellDialogs'
+import { useBlobViewerState } from './use-blob-viewer-state'
+import { useFkLookupFlow } from './use-fk-lookup-flow'
+import { saveCurrentRowWithFeedback } from './row-save-feedback'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../types/shared-data-view'
-import type { BlobEnvelope, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
+import type { TableDataColumnMeta } from '../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +59,13 @@ function escapeForAttributeSelector(value: string): string {
     return CSS.escape(value)
   }
   return value.replace(/(["\\])/g, '\\$1')
+}
+
+function focusFormInput(columnName: string): void {
+  const input = document.querySelector<HTMLElement>(
+    `[data-testid="form-input-${escapeForAttributeSelector(columnName)}"]`
+  )
+  input?.focus()
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +107,6 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
   const fetchPage = useTableDataStore((state) => state.fetchPage)
   const setSelectedRow = useTableDataStore((state) => state.setSelectedRow)
-  const stageBlobEnvelope = useTableDataStore((state) => state.stageBlobEnvelope)
   const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
   // Connection read-only check
@@ -121,24 +125,17 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
   const foreignKeyLookup = useMemo(() => buildForeignKeyLookup(foreignKeys), [foreignKeys])
 
-  const [foreignKeyLookupOpen, setForeignKeyLookupOpen] = useState(false)
-  const [foreignKeyLookupContext, setForeignKeyLookupContext] = useState<{
-    columnKey: string
-    currentValue: unknown
-    foreignKey: ForeignKeyColumnInfo
-    rowData: Record<string, unknown>
-  } | null>(null)
-
-  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
-  const [blobContext, setBlobContext] = useState<{
-    columnKey: string
-    rowData: Record<string, unknown>
-    pkPairs: [string, unknown][] | null
-  } | null>(null)
+  const { foreignKeyLookupTarget, openForeignKeyLookup, closeForeignKeyLookup } = useFkLookupFlow()
+  const isForeignKeyLookupOpen = foreignKeyLookupTarget !== null
 
   const hasPrimaryKey = primaryKey !== null
   const isEditable = !isConnectionReadOnly && hasPrimaryKey && !isView
   const primaryKeyColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
+  const blobViewer = useBlobViewerState({
+    tabId: tabId,
+    columns: columns,
+    primaryKeyColumns: primaryKeyColumns,
+  })
 
   // --- Grid columns (stable) ---
   const gridColumns = useMemo(
@@ -308,34 +305,16 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
     [currentRow, currentRowKey, ensureEditingCurrentRow, updateCellValue, tabId]
   )
 
-  // --- Save / Discard with toast feedback ---
-  const showError = useToastStore((state) => state.showError)
-  const showSuccess = useToastStore((state) => state.showSuccess)
-
   const onSave = useCallback(async () => {
-    // Temporal validation uses the store's RowEditState (with modifiedColumns)
-    const validationError = getTemporalValidationResult(storeEditState, columns)
+    const validationError = await saveCurrentRowWithFeedback({
+      tabId: tabId,
+      editState: storeEditState,
+      columns: columns,
+    })
     if (validationError) {
-      showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
-      // Focus the problematic field
-      const input = document.querySelector(
-        `[data-testid="form-input-${escapeForAttributeSelector(validationError.columnName)}"]`
-      ) as HTMLElement
-      input?.focus()
-      return
+      focusFormInput(validationError.columnName)
     }
-
-    await saveCurrentRow(tabId)
-    const newState = useTableDataStore.getState().tabs[tabId]
-    if (newState?.saveError) {
-      showError('Save failed', newState.saveError)
-      return
-    }
-
-    if (newState && !newState.saveError && !newState.editState) {
-      showSuccess('Row saved', 'Changes saved successfully.')
-    }
-  }, [saveCurrentRow, tabId, storeEditState, columns, showError, showSuccess])
+  }, [tabId, storeEditState, columns])
 
   const onDiscard = useCallback(() => {
     discardCurrentRow(tabId)
@@ -353,26 +332,23 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
       }
 
       setSelectedRow(tabId, currentRowKey)
-      setForeignKeyLookupContext({
-        columnKey: args.columnKey,
-        currentValue: args.currentValue,
-        foreignKey: args.foreignKey,
-        rowData: args.rowData,
-      })
-      setForeignKeyLookupOpen(true)
+      openForeignKeyLookup(args)
     },
-    [isActive, currentRowKey, storeEditState, saveCurrentRow, tabId, setSelectedRow]
+    [
+      isActive,
+      currentRowKey,
+      storeEditState,
+      saveCurrentRow,
+      tabId,
+      setSelectedRow,
+      openForeignKeyLookup,
+    ]
   )
 
-  const closeForeignKeyLookup = useCallback(() => {
-    setForeignKeyLookupOpen(false)
-    setForeignKeyLookupContext(null)
-  }, [])
-
   useEffect(() => {
-    setBlockingNavigation(tabId, foreignKeyLookupOpen)
+    setBlockingNavigation(tabId, isForeignKeyLookupOpen)
     return () => setBlockingNavigation(tabId, false)
-  }, [foreignKeyLookupOpen, setBlockingNavigation, tabId])
+  }, [isForeignKeyLookupOpen, setBlockingNavigation, tabId])
 
   useEffect(() => {
     if (isActive) return
@@ -381,13 +357,13 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   const onForeignKeyApply = useCallback(
     (selectedValue: unknown) => {
-      if (!foreignKeyLookupContext || !currentRowKey || !currentRowData) return
+      if (!foreignKeyLookupTarget || !currentRowKey || !currentRowData) return
 
       const currentEdit = useTableDataStore.getState().tabs[tabId]?.editState
       const alreadyEditing = currentEdit && isSameRowKey(currentEdit.rowKey, currentRowKey)
 
       if (
-        selectedValue === foreignKeyLookupContext.currentValue &&
+        selectedValue === foreignKeyLookupTarget.currentValue &&
         (!alreadyEditing || currentEdit.modifiedColumns.size === 0)
       ) {
         closeForeignKeyLookup()
@@ -398,20 +374,20 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
         ensureEditingCurrentRow()
       }
 
-      updateCellValue(tabId, foreignKeyLookupContext.columnKey, selectedValue)
+      updateCellValue(tabId, foreignKeyLookupTarget.columnKey, selectedValue)
       useTableDataStore
         .getState()
         .syncCellValue(
           tabId,
           currentRowData,
-          foreignKeyLookupContext.columnKey,
+          foreignKeyLookupTarget.columnKey,
           selectedValue,
           currentRowKey
         )
       closeForeignKeyLookup()
     },
     [
-      foreignKeyLookupContext,
+      foreignKeyLookupTarget,
       currentRowKey,
       currentRowData,
       tabId,
@@ -427,44 +403,13 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   // holds only the placeholder, so the affordance is disabled rather than
   // opening a dialog that would falsely report the value as NULL.
   const canResolveBlobPrimaryKey = isEditable && primaryKeyColumns.length > 0
+  const { openBlobViewer } = blobViewer
   const onBlobView = useCallback(
     (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
       if (!rowData || !canResolveBlobPrimaryKey) return
-      const converted = buildEnvelopedPrimaryKeyPairs(primaryKeyColumns, columns, rowData)
-      if (!converted.ok) {
-        showError('Could not open BLOB viewer', converted.error)
-        return
-      }
-      setBlobContext({ columnKey: column.key, rowData: rowData, pkPairs: converted.pairs })
-      setBlobDialogOpen(true)
+      openBlobViewer(column.key, rowData)
     },
-    [canResolveBlobPrimaryKey, primaryKeyColumns, columns, showError]
-  )
-
-  const closeBlobDialog = useCallback(() => {
-    setBlobDialogOpen(false)
-    setBlobContext(null)
-  }, [])
-
-  const blobLoader = useCallback(() => {
-    if (!blobContext?.pkPairs || !tabState) {
-      throw new Error('Cannot load BLOB without a resolvable primary key')
-    }
-    return fetchBlobValue(
-      tabState.connectionId,
-      tabState.database,
-      tabState.table,
-      blobContext.columnKey,
-      blobContext.pkPairs
-    )
-  }, [blobContext, tabState])
-
-  const onBlobApply = useCallback(
-    (envelope: BlobEnvelope) => {
-      if (!blobContext) return
-      stageBlobEnvelope(tabId, blobContext.rowData, blobContext.columnKey, envelope)
-    },
-    [blobContext, stageBlobEnvelope, tabId]
+    [canResolveBlobPrimaryKey, openBlobViewer]
   )
 
   // --- Render ---
@@ -492,31 +437,16 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
         blobViewDisabled={!canResolveBlobPrimaryKey}
         blobViewDisabledReason="Cannot view BLOB — table has no primary key"
       />
-      {foreignKeyLookupOpen && foreignKeyLookupContext && tabState && (
-        <FkLookupDialog
-          isOpen={foreignKeyLookupOpen}
+      {foreignKeyLookupTarget && tabState && (
+        <ForeignKeyLookupTargetDialog
+          target={foreignKeyLookupTarget}
+          tableLocation={tabState}
+          isReadOnly={!isEditable}
           onClose={closeForeignKeyLookup}
           onApply={onForeignKeyApply}
-          connectionId={tabState.connectionId}
-          database={foreignKeyLookupContext.foreignKey.referencedDatabase || tabState.database}
-          sourceTable={tabState.table}
-          sourceColumn={foreignKeyLookupContext.columnKey}
-          currentValue={foreignKeyLookupContext.currentValue}
-          referencedTable={foreignKeyLookupContext.foreignKey.referencedTable}
-          referencedColumn={foreignKeyLookupContext.foreignKey.referencedColumn}
-          isReadOnly={!isEditable}
         />
       )}
-      {blobDialogOpen && blobContext && (
-        <BlobViewerDialog
-          isOpen={blobDialogOpen}
-          onClose={closeBlobDialog}
-          mode="edit"
-          columnLabel={blobContext.columnKey}
-          loader={blobLoader}
-          onApply={onBlobApply}
-        />
-      )}
+      <BlobViewerTargetDialog viewer={blobViewer} />
     </FkLookupProvider>
   )
 }

@@ -7,6 +7,7 @@ import { logFrontend } from '../../lib/app-log-commands'
 
 import type { RoutineParameter } from '../../types/schema'
 import { getRoutineParametersWithReturnType } from '../../lib/object-editor-commands'
+import { toErrorMessage } from '../../lib/error-message'
 
 export interface RoutineParameterCacheEntry {
   parameters: RoutineParameter[] // ordinalPosition > 0 rows only
@@ -118,12 +119,10 @@ export async function getRoutineParameters(
       cacheMap.set(key, entry)
       return entry
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend(
         'error',
-        [`[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`]
-          .map(String)
-          .join(' ')
+        `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${message}`
       )
       logFrontend(
         'error',

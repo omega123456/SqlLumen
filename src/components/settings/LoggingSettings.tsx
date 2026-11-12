@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Dropdown } from '../common/Dropdown'
 import { SettingsSection } from './SettingsSection'
+import { SettingsDropdownField } from './SettingsField'
 import { LogViewer } from './LogViewer'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { getAppInfo } from '../../lib/app-info-commands'
 import type { AppInfo } from '../../types/schema'
 
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendError } from '../../lib/app-log-commands'
 const LOG_LEVEL_OPTIONS = [
   { value: 'error', label: 'Error' },
   { value: 'warn', label: 'Warn' },
@@ -29,7 +29,7 @@ export function LoggingSettings() {
         if (!cancelled) setAppInfo(info)
       })
       .catch((error) => {
-        logFrontend('error', ['[settings] Failed to load app info:', error].map(String).join(' '))
+        logFrontendError('[settings] Failed to load app info:', error)
       })
     return () => {
       cancelled = true
@@ -45,35 +45,30 @@ export function LoggingSettings() {
       </SettingsSection>
 
       <SettingsSection title="Log level" description="Set the minimum log level for the backend.">
-        <div>
-          <label
-            id="log-level-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Log level
-            {appInfo?.rustLogOverride && (
-              <span
-                style={{
-                  marginLeft: 8,
-                  fontSize: 'var(--type-size-xs)',
-                  color: 'var(--warning)',
-                }}
-                data-testid="settings-rust-log-override"
-              >
-                (overridden by RUST_LOG)
-              </span>
-            )}
-          </label>
-          <Dropdown
-            id="settings-log-level"
-            labelledBy="log-level-label"
-            options={LOG_LEVEL_OPTIONS}
-            value={logLevel}
-            onChange={(value) => setPendingChange('log.level', value)}
-            disabled={appInfo?.rustLogOverride ?? false}
-            data-testid="settings-log-level-dropdown"
-          />
-        </div>
+        <SettingsDropdownField
+          name="log-level"
+          label={
+            <>
+              Log level
+              {appInfo?.rustLogOverride && (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: 'var(--type-size-xs)',
+                    color: 'var(--warning)',
+                  }}
+                  data-testid="settings-rust-log-override"
+                >
+                  (overridden by RUST_LOG)
+                </span>
+              )}
+            </>
+          }
+          options={LOG_LEVEL_OPTIONS}
+          value={logLevel}
+          onChange={(value) => setPendingChange('log.level', value)}
+          disabled={appInfo?.rustLogOverride ?? false}
+        />
       </SettingsSection>
 
       <LogViewer />

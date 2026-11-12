@@ -1,3 +1,4 @@
+pub mod cache_status;
 pub mod ddl_detector;
 pub mod health;
 pub mod metadata_cache;

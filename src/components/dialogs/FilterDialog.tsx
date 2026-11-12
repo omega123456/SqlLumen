@@ -9,7 +9,7 @@
  * the store's `applyFilters` action.
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef, type FormEvent } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
@@ -17,6 +17,7 @@ import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
 import type { FilterCondition, FilterOperator } from '../../types/schema'
 import styles from './FilterDialog.module.css'
+import { useFormSubmit } from '../../hooks/useFormSubmit'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -142,13 +143,7 @@ export function FilterDialog({
     onApply(conditions)
   }, [onApply, conditions])
 
-  const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      handleApply()
-    },
-    [handleApply]
-  )
+  const handleSubmit = useFormSubmit(handleApply)
 
   const columnDropdownOptions: DropdownOption[] = useMemo(
     () => columns.map((column) => ({ value: column, label: column })),

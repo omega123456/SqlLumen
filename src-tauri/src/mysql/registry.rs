@@ -1,8 +1,14 @@
-use super::pool::ConnectionParams;
+use super::pool::{ConnectionParams, SslSettings};
+use crate::db::connections::ConnectionRecord;
 use sqlx::MySqlPool;
 use std::collections::HashMap;
 use std::sync::RwLock;
 use tokio_util::sync::CancellationToken;
+
+pub const DEFAULT_CONNECT_TIMEOUT_SECS: i64 = 10;
+const MIN_CONNECT_TIMEOUT_SECS: i64 = 1;
+const DEFAULT_KEEPALIVE_INTERVAL_SECS: i64 = 60;
+const MIN_KEEPALIVE_INTERVAL_SECS: i64 = 0;
 
 /// Status of a MySQL connection in the registry.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -39,15 +45,38 @@ pub struct StoredConnectionParams {
     pub has_password: bool,
     pub keychain_ref: Option<String>,
     pub default_database: Option<String>,
-    pub ssl_enabled: bool,
-    pub ssl_ca_path: Option<String>,
-    pub ssl_cert_path: Option<String>,
-    pub ssl_key_path: Option<String>,
+    pub ssl: SslSettings,
     pub connect_timeout_secs: u64,
     pub keepalive_interval_secs: u64,
 }
 
 impl StoredConnectionParams {
+    pub fn from_connection_record(profile_id: &str, record: &ConnectionRecord) -> Self {
+        Self {
+            profile_id: profile_id.to_string(),
+            host: record.host.clone(),
+            port: record.port as u16,
+            username: record.username.clone(),
+            has_password: record.has_password,
+            keychain_ref: record.keychain_ref.clone(),
+            default_database: record.default_database.clone(),
+            ssl: SslSettings {
+                enabled: record.ssl_enabled,
+                ca_path: record.ssl_ca_path.clone(),
+                cert_path: record.ssl_cert_path.clone(),
+                key_path: record.ssl_key_path.clone(),
+            },
+            connect_timeout_secs: record
+                .connect_timeout_secs
+                .unwrap_or(DEFAULT_CONNECT_TIMEOUT_SECS)
+                .max(MIN_CONNECT_TIMEOUT_SECS) as u64,
+            keepalive_interval_secs: record
+                .keepalive_interval_secs
+                .unwrap_or(DEFAULT_KEEPALIVE_INTERVAL_SECS)
+                .max(MIN_KEEPALIVE_INTERVAL_SECS) as u64,
+        }
+    }
+
     /// Convert to `ConnectionParams` for pool creation, injecting the password.
     ///
     /// Password is passed separately because `StoredConnectionParams` intentionally
@@ -59,10 +88,7 @@ impl StoredConnectionParams {
             username: self.username.clone(),
             password,
             default_database: self.default_database.clone(),
-            ssl_enabled: self.ssl_enabled,
-            ssl_ca_path: self.ssl_ca_path.clone(),
-            ssl_cert_path: self.ssl_cert_path.clone(),
-            ssl_key_path: self.ssl_key_path.clone(),
+            ssl: self.ssl.clone(),
             connect_timeout_secs: self.connect_timeout_secs,
         }
     }

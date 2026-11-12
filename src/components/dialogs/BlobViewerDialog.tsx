@@ -51,8 +51,8 @@ import { logFrontend } from '../../lib/app-log-commands'
 import type { BlobEnvelope, BlobValueResponse } from '../../types/schema'
 import styles from './BlobViewerDialog.module.css'
 import { BYTES_PER_MEGABYTE } from '../../lib/units'
-
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
 
 /** Hard cap (10 MB) enforced on file loads inside the dialog. */
 const FILE_LOAD_CAP_MEGABYTES = 10
@@ -66,11 +66,6 @@ const TABS: { id: BlobTab; label: string }[] = [
   { id: 'text', label: 'Text' },
   { id: 'hex', label: 'Hex' },
 ]
-
-/** Extract a human-readable message from an unknown thrown value. */
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /**
  * The dialog's working value. `bytes` carries actual content; `null` is a
@@ -147,7 +142,7 @@ export function BlobViewerDialog({
         })
         .catch((error) => {
           if (cancelled) return
-          const message = errorMessage(error)
+          const message = toErrorMessage(error)
           showErrorToast('Failed to load BLOB value', message)
           setWorking({ kind: 'bytes', bytes: new Uint8Array(0) })
         })
@@ -160,7 +155,7 @@ export function BlobViewerDialog({
       try {
         setWorking({ kind: 'bytes', bytes: base64ToBytes(initialBase64) })
       } catch (error) {
-        const message = errorMessage(error)
+        const message = toErrorMessage(error)
         showErrorToast('Failed to decode BLOB value', message)
         setWorking({ kind: 'bytes', bytes: new Uint8Array(0) })
       }
@@ -172,7 +167,7 @@ export function BlobViewerDialog({
 
   // -- Focus the active tab on open ----------------------------------------
   useEffect(() => {
-    if (!isOpen || isPlaywright) return
+    if (!isOpen || isPlaywrightBuild()) return
     const id = requestAnimationFrame(() => {
       firstTabRef.current?.focus()
     })
@@ -238,7 +233,7 @@ export function BlobViewerDialog({
       }
       applyBytes(bytes)
     } catch (error) {
-      const message = errorMessage(error)
+      const message = toErrorMessage(error)
       logFrontend('error', `[blob-viewer] load from file failed: ${message}`)
       showErrorToast('Failed to load file', message)
     }
@@ -285,7 +280,7 @@ export function BlobViewerDialog({
       if (typeof selected !== 'string') return
       await writeFileBytes(selected, bytesToBase64(bytes))
     } catch (error) {
-      const message = errorMessage(error)
+      const message = toErrorMessage(error)
       logFrontend('error', `[blob-viewer] save to file failed: ${message}`)
       showErrorToast('Failed to save file', message)
     }
@@ -337,7 +332,7 @@ export function BlobViewerDialog({
         }
         applyBytes(bytes)
       } catch (error) {
-        const message = errorMessage(error)
+        const message = toErrorMessage(error)
         logFrontend('error', `[blob-viewer] drop failed: ${message}`)
         showErrorToast('Failed to read dropped file', message)
       }
@@ -467,7 +462,7 @@ export function BlobViewerDialog({
       panelPadding={false}
       testId="blob-viewer-dialog"
       ariaLabel={`BLOB — ${columnLabel}`}
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
     >
       <div
         className={styles.root}

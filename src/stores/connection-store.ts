@@ -28,7 +28,8 @@ import { invalidateRoutineCache } from '../components/query-editor/routine-param
 import { hasTauriApis } from '../lib/tauri-env'
 import { bootstrapSchemaCache } from '../lib/schema-cache-bootstrap'
 
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontend, logFrontendError, logFrontendWarning } from '../lib/app-log-commands'
+import { toErrorMessage } from '../lib/error-message'
 let listenersSetup = false
 
 /** Reset the listeners flag — for testing only */
@@ -90,7 +91,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       const [connections, groups] = await Promise.all([listConnections(), listConnectionGroups()])
       set({ savedConnections: connections, connectionGroups: groups, error: null })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       set({ error: message })
       showErrorToast('Failed to load connections', message)
     }
@@ -122,14 +123,11 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       // Register session for schema index and trigger initial build (fire-and-forget)
       const schemaIndexStore = useSchemaIndexStore.getState()
       schemaIndexStore.triggerBuild(result.sessionId).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error)
-        logFrontend(
-          'error',
-          ['[connection-store] Schema index build failed:', message].map(String).join(' ')
-        )
+        const message = toErrorMessage(error)
+        logFrontendError('[connection-store] Schema index build failed:', message)
       })
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = toErrorMessage(error)
       set({ error: errorMessage })
       showErrorToast('Connection failed', errorMessage)
       throw error
@@ -171,7 +169,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     useWorkspaceStore.getState().setVisibleConnectionSession(session.sessionId)
 
     bootstrapSchemaCache(session.sessionId, session.profileId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend('warn', `[connection-store] Schema cache bootstrap failed: ${message}`)
     })
     useSchemaIndexStore.getState().registerSession(session.sessionId, session.profileId)
@@ -309,7 +307,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       })
       return true
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       set({ error: message })
       showErrorToast('Failed to close connection', message)
       return false
@@ -473,7 +471,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     try {
       await selectDatabaseIPC(sessionId, trimmedName)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Failed to switch database', message)
 
       if (get().activeConnections[sessionId]) {
@@ -541,11 +539,8 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         keepaliveIntervalSecs: updatedProfile.keepaliveIntervalSecs,
       })
     } catch (error) {
-      logFrontend(
-        'error',
-        ['Failed to persist defaultDatabase change:', error].map(String).join(' ')
-      )
-      const message = error instanceof Error ? error.message : String(error)
+      logFrontendError('Failed to persist defaultDatabase change:', error)
+      const message = toErrorMessage(error)
       showErrorToast('Failed to save default database', message)
       const revertedProfile = { ...updatedProfile, defaultDatabase: originalDefault }
       const current = get().activeConnections[sessionId]
@@ -576,14 +571,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       })
       return unlisten
     } catch (error) {
-      logFrontend(
-        'warn',
-        [
-          '[connection-store] connection-status-changed listen failed (unexpected Tauri error):',
-          error,
-        ]
-          .map(String)
-          .join(' ')
+      logFrontendWarning(
+        '[connection-store] connection-status-changed listen failed (unexpected Tauri error):',
+        error
       )
       listenersSetup = false
       return undefined

@@ -6,6 +6,8 @@
 //! Everything here is pure cache logic, so it runs (and counts) in coverage
 //! builds. The live-MySQL ceiling cases live in `result_row_ceiling_integration`.
 
+#[cfg(coverage)]
+use sqllumen_lib::mysql::pool::SslSettings;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -1125,10 +1127,12 @@ mod coverage_stubs {
                     has_password: false,
                     keychain_ref: None,
                     default_database: None,
-                    ssl_enabled: false,
-                    ssl_ca_path: None,
-                    ssl_cert_path: None,
-                    ssl_key_path: None,
+                    ssl: SslSettings {
+                        enabled: false,
+                        ca_path: None,
+                        cert_path: None,
+                        key_path: None,
+                    },
                     connect_timeout_secs: 10,
                     keepalive_interval_secs: 0,
                 },

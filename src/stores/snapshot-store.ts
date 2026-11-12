@@ -34,6 +34,7 @@ import {
 import { normalizeActiveConnectionOrder, useConnectionStore } from './connection-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useSettingsStore } from './settings-store'
+import { toErrorMessage } from '../lib/error-message'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -262,7 +263,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       const snapshots = await listSessionSnapshots()
       set({ snapshots })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Failed to load snapshots', message)
     } finally {
       set({ isLoading: false })
@@ -288,7 +289,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       })
       await get().loadSnapshots()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Failed to create snapshot', message)
     } finally {
       set({ isBusy: false })
@@ -323,7 +324,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       })
       return id
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend('error', `[snapshot] Failed to create ${trigger} snapshot: ${message}`)
       return null
     } finally {
@@ -340,7 +341,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
         set({ selectedSnapshotId: null })
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Failed to delete snapshot', message)
     } finally {
       set({ isBusy: false })
@@ -381,7 +382,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       try {
         parsedState = JSON.parse(stateJson) as SessionState
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         logFrontend('error', `[snapshot] Failed to parse snapshot ${id} state: ${message}`)
         showErrorToast('Restore failed', 'This snapshot is corrupted and cannot be restored.')
         return
@@ -463,7 +464,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
       // 6. Close the dialog on success.
       get().closeDialog()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend('error', `[snapshot] Failed to restore snapshot ${id}: ${message}`)
       showErrorToast('Restore failed', message)
     } finally {
@@ -499,7 +500,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
         await setSetting(LAST_PERIODIC_AT_KEY, toEpochSeconds(now))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend('error', `[snapshot] Periodic check failed: ${message}`)
     }
   },

@@ -4,6 +4,7 @@ import type {
   PlaywrightListColumn,
   PlaywrightTableDataResult,
 } from './types'
+import { PLAYWRIGHT_MOCK_DATABASE } from './connections'
 
 export const USERS_LIST_COLUMNS: PlaywrightListColumn[] = [
   {
@@ -93,7 +94,7 @@ export const USERS_FOREIGN_KEYS: PlaywrightForeignKey[] = []
 
 export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
   {
-    database: 'ecommerce_db',
+    database: PLAYWRIGHT_MOCK_DATABASE,
     table: 'users',
     columns: [
       {
@@ -158,7 +159,7 @@ export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
       {
         name: 'fk_users_email',
         columnName: 'email',
-        referencedDatabase: 'ecommerce_db',
+        referencedDatabase: PLAYWRIGHT_MOCK_DATABASE,
         referencedTable: 'users',
         referencedColumn: 'id',
         onDelete: 'CASCADE',

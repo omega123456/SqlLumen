@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { listCharsets, listCollations } from '../lib/schema-commands'
 import type { CharsetInfo, CollationInfo } from '../types/schema'
+import { toErrorMessage } from '../lib/error-message'
 
 export interface UseDatabaseEncodingReturn {
   charsets: CharsetInfo[]
@@ -84,7 +85,7 @@ export function useDatabaseEncoding(
         }
       } catch (error) {
         if (!cancelled) {
-          setError(error instanceof Error ? error.message : String(error))
+          setError(toErrorMessage(error))
         }
       } finally {
         if (!cancelled) {

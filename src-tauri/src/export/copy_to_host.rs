@@ -832,24 +832,7 @@ mod engine {
 
         let password = crate::credentials::resolve_password(profile_id, record.has_password)?;
 
-        let timeout_secs = record.connect_timeout_secs.unwrap_or(10).max(1) as u64;
-        let keepalive_secs = record.keepalive_interval_secs.unwrap_or(60).max(0) as u64;
-
-        let stored = StoredConnectionParams {
-            profile_id: profile_id.to_string(),
-            host: record.host,
-            port: record.port as u16,
-            username: record.username,
-            has_password: record.has_password,
-            keychain_ref: record.keychain_ref,
-            default_database: record.default_database,
-            ssl_enabled: record.ssl_enabled,
-            ssl_ca_path: record.ssl_ca_path,
-            ssl_cert_path: record.ssl_cert_path,
-            ssl_key_path: record.ssl_key_path,
-            connect_timeout_secs: timeout_secs,
-            keepalive_interval_secs: keepalive_secs,
-        };
+        let stored = StoredConnectionParams::from_connection_record(profile_id, &record);
 
         let params = stored.to_connection_params(password);
         pool::create_pool(&params)

@@ -14,8 +14,9 @@ import type {
   TableDesignerSchema,
 } from '../types/schema'
 
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontendError } from '../lib/app-log-commands'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../lib/sql-utils'
+import { toErrorMessage } from '../lib/error-message'
 
 const DDL_REGENERATE_DEBOUNCE_MS = 300
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
@@ -485,17 +486,14 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
         await get().regenerateDdl(tabId)
       } catch (error) {
-        logFrontend(
-          'error',
-          ['[table-designer-store] Failed to load table schema', error].map(String).join(' ')
-        )
+        logFrontendError('[table-designer-store] Failed to load table schema', error)
 
         if (!get().tabs[tabId]) {
           return
         }
 
         patchTab(tabId, {
-          loadError: error instanceof Error ? error.message : String(error),
+          loadError: toErrorMessage(error),
           isLoading: false,
         })
       }
@@ -821,10 +819,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
           isDdlLoading: false,
         })
       } catch (error) {
-        logFrontend(
-          'error',
-          ['[table-designer-store] Failed to regenerate DDL', error].map(String).join(' ')
-        )
+        logFrontendError('[table-designer-store] Failed to regenerate DDL', error)
 
         if (!get().tabs[tabId]) {
           return
@@ -837,7 +832,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         patchTab(tabId, {
           ddl: '',
           ddlWarnings: [],
-          ddlError: error instanceof Error ? error.message : String(error),
+          ddlError: toErrorMessage(error),
           isDdlLoading: false,
         })
       }

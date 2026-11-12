@@ -1,4 +1,20 @@
 use crate::state::AppState;
+use rusqlite::Connection;
+use std::sync::{Mutex, MutexGuard};
+
+pub fn lock_connection(
+    connection: &Mutex<Connection>,
+) -> Result<MutexGuard<'_, Connection>, String> {
+    connection.lock().map_err(|error| {
+        let message = error.to_string();
+        tracing::error!(error = %message, "failed to lock sqlite database");
+        message
+    })
+}
+
+pub fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
+    lock_connection(&state.db)
+}
 
 /// Resolve a runtime session ID to the saved connection profile ID.
 ///

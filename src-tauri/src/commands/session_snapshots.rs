@@ -3,21 +3,10 @@
 //! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
 //! the `*_impl` functions / repository directly.
 
+use crate::commands::helpers::lock_db;
 use crate::db::session_snapshots::{self, NewSnapshot, SnapshotSummary};
 use crate::state::AppState;
-use rusqlite::Connection;
-use std::sync::MutexGuard;
 use tracing::error;
-
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => {
-            error!(?error, "failed to acquire db lock for session snapshots");
-            Err(error.to_string())
-        }
-    }
-}
 
 // ── create_session_snapshot ─────────────────────────────────────────────────
 

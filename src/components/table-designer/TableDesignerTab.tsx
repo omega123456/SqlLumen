@@ -18,7 +18,8 @@ import { IndexEditor } from './IndexEditor'
 import { TablePropertiesEditor } from './TablePropertiesEditor'
 import styles from './TableDesignerTab.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendError } from '../../lib/app-log-commands'
+import { toErrorMessage } from '../../lib/error-message'
 interface TableDesignerTabProps {
   tab: TableDesignerTabType
   isActive?: boolean
@@ -159,11 +160,8 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
     // Invalidate schema index for the modified table (fire-and-forget)
     const qualifiedName = `${databaseName}.${latestTableName}`
     invalidateSchemaIndex(connectionId, [qualifiedName]).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error)
-      logFrontend(
-        'error',
-        ['[table-designer] Schema index invalidation failed:', message].map(String).join(' ')
-      )
+      const message = toErrorMessage(error)
+      logFrontendError('[table-designer] Schema index invalidation failed:', message)
     })
 
     const action = postApplyActionRef.current

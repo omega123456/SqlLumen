@@ -3,6 +3,7 @@ import type {
   PlaywrightListColumn,
   PlaywrightTableDataResult,
 } from './types'
+import { PLAYWRIGHT_MOCK_DATABASE } from './connections'
 
 export const JSON_TABLE_LIST_COLUMNS: PlaywrightListColumn[] = [
   {
@@ -97,7 +98,7 @@ export const JSON_TABLE_DATA: PlaywrightTableDataResult = {
 
 export const JSON_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
   {
-    database: 'ecommerce_db',
+    database: PLAYWRIGHT_MOCK_DATABASE,
     table: 'json_sample',
     columns: [
       {

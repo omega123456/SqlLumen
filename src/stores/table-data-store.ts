@@ -36,6 +36,7 @@ import {
   isBlobEnvelope,
 } from '../lib/blob-utils'
 import type { BlobEnvelope } from '../types/schema'
+import { describeQueryFailure, toErrorMessage } from '../lib/error-message'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -174,7 +175,7 @@ function evictTableDataWithWarning(
     connectionId,
     tabId,
   }).catch((error: unknown) => {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorMessage = toErrorMessage(error)
     const contextSuffix = failureContext ? ` ${failureContext}` : ''
     logFrontend(
       'warn',
@@ -690,7 +691,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         )
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = toErrorMessage(error)
       logFrontend(
         'warn',
         `[table-data-store] sync_table_data_cache_after_${mode} failed for ${tabId}: ${errorMessage}`
@@ -767,7 +768,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           patchTab(tabId, { foreignKeys: mapSingleColumnForeignKeys(foreignKeyInfos) })
         })
         .catch((error: unknown) => {
-          const errorMessage = error instanceof Error ? error.message : String(error)
+          const errorMessage = toErrorMessage(error)
           logFrontend('warn', 'FK metadata fetch failed: ' + errorMessage)
           // Leave foreignKeys as [] — do NOT set error on the tab
         })
@@ -839,11 +840,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         // as a generic query error — report it as a cancellation instead.
         const wasCancelled = get().tabs[tabId]?.isCancelling ?? false
         patchTab(tabId, {
-          error: wasCancelled
-            ? 'Query cancelled by user'
-            : error instanceof Error
-              ? error.message
-              : String(error),
+          error: describeQueryFailure(wasCancelled, error),
           isLoading: false,
           isCancelling: false,
         })
@@ -874,7 +871,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       } catch (error) {
         if (!get().tabs[tabId]) return
         patchTab(tabId, { isCancelling: false })
-        showErrorToast('Cancel failed', error instanceof Error ? error.message : String(error))
+        showErrorToast('Cancel failed', toErrorMessage(error))
       }
     },
 
@@ -1021,7 +1018,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           { preserveActiveState: true }
         )
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = toErrorMessage(error)
         logFrontend(
           'warn',
           `[table-data-store] restoreEvictedTableDataRows failed for ${tabId}: ${errorMessage}`
@@ -1228,7 +1225,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           if (!get().tabs[tabId]) return false
 
           patchTab(tabId, {
-            saveError: error instanceof Error ? error.message : String(error),
+            saveError: toErrorMessage(error),
           })
           return false
         }
@@ -1272,7 +1269,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           if (!get().tabs[tabId]) return false
 
           patchTab(tabId, {
-            saveError: error instanceof Error ? error.message : String(error),
+            saveError: toErrorMessage(error),
           })
           return false
         }
@@ -1437,7 +1434,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         if (!get().tabs[tabId]) return
 
         patchTab(tabId, {
-          error: error instanceof Error ? error.message : String(error),
+          error: toErrorMessage(error),
         })
       }
     },
@@ -1514,7 +1511,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         } catch (error) {
           if (!get().tabs[tabId]) return deletedCount
           patchTab(tabId, {
-            error: error instanceof Error ? error.message : String(error),
+            error: toErrorMessage(error),
           })
           break
         }

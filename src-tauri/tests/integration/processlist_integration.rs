@@ -7,6 +7,7 @@
 //! This matches the pattern used in `table_data_integration.rs`.
 
 use crate::common;
+use sqllumen_lib::mysql::pool::SslSettings;
 
 use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
 use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
@@ -248,10 +249,12 @@ fn register_mock_session(state: &AppState, session_id: &str, port: u16, read_onl
                 has_password: false,
                 keychain_ref: None,
                 default_database: None,
-                ssl_enabled: false,
-                ssl_ca_path: None,
-                ssl_cert_path: None,
-                ssl_key_path: None,
+                ssl: SslSettings {
+                    enabled: false,
+                    ca_path: None,
+                    cert_path: None,
+                    key_path: None,
+                },
                 connect_timeout_secs: 30,
                 keepalive_interval_secs: 60,
             },

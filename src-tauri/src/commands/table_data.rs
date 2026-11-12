@@ -232,15 +232,22 @@ pub async fn restore_table_data_cache<R: tauri::Runtime>(
     .await
 }
 
+async fn sync_table_data_cache_after_write<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    payload: table_data::SyncTableDataCacheRequest,
+) -> Result<table_data::TableDataCacheSyncResponse, String> {
+    run_blocking_with_state(app, move |state| {
+        table_data::sync_table_data_cache_after_write_impl(state, payload)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn sync_table_data_cache_after_insert<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     payload: table_data::SyncTableDataCacheRequest,
 ) -> Result<table_data::TableDataCacheSyncResponse, String> {
-    run_blocking_with_state(app, move |state| {
-        table_data::sync_table_data_cache_after_insert_impl(state, payload)
-    })
-    .await
+    sync_table_data_cache_after_write(app, payload).await
 }
 
 #[tauri::command]
@@ -248,10 +255,7 @@ pub async fn sync_table_data_cache_after_update<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     payload: table_data::SyncTableDataCacheRequest,
 ) -> Result<table_data::TableDataCacheSyncResponse, String> {
-    run_blocking_with_state(app, move |state| {
-        table_data::sync_table_data_cache_after_update_impl(state, payload)
-    })
-    .await
+    sync_table_data_cache_after_write(app, payload).await
 }
 
 #[tauri::command]
@@ -259,10 +263,7 @@ pub async fn sync_table_data_cache_after_delete<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     payload: table_data::SyncTableDataCacheRequest,
 ) -> Result<table_data::TableDataCacheSyncResponse, String> {
-    run_blocking_with_state(app, move |state| {
-        table_data::sync_table_data_cache_after_delete_impl(state, payload)
-    })
-    .await
+    sync_table_data_cache_after_write(app, payload).await
 }
 
 #[tauri::command]

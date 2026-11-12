@@ -23,6 +23,7 @@ import { invalidateCache as invalidateSchemaMetadataCache } from '../components/
 import type { EditableObjectType } from '../types/schema'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { toErrorMessage } from '../lib/error-message'
 const RENAME_DB_WARNING =
   'This operation will create a new database, move all tables, and drop the original. Only works for databases containing tables only (no views, procedures, functions, triggers, or events).'
 
@@ -292,7 +293,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         void refreshAll(connectionId)
         showSuccessToast('Database renamed', `${renameDbTarget} → ${newName}`)
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         setRenameError(message)
         showErrorToast('Failed to rename database', message)
       } finally {
@@ -330,7 +331,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         )
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       setConfirmError(message)
       showErrorToast('Failed to drop database', message)
     } finally {
@@ -358,7 +359,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         )
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       setConfirmError(message)
       showErrorToast('Failed to drop table', message)
     } finally {
@@ -378,7 +379,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       void refreshCategory(connectionId, db, 'table')
       showSuccessToast('Table truncated', `${db}.${tbl}`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       setConfirmError(message)
       showErrorToast('Failed to truncate table', message)
     } finally {
@@ -405,14 +406,14 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         invalidateSchemaIndex(connectionId, [`${db}.${previous}`])
           .then(() => buildSchemaIndex(connectionId))
           .catch((error) => {
-            const message = error instanceof Error ? error.message : String(error)
+            const message = toErrorMessage(error)
             logFrontend(
               'warn',
               `[useObjectBrowserActions] schema index rebuild after rename failed: ${message}`
             )
           })
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         setRenameError(message)
         showErrorToast('Failed to rename table', message)
       } finally {
@@ -459,7 +460,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       const typeLabel = OBJECT_TYPE_LABELS[objectType]
       showSuccessToast(`${typeLabel} dropped`, `${databaseName}.${objectName}`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       setConfirmError(message)
       const typeLabel = dropObjectConfirm.objectType
       showErrorToast(`Failed to drop ${typeLabel}`, message)

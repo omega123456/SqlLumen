@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Checkbox } from '../common/Checkbox'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
@@ -17,12 +17,30 @@ import {
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import styles from './SqlDumpDialog.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
-import { PERCENT_SCALE } from '../../lib/units'
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
+import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
+import { progressPercent } from '../../lib/job-progress'
+import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
+import { useBrowseFilePath } from '../../hooks/useBrowseFilePath'
 
-/** Polling interval for progress updates (ms). */
-const PROGRESS_POLL_MS = 500
+interface InitialTableSelectionRequest {
+  databases: ExportableDatabase[]
+  initialDatabase?: string
+  initialTable?: string
+}
+
+function buildInitialTableSelection({
+  databases,
+  initialDatabase,
+  initialTable,
+}: InitialTableSelectionRequest): Record<string, Set<string>> {
+  if (!initialDatabase) return {}
+  const database = databases.find((candidate) => candidate.name === initialDatabase)
+  if (!database) return {}
+  if (initialTable) return { [initialDatabase]: new Set([initialTable]) }
+  return { [initialDatabase]: new Set(database.tables.map((table) => table.name)) }
+}
 
 export interface SqlDumpDialogProps {
   connectionId: string
@@ -48,8 +66,7 @@ export default function SqlDumpDialog({
   const [includeDrop, setIncludeDrop] = useState(true)
   const [useTransaction, setUseTransaction] = useState(true)
 
-  // File path
-  const [filePath, setFilePath] = useState('')
+  const { filePath, setFilePath, browseForFilePath } = useBrowseFilePath('sql-dump-dialog')
 
   // Objects
   const [databases, setDatabases] = useState<ExportableDatabase[]>([])
@@ -66,99 +83,65 @@ export default function SqlDumpDialog({
   const [error, setError] = useState<string | null>(null)
   const [cancelPending, setCancelPending] = useState(false)
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Load exportable objects on mount
   useEffect(() => {
     let cancelled = false
-    setLoadingObjects(true)
-    setLoadError(null)
 
-    listExportableObjects(connectionId)
-      .then((dbs) => {
+    const loadObjects = async () => {
+      setLoadingObjects(true)
+      setLoadError(null)
+      try {
+        const loadedDatabases = await listExportableObjects(connectionId)
         if (cancelled) return
-        setDatabases(dbs)
-
-        // Initialize selection based on props
-        const initial: Record<string, Set<string>> = {}
-        if (initialDatabase) {
-          const db = dbs.find((database) => database.name === initialDatabase)
-          if (db) {
-            if (initialTable) {
-              // Select just the one table
-              initial[initialDatabase] = new Set([initialTable])
-            } else {
-              // Select all tables in this database
-              initial[initialDatabase] = new Set(db.tables.map((table) => table.name))
-            }
-          }
-        }
-        setSelectedTables(initial)
-      })
-      .catch((error) => {
-        if (cancelled) return
-        const message = error instanceof Error ? error.message : String(error)
-        setLoadError(message)
-        logFrontend(
-          'error',
-          ['[sql-dump] Failed to load exportable objects:', message].map(String).join(' ')
+        setDatabases(loadedDatabases)
+        setSelectedTables(
+          buildInitialTableSelection({
+            databases: loadedDatabases,
+            initialDatabase: initialDatabase,
+            initialTable: initialTable,
+          })
         )
-      })
-      .finally(() => {
+      } catch (error) {
+        if (cancelled) return
+        const message = toErrorMessage(error)
+        setLoadError(message)
+        logFrontendError('[sql-dump] Failed to load exportable objects:', message)
+      } finally {
         if (!cancelled) setLoadingObjects(false)
-      })
+      }
+    }
+
+    void loadObjects()
 
     return () => {
       cancelled = true
     }
   }, [connectionId, initialDatabase, initialTable])
 
-  // Poll for progress when we have a job ID
-  useEffect(() => {
-    if (!jobId) return
-
-    const poll = () => {
-      getDumpProgress(jobId)
-        .then((progress) => {
-          setProgress(progress)
-          if (progress.status === 'completed') {
-            setIsExporting(false)
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            showSuccessToast('Export completed', `SQL dump saved to ${filePath}`)
-            onClose()
-          } else if (progress.status === 'cancelled') {
-            setIsExporting(false)
-            setCancelPending(false)
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            setError(
-              `Export cancelled — ${progress.tablesDone} of ${progress.tablesTotal} tables were written to the file`
-            )
-          } else if (progress.status === 'failed') {
-            setIsExporting(false)
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-            showErrorToast('Export failed', progress.errorMessage ?? 'SQL dump failed')
-            setError(progress.errorMessage ?? 'Export failed')
-          }
-        })
-        .catch((error) => {
-          logFrontend('error', ['[sql-dump] Failed to poll progress:', error].map(String).join(' '))
-        })
+  const handleDumpFinished = (finishedProgress: DumpJobProgress) => {
+    setIsExporting(false)
+    if (finishedProgress.status === 'completed') {
+      showSuccessToast('Export completed', `SQL dump saved to ${filePath}`)
+      onClose()
+      return
     }
-
-    pollRef.current = setInterval(poll, PROGRESS_POLL_MS)
-    // Also poll immediately
-    poll()
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-        pollRef.current = null
-      }
+    if (finishedProgress.status === 'cancelled') {
+      setCancelPending(false)
+      setError(
+        `Export cancelled — ${finishedProgress.tablesDone} of ${finishedProgress.tablesTotal} tables were written to the file`
+      )
+      return
     }
-  }, [filePath, jobId, onClose])
+    showErrorToast('Export failed', finishedProgress.errorMessage ?? 'SQL dump failed')
+    setError(finishedProgress.errorMessage ?? 'Export failed')
+  }
+
+  useJobProgressPolling({
+    jobId: jobId,
+    fetchProgress: getDumpProgress,
+    onProgress: setProgress,
+    onFinished: handleDumpFinished,
+    pollFailureMessage: '[sql-dump] Failed to poll progress:',
+  })
 
   // Toggle a single table
   const toggleTable = useCallback((dbName: string, tableName: string) => {
@@ -211,22 +194,16 @@ export default function SqlDumpDialog({
     return Object.values(selectedTables).reduce((sum, set) => sum + set.size, 0)
   }, [selectedTables])
 
-  // Handle browse
-  const handleBrowse = useCallback(async () => {
-    try {
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const defaultName = initialDatabase
-        ? `${initialDatabase}_dump_${Date.now()}.sql`
-        : `sql_dump_${Date.now()}.sql`
-      const selectedPath = await save({
-        defaultPath: defaultName,
-        filters: [{ name: 'SQL files', extensions: ['sql'] }],
-      })
-      if (selectedPath) setFilePath(selectedPath)
-    } catch (error) {
-      logFrontend('info', `[sql-dump-dialog] Save dialog unavailable: ${String(error)}`)
-    }
-  }, [initialDatabase])
+  const handleBrowse = useCallback(() => {
+    const defaultName = initialDatabase
+      ? `${initialDatabase}_dump_${Date.now()}.sql`
+      : `sql_dump_${Date.now()}.sql`
+    return browseForFilePath({
+      defaultPath: defaultName,
+      filterName: 'SQL files',
+      extension: 'sql',
+    })
+  }, [browseForFilePath, initialDatabase])
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -274,7 +251,7 @@ export default function SqlDumpDialog({
       setJobId(id)
     } catch (error) {
       setIsExporting(false)
-      setError(error instanceof Error ? error.message : String(error))
+      setError(toErrorMessage(error))
     }
   }, [
     filePath,
@@ -296,15 +273,11 @@ export default function SqlDumpDialog({
       await cancelDump(jobId, connectionId)
     } catch (error) {
       setCancelPending(false)
-      logFrontend('error', ['[sql-dump] Failed to cancel export:', error].map(String).join(' '))
+      logFrontendError('[sql-dump] Failed to cancel export:', error)
     }
   }, [jobId, connectionId, cancelPending])
 
-  // Progress percentage (table-level)
-  const progressPercent = useMemo(() => {
-    if (!progress || progress.tablesTotal === 0) return 0
-    return Math.round((progress.tablesDone / progress.tablesTotal) * PERCENT_SCALE)
-  }, [progress])
+  const tablesPercent = progressPercent(progress?.tablesDone, progress?.tablesTotal)
 
   const canExport = filePath && hasSelection && !isExporting
 
@@ -315,7 +288,7 @@ export default function SqlDumpDialog({
       maxWidth={520}
       testId="sql-dump-dialog"
       ariaLabel="Export SQL dump"
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isExporting}
     >
       <div className={styles.root}>
@@ -489,7 +462,7 @@ export default function SqlDumpDialog({
               <div className={styles.progressRow}>
                 <span className={styles.progressLabel}>Tables</span>
                 <div className={styles.progressBar}>
-                  <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
+                  <div className={styles.progressFill} style={{ width: `${tablesPercent}%` }} />
                 </div>
                 <span className={styles.progressCount}>
                   {progress.tablesDone} / {progress.tablesTotal}

@@ -135,7 +135,7 @@ export function buildDiffState(
 ): DiffOverlayState | null {
   const model = editor?.getModel()
   if (!model) {
-    logFrontend('error', ['[query-editor] Cannot open diff: no editor model'].map(String).join(' '))
+    logFrontend('error', '[query-editor] Cannot open diff: no editor model')
     return null
   }
 

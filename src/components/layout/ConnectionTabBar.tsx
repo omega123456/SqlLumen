@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   SunIcon,
   MoonIcon,
@@ -25,27 +25,16 @@ import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import { TabContextMenu } from '../shared/TabContextMenu'
-import { computeHorizontalTabReorderTarget } from '../shared/use-tab-reorder'
+import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
 import styles from './ConnectionTabBar.module.css'
 
-const POINTER_DRAG_THRESHOLD_PX = 4
+const CONNECTION_TAB_TEST_ID_PREFIX = 'connection-session-tab-'
 
 export interface ConnectionTabBarProps {
   onOpenSettings?: () => void
   onOpenSnapshots?: () => void
-}
-
-function isDragHandleBlocked(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-  return Boolean(
-    target.closest(
-      'button,input,textarea,select,[contenteditable="true"],[data-tab-drag-ignore="true"]'
-    )
-  )
 }
 
 export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: ConnectionTabBarProps) {
@@ -62,20 +51,6 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     invokerTabId: string
     portalRoot: HTMLElement
   } | null>(null)
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{
-    tabId: string
-    indicator: 'before' | 'after'
-  } | null>(null)
-  const suppressNextSelectRef = useRef(false)
-  const pointerDragRef = useRef<{
-    tabId: string
-    dragging: boolean
-    startX: number
-    startY: number
-    insertIndex: number | null
-  } | null>(null)
-  const removePointerListenersRef = useRef<(() => void) | null>(null)
 
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const togglePalette = useCommandPaletteStore((state) => state.toggle)
@@ -96,12 +71,6 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     activeTabIdRef.current = activeTabId
   }, [activeTabId])
 
-  useEffect(() => {
-    return () => {
-      removePointerListenersRef.current?.()
-    }
-  }, [])
-
   const handleThemeToggle = () => {
     const nextTheme: Theme = resolvedTheme === 'light' ? 'dark' : 'light'
     void setTheme(nextTheme)
@@ -115,6 +84,12 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     .map((sessionId) => activeConnections[sessionId])
     .filter((connection): connection is NonNullable<typeof connection> => Boolean(connection))
   const sessionIds = tabs.map((connection) => connection.id)
+  const { draggingTabId, dropIndicatorFor, startPointerDrag, isSelectSuppressed } =
+    usePointerTabDrag({
+      tabIds: sessionIds,
+      tabTestIdPrefix: CONNECTION_TAB_TEST_ID_PREFIX,
+      onReorder: reorderActiveConnection,
+    })
   const contextMenuTabIndex = contextMenu ? sessionIds.indexOf(contextMenu.sessionId) : -1
   const tabsByProfileId = new Map<string, typeof tabs>()
   for (const connection of tabs) {
@@ -153,7 +128,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
 
   const focusConnectionTab = (sessionId: string): boolean => {
     const tabElement = document.querySelector<HTMLElement>(
-      `[data-testid="connection-session-tab-${sessionId}"]`
+      `[data-testid="${CONNECTION_TAB_TEST_ID_PREFIX}${sessionId}"]`
     )
     if (!tabElement) {
       return false
@@ -189,117 +164,6 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
     })
   }
 
-  const clearPointerDrag = () => {
-    removePointerListenersRef.current?.()
-    removePointerListenersRef.current = null
-    pointerDragRef.current = null
-    setDraggingTabId(null)
-    setDropTarget(null)
-  }
-
-  const finishPointerDrag = (shouldCommit: boolean) => {
-    const dragState = pointerDragRef.current
-    const shouldSuppressSelect = Boolean(dragState?.dragging)
-    if (shouldCommit && dragState?.dragging && dragState.insertIndex != null) {
-      reorderActiveConnection(dragState.tabId, dragState.insertIndex)
-    }
-    clearPointerDrag()
-    if (shouldSuppressSelect) {
-      suppressNextSelectRef.current = true
-      window.setTimeout(() => {
-        suppressNextSelectRef.current = false
-      }, 0)
-    }
-  }
-
-  const findHoveredSessionTab = (clientX: number, clientY: number) => {
-    for (const sessionId of sessionIds) {
-      const element = document.querySelector<HTMLElement>(
-        `[data-testid="connection-session-tab-${sessionId}"]`
-      )
-      if (!element) {
-        continue
-      }
-      const rect = element.getBoundingClientRect()
-      if (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      ) {
-        return { sessionId, rect }
-      }
-    }
-    return null
-  }
-
-  const startPointerDrag = (sessionId: string, event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || isDragHandleBlocked(event.target)) {
-      return
-    }
-    event.preventDefault()
-    clearPointerDrag()
-    pointerDragRef.current = {
-      tabId: sessionId,
-      dragging: false,
-      startX: event.clientX,
-      startY: event.clientY,
-      insertIndex: null,
-    }
-
-    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
-      const dragState = pointerDragRef.current
-      if (!dragState) {
-        return
-      }
-      if (!dragState.dragging) {
-        const deltaX = moveEvent.clientX - dragState.startX
-        const deltaY = moveEvent.clientY - dragState.startY
-        if (Math.hypot(deltaX, deltaY) < POINTER_DRAG_THRESHOLD_PX) {
-          return
-        }
-        dragState.dragging = true
-        setDraggingTabId(dragState.tabId)
-      }
-
-      const hoveredTab = findHoveredSessionTab(moveEvent.clientX, moveEvent.clientY)
-      if (!hoveredTab) {
-        dragState.insertIndex = null
-        setDropTarget(null)
-        return
-      }
-
-      const draggingIndex = sessionIds.indexOf(dragState.tabId)
-      const targetIndex = sessionIds.indexOf(hoveredTab.sessionId)
-      const target = computeHorizontalTabReorderTarget({
-        draggingIndex: draggingIndex,
-        targetIndex: targetIndex,
-        pointerClientX: moveEvent.clientX,
-        targetRect: hoveredTab.rect,
-      })
-      if (!target) {
-        dragState.insertIndex = null
-        setDropTarget(null)
-        return
-      }
-
-      dragState.insertIndex = target.insertIndex
-      setDropTarget({ tabId: hoveredTab.sessionId, indicator: target.indicator })
-    }
-
-    const handlePointerUp = () => finishPointerDrag(true)
-    const handlePointerCancel = () => finishPointerDrag(false)
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerCancel)
-    removePointerListenersRef.current = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerCancel)
-    }
-  }
-
   const activeConnection = activeTabId ? activeConnections[activeTabId] : undefined
   const edgeColor = activeConnection?.profile.color || null
   const stripStyle = (
@@ -322,11 +186,11 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
               <UnderlineTab
                 key={connection.id}
                 variant="document"
-                data-testid={`connection-session-tab-${connection.id}`}
+                data-testid={`${CONNECTION_TAB_TEST_ID_PREFIX}${connection.id}`}
                 active={isActive}
                 className={styles.connectionTab}
                 onSelect={() => {
-                  if (suppressNextSelectRef.current) {
+                  if (isSelectSuppressed()) {
                     return
                   }
                   switchTab(connection.id)
@@ -357,9 +221,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                   )
                 }}
                 dragging={draggingTabId === connection.id}
-                dropIndicator={
-                  dropTarget?.tabId === connection.id ? dropTarget.indicator : undefined
-                }
+                dropIndicator={dropIndicatorFor(connection.id)}
                 onAuxClick={(event) => {
                   if (event.button !== 1) return
                   event.preventDefault()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Eye, EyeSlash, FolderOpen, Plug } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -26,6 +26,7 @@ import type {
   TestConnectionResult as TestConnectionResultType,
 } from '../../types/connection'
 import styles from './ConnectionForm.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 const DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
 const DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 60
@@ -133,8 +134,27 @@ function buildErrorResult(error: unknown): TestConnectionResultType {
     authMethod: null,
     sslStatus: null,
     connectionTimeMs: null,
-    errorMessage: error instanceof Error ? error.message : String(error),
+    errorMessage: toErrorMessage(error),
   }
+}
+
+interface FormFieldProps {
+  id: string
+  label: string
+  error?: string
+  children: ReactNode
+}
+
+function FormField({ id, label, error, children }: FormFieldProps) {
+  return (
+    <div className={styles.fieldGroup}>
+      <label htmlFor={id} className={styles.labelCaps}>
+        {label}
+      </label>
+      {children}
+      {error && <span className={styles.errorText}>{error}</span>}
+    </div>
+  )
 }
 
 interface SslFileFieldProps {
@@ -327,6 +347,13 @@ export function ConnectionForm({
   const tabHasError = (tab: FormTab): boolean =>
     Object.keys(errors).some((field) => (FIELD_TAB[field] ?? 'general') === tab)
 
+  const reportFailure = (error: unknown, toastTitle: string): TestConnectionResultType => {
+    const failure = buildErrorResult(error)
+    setTestResult(failure)
+    showErrorToast(toastTitle, failure.errorMessage ?? undefined)
+    return failure
+  }
+
   const handleTestConnection = async () => {
     if (!runValidation()) {
       return
@@ -341,12 +368,25 @@ export function ConnectionForm({
       const result = await testConnection(formData, useSavedPassword ? currentConnectionId : null)
       setTestResult(result)
     } catch (error) {
-      const failure = buildErrorResult(error)
-      setTestResult(failure)
-      showErrorToast('Connection test failed', failure.errorMessage ?? undefined)
+      reportFailure(error, 'Connection test failed')
     } finally {
       setPendingAction(null)
     }
+  }
+
+  const persistConnection = async (): Promise<string> => {
+    const existingId = savedId ?? editingConnection?.id
+    if (existingId) {
+      await updateConnection(existingId, formData, { clearPassword: clearSavedPassword })
+      setHasSavedPassword(clearSavedPassword ? false : hasSavedPassword || formData.password !== '')
+      await fetchSavedConnections()
+      return existingId
+    }
+    const newId = await saveConnectionIPC(formData)
+    setSavedId(newId)
+    setHasSavedPassword(formData.password !== '')
+    await fetchSavedConnections()
+    return newId
   }
 
   const handleSave = async () => {
@@ -356,24 +396,11 @@ export function ConnectionForm({
 
     setPendingAction('save')
     try {
-      const existingId = savedId ?? editingConnection?.id
-      if (existingId) {
-        await updateConnection(existingId, formData, { clearPassword: clearSavedPassword })
-        setHasSavedPassword(
-          clearSavedPassword ? false : hasSavedPassword || formData.password !== ''
-        )
-      } else {
-        const newId = await saveConnectionIPC(formData)
-        setSavedId(newId)
-        setHasSavedPassword(formData.password !== '')
-      }
+      await persistConnection()
       setClearSavedPassword(false)
-      await fetchSavedConnections()
       showSuccessToast('Connection saved', formData.name.trim() || undefined)
     } catch (error) {
-      const failure = buildErrorResult(error)
-      setTestResult(failure)
-      showErrorToast('Failed to save connection', failure.errorMessage ?? undefined)
+      reportFailure(error, 'Failed to save connection')
     } finally {
       setPendingAction(null)
     }
@@ -385,36 +412,21 @@ export function ConnectionForm({
     }
 
     setPendingAction('connect')
-    let connectionId = savedId ?? editingConnection?.id
+    let connectionId: string
     try {
-      if (connectionId) {
-        await updateConnection(connectionId, formData, { clearPassword: clearSavedPassword })
-        setHasSavedPassword(
-          clearSavedPassword ? false : hasSavedPassword || formData.password !== ''
-        )
-        await fetchSavedConnections()
-      } else {
-        connectionId = await saveConnectionIPC(formData)
-        setSavedId(connectionId)
-        setHasSavedPassword(formData.password !== '')
-        await fetchSavedConnections()
-      }
+      connectionId = await persistConnection()
       setClearSavedPassword(false)
     } catch (error) {
-      const failure = buildErrorResult(error)
-      setTestResult(failure)
-      showErrorToast('Failed to save connection', failure.errorMessage ?? undefined)
+      reportFailure(error, 'Failed to save connection')
       setPendingAction(null)
       return
     }
 
     try {
-      await openConnection(connectionId!)
+      await openConnection(connectionId)
       closeDialog()
     } catch (error) {
-      const failure = buildErrorResult(error)
-      setTestResult(failure)
-      /* openConnection already shows an error toast */
+      setTestResult(buildErrorResult(error))
     } finally {
       setPendingAction(null)
     }
@@ -441,10 +453,8 @@ export function ConnectionForm({
       onDeleteConnection?.(currentConnectionId)
       showSuccessToast('Connection deleted')
     } catch (error) {
-      const failure = buildErrorResult(error)
-      setTestResult(failure)
+      const failure = reportFailure(error, 'Failed to delete connection')
       setDeleteConfirmError(failure.errorMessage ?? 'Failed to delete connection')
-      showErrorToast('Failed to delete connection', failure.errorMessage ?? undefined)
     } finally {
       setPendingAction(null)
     }
@@ -500,10 +510,7 @@ export function ConnectionForm({
               role="tabpanel"
               data-testid="connection-form-panel-general"
             >
-              <div className={styles.fieldGroup}>
-                <label htmlFor="conn-name" className={styles.labelCaps}>
-                  Connection name
-                </label>
+              <FormField id="conn-name" label="Connection name" error={errors.name}>
                 <TextInput
                   id="conn-name"
                   type="text"
@@ -513,14 +520,10 @@ export function ConnectionForm({
                   placeholder="My production server"
                   autoFocus={nameAutoFocusRef.current}
                 />
-                {errors.name && <span className={styles.errorText}>{errors.name}</span>}
-              </div>
+              </FormField>
 
               <div className={styles.row2}>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-host" className={styles.labelCaps}>
-                    Host address
-                  </label>
+                <FormField id="conn-host" label="Host address" error={errors.host}>
                   <TextInput
                     id="conn-host"
                     type="text"
@@ -530,12 +533,8 @@ export function ConnectionForm({
                     onChange={(event) => updateField('host', event.target.value)}
                     placeholder="localhost"
                   />
-                  {errors.host && <span className={styles.errorText}>{errors.host}</span>}
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-port" className={styles.labelCaps}>
-                    Port
-                  </label>
+                </FormField>
+                <FormField id="conn-port" label="Port" error={errors.port}>
                   <TextInput
                     id="conn-port"
                     type="number"
@@ -547,15 +546,11 @@ export function ConnectionForm({
                     max={65535}
                     placeholder="3306"
                   />
-                  {errors.port && <span className={styles.errorText}>{errors.port}</span>}
-                </div>
+                </FormField>
               </div>
 
               <div className={styles.rowUserPass}>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-username" className={styles.labelCaps}>
-                    Username
-                  </label>
+                <FormField id="conn-username" label="Username" error={errors.username}>
                   <TextInput
                     id="conn-username"
                     type="text"
@@ -565,12 +560,8 @@ export function ConnectionForm({
                     onChange={(event) => updateField('username', event.target.value)}
                     placeholder="root"
                   />
-                  {errors.username && <span className={styles.errorText}>{errors.username}</span>}
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-password" className={styles.labelCaps}>
-                    Password
-                  </label>
+                </FormField>
+                <FormField id="conn-password" label="Password">
                   <div className={styles.passwordWrapper}>
                     <TextInput
                       id="conn-password"
@@ -615,13 +606,10 @@ export function ConnectionForm({
                       Use no password (remove saved password)
                     </label>
                   )}
-                </div>
+                </FormField>
               </div>
 
-              <div className={styles.fieldGroup}>
-                <label htmlFor="conn-database" className={styles.labelCaps}>
-                  Default database
-                </label>
+              <FormField id="conn-database" label="Default database">
                 <TextInput
                   id="conn-database"
                   type="text"
@@ -630,7 +618,7 @@ export function ConnectionForm({
                   onChange={(event) => updateField('defaultDatabase', event.target.value || null)}
                   placeholder="mydb"
                 />
-              </div>
+              </FormField>
             </div>
           )}
 
@@ -738,10 +726,11 @@ export function ConnectionForm({
               </div>
 
               <div className={styles.rowTimeouts}>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="connect-timeout" className={styles.labelCaps}>
-                    Connect timeout
-                  </label>
+                <FormField
+                  id="connect-timeout"
+                  label="Connect timeout"
+                  error={errors.connectTimeoutSecs}
+                >
                   <div className={styles.numberInputRow}>
                     <TextInput
                       id="connect-timeout"
@@ -761,14 +750,12 @@ export function ConnectionForm({
                     />
                     <span className={styles.unitLabel}>seconds</span>
                   </div>
-                  {errors.connectTimeoutSecs && (
-                    <span className={styles.errorText}>{errors.connectTimeoutSecs}</span>
-                  )}
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="keepalive" className={styles.labelCaps}>
-                    Keepalive interval
-                  </label>
+                </FormField>
+                <FormField
+                  id="keepalive"
+                  label="Keepalive interval"
+                  error={errors.keepaliveIntervalSecs}
+                >
                   <div className={styles.numberInputRow}>
                     <TextInput
                       id="keepalive"
@@ -788,10 +775,7 @@ export function ConnectionForm({
                     />
                     <span className={styles.unitLabel}>seconds</span>
                   </div>
-                  {errors.keepaliveIntervalSecs && (
-                    <span className={styles.errorText}>{errors.keepaliveIntervalSecs}</span>
-                  )}
-                </div>
+                </FormField>
               </div>
             </div>
           )}

@@ -87,6 +87,7 @@ import {
   type ClipboardActionFailure,
 } from '../../../lib/clipboard-action-failures'
 import { Button } from '../../common/Button'
+import { toErrorMessage } from '../../../lib/error-message'
 
 const LAST_ASCII_CONTROL_CODE = 0x1f
 const FOREIGN_KEY_AFFORDANCE_WIDTH_PX = 28
@@ -309,13 +310,9 @@ function isRangeLoaded<TRow>(source: GridRowSource<TRow>, start: number, end: nu
   return true
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 /** `results_expired` failures route to the "Results expired" block, not a toast. */
 function isResultsExpired(error: unknown): boolean {
-  return errorText(error).includes('results_expired')
+  return toErrorMessage(error).includes('results_expired')
 }
 
 function toGridColumn(
@@ -1155,7 +1152,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           return false
         }
         const failure = ROW_ACTION_FAILURES[verb]
-        logFrontend('warn', `[grid] ${verb} could not load rows: ${errorText(error)}`)
+        logFrontend('warn', `[grid] ${verb} could not load rows: ${toErrorMessage(error)}`)
         showErrorToast(failure.title, failure.message)
         return false
       }
@@ -1371,7 +1368,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           await writeClipboardText(text)
         } catch (error) {
           const failure = ROW_ACTION_FAILURES[verb]
-          logFrontend('warn', `Failed to write grid selection to clipboard: ${errorText(error)}`)
+          logFrontend(
+            'warn',
+            `Failed to write grid selection to clipboard: ${toErrorMessage(error)}`
+          )
           showErrorToast(failure.title, failure.message)
           return false
         }
@@ -1396,7 +1396,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     try {
       text = await readClipboardText()
     } catch (error) {
-      logFrontend('warn', `Failed to read grid clipboard text: ${errorText(error)}`)
+      logFrontend('warn', `Failed to read grid clipboard text: ${toErrorMessage(error)}`)
       showErrorToast(ROW_ACTION_FAILURES.Pasting.title, ROW_ACTION_FAILURES.Pasting.message)
       return
     }

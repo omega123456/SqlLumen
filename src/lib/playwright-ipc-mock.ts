@@ -190,16 +190,49 @@ interface PlaywrightUpdateOverride {
   rawJson?: unknown
 }
 
-function getPlaywrightUpdateOverride(): PlaywrightUpdateOverride | undefined {
-  const playwrightGlobals = globalThis as typeof globalThis & {
-    __PLAYWRIGHT_UPDATE_OVERRIDE__?: PlaywrightUpdateOverride
-  }
+interface PlaywrightGlobalOverrides {
+  __PLAYWRIGHT_UPDATE_OVERRIDE__?: PlaywrightUpdateOverride
+  __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
+  __PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__?: string
+  __PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__?: number
+}
 
-  return playwrightGlobals.__PLAYWRIGHT_UPDATE_OVERRIDE__
+function readGlobalOverride<TKey extends keyof PlaywrightGlobalOverrides>(
+  key: TKey
+): PlaywrightGlobalOverrides[TKey] {
+  const playwrightGlobals = globalThis as typeof globalThis & PlaywrightGlobalOverrides
+  return playwrightGlobals[key]
+}
+
+interface PlaywrightMockWindowFlags {
+  __mockQueryError__?: unknown
+  __mockQueryDelay__?: unknown
+  __pendingQueryReject__?: ((reason: Error) => void) | null
+  __mockAiError__?: unknown
+  __mockAiThinking__?: unknown
+}
+
+function mockWindowFlags(): PlaywrightMockWindowFlags | null {
+  if (typeof window === 'undefined') return null
+  return window as unknown as PlaywrightMockWindowFlags
+}
+
+function readMockWindowFlag<TKey extends keyof PlaywrightMockWindowFlags>(
+  key: TKey
+): PlaywrightMockWindowFlags[TKey] | undefined {
+  return mockWindowFlags()?.[key]
+}
+
+function writeMockWindowFlag<TKey extends keyof PlaywrightMockWindowFlags>(
+  key: TKey,
+  value: PlaywrightMockWindowFlags[TKey]
+): void {
+  const flags = mockWindowFlags()
+  if (flags) flags[key] = value
 }
 
 function getMockUpdateMetadata(): Record<string, unknown> | null {
-  const override = getPlaywrightUpdateOverride()
+  const override = readGlobalOverride('__PLAYWRIGHT_UPDATE_OVERRIDE__')
   if (!override?.available) {
     return null
   }
@@ -234,31 +267,15 @@ function emitUpdaterDownload(
   emitUpdaterEvent(args, { event: 'Finished' })
 }
 
-function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
-  const playwrightGlobals = globalThis as typeof globalThis & {
-    __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
-  }
-
-  return playwrightGlobals.__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
-}
-
 function getCommandPaletteRecentsValue(): string {
-  const playwrightGlobals = globalThis as typeof globalThis & {
-    __PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__?: string
-  }
-
   return (
-    playwrightGlobals.__PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__ ??
+    readGlobalOverride('__PLAYWRIGHT_COMMAND_PALETTE_RECENTS_OVERRIDE__') ??
     getCommandPaletteRecentsFixture()
   )
 }
 
 function getSchemaMetadataDelayMs(): number {
-  const playwrightGlobals = globalThis as typeof globalThis & {
-    __PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__?: number
-  }
-
-  const candidate = playwrightGlobals.__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__
+  const candidate = readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__')
   return typeof candidate === 'number' && candidate > 0 ? candidate : 0
 }
 
@@ -472,10 +489,7 @@ export function playwrightIpcMockHandler(command: string, args?: Record<string, 
     // --- Query execution ---
     case 'execute_query': {
       // Support error simulation for Playwright tests
-      if (
-        typeof window !== 'undefined' &&
-        (window as unknown as Record<string, unknown>).__mockQueryError__
-      ) {
+      if (readMockWindowFlag('__mockQueryError__')) {
         throw new Error(getStaticFixture('querySimulation').errorMessage)
       }
 
@@ -488,17 +502,15 @@ export function playwrightIpcMockHandler(command: string, args?: Record<string, 
       })
 
       // Support configurable delay for Playwright E2E tests (running indicator + cancel flow)
-      if (typeof window !== 'undefined') {
-        const delay = (window as unknown as Record<string, unknown>).__mockQueryDelay__
-        if (delay && typeof delay === 'number' && delay > 0) {
-          return new Promise((resolve, reject) => {
-            ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = reject
-            setTimeout(() => {
-              ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = null
-              resolve(result)
-            }, delay)
-          })
-        }
+      const delay = readMockWindowFlag('__mockQueryDelay__')
+      if (typeof delay === 'number' && delay > 0) {
+        return new Promise((resolve, reject) => {
+          writeMockWindowFlag('__pendingQueryReject__', reject)
+          setTimeout(() => {
+            writeMockWindowFlag('__pendingQueryReject__', null)
+            resolve(result)
+          }, delay)
+        })
       }
 
       return result
@@ -541,14 +553,10 @@ export function playwrightIpcMockHandler(command: string, args?: Record<string, 
       return null
 
     case 'cancel_query': {
-      if (typeof window !== 'undefined') {
-        const pendingReject = (window as unknown as Record<string, unknown>)
-          .__pendingQueryReject__ as ((reason: Error) => void) | null
-        if (pendingReject) {
-          // Clear the reference BEFORE calling reject to prevent recursive issues
-          ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = null
-          pendingReject(new Error(getStaticFixture('querySimulation').cancelledMessage))
-        }
+      const pendingReject = readMockWindowFlag('__pendingQueryReject__')
+      if (pendingReject) {
+        writeMockWindowFlag('__pendingQueryReject__', null)
+        pendingReject(new Error(getStaticFixture('querySimulation').cancelledMessage))
       }
       return true
     }
@@ -575,11 +583,14 @@ export function playwrightIpcMockHandler(command: string, args?: Record<string, 
       return getCancelResultExportFixture(args?.jobId as string | null | undefined)
 
     case 'fetch_schema_metadata':
-      return getSchemaMetadataOverride() ?? getStaticFixture('schemaMetadata')
+      return (
+        readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__') ??
+        getStaticFixture('schemaMetadata')
+      )
 
     case 'fetch_schema_metadata_full': {
       const fixtureMetadata = getSchemaMetadataFullFixture()
-      const baseMetadata = getSchemaMetadataOverride()
+      const baseMetadata = readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__')
       return maybeDelaySchemaMetadata().then((): SchemaMetadataFull => ({
         databases: baseMetadata?.databases ?? fixtureMetadata.databases,
         tables: baseMetadata?.tables ?? fixtureMetadata.tables,
@@ -738,18 +749,12 @@ export function playwrightIpcMockHandler(command: string, args?: Record<string, 
       const request = args?.request as { streamId?: string } | undefined
       const streamId = request?.streamId ?? getStaticFixture('aiChat').fallbackStreamId
 
-      if (
-        typeof window !== 'undefined' &&
-        (window as unknown as Record<string, unknown>).__mockAiError__
-      ) {
+      if (readMockWindowFlag('__mockAiError__')) {
         scheduleAiStreamError(streamId)
         return null
       }
 
-      if (
-        typeof window !== 'undefined' &&
-        (window as unknown as Record<string, unknown>).__mockAiThinking__
-      ) {
+      if (readMockWindowFlag('__mockAiThinking__')) {
         scheduleAiThinkingStream(streamId)
         return null
       }

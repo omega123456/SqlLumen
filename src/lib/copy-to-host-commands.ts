@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { JobStatus } from './job-progress'
 
 /** A table available to copy, with an estimated row count. */
 export interface CopyableTable {
@@ -115,7 +116,7 @@ export function sanitizeCopyToHostParams(params: CopyToHostParams): CopyToHostPa
 }
 
 /** Status of a copy-to-host job. */
-export type CopyJobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+export type CopyJobStatus = JobStatus
 
 /** Progress info for an active or completed copy-to-host job. */
 export interface CopyProgress {

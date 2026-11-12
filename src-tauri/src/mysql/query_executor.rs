@@ -1,6 +1,7 @@
 //! Query execution engine: runs SQL against MySQL connections,
 //! stores paginated results, and enforces read-only restrictions.
 
+use crate::mysql::cache_status::cache_status_json;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
@@ -2135,23 +2136,11 @@ pub async fn execute_call_query_impl(
     })
 }
 
-// ── Touch results (availability check) ────────────────────────────────────
-
-/// Check whether a cached result is still available for a given tab.
-///
-/// Returns a JSON object with `{ "status": "available" | "missing" }`.
-/// A successful lookup also refreshes the cache's idle timer for that entry.
 pub fn touch_results_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
 ) -> serde_json::Value {
-    use crate::mysql::result_cache::ResultCacheGet;
-    match state.result_cache.get(connection_id, tab_id) {
-        ResultCacheGet::Found(_) | ResultCacheGet::ReWarmed(_) => {
-            serde_json::json!({ "status": "available" })
-        }
-        ResultCacheGet::Expired => serde_json::json!({ "status": "expired" }),
-        ResultCacheGet::NeverStored => serde_json::json!({ "status": "missing" }),
-    }
+    let lookup = state.result_cache.get(connection_id, tab_id);
+    cache_status_json(lookup.lookup_status())
 }

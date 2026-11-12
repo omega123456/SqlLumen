@@ -1,5 +1,5 @@
 import { TWO_DIGIT_WIDTH } from './units'
-const IS_PLAYWRIGHT = import.meta.env.VITE_PLAYWRIGHT === 'true'
+import { isPlaywrightBuild } from './tauri-env'
 
 const PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP = Date.parse('2025-01-01T12:00:00.000Z')
 
@@ -13,11 +13,11 @@ function formatUtcTime(ts: number): string {
 }
 
 export function getProcessListRefreshTimestamp(): number {
-  return IS_PLAYWRIGHT ? PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP : Date.now()
+  return isPlaywrightBuild() ? PLAYWRIGHT_FIXED_REFRESH_TIMESTAMP : Date.now()
 }
 
 export function formatProcessListRefreshTime(ts: number): string {
-  if (IS_PLAYWRIGHT) {
+  if (isPlaywrightBuild()) {
     return formatUtcTime(ts)
   }
 

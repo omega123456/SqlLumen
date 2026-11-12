@@ -3,7 +3,6 @@ import { addDays, differenceInCalendarDays, format, isValid, parse } from 'date-
 import {
   forwardRef,
   type InputHTMLAttributes,
-  type FormEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -16,8 +15,10 @@ import { DialogShell } from '../dialogs/DialogShell'
 import { exportLogs } from '../../lib/log-commands'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import styles from './LogExportDialog.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 import 'react-datepicker/dist/react-datepicker.css'
+import { useFormSubmit } from '../../hooks/useFormSubmit'
 
 const DATE_FORMAT = 'yyyy-MM-dd'
 const MAX_RANGE_DAYS = 7
@@ -131,20 +132,14 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
       showSuccessToast('Export completed', `Logs saved to ${filePath}`)
       onClose()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Export failed', message)
     } finally {
       setBusy(false)
     }
   }, [busy, from, onClose, to, validationMessage])
 
-  const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      void handleExport()
-    },
-    [handleExport]
-  )
+  const handleSubmit = useFormSubmit(handleExport)
 
   return (
     <DialogShell

@@ -23,6 +23,7 @@ import { hasTauriApis } from '../lib/tauri-env'
 import { MILLISECONDS_PER_MINUTE } from '../lib/units'
 import type { WorkspaceTab } from '../types/schema'
 import type { OpenConnectionSession } from '../types/connection'
+import { toErrorMessage } from '../lib/error-message'
 
 const SESSION_AUTOSAVE_INTERVAL_MINUTES = 5
 export const SESSION_AUTOSAVE_INTERVAL_MS =
@@ -150,7 +151,7 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
 
       await get().restoreFromState(state)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       set({ restoreError: message, hasIncompleteRestore: true })
       logFrontend('error', `[session-restore] Failed to load saved session: ${message}`)
       showErrorToast('Session restore failed', 'The saved workspace was retained.')
@@ -210,7 +211,7 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
           restoredSessionIdsBySavedIndex[savedIndex] = sessionId
           restoredCount += 1
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
+          const message = toErrorMessage(error)
           logFrontend(
             'error',
             `[session-restore] Failed to restore connection ${connectionState.profileId}: ${message}`
@@ -243,7 +244,7 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
         )
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend(
         'error',
         `[session-restore] Restoration stopped: ${message}. Automatic persistence is paused; the saved workspace was retained.`
@@ -730,7 +731,7 @@ export async function registerCloseHandler(): Promise<void> {
       try {
         await useSessionRestoreStore.getState().saveSession({ throwOnError: true })
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         showErrorToast('Session save failed', 'Could not save the current session before closing.')
         logFrontend('error', `[session-restore] Error saving session on close: ${message}`)
         return
@@ -742,7 +743,7 @@ export async function registerCloseHandler(): Promise<void> {
         try {
           await hook()
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
+          const message = toErrorMessage(error)
           logFrontend('error', `[session-restore] Pre-close hook failed: ${message}`)
         }
       }
@@ -751,7 +752,7 @@ export async function registerCloseHandler(): Promise<void> {
     })
     closeHandlerRegistered = true
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = toErrorMessage(error)
     logFrontend('warn', `[session-restore] Failed to register close handler: ${message}`)
   }
 }

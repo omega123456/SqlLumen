@@ -1,13 +1,16 @@
-import { useEffect, useState, useCallback, type FormEvent } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Button } from '../common/Button'
-import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { createDatabase } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
+import { EncodingFields } from './EncodingFields'
 import { showErrorToast } from '../../stores/toast-store'
 import styles from './CreateDatabaseDialog.module.css'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../../lib/sql-utils'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
+import { useFormSubmit } from '../../hooks/useFormSubmit'
 
 export interface CreateDatabaseDialogProps {
   isOpen: boolean
@@ -15,8 +18,6 @@ export interface CreateDatabaseDialogProps {
   onSuccess: (databaseName: string) => void
   onCancel: () => void
 }
-
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 export function CreateDatabaseDialog({
   isOpen,
@@ -73,7 +74,7 @@ export function CreateDatabaseDialog({
       )
       onSuccess(name.trim())
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       setError(message)
       showErrorToast('Failed to create database', message)
     } finally {
@@ -81,32 +82,7 @@ export function CreateDatabaseDialog({
     }
   }, [connectionId, encoding.charset, encoding.collation, name, onSuccess, validateName])
 
-  const handleFormSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      void handleSubmit()
-    },
-    [handleSubmit]
-  )
-
-  // Build dropdown options
-  const charsetOptions: DropdownOption[] = [
-    { value: '', label: 'Server default' },
-    ...encoding.charsets.map((cs) => ({
-      value: cs.charset,
-      label: cs.charset,
-      description: cs.description,
-    })),
-  ]
-
-  const collationOptions: DropdownOption[] = [
-    { value: '', label: 'Default' },
-    ...encoding.filteredCollations.map((collation) => ({
-      value: collation.name,
-      label: collation.name,
-      description: collation.isDefault ? 'default' : undefined,
-    })),
-  ]
+  const handleFormSubmit = useFormSubmit(handleSubmit)
 
   const isValid = name.trim().length > 0 && name.length <= MYSQL_IDENTIFIER_MAX_LENGTH
 
@@ -117,7 +93,7 @@ export function CreateDatabaseDialog({
       maxWidth={480}
       testId="create-database-dialog"
       ariaLabel="Create database"
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isSubmitting}
       formProps={{ onSubmit: handleFormSubmit }}
     >
@@ -139,8 +115,8 @@ export function CreateDatabaseDialog({
             value={name}
             onChange={handleNameChange}
             placeholder="my_new_database"
-            maxLength={64}
-            autoFocus={!isPlaywright}
+            maxLength={MYSQL_IDENTIFIER_MAX_LENGTH}
+            autoFocus={!isPlaywrightBuild()}
             data-testid="create-db-name-input"
           />
           {nameError && (
@@ -150,31 +126,7 @@ export function CreateDatabaseDialog({
           )}
         </div>
 
-        <div className={styles.formGroup}>
-          <label className={styles.label} id="create-db-charset-label">
-            Character set
-          </label>
-          <Dropdown
-            id="create-db-charset"
-            labelledBy="create-db-charset-label"
-            options={charsetOptions}
-            value={encoding.charset}
-            onChange={encoding.setCharset}
-          />
-        </div>
-
-        <div className={styles.formGroup}>
-          <label className={styles.label} id="create-db-collation-label">
-            Collation
-          </label>
-          <Dropdown
-            id="create-db-collation"
-            labelledBy="create-db-collation-label"
-            options={collationOptions}
-            value={encoding.collation}
-            onChange={encoding.setCollation}
-          />
-        </div>
+        <EncodingFields idPrefix="create-db" encoding={encoding} />
 
         {error && (
           <div className={styles.error} data-testid="create-db-error">

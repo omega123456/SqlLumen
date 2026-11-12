@@ -1,4 +1,5 @@
 import type { PlaywrightForeignKey, PlaywrightListColumn, PlaywrightTableDataResult } from './types'
+import { PLAYWRIGHT_MOCK_DATABASE } from './connections'
 
 export const ORDERS_LIST_COLUMNS: PlaywrightListColumn[] = [
   {
@@ -89,7 +90,7 @@ export const ORDERS_FOREIGN_KEYS: PlaywrightForeignKey[] = [
   {
     name: 'fk_orders_user',
     columnName: 'user_id',
-    referencedDatabase: 'ecommerce_db',
+    referencedDatabase: PLAYWRIGHT_MOCK_DATABASE,
     referencedTable: 'users',
     referencedColumn: 'id',
     onDelete: 'CASCADE',

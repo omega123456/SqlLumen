@@ -15,7 +15,11 @@ import { TableDataGrid } from './TableDataGrid'
 import { TableDataFormView } from './TableDataFormView'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
-import type { WorkspaceTab, TableDataTab as TableDataTabType } from '../../types/schema'
+import type {
+  ExportOptions,
+  WorkspaceTab,
+  TableDataTab as TableDataTabType,
+} from '../../types/schema'
 import { InfoBar } from '../common/InfoBar'
 import { Button } from '../common/Button'
 import styles from './TableDataTab.module.css'
@@ -88,12 +92,7 @@ export function TableDataTab({
   const exportFilterModel = hasActiveFilters ? filterModel : undefined
 
   const handleExport = useCallback(
-    async (options: {
-      format: string
-      filePath: string
-      includeHeaders: boolean
-      tableName: string
-    }) => {
+    async (options: Required<ExportOptions>) => {
       await exportTableData({
         connectionId: connectionId,
         database: database,

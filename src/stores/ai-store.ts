@@ -13,6 +13,7 @@ import { showErrorToast } from './toast-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { estimateTokenCount } from '../lib/schema-ddl-compactor'
+import { toErrorMessage } from '../lib/error-message'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -830,7 +831,7 @@ export const useAiStore = create<AiState>()((set, get) => {
           `[ai-store] memory search returned ${allMemories.length} result(s) — sessionId=${sessionId}`
         )
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         logFrontend('debug', `[ai-store] memory retrieval failed (non-fatal) — error="${message}"`)
         logFrontend('warn', `[ai-store] Memory retrieval failed (non-fatal): ${message}`)
       }
@@ -998,7 +999,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         }
       } catch (error) {
         // Query expansion failed — fall back to original message
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         logFrontend('warn', `[ai-store] Query expansion fallback: ${message}`)
         logFrontend('debug', `[ai-store] falling back to original query: "${userMessage}"`)
       }
@@ -1067,7 +1068,7 @@ export const useAiStore = create<AiState>()((set, get) => {
           `[ai-store] assembled hints — recent=${hints.recentTables.length} editor=${hints.editorTables.length} accepted=${hints.acceptedTables.length}`
         )
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         logFrontend('warn', `[ai-store] hint assembly failed (non-fatal): ${message}`)
       }
 
@@ -1181,7 +1182,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         novelMemoryText: novelMemoryText,
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend('error', `[ai-store] Schema retrieval failed: ${message}`)
       showErrorToast('Schema retrieval failed', message)
       if (get().tabs[tabId]) {
@@ -1459,7 +1460,7 @@ export const useAiStore = create<AiState>()((set, get) => {
           const payload = buildSendAiChatPayload(tabId, streamId, settings)
           await sendAiChat(payload)
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error)
+          const errorMessage = toErrorMessage(error)
           logFrontend('error', `[ai-store] AI chat failed: ${errorMessage}`)
 
           if (get().tabs[tabId]) {
@@ -1501,7 +1502,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Cancel the backend stream (fire-and-forget)
       cancelAiStream(streamId).catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = toErrorMessage(error)
         logFrontend('warn', `[ai-store] AI cancel failed: ${errorMessage}`)
       })
     },
@@ -1727,7 +1728,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       if (tab?.activeStreamId) {
         cancelAiStream(tab.activeStreamId).catch((error) => {
-          const errorMessage = error instanceof Error ? error.message : String(error)
+          const errorMessage = toErrorMessage(error)
           logFrontend(
             'warn',
             `[ai-store] AI cancel during clearConversation failed: ${errorMessage}`
@@ -1794,7 +1795,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Cancel any in-flight AI request before tearing down the tab
       if (tab?.activeStreamId) {
         cancelAiStream(tab.activeStreamId).catch((error) => {
-          const errorMessage = error instanceof Error ? error.message : String(error)
+          const errorMessage = toErrorMessage(error)
           logFrontend(
             'warn',
             `[ai-store] AI cancel during cleanup for tab ${tabId} failed: ${errorMessage}`
@@ -1808,7 +1809,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         } catch (error) {
           logFrontend(
             'warn',
-            `[ai-store] Error calling unlisten for tab ${tabId}: ${error instanceof Error ? error.message : String(error)}`
+            `[ai-store] Error calling unlisten for tab ${tabId}: ${toErrorMessage(error)}`
           )
         }
       }

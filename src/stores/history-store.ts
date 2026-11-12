@@ -7,7 +7,8 @@ import {
 } from '../lib/history-commands'
 import { showErrorToast, showSuccessToast } from './toast-store'
 
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontendError } from '../lib/app-log-commands'
+import { toErrorMessage } from '../lib/error-message'
 const DEFAULT_PAGE_SIZE = 50
 /** Delay between the last search keystroke and the `list_history` request. */
 export const HISTORY_SEARCH_DEBOUNCE_MS = 250
@@ -142,8 +143,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
         },
       })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logFrontend('error', ['[history-store] loadHistory failed:', error].map(String).join(' '))
+      const message = toErrorMessage(error)
+      logFrontendError('[history-store] loadHistory failed:', error)
       if (isStale()) return
       if (append) {
         // Keep the already-loaded rows visible; surface the failure as a toast.
@@ -176,8 +177,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       const page = state.pageByConnection[connectionId] ?? 1
       await get().loadHistory(connectionId, { page })
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logFrontend('error', ['[history-store] deleteEntry failed:', error].map(String).join(' '))
+      const message = toErrorMessage(error)
+      logFrontendError('[history-store] deleteEntry failed:', error)
       showErrorToast('Failed to delete history entry', message)
     }
   },
@@ -192,8 +193,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       })
       showSuccessToast('History cleared', `Removed ${count} entries`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      logFrontend('error', ['[history-store] clearAll failed:', error].map(String).join(' '))
+      const message = toErrorMessage(error)
+      logFrontendError('[history-store] clearAll failed:', error)
       showErrorToast('Failed to clear history', message)
     }
   },

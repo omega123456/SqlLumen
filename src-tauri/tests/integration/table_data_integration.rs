@@ -1,6 +1,8 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
 use sqllumen_lib::commands::table_data::interpolate_sql_params;
+#[cfg(coverage)]
+use sqllumen_lib::mysql::pool::SslSettings;
 #[cfg(not(coverage))]
 use sqllumen_lib::mysql::table_data::fetch_table_pk_cached;
 use sqllumen_lib::mysql::table_data::{format_bytes, parse_enum_values, parse_set_values};
@@ -1034,10 +1036,12 @@ mod command_wrapper_coverage {
                     has_password: false,
                     keychain_ref: None,
                     default_database: Some("test_db".to_string()),
-                    ssl_enabled: false,
-                    ssl_ca_path: None,
-                    ssl_cert_path: None,
-                    ssl_key_path: None,
+                    ssl: SslSettings {
+                        enabled: false,
+                        ca_path: None,
+                        cert_path: None,
+                        key_path: None,
+                    },
                     connect_timeout_secs: 10,
                     keepalive_interval_secs: 0,
                 },
@@ -1477,7 +1481,10 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("restore should return cached entry");
-        assert_eq!(restored.status, "available");
+        assert_eq!(
+            restored.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Available
+        );
         assert_eq!(restored.data, Some(cached.clone()));
 
         let synced_insert =
@@ -1503,7 +1510,10 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("insert sync should succeed");
-        assert_eq!(synced_insert.status, "synced");
+        assert_eq!(
+            synced_insert.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Synced
+        );
 
         let synced_update =
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
@@ -1528,7 +1538,10 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("update sync should succeed");
-        assert_eq!(synced_update.status, "synced");
+        assert_eq!(
+            synced_update.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Synced
+        );
 
         let after_update =
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
@@ -1573,7 +1586,10 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("delete sync should succeed");
-        assert_eq!(synced_delete.status, "synced");
+        assert_eq!(
+            synced_delete.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Synced
+        );
 
         let final_restore =
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
@@ -1590,7 +1606,10 @@ mod command_wrapper_coverage {
         let final_data = final_restore
             .data
             .expect("deleted cache should still exist");
-        assert_eq!(final_restore.status, "available");
+        assert_eq!(
+            final_restore.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Available
+        );
         assert_eq!(
             *final_data.rows,
             vec![vec![serde_json::json!(2), serde_json::json!("Bob")]]
@@ -1618,7 +1637,10 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("missing sync should return status");
-        assert_eq!(missing_sync.status, "missing");
+        assert_eq!(
+            missing_sync.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Missing
+        );
 
         let missing_restore =
             invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
@@ -1632,7 +1654,10 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("missing restore should return status");
-        assert_eq!(missing_restore.status, "missing");
+        assert_eq!(
+            missing_restore.status,
+            sqllumen_lib::mysql::cache_status::CacheStatus::Missing
+        );
         assert_eq!(missing_restore.data, None);
     }
 

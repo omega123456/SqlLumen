@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef, type FormEvent } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { FolderOpen, X } from '@phosphor-icons/react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
@@ -6,11 +6,10 @@ import { Checkbox } from '../common/Checkbox'
 import { InfoBar } from '../common/InfoBar'
 import { DialogShell } from './DialogShell'
 import { Button } from '../common/Button'
-import { logFrontend } from '../../lib/app-log-commands'
 import { exportResults } from '../../lib/export-commands'
 import { formatCount } from '../../lib/format-row-count'
 import { useQueryStore, type ExportRowScope, type ResultExportJob } from '../../stores/query-store'
-import type { ExportFormat } from '../../types/schema'
+import type { ExportFormat, ExportOptions } from '../../types/schema'
 import styles from './ExportDialog.module.css'
 import {
   BYTES_PER_MEGABYTE,
@@ -18,10 +17,12 @@ import {
   SECONDS_PER_MINUTE,
   TWO_DIGIT_WIDTH,
 } from '../../lib/units'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
+import { useFormSubmit } from '../../hooks/useFormSubmit'
+import { useBrowseFilePath } from '../../hooks/useBrowseFilePath'
 
 const ONE_DECIMAL_BELOW_MEGABYTES = 10
-
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 interface ExportDialogProps {
   connectionId: string
@@ -30,12 +31,7 @@ interface ExportDialogProps {
   /** Optional result index for multi-result tabs. */
   resultIndex?: number
   /** When provided, called instead of the built-in exportResults() for custom export logic. */
-  onExport?: (options: {
-    format: string
-    filePath: string
-    includeHeaders: boolean
-    tableName: string
-  }) => Promise<void>
+  onExport?: (options: Required<ExportOptions>) => Promise<void>
   /** When provided, used as the initial table name instead of 'exported_results'. */
   defaultTableName?: string
   /** When true, hides the SQL INSERT format option (views cannot be inserted into). */
@@ -88,6 +84,11 @@ const FORMAT_KEYS = Object.keys(EXPORT_FORMAT_CONFIG) as ExportFormat[]
 /** XLSX option description when the dialog offers "All rows" (wireframe 6). */
 const XLSX_ALL_ROWS_DESCRIPTION = 'Excel (.xlsx) · up to 1,048,576 rows'
 
+function keepTableNameForSqlInsertOnly(options: Required<ExportOptions>): ExportOptions {
+  const tableName = options.format === 'sql-insert' ? options.tableName : undefined
+  return { ...options, tableName: tableName }
+}
+
 /** Sentence naming the grid sort and filters a full export ignores. */
 function ignoredViewMessage(hasSort: boolean, filterCount: number): string {
   const filters = `${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}`
@@ -136,7 +137,7 @@ export default function ExportDialog({
   isView,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('csv')
-  const [filePath, setFilePath] = useState('')
+  const { filePath, setFilePath, browseForFilePath } = useBrowseFilePath('export-dialog')
   const [includeHeaders, setIncludeHeaders] = useState(true)
   const [tableName, setTableName] = useState(defaultTableName ?? 'exported_results')
   const [isExporting, setIsExporting] = useState(false)
@@ -216,31 +217,30 @@ export default function ExportDialog({
   const showIgnoredViewWarning = effectiveScope === 'allRows' && (hasSort || filterCount > 0)
   const showSheetLimitWarning = effectiveScope === 'allRows' && format === 'xlsx'
 
-  const handleBrowse = useCallback(async () => {
+  const handleBrowse = useCallback(() => {
     const config = EXPORT_FORMAT_CONFIG[format]
-    try {
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const selectedPath = await save({
-        defaultPath: `query_results_${Date.now()}.${config.extension}`,
-        filters: [{ name: config.label, extensions: [config.extension] }],
-      })
-      if (selectedPath) setFilePath(selectedPath)
-    } catch (error) {
-      logFrontend('info', `[export-dialog] Save dialog unavailable: ${String(error)}`)
-    }
-  }, [format])
+    return browseForFilePath({
+      defaultPath: `query_results_${Date.now()}.${config.extension}`,
+      filterName: config.label,
+      extension: config.extension,
+    })
+  }, [browseForFilePath, format])
 
   const handleExport = useCallback(async () => {
     if (!filePath) return
+    const requestedOptions: Required<ExportOptions> = {
+      format,
+      filePath,
+      includeHeaders,
+      tableName,
+    }
+    const backendOptions = keepTableNameForSqlInsertOnly(requestedOptions)
     if (effectiveScope === 'allRows') {
       setError(null)
       await startFullExport(tabId, {
+        ...backendOptions,
         connectionId: connectionId,
         resultIndex: resolvedResultIndex,
-        format: format,
-        filePath: filePath,
-        includeHeaders: includeHeaders,
-        tableName: format === 'sql-insert' ? tableName : undefined,
       })
       return
     }
@@ -248,28 +248,13 @@ export default function ExportDialog({
     setError(null)
     try {
       if (onExport) {
-        await onExport({
-          format,
-          filePath,
-          includeHeaders,
-          tableName,
-        })
+        await onExport(requestedOptions)
       } else {
-        await exportResults(
-          connectionId,
-          tabId,
-          {
-            format: format,
-            filePath: filePath,
-            includeHeaders: includeHeaders,
-            tableName: format === 'sql-insert' ? tableName : undefined,
-          },
-          resultIndex
-        )
+        await exportResults(connectionId, tabId, backendOptions, resultIndex)
       }
       onClose()
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage = toErrorMessage(error)
       if (errorMessage.includes('results_expired')) {
         const tab = useQueryStore.getState().tabs[tabId]
         if (tab) {
@@ -323,13 +308,7 @@ export default function ExportDialog({
     })
   }, [exportJob, startFullExport, tabId])
 
-  const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      void handleExport()
-    },
-    [handleExport]
-  )
+  const handleSubmit = useFormSubmit(handleExport)
 
   return (
     <DialogShell
@@ -338,7 +317,7 @@ export default function ExportDialog({
       maxWidth={440}
       testId="export-dialog"
       ariaLabel="Export results"
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isFullExportRunning}
       formProps={{ onSubmit: handleSubmit }}
     >

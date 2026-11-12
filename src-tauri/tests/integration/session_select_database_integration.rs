@@ -1,4 +1,5 @@
 use crate::common;
+use sqllumen_lib::mysql::pool::SslSettings;
 
 use sqllumen_lib::commands::session::select_database_impl;
 use sqllumen_lib::commands::session::set_test_select_database_hook;
@@ -51,10 +52,12 @@ fn register_connection(state: &AppState, connection_id: &str) {
                 has_password: false,
                 keychain_ref: None,
                 default_database: Some("ecommerce_db".to_string()),
-                ssl_enabled: false,
-                ssl_ca_path: None,
-                ssl_cert_path: None,
-                ssl_key_path: None,
+                ssl: SslSettings {
+                    enabled: false,
+                    ca_path: None,
+                    cert_path: None,
+                    key_path: None,
+                },
                 connect_timeout_secs: 10,
                 keepalive_interval_secs: 0,
             },
@@ -81,10 +84,12 @@ fn register_connection_with_password(state: &AppState, connection_id: &str, prof
                 has_password: true,
                 keychain_ref: Some(profile_id.to_string()),
                 default_database: Some("ecommerce_db".to_string()),
-                ssl_enabled: false,
-                ssl_ca_path: None,
-                ssl_cert_path: None,
-                ssl_key_path: None,
+                ssl: SslSettings {
+                    enabled: false,
+                    ca_path: None,
+                    cert_path: None,
+                    key_path: None,
+                },
                 connect_timeout_secs: 10,
                 keepalive_interval_secs: 0,
             },

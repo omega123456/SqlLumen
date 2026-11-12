@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { getSetting } from '../lib/tauri-commands'
 import type { ShortcutBinding } from '../types/schema'
 
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontendError } from '../lib/app-log-commands'
 // ---------------------------------------------------------------------------
 // Default shortcut bindings
 // ---------------------------------------------------------------------------
@@ -121,10 +121,7 @@ export const useShortcutStore = create<ShortcutState>()((set, get) => ({
       const serialized = await getSetting('shortcuts')
       get().loadShortcuts(serialized ?? undefined)
     } catch (error) {
-      logFrontend(
-        'error',
-        ['[shortcut-store] Failed to load shortcuts from backend:', error].map(String).join(' ')
-      )
+      logFrontendError('[shortcut-store] Failed to load shortcuts from backend:', error)
     }
   },
 
@@ -144,10 +141,7 @@ export const useShortcutStore = create<ShortcutState>()((set, get) => ({
       }
       set({ shortcuts: merged })
     } catch (error) {
-      logFrontend(
-        'error',
-        ['[shortcut-store] Failed to parse shortcuts:', error].map(String).join(' ')
-      )
+      logFrontendError('[shortcut-store] Failed to parse shortcuts:', error)
       set({ shortcuts: { ...DEFAULT_SHORTCUTS } })
     }
   },

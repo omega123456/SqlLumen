@@ -1,4 +1,4 @@
-import { logFrontend } from './app-log-commands'
+import { logFrontend, logFrontendWarning } from './app-log-commands'
 /**
  * Session restore IPC wrappers.
  *
@@ -84,18 +84,10 @@ export async function loadSessionState(): Promise<SessionState | null> {
     if (parsed && parsed.version === 1 && Array.isArray(parsed.connections)) {
       return parsed
     }
-    logFrontend(
-      'warn',
-      ['[session-restore] Invalid session state version or structure, ignoring']
-        .map(String)
-        .join(' ')
-    )
+    logFrontend('warn', '[session-restore] Invalid session state version or structure, ignoring')
     return null
   } catch (error) {
-    logFrontend(
-      'warn',
-      ['[session-restore] Failed to parse session state JSON:', error].map(String).join(' ')
-    )
+    logFrontendWarning('[session-restore] Failed to parse session state JSON:', error)
     return null
   }
 }

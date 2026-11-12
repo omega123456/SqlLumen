@@ -18,6 +18,7 @@ import type { MemoryScope } from '../../lib/ai-memory-commands'
 import styles from './AiChatInput.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
+import { toErrorMessage } from '../../lib/error-message'
 
 const CONTEXT_CHIP_MAX_LENGTH = 60
 const TRUNCATION_ELLIPSIS = '...'
@@ -246,7 +247,7 @@ export function AiChatInput({
             setValue(savedValue)
             logFrontend(
               'warn',
-              `[AiChatInput] slash command /${commandName} rejected: ${error instanceof Error ? error.message : String(error)}`
+              `[AiChatInput] slash command /${commandName} rejected: ${toErrorMessage(error)}`
             )
           })
         return
@@ -276,10 +277,7 @@ export function AiChatInput({
           resetHeight()
         })
         .catch((error: unknown) => {
-          logFrontend(
-            'warn',
-            `[AiChatInput] /remember (ask) rejected: ${error instanceof Error ? error.message : String(error)}`
-          )
+          logFrontend('warn', `[AiChatInput] /remember (ask) rejected: ${toErrorMessage(error)}`)
         })
     },
     [pendingRememberContent, connectionId, resetHeight]

@@ -20,6 +20,7 @@ use sqllumen_lib::credentials::{self};
 use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
 #[cfg(coverage)]
 use sqllumen_lib::mysql::health::spawn_health_monitor;
+use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::pool::{
     build_connect_options, create_pool, set_test_pool_factory, ConnectionParams,
 };
@@ -331,10 +332,12 @@ fn sample_registry_entry(status: ConnectionStatus) -> RegistryEntry {
             has_password: false,
             keychain_ref: None,
             default_database: None,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
         },
@@ -739,10 +742,12 @@ fn build_connect_options_applies_ssl_database_and_credentials() {
         username: "alice".to_string(),
         password: "super-secret".to_string(),
         default_database: Some("analytics".to_string()),
-        ssl_enabled: true,
-        ssl_ca_path: Some("C:/certs/ca.pem".to_string()),
-        ssl_cert_path: Some("C:/certs/client.crt".to_string()),
-        ssl_key_path: Some("C:/certs/client.key".to_string()),
+        ssl: SslSettings {
+            enabled: true,
+            ca_path: Some("C:/certs/ca.pem".to_string()),
+            cert_path: Some("C:/certs/client.crt".to_string()),
+            key_path: Some("C:/certs/client.key".to_string()),
+        },
         connect_timeout_secs: 9,
     };
     let url = build_connect_options(&params).to_url_lossy().to_string();
@@ -761,10 +766,12 @@ fn build_connect_options_disables_ssl_and_omits_empty_database() {
         username: "root".to_string(),
         password: "pw".to_string(),
         default_database: Some(String::new()),
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
+        ssl: SslSettings {
+            enabled: false,
+            ca_path: None,
+            cert_path: None,
+            key_path: None,
+        },
         connect_timeout_secs: 4,
     };
     let url = build_connect_options(&params).to_url_lossy().to_string();
@@ -782,10 +789,12 @@ async fn create_pool_uses_injected_test_factory() {
         username: "root".to_string(),
         password: "pw".to_string(),
         default_database: None,
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
+        ssl: SslSettings {
+            enabled: false,
+            ca_path: None,
+            cert_path: None,
+            key_path: None,
+        },
         connect_timeout_secs: 1,
     })
     .await
@@ -913,10 +922,12 @@ async fn close_connection_impl_evicts_metadata_cache_for_closed_connection() {
             has_password: false,
             keychain_ref: None,
             default_database: Some("test_db".to_string()),
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
         },
@@ -1415,10 +1426,12 @@ async fn health_reconnect_uses_profile_id_credential_key() {
                 has_password: true,
                 keychain_ref: Some(connection_id.clone()),
                 default_database: None,
-                ssl_enabled: false,
-                ssl_ca_path: None,
-                ssl_cert_path: None,
-                ssl_key_path: None,
+                ssl: SslSettings {
+                    enabled: false,
+                    ca_path: None,
+                    cert_path: None,
+                    key_path: None,
+                },
                 connect_timeout_secs: 10,
                 keepalive_interval_secs: 0,
             },
@@ -1471,10 +1484,12 @@ async fn health_reconnect_surfaces_secure_storage_wording_for_credential_failure
                 has_password: true,
                 keychain_ref: Some(connection_id.clone()),
                 default_database: None,
-                ssl_enabled: false,
-                ssl_ca_path: None,
-                ssl_cert_path: None,
-                ssl_key_path: None,
+                ssl: SslSettings {
+                    enabled: false,
+                    ca_path: None,
+                    cert_path: None,
+                    key_path: None,
+                },
                 connect_timeout_secs: 10,
                 keepalive_interval_secs: 0,
             },

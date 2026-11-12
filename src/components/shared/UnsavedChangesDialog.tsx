@@ -10,8 +10,8 @@ import { useState, useCallback } from 'react'
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
 import styles from './UnsavedChangesDialog.module.css'
-
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
 
 interface UnsavedChangesDialogProps {
   tabId: string
@@ -51,7 +51,7 @@ export function UnsavedChangesDialog({
     try {
       await onSave()
     } catch (error) {
-      setInternalError(error instanceof Error ? error.message : String(error))
+      setInternalError(toErrorMessage(error))
     } finally {
       setInternalSaving(false)
     }
@@ -64,7 +64,7 @@ export function UnsavedChangesDialog({
       maxWidth={400}
       testId="unsaved-changes-dialog"
       ariaLabel="Unsaved changes"
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
     >
       <div className={styles.root}>
         <div className={styles.header}>

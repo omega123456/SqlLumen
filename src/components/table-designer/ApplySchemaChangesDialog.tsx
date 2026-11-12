@@ -1,15 +1,16 @@
 import { WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
+import { SQL_HIGHLIGHT_CLASS_NAMES } from '../../lib/sql-highlight-class-names'
 import { applyTableDdl } from '../../lib/table-designer-commands'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
 import styles from './ApplySchemaChangesDialog.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
-
+import { logFrontendError } from '../../lib/app-log-commands'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
 export interface ApplySchemaChangesDialogProps {
   isOpen: boolean
   ddl: string
@@ -38,14 +39,7 @@ export function ApplySchemaChangesDialog({
   const [isExecuting, setIsExecuting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const highlightedDdl = useMemo(
-    () =>
-      SqlSyntaxHighlighter.highlightSql(ddl, {
-        keyword: styles.keyword,
-        identifier: styles.identifier,
-        type: styles.type,
-        string: styles.string,
-        number: styles.number,
-      }),
+    () => SqlSyntaxHighlighter.highlightSql(ddl, SQL_HIGHLIGHT_CLASS_NAMES),
     [ddl]
   )
 
@@ -68,11 +62,8 @@ export function ApplySchemaChangesDialog({
       showSuccessToast(successTitle, tableLabel)
       onSuccess()
     } catch (applyError) {
-      logFrontend(
-        'error',
-        ['[apply-schema-dialog] Failed to apply schema changes', applyError].map(String).join(' ')
-      )
-      const message = applyError instanceof Error ? applyError.message : String(applyError)
+      logFrontendError('[apply-schema-dialog] Failed to apply schema changes', applyError)
+      const message = toErrorMessage(applyError)
       setError(message)
       showErrorToast('Failed to apply schema changes', message)
     } finally {
@@ -87,7 +78,7 @@ export function ApplySchemaChangesDialog({
       maxWidth={760}
       testId="apply-schema-dialog"
       ariaLabel="Apply schema changes"
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isExecuting}
     >
       <div className={styles.root}>

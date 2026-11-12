@@ -6,7 +6,7 @@ import {
   listSchemaObjects,
   listColumns,
 } from '../lib/schema-commands'
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontendWarning } from '../lib/app-log-commands'
 
 // ---------------------------------------------------------------------------
 // Node ID encoding helpers
@@ -560,11 +560,9 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     )
     await get().loadDatabases(connectionId)
     void invalidateMetadataCache(connectionId).catch((error) => {
-      logFrontend(
-        'warn',
-        ['[schema-store] Failed to invalidate backend metadata cache during refreshAll:', error]
-          .map(String)
-          .join(' ')
+      logFrontendWarning(
+        '[schema-store] Failed to invalidate backend metadata cache during refreshAll:',
+        error
       )
     })
   },

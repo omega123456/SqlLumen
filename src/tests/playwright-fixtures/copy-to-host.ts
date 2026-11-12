@@ -1,6 +1,11 @@
 import type { CopyProgress, CopyableObjects } from '../../lib/copy-to-host-commands'
+import { PLAYWRIGHT_MOCK_DATABASE } from './connections'
 
-export const COPY_TO_HOST_TARGET_DATABASES = ['ecommerce_db', 'analytics_db', 'staging_db']
+export const COPY_TO_HOST_TARGET_DATABASES = [
+  PLAYWRIGHT_MOCK_DATABASE,
+  'analytics_db',
+  'staging_db',
+]
 
 export const COPY_TO_HOST_OBJECTS: CopyableObjects = {
   tables: [

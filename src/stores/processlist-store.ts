@@ -7,6 +7,7 @@ import { showErrorToast } from './toast-store'
 import { useHistoryStore } from './history-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { toErrorMessage } from '../lib/error-message'
 const DEFAULT_REFRESH_INTERVAL_MS = 2000
 const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
 const ERROR_TOAST_COOLDOWN_MS = 30_000
@@ -111,7 +112,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
       // Stale guard on error path too
       if (get().fetchGenerationByConnection[connectionId] !== generation) return
 
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
 
       set({
         isFetchingByConnection: {

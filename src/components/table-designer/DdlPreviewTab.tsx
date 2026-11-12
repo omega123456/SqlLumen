@@ -2,13 +2,14 @@ import { Copy } from '@phosphor-icons/react'
 import { useMemo } from 'react'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
-import sqlHighlightStyles from '../../styles/sql-syntax-highlight.module.css'
+import { SQL_HIGHLIGHT_CLASS_NAMES } from '../../lib/sql-highlight-class-names'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
 import styles from './DdlPreviewTab.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendError } from '../../lib/app-log-commands'
+import { toErrorMessage } from '../../lib/error-message'
 interface DdlPreviewTabProps {
   tabId: string
 }
@@ -21,14 +22,7 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
   const ddlError = tabState?.ddlError ?? null
 
   const highlightedSql = useMemo(
-    () =>
-      SqlSyntaxHighlighter.highlightSql(ddl, {
-        keyword: sqlHighlightStyles.keyword,
-        identifier: sqlHighlightStyles.identifier,
-        type: sqlHighlightStyles.type,
-        string: sqlHighlightStyles.string,
-        number: sqlHighlightStyles.number,
-      }),
+    () => SqlSyntaxHighlighter.highlightSql(ddl, SQL_HIGHLIGHT_CLASS_NAMES),
     [ddl]
   )
 
@@ -41,8 +35,8 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
       await writeClipboardText(ddl)
       showSuccessToast('Copied to clipboard')
     } catch (error) {
-      logFrontend('error', ['[ddl-preview-tab] Failed to copy DDL', error].map(String).join(' '))
-      showErrorToast('Copy failed', error instanceof Error ? error.message : String(error))
+      logFrontendError('[ddl-preview-tab] Failed to copy DDL', error)
+      showErrorToast('Copy failed', toErrorMessage(error))
     }
   }
 

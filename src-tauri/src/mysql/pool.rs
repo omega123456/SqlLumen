@@ -16,6 +16,14 @@ const MAX_POOL_CONNECTIONS: u32 = 10;
 #[cfg(any(test, feature = "test-utils"))]
 static TEST_POOL_FACTORY: std::sync::Mutex<Option<TestPoolFactory>> = std::sync::Mutex::new(None);
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SslSettings {
+    pub enabled: bool,
+    pub ca_path: Option<String>,
+    pub cert_path: Option<String>,
+    pub key_path: Option<String>,
+}
+
 /// Parameters for creating a MySQL connection pool.
 pub struct ConnectionParams {
     pub host: String,
@@ -23,11 +31,25 @@ pub struct ConnectionParams {
     pub username: String,
     pub password: String,
     pub default_database: Option<String>,
-    pub ssl_enabled: bool,
-    pub ssl_ca_path: Option<String>,
-    pub ssl_cert_path: Option<String>,
-    pub ssl_key_path: Option<String>,
+    pub ssl: SslSettings,
     pub connect_timeout_secs: u64,
+}
+
+fn apply_ssl_settings(opts: MySqlConnectOptions, ssl: &SslSettings) -> MySqlConnectOptions {
+    if !ssl.enabled {
+        return opts.ssl_mode(MySqlSslMode::Disabled);
+    }
+    let mut opts = match ssl.ca_path {
+        Some(ref ca_path) => opts.ssl_mode(MySqlSslMode::VerifyCa).ssl_ca(ca_path),
+        None => opts.ssl_mode(MySqlSslMode::Required),
+    };
+    if let Some(ref cert_path) = ssl.cert_path {
+        opts = opts.ssl_client_cert(cert_path);
+    }
+    if let Some(ref key_path) = ssl.key_path {
+        opts = opts.ssl_client_key(key_path);
+    }
+    opts
 }
 
 pub fn build_connect_options(params: &ConnectionParams) -> MySqlConnectOptions {
@@ -46,25 +68,7 @@ pub fn build_connect_options(params: &ConnectionParams) -> MySqlConnectOptions {
         }
     }
 
-    if params.ssl_enabled {
-        if let Some(ref ca_path) = params.ssl_ca_path {
-            opts = opts.ssl_mode(MySqlSslMode::VerifyCa).ssl_ca(ca_path);
-        } else {
-            opts = opts.ssl_mode(MySqlSslMode::Required);
-        }
-
-        if let Some(ref cert_path) = params.ssl_cert_path {
-            opts = opts.ssl_client_cert(cert_path);
-        }
-
-        if let Some(ref key_path) = params.ssl_key_path {
-            opts = opts.ssl_client_key(key_path);
-        }
-    } else {
-        opts = opts.ssl_mode(MySqlSslMode::Disabled);
-    }
-
-    opts
+    apply_ssl_settings(opts, &params.ssl)
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -73,6 +77,14 @@ pub fn set_test_pool_factory(factory: Option<TestPoolFactory>) {
         .lock()
         .expect("test pool factory lock poisoned");
     *guard = factory;
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+fn create_test_pool(params: &ConnectionParams) -> Option<Result<MySqlPool, sqlx::Error>> {
+    let factory = *TEST_POOL_FACTORY
+        .lock()
+        .expect("test pool factory lock poisoned");
+    factory.map(|create| create(params))
 }
 
 /// Create a MySQL connection pool from the given parameters.
@@ -90,11 +102,8 @@ pub fn set_test_pool_factory(factory: Option<TestPoolFactory>) {
 #[cfg(not(coverage))]
 pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
     #[cfg(any(test, feature = "test-utils"))]
-    if let Some(factory) = *TEST_POOL_FACTORY
-        .lock()
-        .expect("test pool factory lock poisoned")
-    {
-        return factory(params);
+    if let Some(test_pool) = create_test_pool(params) {
+        return test_pool;
     }
 
     let opts = build_connect_options(params);
@@ -110,11 +119,8 @@ pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::E
 #[cfg(coverage)]
 pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
     #[cfg(any(test, feature = "test-utils"))]
-    if let Some(factory) = *TEST_POOL_FACTORY
-        .lock()
-        .expect("test pool factory lock poisoned")
-    {
-        return factory(params);
+    if let Some(test_pool) = create_test_pool(params) {
+        return test_pool;
     }
 
     let _ = build_connect_options(params);

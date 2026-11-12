@@ -15,6 +15,18 @@ export function logFrontend(level: FrontendLogLevel, message: string): void {
   })
 }
 
+function describeFailure(message: string, error: unknown): string {
+  return `${message} ${String(error)}`
+}
+
+export function logFrontendError(message: string, error: unknown): void {
+  logFrontend('error', describeFailure(message, error))
+}
+
+export function logFrontendWarning(message: string, error: unknown): void {
+  logFrontend('warn', describeFailure(message, error))
+}
+
 export function logParseFallback(source: string, error: unknown): void {
   logFrontend('debug', `${source} could not parse its input, using the fallback: ${String(error)}`)
 }

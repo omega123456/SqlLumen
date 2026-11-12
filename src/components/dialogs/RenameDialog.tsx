@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
 import styles from './RenameDialog.module.css'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../../lib/sql-utils'
+import { useFormSubmit } from '../../hooks/useFormSubmit'
 
 export interface RenameDialogProps {
   isOpen: boolean
@@ -44,13 +45,7 @@ export function RenameDialog({
     onConfirm(trimmedNew)
   }, [isLoading, isValid, onConfirm, trimmedNew])
 
-  const handleFormSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      handleSubmit()
-    },
-    [handleSubmit]
-  )
+  const handleFormSubmit = useFormSubmit(handleSubmit)
 
   return (
     <DialogShell

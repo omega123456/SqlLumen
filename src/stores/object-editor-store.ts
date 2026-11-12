@@ -12,6 +12,7 @@ import { showSuccessToast, showErrorToast } from './toast-store'
 import { useSchemaStore } from './schema-store'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 import { invalidateCache as invalidateSchemaMetadataCache } from '../components/query-editor/schema-metadata-cache'
+import { toErrorMessage } from '../lib/error-message'
 
 // ---------------------------------------------------------------------------
 // Per-tab state
@@ -148,7 +149,7 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
       } catch (error) {
         if (!get().tabs[tabId]) return
 
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = toErrorMessage(error)
         patchTab(tabId, {
           isLoading: false,
           error: errorMessage,
@@ -175,7 +176,7 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
       } catch (error) {
         if (!get().tabs[tabId]) return
 
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = toErrorMessage(error)
         showErrorToast('Save failed', errorMessage)
         patchTab(tabId, { isSaving: false, error: errorMessage })
         return

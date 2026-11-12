@@ -1,4 +1,5 @@
 import type { SnapshotSummary } from '../../lib/session-snapshot-commands'
+import { PLAYWRIGHT_MOCK_CONNECTION_ID, PLAYWRIGHT_MOCK_DATABASE } from './connections'
 
 /**
  * Playwright fixture data for session snapshot list / get / create / delete.
@@ -50,7 +51,7 @@ export const DEFAULT_SNAPSHOT_STATE_JSON: string = JSON.stringify({
   activeConnectionIndex: 0,
   connections: [
     {
-      profileId: 'conn-playwright-1',
+      profileId: PLAYWRIGHT_MOCK_CONNECTION_ID,
       activeTabIndex: 0,
       tabs: [
         {
@@ -61,7 +62,7 @@ export const DEFAULT_SNAPSHOT_STATE_JSON: string = JSON.stringify({
         {
           type: 'table-data',
           tabId: 'tab-snapshot-2',
-          databaseName: 'ecommerce_db',
+          databaseName: PLAYWRIGHT_MOCK_DATABASE,
           tableName: 'orders',
           objectType: 'table',
         },

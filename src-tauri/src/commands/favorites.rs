@@ -3,17 +3,9 @@
 //! Under `cfg(coverage)`, all Tauri command wrappers are excluded — tests exercise
 //! the `*_impl` functions directly.
 
+use crate::commands::helpers::lock_db;
 use crate::db::favorites::{self, CreateFavoriteInput, FavoriteEntry, UpdateFavoriteInput};
 use crate::state::AppState;
-use rusqlite::Connection;
-use std::sync::MutexGuard;
-
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => Err(error.to_string()),
-    }
-}
 
 // ── create_favorite ──────────────────────────────────────────────────────────
 

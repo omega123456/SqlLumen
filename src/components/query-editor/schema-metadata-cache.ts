@@ -17,8 +17,9 @@ import type {
   SearchableObject,
 } from '../../types/schema'
 import { fetchSchemaMetadataFull } from '../../lib/query-commands'
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendWarning } from '../../lib/app-log-commands'
 import { hasTauriApis } from '../../lib/tauri-env'
+import { toErrorMessage } from '../../lib/error-message'
 
 export interface SchemaMetadataInvalidatedPayload {
   connectionId: string
@@ -312,7 +313,7 @@ export async function loadCache(connectionId: string): Promise<void> {
       const errorCache: SchemaCache = {
         ...emptyCache(),
         status: 'error',
-        error: error instanceof Error ? error.message : String(error),
+        error: toErrorMessage(error),
       }
       cacheMap.set(connectionId, errorCache)
     }
@@ -374,22 +375,15 @@ export async function setupSchemaInvalidationListener(): Promise<(() => void) | 
       (event) => {
         invalidateCache(event.payload.connectionId)
         void refreshCacheInBackground(event.payload.connectionId).catch((error) => {
-          logFrontend(
-            'warn',
-            ['[schema-metadata-cache] Background refresh after schema invalidation failed:', error]
-              .map(String)
-              .join(' ')
+          logFrontendWarning(
+            '[schema-metadata-cache] Background refresh after schema invalidation failed:',
+            error
           )
         })
       }
     )
   } catch (error) {
-    logFrontend(
-      'warn',
-      ['[schema-metadata-cache] schema-metadata-invalidated listen failed:', error]
-        .map(String)
-        .join(' ')
-    )
+    logFrontendWarning('[schema-metadata-cache] schema-metadata-invalidated listen failed:', error)
     return undefined
   }
 }

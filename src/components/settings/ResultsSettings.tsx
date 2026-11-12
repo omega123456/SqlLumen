@@ -1,6 +1,7 @@
 import { Dropdown } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { SettingsSection } from './SettingsSection'
+import { SettingsFieldLabel } from './SettingsField'
 import { SettingsToggle } from './SettingsToggle'
 import {
   RESULTS_MAX_ROWS_MAX,
@@ -26,8 +27,6 @@ const MAX_TABS_PER_GROUP_OPTIONS = [
   { label: '15', value: '15' },
   { label: '20', value: '20' },
 ]
-
-const LABEL_STYLE = { display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' } as const
 
 /** The existing caption style (`--type-caption-size`, `--on-surface-variant`, 6px top margin). */
 const CAPTION_STYLE = {
@@ -68,9 +67,7 @@ export function ResultsSettings() {
     <div data-testid="settings-results">
       <SettingsSection title="Data grid" description="Customize how query results are displayed.">
         <div>
-          <label htmlFor="settings-page-size" style={LABEL_STYLE}>
-            Row limit
-          </label>
+          <SettingsFieldLabel htmlFor="settings-page-size">Row limit</SettingsFieldLabel>
           <TextInput
             id="settings-page-size"
             type="number"
@@ -92,9 +89,9 @@ export function ResultsSettings() {
           )}
         </div>
         <div>
-          <label htmlFor="settings-max-rows" style={LABEL_STYLE}>
+          <SettingsFieldLabel htmlFor="settings-max-rows">
             Maximum rows kept per result
-          </label>
+          </SettingsFieldLabel>
           <TextInput
             id="settings-max-rows"
             type="number"
@@ -128,9 +125,7 @@ export function ResultsSettings() {
           )}
         </div>
         <div>
-          <label htmlFor="settings-null-display" style={LABEL_STYLE}>
-            NULL display text
-          </label>
+          <SettingsFieldLabel htmlFor="settings-null-display">NULL display text</SettingsFieldLabel>
           <TextInput
             id="settings-null-display"
             value={nullDisplay}
@@ -145,12 +140,7 @@ export function ResultsSettings() {
         description="Control how long query results and table data are kept in memory before being discarded."
       >
         <div>
-          <label
-            id="cache-ttl-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Cache duration
-          </label>
+          <SettingsFieldLabel id="cache-ttl-label">Cache duration</SettingsFieldLabel>
           <div style={{ width: 200 }}>
             <Dropdown
               id="settings-cache-ttl"
@@ -177,12 +167,9 @@ export function ResultsSettings() {
           data-testid="settings-table-tabs-bottom"
         />
         <div>
-          <label
-            id="max-tabs-per-group-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
+          <SettingsFieldLabel id="max-tabs-per-group-label">
             Max open tabs per group
-          </label>
+          </SettingsFieldLabel>
           <div style={{ width: 200 }}>
             <Dropdown
               id="settings-max-tabs-per-group"

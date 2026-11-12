@@ -17,11 +17,10 @@ import {
   type EditorCallbacksContextType,
 } from '../shared/editor-callbacks-context'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
-import { FkLookupDialog } from './FkLookupDialog'
-import { BlobViewerDialog } from '../dialogs/BlobViewerDialog'
-import { fetchBlobValue } from '../../lib/table-data-commands'
-import { buildEnvelopedPrimaryKeyPairs } from '../../lib/blob-utils'
-import type { BlobEnvelope } from '../../types/schema'
+import { BlobViewerTargetDialog, ForeignKeyLookupTargetDialog } from './TableDataCellDialogs'
+import { useBlobViewerState } from './use-blob-viewer-state'
+import { useFkLookupFlow } from './use-fk-lookup-flow'
+import { reportInvalidTemporalValue } from './row-save-feedback'
 import {
   useTableDataStore,
   isSameRowKey,
@@ -29,7 +28,6 @@ import {
   getRowKeyFromData,
 } from '../../stores/table-data-store'
 import { useToastStore } from '../../stores/toast-store'
-import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import {
   AUTO_SIZE_SAMPLE_LIMIT,
   DEFAULT_COLUMN_WIDTH_PX,
@@ -44,7 +42,7 @@ import type {
   CellClipboardEditArgs,
   AutoSizeConfig,
 } from '../../types/shared-data-view'
-import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
+import type { TableDataColumnMeta } from '../../types/schema'
 import { buildColumnDescriptors } from './table-data-grid-columns'
 
 const FOREIGN_KEY_SHORTCUT_COOLDOWN_MS = 250
@@ -100,7 +98,6 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const sortByColumn = useTableDataStore((state) => state.sortByColumn)
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
-  const stageBlobEnvelope = useTableDataStore((state) => state.stageBlobEnvelope)
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
   const columnJumpRequest = useTableDataStore((state) => state.columnJumpRequests[tabId])
   const highlightedColumnKey = useTableDataStore(
@@ -217,29 +214,17 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     [tabId, storeUpdateCellValue]
   )
 
-  // ---------------------------------------------------------------------------
-  // FK Lookup state — Phase 6B: opens the FkLookupDialog with context.
-  // ---------------------------------------------------------------------------
-  const [foreignKeyLookupOpen, setForeignKeyLookupOpen] = useState(false)
-  const [foreignKeyLookupContext, setForeignKeyLookupContext] = useState<{
-    columnKey: string
-    currentValue: unknown
-    foreignKey: ForeignKeyColumnInfo
-    rowData: Record<string, unknown>
-  } | null>(null)
+  const { foreignKeyLookupTarget, openForeignKeyLookup, closeForeignKeyLookup } = useFkLookupFlow()
+  const isForeignKeyLookupOpen = foreignKeyLookupTarget !== null
   const ignoreForeignKeyShortcutUntilRef = useRef(0)
   const restoreGridFocusAfterForeignKeyCloseRef = useRef(false)
 
-  // ---------------------------------------------------------------------------
-  // BLOB viewer state — opened by double-clicking a binary cell. Mirrors the
-  // conditional FkLookupDialog render below.
-  // ---------------------------------------------------------------------------
-  const [blobDialogOpen, setBlobDialogOpen] = useState(false)
-  const [blobContext, setBlobContext] = useState<{
-    columnKey: string
-    rowData: Record<string, unknown>
-    pkPairs: [string, unknown][] | null
-  } | null>(null)
+  const blobViewer = useBlobViewerState({
+    tabId: tabId,
+    columns: columns,
+    primaryKeyColumns: primaryKeyColumns,
+  })
+  const { openBlobViewer } = blobViewer
 
   // ---------------------------------------------------------------------------
   // Column descriptors: TableDataColumnMeta[] → GridColumnDescriptor[]
@@ -550,10 +535,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       })
 
       if (!isSameRowKey(targetRowKey, currentEditRowKey) && currentEditRowKey !== null) {
-        // Validate temporal columns
-        const validationError = getTemporalValidationResult(currentEditState, columns)
+        const validationError = reportInvalidTemporalValue(currentEditState, columns)
         if (validationError) {
-          showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
           // Snap selection back to the editing row
           if (currentEditState) {
             setSelectedRow(tabId, currentEditState.rowKey)
@@ -806,16 +789,17 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
       if (guardResult.passed) {
         setSelectedRow(tabId, targetRowKey)
-        setForeignKeyLookupContext({
-          columnKey: args.columnKey,
-          currentValue: args.currentValue,
-          foreignKey: args.foreignKey,
-          rowData: args.rowData,
-        })
-        setForeignKeyLookupOpen(true)
+        openForeignKeyLookup(args)
       }
     },
-    [primaryKeyColumns, descriptorColumns, validateAndCommitCurrentEdit, setSelectedRow, tabId]
+    [
+      primaryKeyColumns,
+      descriptorColumns,
+      validateAndCommitCurrentEdit,
+      setSelectedRow,
+      tabId,
+      openForeignKeyLookup,
+    ]
   )
 
   const handleForeignKeyCellAction = useCallback(
@@ -849,42 +833,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       // Resolve PK column→value pairs for the lazy fetch + edit gating.
       const canEdit = !isReadOnly && hasPrimaryKey && primaryKeyColumns.length > 0
       if (!canEdit) return
-      const converted = buildEnvelopedPrimaryKeyPairs(primaryKeyColumns, columns, row)
-      if (!converted.ok) {
-        showError('Could not open BLOB viewer', converted.error)
-        return
-      }
-
-      setBlobContext({ columnKey: columnKey, rowData: row, pkPairs: converted.pairs })
-      setBlobDialogOpen(true)
+      openBlobViewer(columnKey, row)
     },
-    [descriptorColumns, isReadOnly, hasPrimaryKey, primaryKeyColumns, columns, showError]
-  )
-
-  const closeBlobDialog = useCallback(() => {
-    setBlobDialogOpen(false)
-    setBlobContext(null)
-  }, [])
-
-  const blobLoader = useCallback(() => {
-    if (!blobContext?.pkPairs || !tabState) {
-      throw new Error('Cannot load BLOB without a resolvable primary key')
-    }
-    return fetchBlobValue(
-      tabState.connectionId,
-      tabState.database,
-      tabState.table,
-      blobContext.columnKey,
-      blobContext.pkPairs
-    )
-  }, [blobContext, tabState])
-
-  const handleBlobApply = useCallback(
-    (envelope: BlobEnvelope) => {
-      if (!blobContext) return
-      stageBlobEnvelope(tabId, blobContext.rowData, blobContext.columnKey, envelope)
-    },
-    [blobContext, stageBlobEnvelope, tabId]
+    [descriptorColumns, isReadOnly, hasPrimaryKey, primaryKeyColumns, openBlobViewer]
   )
 
   const editableColumnKeys = useMemo(() => {
@@ -905,7 +856,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
 
   useLayoutEffect(() => {
     if (
-      foreignKeyLookupOpen ||
+      isForeignKeyLookupOpen ||
       !restoreGridFocusAfterForeignKeyCloseRef.current ||
       !selectedCellPosition
     ) {
@@ -917,22 +868,28 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       shouldFocusCell: true,
       enableEditor: false,
     })
-  }, [foreignKeyLookupOpen, selectedCellPosition])
+  }, [isForeignKeyLookupOpen, selectedCellPosition])
+
+  const handleForeignKeyLookupClose = () => {
+    ignoreForeignKeyShortcutUntilRef.current = Date.now() + FOREIGN_KEY_SHORTCUT_COOLDOWN_MS
+    restoreGridFocusAfterForeignKeyCloseRef.current = true
+    closeForeignKeyLookup()
+  }
 
   // ---------------------------------------------------------------------------
   // FK Apply callback — applies the selected FK value to the editing cell.
   // ---------------------------------------------------------------------------
   const handleForeignKeyApply = useCallback(
     (selectedValue: unknown) => {
-      if (!foreignKeyLookupContext) return
-      const { columnKey, rowData: foreignKeyRowData } = foreignKeyLookupContext
+      if (!foreignKeyLookupTarget) return
+      const { columnKey, rowData: foreignKeyRowData } = foreignKeyLookupTarget
 
       // Extract row key using the existing getRowKey helper + pkColumns
       const rowKey = getRowKey(foreignKeyRowData, primaryKeyColumns)
 
       // If the selected value is the same as the current cell value AND
       // there's no existing edit with modifications on this row, skip editing
-      const currentCellValue = foreignKeyLookupContext.currentValue
+      const currentCellValue = foreignKeyLookupTarget.currentValue
       const currentEditState = useTableDataStore.getState().tabs[tabId]?.editState
       const isAlreadyEditing = currentEditState && isSameRowKey(currentEditState.rowKey, rowKey)
 
@@ -941,7 +898,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         (!isAlreadyEditing || currentEditState.modifiedColumns.size === 0)
       ) {
         setSelectedRow(tabId, rowKey)
-        setForeignKeyLookupOpen(false)
+        closeForeignKeyLookup()
         return
       }
 
@@ -960,15 +917,16 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       setSelectedRow(tabId, rowKey)
 
       // Close the dialog
-      setForeignKeyLookupOpen(false)
+      closeForeignKeyLookup()
     },
     [
-      foreignKeyLookupContext,
+      foreignKeyLookupTarget,
       tabId,
       primaryKeyColumns,
       ensureRowEditingStarted,
       storeUpdateCellValue,
       setSelectedRow,
+      closeForeignKeyLookup,
     ]
   )
 
@@ -1027,36 +985,16 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           testId="table-data-grid"
           isActive={isActive}
         />
-        {foreignKeyLookupOpen && foreignKeyLookupContext && (
-          <FkLookupDialog
-            isOpen={foreignKeyLookupOpen}
-            onClose={() => {
-              ignoreForeignKeyShortcutUntilRef.current =
-                Date.now() + FOREIGN_KEY_SHORTCUT_COOLDOWN_MS
-              restoreGridFocusAfterForeignKeyCloseRef.current = true
-              setForeignKeyLookupOpen(false)
-            }}
-            onApply={handleForeignKeyApply}
-            connectionId={tabState.connectionId}
-            database={foreignKeyLookupContext.foreignKey.referencedDatabase || tabState.database}
-            sourceTable={tabState.table}
-            sourceColumn={foreignKeyLookupContext.columnKey}
-            currentValue={foreignKeyLookupContext.currentValue}
-            referencedTable={foreignKeyLookupContext.foreignKey.referencedTable}
-            referencedColumn={foreignKeyLookupContext.foreignKey.referencedColumn}
+        {foreignKeyLookupTarget && (
+          <ForeignKeyLookupTargetDialog
+            target={foreignKeyLookupTarget}
+            tableLocation={tabState}
             isReadOnly={isReadOnly || !hasPrimaryKey}
+            onClose={handleForeignKeyLookupClose}
+            onApply={handleForeignKeyApply}
           />
         )}
-        {blobDialogOpen && blobContext && (
-          <BlobViewerDialog
-            isOpen={blobDialogOpen}
-            onClose={closeBlobDialog}
-            mode="edit"
-            columnLabel={blobContext.columnKey}
-            loader={blobLoader}
-            onApply={handleBlobApply}
-          />
-        )}
+        <BlobViewerTargetDialog viewer={blobViewer} />
       </FkLookupProvider>
     </EditorCallbacksContext.Provider>
   )

@@ -8,6 +8,8 @@
 use crate::common::test_app_state;
 use sqllumen_lib::commands::export::export_results_impl;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
+#[cfg(coverage)]
+use sqllumen_lib::mysql::pool::SslSettings;
 use sqllumen_lib::mysql::query_executor::{update_result_cell_impl, ColumnMeta, StoredResult};
 use sqllumen_lib::mysql::result_view::{
     fetch_result_window_impl, set_result_view_impl, ResultViewSpec,
@@ -280,10 +282,12 @@ mod coverage_reexecute {
             has_password: false,
             keychain_ref: None,
             default_database: None,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
         }
@@ -460,10 +464,12 @@ mod coverage_multi_query {
             has_password: false,
             keychain_ref: None,
             default_database: None,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
         }
@@ -928,10 +934,12 @@ mod coverage_call_query {
             has_password: false,
             keychain_ref: None,
             default_database: None,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
         }

@@ -1,5 +1,6 @@
 pub mod copy_to_host;
 pub mod csv_writer;
+pub mod job_retention;
 pub mod json_writer;
 pub mod result_export;
 pub mod sql_dump;
@@ -52,6 +53,23 @@ pub struct ExportResult {
     pub rows_exported: usize,
 }
 
+const DEFAULT_SQL_EXPORT_TABLE_NAME: &str = "exported_results";
+
+fn write_export_file(
+    file_path: &str,
+    format_label: &str,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<u64, String> {
+    let mut file = std::fs::File::create(file_path)
+        .map_err(|error| format!("Failed to create file: {error}"))?;
+    write(&mut file).map_err(|error| format!("Failed to write {format_label}: {error}"))?;
+    file.flush()
+        .map_err(|error| format!("Failed to flush file: {error}"))?;
+    let metadata = std::fs::metadata(file_path)
+        .map_err(|error| format!("Failed to read file size: {error}"))?;
+    Ok(metadata.len())
+}
+
 /// Write columns/rows to disk using the specified format.
 ///
 /// This is the shared export dispatcher used by both the query-result export
@@ -65,48 +83,23 @@ pub fn export_with_data<R: AsRef<[serde_json::Value]>>(
     let rows_exported = rows.len();
 
     let bytes_written = match options.format {
-        ExportFormat::Csv => {
-            let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|error| format!("Failed to create file: {error}"))?;
-            csv_writer::write_csv(&mut file, columns, rows, options.include_headers)
-                .map_err(|error| format!("Failed to write CSV: {error}"))?;
-            file.flush()
-                .map_err(|error| format!("Failed to flush file: {error}"))?;
-            std::fs::metadata(&options.file_path)
-                .map_err(|error| format!("Failed to read file size: {error}"))?
-                .len()
-        }
-        ExportFormat::Json => {
-            let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|error| format!("Failed to create file: {error}"))?;
-            json_writer::write_json(&mut file, columns, rows, options.include_headers)
-                .map_err(|error| format!("Failed to write JSON: {error}"))?;
-            file.flush()
-                .map_err(|error| format!("Failed to flush file: {error}"))?;
-            std::fs::metadata(&options.file_path)
-                .map_err(|error| format!("Failed to read file size: {error}"))?
-                .len()
-        }
+        ExportFormat::Csv => write_export_file(&options.file_path, "CSV", |file| {
+            csv_writer::write_csv(file, columns, rows, options.include_headers)
+        })?,
+        ExportFormat::Json => write_export_file(&options.file_path, "JSON", |file| {
+            json_writer::write_json(file, columns, rows, options.include_headers)
+        })?,
         ExportFormat::Xlsx => {
             xlsx_writer::write_xlsx(&options.file_path, columns, rows, options.include_headers)?
         }
         ExportFormat::SqlInsert => {
-            let table_name = options.table_name.as_deref().unwrap_or("exported_results");
-            let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|error| format!("Failed to create file: {error}"))?;
-            sql_writer::write_sql(
-                &mut file,
-                columns,
-                rows,
-                options.include_headers,
-                table_name,
-            )
-            .map_err(|error| format!("Failed to write SQL: {error}"))?;
-            file.flush()
-                .map_err(|error| format!("Failed to flush file: {error}"))?;
-            std::fs::metadata(&options.file_path)
-                .map_err(|error| format!("Failed to read file size: {error}"))?
-                .len()
+            let table_name = options
+                .table_name
+                .as_deref()
+                .unwrap_or(DEFAULT_SQL_EXPORT_TABLE_NAME);
+            write_export_file(&options.file_path, "SQL", |file| {
+                sql_writer::write_sql(file, columns, rows, options.include_headers, table_name)
+            })?
         }
     };
 

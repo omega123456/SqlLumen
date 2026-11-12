@@ -26,7 +26,7 @@ import { UnderlineTab } from '../common/UnderlineTabs'
 import { TextInput } from '../common/TextInput'
 import { IconButton } from '../common/IconButton'
 import { TabContextMenu } from '../shared/TabContextMenu'
-import { computeHorizontalTabReorderTarget } from '../shared/use-tab-reorder'
+import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
 import {
   ArrowLineLeftIcon,
   ArrowLineRightIcon,
@@ -55,8 +55,8 @@ import styles from './WorkspaceTabs.module.css'
 
 const TAB_ICON_SIZE = 16
 const TAB_ICON_WEIGHT = 'regular'
-const POINTER_DRAG_THRESHOLD_PX = 4
 const MOVE_ONE_SLOT_RIGHT_INSERT_OFFSET = 2
+const WORKSPACE_TAB_TEST_ID_PREFIX = 'workspace-tab-'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,21 +110,6 @@ export interface WorkspaceTabRailProps {
    */
   onRequestReorderTab?: (tabId: string, insertIndex: number) => void
   onFocusGroupRail?: () => void
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function isDragHandleBlocked(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false
-  }
-  return Boolean(
-    target.closest(
-      'button,input,textarea,select,[contenteditable="true"],[data-tab-drag-ignore="true"]'
-    )
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -189,7 +174,6 @@ export function WorkspaceTabRail({
   const reorderWorkspaceTab = useWorkspaceStore((state) => state.reorderWorkspaceTab)
 
   const activeTabIdRef = useRef<string | null>(activeTabId)
-  const suppressNextSelectRef = useRef(false)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const skipNextRenameBlurCommitRef = useRef(false)
   const railRef = useRef<HTMLDivElement | null>(null)
@@ -201,19 +185,6 @@ export function WorkspaceTabRail({
     portalRoot: HTMLElement
     invokerTabId: string
   } | null>(null)
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{
-    tabId: string
-    indicator: 'before' | 'after'
-  } | null>(null)
-  const pointerDragRef = useRef<{
-    tabId: string
-    dragging: boolean
-    startX: number
-    startY: number
-    insertIndex: number | null
-  } | null>(null)
-  const removePointerListenersRef = useRef<(() => void) | null>(null)
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
 
@@ -243,19 +214,13 @@ export function WorkspaceTabRail({
     renameInputRef.current.select()
   }, [renamingTabId])
 
-  useEffect(() => {
-    return () => {
-      removePointerListenersRef.current?.()
-    }
-  }, [])
-
   // ---------------------------------------------------------------------------
   // Focus helpers
   // ---------------------------------------------------------------------------
 
   const focusWorkspaceTab = (tabId: string): boolean => {
     const tabElement = railRef.current?.querySelector<HTMLElement>(
-      `[data-testid="workspace-tab-${tabId}"]`
+      `[data-testid="${WORKSPACE_TAB_TEST_ID_PREFIX}${tabId}"]`
     )
     if (!tabElement) {
       return false
@@ -326,125 +291,31 @@ export function WorkspaceTabRail({
     return fullIndex >= 0 ? fullIndex : subsetInsertIndex
   }
 
-  // ---------------------------------------------------------------------------
-  // Pointer drag / reorder
-  // ---------------------------------------------------------------------------
-
-  const clearPointerDrag = () => {
-    removePointerListenersRef.current?.()
-    removePointerListenersRef.current = null
-    pointerDragRef.current = null
-    setDraggingTabId(null)
-    setDropTarget(null)
-  }
-
-  const finishPointerDrag = (shouldCommit: boolean) => {
-    const dragState = pointerDragRef.current
-    const shouldSuppressSelect = Boolean(dragState?.dragging)
-    if (shouldCommit && dragState?.dragging && dragState.insertIndex != null) {
-      // insertIndex is currently in visible-group space; translate to full-list space
-      const fullInsertIndex = translateSubsetInsertIndex(dragState.insertIndex)
-      if (onRequestReorderTab) {
-        onRequestReorderTab(dragState.tabId, fullInsertIndex)
-      } else {
-        reorderWorkspaceTab(connectionId, dragState.tabId, fullInsertIndex)
-      }
-    }
-    clearPointerDrag()
-    if (shouldSuppressSelect) {
-      suppressNextSelectRef.current = true
-      window.setTimeout(() => {
-        suppressNextSelectRef.current = false
-      }, 0)
-    }
-  }
-
-  const findHoveredVisibleTab = (clientX: number, clientY: number) => {
-    for (const tabId of visibleTabIds) {
-      const element = document.querySelector<HTMLElement>(`[data-testid="workspace-tab-${tabId}"]`)
-      if (!element) {
-        continue
-      }
-      const rect = element.getBoundingClientRect()
-      if (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
-      ) {
-        return { tabId, rect }
-      }
-    }
-    return null
-  }
-
-  const startPointerDrag = (tabId: string, isPinned: boolean, event: PointerEvent<HTMLElement>) => {
-    if (isPinned || event.button !== 0 || isDragHandleBlocked(event.target)) {
+  const commitTabReorder = (tabId: string, visibleInsertIndex: number) => {
+    const fullInsertIndex = translateSubsetInsertIndex(visibleInsertIndex)
+    if (onRequestReorderTab) {
+      onRequestReorderTab(tabId, fullInsertIndex)
       return
     }
-    event.preventDefault()
-    clearPointerDrag()
-    pointerDragRef.current = {
-      tabId: tabId,
-      dragging: false,
-      startX: event.clientX,
-      startY: event.clientY,
-      insertIndex: null,
+    reorderWorkspaceTab(connectionId, tabId, fullInsertIndex)
+  }
+
+  const { draggingTabId, dropIndicatorFor, startPointerDrag, isSelectSuppressed } =
+    usePointerTabDrag({
+      tabIds: visibleTabIds,
+      tabTestIdPrefix: WORKSPACE_TAB_TEST_ID_PREFIX,
+      onReorder: commitTabReorder,
+    })
+
+  const startTabPointerDrag = (
+    tabId: string,
+    isPinned: boolean,
+    event: PointerEvent<HTMLElement>
+  ) => {
+    if (isPinned) {
+      return
     }
-
-    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
-      const dragState = pointerDragRef.current
-      if (!dragState) {
-        return
-      }
-      if (!dragState.dragging) {
-        const deltaX = moveEvent.clientX - dragState.startX
-        const deltaY = moveEvent.clientY - dragState.startY
-        if (Math.hypot(deltaX, deltaY) < POINTER_DRAG_THRESHOLD_PX) {
-          return
-        }
-        dragState.dragging = true
-        setDraggingTabId(dragState.tabId)
-      }
-
-      const hoveredTab = findHoveredVisibleTab(moveEvent.clientX, moveEvent.clientY)
-      if (!hoveredTab) {
-        dragState.insertIndex = null
-        setDropTarget(null)
-        return
-      }
-
-      // Compute drag target in visible-group index space
-      const draggingIndex = visibleTabIds.findIndex((id) => id === dragState.tabId)
-      const targetIndex = visibleTabIds.findIndex((id) => id === hoveredTab.tabId)
-      const target = computeHorizontalTabReorderTarget({
-        draggingIndex: draggingIndex,
-        targetIndex: targetIndex,
-        pointerClientX: moveEvent.clientX,
-        targetRect: hoveredTab.rect,
-      })
-
-      if (!target) {
-        dragState.insertIndex = null
-        setDropTarget(null)
-        return
-      }
-
-      dragState.insertIndex = target.insertIndex
-      setDropTarget({ tabId: hoveredTab.tabId, indicator: target.indicator })
-    }
-
-    const handlePointerUp = () => finishPointerDrag(true)
-    const handlePointerCancel = () => finishPointerDrag(false)
-
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerCancel)
-    removePointerListenersRef.current = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerCancel)
-    }
+    startPointerDrag(tabId, event)
   }
 
   // ---------------------------------------------------------------------------
@@ -619,7 +490,7 @@ export function WorkspaceTabRail({
   const renderTab = (tab: WorkspaceTab) => {
     const isActive = tab.id === activeTabId
     const isDragSource = draggingTabId === tab.id
-    const dropIndicator = dropTarget?.tabId === tab.id ? dropTarget.indicator : undefined
+    const dropIndicator = dropIndicatorFor(tab.id)
     const isRenaming = renamingTabId === tab.id
     const isPinned = tab.type === 'history' || tab.type === 'processlist'
     return (
@@ -629,14 +500,14 @@ export function WorkspaceTabRail({
         active={isActive}
         autoScrollOnActive={autoScrollOnActive}
         className={styles.workspaceTab}
-        data-testid={`workspace-tab-${tab.id}`}
+        data-testid={`${WORKSPACE_TAB_TEST_ID_PREFIX}${tab.id}`}
         onSelect={() => {
-          if (suppressNextSelectRef.current) {
+          if (isSelectSuppressed()) {
             return
           }
           requestActivateTab(tab.id)
         }}
-        onPointerDown={(event) => startPointerDrag(tab.id, isPinned, event)}
+        onPointerDown={(event) => startTabPointerDrag(tab.id, isPinned, event)}
         onContextMenu={(event) => {
           event.preventDefault()
           openTabContextMenu(tab.id, event.clientX, event.clientY, event.currentTarget, tab.id)

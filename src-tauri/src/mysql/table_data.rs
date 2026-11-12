@@ -4,8 +4,8 @@
 //! and editing table data. Each function takes a `MySqlPool` directly (the
 //! command wrappers in `commands::table_data` extract the pool from `AppState`).
 
+use crate::mysql::cache_status::{cache_status_json, CacheStatus};
 use crate::mysql::metadata_cache::MetadataCache;
-use crate::mysql::result_cache::CacheGet;
 use crate::mysql::schema_queries::safe_identifier;
 #[cfg(not(coverage))]
 use crate::mysql::sqlx_type_names::is_sqlx_integer_type_name;
@@ -94,14 +94,14 @@ pub struct TableDataResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataCacheRestoreResponse {
-    pub status: String,
+    pub status: CacheStatus,
     pub data: Option<TableDataResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataCacheSyncResponse {
-    pub status: String,
+    pub status: CacheStatus,
 }
 
 /// Sort specification for a single column.
@@ -196,10 +196,26 @@ pub fn touch_table_data_impl(
     connection_id: &str,
     tab_id: &str,
 ) -> serde_json::Value {
-    match state.table_data_cache.get(connection_id, tab_id) {
-        CacheGet::Found(_) | CacheGet::ReWarmed(_) => serde_json::json!({ "status": "available" }),
-        CacheGet::Expired => serde_json::json!({ "status": "expired" }),
-        CacheGet::NeverStored => serde_json::json!({ "status": "missing" }),
+    let lookup = state.table_data_cache.get(connection_id, tab_id);
+    cache_status_json(lookup.lookup_status())
+}
+
+struct TableCacheTarget<'a> {
+    connection_id: &'a str,
+    tab_id: &'a str,
+    database: &'a str,
+    table: &'a str,
+}
+
+impl TableCacheTarget<'_> {
+    fn log_cache_miss(&self, message: &str) {
+        tracing::debug!(
+            connection_id = %self.connection_id,
+            tab_id = %self.tab_id,
+            database = %self.database,
+            table = %self.table,
+            "{message}"
+        );
     }
 }
 
@@ -210,136 +226,99 @@ pub fn restore_table_data_cache_impl(
     database: &str,
     table: &str,
 ) -> TableDataCacheRestoreResponse {
-    match state.table_data_cache.get(connection_id, tab_id) {
-        CacheGet::Found(entry) | CacheGet::ReWarmed(entry) => TableDataCacheRestoreResponse {
-            status: "available".to_string(),
+    let target = TableCacheTarget {
+        connection_id,
+        tab_id,
+        database,
+        table,
+    };
+    let lookup = state.table_data_cache.get(connection_id, tab_id);
+    let status = lookup.lookup_status();
+    if let Some(entry) = lookup.into_entry() {
+        return TableDataCacheRestoreResponse {
+            status,
             data: Some(entry.value.clone()),
-        },
-        CacheGet::Expired => {
-            tracing::debug!(
-                connection_id = %connection_id,
-                tab_id = %tab_id,
-                database = %database,
-                table = %table,
-                "table-data cache restore missed: entry expired"
-            );
-            TableDataCacheRestoreResponse {
-                status: "expired".to_string(),
-                data: None,
-            }
-        }
-        CacheGet::NeverStored => {
-            tracing::debug!(
-                connection_id = %connection_id,
-                tab_id = %tab_id,
-                database = %database,
-                table = %table,
-                "table-data cache restore missed: entry missing"
-            );
-            TableDataCacheRestoreResponse {
-                status: "missing".to_string(),
-                data: None,
-            }
-        }
+        };
     }
+    target.log_cache_miss(restore_miss_message(status));
+    TableDataCacheRestoreResponse { status, data: None }
+}
+
+fn restore_miss_message(status: CacheStatus) -> &'static str {
+    if status == CacheStatus::Expired {
+        return "table-data cache restore missed: entry expired";
+    }
+    "table-data cache restore missed: entry missing"
+}
+
+fn sync_miss_message(status: CacheStatus) -> &'static str {
+    if status == CacheStatus::Expired {
+        return "table-data cache sync skipped: entry expired";
+    }
+    "table-data cache sync skipped: entry missing"
 }
 
 fn sync_table_data_cache_response(
     state: &AppState,
-    connection_id: &str,
-    tab_id: &str,
-    database: &str,
-    table: &str,
+    target: &TableCacheTarget<'_>,
     response: TableDataResponse,
 ) -> TableDataCacheSyncResponse {
     let expected_invalidation_version = state
         .table_data_cache
-        .current_invalidation_version(connection_id, tab_id);
-    match state.table_data_cache.get(connection_id, tab_id) {
-        CacheGet::Found(_) | CacheGet::ReWarmed(_) => {
-            if state.table_data_cache.insert_if_current(
-                connection_id,
-                tab_id,
-                expected_invalidation_version,
-                response,
-            ) {
-                TableDataCacheSyncResponse {
-                    status: "synced".to_string(),
-                }
-            } else {
-                tracing::debug!(
-                    connection_id = %connection_id,
-                    tab_id = %tab_id,
-                    database = %database,
-                    table = %table,
-                    expected_invalidation_version,
-                    "table-data cache sync skipped: entry invalidated before write"
-                );
-                TableDataCacheSyncResponse {
-                    status: "missing".to_string(),
-                }
-            }
-        }
-        CacheGet::Expired => {
-            tracing::debug!(
-                connection_id = %connection_id,
-                tab_id = %tab_id,
-                database = %database,
-                table = %table,
-                "table-data cache sync skipped: entry expired"
-            );
-            TableDataCacheSyncResponse {
-                status: "expired".to_string(),
-            }
-        }
-        CacheGet::NeverStored => {
-            tracing::debug!(
-                connection_id = %connection_id,
-                tab_id = %tab_id,
-                database = %database,
-                table = %table,
-                "table-data cache sync skipped: entry missing"
-            );
-            TableDataCacheSyncResponse {
-                status: "missing".to_string(),
-            }
-        }
+        .current_invalidation_version(target.connection_id, target.tab_id);
+    let lookup_status = state
+        .table_data_cache
+        .get(target.connection_id, target.tab_id)
+        .lookup_status();
+    if lookup_status != CacheStatus::Available {
+        target.log_cache_miss(sync_miss_message(lookup_status));
+        return TableDataCacheSyncResponse {
+            status: lookup_status,
+        };
+    }
+    let was_written = state.table_data_cache.insert_if_current(
+        target.connection_id,
+        target.tab_id,
+        expected_invalidation_version,
+        response,
+    );
+    if was_written {
+        return TableDataCacheSyncResponse {
+            status: CacheStatus::Synced,
+        };
+    }
+    tracing::debug!(
+        connection_id = %target.connection_id,
+        tab_id = %target.tab_id,
+        database = %target.database,
+        table = %target.table,
+        expected_invalidation_version,
+        "table-data cache sync skipped: entry invalidated before write"
+    );
+    TableDataCacheSyncResponse {
+        status: CacheStatus::Missing,
     }
 }
 
-pub fn sync_table_data_cache_after_insert_impl(
+pub fn sync_table_data_cache_after_write_impl(
     state: &AppState,
     request: SyncTableDataCacheRequest,
 ) -> TableDataCacheSyncResponse {
-    sync_table_data_cache_response(
-        state,
-        &request.connection_id,
-        &request.tab_id,
-        &request.database,
-        &request.table,
-        TableDataResponse {
-            columns: request.columns,
-            rows: Arc::new(request.rows),
-            current_page: request.current_page,
-            page_size: request.page_size,
-            primary_key: request.primary_key,
-            execution_time_ms: request.execution_time_ms,
-        },
-    )
-}
-
-pub fn sync_table_data_cache_after_update_impl(
-    state: &AppState,
-    request: SyncTableDataCacheRequest,
-) -> TableDataCacheSyncResponse {
-    sync_table_data_cache_after_insert_impl(state, request)
-}
-
-pub fn sync_table_data_cache_after_delete_impl(
-    state: &AppState,
-    request: SyncTableDataCacheRequest,
-) -> TableDataCacheSyncResponse {
-    sync_table_data_cache_after_insert_impl(state, request)
+    let target = TableCacheTarget {
+        connection_id: &request.connection_id,
+        tab_id: &request.tab_id,
+        database: &request.database,
+        table: &request.table,
+    };
+    let response = TableDataResponse {
+        columns: request.columns,
+        rows: Arc::new(request.rows),
+        current_page: request.current_page,
+        page_size: request.page_size,
+        primary_key: request.primary_key,
+        execution_time_ms: request.execution_time_ms,
+    };
+    sync_table_data_cache_response(state, &target, response)
 }
 
 pub fn evict_table_data_impl(state: &AppState, connection_id: &str, tab_id: &str) {
@@ -351,6 +330,7 @@ pub fn evict_table_data_impl(state: &AppState, connection_id: &str, tab_id: &str
 // ── Pure functions (always available) ──────────────────────────────────────────
 
 /// Describes how a filter operator maps to SQL.
+#[derive(Clone, Copy)]
 enum FilterOp {
     /// Simple comparison: `col <op> ?`
     Comparison(&'static str),
@@ -362,6 +342,12 @@ enum FilterOp {
     IsNull,
     /// `col IS NOT NULL` (no value binding)
     IsNotNull,
+}
+
+impl FilterOp {
+    fn binds_value(self) -> bool {
+        !matches!(self, Self::IsNull | Self::IsNotNull)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -415,60 +401,49 @@ fn get_filter_op(operator: &str) -> Option<FilterOp> {
     }
 }
 
-/// Convert a slice of `FilterCondition` to a SQL WHERE clause with bound params.
-///
-/// Conditions are processed in order (the frontend controls ordering).
-/// Column names are backtick-quoted via `safe_identifier`.
-/// If the slice is empty, returns an empty `FilterClause`.
-pub fn translate_filter_model(conditions: &[FilterCondition]) -> FilterClause {
-    if conditions.is_empty() {
-        return FilterClause {
-            sql: String::new(),
-            params: vec![],
-        };
+fn is_null_filter_sql(safe_col: &str, column_kind: ColumnFilterKind) -> String {
+    if column_kind == ColumnFilterKind::TextLike {
+        return format!("({safe_col} IS NULL OR {safe_col} = '')");
     }
+    format!("{safe_col} IS NULL")
+}
 
+fn is_not_null_filter_sql(safe_col: &str, column_kind: ColumnFilterKind) -> String {
+    if column_kind == ColumnFilterKind::TextLike {
+        return format!("({safe_col} IS NOT NULL AND {safe_col} != '')");
+    }
+    format!("{safe_col} IS NOT NULL")
+}
+
+fn filter_condition_sql(safe_col: &str, op: FilterOp, column_kind: ColumnFilterKind) -> String {
+    match op {
+        FilterOp::Comparison(sql_op) => format!("{safe_col} {sql_op} ?"),
+        FilterOp::Like => format!("{safe_col} LIKE ?"),
+        FilterOp::NotLike => format!("{safe_col} NOT LIKE ?"),
+        FilterOp::IsNull => is_null_filter_sql(safe_col, column_kind),
+        FilterOp::IsNotNull => is_not_null_filter_sql(safe_col, column_kind),
+    }
+}
+
+fn translate_filter_conditions(
+    conditions: &[FilterCondition],
+    column_kind_of: impl Fn(&str) -> ColumnFilterKind,
+) -> FilterClause {
     let mut sql_parts = Vec::new();
     let mut params = Vec::new();
 
     for entry in conditions {
-        let safe_col = match safe_identifier(&entry.column) {
-            Ok(quoted_column) => quoted_column,
-            Err(_) => continue,
+        let Ok(safe_col) = safe_identifier(&entry.column) else {
+            continue;
         };
-
-        let op = match get_filter_op(&entry.operator) {
-            Some(op) => op,
-            None => continue,
+        let Some(op) = get_filter_op(&entry.operator) else {
+            continue;
         };
-
-        match op {
-            FilterOp::Comparison(sql_op) => {
-                sql_parts.push(format!("{safe_col} {sql_op} ?"));
-                params.push(serde_json::Value::String(entry.value.clone()));
-            }
-            FilterOp::Like => {
-                sql_parts.push(format!("{safe_col} LIKE ?"));
-                params.push(serde_json::Value::String(entry.value.clone()));
-            }
-            FilterOp::NotLike => {
-                sql_parts.push(format!("{safe_col} NOT LIKE ?"));
-                params.push(serde_json::Value::String(entry.value.clone()));
-            }
-            FilterOp::IsNull => {
-                sql_parts.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
-            }
-            FilterOp::IsNotNull => {
-                sql_parts.push(format!("({safe_col} IS NOT NULL AND {safe_col} != '')"));
-            }
+        if op.binds_value() {
+            params.push(serde_json::Value::String(entry.value.clone()));
         }
-    }
-
-    if sql_parts.is_empty() {
-        return FilterClause {
-            sql: String::new(),
-            params: vec![],
-        };
+        let column_kind = column_kind_of(&entry.column);
+        sql_parts.push(filter_condition_sql(&safe_col, op, column_kind));
     }
 
     FilterClause {
@@ -477,25 +452,15 @@ pub fn translate_filter_model(conditions: &[FilterCondition]) -> FilterClause {
     }
 }
 
-/// Convert a slice of `FilterCondition` to a SQL WHERE clause using column metadata.
-///
-/// This variant uses column type information to generate type-appropriate SQL
-/// for IS NULL / IS NOT NULL operators:
-/// - TextLike columns: IS NULL maps to `(col IS NULL OR col = '')`, IS NOT NULL maps to
-///   `(col IS NOT NULL AND col != '')`
-/// - NonText columns: IS NULL maps to `col IS NULL`, IS NOT NULL maps to `col IS NOT NULL`
+pub fn translate_filter_model(conditions: &[FilterCondition]) -> FilterClause {
+    translate_filter_conditions(conditions, |_| ColumnFilterKind::TextLike)
+}
+
 pub fn translate_filter_model_with_columns(
     conditions: &[FilterCondition],
     columns: &[TableDataColumnMeta],
 ) -> FilterClause {
-    if conditions.is_empty() {
-        return FilterClause {
-            sql: String::new(),
-            params: vec![],
-        };
-    }
-
-    let column_kinds: std::collections::HashMap<&str, ColumnFilterKind> = columns
+    let column_kinds: HashMap<&str, ColumnFilterKind> = columns
         .iter()
         .map(|column| {
             (
@@ -505,66 +470,12 @@ pub fn translate_filter_model_with_columns(
         })
         .collect();
 
-    let mut sql_parts = Vec::new();
-    let mut params = Vec::new();
-
-    for entry in conditions {
-        let safe_col = match safe_identifier(&entry.column) {
-            Ok(quoted_column) => quoted_column,
-            Err(_) => continue,
-        };
-
-        let op = match get_filter_op(&entry.operator) {
-            Some(op) => op,
-            None => continue,
-        };
-
-        let column_kind = column_kinds
-            .get(entry.column.as_str())
+    translate_filter_conditions(conditions, |column_name| {
+        column_kinds
+            .get(column_name)
             .copied()
-            .unwrap_or(ColumnFilterKind::TextLike);
-
-        match op {
-            FilterOp::Comparison(sql_op) => {
-                sql_parts.push(format!("{safe_col} {sql_op} ?"));
-                params.push(serde_json::Value::String(entry.value.clone()));
-            }
-            FilterOp::Like => {
-                sql_parts.push(format!("{safe_col} LIKE ?"));
-                params.push(serde_json::Value::String(entry.value.clone()));
-            }
-            FilterOp::NotLike => {
-                sql_parts.push(format!("{safe_col} NOT LIKE ?"));
-                params.push(serde_json::Value::String(entry.value.clone()));
-            }
-            FilterOp::IsNull => {
-                if column_kind == ColumnFilterKind::TextLike {
-                    sql_parts.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
-                } else {
-                    sql_parts.push(format!("{safe_col} IS NULL"));
-                }
-            }
-            FilterOp::IsNotNull => {
-                if column_kind == ColumnFilterKind::TextLike {
-                    sql_parts.push(format!("({safe_col} IS NOT NULL AND {safe_col} != '')"));
-                } else {
-                    sql_parts.push(format!("{safe_col} IS NOT NULL"));
-                }
-            }
-        }
-    }
-
-    if sql_parts.is_empty() {
-        return FilterClause {
-            sql: String::new(),
-            params: vec![],
-        };
-    }
-
-    FilterClause {
-        sql: sql_parts.join(" AND "),
-        params,
-    }
+            .unwrap_or(ColumnFilterKind::TextLike)
+    })
 }
 
 // ── Helper: check whether a DATA_TYPE string is binary ─────────────────────────

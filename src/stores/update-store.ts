@@ -8,6 +8,7 @@ import { useSettingsStore } from './settings-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { PERCENT_SCALE } from '../lib/units'
+import { toErrorMessage } from '../lib/error-message'
 
 const UP_TO_DATE_STATUS_RESET_DELAY_MS = 5_000
 type UpdateStatus =
@@ -37,10 +38,6 @@ function clearPeriodicTimer(): void {
     clearInterval(periodicTimer)
     periodicTimer = null
   }
-}
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function resolveUpdatePlatform(platformValue: string | null | undefined): UpdatePlatform {

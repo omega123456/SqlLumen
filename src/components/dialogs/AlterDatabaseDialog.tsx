@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '../common/Button'
-import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { alterDatabase, getDatabaseDetails } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
+import { EncodingFields } from './EncodingFields'
 import { showErrorToast } from '../../stores/toast-store'
 import styles from './AlterDatabaseDialog.module.css'
+import { toErrorMessage } from '../../lib/error-message'
+import { useFormSubmit } from '../../hooks/useFormSubmit'
 
 interface InitialEncodingState {
   charset?: string
@@ -74,7 +76,7 @@ export function AlterDatabaseDialog({
         }
       } catch (error) {
         if (!cancelled) {
-          const message = error instanceof Error ? error.message : String(error)
+          const message = toErrorMessage(error)
           patchDialogState({ detailsError: message })
           showErrorToast('Failed to load database', message)
         }
@@ -117,7 +119,7 @@ export function AlterDatabaseDialog({
       )
       onSuccess()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       patchDialogState({ submitError: message })
       showErrorToast('Failed to alter database', message)
     } finally {
@@ -132,32 +134,7 @@ export function AlterDatabaseDialog({
     patchDialogState,
   ])
 
-  const handleFormSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      void handleSubmit()
-    },
-    [handleSubmit]
-  )
-
-  // Build dropdown options
-  const charsetOptions: DropdownOption[] = [
-    { value: '', label: 'Server default' },
-    ...encoding.charsets.map((cs) => ({
-      value: cs.charset,
-      label: cs.charset,
-      description: cs.description,
-    })),
-  ]
-
-  const collationOptions: DropdownOption[] = [
-    { value: '', label: 'Default' },
-    ...encoding.filteredCollations.map((collation) => ({
-      value: collation.name,
-      label: collation.name,
-      description: collation.isDefault ? 'default' : undefined,
-    })),
-  ]
+  const handleFormSubmit = useFormSubmit(handleSubmit)
 
   return (
     <DialogShell
@@ -175,33 +152,7 @@ export function AlterDatabaseDialog({
       {isLoading ? (
         <div className={styles.loading}>Loading database details...</div>
       ) : hasBlockingLoadError ? null : (
-        <>
-          <div className={styles.formGroup}>
-            <label className={styles.label} id="alter-db-charset-label">
-              Character set
-            </label>
-            <Dropdown
-              id="alter-db-charset"
-              labelledBy="alter-db-charset-label"
-              options={charsetOptions}
-              value={encoding.charset}
-              onChange={encoding.setCharset}
-            />
-          </div>
-
-          <div className={styles.formGroup}>
-            <label className={styles.label} id="alter-db-collation-label">
-              Collation
-            </label>
-            <Dropdown
-              id="alter-db-collation"
-              labelledBy="alter-db-collation-label"
-              options={collationOptions}
-              value={encoding.collation}
-              onChange={encoding.setCollation}
-            />
-          </div>
-        </>
+        <EncodingFields idPrefix="alter-db" encoding={encoding} />
       )}
 
       {displayError && (

@@ -1,6 +1,6 @@
-import { Dropdown } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { SettingsSection } from './SettingsSection'
+import { SettingsDropdownField, SettingsFieldLabel } from './SettingsField'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useThemeStore } from '../../stores/theme-store'
@@ -57,38 +57,20 @@ export function GeneralSettings() {
   return (
     <div data-testid="settings-general">
       <SettingsSection title="Appearance" description="Choose how the application looks.">
-        <div>
-          <label
-            id="theme-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Theme
-          </label>
-          <Dropdown
-            id="settings-theme"
-            labelledBy="theme-label"
-            options={THEME_OPTIONS}
-            value={theme}
-            onChange={handleThemeChange}
-            data-testid="settings-theme-dropdown"
-          />
-        </div>
-        <div>
-          <label
-            id="zoom-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Zoom
-          </label>
-          <Dropdown
-            id="settings-zoom"
-            labelledBy="zoom-label"
-            options={ZOOM_OPTIONS}
-            value={zoom}
-            onChange={handleZoomChange}
-            data-testid="settings-zoom-dropdown"
-          />
-        </div>
+        <SettingsDropdownField
+          name="theme"
+          label="Theme"
+          options={THEME_OPTIONS}
+          value={theme}
+          onChange={handleThemeChange}
+        />
+        <SettingsDropdownField
+          name="zoom"
+          label="Zoom"
+          options={ZOOM_OPTIONS}
+          value={zoom}
+          onChange={handleZoomChange}
+        />
       </SettingsSection>
 
       <SettingsSection title="Session" description="Control session behavior on launch.">
@@ -105,38 +87,20 @@ export function GeneralSettings() {
         title="Session snapshots"
         description="Periodically capture your open connections and tabs so you can restore them later."
       >
-        <div>
-          <label
-            id="snapshot-frequency-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Snapshot frequency
-          </label>
-          <Dropdown
-            id="settings-snapshot-frequency"
-            labelledBy="snapshot-frequency-label"
-            options={SNAPSHOT_FREQUENCY_OPTIONS}
-            value={snapshotFrequency}
-            onChange={(value) => setPendingChange('snapshots.frequency', value)}
-            data-testid="settings-snapshot-frequency-dropdown"
-          />
-        </div>
-        <div>
-          <label
-            id="snapshot-keep-label"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
-            Snapshots to keep
-          </label>
-          <Dropdown
-            id="settings-snapshot-keep"
-            labelledBy="snapshot-keep-label"
-            options={SNAPSHOT_KEEP_OPTIONS}
-            value={snapshotKeep}
-            onChange={(value) => setPendingChange('snapshots.keep', value)}
-            data-testid="settings-snapshot-keep-dropdown"
-          />
-        </div>
+        <SettingsDropdownField
+          name="snapshot-frequency"
+          label="Snapshot frequency"
+          options={SNAPSHOT_FREQUENCY_OPTIONS}
+          value={snapshotFrequency}
+          onChange={(value) => setPendingChange('snapshots.frequency', value)}
+        />
+        <SettingsDropdownField
+          name="snapshot-keep"
+          label="Snapshots to keep"
+          options={SNAPSHOT_KEEP_OPTIONS}
+          value={snapshotKeep}
+          onChange={(value) => setPendingChange('snapshots.keep', value)}
+        />
       </SettingsSection>
 
       <SettingsSection
@@ -144,12 +108,9 @@ export function GeneralSettings() {
         description="Default values for new connections."
       >
         <div>
-          <label
-            htmlFor="settings-connection-timeout"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
+          <SettingsFieldLabel htmlFor="settings-connection-timeout">
             Connection timeout (seconds)
-          </label>
+          </SettingsFieldLabel>
           <TextInput
             id="settings-connection-timeout"
             type="number"
@@ -162,12 +123,9 @@ export function GeneralSettings() {
           />
         </div>
         <div>
-          <label
-            htmlFor="settings-keepalive"
-            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
-          >
+          <SettingsFieldLabel htmlFor="settings-keepalive">
             Keepalive interval (seconds)
-          </label>
+          </SettingsFieldLabel>
           <TextInput
             id="settings-keepalive"
             type="number"

@@ -1,6 +1,6 @@
 import { Link, Trash } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendError } from '../../lib/app-log-commands'
 import { listColumns, listDatabases, listSchemaObjects } from '../../lib/schema-commands'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
@@ -107,10 +107,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
         }
       })
       .catch((error) => {
-        logFrontend(
-          'error',
-          ['[foreign-key-editor] Failed to load referenced databases', error].map(String).join(' ')
-        )
+        logFrontendError('[foreign-key-editor] Failed to load referenced databases', error)
         if (!cancelled) {
           setAvailableDatabases(databaseName ? [databaseName] : [])
         }
@@ -175,10 +172,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
           }))
         })
         .catch((error) => {
-          logFrontend(
-            'error',
-            ['[foreign-key-editor] Failed to load referenced tables', error].map(String).join(' ')
-          )
+          logFrontendError('[foreign-key-editor] Failed to load referenced tables', error)
           setReferencedTablesByDatabase((current) => ({
             ...current,
             [referencedDatabase]: [],
@@ -243,10 +237,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
           }))
         })
         .catch((error) => {
-          logFrontend(
-            'error',
-            ['[foreign-key-editor] Failed to load referenced columns', error].map(String).join(' ')
-          )
+          logFrontendError('[foreign-key-editor] Failed to load referenced columns', error)
           setReferencedColumnsByTarget((current) => ({
             ...current,
             [targetKey]: [],

@@ -50,6 +50,7 @@ import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import type { ViewMode, StatusType } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import styles from './ResultToolbar.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 const ERROR_PREVIEW_MAX_LENGTH = 200
 
@@ -308,12 +309,7 @@ export function ResultToolbar({
         markResultsExpired(tabId)
         return
       }
-      logFrontend(
-        'warn',
-        `[result-toolbar] could not load checked rows: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
+      logFrontend('warn', `[result-toolbar] could not load checked rows: ${toErrorMessage(error)}`)
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
       return
     }
@@ -332,12 +328,7 @@ export function ResultToolbar({
         showSuccess('Selected rows copied', `${rows.length} row(s) copied to clipboard.`)
       }
     } catch (error) {
-      logFrontend(
-        'warn',
-        `[result-toolbar] clipboard write failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      )
+      logFrontend('warn', `[result-toolbar] clipboard write failed: ${toErrorMessage(error)}`)
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
     }
   }, [

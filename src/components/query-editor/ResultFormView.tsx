@@ -38,6 +38,7 @@ import type {
   TableDataColumnMeta,
   RowEditState,
 } from '../../types/schema'
+import { toErrorMessage } from '../../lib/error-message'
 
 // ---------------------------------------------------------------------------
 // Props (unchanged external interface)
@@ -172,9 +173,7 @@ export function ResultFormView({
         }
         logFrontend(
           'warn',
-          `[result-form-view] could not load row ${clampedIndex + 1}: ${
-            error instanceof Error ? error.message : String(error)
-          }`
+          `[result-form-view] could not load row ${clampedIndex + 1}: ${toErrorMessage(error)}`
         )
       })
     return () => {

@@ -1,18 +1,10 @@
+use crate::commands::helpers::lock_db;
 use crate::db::connection_groups::{self, ConnectionGroupRecord};
 use crate::state::AppState;
-use rusqlite::Connection;
-use std::sync::MutexGuard;
 #[cfg(not(coverage))]
 use tauri::State;
 
 // --- Testable implementations (take &AppState instead of State<AppState>) ---
-
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => Err(error.to_string()),
-    }
-}
 
 pub fn create_connection_group_impl(state: &AppState, name: &str) -> Result<String, String> {
     let conn = lock_db(state)?;

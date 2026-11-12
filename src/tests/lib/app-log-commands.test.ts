@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ipc } from '../ipc-mock'
-import { logBootstrapFailure, logFrontend, logParseFallback } from '../../lib/app-log-commands'
+import {
+  logBootstrapFailure,
+  logFrontend,
+  logFrontendError,
+  logFrontendWarning,
+  logParseFallback,
+} from '../../lib/app-log-commands'
 
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
@@ -31,6 +37,28 @@ describe('logFrontend', () => {
     logFrontend('warn', 'test message')
     await vi.waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith('[app-log]', expect.any(Error))
+    })
+  })
+})
+
+describe('logFrontendError', () => {
+  it('logs the message followed by the stringified error at error level', async () => {
+    logFrontendError('[store] Load failed:', new Error('disk full'))
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'error',
+      message: '[store] Load failed: Error: disk full',
+    })
+  })
+})
+
+describe('logFrontendWarning', () => {
+  it('logs the message followed by the stringified error at warn level', async () => {
+    logFrontendWarning('[store] Refresh failed:', 'timeout')
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'warn',
+      message: '[store] Refresh failed: timeout',
     })
   })
 })

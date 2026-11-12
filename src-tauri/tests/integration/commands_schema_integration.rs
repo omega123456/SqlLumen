@@ -4,6 +4,7 @@
 //! touching the network (missing connection, read-only guard) run without MySQL.
 
 use crate::common;
+use sqllumen_lib::mysql::pool::SslSettings;
 
 use sqllumen_lib::commands::schema::{create_database_impl, list_databases_impl};
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
@@ -30,10 +31,12 @@ fn dummy_stored_params() -> StoredConnectionParams {
         has_password: true,
         keychain_ref: Some("dummy".to_string()),
         default_database: None,
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
+        ssl: SslSettings {
+            enabled: false,
+            ca_path: None,
+            cert_path: None,
+            key_path: None,
+        },
         connect_timeout_secs: 10,
         keepalive_interval_secs: 60,
     }

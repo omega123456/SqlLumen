@@ -1,18 +1,9 @@
+use crate::commands::helpers::lock_db;
 use crate::db::schema_cache;
 use crate::state::AppState;
-use rusqlite::Connection;
-use std::sync::MutexGuard;
 #[cfg(not(coverage))]
 use tauri::State;
 use tracing::{error, warn};
-
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    state.db.lock().map_err(|error| {
-        let message = error.to_string();
-        error!(error = %message, "failed to lock sqlite database for schema cache");
-        message
-    })
-}
 
 pub fn load_schema_cache_snapshot_impl(
     state: &AppState,

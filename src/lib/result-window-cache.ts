@@ -31,6 +31,7 @@ import { normalizeTinyIntRows } from './table-data-commands'
 import { logFrontend } from './app-log-commands'
 import { HALF_DIVISOR } from './units'
 import type { ColumnMeta, ResultWindow } from '../types/schema'
+import { toErrorMessage } from './error-message'
 
 /** Extra information passed to range listeners. */
 export interface WindowNotifyInfo {
@@ -159,18 +160,14 @@ export function setWindowExpiredHandler(handler: WindowExpiredHandler | null): v
   expiredHandler = handler
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 /** True for a `view_stale:` window refusal (discarded silently). */
 export function isViewStaleError(error: unknown): boolean {
-  return errorMessage(error).startsWith(VIEW_STALE_PREFIX)
+  return toErrorMessage(error).startsWith(VIEW_STALE_PREFIX)
 }
 
 /** True for an expired-results error (routed to the "Results expired" block). */
 export function isResultsExpiredError(error: unknown): boolean {
-  return errorMessage(error).includes(RESULTS_EXPIRED_TOKEN)
+  return toErrorMessage(error).includes(RESULTS_EXPIRED_TOKEN)
 }
 
 /** True for an `AbortError` raised by a cancelled read. */
@@ -180,7 +177,7 @@ export function isAbortError(error: unknown): boolean {
 
 /** Parse the `current=<n>` version from a `view_superseded:` refusal, or null. */
 export function parseSupersededVersion(error: unknown): number | null {
-  const message = errorMessage(error)
+  const message = toErrorMessage(error)
   if (!message.startsWith(VIEW_SUPERSEDED_PREFIX)) return null
   const match = /current=(\d+)/.exec(message)
   return match ? Number(match[1]) : null
@@ -445,7 +442,7 @@ async function fetchPage(surface: Surface, pageIndex: number): Promise<void> {
       // A newer view is being painted; its own response re-seeds the surface.
       logFrontend(
         'debug',
-        `[result-window-cache] discarding a stale window for ${keyOf(surface)} rows ${start}-${end}: ${errorMessage(error)}`
+        `[result-window-cache] discarding a stale window for ${keyOf(surface)} rows ${start}-${end}: ${toErrorMessage(error)}`
       )
       return
     }
@@ -453,7 +450,7 @@ async function fetchPage(surface: Surface, pageIndex: number): Promise<void> {
       expiredHandler?.(surface.slot.tabId)
       return
     }
-    const message = errorMessage(error)
+    const message = toErrorMessage(error)
     if (message.startsWith('Results were refreshed')) {
       logFrontend(
         'info',

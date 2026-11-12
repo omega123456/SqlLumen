@@ -17,6 +17,7 @@ import sharedToolbarStyles from '../shared/toolbar/toolbar-items.module.css'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../../stores/toast-store'
 import type { KillResult } from '../../lib/processlist-commands'
 import styles from './ProcessListToolbar.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 const SQL_PREVIEW_MAX_LENGTH = 80
 const TRUNCATION_ELLIPSIS = '...'
@@ -174,7 +175,7 @@ export function ProcessListToolbar({
     } catch (error) {
       if (!isMountedRef.current) return
 
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Kill failed', message)
       setConfirmDialogOpen(connectionId, false)
     } finally {

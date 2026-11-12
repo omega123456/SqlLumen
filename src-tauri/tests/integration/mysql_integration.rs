@@ -1,4 +1,5 @@
 use crate::common;
+use sqllumen_lib::mysql::pool::SslSettings;
 
 use sqllumen_lib::credentials;
 use sqllumen_lib::mysql::registry::{
@@ -32,10 +33,12 @@ fn dummy_params() -> StoredConnectionParams {
         has_password: true,
         keychain_ref: Some("dummy".to_string()),
         default_database: None,
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
+        ssl: SslSettings {
+            enabled: false,
+            ca_path: None,
+            cert_path: None,
+            key_path: None,
+        },
         connect_timeout_secs: 10,
         keepalive_interval_secs: 60,
     }
@@ -62,10 +65,7 @@ fn test_stored_connection_params_to_connection_params() {
     assert_eq!(conn.username, "dummy");
     assert_eq!(conn.password, "s3cret");
     assert_eq!(conn.default_database, None);
-    assert!(!conn.ssl_enabled);
-    assert_eq!(conn.ssl_ca_path, None);
-    assert_eq!(conn.ssl_cert_path, None);
-    assert_eq!(conn.ssl_key_path, None);
+    assert_eq!(conn.ssl, SslSettings::default());
     assert_eq!(conn.connect_timeout_secs, 10);
 }
 
@@ -435,10 +435,12 @@ fn test_create_pool_with_live_mysql() {
             username: user.to_string(),
             password: pass.to_string(),
             default_database: database,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 10,
         };
 

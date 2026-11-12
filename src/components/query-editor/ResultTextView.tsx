@@ -21,6 +21,7 @@ import { showErrorToast } from '../../stores/toast-store'
 import type { ColumnMeta } from '../../types/schema'
 import { formatTextOutput } from './result-text-format'
 import styles from './ResultTextView.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 export interface ResultTextViewProps {
   columns: ColumnMeta[]
@@ -71,7 +72,7 @@ export function ResultTextView({
           markResultsExpired(tabId)
           return
         }
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         logFrontend('warn', `[result-text-view] could not load rows: ${message}`)
         showErrorToast("Couldn't load rows", message)
       })
@@ -90,7 +91,7 @@ export function ResultTextView({
     try {
       await writeClipboardText(formattedText)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend('warn', `[result-text-view] clipboard write failed: ${message}`)
       showErrorToast(CLIPBOARD_ACTION_FAILURES.copy.title, CLIPBOARD_ACTION_FAILURES.copy.message)
     }

@@ -10,6 +10,7 @@ use sqlx::{Column, Row, TypeInfo, Value, ValueRef};
 use std::collections::HashMap;
 use std::io::{Seek, Write};
 
+use crate::export::job_retention::cleanup_terminal_jobs;
 use crate::export::sql_dump::{self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE};
 use crate::export::sql_import;
 use crate::mysql::schema_queries::{decode_mysql_text_cell, decode_mysql_text_cell_named};
@@ -182,7 +183,7 @@ pub async fn start_sql_dump_impl(
     {
         let mut jobs = dump_jobs.write().map_err(|error| error.to_string())?;
         // Clean up stale terminal jobs (older than 5 minutes)
-        cleanup_stale_dump_jobs(&mut jobs);
+        cleanup_terminal_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
     }
 
@@ -657,7 +658,7 @@ where
 pub fn get_dump_progress_impl(state: &AppState, job_id: &str) -> Result<DumpJobProgress, String> {
     let mut jobs = state.dump_jobs.write().map_err(|error| error.to_string())?;
     // Lazy cleanup: remove terminal jobs older than 5 minutes
-    cleanup_stale_dump_jobs(&mut jobs);
+    cleanup_terminal_jobs(&mut jobs);
     jobs.get(job_id)
         .cloned()
         .ok_or_else(|| format!("Dump job '{job_id}' not found"))
@@ -724,23 +725,6 @@ fn is_cancel_requested(
     jobs.get(job_id)
         .map(|job| job.cancel_requested)
         .unwrap_or(false)
-}
-
-/// Duration after which terminal dump jobs are cleaned up.
-const DUMP_JOB_STALE_DURATION: std::time::Duration = std::time::Duration::from_secs(5 * 60);
-
-/// Remove terminal dump jobs whose `completed_at` is older than 5 minutes.
-fn cleanup_stale_dump_jobs(jobs: &mut HashMap<String, DumpJobProgress>) {
-    jobs.retain(|_, progress| {
-        if let Some(completed_at) = progress.completed_at {
-            match std::time::SystemTime::now().duration_since(completed_at) {
-                Ok(age) => age < DUMP_JOB_STALE_DURATION,
-                Err(_) => true,
-            }
-        } else {
-            true // Running jobs are always kept
-        }
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1057,7 +1041,7 @@ pub async fn start_sql_import_impl(
     {
         let mut jobs = import_jobs.write().map_err(|error| error.to_string())?;
         // Clean up stale terminal jobs (older than 5 minutes)
-        cleanup_stale_import_jobs(&mut jobs);
+        cleanup_terminal_jobs(&mut jobs);
         jobs.insert(job_id.clone(), progress);
     }
 
@@ -1111,27 +1095,10 @@ pub fn get_import_progress_impl(
         .write()
         .map_err(|error| error.to_string())?;
     // Lazy cleanup: remove terminal jobs older than 5 minutes
-    cleanup_stale_import_jobs(&mut jobs);
+    cleanup_terminal_jobs(&mut jobs);
     jobs.get(job_id)
         .cloned()
         .ok_or_else(|| format!("Import job '{job_id}' not found"))
-}
-
-/// Duration after which terminal import jobs are cleaned up.
-const IMPORT_JOB_STALE_DURATION: std::time::Duration = std::time::Duration::from_secs(5 * 60);
-
-/// Remove terminal import jobs whose `completed_at` is older than 5 minutes.
-fn cleanup_stale_import_jobs(jobs: &mut HashMap<String, ImportJobProgress>) {
-    jobs.retain(|_, progress| {
-        if let Some(completed_at) = progress.completed_at {
-            match std::time::SystemTime::now().duration_since(completed_at) {
-                Ok(age) => age < IMPORT_JOB_STALE_DURATION,
-                Err(_) => true,
-            }
-        } else {
-            true // Running jobs are always kept
-        }
-    });
 }
 
 /// Cancel an import job.

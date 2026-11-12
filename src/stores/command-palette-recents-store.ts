@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { logFrontend } from '../lib/app-log-commands'
+import { logFrontendError } from '../lib/app-log-commands'
 import { getSetting, setSetting } from '../lib/tauri-commands'
 import type { ObjectType } from '../types/schema'
 
@@ -74,10 +74,7 @@ function sanitizeRecents(parsed: unknown): Record<string, CommandPaletteRecentEn
 function persistRecents(recentsByProfile: Record<string, CommandPaletteRecentEntry[]>): void {
   const serialized = JSON.stringify(recentsByProfile)
   setSetting(COMMAND_PALETTE_RECENTS_KEY, serialized).catch((error: unknown) => {
-    logFrontend(
-      'error',
-      ['[command-palette-recents-store] Failed to persist recents:', error].map(String).join(' ')
-    )
+    logFrontendError('[command-palette-recents-store] Failed to persist recents:', error)
   })
 }
 
@@ -90,11 +87,9 @@ export const useCommandPaletteRecentsStore = create<CommandPaletteRecentsState>(
       const serialized = await getSetting(COMMAND_PALETTE_RECENTS_KEY)
       get().loadRecents(serialized)
     } catch (error) {
-      logFrontend(
-        'error',
-        ['[command-palette-recents-store] Failed to load recents from backend:', error]
-          .map(String)
-          .join(' ')
+      logFrontendError(
+        '[command-palette-recents-store] Failed to load recents from backend:',
+        error
       )
       set({ recentsByProfile: {}, isInitialized: true })
     }
@@ -110,10 +105,7 @@ export const useCommandPaletteRecentsStore = create<CommandPaletteRecentsState>(
       const parsed = JSON.parse(serialized) as unknown
       set({ recentsByProfile: sanitizeRecents(parsed), isInitialized: true })
     } catch (error) {
-      logFrontend(
-        'error',
-        ['[command-palette-recents-store] Failed to parse recents:', error].map(String).join(' ')
-      )
+      logFrontendError('[command-palette-recents-store] Failed to parse recents:', error)
       set({ recentsByProfile: {}, isInitialized: true })
     }
   },

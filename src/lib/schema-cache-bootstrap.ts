@@ -6,6 +6,7 @@ import {
 } from '../components/query-editor/schema-metadata-cache'
 import { logFrontend } from './app-log-commands'
 import { loadSchemaCacheSnapshot, saveSchemaCacheSnapshot } from './schema-cache-commands'
+import { toErrorMessage } from './error-message'
 
 /** In-flight bootstrap promises — one per connection. */
 const _pendingBootstraps = new Map<string, Promise<void>>()
@@ -58,7 +59,7 @@ export async function bootstrapSchemaCache(
       hasHydratedSnapshot = true
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = toErrorMessage(error)
     logFrontend(
       'warn',
       `[schema-cache-bootstrap] Failed to load persisted schema cache: ${message}`
@@ -80,7 +81,7 @@ export async function bootstrapSchemaCache(
         await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend(
         'warn',
         `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`
@@ -96,7 +97,7 @@ export async function bootstrapSchemaCache(
         await saveSchemaCacheSnapshot(savedConnectionId, freshSnapshot)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       logFrontend(
         'warn',
         `[schema-cache-bootstrap] Failed to rebuild persisted schema cache: ${message}`

@@ -5,6 +5,7 @@
 //! read-only guard, identifier validation, name mismatch) run without MySQL.
 
 use crate::common;
+use sqllumen_lib::mysql::pool::SslSettings;
 
 use sqllumen_lib::commands::object_editor::{
     drop_object_impl, get_object_body_impl, get_routine_parameters_impl,
@@ -34,10 +35,12 @@ fn dummy_stored_params() -> StoredConnectionParams {
         has_password: true,
         keychain_ref: Some("dummy".to_string()),
         default_database: None,
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
+        ssl: SslSettings {
+            enabled: false,
+            ca_path: None,
+            cert_path: None,
+            key_path: None,
+        },
         connect_timeout_secs: 10,
         keepalive_interval_secs: 60,
     }
@@ -971,10 +974,12 @@ mod ipc_paths {
             username: "root".to_string(),
             password: String::new(),
             default_database: None,
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
+            ssl: SslSettings {
+                enabled: false,
+                ca_path: None,
+                cert_path: None,
+                key_path: None,
+            },
             connect_timeout_secs: 2,
         })
         .await

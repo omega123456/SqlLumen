@@ -3,14 +3,13 @@
 //! Under `cfg(coverage)`, the Tauri command wrappers are excluded and tests
 //! exercise the `*_impl` functions directly.
 
+use crate::commands::helpers::lock_connection;
 use crate::export::csv_writer::write_csv;
 use crate::logging::log_store::{self, LogPage};
 use crate::state::AppState;
 use chrono::{DateTime, NaiveDate, NaiveTime, SecondsFormat, TimeZone, Utc};
-use rusqlite::Connection;
 use serde_json::Value;
 use std::fs::File;
-use std::sync::MutexGuard;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevelFilter {
@@ -47,16 +46,9 @@ impl LogLevelFilter {
     }
 }
 
-fn lock_logs_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.logs_db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => Err(error.to_string()),
-    }
-}
-
 pub fn list_logs_impl(state: &AppState, page: i64, level: &str) -> Result<LogPage, String> {
     let filter = LogLevelFilter::parse(level)?;
-    let conn = lock_logs_db(state)?;
+    let conn = lock_connection(&state.logs_db)?;
     log_store::list_logs(&conn, page, filter.threshold(), Utc::now())
         .map_err(|error| error.to_string())
 }
@@ -94,7 +86,7 @@ pub fn export_logs_impl(
 ) -> Result<i64, String> {
     let range = parse_export_range(start_timestamp, end_timestamp)?;
     let exported = {
-        let conn = lock_logs_db(state)?;
+        let conn = lock_connection(&state.logs_db)?;
         log_store::export_logs_in_range(&conn, &range.start_timestamp, &range.end_timestamp)
             .map_err(|error| error.to_string())?
     };

@@ -10,13 +10,14 @@ use std::time::{Duration, SystemTime};
 
 use serde_json::{json, Value};
 use sqllumen_lib::commands::mysql::close_connection_impl;
+use sqllumen_lib::export::job_retention::{cleanup_terminal_jobs, TERMINAL_JOB_RETENTION};
 use sqllumen_lib::export::result_export::{
-    cancel_result_export_impl, cancel_result_exports_for_connection, cleanup_stale_jobs,
+    cancel_result_export_impl, cancel_result_exports_for_connection,
     get_result_export_progress_impl, is_cancel_requested, register_job, request_cancel,
     run_result_export_job, running_job_ids_for_connection, set_job_thread,
     start_result_export_impl, temp_path_for, validate_full_export, wait_for_cancel_kills,
     ExportOutcome, ExportPipeline, PreparedResultExport, StartResultExportInput,
-    FULL_EXPORT_UNAVAILABLE_MESSAGE, PROGRESS_REPORT_EVERY_ROWS, RESULT_EXPORT_JOB_STALE_AFTER,
+    FULL_EXPORT_UNAVAILABLE_MESSAGE, PROGRESS_REPORT_EVERY_ROWS,
 };
 use sqllumen_lib::export::stream_writer::RowWrite;
 use sqllumen_lib::export::ExportFormat;
@@ -359,7 +360,7 @@ fn stale_finished_jobs_are_cleaned_up_lazily() {
         let old = jobs.get_mut("old").expect("old");
         old.status = ResultExportStatus::Completed;
         old.completed_at =
-            Some(SystemTime::now() - RESULT_EXPORT_JOB_STALE_AFTER - Duration::from_secs(1));
+            Some(SystemTime::now() - TERMINAL_JOB_RETENTION - Duration::from_secs(1));
         let recent = jobs.get_mut("recent").expect("recent");
         recent.status = ResultExportStatus::Cancelled;
         recent.completed_at = Some(SystemTime::now());
@@ -370,7 +371,7 @@ fn stale_finished_jobs_are_cleaned_up_lazily() {
     }
 
     let mut map = state.result_export_jobs.read().expect("jobs").clone();
-    cleanup_stale_jobs(&mut map);
+    cleanup_terminal_jobs(&mut map);
     assert!(!map.contains_key("old"));
 
     assert!(get_result_export_progress_impl(&state, "old").is_err());

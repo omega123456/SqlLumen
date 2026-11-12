@@ -1,4 +1,5 @@
 import type { AiMemory, MemoryScope } from '../../lib/ai-memory-commands'
+import { PLAYWRIGHT_MOCK_CONNECTION_ID } from './connections'
 
 /**
  * Deterministic AI-memory fixtures for Playwright / VITE_PLAYWRIGHT runs.
@@ -58,7 +59,7 @@ export function getSavedMemoryFixture(args: Record<string, unknown> | undefined)
   return {
     id: 1,
     scope,
-    connectionId: scope === 'connection' ? 'conn-playwright-1' : null,
+    connectionId: scope === 'connection' ? PLAYWRIGHT_MOCK_CONNECTION_ID : null,
     groupId: scope === 'group' ? 'grp-playwright-1' : null,
     content: String(args?.content ?? ''),
     createdAt: Math.floor(Date.now() / 1000),

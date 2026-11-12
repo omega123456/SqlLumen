@@ -7,6 +7,7 @@ import type { ProcessRow } from '../../lib/processlist-commands'
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
 
 const FALLBACK_HEADER_HEIGHT_PX = 32
 const FALLBACK_ROW_HEIGHT_PX = 28
@@ -20,7 +21,6 @@ type ProcessListPlaywrightApi = {
 
 const EMPTY_SET = new Set<number>()
 const EMPTY_PROCESS_ROWS: ProcessRow[] = []
-const IS_PLAYWRIGHT = import.meta.env.VITE_PLAYWRIGHT === 'true'
 const PROCESSLIST_SELECTED_COLUMN_KEY = '__processlistSelected'
 
 const PROCESSLIST_SELECTION_COLUMN: GridColumn<Record<string, unknown>> = {
@@ -240,7 +240,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
   }, [])
 
   useEffect(() => {
-    if (!IS_PLAYWRIGHT) return
+    if (!isPlaywrightBuild()) return
 
     const playwrightWindow = window as typeof window & {
       __processListTestApi__?: ProcessListPlaywrightApi

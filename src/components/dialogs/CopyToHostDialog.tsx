@@ -25,17 +25,16 @@ import {
 import { listDatabases } from '../../lib/schema-commands'
 import { useConnectionStore } from '../../stores/connection-store'
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontendError } from '../../lib/app-log-commands'
 import styles from './CopyToHostDialog.module.css'
-import { PERCENT_SCALE } from '../../lib/units'
+import { isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
+import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
+import { toErrorMessage } from '../../lib/error-message'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
 
 // Skip focus management in deterministic test environments (Playwright + Vitest/jsdom) so the
 // focus trap's rAF-driven focus restoration cannot interfere with portalled dropdown interactions.
-const skipFocusManagement =
-  import.meta.env.VITE_PLAYWRIGHT === 'true' || import.meta.env.VITEST === true
-
-/** Polling interval for progress updates (ms). */
-const PROGRESS_POLL_MS = 500
+const skipFocusManagement = isPlaywrightBuild() || import.meta.env.VITEST === true
 
 /** Sentinel value used by the target database dropdown to mean "create a new database". */
 const NEW_DB_SENTINEL = '__new__'
@@ -99,22 +98,6 @@ function categoryNames(objects: CopyableObjects, category: CopyObjectCategory): 
   return objects[category]
 }
 
-function isTerminalProgress(progress: CopyProgress | null): boolean {
-  return (
-    progress?.status === 'completed' ||
-    progress?.status === 'failed' ||
-    progress?.status === 'cancelled'
-  )
-}
-
-function progressPercent(
-  done: number | null | undefined,
-  total: number | null | undefined
-): number {
-  if (!total) return 0
-  return Math.round(((done ?? 0) / total) * PERCENT_SCALE)
-}
-
 export default function CopyToHostDialog({
   isOpen,
   onClose,
@@ -156,7 +139,6 @@ export default function CopyToHostDialog({
   const [progress, setProgress] = useState<CopyProgress | null>(null)
   const [cancelPending, setCancelPending] = useState(false)
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const newDbInputRef = useRef<HTMLInputElement>(null)
 
   // Capture the pre-selected object's primitive fields so the load effect depends on stable values
@@ -236,12 +218,9 @@ export default function CopyToHostDialog({
         }
       } catch (error) {
         if (cancelled) return
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         setLoadError(message)
-        logFrontend(
-          'error',
-          ['[copy-to-host] Failed to load copyable objects:', message].map(String).join(' ')
-        )
+        logFrontendError('[copy-to-host] Failed to load copyable objects:', message)
         showErrorToast('Failed to load copyable objects', message)
       } finally {
         if (!cancelled) setLoadingObjects(false)
@@ -286,13 +265,10 @@ export default function CopyToHostDialog({
         }
       } catch (error) {
         if (cancelled) return
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         setTargetDatabases([])
         setTargetDatabaseNotice(null)
-        logFrontend(
-          'error',
-          ['[copy-to-host] Failed to load target databases:', message].map(String).join(' ')
-        )
+        logFrontendError('[copy-to-host] Failed to load target databases:', message)
         showErrorToast(`Failed to load target databases: ${message}`)
       }
     }
@@ -311,53 +287,29 @@ export default function CopyToHostDialog({
     }
   }, [targetDatabaseValue])
 
-  // Poll for progress while a job is running.
-  useEffect(() => {
-    if (!jobId) return
-
-    const stopPolling = () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-        pollRef.current = null
-      }
+  const handleCopyFinished = (finishedProgress: CopyProgress) => {
+    setIsCopying(false)
+    if (finishedProgress.status === 'completed') {
+      showSuccessToast(
+        'Copy completed',
+        `${finishedProgress.objectsDone} ${finishedProgress.objectsDone === 1 ? 'object' : 'objects'} copied`
+      )
+      return
     }
-
-    const poll = () => {
-      getCopyProgress(jobId)
-        .then((progress) => {
-          setProgress(progress)
-          if (progress.status === 'completed') {
-            setIsCopying(false)
-            stopPolling()
-            showSuccessToast(
-              'Copy completed',
-              `${progress.objectsDone} ${progress.objectsDone === 1 ? 'object' : 'objects'} copied`
-            )
-          } else if (progress.status === 'cancelled') {
-            setIsCopying(false)
-            setCancelPending(false)
-            stopPolling()
-          } else if (progress.status === 'failed') {
-            setIsCopying(false)
-            stopPolling()
-            showErrorToast('Copy failed', progress.errorMessage ?? 'Copy to host failed')
-          }
-        })
-        .catch((error) => {
-          logFrontend(
-            'error',
-            ['[copy-to-host] Failed to poll progress:', error].map(String).join(' ')
-          )
-        })
+    if (finishedProgress.status === 'cancelled') {
+      setCancelPending(false)
+      return
     }
+    showErrorToast('Copy failed', finishedProgress.errorMessage ?? 'Copy to host failed')
+  }
 
-    pollRef.current = setInterval(poll, PROGRESS_POLL_MS)
-    poll()
-
-    return () => {
-      stopPolling()
-    }
-  }, [jobId])
+  useJobProgressPolling({
+    jobId: jobId,
+    fetchProgress: getCopyProgress,
+    onProgress: setProgress,
+    onFinished: handleCopyFinished,
+    pollFailureMessage: '[copy-to-host] Failed to poll progress:',
+  })
 
   // Target connection options exclude the source host and any read-only connection.
   const targetConnectionOptions = useMemo<DropdownOption[]>(() => {
@@ -478,9 +430,9 @@ export default function CopyToHostDialog({
       setJobId(id)
     } catch (error) {
       setIsCopying(false)
-      const message = error instanceof Error ? error.message : String(error)
+      const message = toErrorMessage(error)
       showErrorToast('Copy failed', message)
-      logFrontend('error', ['[copy-to-host] Failed to start copy:', message].map(String).join(' '))
+      logFrontendError('[copy-to-host] Failed to start copy:', message)
     }
   }, [
     canCopy,
@@ -505,13 +457,13 @@ export default function CopyToHostDialog({
       await cancelCopy(jobId)
     } catch (error) {
       setCancelPending(false)
-      const message = error instanceof Error ? error.message : String(error)
-      logFrontend('error', ['[copy-to-host] Failed to cancel copy:', message].map(String).join(' '))
+      const message = toErrorMessage(error)
+      logFrontendError('[copy-to-host] Failed to cancel copy:', message)
       showErrorToast('Failed to cancel copy', message)
     }
   }, [jobId, cancelPending])
 
-  const isTerminal = isTerminalProgress(progress)
+  const isTerminal = isTerminalJobStatus(progress?.status)
 
   const objectsPercent = useMemo(() => {
     return progressPercent(progress?.objectsDone, progress?.objectsTotal)

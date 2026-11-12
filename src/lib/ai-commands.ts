@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 import { logFrontend } from './app-log-commands'
+import { toErrorMessage } from './error-message'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ export async function listAiModels(endpoint: string): Promise<ListAiModelsResult
     const response = await invoke<{ models: AiModelInfo[] }>('list_ai_models', { endpoint })
     return { models: response.models }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorMessage = toErrorMessage(error)
     logFrontend('error', `[ai-commands] Failed to list AI models: ${errorMessage}`)
     return { models: [], error: errorMessage }
   }

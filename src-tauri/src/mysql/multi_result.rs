@@ -334,10 +334,10 @@ pub async fn build_connection(
     }
 
     // SSL/TLS configuration
-    if params.ssl_enabled {
+    if params.ssl.enabled {
         let mut ssl_opts = mysql_async::SslOpts::default();
 
-        if let Some(ref ca_path) = params.ssl_ca_path {
+        if let Some(ref ca_path) = params.ssl.ca_path {
             ssl_opts = ssl_opts.with_root_certs(vec![std::path::PathBuf::from(ca_path).into()]);
         } else {
             // No CA cert: accept any cert (equivalent to sqlx Required mode)
@@ -345,7 +345,7 @@ pub async fn build_connection(
         }
 
         if let (Some(ref cert_path), Some(ref key_path)) =
-            (&params.ssl_cert_path, &params.ssl_key_path)
+            (&params.ssl.cert_path, &params.ssl.key_path)
         {
             let identity = mysql_async::ClientIdentity::new(
                 std::path::PathBuf::from(cert_path).into(),

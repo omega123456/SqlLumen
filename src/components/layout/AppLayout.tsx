@@ -34,7 +34,7 @@ import { buildExecuteQueryPlan, runExecuteQueryPlan } from '../../lib/query-exec
 import { CommandPalette } from '../command-palette/CommandPalette'
 import styles from './AppLayout.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
+import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
 
 function getExecutableStatements(sql: string): string[] {
   return splitStatements(sql)
@@ -292,7 +292,7 @@ export function AppLayout() {
             queryState.setFilePath(tabId, filePath)
           }
         } catch (error) {
-          logFrontend('error', ['[app-layout] open-file failed:', error].map(String).join(' '))
+          logFrontendError('[app-layout] open-file failed:', error)
         }
       })()
     })

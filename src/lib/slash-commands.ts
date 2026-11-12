@@ -4,6 +4,7 @@ import { showSuccessToast, showErrorToast } from '../stores/toast-store'
 import { useSettingsStore } from '../stores/settings-store'
 
 import { logFrontend } from './app-log-commands'
+import { toErrorMessage } from './error-message'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -76,7 +77,7 @@ export async function executeRemember(
     showSuccessToast('Memory saved')
     return { type: 'saved', memory: memory }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = toErrorMessage(error)
     logFrontend('error', `[slash-commands] /remember failed: ${message}`)
     showErrorToast('Failed to save memory', message)
     throw error

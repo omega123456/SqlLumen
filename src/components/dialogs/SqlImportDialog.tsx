@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import { Checkbox } from '../common/Checkbox'
 import { DialogShell } from './DialogShell'
 import { Button } from '../common/Button'
@@ -12,12 +12,42 @@ import {
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../stores/toast-store'
 import styles from './SqlImportDialog.module.css'
 
-import { logFrontend } from '../../lib/app-log-commands'
-import { PERCENT_SCALE } from '../../lib/units'
-const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
+import { logFrontendError } from '../../lib/app-log-commands'
+import { isPlaywrightBuild } from '../../lib/tauri-env'
+import { isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
+import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
 
-/** Polling interval for progress updates (ms). */
-const PROGRESS_POLL_MS = 500
+function pluralSuffix(count: number): string {
+  return count > 1 ? 's' : ''
+}
+
+function announceImportOutcome(progress: ImportJobProgress): void {
+  if (progress.status === 'failed') {
+    showErrorToast(
+      'Import failed',
+      progress.errors[0]?.errorMessage ?? 'Import stopped due to error'
+    )
+    return
+  }
+  if (progress.status === 'cancelled') {
+    showWarningToast(
+      'Import cancelled',
+      `${progress.statementsDone} statements were executed before cancellation`
+    )
+    return
+  }
+  if (progress.errors.length === 0) {
+    showSuccessToast(
+      'Import completed',
+      `${progress.statementsDone} statements executed successfully`
+    )
+    return
+  }
+  showWarningToast(
+    'Import completed with errors',
+    `${progress.errors.length} error${pluralSuffix(progress.errors.length)} — ${progress.statementsDone} statements processed`
+  )
+}
 
 export interface SqlImportDialogProps {
   connectionId: string
@@ -34,75 +64,20 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState<ImportJobProgress | null>(null)
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isTerminal = isTerminalJobStatus(progress?.status)
 
-  // Derived state
-  const isTerminal =
-    progress?.status === 'completed' ||
-    progress?.status === 'failed' ||
-    progress?.status === 'cancelled'
+  const handleImportFinished = (finishedProgress: ImportJobProgress) => {
+    setIsImporting(false)
+    announceImportOutcome(finishedProgress)
+  }
 
-  // Poll for progress when we have a job ID
-  useEffect(() => {
-    if (!jobId) return
-
-    const poll = () => {
-      getImportProgress(jobId)
-        .then((progress) => {
-          setProgress(progress)
-          if (
-            progress.status === 'completed' ||
-            progress.status === 'failed' ||
-            progress.status === 'cancelled'
-          ) {
-            setIsImporting(false)
-            if (pollRef.current) clearInterval(pollRef.current)
-            pollRef.current = null
-
-            if (progress.status === 'completed') {
-              if (progress.errors.length === 0) {
-                showSuccessToast(
-                  'Import completed',
-                  `${progress.statementsDone} statements executed successfully`
-                )
-              } else {
-                showWarningToast(
-                  'Import completed with errors',
-                  `${progress.errors.length} error${progress.errors.length > 1 ? 's' : ''} — ${progress.statementsDone} statements processed`
-                )
-              }
-            } else if (progress.status === 'failed') {
-              showErrorToast(
-                'Import failed',
-                progress.errors[0]?.errorMessage ?? 'Import stopped due to error'
-              )
-            } else if (progress.status === 'cancelled') {
-              showWarningToast(
-                'Import cancelled',
-                `${progress.statementsDone} statements were executed before cancellation`
-              )
-            }
-          }
-        })
-        .catch((error) => {
-          logFrontend(
-            'error',
-            ['[sql-import] Failed to poll progress:', error].map(String).join(' ')
-          )
-        })
-    }
-
-    pollRef.current = setInterval(poll, PROGRESS_POLL_MS)
-    // Also poll immediately
-    poll()
-
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-        pollRef.current = null
-      }
-    }
-  }, [jobId])
+  useJobProgressPolling({
+    jobId: jobId,
+    fetchProgress: getImportProgress,
+    onProgress: setProgress,
+    onFinished: handleImportFinished,
+    pollFailureMessage: '[sql-import] Failed to poll progress:',
+  })
 
   // Handle import start
   const handleImport = useCallback(async () => {
@@ -115,7 +90,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
       setJobId(id)
     } catch (error) {
       setIsImporting(false)
-      logFrontend('error', ['[sql-import] Failed to start import:', error].map(String).join(' '))
+      logFrontendError('[sql-import] Failed to start import:', error)
     }
   }, [connectionId, filePath, stopOnError])
 
@@ -125,15 +100,11 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
     try {
       await cancelImport(jobId)
     } catch (error) {
-      logFrontend('error', ['[sql-import] Failed to cancel import:', error].map(String).join(' '))
+      logFrontendError('[sql-import] Failed to cancel import:', error)
     }
   }, [jobId])
 
-  // Progress percentage
-  const progressPercent = useMemo(() => {
-    if (!progress || progress.statementsTotal === 0) return 0
-    return Math.round((progress.statementsDone / progress.statementsTotal) * PERCENT_SCALE)
-  }, [progress])
+  const statementsPercent = progressPercent(progress?.statementsDone, progress?.statementsTotal)
 
   // File name from path
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath
@@ -145,7 +116,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
       maxWidth={520}
       testId="sql-import-dialog"
       ariaLabel="Import SQL script"
-      disableFocusManagement={isPlaywright}
+      disableFocusManagement={isPlaywrightBuild()}
       nonDismissible={isImporting}
     >
       <div className={styles.root}>
@@ -197,11 +168,11 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
           {progress && (
             <div className={styles.progressSection} data-testid="import-progress">
               <div className={styles.progressBar}>
-                <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
+                <div className={styles.progressFill} style={{ width: `${statementsPercent}%` }} />
               </div>
               <span className={styles.progressText}>
                 {progress.statementsDone} / {progress.statementsTotal} statements —{' '}
-                {progressPercent}%
+                {statementsPercent}%
               </span>
             </div>
           )}
@@ -222,7 +193,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
               {progress.status === 'completed' && progress.errors.length > 0 && (
                 <>
                   Import completed with {progress.errors.length} error
-                  {progress.errors.length > 1 ? 's' : ''}
+                  {pluralSuffix(progress.errors.length)}
                 </>
               )}
               {progress.status === 'failed' && (

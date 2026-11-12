@@ -11,6 +11,7 @@ import { type LogEntry, type LogLevelFilter, listLogs } from '../../lib/log-comm
 import { LogExportDialog } from './LogExportDialog'
 import { LogLevelBadge } from './LogLevelBadge'
 import styles from './LogViewer.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 const PAGE_SIZE = 20
 const AUTO_REFRESH_MS = 5000
@@ -80,7 +81,7 @@ export function LogViewer() {
         if (requestId !== requestIdRef.current) {
           return
         }
-        const message = error instanceof Error ? error.message : String(error)
+        const message = toErrorMessage(error)
         setErrorMessage(message)
         logFrontend('error', `[log-viewer] Failed to load logs: ${message}`)
       } finally {

@@ -30,6 +30,7 @@ import type { GridColumnDescriptor, AutoSizeConfig } from '../../types/shared-da
 import type { TableDataColumnMeta, PrimaryKeyInfo, FilterCondition } from '../../types/schema'
 import { logFrontend } from '../../lib/app-log-commands'
 import styles from './FkLookupDialog.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 const LOOKUP_PAGE_SIZE = 100
 
@@ -148,7 +149,7 @@ export function FkLookupDialog({
       } catch (error) {
         if (!mountedRef.current) return
         if (loadRequestTokenRef.current !== thisToken) return // stale error
-        setError(error instanceof Error ? error.message : String(error))
+        setError(toErrorMessage(error))
         setRows([])
         setSelectedRowKey(null)
       } finally {
@@ -170,7 +171,7 @@ export function FkLookupDialog({
         connectionId: connectionId,
         tabId: cacheTabId,
       }).catch((error: unknown) => {
-        const errorMessage = error instanceof Error ? error.message : String(error)
+        const errorMessage = toErrorMessage(error)
         logFrontend('warn', `FK lookup cache cleanup failed for ${cacheTabId}: ${errorMessage}`)
       })
     }

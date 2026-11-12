@@ -19,7 +19,7 @@ import {
 import { useConnectionStore } from '../../stores/connection-store'
 import { FALLBACK_ROW_LIMIT } from '../../stores/query-store'
 import { useToastStore } from '../../stores/toast-store'
-import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
+import { saveCurrentRowWithFeedback } from './row-save-feedback'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
 import { serializeCsv } from '../../lib/csv-utils'
 import { writeClipboardText } from '../../lib/context-menu-utils'
@@ -35,6 +35,7 @@ import type { ViewMode } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import { Button } from '../common/Button'
 import styles from './TableDataToolbar.module.css'
+import { toErrorMessage } from '../../lib/error-message'
 
 interface TableDataToolbarProps {
   tabId: string
@@ -52,7 +53,6 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const deleteRow = useTableDataStore((state) => state.deleteRow)
   const deleteRows = useTableDataStore((state) => state.deleteRows)
   const setCheckedRowKeys = useTableDataStore((state) => state.setCheckedRowKeys)
-  const saveCurrentRow = useTableDataStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useTableDataStore((state) => state.discardCurrentRow)
   const refreshData = useTableDataStore((state) => state.refreshData)
   const cancelLoad = useTableDataStore((state) => state.cancelLoad)
@@ -205,23 +205,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   }, [])
 
   const handleSave = useCallback(async () => {
-    const validationError = getTemporalValidationResult(editState, columns)
-    if (validationError) {
-      showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
-      return
-    }
-
-    await saveCurrentRow(tabId)
-    const newState = useTableDataStore.getState().tabs[tabId]
-    if (newState?.saveError) {
-      showError('Save failed', newState.saveError)
-      return
-    }
-
-    if (newState && !newState.saveError && !newState.editState) {
-      showSuccess('Row saved', 'Changes saved successfully.')
-    }
-  }, [saveCurrentRow, tabId, editState, columns, showError, showSuccess])
+    await saveCurrentRowWithFeedback({ tabId: tabId, editState: editState, columns: columns })
+  }, [tabId, editState, columns])
 
   const handleDiscard = useCallback(() => {
     discardCurrentRow(tabId)
@@ -271,7 +256,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       )
       showSuccess('Selected rows copied', `${selectedRows.length} row(s) copied to clipboard.`)
     } catch (error) {
-      showError('Copy failed', error instanceof Error ? error.message : String(error))
+      showError('Copy failed', toErrorMessage(error))
     }
   }, [checkedRowKeys, columns, editState?.tempId, rows, showError, showSuccess])
 

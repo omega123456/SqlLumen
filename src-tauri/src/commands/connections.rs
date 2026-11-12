@@ -1,8 +1,7 @@
+use crate::commands::helpers::lock_db;
 use crate::db::connections::{self, ConnectionRecord, NewConnectionData, UpdateConnectionData};
 use crate::state::AppState;
-use rusqlite::Connection;
 use serde::Deserialize;
-use std::sync::MutexGuard;
 #[cfg(not(coverage))]
 use tauri::State;
 
@@ -54,13 +53,6 @@ pub struct UpdateConnectionInput {
 }
 
 // --- Testable implementations (take &AppState instead of State<AppState>) ---
-
-fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
-    match state.db.lock() {
-        Ok(conn) => Ok(conn),
-        Err(error) => Err(error.to_string()),
-    }
-}
 
 pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Result<String, String> {
     let password = data.password.clone();

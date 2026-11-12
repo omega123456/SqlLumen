@@ -29,6 +29,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::Deserialize;
 
+use super::job_retention::cleanup_terminal_jobs;
 use super::stream_writer::{RowSink, RowWrite, XLSX_SHEET_ROW_LIMIT};
 use super::ExportFormat;
 use crate::mysql::query_executor::RunDatabase;
@@ -38,9 +39,6 @@ use crate::state::{
 
 /// Refusal for results that are not truncated, or can't be re-run safely.
 pub const FULL_EXPORT_UNAVAILABLE_MESSAGE: &str = "Full export isn't available for this result.";
-
-/// Finished jobs are dropped this long after they end.
-pub const RESULT_EXPORT_JOB_STALE_AFTER: Duration = Duration::from_secs(5 * 60);
 
 /// Progress is published to the job map every this many rows (and on the first row).
 pub const PROGRESS_REPORT_EVERY_ROWS: u64 = 256;
@@ -199,17 +197,6 @@ fn update_job(
     }
 }
 
-/// Drop finished jobs that ended more than [`RESULT_EXPORT_JOB_STALE_AFTER`] ago.
-pub fn cleanup_stale_jobs(jobs: &mut HashMap<String, ResultExportJobProgress>) {
-    let now = SystemTime::now();
-    jobs.retain(|_, job| match job.completed_at {
-        Some(completed_at) => now
-            .duration_since(completed_at)
-            .map_or(true, |age| age < RESULT_EXPORT_JOB_STALE_AFTER),
-        None => true,
-    });
-}
-
 /// Register a running job for `connection_id` (cleaning up stale ones first).
 /// Returns the job's shared cancel state.
 pub fn register_job(
@@ -218,7 +205,7 @@ pub fn register_job(
     connection_id: &str,
 ) -> Arc<ResultExportCancel> {
     let mut map = write_jobs(jobs);
-    cleanup_stale_jobs(&mut map);
+    cleanup_terminal_jobs(&mut map);
     let cancel = Arc::new(ResultExportCancel::default());
     map.insert(
         job_id.to_string(),
@@ -348,7 +335,7 @@ pub fn get_result_export_progress_impl(
     job_id: &str,
 ) -> Result<ResultExportJobProgress, String> {
     let mut map = write_jobs(&state.result_export_jobs);
-    cleanup_stale_jobs(&mut map);
+    cleanup_terminal_jobs(&mut map);
     let job = map
         .get(job_id)
         .ok_or_else(|| format!("Export job '{job_id}' not found"))?;

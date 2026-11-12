@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { JobStatus } from './job-progress'
 
 /** A database with its exportable tables/views. */
 export interface ExportableDatabase {
@@ -40,7 +41,7 @@ export interface StartDumpInput {
 }
 
 /** Status of a SQL dump export job. */
-export type DumpJobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+export type DumpJobStatus = JobStatus
 
 /** Progress info for an active or completed SQL dump export job. */
 export interface DumpJobProgress {
@@ -80,7 +81,7 @@ export async function cancelDump(jobId: string, connectionId: string): Promise<v
 // ---------------------------------------------------------------------------
 
 /** Status of a SQL import job. */
-export type ImportJobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+export type ImportJobStatus = JobStatus
 
 /** An error encountered during SQL import execution. */
 export interface ImportError {

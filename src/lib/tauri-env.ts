@@ -6,3 +6,7 @@ export function hasTauriApis(): boolean {
     (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ != null
   )
 }
+
+export function isPlaywrightBuild(): boolean {
+  return import.meta.env.VITE_PLAYWRIGHT === 'true'
+}
