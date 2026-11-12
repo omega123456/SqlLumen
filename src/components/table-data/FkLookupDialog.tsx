@@ -93,13 +93,15 @@ function resolveLookupSort(
   column: string | null,
   direction: LookupSort['direction'] | null
 ): LookupSort | null {
-  if (!column || !direction) return null
+  if (!column) return null
+  if (!direction) return null
   return { column, direction }
 }
 
 function lookupRowKey(row: LookupRow, primaryKey: PrimaryKeyInfo | null): string {
-  if (primaryKey && primaryKey.keyColumns.length > 0) {
-    return JSON.stringify(primaryKey.keyColumns.map((column) => row[column]))
+  const keyColumns = primaryKey?.keyColumns ?? []
+  if (keyColumns.length > 0) {
+    return JSON.stringify(keyColumns.map((column) => row[column]))
   }
   // Fallback: use the synthetic __rowIdx field added during row transformation
   return String(row['__rowIdx'] ?? -1)
@@ -119,7 +121,8 @@ interface ApplyAvailability {
 }
 
 function isApplyEnabled(availability: ApplyAvailability): boolean {
-  if (!availability.hasSelection || availability.isReadOnly) return false
+  if (!availability.hasSelection) return false
+  if (availability.isReadOnly) return false
   return !availability.isLoading && !availability.error
 }
 
@@ -184,7 +187,8 @@ function LookupBody({ isLoading, error, onRetry, grid }: LookupBodyProps) {
     )
   }
 
-  if (grid.rows.length === 0) {
+  const hasNoRows = grid.rows.length === 0
+  if (hasNoRows) {
     return (
       <div className={styles.emptyContainer} data-testid="fk-lookup-empty">
         No rows found
@@ -358,7 +362,8 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (!isOpen || !hasInitialized.current) return
+    if (!isOpen) return
+    if (!hasInitialized.current) return
 
     // Skip if the initial load effect just fired in this same render cycle
     if (suppressReloadRef.current) {
@@ -395,7 +400,8 @@ export function FkLookupDialog({
         for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
           columnRows[sampleIndex] = [rows[sampleIndex][column.key]]
         }
-        const headerIconWidthPx = column.foreignKey || !column.editable ? HEADER_ICON_WIDTH_PX : 0
+        const showsHeaderIcon = Boolean(column.foreignKey) || !column.editable
+        const headerIconWidthPx = showsHeaderIcon ? HEADER_ICON_WIDTH_PX : 0
         return getAutoSizedColumnWidth(meta, 0, columnRows, column.key, headerIconWidthPx)
       },
     }
@@ -497,14 +503,16 @@ export function FkLookupDialog({
   /** Get row class — highlight the selected row. */
   const handleGetRowClass = useCallback(
     (rowData: Record<string, unknown>) => {
-      return computeRowKey(rowData) === selectedRowKey ? 'glide-row-precision-selected' : undefined
+      const isSelectedRow = computeRowKey(rowData) === selectedRowKey
+      return isSelectedRow ? 'glide-row-precision-selected' : undefined
     },
     [computeRowKey, selectedRowKey]
   )
 
   /** Apply the selected row's referenced column value. */
   const handleApply = useCallback(() => {
-    if (selectedRowKey === null || isReadOnly) return
+    if (selectedRowKey === null) return
+    if (isReadOnly) return
     const selectedRow = rows.find((row) => computeRowKey(row) === selectedRowKey)
     if (!selectedRow) return
     const value = selectedRow[referencedColumn]

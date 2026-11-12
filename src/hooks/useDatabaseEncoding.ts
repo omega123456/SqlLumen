@@ -46,22 +46,20 @@ export function useDatabaseEncoding(
   // the updated prop, avoiding the one-render lag that useEffect-based syncing
   // causes (which made `waitForAlterDatabaseDialogIdle` resolve before the charset
   // state was updated on reopen).
-  if (
-    isOpen &&
-    initialCharset !== undefined &&
-    initialCharset !== previousInitialCharsetRef.current
-  ) {
+  const hasNewInitialCharset =
+    isOpen && initialCharset !== undefined && initialCharset !== previousInitialCharsetRef.current
+  if (hasNewInitialCharset) {
     previousInitialCharsetRef.current = initialCharset
     // Calling setState during render is the React-approved pattern for
     // getDerivedStateFromProps; React will immediately re-render with the new value.
     setCharsetState(initialCharset)
   }
 
-  if (
+  const hasNewInitialCollation =
     isOpen &&
     initialCollation !== undefined &&
     initialCollation !== previousInitialCollationRef.current
-  ) {
+  if (hasNewInitialCollation) {
     previousInitialCollationRef.current = initialCollation
     setCollation(initialCollation)
   }
@@ -105,9 +103,10 @@ export function useDatabaseEncoding(
     const wasOpen = wasOpenRef.current
     wasOpenRef.current = isOpen
 
-    if (!isOpen || wasOpen || initialCharset !== undefined || initialCollation !== undefined) {
-      return
-    }
+    if (!isOpen) return
+    if (wasOpen) return
+    if (initialCharset !== undefined) return
+    if (initialCollation !== undefined) return
 
     previousInitialCharsetRef.current = undefined
     previousInitialCollationRef.current = undefined

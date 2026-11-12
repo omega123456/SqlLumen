@@ -240,11 +240,9 @@ pub fn validate_selection_for_options(
         return Err("Select at least one object to copy".to_string());
     }
 
-    if !selection.tables.is_empty()
-        && !selection.has_non_table_objects()
-        && !options.copy_structure
-        && !options.copy_data
-    {
+    let selects_only_tables = !selection.tables.is_empty() && !selection.has_non_table_objects();
+    let copies_nothing_from_tables = !options.copy_structure && !options.copy_data;
+    if selects_only_tables && copies_nothing_from_tables {
         return Err(
             "Table copy would do nothing: enable structure and/or data, or select a non-table object"
                 .to_string(),
@@ -267,6 +265,14 @@ pub fn validate_cross_database_non_table_copy(
     Ok(())
 }
 
+fn is_plain_identifier_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn is_ascii_whitespace_byte_at(bytes: &[u8], position: usize) -> bool {
+    bytes.get(position).is_some_and(u8::is_ascii_whitespace)
+}
+
 /// Validate a charset/collation token before interpolating it as an unquoted SQL
 /// identifier fragment.
 pub fn validate_mysql_identifier_token(kind: &str, value: &str) -> Result<(), String> {
@@ -274,10 +280,7 @@ pub fn validate_mysql_identifier_token(kind: &str, value: &str) -> Result<(), St
         return Ok(());
     }
 
-    if value
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-    {
+    if value.bytes().all(is_plain_identifier_byte) {
         return Ok(());
     }
 
@@ -313,20 +316,20 @@ pub fn strip_definer(ddl: &str) -> String {
 
     let mut position = start + needle.len();
     // optional whitespace
-    while position < bytes.len() && bytes[position].is_ascii_whitespace() {
+    while is_ascii_whitespace_byte_at(bytes, position) {
         position += 1;
     }
-    // require '='
-    if position >= bytes.len() || bytes[position] != b'=' {
+    if bytes.get(position) != Some(&b'=') {
         return ddl.to_string();
     }
     position += 1;
     // optional whitespace
-    while position < bytes.len() && bytes[position].is_ascii_whitespace() {
+    while is_ascii_whitespace_byte_at(bytes, position) {
         position += 1;
     }
     // consume the user@host spec, allowing whitespace inside quoted identifiers
-    if position >= bytes.len() || bytes[position].is_ascii_whitespace() {
+    let has_definer_spec = position < bytes.len() && !is_ascii_whitespace_byte_at(bytes, position);
+    if !has_definer_spec {
         return ddl.to_string();
     }
     let mut quote: Option<u8> = None;
@@ -351,7 +354,7 @@ pub fn strip_definer(ddl: &str) -> String {
                 if byte.is_ascii_whitespace() {
                     break;
                 }
-                if byte == b'\'' || byte == b'`' || byte == b'"' {
+                if matches!(byte, b'\'' | b'`' | b'"') {
                     quote = Some(byte);
                 }
                 position += 1;
@@ -363,7 +366,7 @@ pub fn strip_definer(ddl: &str) -> String {
     }
     // consume trailing whitespace after the clause
     let mut after = position;
-    while after < bytes.len() && bytes[after].is_ascii_whitespace() {
+    while is_ascii_whitespace_byte_at(bytes, after) {
         after += 1;
     }
 
@@ -440,8 +443,10 @@ pub fn rewrite_non_table_ddl_schema(
     target_database: &str,
     object_name: &str,
 ) -> String {
-    if object_type == CopyObjectType::Table || target_database.is_empty() || object_name.is_empty()
-    {
+    let is_unqualifiable = object_type == CopyObjectType::Table
+        || target_database.is_empty()
+        || object_name.is_empty();
+    if is_unqualifiable {
         return ddl.to_string();
     }
 
@@ -508,7 +513,8 @@ fn parse_mysql_identifier_end(sql: &str, start: usize) -> Option<usize> {
         let bytes = sql.as_bytes();
         while index < sql.len() {
             if bytes[index] == b'`' {
-                if index + 1 < sql.len() && bytes[index + 1] == b'`' {
+                let is_escaped_backtick = bytes.get(index + 1) == Some(&b'`');
+                if is_escaped_backtick {
                     index += 2;
                     continue;
                 }
@@ -560,7 +566,8 @@ fn create_table_prefix_len(lower_ddl: &str) -> Option<usize> {
 /// first backtick-quoted table identifier immediately following `CREATE TABLE`
 /// or `CREATE TABLE IF NOT EXISTS` is replaced.
 pub fn qualify_table_ddl_schema(ddl: &str, target_database: &str, table_name: &str) -> String {
-    if target_database.is_empty() || table_name.is_empty() {
+    let is_missing_target_name = target_database.is_empty() || table_name.is_empty();
+    if is_missing_target_name {
         return ddl.to_string();
     }
 
@@ -997,7 +1004,8 @@ mod engine {
             ));
         }
 
-        if options.ignore_definer && object_type.supports_definer() {
+        let should_strip_definer = options.ignore_definer && object_type.supports_definer();
+        if should_strip_definer {
             ddl = strip_definer(&ddl);
         }
         if options.create_if_not_exists {
@@ -1353,7 +1361,8 @@ mod engine {
 
         for (object_type, name) in work {
             let mut rows_total = None;
-            if object_type == CopyObjectType::Table && opts.copy_data {
+            let copies_table_data = object_type == CopyObjectType::Table && opts.copy_data;
+            if copies_table_data {
                 rows_total = Some(count_source_rows(source, &params.source_database, &name).await?);
             }
 

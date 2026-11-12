@@ -152,7 +152,8 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     const alreadyLoadedCurrentObject =
       loadedKeyRef.current === requestKey && (data !== null || error !== null)
 
-    if (!isActive || alreadyLoadedCurrentObject) return
+    if (!isActive) return
+    if (alreadyLoadedCurrentObject) return
 
     // Clear stale state immediately before fetching new data
     queueMicrotask(() => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { logParseFallback } from '../../lib/app-log-commands'
+import { bindingsMatch } from '../../lib/shortcut-bindings'
 import { useShortcutStore, DEFAULT_SHORTCUTS } from '../../stores/shortcut-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { SettingsSection } from './SettingsSection'
@@ -41,15 +42,6 @@ const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
     description: "Select the active tab's table, view or routine in the object browser",
   },
 ]
-
-/** Check if two bindings are the same key combo. */
-function bindingsMatch(left: ShortcutBinding, right: ShortcutBinding): boolean {
-  if (left.key.toLowerCase() !== right.key.toLowerCase()) return false
-  const leftModifiers = [...left.modifiers].sort()
-  const rightModifiers = [...right.modifiers].sort()
-  if (leftModifiers.length !== rightModifiers.length) return false
-  return leftModifiers.every((modifier, index) => modifier === rightModifiers[index])
-}
 
 /** Find an action ID that already uses a given binding (excluding `excludeActionId`). */
 function findConflict(
@@ -200,7 +192,9 @@ export function ShortcutsSettings() {
   )
 
   const resolveConflict = useCallback(() => {
-    if (!pendingBinding || !pendingActionId || !conflictActionId) return
+    if (!pendingBinding) return
+    if (!pendingActionId) return
+    if (!conflictActionId) return
     const updated = { ...workingShortcuts }
     updated[pendingActionId] = pendingBinding
     updated[conflictActionId] = DEFAULT_SHORTCUTS[conflictActionId] ?? {
@@ -263,13 +257,10 @@ export function ShortcutsSettings() {
 
   const isModified = (actionId: string): boolean => {
     const current = workingShortcuts[actionId]
-    const def = DEFAULT_SHORTCUTS[actionId]
-    if (!current || !def) return false
-    if (current.key.toLowerCase() !== def.key.toLowerCase()) return true
-    const currentModifiers = [...current.modifiers].sort()
-    const defaultModifiers = [...def.modifiers].sort()
-    if (currentModifiers.length !== defaultModifiers.length) return true
-    return !currentModifiers.every((modifier, index) => modifier === defaultModifiers[index])
+    const defaultBinding = DEFAULT_SHORTCUTS[actionId]
+    if (!current) return false
+    if (!defaultBinding) return false
+    return !bindingsMatch(current, defaultBinding)
   }
 
   return (

@@ -67,7 +67,8 @@ export async function bootstrapSchemaCache(
   }
 
   const releasePendingBootstrap = () => {
-    if (_pendingBootstraps.get(sessionId) === initialLoadPromise) {
+    const isOwnPendingBootstrap = _pendingBootstraps.get(sessionId) === initialLoadPromise
+    if (isOwnPendingBootstrap) {
       _pendingBootstraps.delete(sessionId)
     }
   }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { ipc } from '../ipc-mock'
 import type { AiMemory } from '../../lib/ai-memory-commands'
 import {
+  isMemoryScope,
   saveMemory,
   listGlobalMemories,
   listGroupMemories,
@@ -153,5 +154,18 @@ describe('ai-memory-commands', () => {
       await reembedAllMemories()
       expect(ipc.calls('reembed_all_memories')).toHaveLength(1)
     })
+  })
+})
+
+describe('isMemoryScope', () => {
+  it('accepts the three memory scopes', () => {
+    expect(isMemoryScope('connection')).toBe(true)
+    expect(isMemoryScope('group')).toBe(true)
+    expect(isMemoryScope('global')).toBe(true)
+  })
+
+  it('rejects anything else', () => {
+    expect(isMemoryScope('ask')).toBe(false)
+    expect(isMemoryScope(undefined)).toBe(false)
   })
 })

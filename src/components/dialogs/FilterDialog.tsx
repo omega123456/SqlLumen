@@ -126,8 +126,8 @@ export function FilterDialog({
       previous.map((condition, conditionIndex) => {
         if (conditionIndex !== index) return condition
         const updated = { ...condition, [field]: value }
-        // Clear value when switching to a nullary operator
-        if (field === 'operator' && NULLARY_OPERATORS.has(value)) {
+        const isSwitchingToNullaryOperator = field === 'operator' && NULLARY_OPERATORS.has(value)
+        if (isSwitchingToNullaryOperator) {
           updated.value = ''
         }
         return updated
@@ -151,7 +151,9 @@ export function FilterDialog({
   )
 
   useEffect(() => {
-    if (!isOpen || conditions.length === 0 || hasAutoFocusedForOpenRef.current) return
+    if (!isOpen) return
+    if (conditions.length === 0) return
+    if (hasAutoFocusedForOpenRef.current) return
 
     const firstFocusableInput = valueInputRefs.current.find((input) => input && !input.disabled)
     if (!firstFocusableInput) return

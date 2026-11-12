@@ -76,17 +76,16 @@ function parseTimeInput(input: string): { hours: number; minutes: number; second
   const hours = parseInt(match[1], 10)
   const minutes = parseInt(match[2], 10)
   const seconds = parseInt(match[3], 10)
-  if (
-    hours < 0 ||
-    hours > LAST_HOUR_OF_DAY ||
-    minutes < 0 ||
-    minutes > LAST_MINUTE_OF_HOUR ||
-    seconds < 0 ||
-    seconds > LAST_SECOND_OF_MINUTE
-  ) {
-    return null
-  }
+  const isValidTime =
+    isWithinRange(hours, LAST_HOUR_OF_DAY) &&
+    isWithinRange(minutes, LAST_MINUTE_OF_HOUR) &&
+    isWithinRange(seconds, LAST_SECOND_OF_MINUTE)
+  if (!isValidTime) return null
   return { hours, minutes, seconds }
+}
+
+function isWithinRange(value: number, maximum: number): boolean {
+  return value >= 0 && value <= maximum
 }
 
 /** Format a Date as HH:mm:ss using date-utils. Falls back to '00:00:00'. */

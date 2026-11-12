@@ -1,5 +1,10 @@
 import type { TreeNode } from '../types/schema'
 
+const UNFILTERED_NODE_TYPES: ReadonlySet<TreeNode['type']> = new Set<TreeNode['type']>([
+  'column',
+  'category',
+])
+
 /**
  * True if `nodeId` is `scopeRootId` or a descendant of it in `nodes`.
  */
@@ -52,18 +57,16 @@ export function computeFilterMatchIds(
   const lowerFilter = filterText.toLowerCase()
 
   for (const [id, node] of Object.entries(nodes)) {
-    if (node.type === 'column' || node.type === 'category') {
+    if (!isFilterCandidateMatch(node, lowerFilter)) {
       continue
     }
 
-    if (node.label.toLowerCase().includes(lowerFilter)) {
-      matchIds.add(id)
-      let parentId = node.parentId
-      while (parentId) {
-        matchIds.add(parentId)
-        const parent = nodes[parentId]
-        parentId = parent?.parentId ?? null
-      }
+    matchIds.add(id)
+    let parentId = node.parentId
+    while (parentId) {
+      matchIds.add(parentId)
+      const parent = nodes[parentId]
+      parentId = parent?.parentId ?? null
     }
   }
 
@@ -79,7 +82,8 @@ export function computeScopedFilterMatchIds(
   filterText: string,
   scopeRootId: string | null
 ): Set<string> {
-  if (!scopeRootId || !nodes[scopeRootId]) {
+  const hasNoScopeRoot = !scopeRootId || !nodes[scopeRootId]
+  if (hasNoScopeRoot) {
     return computeFilterMatchIds(nodes, filterText)
   }
 
@@ -108,7 +112,7 @@ export function computeScopedFilterMatchIds(
 }
 
 function isFilterCandidateMatch(node: TreeNode, lowerFilter: string): boolean {
-  if (node.type === 'column' || node.type === 'category') {
+  if (UNFILTERED_NODE_TYPES.has(node.type)) {
     return false
   }
   return node.label.toLowerCase().includes(lowerFilter)

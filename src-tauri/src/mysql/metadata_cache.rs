@@ -168,7 +168,9 @@ pub fn evict_metadata_cache_for_database(
             .read()
             .expect("metadata cache lock poisoned");
         for (cached_connection_id, cached_database, cached_table) in entries.keys() {
-            if cached_connection_id == connection_id && cached_database == database {
+            let is_in_database =
+                cached_connection_id == connection_id && cached_database == database;
+            if is_in_database {
                 removed_tables.push(cached_table.clone());
             }
         }

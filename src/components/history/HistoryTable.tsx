@@ -7,6 +7,7 @@ import { TextInput } from '../common/TextInput'
 import type { HistoryEntry } from '../../types/schema'
 import dotStyles from '../shared/toolbar/toolbar-items.module.css'
 import styles from './HistoryTable.module.css'
+import { isActivationKey } from '../../lib/input-events'
 
 export interface HistoryTableProps {
   entries: HistoryEntry[]
@@ -64,7 +65,7 @@ function HistoryTableRow({
       onClick={() => rowActions.onSelectEntry(entry.id)}
       onDoubleClick={() => rowActions.onOpenInEditor(entry)}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (isActivationKey(event.key)) {
           event.preventDefault()
           rowActions.onSelectEntry(entry.id)
         }
@@ -119,7 +120,8 @@ function HistoryListContent({ entries, listState, rowActions, onRetry }: History
       </div>
     )
   }
-  if (listState.isLoading && entries.length === 0) {
+  const isLoadingFirstEntries = listState.isLoading && entries.length === 0
+  if (isLoadingFirstEntries) {
     return (
       <div className={styles.message} data-testid="history-loading">
         Loading history...
@@ -177,9 +179,9 @@ export function HistoryTable({
   const hasMore = entries.length < total
 
   const handleLoadMore = useCallback(() => {
-    if (hasMore && !isLoadingMore) {
-      void loadMore(connectionId)
-    }
+    if (!hasMore) return
+    if (isLoadingMore) return
+    void loadMore(connectionId)
   }, [hasMore, isLoadingMore, loadMore, connectionId])
 
   return (

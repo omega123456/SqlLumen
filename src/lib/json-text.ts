@@ -19,3 +19,9 @@ export function normalizeJson(value: string): string | null {
     return null
   }
 }
+
+export function isEquivalentJson(left: string, right: string): boolean {
+  const normalizedLeft = normalizeJson(left)
+  const normalizedRight = normalizeJson(right)
+  return normalizedLeft !== null && normalizedLeft === normalizedRight
+}

@@ -31,6 +31,7 @@ import type { SavedConnection, ConnectionGroup } from '../../types/connection'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
 import styles from './SavedConnectionsList.module.css'
+import { isActivationKey } from '../../lib/input-events'
 
 const ERROR_AUTO_CLEAR_MS = 5000
 
@@ -134,7 +135,8 @@ interface SectionVisibilityInputs {
 }
 
 function shouldHideSection(inputs: SectionVisibilityInputs): boolean {
-  if (inputs.section.connections.length > 0) return false
+  const hasConnections = inputs.section.connections.length > 0
+  if (hasConnections) return false
   if (inputs.isRenaming) return false
   const isGroupSection = inputs.section.groupId !== null
   return !isGroupSection || inputs.isFiltering
@@ -254,10 +256,9 @@ export function SavedConnectionsList({
   })
 
   useLayoutEffect(() => {
-    if (!contextMenu || !contextMenuRef.current) {
-      return
-    }
     const element = contextMenuRef.current
+    if (!contextMenu) return
+    if (!element) return
     const rect = element.getBoundingClientRect()
     const position = positionContextMenuInPortal(
       contextMenu.portalRoot,
@@ -422,7 +423,7 @@ export function SavedConnectionsList({
         data-testid="connection-list-item"
         tabIndex={0}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
+          if (isActivationKey(event.key)) {
             event.preventDefault()
             onSelectConnection(connection)
           }

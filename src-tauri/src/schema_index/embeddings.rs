@@ -302,7 +302,8 @@ async fn send_embedding_request(
             .await
             .unwrap_or_else(|_| "<failed to read body>".to_string());
 
-        if status.as_u16() == 400 || status.as_u16() == 413 {
+        let is_request_rejected = matches!(status.as_u16(), 400 | 413);
+        if is_request_rejected {
             return Err(EmbeddingError::HttpStatus {
                 status: status.as_u16(),
                 body: body_text,

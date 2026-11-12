@@ -6,6 +6,7 @@
 
 import { getTemporalColumnType } from './date-utils'
 import type { TableDataColumnMeta } from '../types/schema'
+import { isNullish } from './value-checks'
 
 const NUMERIC_TYPE_PREFIXES = [
   'INT',
@@ -22,6 +23,10 @@ const NUMERIC_TYPE_PREFIXES = [
 ] as const
 
 const WRAPPABLE_TEXT_TYPE_PREFIXES = ['TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'] as const
+const DATETIME_TYPE_PREFIXES = ['DATETIME', 'TIMESTAMP'] as const
+const ENUM_OR_SET_TYPE_PREFIXES = ['ENUM', 'SET'] as const
+const CHARACTER_TYPE_PREFIXES = ['VARCHAR', 'CHAR'] as const
+const BINARY_TYPE_FRAGMENTS = ['BLOB', 'BINARY'] as const
 
 export function isNumericSqlType(dataType: string): boolean {
   const upperType = dataType.toUpperCase()
@@ -65,10 +70,10 @@ export function getGridCellClass(
   dataType: string,
   primaryKeyColumnNames?: string[]
 ): string {
-  if (
-    (primaryKeyColumnNames && primaryKeyColumnNames.includes(columnName)) ||
-    isNumericSqlType(dataType)
-  ) {
+  if (isNumericSqlType(dataType)) {
+    return 'td-cell-mono-muted'
+  }
+  if (primaryKeyColumnNames?.includes(columnName)) {
     return 'td-cell-mono-muted'
   }
   if (getTemporalColumnType(dataType)) {
@@ -195,7 +200,7 @@ function temporalColumnWidthSizing(
   upperType: string,
   isNullable: boolean
 ): ColumnWidthSizing | null {
-  if (upperType.startsWith('DATETIME') || upperType.startsWith('TIMESTAMP')) {
+  if (startsWithAny(upperType, DATETIME_TYPE_PREFIXES)) {
     return {
       defaultWidth: DATETIME_DEFAULT_WIDTH,
       autoMinWidth: widthForNullability(DATETIME_AUTO_MIN_WIDTH, isNullable),
@@ -226,18 +231,26 @@ function temporalColumnWidthSizing(
 }
 
 function nonTemporalColumnWidthSizing(upperType: string): ColumnWidthSizing {
-  if (upperType.startsWith('ENUM') || upperType.startsWith('SET')) return ENUM_OR_SET_COLUMN_SIZING
-  if (upperType.startsWith('VARCHAR') || upperType.startsWith('CHAR')) {
+  if (startsWithAny(upperType, ENUM_OR_SET_TYPE_PREFIXES)) return ENUM_OR_SET_COLUMN_SIZING
+  if (startsWithAny(upperType, CHARACTER_TYPE_PREFIXES)) {
     return CHARACTER_COLUMN_SIZING
   }
   if (upperType.includes('TEXT')) return TEXT_COLUMN_SIZING
   if (isJsonSqlType(upperType)) return JSON_COLUMN_SIZING
-  if (upperType.includes('BLOB') || upperType.includes('BINARY')) return BINARY_COLUMN_SIZING
+  if (includesAny(upperType, BINARY_TYPE_FRAGMENTS)) return BINARY_COLUMN_SIZING
   return DEFAULT_COLUMN_SIZING
 }
 
+function startsWithAny(upperType: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => upperType.startsWith(prefix))
+}
+
+function includesAny(upperType: string, fragments: readonly string[]): boolean {
+  return fragments.some((fragment) => upperType.includes(fragment))
+}
+
 function stringifyGridValue(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL'
+  if (isNullish(value)) return 'NULL'
   return String(value)
 }
 

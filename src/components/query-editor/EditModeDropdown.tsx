@@ -13,6 +13,7 @@ import { useQueryStore, getActiveResult, isEditableSelectSql } from '../../store
 import { useConnectionStore } from '../../stores/connection-store'
 import type { QueryTableEditInfo } from '../../types/schema'
 import styles from './EditModeDropdown.module.css'
+import { hasResultColumns } from '../../lib/query-result-column-utils'
 
 interface EditModeDropdownProps {
   tabId: string
@@ -25,7 +26,7 @@ type ActiveResult = ReturnType<typeof getActiveResult>
 // it is not a SELECT/WITH query, or the result is not re-executable.
 function isEditModeAvailable(result: ActiveResult, isConnectionReadOnly: boolean): boolean {
   if (result.resultStatus !== 'success') return false
-  if (result.columns.length === 0) return false
+  if (!hasResultColumns(result)) return false
   if (isConnectionReadOnly) return false
   return result.reExecutable && isEditableSelectSql(result.lastExecutedSql)
 }

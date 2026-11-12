@@ -36,7 +36,8 @@ function announceImportOutcome(progress: ImportJobProgress): void {
     )
     return
   }
-  if (progress.errors.length === 0) {
+  const hasNoErrors = progress.errors.length === 0
+  if (hasNoErrors) {
     showSuccessToast(
       'Import completed',
       `${progress.statementsDone} statements executed successfully`

@@ -24,6 +24,7 @@ import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
 import { RunningIndicator } from './RunningIndicator'
 import styles from './EditorToolbar.module.css'
+import { isAiLockStatus } from '../../lib/query-tab-status'
 
 interface EditorToolbarProps {
   connectionId: string
@@ -46,12 +47,13 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
     useConnectionStore((state) => state.activeConnections[connectionId]?.profile?.readOnly) ?? false
 
   const isRunning = status === 'running'
-  const isAiLocked = status === 'ai-pending' || status === 'ai-reviewing'
+  const isAiLocked = isAiLockStatus(status)
   const isDisabled = isRunning || isAiLocked
 
   // Execute all statements in the editor via batch execution
   async function handleExecuteAll() {
-    if (isDisabled || !content.trim()) return
+    if (isDisabled) return
+    if (!content.trim()) return
     requestNavigationAction(tabId, () => {
       const statements = splitStatements(content)
       const filteredStatements = statements

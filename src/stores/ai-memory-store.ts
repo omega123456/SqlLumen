@@ -146,8 +146,8 @@ function initModelChangeSubscription(): void {
     const oldModel = previousModel
     previousModel = currentModel
 
-    // Only trigger re-embed when both old and new models are known non-null values
-    if (!currentModel || oldModel === null) return
+    if (!currentModel) return
+    if (oldModel === null) return
 
     // Fire-and-forget re-embedding across all levels (global, every group, every
     // connection). The backend orchestrates the fan-out and emits per-owner

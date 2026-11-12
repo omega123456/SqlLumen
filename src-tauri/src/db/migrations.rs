@@ -65,7 +65,8 @@ fn run_with_runner(
     // Cutover seed: only when refinery has never tracked this DB but the legacy
     // custom runner did. Records migrations 1..=K in refinery_schema_history
     // without executing their SQL (refinery computes the checksums itself).
-    if !history_exists && legacy_exists {
+    let needs_cutover_seed = !history_exists && legacy_exists;
+    if needs_cutover_seed {
         let watermark = legacy_watermark(conn)
             .map_err(|error| map_err(db_label, "reading legacy migration watermark", error))?;
         if let Some(version) = watermark {

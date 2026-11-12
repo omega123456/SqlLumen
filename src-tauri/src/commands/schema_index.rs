@@ -720,9 +720,11 @@ pub async fn semantic_search_impl(
     };
 
     // Re-rank BEFORE graph expansion (if enabled)
-    if rerank_enabled && !results.is_empty() {
+    let should_rerank = rerank_enabled && !results.is_empty();
+    if should_rerank {
         let chat_model = read_setting(&state.db, "ai.model").unwrap_or_default();
-        if !chat_model.is_empty() && !chat_endpoint.is_empty() {
+        let has_chat_backend = !chat_model.is_empty() && !chat_endpoint.is_empty();
+        if has_chat_backend {
             let original_query = queries.first().cloned().unwrap_or_default();
             tracing::debug!(
                 profile_id = %profile_id,
@@ -741,7 +743,8 @@ pub async fn semantic_search_impl(
     }
 
     // Graph expansion AFTER re-rank
-    if graph_depth > 0 && !results.is_empty() {
+    let should_expand_graph = graph_depth > 0 && !results.is_empty();
+    if should_expand_graph {
         let conn = state
             .db
             .lock()

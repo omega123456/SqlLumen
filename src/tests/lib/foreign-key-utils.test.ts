@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildForeignKeyLookup, mapSingleColumnForeignKeys } from '../../lib/foreign-key-utils'
+import {
+  buildForeignKeyLookup,
+  isUnchangedForeignKeySelection,
+  mapSingleColumnForeignKeys,
+} from '../../lib/foreign-key-utils'
 import type { ForeignKeyInfo, ForeignKeyColumnInfo } from '../../types/schema'
 
 describe('mapSingleColumnForeignKeys', () => {
@@ -74,5 +78,30 @@ describe('buildForeignKeyLookup', () => {
     expect(lookup.size).toBe(1)
     expect(lookup.get('customer_id')).toEqual(foreignKeys[0])
     expect(lookup.has('Customer_ID')).toBe(false)
+  })
+})
+
+describe('isUnchangedForeignKeySelection', () => {
+  it('is false when a different value was picked', () => {
+    expect(
+      isUnchangedForeignKeySelection({ selectedValue: 2, currentValue: 1, rowEditState: null })
+    ).toBe(false)
+  })
+
+  it('is true when the same value was picked on a row without edits', () => {
+    expect(
+      isUnchangedForeignKeySelection({ selectedValue: 1, currentValue: 1, rowEditState: null })
+    ).toBe(true)
+  })
+
+  it('is false when the row already has modified columns', () => {
+    const rowEditState = { modifiedColumns: new Set(['name']) }
+    expect(
+      isUnchangedForeignKeySelection({
+        selectedValue: 1,
+        currentValue: 1,
+        rowEditState: rowEditState,
+      })
+    ).toBe(false)
   })
 })

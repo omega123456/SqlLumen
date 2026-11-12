@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useShortcutStore, EDITOR_CONTEXT_ACTIONS, GLOBAL_ACTIONS } from '../stores/shortcut-store'
+import { bindingsMatch } from '../lib/shortcut-bindings'
 import type { ShortcutBinding } from '../types/schema'
 
 /** Normalize a keyboard event into a ShortcutBinding for matching. */
@@ -19,15 +20,6 @@ function eventToBinding(event: KeyboardEvent): ShortcutBinding {
   }
 
   return { key: event.key, modifiers: modifiers }
-}
-
-/** Check if two bindings match (case-insensitive key, sorted modifiers). */
-function bindingsMatch(left: ShortcutBinding, right: ShortcutBinding): boolean {
-  if (left.key.toLowerCase() !== right.key.toLowerCase()) return false
-  const leftModifiers = [...left.modifiers].sort()
-  const rightModifiers = [...right.modifiers].sort()
-  if (leftModifiers.length !== rightModifiers.length) return false
-  return leftModifiers.every((modifier, index) => modifier === rightModifiers[index])
 }
 
 /** Check if the active element is inside a Monaco editor. */
@@ -71,13 +63,14 @@ export function useShortcut(): void {
 
       if (!matchedActionId) return
 
-      // If target is an input element, only allow global actions
-      if (target && INPUT_TAG_NAMES.has(target.tagName) && !GLOBAL_ACTIONS.has(matchedActionId)) {
+      const isInputTarget = target !== null && INPUT_TAG_NAMES.has(target.tagName)
+      const isBlockedInInput = isInputTarget && !GLOBAL_ACTIONS.has(matchedActionId)
+      if (isBlockedInInput) {
         return
       }
 
-      // If inside Monaco, only allow editor-context actions
-      if (inMonaco && !EDITOR_CONTEXT_ACTIONS.has(matchedActionId)) {
+      const isBlockedInEditor = inMonaco && !EDITOR_CONTEXT_ACTIONS.has(matchedActionId)
+      if (isBlockedInEditor) {
         return
       }
 

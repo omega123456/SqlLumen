@@ -50,16 +50,17 @@ export function TabContextMenu({ visible, x, y, portalRoot, items, onClose }: Ta
   }, [visible, closeMenu])
 
   useLayoutEffect(() => {
-    if (!visible || !menuRef.current) return
-    const rect = menuRef.current.getBoundingClientRect()
+    const menu = menuRef.current
+    if (!visible) return
+    if (!menu) return
+    const rect = menu.getBoundingClientRect()
     const position = positionContextMenuInPortal(portalRoot, x, y, rect.width, rect.height)
-    menuRef.current.style.left = `${position.x}px`
-    menuRef.current.style.top = `${position.y}px`
+    menu.style.left = `${position.x}px`
+    menu.style.top = `${position.y}px`
   }, [visible, x, y, portalRoot])
 
-  if (!visible || items.length === 0) {
-    return null
-  }
+  if (!visible) return null
+  if (items.length === 0) return null
 
   return createPortal(
     <div

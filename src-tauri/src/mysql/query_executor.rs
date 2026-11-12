@@ -2,6 +2,10 @@
 //! stores paginated results, and enforces read-only restrictions.
 
 use crate::mysql::cache_status::cache_status_json;
+use crate::mysql::sql_chars::{
+    is_escape_before_char, is_identifier_char, is_identifier_char_at, is_identifier_or_dollar_char,
+    is_quote_char, is_whitespace_at,
+};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
@@ -252,18 +256,26 @@ pub struct QueryTableEditInfo {
 /// Strip non-executable SQL comments from a SQL string.
 /// Preserves MySQL executable comments (`/*! ... */`) and optimizer hints (`/*+ ... */`).
 /// Removes standard block comments (`/* ... */`), line comments (`-- ...`), and hash comments (`# ...`).
+fn is_block_comment_start(character: char, next_character: Option<char>) -> bool {
+    character == '/' && next_character == Some('*')
+}
+
+fn is_dash_comment_start(character: char, next_character: Option<char>) -> bool {
+    character == '-' && next_character == Some('-')
+}
+
 pub fn strip_non_executable_comments(sql: &str) -> String {
     let mut result = String::with_capacity(sql.len());
     let mut chars = sql.chars().peekable();
 
     while let Some(ch) = chars.next() {
         let next_char = chars.peek().copied();
-        if ch == '/' && next_char == Some('*') {
+        if is_block_comment_start(ch, next_char) {
             chars.next();
             copy_or_drop_block_comment(&mut chars, &mut result);
             continue;
         }
-        if ch == '-' && next_char == Some('-') {
+        if is_dash_comment_start(ch, next_char) {
             chars.next();
             drop_line_comment(&mut chars, &mut result);
             continue;
@@ -375,8 +387,7 @@ pub fn find_with_main_keyword(sql: &str) -> String {
     let mut position = 0;
     let mut depth: i32 = 0;
 
-    // Skip leading whitespace
-    while position < len && chars[position].is_whitespace() {
+    while is_whitespace_at(&chars, position) {
         position += 1;
     }
 
@@ -388,12 +399,11 @@ pub fn find_with_main_keyword(sql: &str) -> String {
     position += 4;
 
     while position < len {
-        // Skip string literals
-        if chars[position] == '\'' || chars[position] == '"' || chars[position] == '`' {
+        if is_quote_char(chars[position]) {
             let quote = chars[position];
             position += 1;
             while position < len {
-                if chars[position] == '\\' && position + 1 < len {
+                if is_escape_before_char(&chars, position) {
                     position += 2;
                     continue;
                 }
@@ -425,7 +435,7 @@ pub fn find_with_main_keyword(sql: &str) -> String {
             continue;
         }
         let start = position;
-        while position < len && (chars[position].is_alphanumeric() || chars[position] == '_') {
+        while is_identifier_char_at(&chars, position) {
             position += 1;
         }
         let word: String = chars[start..position].iter().collect();
@@ -450,12 +460,11 @@ pub fn has_top_level_limit(sql: &str) -> bool {
     let mut depth: i32 = 0;
 
     while position < len {
-        // Skip string literals
-        if chars[position] == '\'' || chars[position] == '"' || chars[position] == '`' {
+        if is_quote_char(chars[position]) {
             let quote = chars[position];
             position += 1;
             while position < len {
-                if chars[position] == '\\' && position + 1 < len {
+                if is_escape_before_char(&chars, position) {
                     position += 2;
                     continue;
                 }
@@ -481,14 +490,13 @@ pub fn has_top_level_limit(sql: &str) -> bool {
             continue;
         }
 
-        // At depth 0, look for LIMIT keyword (case-insensitive, word boundary)
-        if depth == 0 && position + 4 < len && chars[position].eq_ignore_ascii_case(&'L') {
+        let may_start_limit_keyword =
+            depth == 0 && position + 4 < len && chars[position].eq_ignore_ascii_case(&'L');
+        if may_start_limit_keyword {
             let word: String = chars[position..position + 5].iter().collect();
             if word.eq_ignore_ascii_case("LIMIT") {
-                let before_ok = position == 0
-                    || !(chars[position - 1].is_alphanumeric() || chars[position - 1] == '_');
-                let after_ok = position + 5 >= len
-                    || !(chars[position + 5].is_alphanumeric() || chars[position + 5] == '_');
+                let before_ok = position == 0 || !is_identifier_char(chars[position - 1]);
+                let after_ok = position + 5 >= len || !is_identifier_char(chars[position + 5]);
                 if before_ok && after_ok {
                     return true;
                 }
@@ -609,18 +617,18 @@ impl<'a> LockingClauseTokenizer<'a> {
             self.skip_line();
             return;
         }
-        if ch == '-' && next_char == Some('-') {
+        if is_dash_comment_start(ch, next_char) {
             self.break_keyword_sequence();
             self.skip_dash_dash_comment();
             return;
         }
-        if ch == '/' && next_char == Some('*') {
+        if is_block_comment_start(ch, next_char) {
             self.chars.next();
             self.break_keyword_sequence();
             self.skip_block_comment();
             return;
         }
-        if ch.is_alphanumeric() || ch == '_' || ch == '$' {
+        if is_identifier_or_dollar_char(ch) {
             self.word.push(ch);
             return;
         }
@@ -684,7 +692,8 @@ impl<'a> LockingClauseTokenizer<'a> {
         }
         let mut previous = '\0';
         for character in self.chars.by_ref() {
-            if previous == '*' && character == '/' {
+            let closes_block_comment = previous == '*' && character == '/';
+            if closes_block_comment {
                 return;
             }
             previous = character;
@@ -779,6 +788,14 @@ pub fn inject_limit_into_select(sql: &str, limit: usize) -> String {
     format!("{trimmed} LIMIT {limit}")
 }
 
+const SERVER_WIDE_VARIABLE_PREFIXES: [&str; 3] = ["@@GLOBAL.", "@@PERSIST.", "@@PERSIST_ONLY."];
+
+pub const READ_ONLY_VIOLATION_MESSAGE: &str = "This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.";
+
+fn is_blocked_by_read_only(state: &AppState, connection_id: &str, sql: &str) -> bool {
+    state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql)
+}
+
 /// Returns true if this SQL is allowed on a read-only connection.
 /// Uses an allowlist: SELECT, SHOW, DESCRIBE, DESC, EXPLAIN, USE, SET (non-GLOBAL/PERSIST/PASSWORD).
 /// WITH CTEs are allowed only if the main verb is SELECT.
@@ -820,12 +837,11 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
                 return false;
             }
 
-            // Block SET @@GLOBAL.xxx and SET @@PERSIST.xxx and SET @@PERSIST_ONLY.xxx
             let second_upper = second.as_str();
-            if second_upper.starts_with("@@GLOBAL.")
-                || second_upper.starts_with("@@PERSIST.")
-                || second_upper.starts_with("@@PERSIST_ONLY.")
-            {
+            let sets_server_wide_variable = SERVER_WIDE_VARIABLE_PREFIXES
+                .iter()
+                .any(|prefix| second_upper.starts_with(prefix));
+            if sets_server_wide_variable {
                 return false;
             }
 
@@ -875,9 +891,8 @@ pub async fn execute_query_impl(
         return Err(format!("Connection '{connection_id}' not found"));
     }
 
-    // Read-only enforcement
-    if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
-        return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
+    if is_blocked_by_read_only(state, connection_id, sql) {
+        return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
     let row_limit = effective_row_limit(row_limit, state.result_cache.row_ceiling());
@@ -919,9 +934,8 @@ pub async fn execute_query_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Read-only enforcement (same logic as real impl)
-    if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
-        return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
+    if is_blocked_by_read_only(state, connection_id, sql) {
+        return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
     let ceiling = state.result_cache.row_ceiling();
@@ -1839,9 +1853,8 @@ pub async fn reexecute_single_result_impl(
         return Err(format!("Connection '{connection_id}' not found"));
     }
 
-    // Read-only enforcement
-    if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
-        return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
+    if is_blocked_by_read_only(state, connection_id, sql) {
+        return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
     // Verify the result index exists and capture the current query_id for
@@ -1891,9 +1904,8 @@ pub async fn reexecute_single_result_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    // Read-only enforcement
-    if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
-        return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
+    if is_blocked_by_read_only(state, connection_id, sql) {
+        return Err(READ_ONLY_VIOLATION_MESSAGE.to_string());
     }
 
     // Exercise pure-function paths
@@ -2012,13 +2024,13 @@ pub async fn execute_multi_query_impl(
             continue;
         }
 
-        // Exercise read-only enforcement
-        if is_read_only && !is_read_only_allowed(sql) {
+        let is_statement_blocked = is_read_only && !is_read_only_allowed(sql);
+        if is_statement_blocked {
             let mut stored = StoredResult::empty(uuid::Uuid::new_v4().to_string());
             stored.source_sql = sql.to_string();
             result_items.push(MultiQueryResultItem::from_stored(
                 &stored,
-                Some("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string()),
+                Some(READ_ONLY_VIOLATION_MESSAGE.to_string()),
                 false,
             ));
             stored_results.push(stored);

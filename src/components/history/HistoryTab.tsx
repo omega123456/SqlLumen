@@ -74,7 +74,8 @@ export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
   // time range changes. Re-fetching on activation keeps the view current and
   // resets any "load more" window so stale rows are never shown.
   useEffect(() => {
-    if (!isActive || !connectionId) return
+    if (!isActive) return
+    if (!connectionId) return
     reload(timeRange)
   }, [isActive, connectionId, timeRange, reload])
 

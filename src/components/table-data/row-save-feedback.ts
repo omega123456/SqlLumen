@@ -37,7 +37,8 @@ export async function saveCurrentRowWithFeedback(
     showErrorToast('Save failed', savedTab.saveError)
     return null
   }
-  if (savedTab && !savedTab.editState) {
+  const isEditFinished = savedTab !== undefined && !savedTab.editState
+  if (isEditFinished) {
     showSuccessToast('Row saved', 'Changes saved successfully.')
   }
   return null

@@ -35,7 +35,8 @@ function parsePageInput(pageInputValue: string): number {
   const trimmedValue = pageInputValue.trim()
   if (!PAGE_NUMBER_PATTERN.test(trimmedValue)) return FIRST_PAGE
   const parsedPage = Number.parseInt(trimmedValue, 10)
-  if (!Number.isFinite(parsedPage) || parsedPage < FIRST_PAGE) return FIRST_PAGE
+  const isValidPage = Number.isFinite(parsedPage) && parsedPage >= FIRST_PAGE
+  if (!isValidPage) return FIRST_PAGE
   return parsedPage
 }
 

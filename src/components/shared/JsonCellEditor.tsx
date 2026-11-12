@@ -9,31 +9,22 @@ import {
 } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
-import { normalizeJson, prettyPrintJson } from '../../lib/json-text'
+import { isEquivalentJson, prettyPrintJson } from '../../lib/json-text'
+import { isTargetInside } from '../../lib/input-events'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 import { useThemeStore } from '../../stores/theme-store'
 import { useCellStoreSync } from './editor-callbacks-context'
 import type { CellEditorBaseProps } from './grid-cell-editors'
 import { Button } from '../common/Button'
 import styles from './JsonCellEditor.module.css'
-
-function isNullish(value: unknown): value is null | undefined {
-  return value === null || value === undefined
-}
+import { isNullish } from '../../lib/value-checks'
 
 function resolveCommittedValue(originalValue: string | null, editorValue: string): string | null {
   if (originalValue === null) {
     return editorValue
   }
 
-  const normalizedOriginal = normalizeJson(originalValue)
-  const normalizedNext = normalizeJson(editorValue)
-
-  if (
-    normalizedOriginal !== null &&
-    normalizedNext !== null &&
-    normalizedOriginal === normalizedNext
-  ) {
+  if (isEquivalentJson(originalValue, editorValue)) {
     return originalValue
   }
 
@@ -49,7 +40,8 @@ function getJsonFallbackValue(originalValue: string | null, prettyPrintedOrigina
 }
 
 function getCurrentDomTheme(): 'light' | 'dark' {
-  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+  const theme = document.documentElement.getAttribute('data-theme')
+  return theme === 'dark' ? 'dark' : 'light'
 }
 
 function isCommitKeybinding(event: KeyboardEvent<HTMLDivElement>): boolean {
@@ -69,9 +61,8 @@ function isMonacoInternalMouseTarget(target: EventTarget | null): boolean {
 }
 
 function isNullToggleTarget(target: EventTarget | null, wrapper: HTMLDivElement | null): boolean {
-  if (!(target instanceof HTMLElement) || wrapper == null) {
-    return false
-  }
+  if (!(target instanceof HTMLElement)) return false
+  if (wrapper == null) return false
 
   const toggle = target.closest('.td-null-toggle')
   return toggle != null && wrapper.contains(toggle)
@@ -265,7 +256,7 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
         return
       }
 
-      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
+      if (isTargetInside(wrapperRef.current, relatedTarget)) {
         return
       }
 

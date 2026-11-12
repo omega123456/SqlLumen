@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { normalizeJson, prettyPrintJson } from '../../lib/json-text'
+import { isEquivalentJson, normalizeJson, prettyPrintJson } from '../../lib/json-text'
 import { ipc } from '../ipc-mock'
 
 async function expectDebugLogStartingWith(prefix: string): Promise<void> {
@@ -30,5 +30,19 @@ describe('normalizeJson', () => {
   it('returns null and logs a debug line for invalid JSON', async () => {
     expect(normalizeJson('{not json')).toBeNull()
     await expectDebugLogStartingWith('[json-text] normalizeJson could not parse its input')
+  })
+})
+
+describe('isEquivalentJson', () => {
+  it('treats differently formatted equal documents as equivalent', () => {
+    expect(isEquivalentJson('{"a": 1}', '{"a":1}')).toBe(true)
+  })
+
+  it('is false for different documents', () => {
+    expect(isEquivalentJson('{"a": 1}', '{"a": 2}')).toBe(false)
+  })
+
+  it('is false when the left side is not valid JSON', () => {
+    expect(isEquivalentJson('{', '{')).toBe(false)
   })
 })

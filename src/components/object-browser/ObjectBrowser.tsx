@@ -22,6 +22,7 @@ import type { NodeType, ObjectType, TreeNode as SchemaTreeNode } from '../../typ
 import { computeScopedFilterMatchIds, isNodeUnderFilterScope } from '../../lib/tree-filter'
 import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
+import { isBlank } from '../../lib/value-checks'
 
 const SqlDumpDialog = lazy(() => import('../dialogs/SqlDumpDialog'))
 const CopyToHostDialog = lazy(() => import('../dialogs/CopyToHostDialog'))
@@ -110,7 +111,8 @@ function isEditableTarget(target: HTMLElement | null): boolean {
 }
 
 function shouldIgnoreTreeKey(event: React.KeyboardEvent<HTMLDivElement>): boolean {
-  if (event.defaultPrevented || hasCommandModifier(event)) return true
+  if (event.defaultPrevented) return true
+  if (hasCommandModifier(event)) return true
   return isEditableTarget(event.target as HTMLElement | null)
 }
 
@@ -169,7 +171,9 @@ function CopyToHostDialogHost({
   onClose,
 }: CopyToHostDialogHostProps) {
   const profile = activeConnection?.profile
-  if (!dialog.open || !dialog.database || !profile) return null
+  if (!dialog.open) return null
+  if (!dialog.database) return null
+  if (!profile) return null
   return (
     <Suspense fallback={null}>
       <CopyToHostDialog
@@ -211,10 +215,10 @@ export function ObjectBrowser({
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.selectedNodeId ??
       null
   )
-  const selectedNode = useMemo(
-    () => (selectedNodeId && nodes?.[selectedNodeId] ? nodes[selectedNodeId] : null),
-    [nodes, selectedNodeId]
-  )
+  const selectedNode = useMemo(() => {
+    if (!selectedNodeId) return null
+    return nodes?.[selectedNodeId] ?? null
+  }, [nodes, selectedNodeId])
   const childIdsByParentId = useSchemaStore(
     (state) =>
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)
@@ -247,7 +251,8 @@ export function ObjectBrowser({
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
-      if (connectionStatus !== 'connected' || !nodes) return
+      if (connectionStatus !== 'connected') return
+      if (!nodes) return
 
       const node = nodes[nodeId]
       if (!node) return
@@ -282,7 +287,9 @@ export function ObjectBrowser({
     const connectionChanged = previousConnectionIdRef.current !== connectionId
     previousConnectionIdRef.current = connectionId
 
-    if (connectionChanged || previousScopeRootRef.current === undefined) {
+    const isFirstScopeForConnection =
+      connectionChanged || previousScopeRootRef.current === undefined
+    if (isFirstScopeForConnection) {
       previousScopeRootRef.current = effectiveScopeRoot
       return
     }
@@ -293,24 +300,26 @@ export function ObjectBrowser({
   }, [effectiveScopeRoot, connectionId, setFilter])
 
   useEffect(() => {
-    if (!filterText.trim() || !effectiveScopeRoot || !nodes) return
+    if (isBlank(filterText)) return
+    if (!effectiveScopeRoot) return
+    if (!nodes) return
     const scopeNode = nodes[effectiveScopeRoot]
-    if (!scopeNode || scopeNode.type !== 'category' || scopeNode.isLoaded) return
+    if (!scopeNode) return
+    const isUnloadedCategory = scopeNode.type === 'category' && !scopeNode.isLoaded
+    if (!isUnloadedCategory) return
     void loadChildren(connectionId, effectiveScopeRoot)
   }, [filterText, effectiveScopeRoot, nodes, connectionId, loadChildren])
 
   const filterMatchIds = useMemo(() => {
     const trimmed = filterText.trim()
-    if (!trimmed || !nodes) {
-      return undefined
-    }
+    if (!trimmed) return undefined
+    if (!nodes) return undefined
     return computeScopedFilterMatchIds(nodes, trimmed, effectiveScopeRoot)
   }, [filterText, nodes, effectiveScopeRoot])
 
   const visibleTopLevelIds = useMemo(() => {
-    if (!nodes || !filterMatchIds) {
-      return topLevelIds
-    }
+    if (!nodes) return topLevelIds
+    if (!filterMatchIds) return topLevelIds
 
     return topLevelIds.filter((nodeId) => {
       const node = nodes[nodeId]
@@ -322,9 +331,10 @@ export function ObjectBrowser({
         return filterMatchIds.has(nodeId)
       }
 
-      return (
-        !isNodeUnderFilterScope(nodeId, effectiveScopeRoot, nodes) || filterMatchIds.has(nodeId)
-      )
+      if (!isNodeUnderFilterScope(nodeId, effectiveScopeRoot, nodes)) {
+        return true
+      }
+      return filterMatchIds.has(nodeId)
     })
   }, [nodes, filterMatchIds, topLevelIds, effectiveScopeRoot])
 
@@ -334,7 +344,8 @@ export function ObjectBrowser({
 
   const ensurePathExpanded = useSchemaStore((state) => state.ensurePathExpanded)
   const handleClearFilter = useCallback(() => {
-    if (effectiveScopeRoot && filterText.trim()) {
+    const hasActiveFilter = !isBlank(filterText)
+    if (effectiveScopeRoot && hasActiveFilter) {
       ensurePathExpanded(connectionId, effectiveScopeRoot)
     }
     setFilter('', connectionId)
@@ -397,7 +408,9 @@ export function ObjectBrowser({
   // Start from the current seq so a freshly mounted browser does not replay an old request.
   const handledRevealSeqRef = useRef(currentRevealSeq())
   useEffect(() => {
-    if (!revealRequest || revealRequest.connectionId !== connectionId || !treeScrollElement) return
+    if (!revealRequest) return
+    if (revealRequest.connectionId !== connectionId) return
+    if (!treeScrollElement) return
     if (revealRequest.seq <= handledRevealSeqRef.current) return
 
     const row = Array.from(

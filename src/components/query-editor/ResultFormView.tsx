@@ -39,6 +39,7 @@ import type {
   RowEditState,
 } from '../../types/schema'
 import { toErrorMessage } from '../../lib/error-message'
+import { hasModifiedColumns } from '../../lib/row-edit-state'
 
 // ---------------------------------------------------------------------------
 // Props (unchanged external interface)
@@ -158,8 +159,13 @@ function patchFetchedRow(
   baseIndex: number,
   apply: (row: unknown[]) => unknown[]
 ): FetchedRow | null {
-  if (current?.row.baseIndex !== baseIndex) return current
+  if (!isFetchedRowAt(current, baseIndex)) return current
   return { ...current, row: { baseIndex: baseIndex, row: apply(current.row.row) } }
+}
+
+function isFetchedRowAt(current: FetchedRow | null, baseIndex: number): current is FetchedRow {
+  if (!current) return false
+  return current.row.baseIndex === baseIndex
 }
 
 function useFormCurrentRow(props: ResultFormViewProps, position: FormRowPosition) {
@@ -173,7 +179,8 @@ function useFormCurrentRow(props: ResultFormViewProps, position: FormRowPosition
   useEffect(
     () =>
       subscribeToResultWindow(tabId, resultIndex, ([start, end]) => {
-        if (clampedIndex >= start && clampedIndex < end) setWindowTick((tick) => tick + 1)
+        const isCurrentRowInWindow = clampedIndex >= start && clampedIndex < end
+        if (isCurrentRowInWindow) setWindowTick((tick) => tick + 1)
       }),
     [clampedIndex, resultIndex, tabId]
   )
@@ -191,16 +198,20 @@ function useFormCurrentRow(props: ResultFormViewProps, position: FormRowPosition
   )
   const loadedRow = useMemo(() => {
     void windowTick
-    if (isDraftPosition || totalRows === 0) return null
+    if (isDraftPosition) return null
+    if (totalRows === 0) return null
     return getLoadedRow(tabId, resultIndex, clampedIndex) ?? null
   }, [clampedIndex, isDraftPosition, resultIndex, tabId, totalRows, windowTick])
   const needsFetch = !isDraftPosition && totalRows > 0 && loadedRow === null
   useEffect(() => {
-    if (!needsFetch || fetched?.key === fetchKey) return
+    if (!needsFetch) return
+    if (fetched?.key === fetchKey) return
     let cancelled = false
     readViewRange(tabId, resultIndex, [clampedIndex, clampedIndex + 1])
       .then((rows) => {
-        if (!cancelled && rows[0]) setFetched({ key: fetchKey, row: rows[0] })
+        const firstRow = rows[0]
+        if (cancelled) return
+        if (firstRow) setFetched({ key: fetchKey, row: firstRow })
       })
       .catch((error: unknown) => {
         if (cancelled) return
@@ -239,11 +250,13 @@ interface FormRowDataInputs {
 
 function applyEditedValues(rowData: Record<string, unknown>, inputs: FormRowDataInputs): void {
   const edit = inputs.rowEdit
-  if (edit.editingRowIndex !== inputs.clampedIndex || !edit.editState) return
+  if (edit.editingRowIndex !== inputs.clampedIndex) return
+  if (!edit.editState) return
   const currentValues = edit.editState.currentValues
   for (let columnIndex = 0; columnIndex < inputs.columnCount; columnIndex++) {
     const boundName = edit.editColumnBindings.get(columnIndex)
-    if (boundName && boundName in currentValues) {
+    const hasEditedValue = boundName !== undefined && boundName in currentValues
+    if (hasEditedValue) {
       rowData[columnKey(columnIndex)] = currentValues[boundName]
     }
   }
@@ -327,10 +340,6 @@ function toSharedEditState(
   }
 }
 
-function hasModifiedColumns(editState: RowEditState | null): boolean {
-  return (editState?.modifiedColumns.size ?? 0) > 0
-}
-
 interface BlobContext extends QueryResultBlobContext {
   columnIndex: number
 }
@@ -399,7 +408,8 @@ export function ResultFormView(props: ResultFormViewProps) {
   // --- Transform edit state: remap real column name keys → col_N keys ---
 
   const sharedEditState: SharedRowEditState | null = useMemo(() => {
-    if (!isEditingCurrentRow || !editState) return null
+    if (!isEditingCurrentRow) return null
+    if (!editState) return null
     return toSharedEditState(editState, columns.length, editColumnBindings)
   }, [isEditingCurrentRow, editState, columns, editColumnBindings])
 
@@ -416,7 +426,8 @@ export function ResultFormView(props: ResultFormViewProps) {
   )
 
   const handleEnsureEditing = useCallback(() => {
-    if (!isInEditMode || !onStartEdit) return
+    if (!isInEditMode) return
+    if (!onStartEdit) return
     if (editingRowIndex !== clampedIndex) {
       onStartEdit(clampedIndex, currentCached ?? undefined)
     }
@@ -466,7 +477,8 @@ export function ResultFormView(props: ResultFormViewProps) {
   const navigateWithAutoSave = useCallback(
     async (direction: 'prev' | 'next') => {
       const pendingEdit = isInEditMode ? editState : null
-      if (hasModifiedColumns(pendingEdit) && onSaveRow) {
+      const canSaveBeforeNavigating = hasModifiedColumns(pendingEdit) && onSaveRow !== undefined
+      if (canSaveBeforeNavigating) {
         const saved = await onSaveRow()
         if (saved) onNavigate(direction)
         return

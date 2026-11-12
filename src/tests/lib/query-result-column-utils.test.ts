@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
+import { hasResultColumns, resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
 
 const makeTableColumn = (name: string, dataType = 'VARCHAR'): TableDataColumnMeta => ({
@@ -91,5 +91,15 @@ describe('resolveQueryResultColumns', () => {
 
     expect(resolved.editable).toBe(false)
     expect(resolved.foreignKey).toBeUndefined()
+  })
+})
+
+describe('hasResultColumns', () => {
+  it('is false for a result without columns', () => {
+    expect(hasResultColumns({ columns: [] })).toBe(false)
+  })
+
+  it('is true when the result has columns', () => {
+    expect(hasResultColumns({ columns: [{ name: 'id' }] })).toBe(true)
   })
 })

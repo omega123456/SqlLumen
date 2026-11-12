@@ -11,13 +11,14 @@ export interface CommandPaletteFilterPillProps {
 }
 
 export function CommandPaletteFilterPill({ pill, onRemove }: CommandPaletteFilterPillProps) {
+  const hasObjectTypeIcon = pill.kind === 'object-type' || pill.kind === 'table'
   return (
     <span
       className={styles.pill}
       data-testid={`command-palette-pill-${pill.kind === 'object-type' ? 'type' : pill.kind}`}
     >
       <span className={styles.pillIcon} aria-hidden="true">
-        {pill.kind === 'object-type' || pill.kind === 'table' ? (
+        {hasObjectTypeIcon ? (
           <ObjectTypeIcon
             objectType={(pill.kind === 'table' ? 'table' : pill.value) as PaletteResultType}
             size={14}

@@ -690,7 +690,8 @@ pub fn multi_query_search_with_hints(
         hint_weights.entry(key).or_insert(EDITOR_TABLE_HINT_WEIGHT);
     }
 
-    if !hint_weights.is_empty() && config.feedback_boost > 0.0 {
+    let should_apply_feedback_boost = !hint_weights.is_empty() && config.feedback_boost > 0.0;
+    if should_apply_feedback_boost {
         for result in &mut results {
             let key = (
                 result.db_name.to_ascii_lowercase(),
@@ -720,7 +721,8 @@ pub fn apply_graph_expansion(
     graph_depth: u32,
     max_foreign_key_chunks: u32,
 ) -> Result<Vec<SearchResult>> {
-    if graph_depth == 0 || results.is_empty() {
+    let has_nothing_to_expand = graph_depth == 0 || results.is_empty();
+    if has_nothing_to_expand {
         return Ok(results);
     }
 
@@ -891,7 +893,8 @@ fn extract_identifier_tokens(query_texts: &[String]) -> HashSet<String> {
     for query_text in query_texts {
         for matched in regex.find_iter(query_text) {
             let token = matched.as_str().to_ascii_lowercase();
-            if token.len() < 3 || SQL_STOPWORDS.contains(&token.as_str()) {
+            let is_noise_token = token.len() < 3 || SQL_STOPWORDS.contains(&token.as_str());
+            if is_noise_token {
                 continue;
             }
             tokens.insert(token);
@@ -988,7 +991,9 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
     }
     // Token is a prefix of the table name (e.g. "rfx" → "rfxtracking")
     // Require at least 3 chars for prefix matching to avoid noise
-    if token.len() >= MIN_PREFIX_MATCH_CHARS && table_name.starts_with(token) {
+    let is_table_name_prefix =
+        token.len() >= MIN_PREFIX_MATCH_CHARS && table_name.starts_with(token);
+    if is_table_name_prefix {
         // Score proportional to how much of the table name is covered
         let coverage = token.len() as f64 / table_name.len() as f64;
         return TABLE_PREFIX_BASE_QUALITY + PREFIX_COVERAGE_QUALITY_RANGE * coverage;
@@ -1001,7 +1006,8 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
         if normalize_plural(segment) == normalize_plural(token) {
             return SEGMENT_PLURAL_MATCH_QUALITY;
         }
-        if token.len() >= MIN_PREFIX_MATCH_CHARS && segment.starts_with(token) {
+        let is_segment_prefix = token.len() >= MIN_PREFIX_MATCH_CHARS && segment.starts_with(token);
+        if is_segment_prefix {
             let coverage = token.len() as f64 / segment.len() as f64;
             return SEGMENT_PREFIX_BASE_QUALITY + PREFIX_COVERAGE_QUALITY_RANGE * coverage;
         }

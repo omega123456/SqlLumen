@@ -7,14 +7,12 @@
 
 import { useSettingsStore } from '../../stores/settings-store'
 import type { GridColumn } from './glide/glide-grid-types'
+import { isBlobPlaceholderText } from '../../lib/blob-utils'
+import { isNullish } from '../../lib/value-checks'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function isNullish(value: unknown): value is null | undefined {
-  return value === null || value === undefined
-}
 
 // ---------------------------------------------------------------------------
 // renderCellValue — shared NULL/BLOB/normal value display
@@ -34,7 +32,7 @@ function renderCellValue(value: unknown): React.ReactNode {
     return <span className="td-cell-value td-null-value">{nullDisplay}</span>
   }
 
-  if (typeof value === 'string' && value.startsWith('[BLOB')) {
+  if (isBlobPlaceholderText(value)) {
     return <span className="td-cell-value td-blob-value">{value}</span>
   }
 

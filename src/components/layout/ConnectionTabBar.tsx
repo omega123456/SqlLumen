@@ -29,13 +29,13 @@ import { TabContextMenu } from '../shared/TabContextMenu'
 import { usePointerTabDrag } from '../shared/use-pointer-tab-drag'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
+import { isMiddleMouseButton } from '../../lib/input-events'
 import styles from './ConnectionTabBar.module.css'
 
 const CONNECTION_TAB_TEST_ID_PREFIX = 'connection-session-tab-'
 
 const UNNAMED_CONNECTION_LABEL = 'Unnamed connection'
 const CONNECTION_EDGE_WIDTH = '2px'
-const MIDDLE_MOUSE_BUTTON = 1
 
 interface PendingConnectionClose {
   id: string
@@ -280,7 +280,8 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
   }
 
   const restoreFocusAfterAction = (invokerTabId: string | null) => {
-    if (invokerTabId && focusConnectionTab(invokerTabId)) {
+    const hasRestoredInvokerFocus = invokerTabId !== null && focusConnectionTab(invokerTabId)
+    if (hasRestoredInvokerFocus) {
       return
     }
     if (activeTabIdRef.current) {
@@ -362,7 +363,7 @@ export function ConnectionTabBar({ onOpenSettings, onOpenSnapshots }: Connection
                 dragging={draggingTabId === connection.id}
                 dropIndicator={dropIndicatorFor(connection.id)}
                 onAuxClick={(event) => {
-                  if (event.button !== MIDDLE_MOUSE_BUTTON) return
+                  if (!isMiddleMouseButton(event)) return
                   event.preventDefault()
                   setPendingConnectionClose({
                     id: connection.id,

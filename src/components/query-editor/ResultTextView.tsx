@@ -120,7 +120,8 @@ export function ResultTextView({
 
   // Fetch the first rows of the current view (in 2,000-row chunks).
   useEffect(() => {
-    if (shownCount === 0 || loaded?.key === loadKey) return
+    if (shownCount === 0) return
+    if (loaded?.key === loadKey) return
     let cancelled = false
     readViewRange(tabId, resultIndex, [0, shownCount])
       .then((rows) => {

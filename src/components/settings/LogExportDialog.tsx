@@ -19,6 +19,7 @@ import { toErrorMessage } from '../../lib/error-message'
 
 import 'react-datepicker/dist/react-datepicker.css'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
+import { isObjectRecord } from '../../lib/value-checks'
 
 const DATE_FORMAT = 'yyyy-MM-dd'
 const MAX_RANGE_DAYS = 7
@@ -38,31 +39,30 @@ function parseInputDate(value: string): Date | null {
     return null
   }
 
-  return formatDate(parsed) === value ? parsed : null
+  const isCanonicalDate = formatDate(parsed) === value
+  return isCanonicalDate ? parsed : null
 }
 
 function getEventInputValue(event: unknown): string | null {
-  if (
-    typeof event === 'object' &&
-    event !== null &&
-    'target' in event &&
-    typeof event.target === 'object' &&
-    event.target !== null &&
-    'value' in event.target &&
-    typeof event.target.value === 'string'
-  ) {
-    return event.target.value
+  if (!isObjectRecord(event)) {
+    return null
   }
-
-  return null
+  const target = event.target
+  if (!isObjectRecord(target)) {
+    return null
+  }
+  const inputValue = target.value
+  return typeof inputValue === 'string' ? inputValue : null
 }
 
 function getValidationMessage(from: Date | null, to: Date | null): string | null {
-  if (!from || !to) {
+  const isRangeIncomplete = !from || !to
+  if (isRangeIncomplete) {
     return 'Select both a start and end date.'
   }
 
-  if (differenceInCalendarDays(to, from) >= MAX_RANGE_DAYS) {
+  const rangeDays = differenceInCalendarDays(to, from)
+  if (rangeDays >= MAX_RANGE_DAYS) {
     return 'Select a date range of 7 days or fewer.'
   }
 
@@ -113,9 +113,10 @@ export function LogExportDialog({ isOpen, onClose }: LogExportDialogProps) {
   }, [])
 
   const handleExport = useCallback(async () => {
-    if (!from || !to || validationMessage !== null || busy) {
-      return
-    }
+    if (!from) return
+    if (!to) return
+    if (validationMessage !== null) return
+    if (busy) return
 
     const filePath = await save({
       defaultPath: `sqllumen_logs_${formatDate(from)}_${formatDate(to)}.csv`,

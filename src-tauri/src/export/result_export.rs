@@ -439,7 +439,9 @@ impl ExportPipeline {
             .ok_or_else(|| "The export file is not open.".to_string())?;
         let outcome = sink.write_row(row)?;
         let rows = sink.rows_written();
-        if outcome == RowWrite::Written && (rows == 1 || rows % PROGRESS_REPORT_EVERY_ROWS == 0) {
+        let is_progress_checkpoint = rows == 1 || rows % PROGRESS_REPORT_EVERY_ROWS == 0;
+        let should_report_progress = outcome == RowWrite::Written && is_progress_checkpoint;
+        if should_report_progress {
             let bytes = sink.bytes_written();
             update_job(&self.jobs, &self.job_id, |job| {
                 job.rows_written = rows;
@@ -689,7 +691,8 @@ async fn rerun_into_pipeline(
     set_job_thread(&prepared.jobs, &prepared.job_id, None);
     wait_for_cancel_kills(&prepared.cancel, &prepared.job_id, CANCEL_KILL_WAIT).await;
     let kill_sent = stream.own_kill_sent || prepared.cancel.kill_sent.load(Ordering::SeqCst);
-    if kill_sent && !stream.interrupted {
+    let has_unabsorbed_kill = kill_sent && !stream.interrupted;
+    if has_unabsorbed_kill {
         // The KILL may have arrived after the statement ended: absorb it here.
         crate::mysql::multi_result::absorb_late_kill(&mut session.conn, &prepared.connection_id)
             .await;
@@ -828,7 +831,8 @@ async fn stream_rerun(
         Ok(result) => result,
         Err(error) => {
             let interrupted = is_query_interrupted(&error);
-            if interrupted && cancel_requested() {
+            let is_cancelled_by_user = interrupted && cancel_requested();
+            if is_cancelled_by_user {
                 return StreamEnd {
                     outcome: ExportOutcome::Cancelled,
                     interrupted,

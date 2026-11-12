@@ -408,6 +408,8 @@ pub fn extract_responses_content_text_for_event(
     json: &serde_json::Value,
     already_streamed_output: bool,
 ) -> String {
+    let is_unstreamed_visible_part =
+        !already_streamed_output && should_treat_content_part_as_visible_text(json);
     match event_type {
         Some("response.output_text.delta") => extract_responses_delta_text(json),
         Some("response.content_part.added") if should_treat_content_part_as_visible_text(json) => {
@@ -420,13 +422,10 @@ pub fn extract_responses_content_text_for_event(
             .and_then(|value| value.as_str())
             .map(ToString::to_string)
             .unwrap_or_default(),
-        Some("response.content_part.done")
-            if !already_streamed_output && should_treat_content_part_as_visible_text(json) =>
-        {
-            json.get("part")
-                .map(|part| extract_text_from_response_part(part, &["output_text", "text"]))
-                .unwrap_or_default()
-        }
+        Some("response.content_part.done") if is_unstreamed_visible_part => json
+            .get("part")
+            .map(|part| extract_text_from_response_part(part, &["output_text", "text"]))
+            .unwrap_or_default(),
         Some("response.output_item.done") if !already_streamed_output => json
             .get("item")
             .map(extract_text_from_message_item)
@@ -1086,11 +1085,11 @@ fn process_responses_payload<R: Runtime>(
         }
     }
 
-    if is_responses_completion_event(event_type)
+    let is_recognised_responses_payload = is_responses_completion_event(event_type)
         || extract_responses_error_message(json).is_some()
         || json.get("response").is_some()
-        || json.get("response_id").is_some()
-    {
+        || json.get("response_id").is_some();
+    if is_recognised_responses_payload {
         state.saw_valid_responses_payload = true;
     }
 
@@ -1250,10 +1249,11 @@ async fn stream_responses_completion<R: Runtime>(
                 Ok(body) => body,
                 Err(_) => "<failed to read body>".to_string(),
             };
+            let should_fallback = retry_status.is_server_error()
+                || should_fallback_from_responses_status(retry_status, &retry_body);
             return Err(ResponsesStreamError::new(
                 format!("HTTP {retry_status}: {retry_body}"),
-                retry_status.is_server_error()
-                    || should_fallback_from_responses_status(retry_status, &retry_body),
+                should_fallback,
             ));
         }
     }
@@ -1294,7 +1294,8 @@ async fn stream_responses_completion<R: Runtime>(
                     line_buffer = line_buffer[newline_pos + 1..].to_string();
 
                     let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with(':') {
+                    let is_blank_or_comment_line = trimmed.is_empty() || trimmed.starts_with(':');
+                    if is_blank_or_comment_line {
                         continue;
                     }
 

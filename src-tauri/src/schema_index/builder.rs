@@ -363,7 +363,8 @@ pub fn split_identifier_segments(name: &str) -> Vec<String> {
         // Split camelCase within each underscore segment
         let mut current = String::new();
         for ch in part.chars() {
-            if ch.is_uppercase() && !current.is_empty() {
+            let starts_new_segment = ch.is_uppercase() && !current.is_empty();
+            if starts_new_segment {
                 segments.push(current.to_ascii_lowercase());
                 current = String::new();
             }
@@ -516,17 +517,35 @@ pub enum SignatureDecision {
 /// is present in the `schema_index_chunks` SQLite store.
 ///
 /// Pure / no I/O — used in both production (inside the build loop) and tests.
+const NON_COLUMN_DDL_LINE_KEYWORDS: [&str; 8] = [
+    "PRIMARY",
+    "KEY",
+    "UNIQUE",
+    "INDEX",
+    "CONSTRAINT",
+    "FULLTEXT",
+    "SPATIAL",
+    "CREATE",
+];
+
+fn is_non_column_ddl_line(trimmed_line: &str) -> bool {
+    let upper_line = trimmed_line.to_uppercase();
+    let starts_with_keyword = NON_COLUMN_DDL_LINE_KEYWORDS
+        .iter()
+        .any(|keyword| upper_line.starts_with(keyword));
+    starts_with_keyword || trimmed_line.starts_with(')')
+}
+
 pub fn decide_signature_action(
     current_sig: Option<&str>,
     stored_sig: Option<&str>,
     chunk_exists: bool,
 ) -> SignatureDecision {
-    match (current_sig, stored_sig) {
-        (Some(current), Some(stored)) if current == stored && chunk_exists => {
-            SignatureDecision::Reuse
-        }
-        _ => SignatureDecision::Refetch,
+    let has_unchanged_signature = current_sig.is_some() && current_sig == stored_sig;
+    if has_unchanged_signature && chunk_exists {
+        return SignatureDecision::Reuse;
     }
+    SignatureDecision::Refetch
 }
 
 // ── Build index (full) ──────────────────────────────────────────────────
@@ -1036,7 +1055,9 @@ pub async fn build_index(
         "schema_index build_index: diff complete — staged chunks for embedding (new or hash-changed); skipped unchanged"
     );
 
-    if tracing::enabled!(tracing::Level::DEBUG) && !chunks_to_embed.is_empty() {
+    let should_log_chunk_keys =
+        tracing::enabled!(tracing::Level::DEBUG) && !chunks_to_embed.is_empty();
+    if should_log_chunk_keys {
         let keys_preview: Vec<(&str, &str)> = chunks_to_embed
             .iter()
             .map(|chunk| (chunk.chunk_key.as_str(), chunk.chunk_type.as_str()))
@@ -1725,17 +1746,7 @@ pub fn parse_columns_from_ddl(ddl: &str) -> Vec<(String, String, Option<String>)
     let mut cols = Vec::new();
     for line in ddl.lines() {
         let trimmed = line.trim();
-        // Skip lines that start with constraint keywords
-        if trimmed.to_uppercase().starts_with("PRIMARY")
-            || trimmed.to_uppercase().starts_with("KEY")
-            || trimmed.to_uppercase().starts_with("UNIQUE")
-            || trimmed.to_uppercase().starts_with("INDEX")
-            || trimmed.to_uppercase().starts_with("CONSTRAINT")
-            || trimmed.to_uppercase().starts_with("FULLTEXT")
-            || trimmed.to_uppercase().starts_with("SPATIAL")
-            || trimmed.starts_with(')')
-            || trimmed.to_uppercase().starts_with("CREATE")
-        {
+        if is_non_column_ddl_line(trimmed) {
             continue;
         }
         if let Some(cap) = re.captures(trimmed) {
@@ -2357,7 +2368,8 @@ async fn fetch_create_tables_parallel(
                 let per_started = Instant::now();
                 let ddl = fetch_create_table(pool, &db, &tbl).await?;
                 let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
-                if done.is_multiple_of(10) || done == total_to_fetch {
+                let should_log_progress = done.is_multiple_of(10) || done == total_to_fetch;
+                if should_log_progress {
                     tracing::debug!(
                         profile_id = %profile_id,
                         fetched = done,

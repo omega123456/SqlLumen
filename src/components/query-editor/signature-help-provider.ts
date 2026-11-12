@@ -40,7 +40,7 @@ const CALL_KEYWORD = 'CALL'
 export function isEscapedChar(text: string, position: number): boolean {
   let isEscaped = false
   let scanPosition = position - 1
-  while (scanPosition >= 0 && text[scanPosition] === '\\') {
+  while (text[scanPosition] === '\\') {
     isEscaped = !isEscaped
     scanPosition--
   }
@@ -59,13 +59,46 @@ const IDENTIFIER_CHARACTER = /[a-zA-Z0-9_$]/
 const PAREN_DEPTH_CHANGE_FORWARD: Record<string, number> = { '(': 1, ')': -1 }
 const PAREN_DEPTH_CHANGE_BACKWARD: Record<string, number> = { ')': 1, '(': -1 }
 const NOT_FOUND = -1
+const QUOTED_IDENTIFIER_CHARACTERS: ReadonlySet<string> = new Set(['`', '"'])
+
+interface ForwardCharacterScan {
+  text: string
+  stopCharacter: string
+  limit: number
+}
+
+function canScanForwardTo(scan: ForwardCharacterScan, index: number): boolean {
+  return index < scan.limit && scan.text[index] !== scan.stopCharacter
+}
+
+function canScanBackwardTo(text: string, index: number, stopCharacter: string): boolean {
+  return index >= 0 && text[index] !== stopCharacter
+}
+
+function isIdentifierCharacterAt(text: string, index: number): boolean {
+  return index >= 0 && IDENTIFIER_CHARACTER.test(text[index])
+}
+
+function isUnescapedQuoteAt(text: string, index: number, quote: string): boolean {
+  return text[index] === quote && !isEscapedChar(text, index)
+}
+
+function canScanForwardToBlockCommentClose(text: string, index: number, limit: number): boolean {
+  const isCloseAt = text[index] === '*' && text[index + 1] === '/'
+  return index + 1 < limit && !isCloseAt
+}
+
+function canScanBackwardToBlockCommentOpen(text: string, index: number): boolean {
+  return index >= 0 && !isBlockCommentOpenAt(text, index)
+}
 
 function isQuoteCharacter(character: string): boolean {
   return character === "'" || character === '"'
 }
 
 function isLineCommentDashesAt(text: string, index: number): boolean {
-  if (text[index] !== '-' || text[index + 1] !== '-') return false
+  const startsWithDashes = text[index] === '-' && text[index + 1] === '-'
+  if (!startsWithDashes) return false
   const characterAfterDashes = index + LINE_COMMENT_DASHES_LENGTH
   return characterAfterDashes < text.length && isWhitespaceOrControl(text[characterAfterDashes])
 }
@@ -88,7 +121,7 @@ function isDoubledQuoteAt(text: string, index: number, limit: number): boolean {
 
 function findLineStart(text: string, position: number): number {
   let lineStart = position
-  while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--
+  while (canScanBackwardTo(text, lineStart - 1, '\n')) lineStart--
   return lineStart
 }
 
@@ -96,7 +129,7 @@ function skipQuotedForward(text: string, quoteIndex: number, limit: number): num
   const quote = text[quoteIndex]
   let scanIndex = quoteIndex + 1
   while (scanIndex < limit) {
-    if (text[scanIndex] !== quote || isEscapedChar(text, scanIndex)) {
+    if (!isUnescapedQuoteAt(text, scanIndex, quote)) {
       scanIndex++
       continue
     }
@@ -110,22 +143,24 @@ function skipQuotedForward(text: string, quoteIndex: number, limit: number): num
 }
 
 function skipBacktickForward(text: string, backtickIndex: number, limit: number): number {
+  const scan: ForwardCharacterScan = { text: text, stopCharacter: '`', limit: limit }
   let scanIndex = backtickIndex + 1
-  while (scanIndex < limit && text[scanIndex] !== '`') scanIndex++
+  while (canScanForwardTo(scan, scanIndex)) scanIndex++
   return scanIndex
 }
 
 function findBlockCommentCloseForward(text: string, from: number, limit: number): number {
   let scanIndex = from
-  while (scanIndex + 1 < limit && !(text[scanIndex] === '*' && text[scanIndex + 1] === '/')) {
+  while (canScanForwardToBlockCommentClose(text, scanIndex, limit)) {
     scanIndex++
   }
   return scanIndex
 }
 
 function skipToLineEnd(text: string, from: number, limit: number): number {
+  const scan: ForwardCharacterScan = { text: text, stopCharacter: '\n', limit: limit }
   let scanIndex = from
-  while (scanIndex < limit && text[scanIndex] !== '\n') scanIndex++
+  while (canScanForwardTo(scan, scanIndex)) scanIndex++
   return scanIndex
 }
 
@@ -166,7 +201,7 @@ function lineCommentJumpTarget(text: string, position: number): number | null {
 
 function findBlockCommentOpenBackward(text: string, closeIndex: number): number {
   let scanIndex = closeIndex - BLOCK_COMMENT_DELIMITER_LENGTH
-  while (scanIndex >= 0 && !isBlockCommentOpenAt(text, scanIndex)) scanIndex--
+  while (canScanBackwardToBlockCommentOpen(text, scanIndex)) scanIndex--
   return scanIndex
 }
 
@@ -233,17 +268,17 @@ function readIdentifierBackward(
   if (position < 0) return null
   const character = text[position]
 
-  if (character === '`' || character === '"') {
+  if (QUOTED_IDENTIFIER_CHARACTERS.has(character)) {
     const quote = character
     let start = position - 1
-    while (start >= 0 && text[start] !== quote) start--
+    while (canScanBackwardTo(text, start, quote)) start--
     if (start < 0) return null
     return { name: text.slice(start + 1, position), end: start - 1 }
   }
 
   if (IDENTIFIER_CHARACTER.test(character)) {
     let start = position
-    while (start > 0 && IDENTIFIER_CHARACTER.test(text[start - 1])) start--
+    while (isIdentifierCharacterAt(text, start - 1)) start--
     return { name: text.slice(start, position + 1), end: start - 1 }
   }
 
@@ -281,7 +316,8 @@ function countActiveParameter(
     }
     const character = text[scanIndex]
     depth += PAREN_DEPTH_CHANGE_FORWARD[character] ?? 0
-    if (character === ',' && depth === 0) activeParameter++
+    const isTopLevelComma = character === ',' && depth === 0
+    if (isTopLevelComma) activeParameter++
   }
   return activeParameter
 }
@@ -290,11 +326,12 @@ function skipQuotedBackward(text: string, closingIndex: number): number {
   const quote = text[closingIndex]
   let scanIndex = closingIndex - 1
   while (scanIndex >= 0) {
-    if (text[scanIndex] !== quote || isEscapedChar(text, scanIndex)) {
+    if (!isUnescapedQuoteAt(text, scanIndex, quote)) {
       scanIndex--
       continue
     }
-    if (scanIndex >= 1 && text[scanIndex - 1] === quote) {
+    const isDoubledQuote = scanIndex >= 1 && text[scanIndex - 1] === quote
+    if (isDoubledQuote) {
       scanIndex -= DOUBLED_QUOTE_LENGTH
       continue
     }
@@ -305,7 +342,7 @@ function skipQuotedBackward(text: string, closingIndex: number): number {
 
 function skipBacktickBackward(text: string, closingIndex: number): number {
   let scanIndex = closingIndex - 1
-  while (scanIndex >= 0 && text[scanIndex] !== '`') scanIndex--
+  while (canScanBackwardTo(text, scanIndex, '`')) scanIndex--
   return scanIndex
 }
 
@@ -341,7 +378,8 @@ function findEnclosingOpenParen(text: string, cursorOffset: number): number {
     }
 
     const character = text[scanIndex]
-    if (character === '(' && depth === 0) return scanIndex
+    const isOpeningParenthesis = character === '(' && depth === 0
+    if (isOpeningParenthesis) return scanIndex
     depth += PAREN_DEPTH_CHANGE_BACKWARD[character] ?? 0
     if (character === '\n') needLineCommentCheck = true
     scanIndex--
@@ -360,7 +398,7 @@ function readDatabaseQualifier(
   nameEnd: number
 ): { database: string | null; positionBeforeName: number } {
   const positionBeforeName = skipBackwardWhitespaceAndComments(text, nameEnd)
-  if (positionBeforeName < 0 || text[positionBeforeName] !== '.') {
+  if (text[positionBeforeName] !== '.') {
     return { database: null, positionBeforeName: nameEnd }
   }
   const qualifierEnd = skipBackwardWhitespaceAndComments(text, positionBeforeName - 1)
@@ -389,7 +427,8 @@ function isPrecededByCallKeyword(text: string, position: number): boolean {
   const checkPosition = skipBackwardWhitespaceAndComments(text, position)
   const keywordStart = checkPosition - CALL_KEYWORD.length + 1
   if (keywordStart < 0) return false
-  if (text.slice(keywordStart, checkPosition + 1).toUpperCase() !== CALL_KEYWORD) return false
+  const precedingWord = text.slice(keywordStart, checkPosition + 1).toUpperCase()
+  if (precedingWord !== CALL_KEYWORD) return false
   return keywordStart === 0 || !IDENTIFIER_CHARACTER.test(text[keywordStart - 1])
 }
 

@@ -14,6 +14,7 @@ import { showErrorToast } from './toast-store'
 import { logFrontend } from '../lib/app-log-commands'
 import { estimateTokenCount } from '../lib/schema-ddl-compactor'
 import { toErrorMessage } from '../lib/error-message'
+import { isAiLockStatus } from '../lib/query-tab-status'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -253,9 +254,8 @@ function shouldReuseResponseChain(
   endpoint: string,
   model: string
 ): boolean {
-  if (!tab?.previousResponseId || !systemPrompt) {
-    return false
-  }
+  if (!tab?.previousResponseId) return false
+  if (!systemPrompt) return false
 
   return (
     tab.lastCompletedTransport === 'responses' &&
@@ -754,7 +754,8 @@ async function expandSearchQueriesWithModel(request: QueryExpansionRequest): Pro
     'debug',
     `[ai-store] query expansion — endpoint=${endpointState} model=${model || '[unset]'} hyde=${options.hydeEnabled}`
   )
-  if (!endpoint || !model) {
+  const isMissingEndpointOrModel = !endpoint || !model
+  if (isMissingEndpointOrModel) {
     logFrontend(
       'debug',
       `[ai-store] query expansion skipped — missing endpoint or model, using original user query`
@@ -798,7 +799,8 @@ function isNonBlankText(text: string | undefined): text is string {
 
 function keepHeavierWeight(weights: Map<string, number>, key: string, weight: number): void {
   const existingWeight = weights.get(key)
-  if (existingWeight !== undefined && existingWeight >= weight) return
+  const isExistingWeightHeavier = existingWeight !== undefined && existingWeight >= weight
+  if (isExistingWeightHeavier) return
   weights.set(key, weight)
 }
 
@@ -1165,6 +1167,12 @@ export const useAiStore = create<AiState>()((set, get) => {
   }
 
   /** Merge a partial update into a single tab's AI state. */
+  const tabForActiveStream = (tabId: string, streamId: string): TabAiState | undefined => {
+    const tab = get().tabs[tabId]
+    if (tab?.activeStreamId !== streamId) return undefined
+    return tab
+  }
+
   const patchTab = (tabId: string, partial: Partial<TabAiState>) => {
     set((state) => ({
       tabs: {
@@ -1239,7 +1247,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     contextMessages: ContextMessageDraft[]
   ): void {
     const currentTab = get().tabs[tabId]
-    if (!currentTab || contextMessages.length === 0) return
+    if (!currentTab) return
+    if (contextMessages.length === 0) return
 
     const nextMessages = [...currentTab.messages]
     const userIndex = nextMessages.findIndex((message) => message.id === userMessageId)
@@ -1262,14 +1271,16 @@ export const useAiStore = create<AiState>()((set, get) => {
     kinds: Array<NonNullable<AiMessage['kind']>>
   ): void {
     const currentTab = get().tabs[tabId]
-    if (!currentTab || kinds.length === 0) return
+    if (!currentTab) return
+    if (kinds.length === 0) return
 
     const kindSet = new Set(kinds)
     const nextMessages = currentTab.messages.filter(
       (message) => !(message.kind && kindSet.has(message.kind))
     )
 
-    if (nextMessages.length !== currentTab.messages.length) {
+    const hasRemovedMessages = nextMessages.length !== currentTab.messages.length
+    if (hasRemovedMessages) {
       patchTab(tabId, { messages: nextMessages })
     }
   }
@@ -1391,7 +1402,9 @@ export const useAiStore = create<AiState>()((set, get) => {
     userMessageId: string,
     context: SchemaContext
   ): void {
-    if (context.schemaDdl && context.novelChunkKeys.length > 0) {
+    const hasNovelSchemaChunks = context.novelChunkKeys.length > 0
+    const hasNovelMemories = context.novelMemories.length > 0
+    if (context.schemaDdl && hasNovelSchemaChunks) {
       appendContextMessage(tabId, userMessageId, {
         id: crypto.randomUUID(),
         role: 'user',
@@ -1401,7 +1414,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         chunkKeys: context.novelChunkKeys,
       })
     }
-    if (context.novelMemoryText && context.novelMemories.length > 0) {
+    if (context.novelMemoryText && hasNovelMemories) {
       appendContextMessage(tabId, userMessageId, {
         id: crypto.randomUUID(),
         role: 'user',
@@ -1657,9 +1670,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     // ------ onStreamChunk ------
 
     onStreamChunk: (tabId, streamId, content, kind) => {
-      // Stale-stream guard: ignore events from a previous stream that was superseded
-      const tab = get().tabs[tabId]
-      if (!tab || tab.activeStreamId !== streamId) return
+      const tab = tabForActiveStream(tabId, streamId)
+      if (!tab) return
 
       const messages = applyChunkToMessages(tab.messages, content, kind)
 
@@ -1674,9 +1686,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     // ------ onStreamDone ------
 
     onStreamDone: (tabId, streamId, info) => {
-      // Stale-stream guard: ignore events from a previous stream that was superseded
-      const tab = get().tabs[tabId]
-      if (!tab || tab.activeStreamId !== streamId) return
+      const tab = tabForActiveStream(tabId, streamId)
+      if (!tab) return
 
       patchTab(tabId, {
         ...activeRequestResetFragment(),
@@ -1693,9 +1704,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     // ------ onStreamError ------
 
     onStreamError: (tabId, streamId, error) => {
-      // Stale-stream guard: ignore events from a previous stream that was superseded
-      const tab = get().tabs[tabId]
-      if (!tab || tab.activeStreamId !== streamId) return
+      const tab = tabForActiveStream(tabId, streamId)
+      if (!tab) return
 
       patchTab(tabId, {
         ...activeRequestResetFragment(),
@@ -1750,7 +1760,8 @@ export const useAiStore = create<AiState>()((set, get) => {
         (message) => message.kind === 'attached-context'
       )
 
-      if (currentAttachedMessage?.content !== buildAttachedContextMessage(context.sql)) {
+      const attachedSqlMessage = buildAttachedContextMessage(context.sql)
+      if (currentAttachedMessage?.content !== attachedSqlMessage) {
         resetResponseChain(tabId)
       }
 
@@ -1830,7 +1841,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Only restore if the tab is currently in an AI lock state
       const { tabStatus, prevTabStatus: previousTabStatus } = queryTab
-      if (tabStatus === 'ai-pending' || tabStatus === 'ai-reviewing') {
+      if (isAiLockStatus(tabStatus)) {
         useQueryStore.getState().setTabStatus(tabId, previousTabStatus)
       }
     },

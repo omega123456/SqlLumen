@@ -1,5 +1,6 @@
 import type { RowEditState, TableDataColumnMeta } from '../types/schema'
 import { TEMPORAL_CONFIGS, getTemporalColumnType, validateTemporalValue } from './date-utils'
+import { isNullish } from './value-checks'
 
 export interface TemporalValidationResult {
   columnName: string
@@ -20,8 +21,9 @@ export function getTemporalValidationResult(
     if (!temporalType) continue
 
     const value = editState.currentValues[columnName]
-    if (value === null || value === undefined) continue
-    if (typeof value === 'string' && value.trim() === '') {
+    if (isNullish(value)) continue
+    const isBlankText = typeof value === 'string' && value.trim() === ''
+    if (isBlankText) {
       return {
         columnName: columnName,
         error: `Invalid ${temporalType} value. Expected format: ${TEMPORAL_CONFIGS[temporalType].format}`,

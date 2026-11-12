@@ -41,7 +41,8 @@ export function RenameDialog({
     trimmedNew !== currentName
 
   const handleSubmit = useCallback(() => {
-    if (!isValid || isLoading) return
+    if (!isValid) return
+    if (isLoading) return
     onConfirm(trimmedNew)
   }, [isLoading, isValid, onConfirm, trimmedNew])
 

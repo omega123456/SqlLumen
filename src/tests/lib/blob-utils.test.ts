@@ -11,14 +11,38 @@ import {
   decodeUtf8BestEffort,
   detectBlobExtension,
   emptyEnvelope,
+  envelopeForBytes,
   formatHexDump,
   isBinaryDataType,
   isBlobEnvelope,
+  isBlobPlaceholderText,
   nullEnvelope,
   parsePastedBytes,
   readImageDimensions,
   sniffImageMime,
 } from '../../lib/blob-utils'
+
+describe('isBlobPlaceholderText', () => {
+  it('recognises the BLOB display placeholder', () => {
+    expect(isBlobPlaceholderText('[BLOB - 4 KB]')).toBe(true)
+  })
+
+  it('rejects other values', () => {
+    expect(isBlobPlaceholderText('AAEC')).toBe(false)
+    expect(isBlobPlaceholderText(null)).toBe(false)
+  })
+})
+
+describe('envelopeForBytes', () => {
+  it('returns the empty envelope for zero bytes', () => {
+    expect(envelopeForBytes(new Uint8Array())).toEqual(emptyEnvelope())
+  })
+
+  it('returns a bytes envelope carrying the base64 payload', () => {
+    const bytes = new Uint8Array([1, 2, 3])
+    expect(envelopeForBytes(bytes)).toEqual(bytesEnvelope(bytesToBase64(bytes)))
+  })
+})
 
 describe('isBinaryDataType', () => {
   it('returns true for all six binary type names (any case)', () => {

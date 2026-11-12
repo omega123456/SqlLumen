@@ -74,7 +74,7 @@ const CONFORMANCE_RULE_SCOPES = [
     rules: { complexity: ['error', MAXIMUM_COMPLEXITY] },
   },
   {
-    files: [],
+    files: PRODUCTION_SOURCE_FILES,
     rules: { 'local/named-conditions': 'error' },
   },
   {

@@ -59,7 +59,8 @@ function foreignKeyEditorSource(
 }
 
 function resolveEffectiveSelectedRow(selectedRow: number | null, rowCount: number): number | null {
-  if (selectedRow === null || selectedRow >= rowCount) return null
+  if (selectedRow === null) return null
+  if (selectedRow >= rowCount) return null
   return selectedRow
 }
 
@@ -67,7 +68,8 @@ function canDeleteForeignKeyAt(
   foreignKeys: TableDesignerForeignKeyDef[],
   index: number | null
 ): boolean {
-  if (index === null || index >= foreignKeys.length) return false
+  if (index === null) return false
+  if (index >= foreignKeys.length) return false
   return !foreignKeys[index]?.isComposite
 }
 
@@ -101,7 +103,8 @@ function cellSelectClassName(isSelected: boolean): string {
 }
 
 function referencedTargetKeyFor(referencedDatabase: string, referencedTable: string): string {
-  if (referencedDatabase === '' || referencedTable === '') return ''
+  if (referencedDatabase === '') return ''
+  if (referencedTable === '') return ''
   return makeReferencedTargetKey(referencedDatabase, referencedTable)
 }
 
@@ -472,9 +475,8 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   }, [availableDatabases, databaseName, isDatabasesLoading])
 
   useEffect(() => {
-    if (!connectionId || !databaseName) {
-      return
-    }
+    if (!connectionId) return
+    if (!databaseName) return
 
     let cancelled = false
     queueMicrotask(() => {
@@ -522,9 +524,8 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   }, [connectionId, databaseName])
 
   useEffect(() => {
-    if (!connectionId || !databaseName) {
-      return
-    }
+    if (!connectionId) return
+    if (!databaseName) return
 
     const referencedDatabases = Array.from(
       new Set(
@@ -535,10 +536,10 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
     )
 
     referencedDatabases.forEach((referencedDatabase) => {
-      if (
+      const isTableListRequested =
         loadedTablesRef.current.has(referencedDatabase) ||
         loadingTablesRef.current.has(referencedDatabase)
-      ) {
+      if (isTableListRequested) {
         return
       }
 
@@ -574,38 +575,33 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   }, [connectionId, databaseName, foreignKeys])
 
   useEffect(() => {
-    if (!connectionId || !databaseName) {
-      return
-    }
+    if (!connectionId) return
+    if (!databaseName) return
 
     const referencedTargets = Array.from(
       new Set(
         foreignKeys
-          .map((foreignKey) => {
-            const referencedDatabase = (foreignKey.referencedDatabase || databaseName).trim()
-            const referencedTable = foreignKey.referencedTable.trim()
-            if (referencedDatabase === '' || referencedTable === '') {
-              return ''
-            }
-
-            return makeReferencedTargetKey(referencedDatabase, referencedTable)
-          })
+          .map((foreignKey) =>
+            referencedTargetKeyFor(
+              (foreignKey.referencedDatabase || databaseName).trim(),
+              foreignKey.referencedTable.trim()
+            )
+          )
           .filter((targetKey) => targetKey !== '')
       )
     )
 
     referencedTargets.forEach((targetKey) => {
-      if (
+      const isColumnListRequested =
         loadedTableColumnsRef.current.has(targetKey) ||
         loadingTableColumnsRef.current.has(targetKey)
-      ) {
+      if (isColumnListRequested) {
         return
       }
 
       const [referencedDatabase, referencedTable] = targetKey.split('\u0000')
-      if (!referencedDatabase || !referencedTable) {
-        return
-      }
+      if (!referencedDatabase) return
+      if (!referencedTable) return
 
       loadingTableColumnsRef.current.add(targetKey)
       setLoadingColumnsByTarget((current) => ({

@@ -42,21 +42,24 @@ export interface SlashOption {
   kind: 'keyword' | 'database'
 }
 
+function isKeywordOptionMatch(option: SlashKeywordOption, normalizedQuery: string): boolean {
+  if (normalizedQuery.length === 0) {
+    return true
+  }
+  if (option.aliases.some((alias) => alias.includes(normalizedQuery))) {
+    return true
+  }
+  return option.label.toLowerCase().includes(normalizedQuery)
+}
+
 export function buildSlashOptions(
   slashQuery: string,
   databases: ReadonlyArray<string>
 ): SlashOption[] {
   const normalizedQuery = slashQuery.trim().toLowerCase()
-  const keywordOptions = KEYWORD_OPTIONS.filter((option) => {
-    if (normalizedQuery.length === 0) {
-      return true
-    }
-
-    return (
-      option.aliases.some((alias) => alias.includes(normalizedQuery)) ||
-      option.label.toLowerCase().includes(normalizedQuery)
-    )
-  }).map((option) => ({
+  const keywordOptions = KEYWORD_OPTIONS.filter((option) =>
+    isKeywordOptionMatch(option, normalizedQuery)
+  ).map((option) => ({
     id: `keyword-${option.value}`,
     pill: {
       kind: 'object-type' as const,

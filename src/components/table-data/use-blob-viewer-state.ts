@@ -55,7 +55,8 @@ export function useBlobViewerState({
   const closeBlobViewer = useCallback(() => setBlobViewerTarget(null), [])
 
   const loadBlob = useCallback(() => {
-    if (!blobViewerTarget || !tabState) {
+    const isMissingTarget = !blobViewerTarget || !tabState
+    if (isMissingTarget) {
       throw new Error(MISSING_PRIMARY_KEY_MESSAGE)
     }
     return fetchBlobValue(

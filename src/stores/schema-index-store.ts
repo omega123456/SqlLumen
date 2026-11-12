@@ -71,6 +71,17 @@ export function _resetSchemaIndexStoreForTest(): void {
 // Default connection index state
 // ---------------------------------------------------------------------------
 
+function isBuildingOrReady(
+  connection: ConnectionIndexState | undefined
+): connection is ConnectionIndexState {
+  if (!connection) return false
+  return connection.status === 'building' || connection.status === 'ready'
+}
+
+function isBuildingOrStale(connection: ConnectionIndexState): boolean {
+  return connection.status === 'building' || connection.status === 'stale'
+}
+
 function createDefaultConnectionIndexState(): ConnectionIndexState {
   return {
     status: 'stale',
@@ -114,7 +125,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
   let listenersInitialized = false
 
   function initEventListeners(): void {
-    if (listenersInitialized || !hasTauriApis()) return
+    if (listenersInitialized) return
+    if (!hasTauriApis()) return
     listenersInitialized = true
 
     listen<{
@@ -259,8 +271,8 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         }
       })
 
-      // Clean up the settings subscription when all sessions are gone
-      if (Object.keys(get().sessionToProfile).length === 0 && settingsUnsub) {
+      const hasNoSessions = Object.keys(get().sessionToProfile).length === 0
+      if (hasNoSessions && settingsUnsub) {
         settingsUnsub()
         settingsUnsub = null
       }
@@ -280,10 +292,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       for (const sid of siblingSessionIds) {
         if (sid === sessionId) continue
         const siblingConnection = state.connections[sid]
-        if (
-          siblingConnection &&
-          (siblingConnection.status === 'building' || siblingConnection.status === 'ready')
-        ) {
+        if (isBuildingOrReady(siblingConnection)) {
           set((state) => ({
             connections: {
               ...state.connections,
@@ -324,8 +333,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           set((state) => {
             const connection = state.connections[sessionId]
             if (!connection) return state
-            // Only update if we're still in 'building' — events may have already updated it
-            if (connection.status === 'building' || connection.status === 'stale') {
+            if (isBuildingOrStale(connection)) {
               return {
                 connections: {
                   ...state.connections,
@@ -391,8 +399,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           set((state) => {
             const connection = state.connections[sessionId]
             if (!connection) return state
-            // Only update if we're still in 'building' — events may have already updated it
-            if (connection.status === 'building' || connection.status === 'stale') {
+            if (isBuildingOrStale(connection)) {
               return {
                 connections: {
                   ...state.connections,

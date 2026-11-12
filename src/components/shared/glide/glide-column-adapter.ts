@@ -8,7 +8,8 @@ function readColumnTitle<TRow>(column: GridColumn<TRow>): string {
 }
 
 function readColumnWidth(width: GridColumn<unknown>['width']): number {
-  if (typeof width === 'number' && Number.isFinite(width)) return width
+  const isFiniteWidth = typeof width === 'number' && Number.isFinite(width)
+  if (isFiniteWidth) return width
   if (typeof width === 'string') {
     const parsed = Number.parseFloat(width)
     if (Number.isFinite(parsed)) return parsed

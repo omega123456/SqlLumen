@@ -36,7 +36,9 @@ export function WorkspaceArea() {
     const previousTabId = previousActiveWorkspaceTabIdRef.current
     const previousConnectionId = previousActiveConnectionIdRef.current
 
-    if (previousTabId === activeWorkspaceTabId && previousConnectionId === activeTabId) {
+    const isUnchanged =
+      previousTabId === activeWorkspaceTabId && previousConnectionId === activeTabId
+    if (isUnchanged) {
       return
     }
 

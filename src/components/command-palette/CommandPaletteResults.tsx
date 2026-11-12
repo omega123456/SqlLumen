@@ -62,7 +62,8 @@ export function CommandPaletteResults({
   const listRef = useRef<HTMLUListElement | null>(null)
 
   useEffect(() => {
-    if (state !== 'recents' && state !== 'results') {
+    const hasResultList = state === 'recents' || state === 'results'
+    if (!hasResultList) {
       return
     }
 

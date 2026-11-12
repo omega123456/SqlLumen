@@ -14,7 +14,28 @@ import {
   useTableDataStore,
   buildInsertPayload,
   buildUpdatePayload,
+  isEditingRowKey,
 } from '../../stores/table-data-store'
+
+describe('isEditingRowKey', () => {
+  const editState = {
+    rowKey: { id: 1 },
+    originalValues: {},
+    currentValues: {},
+    modifiedColumns: new Set<string>(),
+    isNewRow: false,
+  }
+
+  it('is false without an edit state', () => {
+    expect(isEditingRowKey(null, { id: 1 })).toBe(false)
+  })
+
+  it('matches the edited row key', () => {
+    expect(isEditingRowKey(editState, { id: 1 })).toBe(true)
+    expect(isEditingRowKey(editState, { id: 2 })).toBe(false)
+    expect(isEditingRowKey(editState, null)).toBe(false)
+  })
+})
 
 // ---------------------------------------------------------------------------
 // Test fixtures

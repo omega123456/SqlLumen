@@ -17,6 +17,7 @@ import type {
 import { logFrontendError } from '../lib/app-log-commands'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../lib/sql-utils'
 import { toErrorMessage } from '../lib/error-message'
+import { isIndexInBounds, isObjectRecord } from '../lib/value-checks'
 
 const DDL_REGENERATE_DEBOUNCE_MS = 300
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
@@ -130,11 +131,11 @@ function normalizeForComparison(value: unknown): unknown {
     return value.map((item) => normalizeForComparison(item))
   }
 
-  if (value && typeof value === 'object') {
-    return Object.keys(value as Record<string, unknown>)
+  if (isObjectRecord(value)) {
+    return Object.keys(value)
       .sort()
       .reduce<Record<string, unknown>>((accumulator, key) => {
-        accumulator[key] = normalizeForComparison((value as Record<string, unknown>)[key])
+        accumulator[key] = normalizeForComparison(value[key])
         return accumulator
       }, {})
   }
@@ -170,7 +171,8 @@ function canonicalizeSchema(schema: TableDesignerSchema): TableDesignerSchema {
 }
 
 function normalizeLoadedColumn(column: TableDesignerColumnDef): TableDesignerColumnDef {
-  if (column.length.trim() !== '') {
+  const hasLength = column.length.trim() !== ''
+  if (hasLength) {
     return column
   }
 
@@ -230,7 +232,8 @@ function applyColumnTypeChange({ column, previous, text }: ColumnFieldChange): v
   column.length =
     text === previous.type ? clampLengthForType(text, column.length) : getDefaultLengthForType(text)
   column.typeModifier = normalizeTypeModifier(text, column.typeModifier)
-  if (column.isAutoIncrement && !canKeepAutoIncrement(column)) {
+  const mustDropAutoIncrement = column.isAutoIncrement && !canKeepAutoIncrement(column)
+  if (mustDropAutoIncrement) {
     column.isAutoIncrement = false
   }
 }
@@ -302,7 +305,8 @@ function validateIndexes(indexes: TableDesignerIndexDef[]): Record<string, strin
       names.set(normalizedName, existing)
     }
 
-    if (index.columns.length === 0) {
+    const hasNoColumns = index.columns.length === 0
+    if (hasNoColumns) {
       errors[`indexes.${position}.columns`] = 'At least one column required'
     }
   })
@@ -575,7 +579,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     updateColumn: (tabId, columnIndex, field, value) => {
       mutateSchema(tabId, (tab) => {
-        if (columnIndex < 0 || columnIndex >= tab.currentSchema.columns.length) {
+        if (!isIndexInBounds(columnIndex, tab.currentSchema.columns.length)) {
           return null
         }
 
@@ -629,7 +633,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     deleteColumn: (tabId, columnIndex) => {
       mutateSchema(tabId, (tab) => {
-        if (columnIndex < 0 || columnIndex >= tab.currentSchema.columns.length) {
+        if (!isIndexInBounds(columnIndex, tab.currentSchema.columns.length)) {
           return null
         }
 
@@ -663,13 +667,11 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
     reorderColumn: (tabId, fromIndex, toIndex) => {
       mutateSchema(tabId, (tab) => {
         const columns = tab.currentSchema.columns
-        if (
-          fromIndex < 0 ||
-          fromIndex >= columns.length ||
-          toIndex < 0 ||
-          toIndex >= columns.length ||
-          fromIndex === toIndex
-        ) {
+        const isValidMove =
+          isIndexInBounds(fromIndex, columns.length) &&
+          isIndexInBounds(toIndex, columns.length) &&
+          fromIndex !== toIndex
+        if (!isValidMove) {
           return null
         }
 
@@ -693,7 +695,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     updateIndex: (tabId, indexPosition, field, value) => {
       mutateSchema(tabId, (tab) => {
-        if (indexPosition < 0 || indexPosition >= tab.currentSchema.indexes.length) {
+        if (!isIndexInBounds(indexPosition, tab.currentSchema.indexes.length)) {
           return null
         }
 
@@ -725,7 +727,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     deleteIndex: (tabId, indexPosition) => {
       mutateSchema(tabId, (tab) => {
-        if (indexPosition < 0 || indexPosition >= tab.currentSchema.indexes.length) {
+        if (!isIndexInBounds(indexPosition, tab.currentSchema.indexes.length)) {
           return null
         }
 
@@ -741,7 +743,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     updateForeignKey: (tabId, foreignKeyIndex, field, value) => {
       mutateSchema(tabId, (tab) => {
-        if (foreignKeyIndex < 0 || foreignKeyIndex >= tab.currentSchema.foreignKeys.length) {
+        if (!isIndexInBounds(foreignKeyIndex, tab.currentSchema.foreignKeys.length)) {
           return null
         }
 
@@ -772,7 +774,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     deleteForeignKey: (tabId, foreignKeyIndex) => {
       mutateSchema(tabId, (tab) => {
-        if (foreignKeyIndex < 0 || foreignKeyIndex >= tab.currentSchema.foreignKeys.length) {
+        if (!isIndexInBounds(foreignKeyIndex, tab.currentSchema.foreignKeys.length)) {
           return null
         }
 

@@ -22,6 +22,8 @@ type BackendFilterCondition = {
   value: string
 }
 
+const BOOLEAN_CHARACTER_CODES: ReadonlySet<number> = new Set([0, 1])
+
 function isTinyIntBooleanAlias(dataType: string): boolean {
   const normalized = dataType.trim().toUpperCase()
   return (
@@ -35,12 +37,14 @@ function isTinyIntBooleanAlias(dataType: string): boolean {
 function normalizeTinyIntDisplayValue(value: unknown): unknown {
   if (typeof value === 'boolean') return value ? 1 : 0
 
-  if (typeof value === 'string' && value.length === 1) {
-    const code = value.charCodeAt(0)
-    if (code === 0 || code === 1) return code
-  }
+  if (typeof value !== 'string') return value
+  if (value.length !== 1) return value
+  const code = value.charCodeAt(0)
+  return BOOLEAN_CHARACTER_CODES.has(code) ? code : value
+}
 
-  return value
+function isBooleanLikeColumn(column: { dataType: string; isBooleanAlias?: boolean }): boolean {
+  return column.isBooleanAlias === true || isTinyIntBooleanAlias(column.dataType)
 }
 
 export function normalizeTinyIntRows(
@@ -48,9 +52,7 @@ export function normalizeTinyIntRows(
   rows: unknown[][]
 ): unknown[][] {
   const tinyIntIndexes = columns
-    .map((column, index) =>
-      column.isBooleanAlias || isTinyIntBooleanAlias(column.dataType) ? index : -1
-    )
+    .map((column, index) => (isBooleanLikeColumn(column) ? index : -1))
     .filter((index) => index !== -1)
 
   if (tinyIntIndexes.length === 0) return rows

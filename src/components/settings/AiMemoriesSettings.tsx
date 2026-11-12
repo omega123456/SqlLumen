@@ -34,11 +34,13 @@ function findDraggedMemory(
   payload: MemoryDragPayload
 ): AiMemory | undefined {
   if (payload.fromScope === 'global') return findMemoryById(memories.global, payload.memoryId)
-  if (payload.fromScope === 'group' && payload.fromGroupId) {
-    return findMemoryById(memories.group[payload.fromGroupId], payload.memoryId)
+  const sourceGroupId = payload.fromScope === 'group' ? payload.fromGroupId : null
+  if (sourceGroupId) {
+    return findMemoryById(memories.group[sourceGroupId], payload.memoryId)
   }
-  if (payload.fromScope === 'connection' && payload.fromConnectionId) {
-    return findMemoryById(memories.connection[payload.fromConnectionId], payload.memoryId)
+  const sourceConnectionId = payload.fromScope === 'connection' ? payload.fromConnectionId : null
+  if (sourceConnectionId) {
+    return findMemoryById(memories.connection[sourceConnectionId], payload.memoryId)
   }
   return undefined
 }
@@ -58,7 +60,8 @@ export function AiMemoriesSettings() {
 
   // Ensure connections + groups are hydrated.
   useEffect(() => {
-    if (savedConnections.length === 0 && connectionGroups.length === 0) {
+    const hasNoConnectionData = savedConnections.length === 0 && connectionGroups.length === 0
+    if (hasNoConnectionData) {
       void fetchSavedConnections()
     }
   }, [savedConnections.length, connectionGroups.length, fetchSavedConnections])

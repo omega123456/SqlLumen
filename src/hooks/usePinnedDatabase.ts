@@ -16,7 +16,9 @@ export function findPinnedDatabaseSection(container: HTMLElement): string | null
   for (const section of sections) {
     if (!section.querySelector('[role="group"]')) continue
     const rect = section.getBoundingClientRect()
-    if (rect.top < containerTop - SUBPIXEL_SCROLL_TOLERANCE_PX && rect.bottom > containerTop + 1) {
+    const isScrolledUnderContainerTop =
+      rect.top < containerTop - SUBPIXEL_SCROLL_TOLERANCE_PX && rect.bottom > containerTop + 1
+    if (isScrolledUnderContainerTop) {
       return section.dataset.databaseSection ?? null
     }
   }

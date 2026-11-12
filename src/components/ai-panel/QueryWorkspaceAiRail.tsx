@@ -4,6 +4,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { IconButton } from '../common/IconButton'
 import type { QueryEditorTab as QueryEditorTabType } from '../../types/schema'
 import styles from './QueryWorkspaceAiRail.module.css'
+import { isEditorLockStatus } from '../../lib/query-tab-status'
 
 export interface QueryWorkspaceAiRailProps {
   tab: QueryEditorTabType
@@ -13,7 +14,7 @@ export interface QueryWorkspaceAiRailProps {
 export function QueryWorkspaceAiRail({ tab }: QueryWorkspaceAiRailProps) {
   const openPanel = useAiStore((state) => state.openPanel)
   const status = useQueryStore((state) => state.tabs[tab.id]?.tabStatus ?? 'idle')
-  const isDisabled = status === 'running' || status === 'ai-pending' || status === 'ai-reviewing'
+  const isDisabled = isEditorLockStatus(status)
 
   return (
     <div className={styles.railHost} data-testid="ai-workspace-sidebar">

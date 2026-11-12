@@ -61,6 +61,8 @@ import type {
   AutoSizeConfig,
 } from '../../types/shared-data-view'
 import type { GridCellPosition } from '../shared/glide/glide-grid-types'
+import { hasModifiedColumns } from '../../lib/row-edit-state'
+import { nextSelectionResetState } from '../shared/selection-reset-state'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,6 +124,7 @@ const EMPTY_FOREIGN_KEYS: import('../../types/schema').ForeignKeyColumnInfo[] = 
 const EMPTY_ROWS: ResultRow[] = []
 
 /** True when `row` is the editing row: by base index, or by position for the clone draft. */
+
 function isEditingRowData(
   row: Record<string, unknown>,
   editingRowIndex: number | null,
@@ -283,11 +286,7 @@ export function ResultGridView({
   // transition, so the signal is computed synchronously without an effect.
   const [selectionResetState, setSelectionResetState] = useState({ resetKey: 0, prevCount: 0 })
   if (selectionResetState.prevCount !== checkedRowCount) {
-    setSelectionResetState((current) => ({
-      resetKey:
-        current.prevCount > 0 && checkedRowCount === 0 ? current.resetKey + 1 : current.resetKey,
-      prevCount: checkedRowCount,
-    }))
+    setSelectionResetState((current) => nextSelectionResetState(current, checkedRowCount))
   }
   const resetSelectionKey = selectionResetState.resetKey
 
@@ -409,11 +408,11 @@ export function ResultGridView({
     (rowIndex: number, columnKey: string, selectedRow: Record<string, unknown>) => {
       const nextValue = selectedRow[columnKey]
       const lastSelection = lastSyncedSelectionRef.current
-      if (
+      const isAlreadySynced =
         lastSelection?.rowIdx === rowIndex &&
         lastSelection.columnKey === columnKey &&
         Object.is(lastSelection.value, nextValue)
-      ) {
+      if (isAlreadySynced) {
         return
       }
       lastSyncedSelectionRef.current = { rowIdx: rowIndex, columnKey: columnKey, value: nextValue }
@@ -493,7 +492,8 @@ export function ResultGridView({
       return overlaid
     }
     const getRow = (position: number): ResultRow | undefined => {
-      if (draftRow && position === viewRowCount) {
+      const isDraftPosition = position === viewRowCount
+      if (draftRow && isDraftPosition) {
         const draft = materializeRow(position, -1, draftRow, columnCount)
         return isEditingRow(position, -1) ? overlay(draft) : draft
       }
@@ -518,7 +518,8 @@ export function ResultGridView({
           const row = materializeRow(position, cached.baseIndex, cached.row, columnCount)
           return isEditingRow(position, cached.baseIndex) ? overlay(row) : row
         })
-        if (draftRow && end > viewRowCount) {
+        const reachesDraftRow = end > viewRowCount
+        if (draftRow && reachesDraftRow) {
           const draft = getRow(viewRowCount)
           if (draft) rows.push(draft)
         }
@@ -573,7 +574,8 @@ export function ResultGridView({
       const columnIndex = columnIndexFromKey(columnKey)
       const column = columns[columnIndex]
       const descriptor = gridColumns[columnIndex]
-      if (!column || !descriptor?.isBinary) return
+      if (!column) return
+      if (!descriptor?.isBinary) return
 
       const cellValue = row[columnKey]
       setBlobContext({
@@ -591,7 +593,9 @@ export function ResultGridView({
   const handleBlobApply = useCallback(
     (envelope: BlobEnvelope) => {
       if (!blobContext?.editable) return
-      if (blobContext.rowIndex >= 0 && editingRowIndex !== blobContext.rowIndex) {
+      const mustStartEditingRow =
+        blobContext.rowIndex >= 0 && editingRowIndex !== blobContext.rowIndex
+      if (mustStartEditingRow) {
         onStartEditing(blobContext.rowIndex, blobContext.row)
       }
       onSyncCellValue(blobContext.columnIndex, envelope)
@@ -608,9 +612,8 @@ export function ResultGridView({
   }, [editableColumnMap])
 
   const selectedCellPosition = useMemo<GridCellPosition | null>(() => {
-    if (selectedRowIndex == null || !selectedCell) {
-      return selectedRowIndex == null ? null : { rowIdx: selectedRowIndex, idx: 0 }
-    }
+    if (selectedRowIndex == null) return null
+    if (!selectedCell) return { rowIdx: selectedRowIndex, idx: 0 }
     const index = columns.findIndex((column) => column.name === selectedCell.columnKey)
     return { rowIdx: selectedRowIndex, idx: index >= 0 ? index : 0 }
   }, [columns, selectedCell, selectedRowIndex])
@@ -619,7 +622,8 @@ export function ResultGridView({
     (position: GridCellPosition) => {
       const row = rowSourceRef.current.getRow(position.rowIdx)
       const column = columnsRef.current[position.idx]
-      if (!row || !column) return
+      if (!row) return
+      if (!column) return
       syncSelection(position.rowIdx, columnKey(position.idx), row)
     },
     [syncSelection]
@@ -700,7 +704,8 @@ export function ResultGridView({
       if (!editMode) return false
       const currentEditState = editStateRef.current
       const currentEditingRowIndex = editingRowIndexRef.current
-      if (!currentEditState || currentEditingRowIndex === null) return false
+      if (!currentEditState) return false
+      if (currentEditingRowIndex === null) return false
 
       if (!isEditingRowData(rowData, currentEditingRowIndex, editingBaseIndexRef.current)) {
         return false
@@ -719,10 +724,10 @@ export function ResultGridView({
   const autoSaveBeforeLeavingEditedRow = useCallback(
     async (targetRowIndex: number): Promise<boolean> => {
       const currentEditingRow = editingRowIndexRef.current
-      if (currentEditingRow === null || currentEditingRow === targetRowIndex) return true
+      if (currentEditingRow === null) return true
+      if (currentEditingRow === targetRowIndex) return true
 
-      const currentEditState = editStateRef.current
-      if (!currentEditState || currentEditState.modifiedColumns.size === 0) return true
+      if (!hasModifiedColumns(editStateRef.current)) return true
 
       return onAutoSave()
     },
@@ -824,7 +829,8 @@ export function ResultGridView({
           resolvedColumns[index]?.effectiveTableMeta.isBinary === true &&
           editMode !== null &&
           editColumnBindings.has(index)
-        const headerIconWidthPx = !isEditable && !blobViewerEditable ? HEADER_ICON_WIDTH_PX : 0
+        const showsLockIcon = !isEditable && !blobViewerEditable
+        const headerIconWidthPx = showsLockIcon ? HEADER_ICON_WIDTH_PX : 0
         return getAutoSizedColumnWidth(
           tableMeta,
           0, // column is at index 0 in our single-column proxy array
@@ -842,7 +848,8 @@ export function ResultGridView({
 
       const columnIndex = columnIndexFromKey(args.columnKey)
       const isEditable = editableColumnMap.get(columnIndex) ?? false
-      if (!columns[columnIndex] || !isEditable) return false
+      if (!columns[columnIndex]) return false
+      if (!isEditable) return false
 
       const currentEditingRow = editingRowIndexRef.current
       const saveSucceeded = await autoSaveBeforeLeavingEditedRow(args.rowIdx)
@@ -891,7 +898,8 @@ export function ResultGridView({
       }
 
       // Selected row highlight
-      if (selectedRowIndex != null && rowIndex === selectedRowIndex) {
+      const isSelectedRow = selectedRowIndex != null && rowIndex === selectedRowIndex
+      if (isSelectedRow) {
         classes.push('grid-row-precision-selected')
       }
 

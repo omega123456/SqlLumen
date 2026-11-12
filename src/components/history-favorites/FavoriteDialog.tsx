@@ -8,6 +8,7 @@ import { Dropdown } from '../common/Dropdown'
 import { Button } from '../common/Button'
 import type { DropdownOption } from '../common/Dropdown'
 import styles from './FavoriteDialog.module.css'
+import { isBlank } from '../../lib/value-checks'
 
 export interface FavoriteDialogProps {
   connectionId: string
@@ -81,7 +82,8 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
   )
 
   const handleSave = useCallback(async () => {
-    if (!name.trim() || !sqlText.trim()) return
+    if (isBlank(name)) return
+    if (isBlank(sqlText)) return
 
     setIsSaving(true)
     try {

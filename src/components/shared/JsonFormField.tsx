@@ -3,7 +3,7 @@ import type * as Monaco from 'monaco-editor'
 import { useEffect, useMemo, useRef } from 'react'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { JsonSyntaxHighlighter } from '../../lib/json-syntax-highlighter'
-import { normalizeJson, prettyPrintJson } from '../../lib/json-text'
+import { isEquivalentJson, normalizeJson, prettyPrintJson } from '../../lib/json-text'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
 import { useThemeStore } from '../../stores/theme-store'
 import styles from './JsonFormField.module.css'
@@ -13,18 +13,7 @@ function toStringValue(value: string | null): string {
 }
 
 function resolveChangedValue(originalValue: string, editorValue: string): string {
-  const currentNormalized = normalizeJson(editorValue)
-  const originalNormalized = normalizeJson(originalValue)
-
-  if (currentNormalized !== null && currentNormalized === originalNormalized) {
-    return originalValue
-  }
-
-  if (currentNormalized === null && editorValue === originalValue) {
-    return originalValue
-  }
-
-  return editorValue
+  return isEquivalentJson(editorValue, originalValue) ? originalValue : editorValue
 }
 
 interface JsonFormFieldProps {
@@ -156,8 +145,10 @@ function JsonFormFieldEditor({
     }
 
     draftValueRef.current = externalValue
-    if (editorRef.current && editorRef.current.getValue() !== externalValue) {
-      editorRef.current.setValue(externalValue)
+    const editor = editorRef.current
+    const isEditorOutOfSync = editor !== null && editor.getValue() !== externalValue
+    if (isEditorOutOfSync) {
+      editor.setValue(externalValue)
     }
   }, [externalValue])
 

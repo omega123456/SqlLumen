@@ -1,9 +1,22 @@
 import type { ForeignKeyColumnInfo, ForeignKeyInfo } from '../types/schema'
+import { hasModifiedColumns } from './row-edit-state'
+
+export interface ForeignKeySelection {
+  selectedValue: unknown
+  currentValue: unknown
+  rowEditState: { modifiedColumns: ReadonlySet<string> } | null | undefined
+}
+
+export function isUnchangedForeignKeySelection(selection: ForeignKeySelection): boolean {
+  if (selection.selectedValue !== selection.currentValue) return false
+  return !hasModifiedColumns(selection.rowEditState)
+}
 
 export function mapSingleColumnForeignKeys(
   foreignKeys: ForeignKeyInfo[] | null | undefined
 ): ForeignKeyColumnInfo[] {
-  if (!foreignKeys || foreignKeys.length === 0) return []
+  if (!foreignKeys) return []
+  if (foreignKeys.length === 0) return []
 
   const mapped = foreignKeys.map((foreignKey) => ({
     columnName: foreignKey.columnName,

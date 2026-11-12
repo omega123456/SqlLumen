@@ -23,9 +23,11 @@ import { getTableForeignKeys } from '../lib/schema-commands'
 import { cancelQuery as cancelQueryCmd } from '../lib/query-commands'
 import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
+import type { TemporalColumnType } from '../lib/date-utils'
+import { hasModifiedColumns, hasPendingRowChanges } from '../lib/row-edit-state'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
-import { getDefaultRowLimit, useQueryStore } from './query-store'
+import { getDefaultRowLimit, isTableDataInBottomPanel, useQueryStore } from './query-store'
 import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
@@ -46,6 +48,13 @@ const BASE64_BYTES_PER_GROUP = 3
 const BASE64_CHARS_PER_GROUP = 4
 const BASE64_DOUBLE_PADDING = '=='
 const BASE64_SINGLE_PADDING = '='
+const CURRENT_TIMESTAMP_DEFAULT = /^current_timestamp(?:\(\d+\))?$/i
+const CURRENT_VALUE_DEFAULT_BY_TEMPORAL_TYPE: Partial<
+  Record<NonNullable<TemporalColumnType>, RegExp>
+> = {
+  DATE: /^current_date(?:\(\))?$/i,
+  TIME: /^current_time(?:\(\))?$/i,
+}
 
 function base64PaddingLength(base64: string): number {
   if (base64.endsWith(BASE64_DOUBLE_PADDING)) return BASE64_DOUBLE_PADDING.length
@@ -58,13 +67,18 @@ function isSameRowKey(
   left: Record<string, unknown> | null,
   right: Record<string, unknown> | null
 ): boolean {
-  if (left === null || right === null) return left === right
+  const isEitherKeyMissing = left === null || right === null
+  if (isEitherKeyMissing) return left === right
   const aKeys = Object.keys(left).sort()
   const bKeys = Object.keys(right).sort()
   if (aKeys.length !== bKeys.length) return false
   return aKeys.every(
     (key, index) => key === bKeys[index] && JSON.stringify(left[key]) === JSON.stringify(right[key])
   )
+}
+
+function isSameJsonValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 /**
@@ -83,7 +97,7 @@ function findRowIndexByKey(
     for (const [keyColumn, keyValue] of Object.entries(rowKey)) {
       const columnIndex = columns.findIndex((column) => column.name === keyColumn)
       if (columnIndex === -1) return false
-      if (JSON.stringify(row[columnIndex]) !== JSON.stringify(keyValue)) return false
+      if (!isSameJsonValue(row[columnIndex], keyValue)) return false
     }
     return true
   })
@@ -98,29 +112,34 @@ function getRowKeyFromData(
     return { __tempId: rowData.__tempId }
   }
 
-  if (
-    '__editingRowKey' in rowData &&
-    rowData.__editingRowKey &&
-    typeof rowData.__editingRowKey === 'object'
-  ) {
-    return rowData.__editingRowKey as Record<string, unknown>
+  const editingRowKey = rowData.__editingRowKey
+  const hasEditingRowKey = Boolean(editingRowKey) && typeof editingRowKey === 'object'
+  if (hasEditingRowKey) {
+    return editingRowKey as Record<string, unknown>
   }
 
   const key: Record<string, unknown> = {}
   for (const column of primaryKeyColumns) {
     key[column] = rowData[column]
   }
-  if (
+  const shouldFallBackToRowIndex =
     options.includeRowIndexFallback === true &&
-    Object.keys(key).length === 0 &&
+    primaryKeyColumns.length === 0 &&
     rowData.__rowIndex != null
-  ) {
+  if (shouldFallBackToRowIndex) {
     key.__rowIndex = rowData.__rowIndex
   }
   return key
 }
 
-// Exported for testing
+export function isEditingRowKey(
+  editState: RowEditState | null | undefined,
+  rowKey: Record<string, unknown> | null
+): editState is RowEditState {
+  if (!editState) return false
+  return isSameRowKey(editState.rowKey, rowKey)
+}
+
 export { isSameRowKey, findRowIndexByKey, getRowKeyFromData }
 
 function buildCurrentValuesFromRow(
@@ -200,23 +219,25 @@ function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
       return false
     }
 
-    if (workspaceState.activeTabByConnection[connectionId] === tabId) {
+    const activeTabId = workspaceState.activeTabByConnection[connectionId]
+    if (activeTabId === tabId) {
       return true
     }
 
-    if (targetTab.type !== 'table-data' || !targetTab.parentQueryTabId) {
+    if (targetTab.type !== 'table-data') {
       return false
     }
 
-    if (workspaceState.activeTabByConnection[connectionId] !== targetTab.parentQueryTabId) {
+    if (!targetTab.parentQueryTabId) {
+      return false
+    }
+
+    if (activeTabId !== targetTab.parentQueryTabId) {
       return false
     }
 
     const parentQueryTab = useQueryStore.getState().tabs[targetTab.parentQueryTabId]
-    return (
-      parentQueryTab?.activeBottomPanelItem.type === 'table-data' &&
-      parentQueryTab.activeBottomPanelItem.tabId === tabId
-    )
+    return isTableDataInBottomPanel(parentQueryTab, tabId)
   }
 
   return false
@@ -235,9 +256,25 @@ function getTableDataSurfaceKey(tabId: string): string {
 }
 
 function isDirtyTableDataTab(tab: TableDataTabState): boolean {
-  return Boolean(
-    tab.editState && (tab.editState.modifiedColumns.size > 0 || tab.editState.isNewRow === true)
-  )
+  return hasPendingRowChanges(tab.editState)
+}
+
+function tabRowResidency(tab: TableDataTabState): FrontendRowResidencyState {
+  return tab.rowResidency ?? createResidentRowState(false)
+}
+
+function isEvictableTableDataTab(tab: TableDataTabState): boolean {
+  const isResident = tabRowResidency(tab).status === 'resident'
+  if (!isResident) return false
+  return !isDirtyTableDataTab(tab)
+}
+
+function shouldScheduleTableDataEviction(tab: TableDataTabState): boolean {
+  return isEvictableTableDataTab(tab) && tab.rows.length > 0
+}
+
+function canEvictInactiveTableDataTab(tab: TableDataTabState): boolean {
+  return !tabRowResidency(tab).isActive && isEvictableTableDataTab(tab)
 }
 
 // ---------------------------------------------------------------------------
@@ -256,14 +293,18 @@ function coerceValueForColumn(value: unknown, dataType: string): unknown {
   if (isBlobEnvelope(value)) {
     return value
   }
-  if (typeof value === 'string' && dataType.toUpperCase() === 'BIT') {
-    const parsed = parseInt(value, 10)
-    if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= Number.MAX_SAFE_INTEGER) {
-      return parsed
-    }
-    // Out-of-range or non-numeric: keep as string (MySQL handles string->BIT for large values)
-  }
-  return value
+  if (typeof value !== 'string') return value
+  if (!isBitDataType(dataType)) return value
+  const parsed = parseInt(value, 10)
+  return isSafeNonNegativeInteger(parsed) ? parsed : value
+}
+
+function isBitDataType(dataType: string): boolean {
+  return dataType.toUpperCase() === 'BIT'
+}
+
+function isSafeNonNegativeInteger(parsed: number): boolean {
+  return !Number.isNaN(parsed) && parsed >= 0 && parsed <= Number.MAX_SAFE_INTEGER
 }
 
 /** Build the values map for an INSERT operation. */
@@ -272,16 +313,12 @@ function buildInsertPayload(
   editState: RowEditState
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {}
+  const { modifiedColumns, currentValues } = editState
   for (const column of columns) {
-    if (!editState.modifiedColumns.has(column.name)) {
-      continue
-    }
-    if (editState.currentValues[column.name] !== undefined) {
-      values[column.name] = coerceValueForColumn(
-        editState.currentValues[column.name],
-        column.dataType
-      )
-    }
+    const currentValue = currentValues[column.name]
+    if (!modifiedColumns.has(column.name)) continue
+    if (currentValue === undefined) continue
+    values[column.name] = coerceValueForColumn(currentValue, column.dataType)
   }
   return values
 }
@@ -311,19 +348,20 @@ function getInitialValueForNewRow(column: TableDataColumnMeta): unknown {
   }
 
   const temporalType = getTemporalColumnType(column.dataType)
-  if (temporalType) {
-    if (/^current_timestamp(?:\(\d+\))?$/i.test(column.columnDefault)) {
-      return getTodayMysqlString(temporalType)
-    }
-    if (/^current_date(?:\(\))?$/i.test(column.columnDefault) && temporalType === 'DATE') {
-      return getTodayMysqlString('DATE')
-    }
-    if (/^current_time(?:\(\))?$/i.test(column.columnDefault) && temporalType === 'TIME') {
-      return getTodayMysqlString('TIME')
-    }
+  if (!temporalType) return normalizeColumnDefaultValue(column.columnDefault)
+  if (isCurrentTemporalDefault(column.columnDefault, temporalType)) {
+    return getTodayMysqlString(temporalType)
   }
-
   return normalizeColumnDefaultValue(column.columnDefault)
+}
+
+function isCurrentTemporalDefault(
+  columnDefault: string,
+  temporalType: NonNullable<TemporalColumnType>
+): boolean {
+  if (CURRENT_TIMESTAMP_DEFAULT.test(columnDefault)) return true
+  const currentValueDefault = CURRENT_VALUE_DEFAULT_BY_TEMPORAL_TYPE[temporalType]
+  return currentValueDefault?.test(columnDefault) === true
 }
 
 export type BuildUpdatePayloadResult =
@@ -499,6 +537,10 @@ function createDefaultTabState(
   }
 }
 
+function isSeededFromColumnDefault(column: TableDataColumnMeta): boolean {
+  return column.columnDefault != null && !column.isAutoIncrement
+}
+
 // ---------------------------------------------------------------------------
 // Store interface
 // ---------------------------------------------------------------------------
@@ -586,6 +628,15 @@ export interface TableDataStore {
   ) => Promise<void>
 }
 
+function withoutColumnHighlight(
+  state: TableDataStore,
+  tabId: string
+): TableDataStore | Pick<TableDataStore, 'highlightedColumnByTab'> {
+  const highlightedColumn = state.highlightedColumnByTab[tabId]
+  if (highlightedColumn == null) return state
+  return { highlightedColumnByTab: { ...state.highlightedColumnByTab, [tabId]: null } }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -603,6 +654,7 @@ function buildFetchTableDataRequest(
   tabId: string,
   page: number
 ): Parameters<typeof fetchTableDataCmd>[0] {
+  const hasFilters = tab.filterModel.length > 0
   return {
     connectionId: tab.connectionId,
     tabId: tabId,
@@ -612,7 +664,7 @@ function buildFetchTableDataRequest(
     pageSize: tab.pageSize,
     sortColumn: tab.sort?.column,
     sortDirection: tab.sort?.direction,
-    filterModel: tab.filterModel.length > 0 ? tab.filterModel : undefined,
+    filterModel: hasFilters ? tab.filterModel : undefined,
   }
 }
 
@@ -648,10 +700,6 @@ function isDraftRowKey(rowKey: RowKey): boolean {
   return '__tempId' in rowKey
 }
 
-function isEditingRowKey(editState: RowEditState | null, rowKey: RowKey): boolean {
-  return editState !== null && isSameRowKey(editState.rowKey, rowKey)
-}
-
 function rowDataBaseline(
   columns: TableDataColumnMeta[],
   rowData: Record<string, unknown>
@@ -673,7 +721,8 @@ function resolveStagedRowIndex(
   rowData: Record<string, unknown>
 ): number {
   const rowIndex = findRowIndexByKey(tab.rows, tab.columns, rowKey)
-  if (rowIndex >= 0 || !isDraftRowKey(rowKey)) return rowIndex
+  if (rowIndex >= 0) return rowIndex
+  if (!isDraftRowKey(rowKey)) return rowIndex
   const rowIndexHint = rowData.__rowIndex
   return isRowIndexWithin(rowIndexHint, tab.rows.length) ? rowIndexHint : tab.rows.length - 1
 }
@@ -711,18 +760,21 @@ function renameEditStateRowKey(
   editState: RowEditState | null,
   rename: RowKeyRename
 ): RowEditState | null {
-  if (editState === null || !isSameRowKey(editState.rowKey, rename.previous)) return editState
+  if (editState === null) return editState
+  if (!isSameRowKey(editState.rowKey, rename.previous)) return editState
   return { ...editState, rowKey: rename.next }
 }
 
 function renameSelectedRowKey(selectedRowKey: RowKey | null, rename: RowKeyRename): RowKey | null {
-  if (!selectedRowKey || !isSameRowKey(selectedRowKey, rename.previous)) return selectedRowKey
+  if (!selectedRowKey) return selectedRowKey
+  if (!isSameRowKey(selectedRowKey, rename.previous)) return selectedRowKey
   return rename.next
 }
 
 function isSelectedDraftRow(tab: TableDataTabState, editState: RowEditState): boolean {
   const selectedRowKey = tab.selectedRowKey
-  if (selectedRowKey === null || !isDraftRowKey(selectedRowKey)) return false
+  if (selectedRowKey === null) return false
+  if (!isDraftRowKey(selectedRowKey)) return false
   return editState.tempId === selectedRowKey.__tempId
 }
 
@@ -742,7 +794,9 @@ function withOriginalValuesRestored(
 }
 
 function restoredSelectedRowKey(tab: TableDataTabState, editState: RowEditState): RowKey | null {
-  if (!tab.selectedRowKey || !isSameRowKey(tab.selectedRowKey, editState.rowKey)) {
+  const isEditedRowSelected =
+    tab.selectedRowKey !== null && isSameRowKey(tab.selectedRowKey, editState.rowKey)
+  if (!isEditedRowSelected) {
     return tab.selectedRowKey
   }
   return Object.fromEntries(
@@ -796,16 +850,15 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
   ) => {
     const current = get().tabs[tabId]
     const currentResidency = current?.rowResidency ?? createResidentRowState(false)
+    const preserveActiveState = options?.preserveActiveState === true
+    const keepsInactiveSince = preserveActiveState && !currentResidency.isActive
     patchTab(tabId, {
       ...partial,
       rowsEvictedAt: null,
       rowResidency: {
         status: 'resident',
-        isActive: options?.preserveActiveState ? currentResidency.isActive : false,
-        inactiveSince:
-          options?.preserveActiveState && !currentResidency.isActive
-            ? currentResidency.inactiveSince
-            : null,
+        isActive: preserveActiveState ? currentResidency.isActive : false,
+        inactiveSince: keepsInactiveSince ? currentResidency.inactiveSince : null,
       },
     })
   }
@@ -1002,11 +1055,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
   }
 
   function removeDraftRow(tabId: string, tab: TableDataTabState, tempId: unknown): void {
+    const isEditingRemovedDraft = tab.editState?.tempId === tempId
     const newRows = [...tab.rows]
     newRows.pop()
     patchTab(tabId, {
       rows: newRows,
-      editState: tab.editState?.tempId === tempId ? null : tab.editState,
+      editState: isEditingRemovedDraft ? null : tab.editState,
       saveError: null,
     })
   }
@@ -1200,8 +1254,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     cancelLoad: async (tabId) => {
       const tab = get().tabs[tabId]
       if (!tab) return
-      // Nothing running, or a cancel is already in flight.
-      if (!tab.isLoading || tab.isCancelling) return
+      if (!tab.isLoading) return
+      if (tab.isCancelling) return
 
       patchTab(tabId, { isCancelling: true })
 
@@ -1255,7 +1309,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         inactiveSince: null,
       })
 
-      if (tab.rowResidency?.status === 'evicted') {
+      const isEvicted = tab.rowResidency?.status === 'evicted'
+      if (isEvicted) {
         await get().restoreEvictedTableDataRows(tabId)
       }
     },
@@ -1269,10 +1324,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         inactiveSince: Date.now(),
       })
 
-      const residency = tab.rowResidency ?? createResidentRowState(false)
-      if (residency.status !== 'resident' || tab.rows.length === 0 || isDirtyTableDataTab(tab)) {
-        return
-      }
+      if (!shouldScheduleTableDataEviction(tab)) return
 
       frontendCacheLifecycle.scheduleInactive(getTableDataSurfaceKey(tabId), () => {
         get().evictInactiveTableDataRows(tabId)
@@ -1285,10 +1337,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         const tab = state.tabs[tabId]
         if (!tab) return state
 
-        const residency = tab.rowResidency ?? createResidentRowState(false)
-        if (residency.isActive || residency.status !== 'resident' || isDirtyTableDataTab(tab)) {
-          return state
-        }
+        if (!canEvictInactiveTableDataTab(tab)) return state
 
         return {
           tabs: {
@@ -1303,7 +1352,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
               editState: null,
               saveError: null,
               rowResidency: {
-                ...residency,
+                ...tabRowResidency(tab),
                 status: 'evicted',
               },
             },
@@ -1337,7 +1386,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
         if (!get().tabs[tabId]) return
 
-        if (restored.status !== 'available' || !restored.data) {
+        const restoredData = restored.status === 'available' ? restored.data : null
+        if (!restoredData) {
           patchTab(tabId, {
             isLoading: false,
             error: 'Cached table data is no longer available. Reload the table data to continue.',
@@ -1349,12 +1399,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         markTableDataResident(
           tabId,
           {
-            columns: restored.data.columns,
-            rows: normalizeTinyIntRows(restored.data.columns, restored.data.rows),
-            currentPage: restored.data.currentPage,
-            pageSize: restored.data.pageSize,
-            primaryKey: restored.data.primaryKey,
-            executionTimeMs: restored.data.executionTimeMs,
+            columns: restoredData.columns,
+            rows: normalizeTinyIntRows(restoredData.columns, restoredData.rows),
+            currentPage: restoredData.currentPage,
+            pageSize: restoredData.pageSize,
+            primaryKey: restoredData.primaryKey,
+            executionTimeMs: restoredData.executionTimeMs,
             isLoading: false,
             error: null,
             saveError: null,
@@ -1443,7 +1493,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     syncCellValue: (tabId, rowData, column, value, rowKeyOverride) => {
       const tab = get().tabs[tabId]
-      if (!tab || !rowData) return
+      if (!tab) return
+      if (!rowData) return
 
       const columnIndex = tab.columns.findIndex((candidate) => candidate.name === column)
       if (columnIndex < 0) return
@@ -1475,7 +1526,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       if (!tab?.editState) return
       if (!isSameRowKey(tab.editState.rowKey, rowKey)) return
       if (tab.editState.isNewRow) return
-      if (tab.editState.modifiedColumns.size > 0) return
+      if (hasModifiedColumns(tab.editState)) return
 
       patchTab(tabId, { editState: null, saveError: null })
     },
@@ -1486,7 +1537,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab?.editState) return true
 
-      if (tab.editState.modifiedColumns.size === 0) {
+      if (!hasModifiedColumns(tab.editState)) {
         patchTab(tabId, { editState: null, saveError: null })
         return true
       }
@@ -1518,9 +1569,9 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
       const newRow = tab.columns.map((column) => getInitialValueForNewRow(column))
       const seededColumns = new Set<string>()
-      for (let index = 0; index < tab.columns.length; index += 1) {
-        if (tab.columns[index].columnDefault != null && !tab.columns[index].isAutoIncrement) {
-          seededColumns.add(tab.columns[index].name)
+      for (const column of tab.columns) {
+        if (isSeededFromColumnDefault(column)) {
+          seededColumns.add(column.name)
         }
       }
 
@@ -1529,7 +1580,9 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     cloneSelectedRow: (tabId) => {
       const tab = get().tabs[tabId]
-      if (!tab?.selectedRowKey || !tab.primaryKey || tab.editState?.isNewRow) return
+      if (!tab?.selectedRowKey) return
+      if (!tab.primaryKey) return
+      if (tab.editState?.isNewRow) return
       if ('__tempId' in tab.selectedRowKey) return
 
       const rowIndex = findRowIndexByKey(tab.rows, tab.columns, tab.selectedRowKey)
@@ -1653,23 +1706,15 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     },
 
     clearColumnHighlight: (tabId) => {
-      set((state) =>
-        state.highlightedColumnByTab[tabId] == null
-          ? state
-          : {
-              highlightedColumnByTab: {
-                ...state.highlightedColumnByTab,
-                [tabId]: null,
-              },
-            }
-      )
+      set((state) => withoutColumnHighlight(state, tabId))
     },
 
     // ------ setColumnWidth ------
 
     setColumnWidth: (tabId, column, width) => {
       const tab = get().tabs[tabId]
-      if (!tab || !Number.isFinite(width)) return
+      if (!tab) return
+      if (!Number.isFinite(width)) return
       patchTab(tabId, { columnWidths: { ...(tab.columnWidths ?? {}), [column]: width } })
     },
 
@@ -1700,7 +1745,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     requestNavigationAction: (tabId, action) => {
       const tab = get().tabs[tabId]
-      if (!tab?.editState || tab.editState.modifiedColumns.size === 0) {
+      if (!hasModifiedColumns(tab?.editState)) {
         action()
         return
       }
@@ -1727,7 +1772,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       await get().saveCurrentRow(tabId)
 
       const afterSave = get().tabs[tabId]
-      if (afterSave && !afterSave.saveError) {
+      const isSavedCleanly = afterSave !== undefined && !afterSave.saveError
+      if (isSavedCleanly) {
         if (!afterSave.editState) {
           showSuccessToast('Row saved', 'Changes saved successfully.')
         }
@@ -1760,10 +1806,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     commitEditingRowIfNeeded: async (tabId, newRowKey) => {
       const tab = get().tabs[tabId]
-      if (!tab?.editState || tab.editState.modifiedColumns.size === 0) return
+      if (!tab?.editState) return
+      if (!hasModifiedColumns(tab.editState)) return
 
-      // Still on the same row — nothing to commit
-      if (newRowKey && isSameRowKey(tab.editState.rowKey, newRowKey)) return
+      const isStillOnEditedRow =
+        Boolean(newRowKey) && isSameRowKey(tab.editState.rowKey, newRowKey ?? null)
+      if (isStillOnEditedRow) return
 
       // Different row — try to save. If save fails, saveError is set and
       // editState remains on the original row (UI snaps selection back).

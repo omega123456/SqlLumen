@@ -31,9 +31,8 @@ export function computeHorizontalTabReorderTarget(
   args: ComputeHorizontalTabReorderTargetArgs
 ): HorizontalTabReorderTarget | null {
   const { draggingIndex, targetIndex, pointerClientX, targetRect } = args
-  if (draggingIndex < 0 || targetIndex < 0) {
-    return null
-  }
+  if (draggingIndex < 0) return null
+  if (targetIndex < 0) return null
 
   const midpoint = targetRect.left + targetRect.width / HALF_DIVISOR
   const indicator: TabDropIndicator = pointerClientX < midpoint ? 'before' : 'after'

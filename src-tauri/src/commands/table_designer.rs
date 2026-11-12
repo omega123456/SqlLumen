@@ -82,18 +82,21 @@ pub fn parse_column_type(column_type: &str) -> (String, String, String) {
 }
 
 #[cfg(not(coverage))]
+fn is_current_temporal_default(value: &str) -> bool {
+    value.eq_ignore_ascii_case("CURRENT_TIMESTAMP")
+        || value.to_ascii_uppercase().starts_with("CURRENT_TIMESTAMP(")
+        || value.eq_ignore_ascii_case("CURRENT_DATE")
+        || value.eq_ignore_ascii_case("CURRENT_TIME")
+}
+
+#[cfg(not(coverage))]
 fn parse_default_value(default_value: Option<String>) -> DefaultValueModel {
     match default_value {
         None => DefaultValueModel::NoDefault,
         Some(value) if value.eq_ignore_ascii_case("NULL") => {
             DefaultValueModel::Expression { value }
         }
-        Some(value)
-            if value.eq_ignore_ascii_case("CURRENT_TIMESTAMP")
-                || value.to_ascii_uppercase().starts_with("CURRENT_TIMESTAMP(")
-                || value.eq_ignore_ascii_case("CURRENT_DATE")
-                || value.eq_ignore_ascii_case("CURRENT_TIME") =>
-        {
+        Some(value) if is_current_temporal_default(&value) => {
             DefaultValueModel::Expression { value }
         }
         Some(value) => DefaultValueModel::Literal { value },
@@ -110,11 +113,7 @@ fn normalize_default_value(
         Some(value) if extra_text.contains("default_generated") => {
             DefaultValueModel::Expression { value }
         }
-        Some(value)
-            if value.eq_ignore_ascii_case("NULL") && !extra_text.contains("default_generated") =>
-        {
-            DefaultValueModel::NullDefault
-        }
+        Some(value) if value.eq_ignore_ascii_case("NULL") => DefaultValueModel::NullDefault,
         other => parse_default_value(other),
     }
 }

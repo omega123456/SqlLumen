@@ -124,7 +124,8 @@ impl XlsxSink {
 
     fn write_row(&mut self, row: &[serde_json::Value]) -> Result<RowWrite, String> {
         let buffered = self.sample.as_ref().map_or(0, Vec::len) as u32;
-        if self.stopped || self.next_row + buffered >= self.row_limit {
+        let is_sheet_full = self.stopped || self.next_row + buffered >= self.row_limit;
+        if is_sheet_full {
             self.stopped = true;
             return Ok(RowWrite::SheetLimitReached);
         }

@@ -95,6 +95,10 @@ export async function cancelAiStream(streamId: string): Promise<void> {
   return invoke<void>('ai_cancel', { streamId })
 }
 
+function isPayloadForStream(payload: { streamId: string }, streamId: string): boolean {
+  return payload.streamId === streamId
+}
+
 /**
  * Set up event listeners for a specific AI stream.
  *
@@ -107,13 +111,13 @@ export async function listenToAiStream(
   callbacks: AiStreamCallbacks
 ): Promise<() => void> {
   const unlistenChunk = await listen<StreamChunkPayload>('ai-stream-chunk', (event) => {
-    if (event.payload.streamId === streamId) {
+    if (isPayloadForStream(event.payload, streamId)) {
       callbacks.onChunk(event.payload.content, event.payload.kind ?? 'content')
     }
   })
 
   const unlistenDone = await listen<StreamDonePayload>('ai-stream-done', (event) => {
-    if (event.payload.streamId === streamId) {
+    if (isPayloadForStream(event.payload, streamId)) {
       callbacks.onDone({
         responseId: event.payload.responseId ?? null,
         transport: event.payload.transport,
@@ -122,7 +126,7 @@ export async function listenToAiStream(
   })
 
   const unlistenError = await listen<StreamErrorPayload>('ai-stream-error', (event) => {
-    if (event.payload.streamId === streamId) {
+    if (isPayloadForStream(event.payload, streamId)) {
       callbacks.onError(event.payload.error)
     }
   })

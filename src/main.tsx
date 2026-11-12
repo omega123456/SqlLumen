@@ -12,6 +12,7 @@ import { initAiMemoryStore } from './stores/ai-memory-store'
 import { hasTauriApis, isPlaywrightBuild } from './lib/tauri-env'
 import { logBootstrapFailure, logFrontend } from './lib/app-log-commands'
 import type * as Monaco from 'monaco-editor'
+import { isBlank } from './lib/value-checks'
 
 // Canvas grids (glide) only repaint when `document.fonts.ready` settles, and webfonts are
 // fetched lazily on first DOM use. Request the grid's mono faces up front so the first
@@ -65,7 +66,8 @@ function supplyWorkerToSqlLanguageWorkers(monaco: MonacoModule): void {
 }
 
 function resolveInitialTheme(theme: string): 'dark' | 'light' {
-  if (theme === 'dark' || theme === 'light') return theme
+  if (theme === 'dark') return theme
+  if (theme === 'light') return theme
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
@@ -118,10 +120,11 @@ async function init() {
     ) => {
       const queryState = useQueryStore.getState()
       const tab = queryState.tabs[tabId]
-      if (!tab?.content?.trim()) {
+      const sqlText = tab?.content ?? ''
+      if (isBlank(sqlText)) {
         return
       }
-      const plan = buildExecuteQueryPlanFromSql(tab.content)
+      const plan = buildExecuteQueryPlanFromSql(sqlText)
       if (!plan) {
         return
       }
@@ -138,7 +141,8 @@ async function init() {
 
     // Apply saved zoom level before first render to prevent flash
     const zoom = useSettingsStore.getState().getSetting('appearance.zoom')
-    if (zoom && zoom !== '100') {
+    const hasCustomZoom = Boolean(zoom) && zoom !== '100'
+    if (hasCustomZoom) {
       document.documentElement.style.zoom = `${zoom}%`
     }
   } catch (error) {

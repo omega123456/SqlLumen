@@ -60,9 +60,8 @@ function cloneComparable(value: unknown): string {
 }
 
 function isNewIndex(tabState: TableDesignerTabState, index: TableDesignerIndexDef): boolean {
-  if (tabState.mode !== 'alter' || !tabState.originalSchema) {
-    return false
-  }
+  if (tabState.mode !== 'alter') return false
+  if (!tabState.originalSchema) return false
 
   const originalIndexes = tabState.originalSchema.indexes.filter(
     (originalIndex) => originalIndex.indexType !== 'PRIMARY'
@@ -166,8 +165,8 @@ function IndexColumnsSelector({
     )
   }
 
-  const summaryClassName =
-    index.columns.length > MAX_LISTED_COLUMN_LABELS ? styles.columnButtonSummary : ''
+  const isColumnListSummarized = index.columns.length > MAX_LISTED_COLUMN_LABELS
+  const summaryClassName = isColumnListSummarized ? styles.columnButtonSummary : ''
   return (
     <Dropdown
       id={`index-columns-${tabId}-${visibleIndex}`}
@@ -322,16 +321,14 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
   }, [tabState])
 
   const effectiveSelectedRow = useMemo<SelectedRow>(() => {
-    if (selectedRow === null || selectedRow === 'primary') {
-      return selectedRow
-    }
+    if (selectedRow === null) return selectedRow
+    if (selectedRow === 'primary') return selectedRow
 
     return visibleIndexes.some(({ storeIndex }) => storeIndex === selectedRow) ? selectedRow : null
   }, [selectedRow, visibleIndexes])
 
-  if (!tabState || !primaryIndex) {
-    return null
-  }
+  if (!tabState) return null
+  if (!primaryIndex) return null
 
   const canDeleteSelected =
     effectiveSelectedRow !== null &&

@@ -20,6 +20,18 @@ type UpdateProgressEvent =
   | { event: 'Finished' }
 
 type UpdatePlatform = 'macos' | 'windows' | 'linux' | 'unknown'
+
+const KNOWN_UPDATE_PLATFORMS: ReadonlySet<string | null | undefined> = new Set<UpdatePlatform>([
+  'macos',
+  'windows',
+  'linux',
+])
+
+function isKnownUpdatePlatform(
+  platformValue: string | null | undefined
+): platformValue is UpdatePlatform {
+  return KNOWN_UPDATE_PLATFORMS.has(platformValue)
+}
 export type ReadyToFinishAction = 'relaunch' | 'manual-quit'
 
 let periodicTimer: ReturnType<typeof setInterval> | null = null
@@ -41,7 +53,7 @@ function clearPeriodicTimer(): void {
 }
 
 function resolveUpdatePlatform(platformValue: string | null | undefined): UpdatePlatform {
-  if (platformValue === 'macos' || platformValue === 'windows' || platformValue === 'linux') {
+  if (isKnownUpdatePlatform(platformValue)) {
     return platformValue
   }
 
@@ -313,7 +325,8 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       await updateObject.downloadAndInstall((event: UpdateProgressEvent) => {
         if (event.event === 'Started') {
           const total = event.data?.contentLength
-          contentLength = typeof total === 'number' && total > 0 ? total : null
+          const isKnownLength = typeof total === 'number' && total > 0
+          contentLength = isKnownLength ? total : null
           downloaded = 0
           set({ downloadProgress: 0 })
           return
@@ -321,7 +334,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
 
         if (event.event === 'Progress') {
           downloaded += event.data.chunkLength
-          if (contentLength && contentLength > 0) {
+          if (contentLength) {
             const percent = Math.min(
               PERCENT_SCALE,
               Math.round((downloaded / contentLength) * PERCENT_SCALE)

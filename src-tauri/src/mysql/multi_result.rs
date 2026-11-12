@@ -601,7 +601,8 @@ async fn execute_single_select_statement(
     stored.applied_row_limit = auto_limit_applied.then_some(row_limit_used);
     stored.source_sql = sql.to_string();
     stored.full_export_blocked_reason = statement_blocked_reason(sql, false);
-    if stored.truncated && stored.full_export_blocked_reason.is_none() {
+    let needs_run_database = stored.truncated && stored.full_export_blocked_reason.is_none();
+    if needs_run_database {
         match capture_session_database(conn, context.connection_id).await {
             Some(database) => stored.run_database = database,
             None => {
@@ -857,7 +858,9 @@ pub async fn execute_multi_query_internal(
     ),
     String,
 > {
-    use crate::mysql::query_executor::{is_read_only_allowed, MultiQueryResultItem, StoredResult};
+    use crate::mysql::query_executor::{
+        is_read_only_allowed, MultiQueryResultItem, StoredResult, READ_ONLY_VIOLATION_MESSAGE,
+    };
 
     let run = crate::mysql::session::TabRun::new(connection_id, tab_id);
     let mut guard = crate::mysql::session::acquire_for_run(state, &run).await?;
@@ -880,9 +883,9 @@ pub async fn execute_multi_query_internal(
             continue;
         }
 
-        // Read-only enforcement per statement
-        if is_read_only && !is_read_only_allowed(sql) {
-            let error_msg = "This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string();
+        let is_statement_blocked = is_read_only && !is_read_only_allowed(sql);
+        if is_statement_blocked {
+            let error_msg = READ_ONLY_VIOLATION_MESSAGE.to_string();
             push_error_result(&mut stored_results, &mut result_items, sql, error_msg);
             break; // Stop on read-only violation
         }

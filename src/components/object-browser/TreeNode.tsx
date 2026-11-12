@@ -17,6 +17,7 @@ import { useSchemaStore, type ConnectionTreeState } from '../../stores/schema-st
 import { hasMatchingDescendantInFilter, isNodeUnderFilterScope } from '../../lib/tree-filter'
 import type { NodeType, TreeNode as TreeNodeData } from '../../types/schema'
 import styles from './TreeNode.module.css'
+import { isNullish } from '../../lib/value-checks'
 
 const INDENT_PER_LEVEL_PX = 16
 const GUIDE_LINE_OFFSET_PX = 12
@@ -140,7 +141,8 @@ function isNodeVisibleInTree(
       parentEffectiveFilterMatchIds != null &&
       hasMatchingDescendantInFilter(parentId, parentEffectiveFilterMatchIds, nodes)
 
-    if (!expandedNodes.has(parentId) && !parentFilterDrivesExpand) {
+    const isParentShowingChildren = expandedNodes.has(parentId) || parentFilterDrivesExpand
+    if (!isParentShowingChildren) {
       return false
     }
 
@@ -230,7 +232,8 @@ interface ChildVisibility {
 }
 
 function shouldShowChildren(visibility: ChildVisibility): boolean {
-  if (!visibility.hasChildren || visibility.childCount === 0) return false
+  if (!visibility.hasChildren) return false
+  if (visibility.childCount === 0) return false
   return visibility.isExpanded || visibility.filterDrivesExpand
 }
 
@@ -240,7 +243,8 @@ function treeItemTabIndex(
   selectedNodeIsVisible: boolean
 ): 0 | -1 {
   if (isSelected) return 0
-  return isFirstVisible && !selectedNodeIsVisible ? 0 : -1
+  const isFallbackTabStop = isFirstVisible && !selectedNodeIsVisible
+  return isFallbackTabStop ? 0 : -1
 }
 
 function databaseLabelTitle(node: TreeNodeData): string | undefined {
@@ -359,19 +363,21 @@ export function TreeNode({
   )
 
   const isSuppressedByScope = useMemo(() => {
-    if (!filterMatchIds || !filterScopeRootId || isExpanded) return false
+    if (!filterMatchIds) return false
+    if (!filterScopeRootId) return false
+    if (isExpanded) return false
     const scopeParent = nodesMap[filterScopeRootId]?.parentId
-    return (
-      scopeParent != null &&
-      nodesMap[nodeId]?.parentId === scopeParent &&
-      nodeId !== filterScopeRootId
-    )
+    if (isNullish(scopeParent)) return false
+    if (nodeId === filterScopeRootId) return false
+    const nodeParent = nodesMap[nodeId]?.parentId
+    return nodeParent === scopeParent
   }, [filterMatchIds, filterScopeRootId, nodesMap, nodeId, isExpanded])
 
   const childIds = useMemo(() => {
     if (!node) return []
     if (isSuppressedByScope) return []
-    if (!isExpanded && !filterDrivesExpand) return []
+    const isShowingChildren = isExpanded || filterDrivesExpand
+    if (!isShowingChildren) return []
     return indexedChildIds
   }, [isExpanded, node, indexedChildIds, filterDrivesExpand, isSuppressedByScope])
 
@@ -391,7 +397,8 @@ export function TreeNode({
   const wasSelectedRef = useRef(false)
 
   useEffect(() => {
-    if (isSelected && !wasSelectedRef.current) {
+    const hasJustBeenSelected = isSelected && !wasSelectedRef.current
+    if (hasJustBeenSelected) {
       rowRef.current?.scrollIntoView({ block: 'nearest' })
     }
     wasSelectedRef.current = isSelected
@@ -420,7 +427,8 @@ export function TreeNode({
   }
 
   const collapseOrClearFilter = () => {
-    if (!isExpanded && filterDrivesExpand) {
+    const isOpenOnlyByFilter = !isExpanded && filterDrivesExpand
+    if (isOpenOnlyByFilter) {
       onClearFilter?.()
       return
     }
@@ -473,7 +481,8 @@ export function TreeNode({
   }
 
   const handleDoubleClick = () => {
-    if (!isPinned && isDoubleClickActivatableNodeType(node.type)) {
+    if (isPinned) return
+    if (isDoubleClickActivatableNodeType(node.type)) {
       activateNode()
     }
   }
@@ -485,13 +494,16 @@ export function TreeNode({
       event.preventDefault()
     },
     ArrowRight: (event) => {
-      if (!hasChildren || isExpanded || filterDrivesExpand) return
+      if (!hasChildren) return
+      if (isExpanded) return
+      if (filterDrivesExpand) return
       toggleExpand(nodeId, connectionId)
       event.preventDefault()
     },
     ArrowLeft: (event) => {
       if (!hasChildren) return
-      if (!isExpanded && !filterDrivesExpand) return
+      const isShowingChildren = isExpanded || filterDrivesExpand
+      if (!isShowingChildren) return
       collapseOrClearFilter()
       event.preventDefault()
     },

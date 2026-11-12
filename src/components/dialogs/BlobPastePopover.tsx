@@ -75,7 +75,8 @@ export function BlobPastePopover({
     const updatePlacement = () => {
       const anchor = anchorRef.current
       const popover = popoverRef.current
-      if (!anchor || !popover) return
+      if (!anchor) return
+      if (!popover) return
 
       const anchorRect = anchor.getBoundingClientRect()
       const popoverRect = popover.getBoundingClientRect()
@@ -157,7 +158,8 @@ export function BlobPastePopover({
       const currentIndex = focusable.findIndex((element) => element === activeElement)
 
       if (event.shiftKey) {
-        if (currentIndex === 0 || currentIndex === -1) {
+        const isAtFirstOrUnfocused = currentIndex === 0 || currentIndex === -1
+        if (isAtFirstOrUnfocused) {
           event.preventDefault()
           focusable[focusable.length - 1]?.focus()
         }

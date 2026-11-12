@@ -19,8 +19,9 @@ import type {
 } from '../lib/session-restore-commands'
 import { saveSessionState, loadSessionState } from '../lib/session-restore-commands'
 import { listOpenConnectionSessions } from '../lib/connection-commands'
-import { hasTauriApis } from '../lib/tauri-env'
+import { hasTauriApis, hasWindow } from '../lib/tauri-env'
 import { MILLISECONDS_PER_MINUTE } from '../lib/units'
+import { isScopedTableDataTab, isScopedTableDataTabOf } from '../lib/workspace-tab-stacks'
 import type { WorkspaceTab } from '../types/schema'
 import type { OpenConnectionSession } from '../types/connection'
 import { toErrorMessage } from '../lib/error-message'
@@ -111,9 +112,8 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
   canPersistSession: (): boolean => !get().isRestoring && !get().hasIncompleteRestore,
 
   saveSession: async (options?: SaveSessionOptions): Promise<void> => {
-    if (!get().isEnabled() || !get().canPersistSession()) {
-      return
-    }
+    if (!get().isEnabled()) return
+    if (!get().canPersistSession()) return
 
     const requestId = ++saveSessionRequestId
     const waitForSave = new Promise<void>((resolve, reject) => {
@@ -167,7 +167,8 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
       return
     }
 
-    if (!state || state.connections.length === 0) {
+    const hasConnectionsToRestore = Boolean(state) && state.connections.length > 0
+    if (!hasConnectionsToRestore) {
       set({ hasIncompleteRestore: false })
       return
     }
@@ -528,10 +529,12 @@ function restoreQueryEditorTab(context: TabRestoreContext, tabState: SavedQueryE
   if (tabState.sql) {
     queryStore.setContent(runtimeTabId, tabState.sql)
   }
-  if (tabState.cursorLine != null && tabState.cursorColumn != null) {
+  const { cursorLine, cursorColumn } = tabState
+  const hasCursorPosition = cursorLine != null && cursorColumn != null
+  if (hasCursorPosition) {
     queryStore.setCursorPosition(runtimeTabId, {
-      lineNumber: tabState.cursorLine,
-      column: tabState.cursorColumn,
+      lineNumber: cursorLine,
+      column: cursorColumn,
     })
   }
   if (tabState.activeBottomPanelTableTabId) {
@@ -623,7 +626,8 @@ function restoredParentQueryTabId(
   savedTableTab: SavedTableDataTab | undefined
 ): string | undefined {
   const savedParentId = savedTableTab?.parentQueryTabId
-  if (!context.bottomPanelEnabled || !savedParentId) return undefined
+  if (!context.bottomPanelEnabled) return undefined
+  if (!savedParentId) return undefined
   return context.savedToRuntimeTabId.get(savedParentId)
 }
 
@@ -646,10 +650,6 @@ function orderRestoredTabs(
   })
 }
 
-function isScopedChildOf(tab: WorkspaceTab | undefined, queryTabId: string): boolean {
-  return tab?.type === 'table-data' && tab.parentQueryTabId === queryTabId
-}
-
 function applyBottomPanelSelections(context: TabRestoreContext): void {
   for (const [runtimeQueryTabId, savedTableTabId] of context.queryBottomPanelSelections) {
     const runtimeTableTabId = context.savedToRuntimeTabId.get(savedTableTabId)
@@ -657,7 +657,7 @@ function applyBottomPanelSelections(context: TabRestoreContext): void {
     const runtimeTableTab = sessionTabs(context.sessionId).find(
       (tab) => tab.id === runtimeTableTabId
     )
-    if (!isScopedChildOf(runtimeTableTab, runtimeQueryTabId)) continue
+    if (!isScopedTableDataTabOf(runtimeTableTab, runtimeQueryTabId)) continue
     useQueryStore.getState().setActiveBottomPanelItem(runtimeQueryTabId, {
       type: 'table-data',
       tabId: runtimeTableTabId,
@@ -669,7 +669,8 @@ function activateFlattenedTableTab(
   context: TabRestoreContext,
   savedActiveTab: SessionTabState | null
 ): void {
-  if (context.bottomPanelEnabled || savedActiveTab?.type !== 'table-data') return
+  if (context.bottomPanelEnabled) return
+  if (savedActiveTab?.type !== 'table-data') return
   const flattenedActiveTable = sessionTabs(context.sessionId).find(
     (tab) =>
       tab.type === 'table-data' &&
@@ -691,7 +692,7 @@ function activateRestoredTab(
     activateFlattenedTableTab(context, savedActiveTab)
     return
   }
-  if (activeTab.type !== 'table-data' || !activeTab.parentQueryTabId) {
+  if (!isScopedTableDataTab(activeTab)) {
     useWorkspaceStore.getState().setActiveTab(context.sessionId, activeTabId)
     return
   }
@@ -732,7 +733,8 @@ async function restoreConnectionTabs(
   let activeTabId: string | null = null
   for (const [tabIndex, tabState] of connectionState.tabs.entries()) {
     const restoredTabId = restoreSavedTab(context, tabState)
-    if (tabIndex === connectionState.activeTabIndex && restoredTabId) {
+    const isSavedActiveTab = tabIndex === connectionState.activeTabIndex
+    if (isSavedActiveTab && restoredTabId) {
       activeTabId = restoredTabId
     }
   }
@@ -764,9 +766,8 @@ async function restoreConnectionTabs(
 // ---------------------------------------------------------------------------
 
 function registerAutoSaveInterval(): void {
-  if (typeof window === 'undefined' || autoSaveIntervalId != null) {
-    return
-  }
+  if (!hasWindow()) return
+  if (autoSaveIntervalId != null) return
 
   autoSaveIntervalId = window.setInterval(() => {
     void useSessionRestoreStore.getState().saveSession()
@@ -774,8 +775,10 @@ function registerAutoSaveInterval(): void {
 }
 
 export function _resetSessionPersistenceForTests(): void {
-  if (autoSaveIntervalId != null && typeof window !== 'undefined') {
-    window.clearInterval(autoSaveIntervalId)
+  const intervalId = autoSaveIntervalId
+  const hasAutoSaveInterval = intervalId != null && hasWindow()
+  if (hasAutoSaveInterval) {
+    window.clearInterval(intervalId)
   }
   autoSaveIntervalId = null
   closeHandlerRegistered = false

@@ -14,6 +14,7 @@ import {
 import { CaretLeftIcon, CaretRightIcon } from '@phosphor-icons/react'
 import { useElementSize } from '../../hooks/use-element-size'
 import { Button } from './Button'
+import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
 import styles from './UnderlineTabs.module.css'
 
 /**
@@ -59,8 +60,10 @@ interface ViewportBounds {
 const HIDDEN_EDGE_TOLERANCE_PX = 1
 
 function hiddenTabSide(tabRect: DOMRect, bounds: ViewportBounds): 'start' | 'end' | null {
-  if (!bounds.atStart && tabRect.left < bounds.left - HIDDEN_EDGE_TOLERANCE_PX) return 'start'
-  if (!bounds.atEnd && tabRect.right > bounds.right + HIDDEN_EDGE_TOLERANCE_PX) return 'end'
+  const isHiddenAtStart = !bounds.atStart && tabRect.left < bounds.left - HIDDEN_EDGE_TOLERANCE_PX
+  if (isHiddenAtStart) return 'start'
+  const isHiddenAtEnd = !bounds.atEnd && tabRect.right > bounds.right + HIDDEN_EDGE_TOLERANCE_PX
+  if (isHiddenAtEnd) return 'end'
   return null
 }
 
@@ -131,7 +134,8 @@ function ScrollableTabBar({
   const sync = () => {
     const viewport = viewportRef.current
     const content = contentRef.current
-    if (!viewport || !content) return
+    if (!viewport) return
+    if (!content) return
     // At either scroll extreme nothing more is hidden on that side, even when a fractional
     // viewport width leaves the last tab a sub-pixel short.
     const { scrollLeft, scrollWidth, clientWidth } = viewport
@@ -146,9 +150,10 @@ function ScrollableTabBar({
       if (hiddenSide === 'start') start++
       if (hiddenSide === 'end') end++
     }
-    setHidden((previous) =>
-      previous[0] === start && previous[1] === end ? previous : [start, end]
-    )
+    setHidden((previous) => {
+      const isUnchanged = previous[0] === start && previous[1] === end
+      return isUnchanged ? previous : [start, end]
+    })
   }
 
   useLayoutEffect(sync)
@@ -165,7 +170,8 @@ function ScrollableTabBar({
     const viewport = viewportRef.current
     if (!viewport) return undefined
     const onWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+      const isMostlyHorizontal = Math.abs(event.deltaY) <= Math.abs(event.deltaX)
+      if (isMostlyHorizontal) return
       if (viewport.scrollWidth <= viewport.clientWidth) return
       event.preventDefault()
       viewport.scrollLeft += event.deltaY
@@ -180,7 +186,8 @@ function ScrollableTabBar({
   const scrollToStart = () => {
     const viewport = viewportRef.current
     const content = contentRef.current
-    if (!viewport || !content) return
+    if (!viewport) return
+    if (!content) return
     const { left, right } = viewport.getBoundingClientRect()
     const edge = left + START_CHIP_CLEARANCE
     const hidden = tabItems(content).filter((tab) => tab.getBoundingClientRect().left < edge - 1)
@@ -196,7 +203,8 @@ function ScrollableTabBar({
   const scrollToEnd = () => {
     const viewport = viewportRef.current
     const content = contentRef.current
-    if (!viewport || !content) return
+    if (!viewport) return
+    if (!content) return
     const { left, right } = viewport.getBoundingClientRect()
     const hidden = tabItems(content).filter((tab) => tab.getBoundingClientRect().right > right + 1)
     const target = hidden.find(
@@ -216,12 +224,13 @@ function ScrollableTabBar({
   const barClass = [styles.bar, styles.barScrollable, BAR_VARIANT_CLASS[variant]]
     .filter(Boolean)
     .join(' ')
+  const hasHiddenStartTabs = overflowing && hiddenStart > 0
 
   return (
     <div className={wrapperClass} data-testid={testId} data-overflowing={overflowing || undefined}>
       {prefix}
       <div ref={areaRef} className={styles.scrollArea}>
-        {overflowing && hiddenStart > 0 ? (
+        {hasHiddenStartTabs ? (
           <div className={styles.edgeZoneStart}>
             <Button
               variant="subtle"
@@ -300,7 +309,6 @@ const DROP_INDICATOR_CLASS: Record<NonNullable<UnderlineTabProps['dropIndicator'
   before: styles.dropBefore,
   after: styles.dropAfter,
 }
-const MIDDLE_MOUSE_BUTTON = 1
 
 type ResolvedUnderlineTabProps = UnderlineTabProps &
   Required<Pick<UnderlineTabProps, 'active' | 'dragging' | 'variant'>>
@@ -325,7 +333,7 @@ function activeDataAttribute(active: boolean): true | undefined {
 }
 
 function preventMiddleMouseDown(event: MouseEvent<HTMLElement>): void {
-  if (event.button === MIDDLE_MOUSE_BUTTON) event.preventDefault()
+  if (isMiddleMouseButton(event)) event.preventDefault()
 }
 
 function middleMouseDownHandler(
@@ -386,7 +394,7 @@ function SplitUnderlineTab({ props, elementRef }: ResolvedTabViewProps) {
 
   const onLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     props.onKeyDown?.(event as KeyboardEvent<HTMLElement>)
-    if (event.key !== 'Enter' && event.key !== ' ') {
+    if (!isActivationKey(event.key)) {
       return
     }
     event.preventDefault()
@@ -477,9 +485,9 @@ export function UnderlineTab({
   const elementRef = useRef<HTMLDivElement | HTMLButtonElement>(null)
 
   useEffect(() => {
-    if (autoScrollOnActive && active && elementRef.current) {
-      elementRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    }
+    const shouldScrollIntoView = autoScrollOnActive && active
+    if (!shouldScrollIntoView) return
+    elementRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [active, autoScrollOnActive])
 
   const resolvedProps: ResolvedUnderlineTabProps = {

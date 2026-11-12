@@ -8,6 +8,7 @@
  */
 
 import type { BlobEnvelope, TableDataColumnMeta } from '../types/schema'
+import { isObjectRecord } from './value-checks'
 
 // ---------------------------------------------------------------------------
 // Binary data-type detection (mirrors backend `is_binary_data_type`)
@@ -119,7 +120,8 @@ export function parsePastedBytes(text: string): ParsePastedBytesResult {
     return { ok: true, bytes: hexDigitsToBytes(stripped) }
   }
 
-  if (BASE64_RE.test(stripped) && isWholeBase64Quanta(stripped)) {
+  const isBase64Text = BASE64_RE.test(stripped) && isWholeBase64Quanta(stripped)
+  if (isBase64Text) {
     try {
       return { ok: true, bytes: base64ToBytes(stripped) }
     } catch {
@@ -404,15 +406,20 @@ function hasPositiveArea(width: number, height: number): boolean {
   return width !== 0 && height !== 0
 }
 
+function positiveDimensions(width: number | null, height: number | null): ImageDimensions | null {
+  if (width === null) return null
+  if (height === null) return null
+  if (!hasPositiveArea(width, height)) return null
+  return { width, height }
+}
+
 const PNG_WIDTH_OFFSET = 16
 const PNG_HEIGHT_OFFSET = 20
 
 function readPngDimensions(bytes: Uint8Array): ImageDimensions | null {
   const width = readU32BE(bytes, PNG_WIDTH_OFFSET)
   const height = readU32BE(bytes, PNG_HEIGHT_OFFSET)
-  if (width === null || height === null) return null
-  if (!hasPositiveArea(width, height)) return null
-  return { width, height }
+  return positiveDimensions(width, height)
 }
 
 const JPEG_MARKER_SCAN_LIMIT = 4096
@@ -459,9 +466,7 @@ type JpegScanStep =
 function readJpegFrameDimensions(bytes: Uint8Array, offset: number): ImageDimensions | null {
   const height = readU16BE(bytes, offset + JPEG_FRAME_HEIGHT_OFFSET)
   const width = readU16BE(bytes, offset + JPEG_FRAME_WIDTH_OFFSET)
-  if (width === null || height === null) return null
-  if (!hasPositiveArea(width, height)) return null
-  return { width, height }
+  return positiveDimensions(width, height)
 }
 
 function scanJpegMarkerAt(bytes: Uint8Array, offset: number): JpegScanStep {
@@ -472,7 +477,8 @@ function scanJpegMarkerAt(bytes: Uint8Array, offset: number): JpegScanStep {
     return { kind: 'continue', nextOffset: offset + JPEG_MARKER_LENGTH }
   }
   const segmentLength = readU16BE(bytes, offset + JPEG_MARKER_LENGTH)
-  if (segmentLength === null || segmentLength < JPEG_MINIMUM_SEGMENT_LENGTH) {
+  const isValidSegment = segmentLength !== null && segmentLength >= JPEG_MINIMUM_SEGMENT_LENGTH
+  if (!isValidSegment) {
     return { kind: 'done', dimensions: null }
   }
   if (isJpegStartOfFrame(marker)) {
@@ -481,10 +487,14 @@ function scanJpegMarkerAt(bytes: Uint8Array, offset: number): JpegScanStep {
   return { kind: 'continue', nextOffset: offset + JPEG_MARKER_LENGTH + segmentLength }
 }
 
+function canScanJpegMarker(bytes: Uint8Array, offset: number, scans: number): boolean {
+  return offset + 1 < bytes.length && scans < JPEG_MARKER_SCAN_LIMIT
+}
+
 function readJpegDimensions(bytes: Uint8Array): ImageDimensions | null {
   let offset = JPEG_START_OF_IMAGE_LENGTH
   let scans = 0
-  while (offset + 1 < bytes.length && scans < JPEG_MARKER_SCAN_LIMIT) {
+  while (canScanJpegMarker(bytes, offset, scans)) {
     scans++
     const step = scanJpegMarkerAt(bytes, offset)
     if (step.kind === 'done') return step.dimensions
@@ -499,9 +509,7 @@ const GIF_HEIGHT_OFFSET = 8
 function readGifDimensions(bytes: Uint8Array): ImageDimensions | null {
   const width = readU16LE(bytes, GIF_WIDTH_OFFSET)
   const height = readU16LE(bytes, GIF_HEIGHT_OFFSET)
-  if (width === null || height === null) return null
-  if (!hasPositiveArea(width, height)) return null
-  return { width, height }
+  return positiveDimensions(width, height)
 }
 
 const BMP_WIDTH_OFFSET = 18
@@ -510,9 +518,9 @@ const BMP_HEIGHT_OFFSET = 22
 function readBmpDimensions(bytes: Uint8Array): ImageDimensions | null {
   const width = readI32LE(bytes, BMP_WIDTH_OFFSET)
   const height = readI32LE(bytes, BMP_HEIGHT_OFFSET)
-  if (width === null || height === null) return null
-  if (!hasPositiveArea(width, height)) return null
-  return { width: Math.abs(width), height: Math.abs(height) }
+  const dimensions = positiveDimensions(width, height)
+  if (!dimensions) return null
+  return { width: Math.abs(dimensions.width), height: Math.abs(dimensions.height) }
 }
 
 const WEBP_FOURCC_OFFSET = 12
@@ -535,7 +543,8 @@ const FOURTEEN_BIT_MASK = 0x3fff
 function readWebpLossyDimensions(bytes: Uint8Array): ImageDimensions | null {
   const rawWidth = readU16LE(bytes, WEBP_LOSSY_WIDTH_OFFSET)
   const rawHeight = readU16LE(bytes, WEBP_LOSSY_HEIGHT_OFFSET)
-  if (rawWidth === null || rawHeight === null) return null
+  if (rawWidth === null) return null
+  if (rawHeight === null) return null
   const width = rawWidth & FOURTEEN_BIT_MASK
   const height = rawHeight & FOURTEEN_BIT_MASK
   if (!hasPositiveArea(width, height)) return null
@@ -544,7 +553,8 @@ function readWebpLossyDimensions(bytes: Uint8Array): ImageDimensions | null {
 
 function readWebpLosslessDimensions(bytes: Uint8Array): ImageDimensions | null {
   const isTruncated = bytes.length < WEBP_LOSSLESS_SIZE_END
-  if (isTruncated || bytes[WEBP_LOSSLESS_SIGNATURE_OFFSET] !== WEBP_LOSSLESS_SIGNATURE) return null
+  if (isTruncated) return null
+  if (bytes[WEBP_LOSSLESS_SIGNATURE_OFFSET] !== WEBP_LOSSLESS_SIGNATURE) return null
   const packedSize = byteView(bytes).getUint32(WEBP_LOSSLESS_SIZE_OFFSET, LITTLE_ENDIAN)
   const width = (packedSize & FOURTEEN_BIT_MASK) + 1
   const height = ((packedSize >>> WEBP_LOSSLESS_HEIGHT_SHIFT) & FOURTEEN_BIT_MASK) + 1
@@ -554,7 +564,8 @@ function readWebpLosslessDimensions(bytes: Uint8Array): ImageDimensions | null {
 function readWebpExtendedDimensions(bytes: Uint8Array): ImageDimensions | null {
   const width = readU24LE(bytes, WEBP_EXTENDED_WIDTH_OFFSET)
   const height = readU24LE(bytes, WEBP_EXTENDED_HEIGHT_OFFSET)
-  if (width === null || height === null) return null
+  if (width === null) return null
+  if (height === null) return null
   return { width: width + 1, height: height + 1 }
 }
 
@@ -627,20 +638,27 @@ export function nullEnvelope(): BlobEnvelope {
 }
 
 /** Build an `empty` envelope (stages a zero-length binary value). */
+const BLOB_ENVELOPE_KINDS: ReadonlySet<unknown> = new Set(['bytes', 'null', 'empty'])
+const BLOB_PLACEHOLDER_PREFIX = '[BLOB'
+
 export function emptyEnvelope(): BlobEnvelope {
   return { __sqllumen_blob__: true, kind: 'empty' }
 }
 
 /** Type guard: is `value` a well-formed blob envelope? */
 export function isBlobEnvelope(value: unknown): value is BlobEnvelope {
-  if (typeof value !== 'object' || value === null) return false
-  const object = value as Record<string, unknown>
-  if (object.__sqllumen_blob__ !== true) return false
-  if (object.kind !== 'bytes' && object.kind !== 'null' && object.kind !== 'empty') return false
-  if (object.kind === 'bytes') {
-    return typeof object.base64 === 'string'
+  if (!isObjectRecord(value)) return false
+  if (value.__sqllumen_blob__ !== true) return false
+  if (!BLOB_ENVELOPE_KINDS.has(value.kind)) return false
+  if (value.kind === 'bytes') {
+    return typeof value.base64 === 'string'
   }
-  return object.base64 === undefined
+  return value.base64 === undefined
+}
+
+export function envelopeForBytes(bytes: Uint8Array): BlobEnvelope {
+  if (bytes.length === 0) return emptyEnvelope()
+  return bytesEnvelope(bytesToBase64(bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -660,12 +678,18 @@ const ONE_DECIMAL_PLACE_SCALE = 10
  * as `0 B`. The Rust `format_bytes` helper mirrors this exactly so the table
  * grid (backend-rendered) and query grid (frontend-rendered) stay identical.
  */
+function canScaleToLargerUnit(value: number, unitIndex: number): boolean {
+  const isLargestUnit = unitIndex === BYTE_UNITS.length - 1
+  return value >= BYTES_PER_KILOBYTE && !isLargestUnit
+}
+
 export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
+  if (!Number.isFinite(bytes)) return '0 B'
+  if (bytes < 0) return '0 B'
   if (bytes < BYTES_PER_KILOBYTE) return `${bytes} B`
   let value = bytes / BYTES_PER_KILOBYTE
   let unitIndex = 0
-  while (value >= BYTES_PER_KILOBYTE && unitIndex < BYTE_UNITS.length - 1) {
+  while (canScaleToLargerUnit(value, unitIndex)) {
     value /= BYTES_PER_KILOBYTE
     unitIndex++
   }
@@ -697,6 +721,10 @@ export function base64ByteLength(base64: string): number {
  */
 export function blobPlaceholder(byteLength: number, modified = false): string {
   return `[BLOB - ${formatBytes(byteLength)}${modified ? '*' : ''}]`
+}
+
+export function isBlobPlaceholderText(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith(BLOB_PLACEHOLDER_PREFIX)
 }
 
 // ---------------------------------------------------------------------------
@@ -742,8 +770,7 @@ export function convertBinaryPrimaryKeyValuesToEnvelopes(
         error: `Invalid binary primary key "${primaryKeyColumn}": ${parsed.error}`,
       }
     }
-    result[primaryKeyColumn] =
-      parsed.bytes.length === 0 ? emptyEnvelope() : bytesEnvelope(bytesToBase64(parsed.bytes))
+    result[primaryKeyColumn] = envelopeForBytes(parsed.bytes)
   }
 
   return { ok: true, values: result }

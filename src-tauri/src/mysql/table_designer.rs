@@ -241,7 +241,9 @@ pub fn generate_alter_table_ddl(
     current: &DesignerTableSchema,
     database: &str,
 ) -> (String, Vec<String>) {
-    if validate_schema(original).is_err() || validate_schema(current).is_err() {
+    let has_invalid_schema =
+        validate_schema(original).is_err() || validate_schema(current).is_err();
+    if has_invalid_schema {
         return (String::new(), vec![]);
     }
 
@@ -605,7 +607,8 @@ fn diff_drop_indexes(original: &DesignerTableSchema, current: &DesignerTableSche
 
     let original_primary = primary_key_names(&original.columns);
     let current_primary = primary_key_names(&current.columns);
-    if original_primary != current_primary && !original_primary.is_empty() {
+    let drops_primary_key = original_primary != current_primary && !original_primary.is_empty();
+    if drops_primary_key {
         clauses.push("DROP PRIMARY KEY".to_string());
     }
 
@@ -637,7 +640,8 @@ fn diff_add_indexes(original: &DesignerTableSchema, current: &DesignerTableSchem
 
     let original_primary = primary_key_names(&original.columns);
     let current_primary = primary_key_names(&current.columns);
-    if original_primary != current_primary && !current_primary.is_empty() {
+    let adds_primary_key = original_primary != current_primary && !current_primary.is_empty();
+    if adds_primary_key {
         clauses.push(format!(
             "ADD PRIMARY KEY ({})",
             quoted_identifiers(&current_primary).join(", ")
@@ -760,19 +764,23 @@ fn diff_add_foreign_keys(
         .collect()
 }
 
+fn is_changed_to_non_empty(original: &str, current: &str) -> bool {
+    original != current && !current.is_empty()
+}
+
 fn diff_table_options(
     original: &DesignerTableProperties,
     current: &DesignerTableProperties,
 ) -> Vec<String> {
     let mut clauses = Vec::new();
 
-    if original.engine != current.engine && !current.engine.is_empty() {
+    if is_changed_to_non_empty(&original.engine, &current.engine) {
         clauses.push(format!("ENGINE={}", current.engine));
     }
-    if original.charset != current.charset && !current.charset.is_empty() {
+    if is_changed_to_non_empty(&original.charset, &current.charset) {
         clauses.push(format!("DEFAULT CHARSET={}", current.charset));
     }
-    if original.collation != current.collation && !current.collation.is_empty() {
+    if is_changed_to_non_empty(&original.collation, &current.collation) {
         clauses.push(format!("COLLATE={}", current.collation));
     }
     if original.auto_increment != current.auto_increment {
@@ -780,7 +788,7 @@ fn diff_table_options(
             clauses.push(format!("AUTO_INCREMENT={auto_increment}"));
         }
     }
-    if original.row_format != current.row_format && !current.row_format.is_empty() {
+    if is_changed_to_non_empty(&original.row_format, &current.row_format) {
         clauses.push(format!("ROW_FORMAT={}", current.row_format));
     }
     if original.comment != current.comment {

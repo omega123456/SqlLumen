@@ -1,4 +1,4 @@
-import type { WorkspaceTab } from '../types/schema'
+import type { TableDataTab, WorkspaceTab } from '../types/schema'
 
 export type WorkspaceTabStackKey = 'queries' | 'tables' | 'designers' | 'schema' | 'objects'
 
@@ -32,8 +32,24 @@ export const WORKSPACE_TAB_STACK_META: Record<WorkspaceTabStackKey, WorkspaceTab
   objects: { key: 'objects', label: 'Objects' },
 }
 
+export type ScopedTableDataTab = TableDataTab & { parentQueryTabId: string }
+
 export function isPinnedWorkspaceTab(tab: WorkspaceTab): boolean {
   return tab.type === 'history' || tab.type === 'processlist'
+}
+
+export function isScopedTableDataTab(
+  tab: WorkspaceTab | null | undefined
+): tab is ScopedTableDataTab {
+  if (tab?.type !== 'table-data') return false
+  return Boolean(tab.parentQueryTabId)
+}
+
+export function isScopedTableDataTabOf(
+  tab: WorkspaceTab | null | undefined,
+  queryTabId: string
+): tab is ScopedTableDataTab {
+  return isScopedTableDataTab(tab) && tab.parentQueryTabId === queryTabId
 }
 
 const STACK_KEY_BY_TAB_TYPE: Record<WorkspaceTab['type'], WorkspaceTabStackKey | null> = {

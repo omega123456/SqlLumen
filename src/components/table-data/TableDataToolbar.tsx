@@ -13,6 +13,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { Plus, Copy, Trash, FloppyDisk, ArrowCounterClockwise, Stop } from '@phosphor-icons/react'
 import {
   useTableDataStore,
+  isEditingRowKey,
   isSameRowKey,
   findRowIndexByKey as findStoreRowIndexByKey,
 } from '../../stores/table-data-store'
@@ -42,6 +43,7 @@ import type {
 import { Button } from '../common/Button'
 import styles from './TableDataToolbar.module.css'
 import { toErrorMessage } from '../../lib/error-message'
+import { hasPendingRowChanges } from '../../lib/row-edit-state'
 
 interface TableDataToolbarProps {
   tabId: string
@@ -113,11 +115,6 @@ function toolbarTabView(tabState: TableDataTabState | undefined): ToolbarTabView
     filterModel: tabState.filterModel,
     selectedCell: tabState.selectedCell,
   }
-}
-
-function hasPendingModifications(editState: RowEditState | null): boolean {
-  if (!editState) return false
-  return editState.modifiedColumns.size > 0 || editState.isNewRow
 }
 
 function isNewRowKey(rowKey: RowKey | null): boolean {
@@ -203,12 +200,13 @@ function rowActionAvailability(inputs: ActionAvailabilityInputs): RowActionAvail
     canAdd: canMutate && view.editState?.isNewRow !== true,
     canClone: canMutate && canCloneSelection(view),
     canDelete: canMutate && canDeleteTargets(view, inputs.deleteTargetCount),
-    canSaveOrDiscard: hasPendingModifications(view.editState) && !isBusy,
+    canSaveOrDiscard: hasPendingRowChanges(view.editState) && !isBusy,
   }
 }
 
 function isNoKeyBadgeVisible(isView: boolean, view: ToolbarTabView): boolean {
-  if (isView || view.primaryKey !== null) return false
+  if (isView) return false
+  if (view.primaryKey !== null) return false
   return !view.isLoading && view.columns.length > 0
 }
 
@@ -344,7 +342,8 @@ interface LoadControlButtonProps {
 }
 
 function LoadControlButton({ view, isBusy, onCancelLoad, onRefresh }: LoadControlButtonProps) {
-  if (view.isLoading && !view.isRestoring) {
+  const isCancellableLoad = view.isLoading && !view.isRestoring
+  if (isCancellableLoad) {
     const cancellingClassName = view.isCancelling ? ` ${styles.cancelling}` : ''
     return (
       <Button
@@ -490,7 +489,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     const deletedCount = (await deleteRows(tabId, rowKeysToDelete)) + discardedDraftCount
     setCheckedRowKeys(tabId, [])
 
-    if (isTabSettledWithoutError(tabId) && deletedCount > 0) {
+    const shouldConfirmDeletion = deletedCount > 0 && isTabSettledWithoutError(tabId)
+    if (shouldConfirmDeletion) {
       showSuccess('Rows deleted', `${pluralRows(deletedCount)} deleted successfully.`)
     }
   }, [
@@ -508,7 +508,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     if (!selectedRowKey) return
 
     // If we're editing this row, discard unsaved changes first
-    if (editState && isSameRowKey(editState.rowKey, selectedRowKey)) {
+    if (isEditingRowKey(editState, selectedRowKey)) {
       discardCurrentRow(tabId)
     }
 

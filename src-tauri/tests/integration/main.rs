@@ -85,6 +85,7 @@ mod search_rrf_integration;
 mod session_select_database_integration;
 mod session_snapshots_integration;
 mod settings_integration;
+mod sql_chars_integration;
 mod sql_dump_integration;
 mod sql_dump_streaming_integration;
 mod sql_import_integration;

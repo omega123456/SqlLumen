@@ -8,6 +8,7 @@ import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
+import { isNonEmptyString, isNullish } from '../../lib/value-checks'
 
 const FALLBACK_HEADER_HEIGHT_PX = 32
 const FALLBACK_ROW_HEIGHT_PX = 28
@@ -110,10 +111,13 @@ type SortDirection = 'ASC' | 'DESC'
 const SORT_DIRECTION_SIGN: Record<SortDirection, number> = { ASC: 1, DESC: -1 }
 
 function compareProcessValues(leftValue: unknown, rightValue: unknown): number {
-  if (leftValue == null && rightValue == null) return 0
-  if (leftValue == null) return -1
-  if (rightValue == null) return 1
-  if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+  const isLeftMissing = isNullish(leftValue)
+  const isRightMissing = isNullish(rightValue)
+  if (isLeftMissing && isRightMissing) return 0
+  if (isLeftMissing) return -1
+  if (isRightMissing) return 1
+  const areBothNumbers = typeof leftValue === 'number' && typeof rightValue === 'number'
+  if (areBothNumbers) {
     return leftValue - rightValue
   }
   return String(leftValue).localeCompare(String(rightValue))
@@ -249,7 +253,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     (rowIndex: number): boolean => {
       const row = gridRows[rowIndex]
       const info = row?.info
-      if (typeof info !== 'string' || info.length === 0) return false
+      if (!isNonEmptyString(info)) return false
       setPopoverSql(info)
       setPopoverAnchorRect(computeInfoAnchorRect(rowIndex) ?? fallbackInfoAnchorRect())
       return true
@@ -259,7 +263,7 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
 
   const handleInfoCellClick = useCallback((row: Record<string, unknown>, anchorRect: DOMRect) => {
     const info = row.info
-    if (typeof info !== 'string' || info.length === 0) return
+    if (!isNonEmptyString(info)) return
     setPopoverSql(info)
     setPopoverAnchorRect(anchorRect)
   }, [])
@@ -284,12 +288,10 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
       if (playwrightWindow.__processListTestApi__?.openInfoPopover) {
         delete playwrightWindow.__processListTestApi__.openInfoPopover
       }
-      if (
-        playwrightWindow.__processListTestApi__ &&
-        Object.keys(playwrightWindow.__processListTestApi__).length === 0
-      ) {
-        delete playwrightWindow.__processListTestApi__
-      }
+      const remainingTestApi = playwrightWindow.__processListTestApi__
+      if (!remainingTestApi) return
+      if (Object.keys(remainingTestApi).length > 0) return
+      delete playwrightWindow.__processListTestApi__
     }
   }, [connectionId, openInfoPopoverForRow])
 

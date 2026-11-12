@@ -15,7 +15,7 @@ import type {
   ConnectionStatusEvent,
   OpenConnectionSession,
 } from '../types/connection'
-import type { RowEditState, WorkspaceTab } from '../types/schema'
+import type { WorkspaceTab } from '../types/schema'
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
@@ -31,6 +31,8 @@ import { bootstrapSchemaCache } from '../lib/schema-cache-bootstrap'
 
 import { logFrontend, logFrontendError, logFrontendWarning } from '../lib/app-log-commands'
 import { toErrorMessage } from '../lib/error-message'
+import { hasModifiedColumns } from '../lib/row-edit-state'
+import { isIndexInBounds } from '../lib/value-checks'
 let listenersSetup = false
 
 /** Reset the listeners flag — for testing only */
@@ -82,8 +84,8 @@ const UNSAVED_EDITS_NOT_SAVED_TITLE = 'Connection not closed'
 const UNSAVED_EDITS_NOT_SAVED_MESSAGE =
   'Could not save pending edits. Fix or discard changes before closing.'
 
-function hasModifiedColumns(editState: RowEditState | null | undefined): boolean {
-  return Boolean(editState && editState.modifiedColumns.size > 0)
+function isConnectionOfProfile(connection: ActiveConnection, profileId: string): boolean {
+  return connection.profile.id === profileId
 }
 
 async function saveRowBeforeClose(save: () => Promise<boolean>): Promise<boolean> {
@@ -365,18 +367,12 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         if (tab.type === 'query-editor') {
           const queryTabState = queryTabs[tab.id]
           return (
-            queryTabState?.results?.some(
-              (result) => result.editState && result.editState.modifiedColumns.size > 0
-            ) ?? false
+            queryTabState?.results?.some((result) => hasModifiedColumns(result.editState)) ?? false
           )
         }
         if (tab.type === 'table-data') {
           const tableDataTabState = tableDataTabs[tab.id]
-          return (
-            (tableDataTabState?.editState &&
-              tableDataTabState.editState.modifiedColumns.size > 0) ??
-            false
-          )
+          return hasModifiedColumns(tableDataTabState?.editState)
         }
         if (tab.type === 'object-editor') {
           return objectEditorState.isDirty(tab.id)
@@ -432,7 +428,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     }
     const delta = direction === 'left' ? -1 : 1
     const targetIndex = fromIndex + delta
-    if (targetIndex < 0 || targetIndex >= orderedIds.length) {
+    if (!isIndexInBounds(targetIndex, orderedIds.length)) {
       return
     }
     const insertIndex = direction === 'right' ? targetIndex + 1 : targetIndex
@@ -475,9 +471,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     const currentSessionDatabase =
       active?.sessionDatabase ?? active?.profile.defaultDatabase ?? null
 
-    if (!active || !trimmedName || currentSessionDatabase === trimmedName) {
-      return
-    }
+    if (!active) return
+    if (!trimmedName) return
+    if (currentSessionDatabase === trimmedName) return
 
     const originalSessionDatabase = currentSessionDatabase
 
@@ -527,7 +523,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     ): Record<string, ActiveConnection> => {
       const next = { ...state.activeConnections }
       for (const sid of Object.keys(next)) {
-        if (next[sid].profile.id === profileId) {
+        if (isConnectionOfProfile(next[sid], profileId)) {
           next[sid] = { ...next[sid], profile }
         }
       }
@@ -612,9 +608,8 @@ export function normalizeActiveConnectionOrder(
   const seen = new Set<string>()
 
   for (const sessionId of activeConnectionOrder) {
-    if (!activeConnections[sessionId] || seen.has(sessionId)) {
-      continue
-    }
+    if (!activeConnections[sessionId]) continue
+    if (seen.has(sessionId)) continue
     seen.add(sessionId)
     orderedIds.push(sessionId)
   }

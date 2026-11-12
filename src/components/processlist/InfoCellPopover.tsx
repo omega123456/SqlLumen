@@ -52,7 +52,8 @@ export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCell
     }
   }, [sql])
 
-  if (!isOpen || !sql) return null
+  if (!isOpen) return null
+  if (!sql) return null
 
   return (
     <div

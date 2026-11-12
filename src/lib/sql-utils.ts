@@ -5,6 +5,7 @@ const BLOCK_COMMENT_CLOSE = '*/'
 const EXECUTABLE_COMMENT_OPEN = '/*!'
 const BLOCK_COMMENT_DELIMITER_LENGTH = 2
 const EXECUTABLE_COMMENT_MARKERS = new Set(['!', '+'])
+const LINE_COMMENT_PREFIXES = ['--', '#'] as const
 
 /**
  * Shared SQL parsing utilities used by query-store and query-edit-utils.
@@ -44,8 +45,12 @@ function stripOneLeadingComment(text: string): string | null {
     if (EXECUTABLE_COMMENT_MARKERS.has(markerAfterOpen)) return null
     return text.slice(blockCommentEndIndex(text))
   }
-  if (text.startsWith('--') || text.startsWith('#')) return textAfterFirstLine(text)
+  if (startsWithLineComment(text)) return textAfterFirstLine(text)
   return null
+}
+
+function startsWithLineComment(text: string): boolean {
+  return LINE_COMMENT_PREFIXES.some((prefix) => text.startsWith(prefix))
 }
 
 /**

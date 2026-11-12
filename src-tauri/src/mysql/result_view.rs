@@ -177,20 +177,23 @@ const JS_MIN_FIXED_POINT_POSITION: i32 = -6;
 fn js_number_body(digits: &str, point_position: i32) -> String {
     let digit_count = digits.len() as i32;
     let fits_fixed_notation = point_position <= JS_MAX_FIXED_POINT_POSITION;
-    if digit_count <= point_position && fits_fixed_notation {
+    let is_whole_number = digit_count <= point_position && fits_fixed_notation;
+    if is_whole_number {
         return format!(
             "{digits}{}",
             "0".repeat((point_position - digit_count) as usize)
         );
     }
-    if 0 < point_position && fits_fixed_notation {
+    let has_inner_decimal_point = 0 < point_position && fits_fixed_notation;
+    if has_inner_decimal_point {
         return format!(
             "{}.{}",
             &digits[..point_position as usize],
             &digits[point_position as usize..]
         );
     }
-    if JS_MIN_FIXED_POINT_POSITION < point_position && point_position <= 0 {
+    let is_small_fraction = JS_MIN_FIXED_POINT_POSITION < point_position && point_position <= 0;
+    if is_small_fraction {
         return format!("0.{}{digits}", "0".repeat((-point_position) as usize));
     }
     js_exponential_body(digits, point_position - 1)
@@ -267,20 +270,34 @@ fn is_js_whitespace(character: char) -> bool {
     )
 }
 
+const DECIMAL_POINT_BYTES: &[u8] = b".";
+const EXPONENT_MARKER_BYTES: &[u8] = b"eE";
+const EXPONENT_SIGN_BYTES: &[u8] = b"+-";
+
+fn is_ascii_digit_at(bytes: &[u8], position: usize) -> bool {
+    bytes.get(position).is_some_and(u8::is_ascii_digit)
+}
+
+fn has_any_byte_at(bytes: &[u8], position: usize, expected: &[u8]) -> bool {
+    bytes
+        .get(position)
+        .is_some_and(|byte| expected.contains(byte))
+}
+
 /// True when `s` is a JS `StrUnsignedDecimalLiteral` (digits with an optional
 /// fraction and exponent; at least one digit in the significand).
 fn is_js_unsigned_decimal(text: &str) -> bool {
     let bytes = text.as_bytes();
     let mut position = 0;
     let int_start = position;
-    while position < bytes.len() && bytes[position].is_ascii_digit() {
+    while is_ascii_digit_at(bytes, position) {
         position += 1;
     }
     let mut digits = position - int_start;
-    if position < bytes.len() && bytes[position] == b'.' {
+    if has_any_byte_at(bytes, position, DECIMAL_POINT_BYTES) {
         position += 1;
         let frac_start = position;
-        while position < bytes.len() && bytes[position].is_ascii_digit() {
+        while is_ascii_digit_at(bytes, position) {
             position += 1;
         }
         digits += position - frac_start;
@@ -288,13 +305,13 @@ fn is_js_unsigned_decimal(text: &str) -> bool {
     if digits == 0 {
         return false;
     }
-    if position < bytes.len() && (bytes[position] == b'e' || bytes[position] == b'E') {
+    if has_any_byte_at(bytes, position, EXPONENT_MARKER_BYTES) {
         position += 1;
-        if position < bytes.len() && (bytes[position] == b'+' || bytes[position] == b'-') {
+        if has_any_byte_at(bytes, position, EXPONENT_SIGN_BYTES) {
             position += 1;
         }
         let exp_start = position;
-        while position < bytes.len() && bytes[position].is_ascii_digit() {
+        while is_ascii_digit_at(bytes, position) {
             position += 1;
         }
         if position == exp_start {
@@ -322,7 +339,9 @@ pub fn js_string_to_number(text: &str) -> f64 {
     };
     if let Some(radix) = radix {
         let body = &trimmed[2..];
-        if body.is_empty() || !body.chars().all(|character| character.is_digit(radix)) {
+        let is_radix_literal =
+            !body.is_empty() && body.chars().all(|character| character.is_digit(radix));
+        if !is_radix_literal {
             return f64::NAN;
         }
         return body.chars().fold(0.0, |acc, character| {
@@ -621,7 +640,8 @@ pub fn build_view(
     tombstones: &BTreeSet<u32>,
     resolved: &ResolvedSpec,
 ) -> Option<Arc<Vec<u32>>> {
-    if resolved.is_identity() && tombstones.is_empty() {
+    let keeps_stored_order = resolved.is_identity() && tombstones.is_empty();
+    if keeps_stored_order {
         return None;
     }
     let mut indices: Vec<u32> = (0..rows.len() as u32)

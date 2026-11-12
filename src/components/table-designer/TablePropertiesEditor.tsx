@@ -47,9 +47,8 @@ function parseAutoIncrement(value: string): number | null {
   }
 
   const parsed = Number.parseInt(trimmed, 10)
-  if (Number.isNaN(parsed) || parsed < 1) {
-    return null
-  }
+  if (Number.isNaN(parsed)) return null
+  if (parsed < 1) return null
 
   return parsed
 }
@@ -155,15 +154,16 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
           (collation) => collation.name === currentCollation
         )
 
-        if (!hasSelectedCollation) {
-          const defaultCollation = getDefaultCollationForCharset(
-            selectedCharset,
-            filteredCollations
-          )
+        if (hasSelectedCollation) {
+          return
+        }
 
-          if (defaultCollation && defaultCollation !== currentCollation) {
-            updateProperties(tabId, 'collation', defaultCollation)
-          }
+        const defaultCollation = getDefaultCollationForCharset(selectedCharset, filteredCollations)
+        if (!defaultCollation) {
+          return
+        }
+        if (defaultCollation !== currentCollation) {
+          updateProperties(tabId, 'collation', defaultCollation)
         }
       })
       .catch((error) => {
@@ -204,7 +204,8 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
   )
 
   const charsetDropdownOptions: DropdownOption[] = useMemo(() => {
-    if (isCharsetsLoading && charsets.length === 0) {
+    const isLoadingFirstCharsets = isCharsetsLoading && charsets.length === 0
+    if (isLoadingFirstCharsets) {
       return [
         {
           value: selectedCharset || '',
@@ -213,7 +214,8 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
         },
       ]
     }
-    if (!isCharsetsLoading && charsetOptions.length === 0) {
+    const hasNoCharsets = !isCharsetsLoading && charsetOptions.length === 0
+    if (hasNoCharsets) {
       return [{ value: '', label: 'No charsets available', disabled: true }]
     }
     return charsetOptions

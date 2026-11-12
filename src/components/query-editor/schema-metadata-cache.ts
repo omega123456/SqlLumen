@@ -56,6 +56,16 @@ function getGeneration(connectionId: string): number {
   return _generationMap.get(connectionId) ?? 0
 }
 
+function isCurrentGeneration(connectionId: string, capturedGeneration: number): boolean {
+  return getGeneration(connectionId) === capturedGeneration
+}
+
+function getReadyCache(connectionId: string): SchemaCache | undefined {
+  const cache = cacheMap.get(connectionId)
+  if (cache?.status !== 'ready') return undefined
+  return cache
+}
+
 function incrementGeneration(connectionId: string): void {
   _generationMap.set(connectionId, getGeneration(connectionId) + 1)
 }
@@ -111,10 +121,12 @@ interface TableKey {
 
 function splitTableKey(key: string): TableKey | null {
   const separatorIndex = key.indexOf('.')
-  if (separatorIndex <= 0 || separatorIndex >= key.length - 1) return null
+  const hasTextAroundSeparator = separatorIndex > 0 && separatorIndex < key.length - 1
+  if (!hasTextAroundSeparator) return null
   const database = key.slice(0, separatorIndex)
   const table = key.slice(separatorIndex + 1)
-  if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) return null
+  if (!hasNonEmptyName(database)) return null
+  if (!hasNonEmptyName(table)) return null
   return { database: database, table: table }
 }
 
@@ -189,9 +201,7 @@ export async function loadCache(connectionId: string): Promise<void> {
   const loadPromise = (async () => {
     try {
       const data = sanitizeSchemaMetadata(await fetchSchemaMetadataFull(connectionId))
-
-      // Check if cache was invalidated during the fetch (per-connection generation)
-      if (getGeneration(connectionId) !== capturedGeneration) {
+      if (!isCurrentGeneration(connectionId, capturedGeneration)) {
         return
       }
 
@@ -209,8 +219,7 @@ export async function loadCache(connectionId: string): Promise<void> {
       }
       cacheMap.set(connectionId, readyCache)
     } catch (error) {
-      // Check if cache was invalidated during the fetch (per-connection generation)
-      if (getGeneration(connectionId) !== capturedGeneration) {
+      if (!isCurrentGeneration(connectionId, capturedGeneration)) {
         return
       }
 
@@ -227,7 +236,8 @@ export async function loadCache(connectionId: string): Promise<void> {
   try {
     await loadPromise
   } finally {
-    if (_pendingLoads.get(connectionId) === loadPromise) {
+    const isOwnPendingLoad = _pendingLoads.get(connectionId) === loadPromise
+    if (isOwnPendingLoad) {
       _pendingLoads.delete(connectionId)
     }
   }
@@ -247,9 +257,7 @@ export async function rebuildCache(connectionId: string): Promise<void> {
 export async function refreshCacheInBackground(connectionId: string): Promise<void> {
   const capturedGeneration = getGeneration(connectionId)
   const data = sanitizeSchemaMetadata(await fetchSchemaMetadataFull(connectionId))
-
-  // If the cache was invalidated during the fetch, discard the result
-  if (getGeneration(connectionId) !== capturedGeneration) {
+  if (!isCurrentGeneration(connectionId, capturedGeneration)) {
     return
   }
 
@@ -310,8 +318,8 @@ export function hydrateFromSnapshot(snapshotJson: string, connectionId: string):
 }
 
 export function serializeCacheSnapshot(connectionId: string): string | null {
-  const cache = cacheMap.get(connectionId)
-  if (!cache || cache.status !== 'ready') return null
+  const cache = getReadyCache(connectionId)
+  if (!cache) return null
   return JSON.stringify({
     databases: cache.databases,
     tables: cache.tables,
@@ -338,8 +346,8 @@ export function invalidateCache(connectionId: string): void {
  * Filter databases by case-insensitive prefix.
  */
 export function filterDatabases(connectionId: string, prefix: string): string[] {
-  const cache = cacheMap.get(connectionId)
-  if (!cache || cache.status !== 'ready') return []
+  const cache = getReadyCache(connectionId)
+  if (!cache) return []
   const lowerPrefix = prefix.toLowerCase()
   return cache.databases.filter((db) => db.toLowerCase().startsWith(lowerPrefix))
 }
@@ -348,8 +356,8 @@ export function filterDatabases(connectionId: string, prefix: string): string[] 
  * Filter tables for a given database by case-insensitive prefix.
  */
 export function filterTables(connectionId: string, database: string, prefix: string): TableInfo[] {
-  const cache = cacheMap.get(connectionId)
-  if (!cache || cache.status !== 'ready') return []
+  const cache = getReadyCache(connectionId)
+  if (!cache) return []
   const tables = cache.tables[database] ?? []
   const lowerPrefix = prefix.toLowerCase()
   return tables.filter((table) => table.name.toLowerCase().startsWith(lowerPrefix))
@@ -364,8 +372,8 @@ export function filterColumns(
   table: string,
   prefix: string
 ): ColumnMeta[] {
-  const cache = cacheMap.get(connectionId)
-  if (!cache || cache.status !== 'ready') return []
+  const cache = getReadyCache(connectionId)
+  if (!cache) return []
   const key = `${database}.${table}`
   const columns = cache.columns[key] ?? []
   const lowerPrefix = prefix.toLowerCase()
@@ -380,8 +388,8 @@ export function filterRoutines(
   database: string,
   prefix: string
 ): RoutineMeta[] {
-  const cache = cacheMap.get(connectionId)
-  if (!cache || cache.status !== 'ready') return []
+  const cache = getReadyCache(connectionId)
+  if (!cache) return []
   const routines = cache.routines[database] ?? []
   const lowerPrefix = prefix.toLowerCase()
   return routines.filter((routine) => routine.name.toLowerCase().startsWith(lowerPrefix))
@@ -416,8 +424,8 @@ function searchableRoutines(routinesByDatabase: Record<string, RoutineMeta[]>): 
 }
 
 export function getSearchableObjects(connectionId: string): SearchableObject[] {
-  const cache = cacheMap.get(connectionId)
-  if (!cache || cache.status !== 'ready') return []
+  const cache = getReadyCache(connectionId)
+  if (!cache) return []
 
   return [
     ...searchableEntries(cache.tables, 'table'),

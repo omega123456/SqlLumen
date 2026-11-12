@@ -23,15 +23,21 @@ export async function getAllSettings(): Promise<Record<string, string>> {
   return invoke<Record<string, string>>('get_all_settings')
 }
 
+const THEMES: ReadonlySet<string> = new Set<Theme>(['light', 'dark', 'system'])
+
 /**
  * Get the saved theme preference, or null if not set.
  */
 export async function getThemeSetting(): Promise<Theme | null> {
   const value = await getSetting('theme')
-  if (value === 'light' || value === 'dark' || value === 'system') {
+  if (isTheme(value)) {
     return value
   }
   return null
+}
+
+function isTheme(value: string | null): value is Theme {
+  return value !== null && THEMES.has(value)
 }
 
 /**

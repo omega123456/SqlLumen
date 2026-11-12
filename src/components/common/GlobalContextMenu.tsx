@@ -10,6 +10,7 @@ import {
   readClipboardText,
   resolveEditableFieldFromTarget,
   isInsideDisabledTextControl,
+  isTextControl,
   writeClipboardText,
 } from '../../lib/context-menu-utils'
 import { DISMISS_ALL_CONTEXT_MENUS, dispatchDismissAll } from '../../lib/context-menu-events'
@@ -23,13 +24,31 @@ interface OpenState {
   textSelection?: TextSelectionRange
 }
 
-function contentEditableHasSelection(host: HTMLElement): boolean {
+function firstSelectionRange(): Range | null {
   const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) {
-    return false
+  if (!selection) {
+    return null
   }
-  const range = selection.getRangeAt(0)
-  if (!host.contains(range.commonAncestorContainer)) {
+  if (selection.rangeCount === 0) {
+    return null
+  }
+  return selection.getRangeAt(0)
+}
+
+function selectionRangeInside(field: HTMLElement): Range | null {
+  const range = firstSelectionRange()
+  if (!range) {
+    return null
+  }
+  if (!field.contains(range.commonAncestorContainer)) {
+    return null
+  }
+  return range
+}
+
+function contentEditableHasSelection(host: HTMLElement): boolean {
+  const range = selectionRangeInside(host)
+  if (!range) {
     return false
   }
   return !range.collapsed
@@ -42,8 +61,14 @@ interface TextSelectionRange {
   end: number
 }
 
-function isTextControl(field: HTMLElement): field is TextControl {
-  return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
+function currentTextSelection(field: HTMLElement): TextSelectionRange | undefined {
+  if (!isTextControl(field)) {
+    return undefined
+  }
+  return {
+    start: field.selectionStart ?? 0,
+    end: field.selectionEnd ?? 0,
+  }
 }
 
 function resolveSelectionRange(
@@ -110,18 +135,6 @@ async function pasteIntoTextControl(
   const position = start + text.length
   field.setSelectionRange(position, position)
   dispatchValueChange(field)
-}
-
-function selectionRangeInside(field: HTMLElement): Range | null {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) {
-    return null
-  }
-  const range = selection.getRangeAt(0)
-  if (!field.contains(range.commonAncestorContainer)) {
-    return null
-  }
-  return range
 }
 
 async function insertClipboardTextAtSelection(field: HTMLElement): Promise<void> {
@@ -193,10 +206,9 @@ export function GlobalContextMenu() {
   useDismissOnOutsideClick(menuRef, open !== null, closeMenu, { closeOnEscape: true })
 
   useLayoutEffect(() => {
-    if (!open || !menuRef.current) {
-      return
-    }
     const element = menuRef.current
+    if (!open) return
+    if (!element) return
     const rect = element.getBoundingClientRect()
     const position = positionContextMenuInPortal(
       open.portalRoot,
@@ -239,13 +251,7 @@ export function GlobalContextMenu() {
       // Dismiss any other open context menus before opening this one
       dispatchDismissAll()
 
-      let textSelection: { start: number; end: number } | undefined
-      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
-        textSelection = {
-          start: field.selectionStart ?? 0,
-          end: field.selectionEnd ?? 0,
-        }
-      }
+      const textSelection = currentTextSelection(field)
       setOpen({
         x: event.clientX,
         y: event.clientY,

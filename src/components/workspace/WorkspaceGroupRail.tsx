@@ -79,7 +79,8 @@ const RAIL_NAVIGATION_TARGETS: Record<string, RailNavigationTarget> = {
 }
 
 function enteringPhase(prior: RailEntry | undefined): RailItemPhase {
-  if (!prior || prior.phase === 'leaving') return 'entering'
+  if (!prior) return 'entering'
+  if (prior.phase === 'leaving') return 'entering'
   return prior.phase
 }
 
@@ -105,8 +106,9 @@ interface SelectedRailKeyInputs {
 
 function resolveSelectedRailKey(inputs: SelectedRailKeyInputs): RailKey | null {
   if (inputs.activePinnedTab) return pinnedKey(inputs.activePinnedTab)
-  if (inputs.value && inputs.liveKeys.includes(inputs.value)) return inputs.value
-  return null
+  const selectedValue = inputs.value
+  if (!selectedValue) return null
+  return inputs.liveKeys.includes(selectedValue) ? selectedValue : null
 }
 
 function railClassName(className: string | undefined): string {
@@ -126,7 +128,8 @@ interface RailTooltipProps {
 
 function RailTooltip({ tooltip, group, pinnedTab }: RailTooltipProps) {
   if (!tooltip) return null
-  if (!group && !pinnedTab) return null
+  const tooltipSubject = group ?? pinnedTab
+  if (!tooltipSubject) return null
   return (
     <div
       className={styles.tooltip}
@@ -213,7 +216,8 @@ export function WorkspaceGroupRail({
   useLayoutEffect(() => {
     const marker = markerRef.current
     const item = selectedKey ? itemRefs.current.get(selectedKey) : undefined
-    if (!marker || !item) {
+    const hasNoMarkerTarget = !marker || !item
+    if (hasNoMarkerTarget) {
       markerPlacedRef.current = false
       return
     }

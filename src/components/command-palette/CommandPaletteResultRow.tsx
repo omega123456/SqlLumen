@@ -96,6 +96,8 @@ export function CommandPaletteResultRow({
   // Columns show their data type; objects show "<Kind> · <database>" (prototype `.pi-row .db`).
   const metaLabel = result.metaLabel ?? `${KIND_LABELS[result.objectType]} · ${result.database}`
 
+  const hasTrailingContent = result.objectType === 'table' || isRecent
+
   const handleMouseDown = (event: MouseEvent<HTMLLIElement>) => {
     event.preventDefault()
   }
@@ -118,7 +120,7 @@ export function CommandPaletteResultRow({
         <span className={styles.rowName}>{highlightedName}</span>
         <span className={styles.rowMeta}>{metaLabel}</span>
       </div>
-      {result.objectType === 'table' || isRecent ? (
+      {hasTrailingContent ? (
         <span className={styles.rowTrailing}>
           {result.objectType === 'table' ? <SearchColumnsHint /> : null}
           {isRecent ? (

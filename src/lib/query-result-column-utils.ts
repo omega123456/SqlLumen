@@ -2,6 +2,10 @@ import { buildTableColumnLookup, columnKey } from './col-key-utils'
 import { buildForeignKeyLookup } from './foreign-key-utils'
 import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../types/schema'
 
+export function hasResultColumns(result: { columns: readonly unknown[] }): boolean {
+  return result.columns.length > 0
+}
+
 interface ResolveQueryResultColumnsArgs {
   resultColumns: ColumnMeta[]
   editMode: string | null
@@ -47,14 +51,12 @@ export function resolveQueryResultColumns({
 }: ResolveQueryResultColumnsArgs): ResolvedQueryResultColumn[] {
   const tableColumnLookup = buildTableColumnLookup(editTableColumns)
   const foreignKeyLookup = buildForeignKeyLookup(editForeignKeys)
+  const hasEditableColumns = editMode !== null && editableColumnMap.size > 0
 
   return resultColumns.map((resultColumn, index) => {
     const boundName = editColumnBindings.get(index) ?? resultColumn.name
     const lookupTableMeta = tableColumnLookup.get(boundName.toLowerCase())
-    const editable =
-      editMode !== null && editableColumnMap.size > 0
-        ? (editableColumnMap.get(index) ?? false)
-        : false
+    const editable = hasEditableColumns ? (editableColumnMap.get(index) ?? false) : false
 
     return {
       key: columnKey(index),

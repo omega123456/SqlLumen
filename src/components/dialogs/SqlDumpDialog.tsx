@@ -432,7 +432,8 @@ export default function SqlDumpDialog({
 
   // Handle export
   const handleExport = useCallback(async () => {
-    if (!filePath || !hasSelection) return
+    if (!filePath) return
+    if (!hasSelection) return
     setIsExporting(true)
     setError(null)
 
@@ -492,7 +493,8 @@ export default function SqlDumpDialog({
 
   // Handle cancel
   const handleCancel = useCallback(async () => {
-    if (!jobId || cancelPending) return
+    if (!jobId) return
+    if (cancelPending) return
     setCancelPending(true)
     try {
       await cancelDump(jobId, connectionId)

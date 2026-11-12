@@ -126,7 +126,8 @@ pub fn update_connection_impl(
     let password = data.password.clone();
     let clear_password = data.clear_password;
 
-    if clear_password && password.is_some() {
+    let sets_and_clears_password = clear_password && password.is_some();
+    if sets_and_clears_password {
         return Err("Cannot set and clear password at the same time".to_string());
     }
 

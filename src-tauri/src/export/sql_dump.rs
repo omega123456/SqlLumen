@@ -242,7 +242,8 @@ pub fn write_data_inserts<W: Write>(
     columns: &[String],
     rows: &[Vec<SqlDumpValue>],
 ) -> io::Result<u64> {
-    if rows.is_empty() || columns.is_empty() {
+    let has_nothing_to_insert = rows.is_empty() || columns.is_empty();
+    if has_nothing_to_insert {
         return Ok(0);
     }
 

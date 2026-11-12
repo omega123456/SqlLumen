@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { useCellStoreSync } from '../shared/editor-callbacks-context'
 import type { TableDataColumnMeta } from '../../types/schema'
+import { isNullish } from '../../lib/value-checks'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,7 +87,7 @@ function initialEditorValue(
   initialInputValue: string | undefined
 ): string | null {
   if (initialInputValue != null) return initialInputValue
-  if (rawValue === null || rawValue === undefined) return null
+  if (isNullish(rawValue)) return null
   return String(rawValue)
 }
 

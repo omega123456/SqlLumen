@@ -115,9 +115,8 @@ export function MemoryScopePicker({
   const selectIndex = useCallback(
     (index: number) => {
       const option = options[index]
-      if (!option || option.disabled) {
-        return
-      }
+      if (!option) return
+      if (option.disabled) return
       onSelect(option.scope)
     },
     [options, onSelect]
@@ -169,16 +168,17 @@ export function MemoryScopePicker({
       {options.map((option, index) => {
         const IconComponent = option.icon
         const isHighlighted = index === highlightedIndex
+        const isSelectableHighlight = isHighlighted && !option.disabled
         return (
           <div
             key={option.scope}
             role="option"
             id={`memory-scope-${option.scope}`}
-            aria-selected={isHighlighted && !option.disabled}
+            aria-selected={isSelectableHighlight}
             aria-disabled={option.disabled || undefined}
             className={[
               styles.option,
-              isHighlighted && !option.disabled ? styles.optionHighlighted : '',
+              isSelectableHighlight ? styles.optionHighlighted : '',
               option.disabled ? styles.optionDisabled : '',
             ]
               .filter(Boolean)

@@ -37,6 +37,9 @@ import { Button } from '../common/Button'
 import sharedStyles from '../shared/grid-cell-editors.module.css'
 import { DateTimePicker } from './DateTimePicker'
 import styles from '../shared/BaseGridView.module.css'
+import { isTargetInside } from '../../lib/input-events'
+
+const COMMIT_KEYS: ReadonlySet<string> = new Set(['Tab', 'Enter'])
 
 // ---------------------------------------------------------------------------
 // Component
@@ -153,8 +156,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
         props.onClose(false, false)
         return
       }
-      if (event.key === 'Tab' || event.key === 'Enter') {
-        // Commit and focus grid for navigation
+      if (COMMIT_KEYS.has(event.key)) {
         const fieldName = props.column.key
         const committedValue = isNull ? null : value
         props.onRowChange({ ...props.row, [fieldName]: committedValue }, true)
@@ -187,12 +189,11 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
 
   const handleInputBlur = useCallback(
     (relatedTarget: EventTarget | null) => {
-      if (relatedTarget instanceof Node && containerRef.current?.contains(relatedTarget)) {
+      if (isTargetInside(containerRef.current, relatedTarget)) {
         return
       }
 
-      const pickerPopup = pickerPopupRef.current
-      if (relatedTarget instanceof Node && pickerPopup?.contains(relatedTarget)) {
+      if (isTargetInside(pickerPopupRef.current, relatedTarget)) {
         return
       }
 

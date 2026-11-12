@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { hasTauriApis, isPlaywrightBuild } from '../../lib/tauri-env'
+import { hasTauriApis, hasWindow, isPlaywrightBuild } from '../../lib/tauri-env'
+
+describe('hasWindow', () => {
+  it('is true in the browser environment', () => {
+    expect(hasWindow()).toBe(true)
+  })
+})
 
 describe('tauri-env', () => {
   it('returns false when Tauri internals are missing', () => {

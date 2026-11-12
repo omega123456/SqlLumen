@@ -16,6 +16,7 @@ import {
   type CellEditorBaseProps,
 } from '../grid-cell-editors'
 import type { GridEditorType } from '../grid-column-editor-utils'
+import { isNullish } from '../../../lib/value-checks'
 
 const EDITOR_WIDTH_TO_MARKER_RATIO = 3
 const FALLBACK_VIEWPORT_HEIGHT_PX = 800
@@ -85,6 +86,8 @@ function getEditorTargetWidth(target: Rectangle): number {
   return Math.max(1, Math.floor(target.width))
 }
 
+const TEMPORAL_TYPE_MARKERS = ['DATE', 'TIME', 'YEAR']
+
 function getMarkerCount(
   editorData: GlideEditorCellData,
   columnMeta?: CellEditorBaseProps['columnMeta']
@@ -93,11 +96,8 @@ function getMarkerCount(
   if (editorData.isNullable) count += 1
   if (editorData.foreignKey) count += 1
   const normalizedType = columnMeta?.dataType?.toUpperCase() ?? ''
-  if (
-    normalizedType.includes('DATE') ||
-    normalizedType.includes('TIME') ||
-    normalizedType.includes('YEAR')
-  ) {
+  const hasTemporalPicker = TEMPORAL_TYPE_MARKERS.some((marker) => normalizedType.includes(marker))
+  if (hasTemporalPicker) {
     count += 1
   }
   return count
@@ -138,9 +138,8 @@ function getPreferredJsonOverlayHeight(_: Rectangle): number {
 }
 
 function applyInitialInputValue(value: GridCell, initialInputValue: string | undefined): GridCell {
-  if (initialInputValue == null || value.kind !== GridCellKind.Text) {
-    return value
-  }
+  if (isNullish(initialInputValue)) return value
+  if (value.kind !== GridCellKind.Text) return value
 
   return {
     ...(value as TextCell),
@@ -171,7 +170,11 @@ function overlaySizeStyle(expandedWidth: number, overlayHeight: number | undefin
 }
 
 function restoreValueProps(editorData: NonNullable<ReturnType<typeof extractEditorData>>) {
-  if (!Object.prototype.hasOwnProperty.call(editorData, 'cancelRestoreValue')) return {}
+  const hasCancelRestoreValue = Object.prototype.hasOwnProperty.call(
+    editorData,
+    'cancelRestoreValue'
+  )
+  if (!hasCancelRestoreValue) return {}
   return { cancelRestoreValue: editorData.cancelRestoreValue }
 }
 
@@ -293,7 +296,8 @@ function shouldUseMultilineTextEditor(
   column: GridColumn<unknown>,
   editorType: GridEditorType
 ): boolean {
-  if (editorType !== 'text' && editorType !== 'fk') return false
+  const isFreeTextEditor = editorType === 'text' || editorType === 'fk'
+  if (!isFreeTextEditor) return false
   const dataType = typeof column.dataType === 'string' ? column.dataType : ''
   return isWrappableTextSqlType(dataType)
 }
@@ -303,7 +307,8 @@ export function getGlideEditor(
   editorType: GridEditorType
 ): ProvideEditorCallbackResult<GridCell> | null {
   if (editorType === 'none') return null
-  if (editorType === 'enum' || editorType === 'set') return null
+  if (editorType === 'enum') return null
+  if (editorType === 'set') return null
 
   if (shouldUseMultilineTextEditor(column, editorType)) {
     return {

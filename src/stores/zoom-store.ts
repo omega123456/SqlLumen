@@ -61,7 +61,7 @@ export const useZoomStore = create<ZoomState>()((set, get) => ({
       const saved = await getSetting('appearance.zoom')
       if (saved !== null) {
         const level = Number(saved)
-        if (!isNaN(level) && level > 0) {
+        if (level > 0) {
           applyZoomToDOM(level)
           set({ zoomLevel: level })
           return

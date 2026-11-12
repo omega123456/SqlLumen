@@ -48,7 +48,6 @@ import type {
   FilterCondition,
   ForeignKeyColumnInfo,
   PrimaryKeyInfo,
-  RowEditState,
   TableDataColumnMeta,
 } from '../../types/schema'
 import { columnIndexFromKey } from '../../lib/col-key-utils'
@@ -56,6 +55,8 @@ import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
 import styles from './ResultPanel.module.css'
 import { toErrorMessage } from '../../lib/error-message'
+import { hasModifiedColumns, hasPendingRowChanges } from '../../lib/row-edit-state'
+import { isIndexInBounds } from '../../lib/value-checks'
 
 interface ResultPanelProps {
   tabId: string
@@ -100,11 +101,6 @@ function resolveDisplayStatus(inputs: DisplayStatusInputs): DisplayStatus {
   return inputs.resultStatus
 }
 
-function hasPendingRowEdit(editState: RowEditState | null): boolean {
-  if (editState === null) return false
-  return editState.isNewRow || editState.modifiedColumns.size > 0
-}
-
 function isSelectedRowInView(selectedRowIndex: number | null, viewRowCount: number): boolean {
   if (selectedRowIndex === null) return false
   return selectedRowIndex >= 0 && selectedRowIndex < viewRowCount
@@ -129,17 +125,19 @@ interface CloneAvailability {
 function isCloneBlockedByEditing(result: SingleResultState): boolean {
   const selectedRowIsDraft =
     result.editState?.isNewRow === true && result.editingRowIndex === result.selectedRowIndex
-  return hasPendingRowEdit(result.editState) || selectedRowIsDraft
+  return hasPendingRowChanges(result.editState) || selectedRowIsDraft
 }
 
 function isCloneDisabled(availability: CloneAvailability): boolean {
   const { result, primaryKey } = availability
   if (result.editMode === null) return true
   if (availability.displayStatus !== 'success') return true
-  if (result.isAnalyzingQuery || result.viewMode === 'text') return true
+  if (result.isAnalyzingQuery) return true
+  if (result.viewMode === 'text') return true
   if (isCloneBlockedByEditing(result)) return true
   if (!isSelectedRowInView(result.selectedRowIndex, result.viewRowCount)) return true
-  if (!primaryKey || primaryKey.isUniqueKeyFallback) return true
+  if (!primaryKey) return true
+  if (primaryKey.isUniqueKeyFallback) return true
   return !hasInsertEligibleNonPrimaryColumns(
     availability.editTableColumns,
     result.editBoundColumnIndexMap
@@ -244,7 +242,9 @@ interface ForeignKeyLookupTargetInputs {
 
 function resolveForeignKeyLookupTarget(inputs: ForeignKeyLookupTargetInputs) {
   const { context, editMode, editTable } = inputs
-  if (!inputs.isOpen || !context || !editMode) return null
+  if (!inputs.isOpen) return null
+  if (!context) return null
+  if (!editMode) return null
   return {
     context: context,
     database: context.foreignKey.referencedDatabase || editTable?.database || '',
@@ -452,8 +452,7 @@ export function ResultPanel({
       const currentIndex = selectedRowIndex ?? 0
       const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1
 
-      // Bounds check
-      if (newIndex < 0 || newIndex >= formRowCount) return
+      if (!isIndexInBounds(newIndex, formRowCount)) return
 
       setSelectedRow(tabId, newIndex)
     },
@@ -590,7 +589,8 @@ export function ResultPanel({
   const handleForeignKeyLookup = useCallback(
     async (args: FkLookupArgs) => {
       const resolved = resolveResultForeignKey(args.columnKey)
-      if (!resolved || !editMode) return
+      if (!resolved) return
+      if (!editMode) return
 
       const { sourceColumnName, foreignKey } = resolved
       const rowIndex = rowIndexFromRowData(args.rowData)
@@ -650,10 +650,10 @@ export function ResultPanel({
       const currentEdit = currentActiveResult.editState
       const sameRow = currentEdit && editingRowIndex === rowIndex
 
-      if (
+      const isUnchangedLookupValue =
         selectedValue === foreignKeyLookupContext.currentValue &&
-        (!sameRow || currentEdit.modifiedColumns.size === 0)
-      ) {
+        (!sameRow || !hasModifiedColumns(currentEdit))
+      if (isUnchangedLookupValue) {
         handleRowSelected(rowIndex)
         setForeignKeyLookupOpen(false)
         return
@@ -713,7 +713,8 @@ export function ResultPanel({
     const showTruncation = truncated
     const showWindowFailure = failedWindowRange !== null
     const showViewError = viewError !== null
-    if (!showTruncation && !showWindowFailure && !showViewError) return null
+    const hasAnyBand = showTruncation || showWindowFailure || showViewError
+    if (!hasAnyBand) return null
     return (
       <div className={styles.bandSlot} data-testid="result-band-slot">
         {showTruncation && (

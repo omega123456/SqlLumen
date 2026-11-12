@@ -276,7 +276,8 @@ function getCommandPaletteRecentsValue(): string {
 
 function getSchemaMetadataDelayMs(): number {
   const candidate = readGlobalOverride('__PLAYWRIGHT_SCHEMA_METADATA_FULL_DELAY_MS__')
-  return typeof candidate === 'number' && candidate > 0 ? candidate : 0
+  const hasPositiveDelay = typeof candidate === 'number' && candidate > 0
+  return hasPositiveDelay ? candidate : 0
 }
 
 async function maybeDelaySchemaMetadata(): Promise<void> {

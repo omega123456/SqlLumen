@@ -331,8 +331,8 @@ fn execute_dump(
                     return Ok(());
                 }
 
-                // Get data (only for tables, not views)
-                if input.options.include_data && !is_view {
+                let should_dump_rows = input.options.include_data && !is_view;
+                if should_dump_rows {
                     rt.block_on(async {
                         let data_query = format!(
                             "SELECT * FROM `{}`.`{}`",
@@ -747,14 +747,14 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, column_index: usize) ->
     }
 
     // Float/Double → emit as unquoted numbers
-    if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
+    if crate::mysql::sqlx_type_names::is_sqlx_float_type_name(&type_name) {
         if let Ok(Some(value)) = row.try_get::<Option<f64>, _>(column_index) {
             return SqlDumpValue::Float(value);
         }
     }
 
     // DECIMAL/NUMERIC → emit as unquoted numeric string (preserves precision)
-    if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
+    if crate::mysql::sqlx_type_names::is_sqlx_decimal_type_name(&type_name) {
         if let Ok(Some(text)) = row.try_get::<Option<String>, _>(column_index) {
             return SqlDumpValue::Decimal(text);
         }
@@ -779,11 +779,9 @@ pub fn serialize_dump_value(row: &sqlx::mysql::MySqlRow, column_index: usize) ->
     }
 
     // Binary types → emit as hex literal
-    if type_name.contains("BLOB")
-        || type_name == "BINARY"
-        || type_name == "VARBINARY"
-        || type_name == "GEOMETRY"
-    {
+    let is_hex_dumped_type = crate::mysql::sqlx_type_names::is_sqlx_binary_type_name(&type_name)
+        || type_name == "GEOMETRY";
+    if is_hex_dumped_type {
         if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
             return SqlDumpValue::HexBytes(bytes);
         }

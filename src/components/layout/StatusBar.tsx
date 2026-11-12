@@ -118,6 +118,20 @@ function findTab(tabs: WorkspaceTab[] | undefined, tabId: string): WorkspaceTab 
   return tabs?.find((tab) => tab.id === tabId) ?? null
 }
 
+interface ActiveTabLocation {
+  connectionTabId: string | null
+  tabId: string | null
+}
+
+function findActiveTab(
+  tabsByConnection: Record<string, WorkspaceTab[]>,
+  location: ActiveTabLocation
+): WorkspaceTab | null {
+  if (!location.connectionTabId) return null
+  if (!location.tabId) return null
+  return findTab(tabsByConnection[location.connectionTabId], location.tabId)
+}
+
 function tableDataTabShownIn(activeTab: WorkspaceTab | null): string | null {
   if (!activeTab) return null
   if (activeTab.type === 'table-data') return activeTab.id
@@ -136,13 +150,16 @@ interface IndexingProgress {
 function indexingLabel(indexState: ConnectionIndexState | undefined): string {
   if (!indexState) return 'Preparing index...'
   const hasTableTotals = indexState.tablesTotal > 0
-  if (indexState.phase === 'finalizing' && hasTableTotals) {
+  const isFinalizingTables = indexState.phase === 'finalizing' && hasTableTotals
+  if (isFinalizingTables) {
     return `Finalizing ${indexState.tablesDone}/${indexState.tablesTotal}`
   }
-  if (indexState.phase === 'embedding' && hasTableTotals) {
+  const isEmbeddingTables = indexState.phase === 'embedding' && hasTableTotals
+  if (isEmbeddingTables) {
     return `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
   }
-  if (indexState.phase === 'loading_schema' && indexState.tablesDone > 0) {
+  const isReadingTables = indexState.phase === 'loading_schema' && indexState.tablesDone > 0
+  if (isReadingTables) {
     return `Reading schema (${indexState.tablesDone} tables)...`
   }
   return 'Reading schema...'
@@ -179,16 +196,16 @@ function useActiveWorkspaceTab(connectionTabId: string | null) {
   const activeWorkspaceTabId = useWorkspaceStore((state) =>
     connectionTabId ? (state.activeTabByConnection[connectionTabId] ?? null) : null
   )
-  const activeWorkspaceTabType = useWorkspaceStore((state) => {
-    if (!connectionTabId || !activeWorkspaceTabId) return null
-    return findTab(state.tabsByConnection[connectionTabId], activeWorkspaceTabId)?.type ?? null
-  })
-  const activeTableDataTabId = useWorkspaceStore((state) => {
-    if (!connectionTabId || !activeWorkspaceTabId) return null
-    return tableDataTabShownIn(
-      findTab(state.tabsByConnection[connectionTabId], activeWorkspaceTabId)
-    )
-  })
+  const activeTabLocation: ActiveTabLocation = {
+    connectionTabId: connectionTabId,
+    tabId: activeWorkspaceTabId,
+  }
+  const activeWorkspaceTabType = useWorkspaceStore(
+    (state) => findActiveTab(state.tabsByConnection, activeTabLocation)?.type ?? null
+  )
+  const activeTableDataTabId = useWorkspaceStore((state) =>
+    tableDataTabShownIn(findActiveTab(state.tabsByConnection, activeTabLocation))
+  )
   return {
     activeWorkspaceTabId: activeWorkspaceTabId,
     isQueryEditorTab: activeWorkspaceTabType === 'query-editor',

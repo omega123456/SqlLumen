@@ -164,7 +164,8 @@ export function drawSkeletonCell(
 ): void {
   const width = Math.max(0, rect.width - horizontalPadding * BOTH_SIDES)
   const height = Math.max(0, Math.min(lineHeight, rect.height - SKELETON_VERTICAL_INSET_PX))
-  if (width === 0 || height === 0) return
+  if (width === 0) return
+  if (height === 0) return
   context.save()
   try {
     context.fillStyle = color

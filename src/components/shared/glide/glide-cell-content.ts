@@ -4,6 +4,7 @@ import {
   base64ToBytes,
   blobPlaceholder,
   isBlobEnvelope,
+  isBlobPlaceholderText,
 } from '../../../lib/blob-utils'
 import { logParseFallback } from '../../../lib/app-log-commands'
 import type { BlobEnvelope } from '../../../types/schema'
@@ -38,13 +39,12 @@ let nullTokenCache: { theme: string | null; color: string; mono: string } | null
 
 function nullTokens(): { color: string; mono: string } {
   const theme = document.documentElement.getAttribute('data-theme')
-  if (nullTokenCache === null || nullTokenCache.theme !== theme) {
-    const styles = getComputedStyle(document.documentElement)
-    nullTokenCache = {
-      theme: theme,
-      color: styles.getPropertyValue('--td-null-text-color').trim(),
-      mono: styles.getPropertyValue('--font-mono').trim(),
-    }
+  if (nullTokenCache?.theme === theme) return nullTokenCache
+  const styles = getComputedStyle(document.documentElement)
+  nullTokenCache = {
+    theme: theme,
+    color: styles.getPropertyValue('--td-null-text-color').trim(),
+    mono: styles.getPropertyValue('--font-mono').trim(),
   }
   return nullTokenCache
 }
@@ -73,7 +73,7 @@ export function nullCellThemeOverride(): { baseFontStyle: string; textDark: stri
  */
 export function formatBlobDisplayValue(rawValue: unknown, isBlobColumn = false): string {
   if (typeof rawValue === 'string') {
-    if (rawValue.startsWith('[BLOB')) return rawValue
+    if (isBlobPlaceholderText(rawValue)) return rawValue
     if (isBlobColumn) return blobPlaceholder(base64ByteLength(rawValue))
     return '[BLOB]'
   }
@@ -88,9 +88,10 @@ export function formatBlobDisplayValue(rawValue: unknown, isBlobColumn = false):
  */
 function envelopeByteLength(envelope: BlobEnvelope): number {
   if (envelope.kind === 'empty') return 0
-  if (envelope.kind === 'bytes' && typeof envelope.base64 === 'string') {
+  const base64 = envelope.kind === 'bytes' ? envelope.base64 : undefined
+  if (typeof base64 === 'string') {
     try {
-      return base64ToBytes(envelope.base64).byteLength
+      return base64ToBytes(base64).byteLength
     } catch (error) {
       logParseFallback('[glide-cell-content] envelopeByteLength', error)
       return 0
@@ -130,11 +131,15 @@ function classifyBlobEnvelope(envelope: BlobEnvelope, flags: RowStateFlags): Cla
   }
 }
 
+function isBinaryBuffer(value: unknown): value is Uint8Array | ArrayBuffer {
+  return value instanceof Uint8Array || value instanceof ArrayBuffer
+}
+
 function isBlobValue(rawValue: unknown, isBlobColumn: boolean): boolean {
   if (rawValue == null) return false
   if (isBlobColumn) return true
-  if (rawValue instanceof Uint8Array || rawValue instanceof ArrayBuffer) return true
-  return typeof rawValue === 'string' && rawValue.startsWith('[BLOB')
+  if (isBinaryBuffer(rawValue)) return true
+  return isBlobPlaceholderText(rawValue)
 }
 
 function cellDisplayValue(rawValue: unknown, isBlob: boolean, isBlobColumn: boolean): string {

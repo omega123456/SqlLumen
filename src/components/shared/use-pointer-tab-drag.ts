@@ -118,7 +118,8 @@ export function usePointerTabDrag({
         `[data-testid="${tabTestIdPrefix}${tabId}"]`
       )
       const rect = element?.getBoundingClientRect()
-      if (rect && isPointerInsideRect(pointer, rect)) {
+      const isPointerOverTab = rect !== undefined && isPointerInsideRect(pointer, rect)
+      if (isPointerOverTab) {
         return { tabId: tabId, rect: rect }
       }
     }

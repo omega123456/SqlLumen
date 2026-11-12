@@ -31,8 +31,8 @@ export function buildExecuteTemplate(
     const dataTypeLower = param.dataType.toLowerCase()
     const mode = param.mode.toUpperCase()
 
-    if (routineType === 'function' || mode === '') {
-      // Function params have no mode prefix
+    const hasNoModePrefix = routineType === 'function' || mode === ''
+    if (hasNoModePrefix) {
       return `  /* ${param.name} ${dataTypeLower} */ NULL`
     }
 

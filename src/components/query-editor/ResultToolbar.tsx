@@ -51,6 +51,7 @@ import type { ViewMode, StatusType } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import styles from './ResultToolbar.module.css'
 import { toErrorMessage } from '../../lib/error-message'
+import { hasResultColumns } from '../../lib/query-result-column-utils'
 
 const ERROR_PREVIEW_MAX_LENGTH = 200
 
@@ -167,7 +168,7 @@ interface StatusCounts {
 function resolveStatusCounts(result: ActiveResult, rowCount: RowCountParts): StatusCounts {
   if (result.resultStatus !== 'success')
     return { statusTotalRows: undefined, countLabel: undefined }
-  if (result.columns.length > 0) {
+  if (hasResultColumns(result)) {
     return { statusTotalRows: undefined, countLabel: <ResultRowCount rowCount={rowCount} /> }
   }
   if (result.affectedRows > 0)
@@ -305,7 +306,8 @@ interface DeleteRowsActionGroupProps {
 }
 
 function DeleteRowsActionGroup({ editMode, checkedCount, onDelete }: DeleteRowsActionGroupProps) {
-  if (editMode === null || checkedCount === 0) return null
+  if (editMode === null) return null
+  if (checkedCount === 0) return null
   const formattedCount = formatCount(checkedCount)
   return (
     <div className={styles.editActionsGroup} data-testid="result-delete-actions-group">
@@ -516,7 +518,8 @@ export function ResultToolbar({
   const handleConfirmDelete = useCallback(() => {
     setShowDeleteConfirm(false)
     // The blocked tier (> 10,000 rows) only explains; nothing is deleted.
-    if (checkedCount === 0 || deleteCopy.blocked) return
+    if (checkedCount === 0) return
+    if (deleteCopy.blocked) return
     // Success / error toasts are surfaced by the store action.
     void deleteResultRows(tabId)
   }, [checkedCount, deleteCopy.blocked, deleteResultRows, tabId])

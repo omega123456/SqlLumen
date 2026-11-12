@@ -76,20 +76,28 @@ function matchWildcardSegments(
   return indices
 }
 
+function isExcludedByFilter<TValue>(
+  filterValue: TValue | null | undefined,
+  value: TValue
+): boolean {
+  if (!filterValue) return false
+  return value !== filterValue
+}
+
 function matchesFilters(object: SearchableObject, filters?: PaletteSearchFilters): boolean {
   if (!filters) {
     return true
   }
 
-  if (filters.database && object.database !== filters.database) {
+  if (isExcludedByFilter(filters.database, object.database)) {
     return false
   }
 
-  if (filters.objectType && object.objectType !== filters.objectType) {
+  if (isExcludedByFilter(filters.objectType, object.objectType)) {
     return false
   }
 
-  if (filters.table && object.table !== filters.table) {
+  if (isExcludedByFilter(filters.table, object.table)) {
     return false
   }
 
@@ -291,9 +299,8 @@ export function getRecentPaletteResults(
     }
 
     const object = objectsByKey.get(key)
-    if (!object || !matchesFilters(object, options.filters)) {
-      continue
-    }
+    if (!object) continue
+    if (!matchesFilters(object, options.filters)) continue
 
     seen.add(key)
     results.push({

@@ -65,10 +65,11 @@ export function formatRowCountParts(input: RowCountInput): RowCountParts {
   if (input.truncated) {
     return { count: count, segment: 'truncated', segmentKind: 'truncated' }
   }
-  if (input.autoLimitApplied && input.appliedRowLimit != null) {
+  const appliedRowLimit = input.autoLimitApplied ? input.appliedRowLimit : null
+  if (appliedRowLimit != null) {
     return {
       count: count,
-      segment: `${formatCount(input.appliedRowLimit)}-row limit applied`,
+      segment: `${formatCount(appliedRowLimit)}-row limit applied`,
       segmentKind: 'autoLimit',
     }
   }

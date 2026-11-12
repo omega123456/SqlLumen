@@ -1,4 +1,11 @@
 import { logFrontend } from './app-log-commands'
+import { hasWindow } from './tauri-env'
+
+const TAURI_WEBVIEW_MARKER = '_WRY_INITIALIZED_'
+const EDITABLE_CONTENTEDITABLE_VALUES: ReadonlySet<string | null> = new Set([
+  'true',
+  'plaintext-only',
+])
 
 /** Input types that support text editing context actions (cut/copy/paste). */
 const EDITABLE_INPUT_TYPES = new Set([
@@ -49,13 +56,19 @@ export function getContextMenuPortalRoot(anchor: Element | null): HTMLElement {
   if (typeof document === 'undefined') {
     throw new Error('document is not available')
   }
-  if (anchor) {
-    const dialog = anchor.closest('dialog')
-    if (dialog instanceof HTMLDialogElement && dialog.open) {
-      return dialog
-    }
+  const dialog = anchor?.closest('dialog') ?? null
+  if (isOpenDialog(dialog)) {
+    return dialog
   }
   return document.body
+}
+
+function isOpenDialog(element: Element | null): element is HTMLDialogElement {
+  return element instanceof HTMLDialogElement && element.open
+}
+
+function isDocumentBody(element: HTMLElement): boolean {
+  return element === element.ownerDocument.body
 }
 
 /**
@@ -69,7 +82,7 @@ export function positionContextMenuInPortal(
   menuHeight: number,
   margin = 4
 ): { x: number; y: number } {
-  if (portalRoot === portalRoot.ownerDocument.body) {
+  if (isDocumentBody(portalRoot)) {
     return clampContextMenuPosition(
       clientX,
       clientY,
@@ -100,7 +113,21 @@ export function positionContextMenuInPortal(
  * differently for top-layer dialog descendants than browsers do.
  */
 export function getContextMenuPositionMode(portalRoot: HTMLElement): 'fixed' | 'absolute' {
-  return portalRoot === portalRoot.ownerDocument.body ? 'fixed' : 'absolute'
+  return isDocumentBody(portalRoot) ? 'fixed' : 'absolute'
+}
+
+function isEditableContentHost(element: Element | null): element is HTMLElement {
+  return element instanceof HTMLElement && isContentEditableField(element)
+}
+
+export function isTextControl(
+  element: Element | null
+): element is HTMLInputElement | HTMLTextAreaElement {
+  return element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+}
+
+function isTauriWebview(): boolean {
+  return hasWindow() && TAURI_WEBVIEW_MARKER in window
 }
 
 function isContentEditableField(element: HTMLElement): boolean {
@@ -108,7 +135,7 @@ function isContentEditableField(element: HTMLElement): boolean {
   if (raw === 'false') {
     return false
   }
-  if (raw === 'true' || raw === 'plaintext-only') {
+  if (EDITABLE_CONTENTEDITABLE_VALUES.has(raw)) {
     return true
   }
   if (element.closest('[contenteditable="false"]')) {
@@ -140,7 +167,7 @@ export function resolveEditableFieldFromTarget(target: EventTarget | null): HTML
   }
 
   const contentHost = startElement.closest('[contenteditable]')
-  if (contentHost instanceof HTMLElement && isContentEditableField(contentHost)) {
+  if (isEditableContentHost(contentHost)) {
     return contentHost
   }
 
@@ -148,7 +175,7 @@ export function resolveEditableFieldFromTarget(target: EventTarget | null): HTML
 }
 
 function startElementForTarget(target: EventTarget | null): Element | null {
-  if (!target || !(target instanceof Node)) {
+  if (!(target instanceof Node)) {
     return null
   }
   if (target.nodeType === Node.TEXT_NODE) {
@@ -178,22 +205,18 @@ function editableTextControl(control: Element): HTMLElement | null {
  * True when the target is inside a disabled text control (suppress native menu without opening group menus, etc.).
  */
 export function isInsideDisabledTextControl(target: EventTarget | null): boolean {
-  if (!target || !(target instanceof Element)) {
+  if (!(target instanceof Element)) {
     return false
   }
   const element = target.closest('input, textarea')
-  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+  if (isTextControl(element)) {
     return element.disabled
   }
   return false
 }
 
 export async function writeClipboardText(text: string): Promise<void> {
-  // Prefer Tauri clipboard plugin when running inside the Tauri webview
-  if (
-    typeof window !== 'undefined' &&
-    '_WRY_INITIALIZED_' in window /* present in Tauri v2 webview */
-  ) {
+  if (isTauriWebview()) {
     try {
       const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
       await writeText(text)

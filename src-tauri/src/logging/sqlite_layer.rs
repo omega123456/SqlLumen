@@ -115,7 +115,9 @@ fn run_writer_loop(write_conn: &mut rusqlite::Connection, receiver: Receiver<New
                 buffer.push(entry);
                 drain_receiver(&receiver, &mut buffer);
 
-                if buffer.len() >= BATCH_SIZE || last_flush.elapsed() >= FLUSH_INTERVAL {
+                let should_flush =
+                    buffer.len() >= BATCH_SIZE || last_flush.elapsed() >= FLUSH_INTERVAL;
+                if should_flush {
                     flush_buffer(write_conn, &mut buffer);
                     last_flush = Instant::now();
                 }

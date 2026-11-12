@@ -57,7 +57,8 @@ export interface WorkspaceTabsProps {
 }
 
 function pinnedTabIdOf(activeTab: WorkspaceTab | null): string | null {
-  if (!activeTab || !isPinnedWorkspaceTab(activeTab)) return null
+  if (!activeTab) return null
+  if (!isPinnedWorkspaceTab(activeTab)) return null
   return activeTab.id
 }
 
@@ -65,7 +66,8 @@ function unpinnedStackKeyOf(
   activeTab: WorkspaceTab | null,
   options: WorkspaceTabStackResolutionOptions
 ): WorkspaceTabStackKey | null {
-  if (!activeTab || isPinnedWorkspaceTab(activeTab)) return null
+  if (!activeTab) return null
+  if (isPinnedWorkspaceTab(activeTab)) return null
   return getWorkspaceStackKeyForTab(activeTab, options)
 }
 
@@ -131,7 +133,8 @@ export function WorkspaceTabs({
   })
   // While a pinned tab is selected, remember the last group so the rail can hand focus back to it.
   const [lastStackKey, setLastStackKey] = useState(activeStackKey)
-  if (activeStackKey && activeStackKey !== lastStackKey) {
+  const hasActiveStackChanged = activeStackKey !== lastStackKey
+  if (activeStackKey && hasActiveStackChanged) {
     setLastStackKey(activeStackKey)
   }
   const shownStackKey = resolveShownStackKey({

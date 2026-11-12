@@ -23,6 +23,7 @@ import { useFkLookupFlow } from './use-fk-lookup-flow'
 import { reportInvalidTemporalValue } from './row-save-feedback'
 import {
   useTableDataStore,
+  isEditingRowKey,
   isSameRowKey,
   findRowIndexByKey as findStoreRowIndexByKey,
   getRowKeyFromData,
@@ -44,6 +45,9 @@ import type {
 } from '../../types/shared-data-view'
 import type { TableDataColumnMeta } from '../../types/schema'
 import { buildColumnDescriptors } from './table-data-grid-columns'
+import { isUnchangedForeignKeySelection } from '../../lib/foreign-key-utils'
+import { nextSelectionResetState } from '../shared/selection-reset-state'
+import { isObjectRecord } from '../../lib/value-checks'
 
 const FOREIGN_KEY_SHORTCUT_COOLDOWN_MS = 250
 
@@ -125,12 +129,13 @@ function readGridTabView(tabState: TableDataTabState | undefined): TableDataGrid
 }
 
 function draftTempIdOf(rowKey: RowKey | null): unknown {
-  if (!rowKey || !('__tempId' in rowKey)) return null
+  if (!rowKey) return null
+  if (!('__tempId' in rowKey)) return null
   return rowKey.__tempId
 }
 
 function editingRowClasses(editState: TableEditState, rowKey: RowKey): string[] {
-  if (!editState || !isSameRowKey(rowKey, editState.rowKey)) return []
+  if (!isEditingRowKey(editState, rowKey)) return []
   if (editState.isNewRow) return ['grid-editing-row', 'grid-new-row']
   return ['grid-editing-row']
 }
@@ -172,7 +177,8 @@ function resolveRestoreRowIndex(
   fallbackRowIndex: number
 ): number {
   const editState = currentState?.editState
-  if (!currentState || !editState) return fallbackRowIndex
+  if (!currentState) return fallbackRowIndex
+  if (!editState) return fallbackRowIndex
   if ('__tempId' in editState.rowKey) return Math.max(0, currentState.rows.length - 1)
   const matchedRowIndex = findStoreRowIndexByKey(
     currentState.rows,
@@ -253,7 +259,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       return
     }
     const isDraftSelected = draftTempIdOf(selectedRowKey) === editState.tempId
-    if (!isDraftSelected || rows.length === 0) return
+    if (!isDraftSelected) return
+    if (rows.length === 0) return
     if (autoSelectedDraftTempIdRef.current === editState.tempId) return
     const draftRowIndex = rows.length - 1
     autoSelectedDraftTempIdRef.current = editState.tempId ?? null
@@ -303,11 +310,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const checkedRowCount = view.checkedRowCount
   const [selectionResetState, setSelectionResetState] = useState({ resetKey: 0, prevCount: 0 })
   if (selectionResetState.prevCount !== checkedRowCount) {
-    setSelectionResetState((current) => ({
-      resetKey:
-        current.prevCount > 0 && checkedRowCount === 0 ? current.resetKey + 1 : current.resetKey,
-      prevCount: checkedRowCount,
-    }))
+    setSelectionResetState((current) => nextSelectionResetState(current, checkedRowCount))
   }
   const resetSelectionKey = selectionResetState.resetKey
 
@@ -412,8 +415,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const rowKeyGetter = useCallback(
     (row: TableDataRow) => {
       if (row.__tempId) return String(row.__tempId)
-      if (row.__editingRowKey && typeof row.__editingRowKey === 'object') {
-        return JSON.stringify(Object.values(row.__editingRowKey as Record<string, unknown>))
+      const editingRowKey = row.__editingRowKey
+      if (isObjectRecord(editingRowKey)) {
+        return JSON.stringify(Object.values(editingRowKey))
       }
       if (primaryKeyColumns.length > 0) {
         return JSON.stringify(primaryKeyColumns.map((columnName) => row[columnName]))
@@ -453,7 +457,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       const rowKey = getRowKey(row, primaryKeyColumns)
       const classes = editingRowClasses(editState, rowKey)
 
-      if (selectedRowKey && isSameRowKey(rowKey, selectedRowKey)) {
+      if (isSameRowKey(rowKey, selectedRowKey)) {
         classes.push('grid-row-precision-selected')
       }
 
@@ -549,8 +553,8 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // ---------------------------------------------------------------------------
   const handleSortChange = useCallback(
     (column: string | null, direction: 'ASC' | 'DESC' | null) => {
-      if (!column || !direction) {
-        // Sort was cleared
+      const isSortCleared = !column || !direction
+      if (isSortCleared) {
         if (sort?.column) {
           requestNavigationAction(tabId, () => {
             sortByColumn(tabId, sort.column, null)
@@ -824,7 +828,9 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   // ---------------------------------------------------------------------------
   const handleForeignKeyLookup = useCallback(
     async (args: FkLookupArgs) => {
-      if (args.source === 'grid-pointer' && Date.now() < ignoreForeignKeyShortcutUntilRef.current) {
+      const isSuppressedPointerLookup =
+        args.source === 'grid-pointer' && Date.now() < ignoreForeignKeyShortcutUntilRef.current
+      if (isSuppressedPointerLookup) {
         return
       }
 
@@ -914,17 +920,14 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       ? findRowIndexByKey(rowData, selectedRowKey, primaryKeyColumns)
       : -1
     const index = descriptorColumns.findIndex((column) => column.key === selected.columnKey)
-    return rowIndex >= 0 && index >= 0 ? { rowIdx: rowIndex, idx: index } : null
+    const isCellVisible = rowIndex >= 0 && index >= 0
+    return isCellVisible ? { rowIdx: rowIndex, idx: index } : null
   }, [descriptorColumns, primaryKeyColumns, rowData, selectedRowKey, tabState?.selectedCell])
 
   useLayoutEffect(() => {
-    if (
-      isForeignKeyLookupOpen ||
-      !restoreGridFocusAfterForeignKeyCloseRef.current ||
-      !selectedCellPosition
-    ) {
-      return
-    }
+    if (isForeignKeyLookupOpen) return
+    if (!restoreGridFocusAfterForeignKeyCloseRef.current) return
+    if (!selectedCellPosition) return
 
     restoreGridFocusAfterForeignKeyCloseRef.current = false
     gridRef.current?.selectCell(selectedCellPosition, {
@@ -950,23 +953,20 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       // Extract row key using the existing getRowKey helper + pkColumns
       const rowKey = getRowKey(foreignKeyRowData, primaryKeyColumns)
 
-      // If the selected value is the same as the current cell value AND
-      // there's no existing edit with modifications on this row, skip editing
-      const currentCellValue = foreignKeyLookupTarget.currentValue
       const currentEditState = useTableDataStore.getState().tabs[tabId]?.editState
-      const isAlreadyEditing = currentEditState && isSameRowKey(currentEditState.rowKey, rowKey)
-
-      if (
-        selectedValue === currentCellValue &&
-        (!isAlreadyEditing || currentEditState.modifiedColumns.size === 0)
-      ) {
+      const isAlreadyEditing = isEditingRowKey(currentEditState, rowKey)
+      const isUnchangedSelection = isUnchangedForeignKeySelection({
+        selectedValue: selectedValue,
+        currentValue: foreignKeyLookupTarget.currentValue,
+        rowEditState: isAlreadyEditing ? currentEditState : null,
+      })
+      if (isUnchangedSelection) {
         setSelectedRow(tabId, rowKey)
         closeForeignKeyLookup()
         return
       }
 
-      // Check if this row is already being edited; if not, start editing
-      if (!currentEditState || !isSameRowKey(currentEditState.rowKey, rowKey)) {
+      if (!isAlreadyEditing) {
         ensureRowEditingStarted(rowKey, foreignKeyRowData)
       }
 

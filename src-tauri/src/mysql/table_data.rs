@@ -8,7 +8,10 @@ use crate::mysql::cache_status::{cache_status_json, CacheStatus};
 use crate::mysql::metadata_cache::MetadataCache;
 use crate::mysql::schema_queries::safe_identifier;
 #[cfg(not(coverage))]
-use crate::mysql::sqlx_type_names::is_sqlx_integer_type_name;
+use crate::mysql::sqlx_type_names::{
+    is_sqlx_binary_type_name, is_sqlx_decimal_type_name, is_sqlx_float_type_name,
+    is_sqlx_integer_type_name,
+};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -353,6 +356,8 @@ enum ColumnFilterKind {
     NonText,
 }
 
+const TEXT_LIKE_TYPE_FRAGMENTS: [&str; 4] = ["CHAR", "TEXT", "ENUM", "SET"];
+
 fn classify_column_filter_kind(data_type: &str) -> ColumnFilterKind {
     let upper = data_type.to_uppercase();
 
@@ -360,11 +365,10 @@ fn classify_column_filter_kind(data_type: &str) -> ColumnFilterKind {
         return ColumnFilterKind::NonText;
     }
 
-    if upper.contains("CHAR")
-        || upper.contains("TEXT")
-        || upper.contains("ENUM")
-        || upper.contains("SET")
-    {
+    let is_text_like = TEXT_LIKE_TYPE_FRAGMENTS
+        .iter()
+        .any(|fragment| upper.contains(fragment));
+    if is_text_like {
         return ColumnFilterKind::TextLike;
     }
 
@@ -497,7 +501,11 @@ pub fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
     let mut value = bytes as f64 / 1024.0;
     let mut unit_index = 0;
-    while value >= 1024.0 && unit_index < UNITS.len() - 1 {
+    let last_unit_index = UNITS.len() - 1;
+    while unit_index < last_unit_index {
+        if value < 1024.0 {
+            break;
+        }
         value /= 1024.0;
         unit_index += 1;
     }
@@ -595,7 +603,8 @@ fn parse_quoted_type_values(column_type: &str, type_name: &str) -> Option<Vec<St
     let trimmed = column_type.trim();
     let lower = trimmed.to_ascii_lowercase();
     let prefix = format!("{type_name}(");
-    if !lower.starts_with(&prefix) || !trimmed.ends_with(')') {
+    let is_parenthesised_type = lower.starts_with(&prefix) && trimmed.ends_with(')');
+    if !is_parenthesised_type {
         return None;
     }
 
@@ -782,7 +791,7 @@ fn serialize_table_value(
     }
 
     // Float types (FLOAT, DOUBLE — NOT DECIMAL/NUMERIC)
-    if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
+    if is_sqlx_float_type_name(&type_name) {
         if let Ok(value) = row.try_get::<Option<f64>, _>(column_index) {
             return value
                 .map(|float| {
@@ -795,7 +804,7 @@ fn serialize_table_value(
     }
 
     // DECIMAL/NUMERIC: string to preserve precision
-    if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
+    if is_sqlx_decimal_type_name(&type_name) {
         if let Ok(value) = row.try_get::<Option<String>, _>(column_index) {
             return value
                 .map(serde_json::Value::String)
@@ -892,7 +901,7 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> s
     }
 
     // Binary types → base64
-    if type_name.contains("BLOB") || type_name == "BINARY" || type_name == "VARBINARY" {
+    if is_sqlx_binary_type_name(&type_name) {
         if let Ok(Some(bytes)) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
             return serde_json::Value::String(BASE64_STANDARD.encode(&bytes));
         }
@@ -909,7 +918,7 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> s
     }
 
     // Float types
-    if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
+    if is_sqlx_float_type_name(&type_name) {
         if let Ok(Some(value)) = row.try_get::<Option<f64>, _>(column_index) {
             return serde_json::Number::from_f64(value)
                 .map(serde_json::Value::Number)
@@ -918,7 +927,7 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, column_index: usize) -> s
     }
 
     // DECIMAL/NUMERIC
-    if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
+    if is_sqlx_decimal_type_name(&type_name) {
         if let Ok(Some(value)) = row.try_get::<Option<String>, _>(column_index) {
             return serde_json::Value::String(value);
         }

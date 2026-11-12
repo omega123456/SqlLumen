@@ -4,6 +4,8 @@ type JsonTokenKind = 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctua
 
 type JsonTokenClassNameMap = Partial<Record<JsonTokenKind, string>>
 
+const JSON_BOOLEAN_TOKENS: ReadonlySet<string> = new Set(['true', 'false'])
+
 export class JsonSyntaxHighlighter {
   private static readonly TOKEN_REGEX =
     /("(?:[^"\\]|\\.)*")(?=\s*:)|("(?:[^"\\]|\\.)*")|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b|[{}[\]:,]/g
@@ -17,7 +19,7 @@ export class JsonSyntaxHighlighter {
     key: string,
     classNames: JsonTokenClassNameMap = {}
   ): ReactNode {
-    if (token === 'true' || token === 'false') {
+    if (JSON_BOOLEAN_TOKENS.has(token)) {
       return (
         <span
           key={key}

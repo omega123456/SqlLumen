@@ -14,7 +14,8 @@ import { IconButton } from '../common/IconButton'
 import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { MemoryScopePicker } from './MemoryScopePicker'
 import type { SlashCommand } from '../../lib/slash-commands'
-import type { MemoryScope } from '../../lib/ai-memory-commands'
+import { isMemoryScope, type MemoryScope } from '../../lib/ai-memory-commands'
+import { isPlainEnterKey } from '../../lib/input-events'
 import styles from './AiChatInput.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
@@ -40,7 +41,7 @@ function resolveDropdownKeyAction(
   if (event.key === 'Escape') return 'close'
   if (highlightedIndex < 0) return null
   if (event.key === 'Tab') return 'select'
-  if (event.key === 'Enter' && !event.shiftKey) return 'select'
+  if (isPlainEnterKey(event)) return 'select'
   return null
 }
 
@@ -208,14 +209,9 @@ export function AiChatInput({
   const attachedContext = useAiStore((state) => state.tabs[tabId]?.attachedContext ?? null)
 
   const readiness = useAiChatReadiness()
-  // Saved default `/remember` scope, used to seed the scope-picker highlight.
-  // Only a concrete level is passed through; `'ask'` (or anything else) lets
-  // the picker fall back to Connection.
   const defaultRememberScope = useSettingsStore((state) => {
     const value = state.pendingChanges['ai.rememberScope'] ?? state.settings['ai.rememberScope']
-    return value === 'connection' || value === 'group' || value === 'global'
-      ? (value as MemoryScope)
-      : undefined
+    return isMemoryScope(value) ? value : undefined
   })
 
   const hasMessage = value.trim().length > 0
@@ -320,9 +316,8 @@ export function AiChatInput({
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
-    if (!trimmed || !canSend) {
-      return
-    }
+    if (!trimmed) return
+    if (!canSend) return
 
     // Check for slash command
     const slashMatch = trimmed.match(/^\/(\S+)\s*(.*)$/)
@@ -347,7 +342,8 @@ export function AiChatInput({
             })
             return
           }
-          if (resolveRememberScope() === 'ask') {
+          const shouldAskForScope = resolveRememberScope() === 'ask'
+          if (shouldAskForScope) {
             setPendingRememberContent(args)
             return
           }
@@ -384,9 +380,8 @@ export function AiChatInput({
     (scope: MemoryScope) => {
       const content = pendingRememberContent
       setPendingRememberContent(null)
-      if (!content || !connectionId) {
-        return
-      }
+      if (!content) return
+      if (!connectionId) return
       // executeRemember toasts success/failure itself.
       executeRemember(content, connectionId, scope)
         .then(() => {
@@ -441,7 +436,7 @@ export function AiChatInput({
         runDropdownKeyAction(dropdownAction)
         return
       }
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (isPlainEnterKey(event)) {
         event.preventDefault()
         handleSend()
       }

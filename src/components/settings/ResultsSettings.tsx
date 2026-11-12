@@ -42,7 +42,8 @@ const ERROR_CAPTION_STYLE = { ...CAPTION_STYLE, color: 'var(--error)' } as const
 function parseMaxRows(value: string): number | null {
   if (!/^\d+$/.test(value.trim())) return null
   const parsed = Number(value.trim())
-  return parsed >= RESULTS_MAX_ROWS_MIN && parsed <= RESULTS_MAX_ROWS_MAX ? parsed : null
+  const isWithinRowLimits = parsed >= RESULTS_MAX_ROWS_MIN && parsed <= RESULTS_MAX_ROWS_MAX
+  return isWithinRowLimits ? parsed : null
 }
 
 export function ResultsSettings() {

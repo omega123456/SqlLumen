@@ -67,11 +67,13 @@ function expandAiPanel(panel: PanelImperativeHandle | null): void {
 function syncAiPanelOpenState(tabId: string, collapsed: boolean): void {
   const aiState = useAiStore.getState()
   const storeOpen = aiState.tabs[tabId]?.isPanelOpen ?? false
-  if (collapsed && storeOpen) {
+  const shouldClosePanel = collapsed && storeOpen
+  const shouldOpenPanel = !collapsed && !storeOpen
+  if (shouldClosePanel) {
     aiState.closePanel(tabId)
     return
   }
-  if (!collapsed && !storeOpen) {
+  if (shouldOpenPanel) {
     aiState.openPanel(tabId)
   }
 }

@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo } from 'react'
-import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
+import { useTableDataStore, isEditingRowKey, isSameRowKey } from '../../stores/table-data-store'
 import { useIsConnectionReadOnly } from '../../stores/connection-store'
 import { FALLBACK_ROW_LIMIT } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -30,6 +30,7 @@ import type {
   TableDataColumnMeta,
   TableDataTabState,
 } from '../../types/schema'
+import { isUnchangedForeignKeySelection } from '../../lib/foreign-key-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,7 +62,8 @@ function rowToValues(row: unknown[], columns: TableDataColumnMeta[]): Record<str
 }
 
 function escapeForAttributeSelector(value: string): string {
-  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+  const canUseCssEscape = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+  if (canUseCssEscape) {
     return CSS.escape(value)
   }
   return value.replace(/(["\\])/g, '\\$1')
@@ -135,7 +137,8 @@ interface SelectedRowLookup {
 
 function findSelectedLocalIndex(lookup: SelectedRowLookup): number {
   const { selectedRowKey, rows } = lookup
-  if (!selectedRowKey || rows.length === 0) return 0
+  if (!selectedRowKey) return 0
+  if (rows.length === 0) return 0
   // Handle temp rows (new row insert): selectedRowKey = { __tempId: 'temp-...' }
   // New rows are always appended at the end of the rows array
   if ('__tempId' in selectedRowKey) {
@@ -334,14 +337,15 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   // Current row key (for edit-state matching)
   const currentRowKey = useMemo(() => {
     if (storeEditState?.isNewRow) return storeEditState.rowKey
-    if (!currentRow || primaryKeyColumns.length === 0) return null
+    if (!currentRow) return null
+    if (primaryKeyColumns.length === 0) return null
     return getRowKeyFromArray(currentRow, columns, primaryKeyColumns)
   }, [storeEditState, currentRow, columns, primaryKeyColumns])
 
   // Is the current row being edited?
   const isEditingCurrentRow = useMemo(() => {
-    if (!storeEditState || !currentRowKey) return false
-    return isSameRowKey(storeEditState.rowKey, currentRowKey)
+    if (!currentRowKey) return false
+    return isEditingRowKey(storeEditState, currentRowKey)
   }, [storeEditState, currentRowKey])
 
   const currentRowData = useMemo(() => {
@@ -352,7 +356,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   // --- Adapt store RowEditState → shared RowEditState ---
   const sharedEditState: SharedRowEditState | null = useMemo(() => {
-    if (!storeEditState || !isEditingCurrentRow) return null
+    if (!storeEditState) return null
+    if (!isEditingCurrentRow) return null
     return {
       rowKey: JSON.stringify(storeEditState.rowKey),
       currentValues: storeEditState.currentValues,
@@ -367,9 +372,11 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   // --- Navigation handlers ---
   const navigateRelative = useCallback(
     (direction: -1 | 1) => {
-      if (!tabState || isLoading) return
+      if (!tabState) return
+      if (isLoading) return
 
-      if (direction < 0 && isAtFirstRecord(currentPage, localIndex)) return
+      const isBackwardFromFirstRecord = direction < 0 && isAtFirstRecord(currentPage, localIndex)
+      if (isBackwardFromFirstRecord) return
 
       const action = () =>
         navigateToRelativeRow({
@@ -408,8 +415,10 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   /** Shared logic: if the current row is editable and not already being edited, start editing. */
   const ensureEditingCurrentRow = useCallback(() => {
-    if (!isEditable || !currentRow || !currentRowKey) return
-    if (storeEditState && isSameRowKey(storeEditState.rowKey, currentRowKey)) return
+    if (!isEditable) return
+    if (!currentRow) return
+    if (!currentRowKey) return
+    if (isEditingRowKey(storeEditState, currentRowKey)) return
     const values = rowToValues(currentRow, columns)
     startEditing(tabId, currentRowKey, values)
   }, [isEditable, currentRow, currentRowKey, storeEditState, columns, startEditing, tabId])
@@ -420,8 +429,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   const onUpdateCell = useCallback(
     (columnKey: string, value: unknown) => {
-      if (!currentRow || !currentRowKey) return
-      // Ensure editing is started before updating
+      if (!currentRow) return
+      if (!currentRowKey) return
       ensureEditingCurrentRow()
       updateCellValue(tabId, columnKey, value)
     },
@@ -448,7 +457,9 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
       if (!isActive) return
       if (!currentRowKey) return
 
-      if (storeEditState && !isSameRowKey(storeEditState.rowKey, currentRowKey)) {
+      const isEditingAnotherRow =
+        Boolean(storeEditState) && !isEditingRowKey(storeEditState, currentRowKey)
+      if (isEditingAnotherRow) {
         await saveCurrentRow(tabId)
         const refreshedState = useTableDataStore.getState().tabs[tabId]
         if (refreshedState?.saveError) return
@@ -480,15 +491,18 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
 
   const onForeignKeyApply = useCallback(
     (selectedValue: unknown) => {
-      if (!foreignKeyLookupTarget || !currentRowKey || !currentRowData) return
+      if (!foreignKeyLookupTarget) return
+      if (!currentRowKey) return
+      if (!currentRowData) return
 
       const currentEdit = useTableDataStore.getState().tabs[tabId]?.editState
-      const alreadyEditing = currentEdit && isSameRowKey(currentEdit.rowKey, currentRowKey)
-
-      if (
-        selectedValue === foreignKeyLookupTarget.currentValue &&
-        (!alreadyEditing || currentEdit.modifiedColumns.size === 0)
-      ) {
+      const alreadyEditing = isEditingRowKey(currentEdit, currentRowKey)
+      const isUnchangedSelection = isUnchangedForeignKeySelection({
+        selectedValue: selectedValue,
+        currentValue: foreignKeyLookupTarget.currentValue,
+        rowEditState: alreadyEditing ? currentEdit : null,
+      })
+      if (isUnchangedSelection) {
         closeForeignKeyLookup()
         return
       }
@@ -529,7 +543,8 @@ export function TableDataFormView({ tabId, isView, isActive = true }: TableDataF
   const { openBlobViewer } = blobViewer
   const onBlobView = useCallback(
     (column: GridColumnDescriptor, rowData: Record<string, unknown> | null) => {
-      if (!rowData || !canResolveBlobPrimaryKey) return
+      if (!rowData) return
+      if (!canResolveBlobPrimaryKey) return
       openBlobViewer(column.key, rowData)
     },
     [canResolveBlobPrimaryKey, openBlobViewer]

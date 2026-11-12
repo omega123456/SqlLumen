@@ -72,7 +72,7 @@ function removeAllHunkViewZones(
   }
 
   const origEd = diffEditor.getOriginalEditor?.()
-  if (origEd && typeof origEd.changeViewZones === 'function') {
+  if (supportsViewZones(origEd)) {
     origEd.changeViewZones((accessor) => {
       for (const id of zoneIdsRef.current.orig) {
         accessor.removeZone(id)
@@ -81,7 +81,7 @@ function removeAllHunkViewZones(
   }
 
   const modifiedEditor = diffEditor.getModifiedEditor?.()
-  if (modifiedEditor && typeof modifiedEditor.changeViewZones === 'function') {
+  if (supportsViewZones(modifiedEditor)) {
     modifiedEditor.changeViewZones((accessor) => {
       for (const id of zoneIdsRef.current.mod) {
         accessor.removeZone(id)
@@ -97,6 +97,10 @@ type CodeEditor = monaco.editor.ICodeEditor
 interface EligibleHunk {
   index: number
   change: LineChange
+}
+
+function isLineInModel(lineNumber: number, model: monaco.editor.ITextModel): boolean {
+  return lineNumber >= 1 && lineNumber <= model.getLineCount()
 }
 
 function supportsViewZones(editor: CodeEditor | undefined): editor is CodeEditor {
@@ -179,7 +183,7 @@ function createAcceptHunkContentWidget(options: {
     getDomNode: () => dom,
     getPosition: (): monaco.editor.IContentWidgetPosition | null => {
       const lineNumber = change.modifiedStartLineNumber
-      if (lineNumber < 1 || lineNumber > modifiedModel.getLineCount()) {
+      if (!isLineInModel(lineNumber, modifiedModel)) {
         return null
       }
       return {
@@ -253,7 +257,7 @@ export function DiffOverlay({
   useEffect(() => {
     return () => {
       const diffEditor = diffEditorRef.current
-      if (diffEditor && typeof diffEditor.getModifiedEditor === 'function') {
+      if (typeof diffEditor?.getModifiedEditor === 'function') {
         const modifiedEditor = diffEditor.getModifiedEditor()
         if (typeof modifiedEditor.removeContentWidget === 'function') {
           for (const widget of acceptWidgetsRef.current) {
@@ -278,9 +282,8 @@ export function DiffOverlay({
   const handleAcceptHunk = useCallback((change: LineChange) => {
     const origModel = originalModelRef.current
     const modifiedModel = modifiedModelRef.current
-    if (!origModel || !modifiedModel) {
-      return
-    }
+    if (!origModel) return
+    if (!modifiedModel) return
 
     applyHunkToOriginal(change, origModel, modifiedModel)
     setHunksAccepted(true)
@@ -288,9 +291,7 @@ export function DiffOverlay({
     // After editing the original model, the diff editor will recompute.
     // Force-read line changes to get immediate UI feedback.
     const editor = diffEditorRef.current
-    if (editor && typeof editor.getLineChanges === 'function') {
-      // The diff recomputation may be async; the onDidUpdateDiff listener
-      // will capture the update, but also set synchronously if available.
+    if (typeof editor?.getLineChanges === 'function') {
       setLineChanges((editor.getLineChanges() as LineChange[] | null) ?? [])
     }
   }, [])
@@ -302,15 +303,13 @@ export function DiffOverlay({
   useEffect(() => {
     const diffEditor = diffEditorRef.current
     const modifiedModel = modifiedModelRef.current
-    if (!diffEditor || !modifiedModel) {
-      return
-    }
+    if (!diffEditor) return
+    if (!modifiedModel) return
 
     const origEd = diffEditor.getOriginalEditor?.()
     const modifiedEditor = diffEditor.getModifiedEditor?.()
-    if (!supportsViewZones(origEd) || !supportsViewZones(modifiedEditor)) {
-      return
-    }
+    if (!supportsViewZones(origEd)) return
+    if (!supportsViewZones(modifiedEditor)) return
 
     removeAcceptWidgets(modifiedEditor, acceptWidgetsRef.current)
     acceptWidgetsRef.current = []

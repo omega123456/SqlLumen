@@ -98,7 +98,8 @@ function keepTableNameForSqlInsertOnly(options: Required<ExportOptions>): Export
 /** Sentence naming the grid sort and filters a full export ignores. */
 function ignoredViewMessage(hasSort: boolean, filterCount: number): string {
   const filters = `${filterCount} ${filterCount === 1 ? 'filter' : 'filters'}`
-  if (hasSort && filterCount > 0) return `Your sort and ${filters} will be ignored.`
+  const hasFilters = filterCount > 0
+  if (hasSort && hasFilters) return `Your sort and ${filters} will be ignored.`
   if (hasSort) return 'Your sort will be ignored.'
   return `Your ${filters} will be ignored.`
 }
@@ -126,7 +127,8 @@ function formatMegabytes(bytes: number): string {
  */
 function exportProgressText(job: ResultExportJob): string {
   const rows = job.progress?.rowsWritten ?? 0
-  if (job.format === 'xlsx' && rows === 0) return 'Building workbook…'
+  const isBuildingWorkbook = job.format === 'xlsx' && rows === 0
+  if (isBuildingWorkbook) return 'Building workbook…'
   const elapsed = formatElapsed(job.progress?.elapsedMs ?? 0)
   if (job.format === 'xlsx') return `Rows written ${formatCount(rows)} · ${elapsed}`
   const bytes = job.progress?.bytesWritten ?? 0
@@ -148,7 +150,9 @@ function markResultExpired(tabId: string, resultIndex: number | undefined): void
   const expiredResultIndex = resolveExportResultIndex(tab, resultIndex)
   useQueryStore.setState((state) => {
     const tabState = state.tabs[tabId]
-    if (!tabState || expiredResultIndex >= tabState.results.length) return state
+    if (!tabState) return state
+    const isResultMissing = expiredResultIndex >= tabState.results.length
+    if (isResultMissing) return state
     const newResults = [...tabState.results]
     newResults[expiredResultIndex] = {
       ...newResults[expiredResultIndex],
@@ -190,7 +194,8 @@ function runningExportJob(exportJob: ResultExportJob | undefined): ResultExportJ
 }
 
 function formatDescription(key: ExportFormat, offersAllRows: boolean): string {
-  if (offersAllRows && key === 'xlsx') return XLSX_ALL_ROWS_DESCRIPTION
+  const isAllRowsWorkbook = offersAllRows && key === 'xlsx'
+  if (isAllRowsWorkbook) return XLSX_ALL_ROWS_DESCRIPTION
   return EXPORT_FORMAT_CONFIG[key].description
 }
 
@@ -263,7 +268,8 @@ interface IgnoredViewWarningProps {
 
 function IgnoredViewWarning({ isAllRows, modifiers, onUseCurrentView }: IgnoredViewWarningProps) {
   const hasViewModifiers = modifiers.hasSort || modifiers.filterCount > 0
-  if (!isAllRows || !hasViewModifiers) return null
+  if (!isAllRows) return null
+  if (!hasViewModifiers) return null
   return (
     <InfoBar
       severity="warning"
@@ -292,7 +298,8 @@ interface SheetLimitWarningProps {
 }
 
 function SheetLimitWarning({ isAllRows, format, onSwitchToCsv }: SheetLimitWarningProps) {
-  if (!isAllRows || format !== 'xlsx') return null
+  if (!isAllRows) return null
+  if (format !== 'xlsx') return null
   return (
     <InfoBar
       severity="warning"
@@ -440,9 +447,9 @@ export default function ExportDialog({
     if (exportJobStatus === 'failed') failureBarRef.current?.focus()
   }, [exportJobStatus])
 
-  // Guard: reset format to 'csv' if the current format is not available for views
   useEffect(() => {
-    if (isView && format === 'sql-insert') {
+    const isFormatUnavailableForView = isView && format === 'sql-insert'
+    if (isFormatUnavailableForView) {
       setFormat('csv')
     }
   }, [isView, format])

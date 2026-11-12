@@ -134,10 +134,17 @@ export function getMysqlFormatString(type: TemporalColumnType): string {
  * Parse a MySQL date/time string to a JavaScript Date object.
  * Returns null for null, empty, or zero date values.
  */
+function isEmptyTemporalValue(value: string | null | undefined): value is null | undefined | '' {
+  return value === null || value === undefined || value === ''
+}
+
+function isZeroCalendarDate(value: string, type: TemporalColumnType): boolean {
+  return type !== 'TIME' && isZeroDate(value)
+}
+
 export function parseMysqlDate(value: string | null, type: TemporalColumnType): Date | null {
-  if (value === null || value === undefined || value === '') return null
-  // Zero-date check only for non-TIME types — 00:00:00 is a valid TIME (midnight)
-  if (type !== 'TIME' && isZeroDate(value)) return null
+  if (isEmptyTemporalValue(value)) return null
+  if (isZeroCalendarDate(value, type)) return null
 
   const config = type !== null ? TEMPORAL_CONFIGS[type] : TEMPORAL_CONFIGS.DATETIME
   const referenceDate = new Date(PARSE_REFERENCE_YEAR, 0, 1)
@@ -186,10 +193,8 @@ export function validateTemporalValue(
   value: string | null | undefined,
   type: TemporalColumnType
 ): string | null {
-  // null/undefined/empty = valid (not our concern — NULL toggle handles null intent)
-  if (value === null || value === undefined || value === '') return null
-  // Zero dates pass through as-is — MySQL handles them
-  if (type !== 'TIME' && isZeroDate(value)) return null
+  if (isEmptyTemporalValue(value)) return null
+  if (isZeroCalendarDate(value, type)) return null
 
   // Try to parse — if parseMysqlDate returns null, it's invalid
   const parsed = parseMysqlDate(value, type)

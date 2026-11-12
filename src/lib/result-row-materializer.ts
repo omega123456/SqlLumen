@@ -69,6 +69,14 @@ export function toCachedRow(
   }
 }
 
+function isSameEntry(
+  entry: Entry | undefined,
+  target: Pick<Entry, 'row' | 'position'>
+): entry is Entry {
+  if (!entry) return false
+  return entry.row === target.row && entry.position === target.position
+}
+
 export function createWindowRowMaterializer(initialColumnCount = 0): WindowRowMaterializer {
   let columnCount = initialColumnCount
   let entries = new Map<number, Entry>()
@@ -76,12 +84,12 @@ export function createWindowRowMaterializer(initialColumnCount = 0): WindowRowMa
   return {
     get(position, baseIndex, row) {
       const previous = entries.get(baseIndex)
-      if (previous && previous.row === row && previous.position === position) {
+      if (isSameEntry(previous, { row, position })) {
         return previous.object
       }
       const object = materializeRow(position, baseIndex, row, columnCount)
-      if (!previous && entries.size >= MATERIALIZER_MAX_ENTRIES) {
-        // Bounded: start over rather than track LRU order per row.
+      const isNewEntryOverCapacity = !previous && entries.size >= MATERIALIZER_MAX_ENTRIES
+      if (isNewEntryOverCapacity) {
         entries = new Map()
       }
       entries.set(baseIndex, { row, position, object })

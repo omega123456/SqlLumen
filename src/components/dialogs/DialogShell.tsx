@@ -164,7 +164,8 @@ export function DialogShell({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !nonDismissible) {
+      if (nonDismissible) return
+      if (event.key === 'Escape') {
         onClose()
       }
     },
@@ -190,7 +191,8 @@ export function DialogShell({
   })
 
   const handleBackdropClick = (event: React.MouseEvent) => {
-    if (event.target === event.currentTarget && !nonDismissible) {
+    if (nonDismissible) return
+    if (event.target === event.currentTarget) {
       onClose()
     }
   }

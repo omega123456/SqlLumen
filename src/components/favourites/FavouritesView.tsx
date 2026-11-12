@@ -100,7 +100,8 @@ export function FavouritesView({ connectionId }: FavouritesViewProps) {
         </div>
       )
     }
-    if (isLoading && entries.length === 0) {
+    const isLoadingFirstEntries = isLoading && entries.length === 0
+    if (isLoadingFirstEntries) {
       return <div className={styles.emptyState}>Loading...</div>
     }
     if (entries.length === 0) {

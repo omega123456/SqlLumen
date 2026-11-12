@@ -6,12 +6,10 @@ import type { TableDataTab } from '../../types/schema'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { Button } from '../common/Button'
 import { TAB_STRIP_NAVIGATION } from '../../lib/tab-strip-navigation'
+import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
+import { hasResultColumns } from '../../lib/query-result-column-utils'
 import styles from './BottomPanelTabs.module.css'
 import workspaceTabStyles from '../workspace/WorkspaceTabs.module.css'
-
-function isTabActivationKey(key: string): boolean {
-  return key === 'Enter' || key === ' '
-}
 
 interface BottomPanelTabsProps {
   queryTabId: string
@@ -34,7 +32,7 @@ function getResultTabIcon(result: SingleResultState) {
       />
     )
   }
-  if (result.columns.length === 0) {
+  if (!hasResultColumns(result)) {
     return <CheckCircle size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
   }
   return <Table size={16} weight="regular" className={workspaceTabStyles.tabTypeIcon} />
@@ -55,7 +53,9 @@ function showsResultSeparator(
   index: number,
   resultCount: number
 ): boolean {
-  if (items[index].kind !== 'table-data' || index === 0) return false
+  if (index === 0) return false
+  const item = items[index]
+  if (item.kind !== 'table-data') return false
   return items[index - 1]?.kind === 'result' && resultCount > 0
 }
 
@@ -143,7 +143,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (items.length === 0) return
-      if (isTabActivationKey(event.key)) {
+      if (isActivationKey(event.key)) {
         event.preventDefault()
         activateFocusedItem()
         return
@@ -163,7 +163,8 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
     [closeTab, connectionId]
   )
 
-  if (results.length <= 1 && tableDataTabs.length === 0) {
+  const hasSingleSurface = results.length <= 1 && tableDataTabs.length === 0
+  if (hasSingleSurface) {
     return null
   }
 
@@ -192,7 +193,9 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
               <div
                 {...bottomTabStateProps(isActive)}
                 onMouseDown={(event) => {
-                  if (event.button === 1 && item.kind === 'table-data') {
+                  const isMiddleClickOnTable =
+                    isMiddleMouseButton(event) && item.kind === 'table-data'
+                  if (isMiddleClickOnTable) {
                     event.preventDefault()
                     handleCloseTableTab(item.tab.id)
                   }

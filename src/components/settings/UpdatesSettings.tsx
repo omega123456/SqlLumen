@@ -21,6 +21,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import styles from './UpdatesSettings.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
+import { hasPendingRowChanges } from '../../lib/row-edit-state'
 interface PendingWorkSummary {
   hasWork: boolean
   items: string[]
@@ -35,11 +36,8 @@ type WorkspaceTabType = ReturnType<
 >['tabsByConnection'][string][number]['type']
 
 const UNSAVED_TAB_CHECKS: Partial<Record<WorkspaceTabType, (tabId: string) => boolean>> = {
-  'table-data': (tabId) => {
-    const editState = useTableDataStore.getState().tabs[tabId]?.editState
-    if (!editState) return false
-    return editState.isNewRow || editState.modifiedColumns.size > 0
-  },
+  'table-data': (tabId) =>
+    hasPendingRowChanges(useTableDataStore.getState().tabs[tabId]?.editState),
   'table-designer': (tabId) => useTableDesignerStore.getState().tabs[tabId]?.isDirty === true,
   'object-editor': (tabId) => useObjectEditorStore.getState().isDirty(tabId),
 }

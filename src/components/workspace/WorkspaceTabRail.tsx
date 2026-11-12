@@ -246,7 +246,8 @@ function revealShortcutLabel(binding: ShortcutBinding | null): string | undefine
 // it is disabled for create-mode tabs whose object does not exist yet.
 function revealMenuItems(target: TabMenuTarget): TabContextMenuItem[] {
   const { tab } = target
-  if (!tab || !isObjectTab(tab)) return []
+  if (!tab) return []
+  if (!isObjectTab(tab)) return []
   return [
     {
       key: 'reveal-in-object-browser',
@@ -370,11 +371,11 @@ export function WorkspaceTabRail({
   }, [activeTabId])
 
   useEffect(() => {
-    if (!renamingTabId || !renameInputRef.current) {
-      return
-    }
-    renameInputRef.current.focus()
-    renameInputRef.current.select()
+    const renameInput = renameInputRef.current
+    if (!renamingTabId) return
+    if (!renameInput) return
+    renameInput.focus()
+    renameInput.select()
   }, [renamingTabId])
 
   // ---------------------------------------------------------------------------
@@ -393,8 +394,13 @@ export function WorkspaceTabRail({
     return true
   }
 
+  const focusInvokerTab = (invokerTabId: string | null): boolean => {
+    if (!invokerTabId) return false
+    return focusWorkspaceTab(invokerTabId)
+  }
+
   const restoreFocusAfterAction = (invokerTabId: string | null) => {
-    if (invokerTabId && focusWorkspaceTab(invokerTabId)) {
+    if (focusInvokerTab(invokerTabId)) {
       return
     }
     if (activeTabIdRef.current) {
@@ -440,9 +446,8 @@ export function WorkspaceTabRail({
 
   const startRename = (tabId: string) => {
     const tab = tabs.find((candidate) => candidate.id === tabId)
-    if (!tab || tab.type !== 'query-editor') {
-      return
-    }
+    if (!tab) return
+    if (tab.type !== 'query-editor') return
     setRenamingTabId(tabId)
     setRenameDraft(tab.label)
     if (onRequestRenameTab) {
@@ -550,7 +555,9 @@ export function WorkspaceTabRail({
             startRename(tab.id)
             return
           }
-          if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
+          const isShiftF10 = event.shiftKey && event.key === 'F10'
+          const isContextMenuKey = event.key === 'ContextMenu' || isShiftF10
+          if (!isContextMenuKey) {
             return
           }
           event.preventDefault()

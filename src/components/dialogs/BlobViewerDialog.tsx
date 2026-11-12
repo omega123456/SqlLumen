@@ -35,10 +35,9 @@ import {
   base64ToBytes,
   blobTypeLabel,
   bytesToBase64,
-  bytesEnvelope,
   decodeUtf8BestEffort,
   detectBlobExtension,
-  emptyEnvelope,
+  envelopeForBytes,
   formatBytes,
   formatHexDump,
   nullEnvelope,
@@ -118,8 +117,7 @@ function decodeInitialBase64(initialBase64: string | null | undefined): WorkingV
 
 function envelopeForWorkingValue(working: Exclude<WorkingValue, { kind: 'tooLarge' }>) {
   if (working.kind === 'null') return nullEnvelope()
-  if (working.bytes.length === 0) return emptyEnvelope()
-  return bytesEnvelope(bytesToBase64(working.bytes))
+  return envelopeForBytes(working.bytes)
 }
 
 function workingBytesOf(working: WorkingValue | null): Uint8Array | null {
@@ -140,8 +138,14 @@ function hasByteMetadata(working: WorkingValue | null): boolean {
   return working?.kind === 'bytes' || working?.kind === 'tooLarge'
 }
 
+function hasBytes(bytes: Uint8Array | null): bytes is Uint8Array {
+  if (!bytes) return false
+  return bytes.length > 0
+}
+
 function saveButtonTitle(canSave: boolean, tooLarge: boolean): string {
-  if (!canSave && tooLarge) return 'Too large to load — exceeds 10 MB'
+  const isTooLargeToSave = !canSave && tooLarge
+  if (isTooLargeToSave) return 'Too large to load — exceeds 10 MB'
   return 'Save bytes to a file'
 }
 
@@ -217,7 +221,8 @@ interface BlobPanelBodyProps extends BytesPanelProps {
 }
 
 function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: BlobPanelBodyProps) {
-  if (loading || !working) {
+  const isAwaitingValue = loading || !working
+  if (isAwaitingValue) {
     return (
       <div className={styles.skeleton} data-testid="blob-loading" aria-label="Loading">
         <div className={styles.skeletonBar} />
@@ -246,7 +251,7 @@ function BlobPanelBody({ loading, working, activeTab, ...bytesPanel }: BlobPanel
       </div>
     )
   }
-  if (working.bytes.length === 0) {
+  if (!hasBytes(working.bytes)) {
     return (
       <div className={styles.emptyState} data-testid="blob-empty-state">
         <EraserIcon size={40} weight="thin" />
@@ -524,7 +529,8 @@ export function BlobViewerDialog({
 
   // -- Focus the active tab on open ----------------------------------------
   useEffect(() => {
-    if (!isOpen || isPlaywrightBuild()) return
+    if (!isOpen) return
+    if (isPlaywrightBuild()) return
     const id = requestAnimationFrame(() => {
       firstTabRef.current?.focus()
     })
@@ -534,12 +540,13 @@ export function BlobViewerDialog({
   // -- Object URL lifecycle for the Image tab ------------------------------
   const workingBytes = workingBytesOf(working)
   const imageMime = useMemo(
-    () => (workingBytes && workingBytes.length > 0 ? sniffImageMime(workingBytes) : null),
+    () => (hasBytes(workingBytes) ? sniffImageMime(workingBytes) : null),
     [workingBytes]
   )
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!workingBytes || !imageMime) {
+    const hasNoImage = !workingBytes || !imageMime
+    if (hasNoImage) {
       setObjectUrl(null)
       return
     }
@@ -563,7 +570,7 @@ export function BlobViewerDialog({
     [workingBytes]
   )
   const dimensions = useMemo(
-    () => (workingBytes && workingBytes.length > 0 ? readImageDimensions(workingBytes) : null),
+    () => (hasBytes(workingBytes) ? readImageDimensions(workingBytes) : null),
     [workingBytes]
   )
 
@@ -607,7 +614,8 @@ export function BlobViewerDialog({
 
   // -- Apply / save ---------------------------------------------------------
   const handleApply = useCallback(() => {
-    if (!onApply || !working) return
+    if (!onApply) return
+    if (!working) return
     if (working.kind !== 'tooLarge') {
       onApply(envelopeForWorkingValue(working))
     }

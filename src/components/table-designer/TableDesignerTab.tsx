@@ -110,7 +110,8 @@ function designerTabView(
 }
 
 function isApplyDisabled(view: DesignerTabView): boolean {
-  if (!view.isDirty || view.isDdlLoading) return true
+  if (!view.isDirty) return true
+  if (view.isDdlLoading) return true
   if (Object.keys(view.validationErrors).length > 0) return true
   return view.mode === 'create' && view.tableName.trim() === ''
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { logFrontendError } from '../lib/app-log-commands'
 import { getSetting, setSetting } from '../lib/tauri-commands'
+import { isObjectRecord } from '../lib/value-checks'
 import type { ObjectType } from '../types/schema'
 
 const COMMAND_PALETTE_RECENTS_KEY = 'commandPalette.recents'
@@ -43,9 +44,8 @@ function isRecentObjectType(value: unknown): value is CommandPaletteRecentObject
   )
 }
 
-function isRecentEntry(value: unknown): value is CommandPaletteRecentEntry {
-  if (!value || typeof value !== 'object') return false
-  const entry = value as Record<string, unknown>
+function isRecentEntry(entry: unknown): entry is CommandPaletteRecentEntry {
+  if (!isObjectRecord(entry)) return false
   return (
     typeof entry.database === 'string' &&
     typeof entry.name === 'string' &&
@@ -55,9 +55,8 @@ function isRecentEntry(value: unknown): value is CommandPaletteRecentEntry {
 }
 
 function sanitizeRecents(parsed: unknown): Record<string, CommandPaletteRecentEntry[]> {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return {}
-  }
+  if (!isObjectRecord(parsed)) return {}
+  if (Array.isArray(parsed)) return {}
 
   const sanitized: Record<string, CommandPaletteRecentEntry[]> = {}
 

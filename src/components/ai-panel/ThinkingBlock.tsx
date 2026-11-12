@@ -13,11 +13,11 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
   const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!isStreaming || !contentRef.current) {
-      return
-    }
+    const contentElement = contentRef.current
+    if (!isStreaming) return
+    if (!contentElement) return
 
-    contentRef.current.scrollTop = contentRef.current.scrollHeight
+    contentElement.scrollTop = contentElement.scrollHeight
   }, [content, isStreaming])
 
   const handleToggle = () => {

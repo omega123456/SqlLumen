@@ -69,7 +69,8 @@ interface KillConfirmMessageProps {
 }
 
 function KillConfirmMessage({ isOpen, selectedIds, rows }: KillConfirmMessageProps) {
-  if (!isOpen || selectedIds.size === 0) return null
+  if (!isOpen) return null
+  if (selectedIds.size === 0) return null
   return (
     <>
       Kill {selectedIds.size} process{selectedIds.size === 1 ? '' : 'es'}?

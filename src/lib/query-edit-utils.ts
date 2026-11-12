@@ -18,10 +18,15 @@ export type QueryEditColumnBindings = Map<number, string>
 
 function normalizeIdentifier(identifier: string): string {
   const trimmed = identifier.trim()
-  if (trimmed.length >= BACKTICK_PAIR_LENGTH && trimmed.startsWith('`') && trimmed.endsWith('`')) {
+  if (isBacktickQuoted(trimmed)) {
     return trimmed.slice(1, -1).replace(/``/g, '`')
   }
   return trimmed
+}
+
+function isBacktickQuoted(identifier: string): boolean {
+  const hasRoomForQuotes = identifier.length >= BACKTICK_PAIR_LENGTH
+  return hasRoomForQuotes && identifier.startsWith('`') && identifier.endsWith('`')
 }
 
 function splitQualifiedIdentifier(identifier: string): string[] {
@@ -34,7 +39,8 @@ function splitQualifiedIdentifier(identifier: string): string[] {
 
     if (char === '`') {
       current += char
-      if (inBackticks && identifier[charIndex + 1] === '`') {
+      const isEscapedBacktick = inBackticks && identifier[charIndex + 1] === '`'
+      if (isEscapedBacktick) {
         current += '`'
         charIndex++
         continue
@@ -43,7 +49,8 @@ function splitQualifiedIdentifier(identifier: string): string[] {
       continue
     }
 
-    if (char === '.' && !inBackticks) {
+    const isPartSeparator = char === '.' && !inBackticks
+    if (isPartSeparator) {
       if (current.trim()) {
         parts.push(normalizeIdentifier(current))
       }
@@ -122,7 +129,8 @@ function findTopLevelKeyword(
       continue
     }
     depth = nextParenDepth(depth, text[index])
-    if (depth === 0 && keywordPattern.test(text.slice(index))) return index
+    const isTopLevelKeyword = depth === 0 && keywordPattern.test(text.slice(index))
+    if (isTopLevelKeyword) return index
   }
   return null
 }
@@ -160,7 +168,8 @@ function splitTopLevelSelectItems(selectList: string): string[] {
 
     current += char
     depth = nextParenDepth(depth, char)
-    if (char === ',' && depth === 0) {
+    const isTopLevelComma = char === ',' && depth === 0
+    if (isTopLevelComma) {
       items.push(current.slice(0, -1).trim())
       current = ''
     }
@@ -180,7 +189,8 @@ function matchesTableTarget(
 ): boolean {
   if (qualifierParts.length === 1) {
     const qualifier = qualifierParts[0].toLowerCase()
-    if (qualifier === targetTable.table.toLowerCase()) {
+    const isTargetTableName = qualifier === targetTable.table.toLowerCase()
+    if (isTargetTableName) {
       return true
     }
 
@@ -317,7 +327,8 @@ function resolveUnqualifiedBinding(
   context: ProjectionContext,
   parts: string[]
 ): string | undefined {
-  if (context.queryTablesInOrder.length !== 1) return undefined
+  const hasSingleTable = context.queryTablesInOrder.length === 1
+  if (!hasSingleTable) return undefined
   return context.targetColumnLookup.get(parts[0].toLowerCase())
 }
 
@@ -398,9 +409,8 @@ function buildProjectionBindings(
     resultIndex: 0,
   }
   const isEveryItemBound = items.every((item) => bindProjectionItem(context, item))
-  if (!isEveryItemBound || hasRemainingResultColumn(context)) {
-    return new Map()
-  }
+  if (!isEveryItemBound) return new Map()
+  if (hasRemainingResultColumn(context)) return new Map()
   return context.bindings
 }
 
@@ -432,9 +442,8 @@ function canUseDirectNameFallback(
   queryTablesInOrder: QueryTableEditInfo[]
 ): boolean {
   if (!sql) return true
-  if (queryTablesInOrder.length !== 1 || !/\bFROM\b/i.test(sql)) {
-    return false
-  }
+  if (queryTablesInOrder.length !== 1) return false
+  if (!/\bFROM\b/i.test(sql)) return false
 
   const selectList = extractTopLevelSelectList(sql)
   if (!selectList) {
@@ -481,7 +490,9 @@ export function buildQueryEditColumnBindings(
     bindings.set(index, columnName)
   }
 
-  if (projectionBindings.size === 0 && canUseDirectNameFallback(sql, queryTablesInOrder)) {
+  const shouldBindByColumnName =
+    projectionBindings.size === 0 && canUseDirectNameFallback(sql, queryTablesInOrder)
+  if (shouldBindByColumnName) {
     const ambiguousNames = findAmbiguousColumns(resultColumns)
     for (let columnIndex = 0; columnIndex < resultColumns.length; columnIndex++) {
       const resultNameLower = resultColumns[columnIndex].name.toLowerCase()
@@ -536,9 +547,11 @@ interface ResultColumnEditability {
 
 function isEditableResultColumn(check: ResultColumnEditability): boolean {
   const { boundName } = check
-  if (check.hasExplicitBindings && !boundName) return false
+  const isUnbound = !boundName
+  if (check.hasExplicitBindings && isUnbound) return false
   const resultColumnNameLower = check.resultColumnName.toLowerCase()
-  if (!boundName && check.ambiguousNames.has(resultColumnNameLower)) return false
+  const isAmbiguousName = check.ambiguousNames.has(resultColumnNameLower)
+  if (isUnbound && isAmbiguousName) return false
   const tableColumn = check.tableColumnLookup.get(boundName?.toLowerCase() ?? resultColumnNameLower)
   if (!tableColumn) return false
   return !tableColumn.isBinary
@@ -605,7 +618,9 @@ export function validateKeyColumnsPresent(
 
   for (const primaryKey of primaryKeyColumns) {
     const primaryKeyLower = primaryKey.toLowerCase()
-    if (!resultColumnNamesLower.has(primaryKeyLower) || ambiguousNames.has(primaryKeyLower)) {
+    const isUsableKeyColumn =
+      resultColumnNamesLower.has(primaryKeyLower) && !ambiguousNames.has(primaryKeyLower)
+    if (!isUsableKeyColumn) {
       missingColumns.push(primaryKey)
     }
   }
@@ -719,15 +734,14 @@ export function buildInsertPayload(
 
     const isModified = editState.modifiedColumns.has(column.name)
     const isInsertEligible = insertEligibleColumns?.has(column.name) ?? false
-    if (!isModified && !isInsertEligible) {
+    const isPayloadColumn = isModified || isInsertEligible
+    if (!isPayloadColumn) {
       continue
     }
 
-    if (editState.currentValues[column.name] !== undefined) {
-      values[column.name] = coerceValueForColumn(
-        editState.currentValues[column.name],
-        column.dataType
-      )
+    const currentValue = editState.currentValues[column.name]
+    if (currentValue !== undefined) {
+      values[column.name] = coerceValueForColumn(currentValue, column.dataType)
     }
   }
 

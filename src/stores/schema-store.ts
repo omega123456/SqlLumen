@@ -107,7 +107,8 @@ function buildChildIndex(nodes: Record<string, TreeNode>): Record<string, string
     index[parentId].sort((left, right) => {
       const nodeA = nodes[left]
       const nodeB = nodes[right]
-      if (!nodeA || !nodeB) return 0
+      if (!nodeA) return 0
+      if (!nodeB) return 0
       return nodeA.label.localeCompare(nodeB.label)
     })
   }
@@ -155,6 +156,14 @@ interface SchemaState {
 // Helper: update a single connection's tree state immutably
 // ---------------------------------------------------------------------------
 
+function isCurrentLoadGeneration(
+  state: SchemaState,
+  connectionId: string,
+  generation: number
+): boolean {
+  return state.connectionStates[connectionId]?.loadGeneration === generation
+}
+
 function getConnectionState(state: SchemaState, connectionId: string): ConnectionTreeState {
   return state.connectionStates[connectionId] || createDefaultConnectionState()
 }
@@ -201,10 +210,7 @@ async function fetchChildren(
 
     // 3. Check connection still exists and generation matches after await
     const afterFetch = get()
-    const currentConnection = afterFetch.connectionStates[connectionId]
-    if (!currentConnection || currentConnection.loadGeneration !== gen) {
-      return // Connection was closed or refreshed while we were fetching
-    }
+    if (!isCurrentLoadGeneration(afterFetch, connectionId, gen)) return
 
     // 4. Merge returned nodes into state
     const freshConnectionState = getConnectionState(afterFetch, connectionId)
@@ -228,9 +234,7 @@ async function fetchChildren(
       })
     )
   } catch {
-    // 6. Remove from loading on error (only if generation still matches)
-    const currentConnection = get().connectionStates[connectionId]
-    if (!currentConnection || currentConnection.loadGeneration !== gen) return
+    if (!isCurrentLoadGeneration(get(), connectionId, gen)) return
     const freshConnectionState = getConnectionState(get(), connectionId)
     const doneLoading = new Set(freshConnectionState.loadingNodes)
     doneLoading.delete(nodeId)
@@ -336,7 +340,8 @@ function nodesWithDatabaseReset(
       newNodes[id] = { ...node, isLoaded: false }
       continue
     }
-    if (isOutsideDatabase(id, databaseName) || node.type === 'database') {
+    const isKeptNode = isOutsideDatabase(id, databaseName) || node.type === 'database'
+    if (isKeptNode) {
       newNodes[id] = node
     }
   }
@@ -351,8 +356,8 @@ function retainedSelectedNodeId(
   selectedNodeId: string | null,
   nodes: Record<string, TreeNode>
 ): string | null {
-  if (selectedNodeId && !nodes[selectedNodeId]) return null
-  return selectedNodeId
+  if (!selectedNodeId) return selectedNodeId
+  return nodes[selectedNodeId] ? selectedNodeId : null
 }
 
 export const useSchemaStore = create<SchemaState>()((set, get) => ({
@@ -372,9 +377,8 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
 
     const databases = await listDatabases(connectionId)
 
-    // Check generation after await — discard if stale
-    const current = get().connectionStates[connectionId]
-    if (!current || current.loadGeneration !== gen) return
+    if (!isCurrentLoadGeneration(get(), connectionId, gen)) return
+    const current = getConnectionState(get(), connectionId)
 
     const mergedNodes = mergeDatabaseNodes(current.nodes, databases)
     const childIdsByParentId = buildChildIndex(mergedNodes)
@@ -395,7 +399,8 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     const state = get()
     const connectionState = getConnectionState(state, connectionId)
     const node = connectionState.nodes[nodeId]
-    if (!node || node.isLoaded) return
+    if (!node) return
+    if (node.isLoaded) return
 
     if (node.type === 'database') {
       // Create category children synchronously — no backend call
@@ -439,7 +444,8 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     const state = get()
     const connectionState = getConnectionState(state, connectionId)
     const node = connectionState.nodes[nodeId]
-    if (!node || !node.hasChildren) return
+    if (!node) return
+    if (!node.hasChildren) return
 
     const isExpanded = connectionState.expandedNodes.has(nodeId)
 
@@ -468,7 +474,8 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
       while (current) {
         const nd: TreeNode | undefined = connectionState.nodes[current]
         if (!nd) break
-        if (nd.hasChildren && !newExpanded.has(current)) {
+        const isCollapsedParent = nd.hasChildren && !newExpanded.has(current)
+        if (isCollapsedParent) {
           newExpanded.add(current)
           changed = true
         }
@@ -600,10 +607,7 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     }
 
     // Clear selectedNodeId if it points to a node that was removed
-    const newSelectedNodeId =
-      connectionState.selectedNodeId && !newNodes[connectionState.selectedNodeId]
-        ? null
-        : connectionState.selectedNodeId
+    const newSelectedNodeId = retainedSelectedNodeId(connectionState.selectedNodeId, newNodes)
 
     const childIdsByParentId = buildChildIndex(newNodes)
 

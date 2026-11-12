@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react'
+import { isTargetOutside } from '../../lib/input-events'
 
 /**
  * Dismiss a popover / context-menu when the user clicks outside or (optionally) presses Escape.
@@ -24,7 +25,7 @@ export function useDismissOnOutsideClick(
     if (!active) return
 
     const handleMouseDown = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
+      if (isTargetOutside(ref.current, event.target)) {
         onDismissRef.current()
       }
     }

@@ -48,9 +48,10 @@ export default function ProcessListTab({
 
   // Auto-refresh interval — pause when any dialog is open
   useEffect(() => {
-    if (!isActive || refreshIntervalMs <= 0 || isConfirmDialogOpen || isSummaryDialogOpen) {
-      return
-    }
+    if (!isActive) return
+    if (refreshIntervalMs <= 0) return
+    if (isConfirmDialogOpen) return
+    if (isSummaryDialogOpen) return
 
     const id = setInterval(() => {
       handleRefresh(false)

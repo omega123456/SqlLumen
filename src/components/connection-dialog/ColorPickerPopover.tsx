@@ -4,6 +4,7 @@ import { HexColorPicker } from 'react-colorful'
 import { TextInput } from '../common/TextInput'
 import { Button } from '../common/Button'
 import styles from './ColorPickerPopover.module.css'
+import { isTargetOutside } from '../../lib/input-events'
 
 interface ColorPickerPopoverProps {
   color: string | null
@@ -38,13 +39,10 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   useEffect(() => {
     if (!isOpen) return
     const handleMouseDown = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(target) &&
-        portalRef.current &&
-        !portalRef.current.contains(target)
-      ) {
+      const isOutsidePicker =
+        isTargetOutside(wrapperRef.current, event.target) &&
+        isTargetOutside(portalRef.current, event.target)
+      if (isOutsidePicker) {
         setIsOpen(false)
       }
     }

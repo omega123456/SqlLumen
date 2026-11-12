@@ -29,6 +29,7 @@ import { useElementSize } from '../../../hooks/use-element-size'
 import { useGlideGridTheme } from '../../../hooks/use-glide-grid-theme'
 import { useGridDimensions } from '../../../hooks/use-grid-dimensions'
 import type { GridHandle } from './glide-grid-types'
+import { isPositiveFiniteNumber } from '../../../lib/value-checks'
 
 export type GlideRowMarkerKind = 'none' | 'checkbox' | 'number' | 'both'
 
@@ -38,25 +39,27 @@ const DEFAULT_COLUMN_WIDTH = 120
 // column. Lift it to an effectively-unreachable value so resizing is unbounded.
 const MAX_COLUMN_WIDTH = 100000
 const LAYER_REFRESH_DELAY_MS = 100
+const GLIDE_OVERLAY_WIDTH_PROPERTY = '--d19meir1-2'
 
 function getColumnWidth(column: GlideGridColumn): number {
-  return 'width' in column && typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
+  if (!('width' in column)) return DEFAULT_COLUMN_WIDTH
+  return typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
 }
 
 function getTargetEditorWidth(element: HTMLElement): number | null {
   const explicitWidth = Number.parseFloat(element.dataset.sqllumenEditorWidth ?? '')
-  if (Number.isFinite(explicitWidth) && explicitWidth > 0) {
+  if (isPositiveFiniteNumber(explicitWidth)) {
     return explicitWidth
   }
 
   const computed = getComputedStyle(element)
   const minWidth = Number.parseFloat(computed.minWidth)
-  if (Number.isFinite(minWidth) && minWidth > 0) {
+  if (isPositiveFiniteNumber(minWidth)) {
     return minWidth
   }
 
   const fallbackWidth = Number.parseFloat(computed.width)
-  return Number.isFinite(fallbackWidth) && fallbackWidth > 0 ? fallbackWidth : null
+  return isPositiveFiniteNumber(fallbackWidth) ? fallbackWidth : null
 }
 
 function constrainGlideEditorOverlay(element: HTMLElement): void {
@@ -67,16 +70,18 @@ function constrainGlideEditorOverlay(element: HTMLElement): void {
 
   const targetWidth = getTargetEditorWidth(editorRoot)
 
-  if (targetWidth === null || !Number.isFinite(targetWidth) || targetWidth <= 0) return
+  if (targetWidth === null) return
 
   const constrainedWidth = `${Math.max(1, Math.floor(targetWidth))}px`
+  const overlayStyle = element.style
 
-  if (element.style.getPropertyValue('--d19meir1-2') !== constrainedWidth) {
-    element.style.setProperty('--d19meir1-2', constrainedWidth)
+  const currentOverlayWidth = overlayStyle.getPropertyValue(GLIDE_OVERLAY_WIDTH_PROPERTY)
+  if (currentOverlayWidth !== constrainedWidth) {
+    overlayStyle.setProperty(GLIDE_OVERLAY_WIDTH_PROPERTY, constrainedWidth)
   }
-  if (element.style.width !== constrainedWidth) element.style.width = constrainedWidth
-  if (element.style.maxWidth !== constrainedWidth) element.style.maxWidth = constrainedWidth
-  if (element.style.overflow !== 'hidden') element.style.overflow = 'hidden'
+  if (overlayStyle.width !== constrainedWidth) overlayStyle.width = constrainedWidth
+  if (overlayStyle.maxWidth !== constrainedWidth) overlayStyle.maxWidth = constrainedWidth
+  if (overlayStyle.overflow !== 'hidden') overlayStyle.overflow = 'hidden'
 }
 
 /** Synchronous `getCellsForSelection`: the cells of a rectangle, row by row. */
@@ -196,7 +201,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   // anything; re-run once the size settles since every resize reallocates the canvas.
   useEffect(() => {
     const host = hostRef.current
-    if (!hasSize || !host) return
+    if (!hasSize) return
+    if (!host) return
     let frame = 0
     const reset = () => {
       host.style.isolation = ''
@@ -325,7 +331,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
       const previous = lastClickedCellRef.current
       lastClickedCellRef.current = cell
       const sameCell = previous?.[0] === cell[0] && previous?.[1] === cell[1]
-      if (event.isDoubleClick === true && sameCell) {
+      const isSameCellDoubleClick = event.isDoubleClick === true && sameCell
+      if (isSameCellDoubleClick) {
         onCellDoubleClicked?.(cell, event)
         return
       }

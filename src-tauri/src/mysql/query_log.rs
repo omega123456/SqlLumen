@@ -48,13 +48,13 @@ fn format_cell(row: &MySqlRow, column_index: usize) -> String {
         }
     }
 
-    if type_name.contains("FLOAT") || type_name.contains("DOUBLE") {
+    if crate::mysql::sqlx_type_names::is_sqlx_float_type_name(&type_name) {
         if let Ok(value) = row.try_get::<Option<f64>, _>(column_index) {
             return format!("{value:?}");
         }
     }
 
-    if type_name.contains("DECIMAL") || type_name.contains("NUMERIC") {
+    if crate::mysql::sqlx_type_names::is_sqlx_decimal_type_name(&type_name) {
         if let Ok(value) = row.try_get::<Option<String>, _>(column_index) {
             return format!("{value:?}");
         }
@@ -74,7 +74,7 @@ fn format_cell(row: &MySqlRow, column_index: usize) -> String {
         }
     }
 
-    if type_name.contains("BLOB") || type_name == "BINARY" || type_name == "VARBINARY" {
+    if crate::mysql::sqlx_type_names::is_sqlx_binary_type_name(&type_name) {
         if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(column_index) {
             return format!(
                 "bytes(len={})",

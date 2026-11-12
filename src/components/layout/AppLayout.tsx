@@ -15,7 +15,7 @@ import { useShortcut } from '../../hooks/useShortcut'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useQueryStore } from '../../stores/query-store'
+import { isExecutionLocked, useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -35,6 +35,7 @@ import { CommandPalette } from '../command-palette/CommandPalette'
 import styles from './AppLayout.module.css'
 
 import { logFrontend, logFrontendError } from '../../lib/app-log-commands'
+import { isAiLockStatus } from '../../lib/query-tab-status'
 
 function getExecutableStatements(sql: string): string[] {
   return splitStatements(sql)
@@ -51,15 +52,13 @@ const SQL_FILE_FILTERS = [
   { name: 'All files', extensions: ['*'] },
 ]
 const PATH_SEPARATOR_PATTERN = /[\\/]/
-const BUSY_QUERY_TAB_STATUSES = new Set(['running', 'ai-pending', 'ai-reviewing'])
-const AI_LOCKED_TAB_STATUSES = new Set(['ai-pending', 'ai-reviewing'])
 
 type QueryTabState = ReturnType<typeof useQueryStore.getState>['tabs'][string]
 type CursorPosition = QueryTabState['cursorPosition']
 
-interface ActiveWorkspaceContext {
-  connectionId: string | null
-  tabId: string | null
+interface ActiveTabRef {
+  connectionId: string
+  tabId: string
   tabType: string | null
 }
 
@@ -69,26 +68,34 @@ interface ActiveQueryTab {
   tabState: QueryTabState
 }
 
-function getActiveContext(): ActiveWorkspaceContext {
+function getActiveTab(): ActiveTabRef | null {
   const connectionId = useConnectionStore.getState().activeTabId
-  if (!connectionId) return { connectionId: null, tabId: null, tabType: null }
+  if (!connectionId) return null
 
   const workspaceState = useWorkspaceStore.getState()
   const tabId = workspaceState.activeTabByConnection[connectionId] ?? null
-  if (!tabId) return { connectionId: connectionId, tabId: null, tabType: null }
+  if (!tabId) return null
 
   const tabs = workspaceState.tabsByConnection[connectionId] ?? []
   const tab = tabs.find((candidate) => candidate.id === tabId)
   return { connectionId: connectionId, tabId: tabId, tabType: tab?.type ?? null }
 }
 
+function getActiveTabOfType(tabType: string): ActiveTabRef | null {
+  const activeTab = getActiveTab()
+  if (activeTab?.tabType !== tabType) return null
+  return activeTab
+}
+
 function getRunnableQueryTab(): ActiveQueryTab | null {
-  const { connectionId, tabId, tabType } = getActiveContext()
-  if (!connectionId || !tabId || tabType !== 'query-editor') return null
-  const tabState = useQueryStore.getState().tabs[tabId]
-  if (!tabState || BUSY_QUERY_TAB_STATUSES.has(tabState.tabStatus)) return null
-  if (!tabState.content.trim()) return null
-  return { connectionId: connectionId, tabId: tabId, tabState: tabState }
+  const activeTab = getActiveTabOfType('query-editor')
+  if (!activeTab) return null
+  const tabState = useQueryStore.getState().tabs[activeTab.tabId]
+  if (!tabState) return null
+  if (isExecutionLocked(tabState)) return null
+  const hasContent = tabState.content.trim() !== ''
+  if (!hasContent) return null
+  return { connectionId: activeTab.connectionId, tabId: activeTab.tabId, tabState: tabState }
 }
 
 function executeQueryAtCursor(): void {
@@ -185,11 +192,13 @@ function formattedQueryContent(tabState: QueryTabState): string | null {
 }
 
 function formatActiveQuery(): void {
-  const { tabId, tabType } = getActiveContext()
-  if (!tabId || tabType !== 'query-editor') return
+  const activeTab = getActiveTabOfType('query-editor')
+  if (!activeTab) return
+  const { tabId } = activeTab
   const queryState = useQueryStore.getState()
   const tabState = queryState.tabs[tabId]
-  if (!tabState || AI_LOCKED_TAB_STATUSES.has(tabState.tabStatus)) return
+  if (!tabState) return
+  if (isAiLockStatus(tabState.tabStatus)) return
   try {
     const newContent = formattedQueryContent(tabState)
     if (newContent === null) return
@@ -200,11 +209,13 @@ function formatActiveQuery(): void {
 }
 
 function saveActiveObjectEditor(): void {
-  const { tabId, tabType } = getActiveContext()
-  if (!tabId || tabType !== 'object-editor') return
+  const activeTab = getActiveTabOfType('object-editor')
+  if (!activeTab) return
+  const { tabId } = activeTab
   const objectStore = useObjectEditorStore.getState()
   const objectTab = objectStore.tabs[tabId]
-  if (!objectTab || objectTab.isSaving) return
+  if (!objectTab) return
+  if (objectTab.isSaving) return
   if (objectTab.content === objectTab.originalContent) return
   void objectStore.saveBody(tabId)
 }
@@ -216,9 +227,9 @@ function openNewQueryTab(): void {
 }
 
 function closeActiveTab(): void {
-  const { connectionId, tabId } = getActiveContext()
-  if (!connectionId || !tabId) return
-  useWorkspaceStore.getState().closeTab(connectionId, tabId)
+  const activeTab = getActiveTab()
+  if (!activeTab) return
+  useWorkspaceStore.getState().closeTab(activeTab.connectionId, activeTab.tabId)
 }
 
 async function openSqlFileInNewTab(connectionId: string): Promise<void> {
@@ -246,8 +257,9 @@ function openFile(): void {
 }
 
 function revealActiveTabInObjectBrowser(): void {
-  const { connectionId, tabId } = getActiveContext()
-  if (!connectionId || !tabId) return
+  const activeTab = getActiveTab()
+  if (!activeTab) return
+  const { connectionId, tabId } = activeTab
   const tabs = useWorkspaceStore.getState().tabsByConnection[connectionId] ?? []
   const tab = tabs.find((candidate) => candidate.id === tabId)
   if (tab) {

@@ -5,6 +5,7 @@ import { formatShortDate } from '../../lib/format-utils'
 import type { FavoriteEntry } from '../../types/schema'
 import { Button } from '../common/Button'
 import styles from './FavouritesSnippetCard.module.css'
+import { isActivationKey } from '../../lib/input-events'
 
 export interface FavouritesSnippetCardProps {
   favourite: FavoriteEntry
@@ -39,7 +40,7 @@ export function FavouritesSnippetCard({
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
-      if (event.key === 'Enter' || event.key === ' ') {
+      if (isActivationKey(event.key)) {
         event.preventDefault()
         onSelect()
       }

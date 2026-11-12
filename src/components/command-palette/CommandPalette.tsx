@@ -77,15 +77,18 @@ function getSearchState(args: {
     return 'no-connection'
   }
 
-  if (args.objects.length === 0 && args.isLoading) {
+  const isLoadingFirstObjects = args.objects.length === 0 && args.isLoading
+  if (isLoadingFirstObjects) {
     return 'loading'
   }
 
   if (args.query.trim().length === 0) {
-    return args.recentResults.length > 0 ? 'recents' : 'empty'
+    const hasRecentResults = args.recentResults.length > 0
+    return hasRecentResults ? 'recents' : 'empty'
   }
 
-  return args.results.length > 0 ? 'results' : 'no-results'
+  const hasResults = args.results.length > 0
+  return hasResults ? 'results' : 'no-results'
 }
 
 const MAX_VISIBLE_RESULTS = 50
@@ -259,8 +262,9 @@ function parseCommandPaletteValue(
 
   const slashMatch = /(?:^|\s)\/([^\s]*)$/.exec(value)
 
+  const hasNoPillTokens = remainder === value.trimStart()
   return {
-    query: remainder === value.trimStart() ? value : remainder,
+    query: hasNoPillTokens ? value : remainder,
     pills: nextPills,
     isSlashDropdownOpen: slashMatch != null,
     slashQuery: slashMatch?.[1] ?? '',
@@ -393,9 +397,9 @@ function CommandPaletteSession({
   const databasePill = pills.find((pill) => pill.kind === 'database') ?? null
   const tablePill = pills.find((pill) => pill.kind === 'table') ?? null
   const columnObjects = useMemo<SearchableObject[]>(() => {
-    if (!activeConnectionId || !databasePill || !tablePill) {
-      return []
-    }
+    if (!activeConnectionId) return []
+    if (!databasePill) return []
+    if (!tablePill) return []
     if (
       !searchableObjects.some(
         (object) => object.database === databasePill.value && object.name === tablePill.label
@@ -485,7 +489,8 @@ function CommandPaletteSession({
 
   const handleSelect = useCallback(
     async (result: PaletteSearchResult) => {
-      if (!activeConnectionId || !profileId) {
+      const isConnectionMissing = !activeConnectionId || !profileId
+      if (isConnectionMissing) {
         onClose()
         return
       }
@@ -602,7 +607,8 @@ function CommandPaletteSession({
 
   const showColumnsFromKeyboard = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
-      if (isSlashDropdownOpen || activeResult?.objectType !== 'table') return
+      if (isSlashDropdownOpen) return
+      if (activeResult?.objectType !== 'table') return
       event.preventDefault()
       setPills(tableScopePills(activeResult))
       setQuery('')

@@ -158,8 +158,8 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
     }
   }, [isActive, pendingNavigationAction, tabId])
 
-  // Loading state
-  if (isLoading && !error) {
+  const isInitialLoad = isLoading && !error
+  if (isInitialLoad) {
     return (
       <ObjectEditorStatusView stateClassName={styles.loadingState} testId="object-editor-loading">
         <div className={styles.spinner} aria-hidden />
@@ -171,7 +171,8 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
   // Fatal error state — only when there is NO content (i.e. load failure).
   // Save failures set `error` too but the editor must remain visible so the
   // user can correct the DDL and retry.  Save errors are surfaced via toast.
-  if (error && !content) {
+  const isLoadFailure = Boolean(error) && !content
+  if (isLoadFailure) {
     return (
       <ObjectEditorStatusView stateClassName={styles.errorState} testId="object-editor-error">
         {error}

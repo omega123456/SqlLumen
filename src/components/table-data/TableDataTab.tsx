@@ -103,7 +103,8 @@ function isInitialLoad(view: TableDataTabView): boolean {
 
 // Show no-PK warning only for actual tables, not views (views never have PKs)
 function shouldShowNoPrimaryKeyWarning(view: TableDataTabView, isViewObject: boolean): boolean {
-  if (isViewObject || view.primaryKey !== null) return false
+  if (isViewObject) return false
+  if (view.primaryKey !== null) return false
   return !view.isLoading && hasLoadedColumns(view)
 }
 
@@ -238,7 +239,8 @@ export function TableDataTab({
     // Only init + load if we don't already have state for this tab
     // (prevents re-loading when switching back to the tab after it was unmounted)
     const existing = useTableDataStore.getState().tabs[tabId]
-    if (isActive && !existing) {
+    const needsInitialLoad = isActive && !existing
+    if (needsInitialLoad) {
       initTab(tabId, connectionId, database, table)
       loadTableData(tabId)
     }

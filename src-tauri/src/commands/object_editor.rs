@@ -304,8 +304,9 @@ pub async fn save_object_impl(
         validate_view_ddl_prefix(&request.body, &request.mode)?;
     }
 
-    // Name mismatch validation for alter mode
-    if request.mode == "alter" && !parsed_name.eq_ignore_ascii_case(&request.object_name) {
+    let is_alter_name_mismatch =
+        request.mode == "alter" && !parsed_name.eq_ignore_ascii_case(&request.object_name);
+    if is_alter_name_mismatch {
         let label = object_name_label(is_view);
         return Err(format!(
             "{label} name mismatch: expected '{}' but DDL defines '{}'",
@@ -456,8 +457,9 @@ pub async fn save_object_impl(
         validate_view_ddl_prefix(&request.body, &request.mode)?;
     }
 
-    // Name mismatch validation for alter mode
-    if request.mode == "alter" && !parsed_name.eq_ignore_ascii_case(&request.object_name) {
+    let is_alter_name_mismatch =
+        request.mode == "alter" && !parsed_name.eq_ignore_ascii_case(&request.object_name);
+    if is_alter_name_mismatch {
         let label = object_name_label(is_view);
         return Err(format!(
             "{label} name mismatch: expected '{}' but DDL defines '{}'",

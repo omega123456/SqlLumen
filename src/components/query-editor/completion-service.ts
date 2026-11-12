@@ -165,7 +165,8 @@ function canSupplementStoredProgramBodyKeywords(
   suggestions: Suggestions,
   currentWordPrefix: string
 ): boolean {
-  if (suggestions.syntax.length === 0) {
+  const hasNoSyntaxSuggestions = suggestions.syntax.length === 0
+  if (hasNoSyntaxSuggestions) {
     return true
   }
 
@@ -184,7 +185,8 @@ function hasUnclosedStoredProgramBegin(statementPrefix: string): boolean {
       depth += 1
       continue
     }
-    if (upperToken === 'END' && depth > 0) {
+    const closesOpenBlock = upperToken === 'END' && depth > 0
+    if (closesOpenBlock) {
       depth -= 1
     }
   }
@@ -197,7 +199,7 @@ function isStoredProgramBodyContext(statementPrefix: string): boolean {
     /CREATE\b[\s\S]*\b(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i
   )
 
-  if (!routineDeclarationPrefixMatch || routineDeclarationPrefixMatch.index === undefined) {
+  if (routineDeclarationPrefixMatch?.index === undefined) {
     return false
   }
 
@@ -290,11 +292,8 @@ function getScopedSchemaDatabases(
   databases: readonly string[],
   scopedDatabase: string | null
 ): readonly string[] {
-  if (scopedDatabase && databases.includes(scopedDatabase)) {
-    return [scopedDatabase]
-  }
-
-  return databases
+  if (!scopedDatabase) return databases
+  return databases.includes(scopedDatabase) ? [scopedDatabase] : databases
 }
 
 function getParseFallbackMode(
@@ -362,7 +361,7 @@ function pushBuiltinFunctions(
   sortPrefix = SORT_PREFIX_NEUTRAL
 ): void {
   for (const functionName of SQL_BUILTIN_FUNCTIONS) {
-    if (seenLabels && seenLabels.has(`fn:${functionName}`)) {
+    if (seenLabels?.has(`fn:${functionName}`)) {
       continue
     }
 
@@ -404,12 +403,8 @@ function pushStoredProgramBodyKeywords(
   existingKeywords: readonly string[],
   sortPrefix = SORT_PREFIX_NEUTRAL
 ): void {
-  if (
-    !isStoredProgramBodyContext(statementPrefix) ||
-    !canSupplementStoredProgramBodyKeywords(suggestions, currentWordPrefix)
-  ) {
-    return
-  }
+  if (!isStoredProgramBodyContext(statementPrefix)) return
+  if (!canSupplementStoredProgramBodyKeywords(suggestions, currentWordPrefix)) return
 
   const seenKeywords = new Set(existingKeywords.map((kw) => kw.toUpperCase()))
 
@@ -1005,7 +1000,8 @@ function buildSyntaxCompletions(request: SyntaxCompletionRequest): ICompletionIt
     inCallStatementContext: inCallStatementContext,
   })
 
-  if (isColumnContext && isAfterSelectWildcard(statementPrefix)) {
+  const isWildcardFollowUp = isColumnContext && isAfterSelectWildcard(statementPrefix)
+  if (isWildcardFollowUp) {
     return buildWildcardFollowUpItems(request, sortPrefixes.keyword)
   }
 
@@ -1201,7 +1197,8 @@ function findTablesInCaretStatement(
   const tableRefs: TableRef[] = []
 
   for (const entity of entities ?? []) {
-    if (!isCaretStatementTable(entity) || !entity.text) continue
+    if (!isCaretStatementTable(entity)) continue
+    if (!entity.text) continue
     const tableRef = parseTableRefText(entity.text)
     if (!tableRef) continue
     tableRefs.push(tableRef)
@@ -1217,7 +1214,8 @@ function parseTableRefText(text: string): TableRef | null {
     const parts = text.split('.')
     const database = stripQuotes(parts[0].trim())
     const table = stripQuotes(parts[parts.length - 1].trim())
-    if (!database || !table) return null
+    if (!database) return null
+    if (!table) return null
     return { database, table }
   }
 

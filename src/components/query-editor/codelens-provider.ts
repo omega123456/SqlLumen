@@ -19,7 +19,7 @@ import { getModelContext } from './completion-service'
 import { splitStatements } from './sql-parser-utils'
 import type { StatementRange } from './sql-parser-utils'
 import { useSettingsStore } from '../../stores/settings-store'
-import { useQueryStore, isCallSql } from '../../stores/query-store'
+import { useQueryStore, isCallSql, isExecutionLocked } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 
 // ---------------------------------------------------------------------------
@@ -66,12 +66,7 @@ export function handleRunStatement(
 ): void {
   const queryState = useQueryStore.getState()
   const tabState = queryState.tabs[tabId]
-  if (
-    tabState &&
-    (tabState.tabStatus === 'running' ||
-      tabState.tabStatus === 'ai-pending' ||
-      tabState.tabStatus === 'ai-reviewing')
-  ) {
+  if (isExecutionLocked(tabState)) {
     return
   }
 
@@ -154,8 +149,7 @@ export function provideCodeLenses(
   void _unusedToken
   const context = getModelContext(model.uri.toString())
 
-  // No CodeLens in object-editor tabs or unregistered models
-  if (!context || context.tabType !== 'query-editor') {
+  if (context?.tabType !== 'query-editor') {
     return { lenses: [], dispose: () => {} }
   }
 
@@ -240,9 +234,10 @@ useSettingsStore.subscribe((state) => {
 monaco.editor.registerCommand(
   RUN_COMMAND_ID,
   (_accessor: unknown, connectionId?: string, tabId?: string, statement?: StatementRange) => {
-    if (connectionId && tabId && statement) {
-      handleRunStatement(connectionId, tabId, statement)
-    }
+    if (!connectionId) return
+    if (!tabId) return
+    if (!statement) return
+    handleRunStatement(connectionId, tabId, statement)
   }
 )
 
@@ -255,9 +250,11 @@ monaco.editor.registerCommand(
     statement?: StatementRange,
     text?: string
   ) => {
-    if (connectionId && tabId && statement && text) {
-      handleAskAi(connectionId, tabId, statement, text)
-    }
+    if (!connectionId) return
+    if (!tabId) return
+    if (!statement) return
+    if (!text) return
+    handleAskAi(connectionId, tabId, statement, text)
   }
 )
 

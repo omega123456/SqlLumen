@@ -22,6 +22,7 @@ import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { Button } from '../common/Button'
 import { TAB_STRIP_NAVIGATION } from '../../lib/tab-strip-navigation'
 import styles from './ResultSubTabs.module.css'
+import { hasResultColumns } from '../../lib/query-result-column-utils'
 
 interface ResultSubTabsProps {
   tabId: string
@@ -31,7 +32,7 @@ function getTabIcon(result: SingleResultState) {
   if (result.resultStatus === 'error') {
     return <Warning size={12} weight="fill" className={styles.errorIcon} />
   }
-  if (result.columns.length === 0) {
+  if (!hasResultColumns(result)) {
     return <CheckCircle size={12} weight="fill" className={styles.dmlIcon} />
   }
   return <Table size={12} weight="fill" className={styles.selectIcon} />

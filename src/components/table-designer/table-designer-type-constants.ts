@@ -210,9 +210,8 @@ export function clampLengthForType(type: string, length: string): string {
     return ''
   }
 
-  if (!/^\d+$/.test(trimmed) || info.maxLength === undefined) {
-    return trimmed
-  }
+  if (!/^\d+$/.test(trimmed)) return trimmed
+  if (info.maxLength === undefined) return trimmed
 
   return String(Math.min(Number.parseInt(trimmed, 10), info.maxLength))
 }

@@ -14,6 +14,8 @@ import { MemoryRow, MEMORY_DRAG_MIME_TYPE, type MemoryDragPayload } from './Memo
 import type { AiMemory, MemoryScope } from '../../../lib/ai-memory-commands'
 import { logParseFallback } from '../../../lib/app-log-commands'
 import styles from './MemorySection.module.css'
+import { isMemoryScope } from '../../../lib/ai-memory-commands'
+import { isTargetOutside } from '../../../lib/input-events'
 
 const AUTO_COLLAPSE_MEMORY_COUNT = 5
 
@@ -80,14 +82,9 @@ function isDropAccepted(
   return true
 }
 
-const MEMORY_SCOPES: ReadonlySet<unknown> = new Set<MemoryScope>(['global', 'group', 'connection'])
-
-function isMemoryScope(value: unknown): value is MemoryScope {
-  return MEMORY_SCOPES.has(value)
-}
-
 function ownerIdOrUndefined(value: unknown): string | null | undefined {
-  if (typeof value === 'string' || value === null) return value
+  if (typeof value === 'string') return value
+  if (value === null) return null
   return undefined
 }
 
@@ -96,9 +93,8 @@ function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null 
     const raw = dataTransfer.getData(MEMORY_DRAG_MIME_TYPE)
     if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<MemoryDragPayload>
-    if (typeof parsed.memoryId !== 'number' || !isMemoryScope(parsed.fromScope)) {
-      return null
-    }
+    if (typeof parsed.memoryId !== 'number') return null
+    if (!isMemoryScope(parsed.fromScope)) return null
     return {
       memoryId: parsed.memoryId,
       fromScope: parsed.fromScope,
@@ -113,7 +109,8 @@ function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null 
 
 function hasMemoryDragType(dataTransfer: DataTransfer): boolean {
   for (let typeIndex = 0; typeIndex < dataTransfer.types.length; typeIndex += 1) {
-    if (dataTransfer.types[typeIndex] === MEMORY_DRAG_MIME_TYPE) return true
+    const dragType = dataTransfer.types[typeIndex]
+    if (dragType === MEMORY_DRAG_MIME_TYPE) return true
   }
   return false
 }
@@ -290,7 +287,8 @@ export function MemorySection({
 
   const handleSave = async () => {
     const content = draft.trim()
-    if (!content || saving) return
+    if (!content) return
+    if (saving) return
     setSaving(true)
     try {
       await onAdd(content)
@@ -305,7 +303,8 @@ export function MemorySection({
     event.stopPropagation()
     onHover(null)
     const payload = resolveDragPayload(event.dataTransfer)
-    if (!payload || !isDropAccepted(scope, connectionId, groupId, payload)) return
+    if (!payload) return
+    if (!isDropAccepted(scope, connectionId, groupId, payload)) return
     onDrop({ scope, connectionId, groupId }, payload)
   }
 
@@ -336,7 +335,9 @@ export function MemorySection({
         // Only clear when the cursor truly leaves this section (not when moving
         // into one of its own children). A move into a sibling/parent section is
         // handled by that section's `dragover` updating the shared hover key.
-        if (isDragOver && !event.currentTarget.contains(event.relatedTarget as Node)) onHover(null)
+        const hasLeftSection =
+          isDragOver && isTargetOutside(event.currentTarget, event.relatedTarget)
+        if (hasLeftSection) onHover(null)
       }}
       onDrop={handleDrop}
     >

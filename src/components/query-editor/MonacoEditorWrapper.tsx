@@ -29,6 +29,7 @@ import './signature-help-provider'
 
 // Register CodeLens provider for Run + Ask AI per statement (side-effect import)
 import './codelens-provider'
+import { isAiLockStatus, isEditorLockStatus } from '../../lib/query-tab-status'
 
 const DEFAULT_EDITOR_FONT_SIZE = Number(SETTINGS_DEFAULTS['editor.fontSize'])
 const DEFAULT_EDITOR_LINE_HEIGHT = Number(SETTINGS_DEFAULTS['editor.lineHeight'])
@@ -50,6 +51,7 @@ interface MonacoEditorWrapperProps {
 }
 
 const MONACO_SHORTCUT_ACTIONS = ['execute-query', 'format-query', 'new-query-tab'] as const
+const COMMA_KEY_NAMES: ReadonlySet<string> = new Set([',', 'COMMA'])
 
 type MonacoShortcutActionId = (typeof MONACO_SHORTCUT_ACTIONS)[number]
 
@@ -117,7 +119,7 @@ function getMonacoKeyCode(key: string, monacoInstance: typeof MonacoType): numbe
     return monacoInstance.KeyCode.Tab
   }
 
-  if (normalizedKey === ',' || normalizedKey === 'COMMA') {
+  if (COMMA_KEY_NAMES.has(normalizedKey)) {
     return monacoInstance.KeyCode.Comma
   }
 
@@ -290,19 +292,15 @@ export function MonacoEditorWrapper({
   // Determine whether we are using override props (object-editor mode) or query-store bindings
   const isOverrideMode = overrideValue !== undefined
   const effectiveContent = isOverrideMode ? overrideValue : content
-  const isReadOnly =
-    overrideReadOnly !== undefined
-      ? overrideReadOnly
-      : status === 'running' || status === 'ai-pending' || status === 'ai-reviewing'
-  const isAiLocked =
-    overrideReadOnly === undefined && (status === 'ai-pending' || status === 'ai-reviewing')
+  const isReadOnly = overrideReadOnly ?? isEditorLockStatus(status)
+  const isAiLocked = overrideReadOnly === undefined && isAiLockStatus(status)
 
   // Register themes once Monaco is loaded
   useEffect(() => {
-    if (monaco && !themesRegistered.current) {
-      registerMonacoThemes(monaco)
-      themesRegistered.current = true
-    }
+    if (!monaco) return
+    if (themesRegistered.current) return
+    registerMonacoThemes(monaco)
+    themesRegistered.current = true
   }, [monaco])
 
   // Update Monaco theme when app theme changes
@@ -317,14 +315,17 @@ export function MonacoEditorWrapper({
   // Uses modelUriRef (captured at mount time) so cleanup works even if
   // Monaco has already disposed the model (getModel() returns null).
   useEffect(() => {
-    if (editorRef.current && connectionId && modelUriRef.current) {
-      registerModelConnection(modelUriRef.current, connectionId, tabId, tabType)
-    }
-    return () => {
+    const unregisterOnCleanup = () => {
       if (modelUriRef.current) {
         unregisterModelConnection(modelUriRef.current)
       }
     }
+    const modelUri = modelUriRef.current
+    if (!editorRef.current) return unregisterOnCleanup
+    if (!connectionId) return unregisterOnCleanup
+    if (!modelUri) return unregisterOnCleanup
+    registerModelConnection(modelUri, connectionId, tabId, tabType)
+    return unregisterOnCleanup
   }, [connectionId, tabId, tabType])
 
   const currentThemeName = getMonacoThemeName(theme, resolvedTheme === 'dark')

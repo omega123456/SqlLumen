@@ -6,6 +6,12 @@ import { invoke } from '@tauri-apps/api/core'
 
 export type MemoryScope = 'connection' | 'group' | 'global'
 
+const MEMORY_SCOPES: ReadonlySet<unknown> = new Set<MemoryScope>(['global', 'group', 'connection'])
+
+export function isMemoryScope(value: unknown): value is MemoryScope {
+  return MEMORY_SCOPES.has(value)
+}
+
 export interface AiMemory {
   id: number
   scope: MemoryScope

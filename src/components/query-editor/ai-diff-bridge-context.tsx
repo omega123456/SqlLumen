@@ -44,9 +44,8 @@ export function AiDiffBridgeProvider({ children }: { children: ReactNode }) {
 export function useRegisterAiDiffHandler(tabId: string, handler: AiDiffHandler | undefined) {
   const context = useContext(AiDiffBridgeContext)
   useEffect(() => {
-    if (!context || !handler) {
-      return
-    }
+    if (!context) return
+    if (!handler) return
     context.registerHandler(tabId, handler)
     return () => {
       context.registerHandler(tabId, null)

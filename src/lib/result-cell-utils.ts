@@ -1,3 +1,5 @@
+import { isNullish } from './value-checks'
+
 /**
  * Shared utility for formatting result cell values across all view modes.
  *
@@ -10,7 +12,7 @@
  * Returns { displayValue: string, isNull: boolean }
  */
 export function formatCellValue(value: unknown): { displayValue: string; isNull: boolean } {
-  if (value === null || value === undefined) {
+  if (isNullish(value)) {
     return { displayValue: 'NULL', isNull: true }
   }
   if (typeof value === 'string') {

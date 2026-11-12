@@ -12,7 +12,8 @@
 import { create } from 'zustand'
 
 import { logFrontend } from '../lib/app-log-commands'
-import { hasTauriApis } from '../lib/tauri-env'
+import { hasTauriApis, hasWindow } from '../lib/tauri-env'
+import { isPositiveFiniteNumber } from '../lib/value-checks'
 import { MILLISECONDS_PER_DAY, MILLISECONDS_PER_SECOND, TWO_DIGIT_WIDTH } from '../lib/units'
 import { showErrorToast } from './toast-store'
 import {
@@ -112,6 +113,34 @@ function computeSnapshotMetadata(): SnapshotMetadata {
 // ---------------------------------------------------------------------------
 
 /** True when both dates fall on the same UTC calendar day. */
+const SNAPSHOT_FREQUENCIES: ReadonlySet<string> = new Set<SnapshotFrequency>([
+  'off',
+  'onClose',
+  'daily',
+  'weekly',
+])
+type PeriodicSnapshotFrequency = Extract<SnapshotFrequency, 'daily' | 'weekly'>
+
+const PERIODIC_SNAPSHOT_FREQUENCIES: ReadonlySet<SnapshotFrequency> = new Set<SnapshotFrequency>([
+  'daily',
+  'weekly',
+])
+
+function isPeriodicFrequency(frequency: SnapshotFrequency): frequency is PeriodicSnapshotFrequency {
+  return PERIODIC_SNAPSHOT_FREQUENCIES.has(frequency)
+}
+
+function isSnapshotFrequency(value: string): value is SnapshotFrequency {
+  return SNAPSHOT_FREQUENCIES.has(value)
+}
+
+function isAutoSnapshotSuppressed(trigger: SnapshotTrigger, frequency: SnapshotFrequency): boolean {
+  if (trigger === 'beforeRestore') return false
+  if (frequency === 'off') return true
+  if (trigger === 'manual') return false
+  return !useSessionRestoreStore.getState().canPersistSession()
+}
+
 function isSameUtcDay(left: Date, right: Date): boolean {
   return (
     left.getUTCFullYear() === right.getUTCFullYear() &&
@@ -253,7 +282,8 @@ async function saveSafetySnapshot(
   preRestore: PreRestoreSession,
   createAutoSnapshot: (trigger: SnapshotTrigger) => Promise<number | null>
 ): Promise<boolean> {
-  if (preRestore.connectionIds.length === 0) {
+  const hasNoConnectionsToClose = preRestore.connectionIds.length === 0
+  if (hasNoConnectionsToClose) {
     return true
   }
   const beforeRestoreSnapshotId = await createAutoSnapshot('beforeRestore')
@@ -319,7 +349,8 @@ async function closeAllConnectionsBeforeRestore(preRestore: PreRestoreSession): 
   const remainingConnections = useConnectionStore.getState().activeConnections
   const isStillOpen = (sessionId: string) => sessionId in remainingConnections
   const stillOpenTargetIds = preRestore.connectionIds.filter(isStillOpen)
-  if (!outcome.closeFailureId && stillOpenTargetIds.length === 0) {
+  const hasClosedEveryTarget = !outcome.closeFailureId && stillOpenTargetIds.length === 0
+  if (hasClosedEveryTarget) {
     return true
   }
 
@@ -377,7 +408,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
 
   getFrequency: (): SnapshotFrequency => {
     const value = useSettingsStore.getState().getSetting('snapshots.frequency')
-    if (value === 'off' || value === 'onClose' || value === 'daily' || value === 'weekly') {
+    if (isSnapshotFrequency(value)) {
       return value
     }
     return 'daily'
@@ -386,7 +417,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
   getKeep: (): number => {
     const value = useSettingsStore.getState().getSetting('snapshots.keep')
     const parsed = Number.parseInt(value, 10)
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SNAPSHOTS_TO_KEEP
+    return isPositiveFiniteNumber(parsed) ? parsed : DEFAULT_SNAPSHOTS_TO_KEEP
   },
 
   openDialog: async (): Promise<void> => {
@@ -438,16 +469,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
   },
 
   createAutoSnapshot: async (trigger: SnapshotTrigger): Promise<number | null> => {
-    // `beforeRestore` is part of an explicit, user-initiated restore and always
-    // proceeds. All other automatic triggers are suppressed when frequency=off.
-    if (trigger !== 'beforeRestore' && get().getFrequency() === 'off') {
-      return null
-    }
-    if (
-      trigger !== 'beforeRestore' &&
-      trigger !== 'manual' &&
-      !useSessionRestoreStore.getState().canPersistSession()
-    ) {
+    if (isAutoSnapshotSuppressed(trigger, get().getFrequency())) {
       return null
     }
 
@@ -544,7 +566,7 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
 
   runPeriodicCheck: async (): Promise<void> => {
     const frequency = get().getFrequency()
-    if (frequency !== 'daily' && frequency !== 'weekly') {
+    if (!isPeriodicFrequency(frequency)) {
       return
     }
 
@@ -571,7 +593,8 @@ export const useSnapshotStore = create<SnapshotState>()((set, get) => ({
   },
 
   handleAppClose: async (): Promise<void> => {
-    if (get().getFrequency() === 'off') {
+    const areSnapshotsOff = get().getFrequency() === 'off'
+    if (areSnapshotsOff) {
       return
     }
     await get().createAutoSnapshot('onClose')
@@ -590,9 +613,9 @@ let periodicIntervalId: number | null = null
  * and the on-close hook. Idempotent: guarded against double-registration.
  */
 export function registerSnapshotScheduler(): void {
-  if (schedulerRegistered || typeof window === 'undefined' || !hasTauriApis()) {
-    return
-  }
+  if (schedulerRegistered) return
+  if (!hasWindow()) return
+  if (!hasTauriApis()) return
   schedulerRegistered = true
 
   periodicIntervalId = window.setInterval(() => {
@@ -604,8 +627,10 @@ export function registerSnapshotScheduler(): void {
 
 /** Test-only: clear the interval and reset the double-registration guard. */
 export function _resetSnapshotSchedulerForTests(): void {
-  if (periodicIntervalId != null && typeof window !== 'undefined') {
-    window.clearInterval(periodicIntervalId)
+  const intervalId = periodicIntervalId
+  const hasPeriodicInterval = intervalId != null && hasWindow()
+  if (hasPeriodicInterval) {
+    window.clearInterval(intervalId)
   }
   periodicIntervalId = null
   schedulerRegistered = false

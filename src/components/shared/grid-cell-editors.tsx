@@ -25,14 +25,12 @@ import { TextInput } from '../common/TextInput'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import styles from './grid-cell-editors.module.css'
+import { isTargetInside } from '../../lib/input-events'
+import { isNullish } from '../../lib/value-checks'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function isNullish(value: unknown): value is null | undefined {
-  return value === null || value === undefined
-}
 
 // ---------------------------------------------------------------------------
 // Shared editor props (grid editor protocol + store callbacks)
@@ -126,7 +124,9 @@ function openForeignKeyLookupFromKey(
   request: ForeignKeyLookupRequest
 ): boolean {
   const { props, foreignKeyLookup } = request
-  if (!isForeignKeyLookupKey(event) || !props.foreignKey || !foreignKeyLookup) return false
+  if (!isForeignKeyLookupKey(event)) return false
+  if (!props.foreignKey) return false
+  if (!foreignKeyLookup) return false
   event.preventDefault()
   event.stopPropagation()
   // The glide overlay portal outranks the dialog z-index, so close it before opening the dialog.
@@ -139,10 +139,6 @@ function openForeignKeyLookupFromKey(
     source: 'keyboard',
   })
   return true
-}
-
-function isFocusInside(wrapper: HTMLDivElement | null, target: EventTarget | null): boolean {
-  return target instanceof Node && wrapper?.contains(target) === true
 }
 
 function nullToggleClassName(isNull: boolean): string {
@@ -235,7 +231,7 @@ function useNullableTextEditor(props: CellEditorBaseProps, refs: NullableTextEdi
   const handleBlur = useCallback(
     (relatedTarget: EventTarget | null) => {
       if (isCancellingRef.current) return
-      if (isFocusInside(wrapperRef.current, relatedTarget)) return
+      if (isTargetInside(wrapperRef.current, relatedTarget)) return
       onClose(true, false)
     },
     [onClose, wrapperRef]
@@ -355,7 +351,7 @@ function isDropdownPortalTarget(node: Node | null): boolean {
 
 function isFocusInsideEnumEditor(wrapper: HTMLDivElement | null, target: EventTarget | null) {
   if (!(target instanceof Node)) return false
-  return isFocusInside(wrapper, target) || isDropdownPortalTarget(target)
+  return isTargetInside(wrapper, target) || isDropdownPortalTarget(target)
 }
 
 function buildEnumOptions(enumValues: string[], isNullable: boolean): DropdownOption[] {

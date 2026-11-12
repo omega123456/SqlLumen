@@ -13,6 +13,7 @@ import { EntityContextType } from 'monaco-sql-languages'
 import { SQL_RESERVED_WORDS_SET } from './sql-keywords'
 
 const QUOTE_PAIR_LENGTH = 2
+const IDENTIFIER_QUOTES: ReadonlySet<string> = new Set(['`', '"', "'"])
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -44,11 +45,8 @@ export function stripQuotes(identifier: string): string {
   if (identifier.length < QUOTE_PAIR_LENGTH) return identifier
   const first = identifier[0]
   const last = identifier[identifier.length - 1]
-  if (
-    (first === '`' && last === '`') ||
-    (first === '"' && last === '"') ||
-    (first === "'" && last === "'")
-  ) {
+  const isQuoted = first === last && IDENTIFIER_QUOTES.has(first)
+  if (isQuoted) {
     return identifier.slice(1, -1)
   }
   return identifier
@@ -124,7 +122,8 @@ export function buildAliasMap(
 ): AliasMap {
   const map: AliasMap = new Map()
 
-  if (!entities || entities.length === 0) return map
+  if (!entities) return map
+  if (entities.length === 0) return map
 
   // 1. Filter to TABLE entities that have an alias defined
   const aliased = entities.filter(

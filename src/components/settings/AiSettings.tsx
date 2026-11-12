@@ -14,6 +14,8 @@ import type { Icon } from '@phosphor-icons/react'
 import { AiMemoriesSettings } from './AiMemoriesSettings'
 import { useFetchModels } from '../../hooks/useFetchModels'
 import styles from './AiSettings.module.css'
+import { isActivationKey } from '../../lib/input-events'
+import { isBlank } from '../../lib/value-checks'
 
 // ---------------------------------------------------------------------------
 // Local component: ModelCategorySection
@@ -68,7 +70,7 @@ function ModelCategorySection({
                 className={`${styles.modelCard}${selectedModelId === model.id ? ` ${styles.modelCardSelected}` : ''}`}
                 onClick={() => onSelectModel(model.id)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
+                  if (isActivationKey(event.key)) {
                     event.preventDefault()
                     onSelectModel(model.id)
                   }
@@ -129,13 +131,16 @@ function describeBuildingState(buildingConnections: ConnectionIndexState[]): str
   if (buildingConnections.length === 0) return `Reading schema (${countLabel})...`
   const first = buildingConnections[0]
   const hasTableTotals = first.tablesTotal > 0
-  if (first.phase === 'finalizing' && hasTableTotals) {
+  const isFinalizingTables = first.phase === 'finalizing' && hasTableTotals
+  if (isFinalizingTables) {
     return `Finalizing ${first.tablesDone}/${first.tablesTotal} steps (${countLabel})...`
   }
-  if (first.phase === 'embedding' && hasTableTotals) {
+  const isEmbeddingTables = first.phase === 'embedding' && hasTableTotals
+  if (isEmbeddingTables) {
     return `Indexing ${first.tablesDone}/${first.tablesTotal} tables (${countLabel})...`
   }
-  if (first.phase === 'loading_schema' && first.tablesDone > 0) {
+  const isReadingTables = first.phase === 'loading_schema' && first.tablesDone > 0
+  if (isReadingTables) {
     return `Reading schema (${first.tablesDone} tables, ${countLabel})...`
   }
   return `Reading schema (${countLabel})...`
@@ -350,13 +355,15 @@ export function AiSettings() {
   const embeddingFetchReset = embeddingFetch.reset
 
   useEffect(() => {
-    if (aiEnabled && endpoint.trim()) {
+    const hasChatEndpoint = aiEnabled && !isBlank(endpoint)
+    if (hasChatEndpoint) {
       chatFetchModels()
     }
   }, [aiEnabled, endpoint, chatFetchModels])
 
   useEffect(() => {
-    if (!aiEnabled || !embeddingEndpoint.trim()) {
+    const hasEmbeddingEndpoint = aiEnabled && !isBlank(embeddingEndpoint)
+    if (!hasEmbeddingEndpoint) {
       // Blank embedding URL: invalidate any in-flight fetch and revert to the
       // chat-fetch embedding models with no leftover loading/error state.
       embeddingFetchReset()

@@ -7,6 +7,9 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::commands::query_history_bridge;
 use crate::db::history::NewHistoryEntry;
+use crate::mysql::sql_chars::{
+    has_char_at, is_ascii_whitespace_at, is_escape_before_char, is_line_break_char,
+};
 use crate::state::{ImportError, ImportJobProgress, ImportJobStatus};
 
 /// Parse a SQL script into individual statements, respecting:
@@ -30,11 +33,11 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         let ch = chars[position];
 
         // --- Check for DELIMITER directive at the start of a line (or start of input) ---
-        if is_at_line_start(&chars, position)
-            && remaining_starts_with_ci(&chars, position, "DELIMITER")
-        {
+        let is_delimiter_keyword = is_at_line_start(&chars, position)
+            && remaining_starts_with_ci(&chars, position, "DELIMITER");
+        if is_delimiter_keyword {
             let after = position + "DELIMITER".len();
-            if after < len && chars[after].is_ascii_whitespace() {
+            if is_ascii_whitespace_at(&chars, after) {
                 // Flush any pending statement
                 let trimmed = current.trim().to_string();
                 if !trimmed.is_empty() {
@@ -44,20 +47,13 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
                 // Skip whitespace after DELIMITER keyword
                 let mut scan_position = after;
-                while scan_position < len
-                    && chars[scan_position] != '\n'
-                    && chars[scan_position] != '\r'
-                    && chars[scan_position].is_ascii_whitespace()
-                {
+                while is_inline_whitespace_at(&chars, scan_position) {
                     scan_position += 1;
                 }
 
                 // Read the new delimiter until end of line
                 let mut new_delim = String::new();
-                while scan_position < len
-                    && chars[scan_position] != '\n'
-                    && chars[scan_position] != '\r'
-                {
+                while is_within_line(&chars, scan_position) {
                     new_delim.push(chars[scan_position]);
                     scan_position += 1;
                 }
@@ -69,10 +65,10 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
                 // Skip the newline
                 position = scan_position;
-                if position < len && chars[position] == '\r' {
+                if has_char_at(&chars, position, '\r') {
                     position += 1;
                 }
-                if position < len && chars[position] == '\n' {
+                if has_char_at(&chars, position, '\n') {
                     position += 1;
                 }
                 continue;
@@ -80,10 +76,11 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         }
 
         // --- Single-line comment: -- (followed by space or end) ---
-        if ch == '-' && position + 1 < len && chars[position + 1] == '-' {
+        let starts_dash_comment = ch == '-' && has_char_at(&chars, position + 1, '-');
+        if starts_dash_comment {
             // MySQL requires space after -- for comment, but we're lenient
             // Skip to end of line
-            while position < len && chars[position] != '\n' {
+            while is_before_newline(&chars, position) {
                 position += 1;
             }
             // Keep the newline in current to preserve formatting
@@ -96,7 +93,7 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
         // --- Single-line comment: # ---
         if ch == '#' {
-            while position < len && chars[position] != '\n' {
+            while is_before_newline(&chars, position) {
                 position += 1;
             }
             if position < len {
@@ -108,7 +105,8 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
         // --- Multi-line comment: /* ... */ ---
         // MySQL conditional comments /*!...*/ are preserved as executable SQL.
-        if ch == '/' && position + 1 < len && chars[position + 1] == '*' {
+        let starts_block_comment = ch == '/' && has_char_at(&chars, position + 1, '*');
+        if starts_block_comment {
             let is_conditional_comment = position + 2 < len && chars[position + 2] == '!';
             if is_conditional_comment {
                 let body_start = position + "/*!".len();
@@ -131,7 +129,7 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
             while position < len {
                 let character = chars[position];
                 current.push(character);
-                if character == '\\' && position + 1 < len {
+                if is_escape_before_char(&chars, position) {
                     // Escaped character
                     position += 1;
                     current.push(chars[position]);
@@ -140,7 +138,7 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
                 }
                 if character == '\'' {
                     // Check for escaped quote ''
-                    if position + 1 < len && chars[position + 1] == '\'' {
+                    if has_char_at(&chars, position + 1, '\'') {
                         position += 1;
                         current.push(chars[position]);
                         position += 1;
@@ -161,14 +159,14 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
             while position < len {
                 let character = chars[position];
                 current.push(character);
-                if character == '\\' && position + 1 < len {
+                if is_escape_before_char(&chars, position) {
                     position += 1;
                     current.push(chars[position]);
                     position += 1;
                     continue;
                 }
                 if character == '"' {
-                    if position + 1 < len && chars[position + 1] == '"' {
+                    if has_char_at(&chars, position + 1, '"') {
                         position += 1;
                         current.push(chars[position]);
                         position += 1;
@@ -191,7 +189,7 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
                 current.push(character);
                 if character == '`' {
                     // Check for escaped backtick ``
-                    if position + 1 < len && chars[position + 1] == '`' {
+                    if has_char_at(&chars, position + 1, '`') {
                         position += 1;
                         current.push(chars[position]);
                         position += 1;
@@ -531,6 +529,22 @@ fn log_import_history(db: &Arc<Mutex<rusqlite::Connection>>, summary: ImportHist
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 /// Check if position `i` is at the start of a line (or start of input).
+fn is_within_line(chars: &[char], position: usize) -> bool {
+    chars
+        .get(position)
+        .is_some_and(|character| !is_line_break_char(*character))
+}
+
+fn is_inline_whitespace_at(chars: &[char], position: usize) -> bool {
+    is_within_line(chars, position) && is_ascii_whitespace_at(chars, position)
+}
+
+fn is_before_newline(chars: &[char], position: usize) -> bool {
+    chars
+        .get(position)
+        .is_some_and(|character| *character != '\n')
+}
+
 fn is_at_line_start(chars: &[char], position: usize) -> bool {
     if position == 0 {
         return true;
@@ -539,7 +553,7 @@ fn is_at_line_start(chars: &[char], position: usize) -> bool {
     let mut scan_position = position;
     while scan_position > 0 {
         scan_position -= 1;
-        if chars[scan_position] == '\n' || chars[scan_position] == '\r' {
+        if is_line_break_char(chars[scan_position]) {
             return true;
         }
         if !chars[scan_position].is_ascii_whitespace() {

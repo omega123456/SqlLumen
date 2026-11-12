@@ -100,9 +100,8 @@ export const SETTINGS_VALIDATORS: Record<string, (value: string) => string | nul
     const trimmed = value.trim()
     if (!/^\d+$/.test(trimmed)) return RESULTS_MAX_ROWS_ERROR
     const parsed = Number(trimmed)
-    return parsed >= RESULTS_MAX_ROWS_MIN && parsed <= RESULTS_MAX_ROWS_MAX
-      ? null
-      : RESULTS_MAX_ROWS_ERROR
+    const isWithinRange = parsed >= RESULTS_MAX_ROWS_MIN && parsed <= RESULTS_MAX_ROWS_MAX
+    return isWithinRange ? null : RESULTS_MAX_ROWS_ERROR
   },
 }
 
@@ -195,10 +194,11 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   },
 
   save: async () => {
-    // Validate every pending key first; an invalid value blocks the whole save.
     const pendingKeys = Object.keys(get().pendingChanges)
     const allValid = pendingKeys.map((key) => get().validateSetting(key)).every(Boolean)
-    if (!allValid || Object.keys(get().validationErrors).length > 0) return
+    const hasValidationErrors = Object.keys(get().validationErrors).length > 0
+    const canSave = allValid && !hasValidationErrors
+    if (!canSave) return
 
     const state = get()
     const entries = Object.entries(state.pendingChanges)

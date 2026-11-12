@@ -35,13 +35,24 @@ export type RememberResult = { type: 'saved'; memory: AiMemory } | { type: 'ask'
 // Scope resolution
 // ---------------------------------------------------------------------------
 
+const REMEMBER_SCOPE_SETTINGS: ReadonlySet<string> = new Set<RememberScopeSetting>([
+  'connection',
+  'group',
+  'global',
+  'ask',
+])
+
 /** Read the effective default `/remember` scope from the settings store. */
 export function resolveRememberScope(): RememberScopeSetting {
   const value = useSettingsStore.getState().getSetting('ai.rememberScope')
-  if (value === 'group' || value === 'global' || value === 'ask') {
+  if (isRememberScopeSetting(value)) {
     return value
   }
   return 'connection'
+}
+
+function isRememberScopeSetting(value: string): value is RememberScopeSetting {
+  return REMEMBER_SCOPE_SETTINGS.has(value)
 }
 
 /**

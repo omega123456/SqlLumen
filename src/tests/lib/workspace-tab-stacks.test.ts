@@ -5,6 +5,8 @@ import {
   getWorkspaceStackKeyForTab,
   groupWorkspaceTabsByStack,
   isPinnedWorkspaceTab,
+  isScopedTableDataTab,
+  isScopedTableDataTabOf,
 } from '../../lib/workspace-tab-stacks'
 import type { WorkspaceTab } from '../../types/schema'
 
@@ -62,6 +64,41 @@ function makeTab(
       return { id: tab.id, type: 'processlist', label: tab.label, connectionId: tab.connectionId }
   }
 }
+
+describe('isScopedTableDataTab', () => {
+  const scopedTab = makeTab({
+    id: 'table-1',
+    type: 'table-data',
+    label: 'users',
+    connectionId: 'conn-1',
+    parentQueryTabId: 'query-1',
+  })
+  const standaloneTab = makeTab({
+    id: 'table-2',
+    type: 'table-data',
+    label: 'orders',
+    connectionId: 'conn-1',
+  })
+  const queryTab = makeTab({
+    id: 'query-1',
+    type: 'query-editor',
+    label: 'Query',
+    connectionId: 'conn-1',
+  })
+
+  it('is true only for table-data tabs that belong to a query tab', () => {
+    expect(isScopedTableDataTab(scopedTab)).toBe(true)
+    expect(isScopedTableDataTab(standaloneTab)).toBe(false)
+    expect(isScopedTableDataTab(queryTab)).toBe(false)
+    expect(isScopedTableDataTab(undefined)).toBe(false)
+  })
+
+  it('matches the owning query tab', () => {
+    expect(isScopedTableDataTabOf(scopedTab, 'query-1')).toBe(true)
+    expect(isScopedTableDataTabOf(scopedTab, 'query-2')).toBe(false)
+    expect(isScopedTableDataTabOf(standaloneTab, 'query-1')).toBe(false)
+  })
+})
 
 describe('workspace-tab-stacks', () => {
   it('groups non-pinned tabs strictly by tab type and preserves member order', () => {

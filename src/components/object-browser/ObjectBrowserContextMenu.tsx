@@ -125,7 +125,9 @@ interface MenuNodeInfo {
 
 function categoryTypeOf(node: TreeNode | undefined, parsed: ParsedNodeId): string | undefined {
   const metadataCategoryType = node?.metadata?.categoryType
-  if (node?.type === 'category' && typeof metadataCategoryType === 'string') {
+  const hasMetadataCategoryType =
+    node?.type === 'category' && typeof metadataCategoryType === 'string'
+  if (hasMetadataCategoryType) {
     return metadataCategoryType
   }
   if (parsed.type === 'category') return parsed.name
@@ -214,8 +216,9 @@ export function ObjectBrowserContextMenu({
 
   // Position the menu within the viewport after render
   useLayoutEffect(() => {
-    if (!visible || !menuRef.current) return
     const element = menuRef.current
+    if (!visible) return
+    if (!element) return
     const rect = element.getBoundingClientRect()
     const position = clampContextMenuPosition(
       x,
@@ -229,7 +232,8 @@ export function ObjectBrowserContextMenu({
     element.style.top = `${position.y}px`
   }, [visible, x, y])
 
-  if (!visible || !nodeId) return null
+  if (!visible) return null
+  if (!nodeId) return null
 
   const { node, nodeType, databaseName, nodeLabel, categoryType } = resolveMenuNodeInfo(
     nodes,
@@ -869,7 +873,8 @@ function buildCategoryMenu(args: {
 
   const entries: MenuEntry[] = []
 
-  if (categoryType === 'table' && !isReadOnly) {
+  const canCreateTable = categoryType === 'table' && !isReadOnly
+  if (canCreateTable) {
     entries.push({
       key: 'create-table',
       label: 'Create table...',
@@ -892,7 +897,8 @@ function buildCategoryMenu(args: {
     event: 'event',
   }
   const objectType = categoryType ? objectCategoryMap[categoryType] : undefined
-  if (objectType && !isReadOnly) {
+  const isWritable = !isReadOnly
+  if (objectType && isWritable) {
     entries.push({
       key: `create-${objectType}`,
       label: `Create ${categoryType}...`,
@@ -1306,19 +1312,24 @@ function buildTriggerEventMenu(args: {
 }
 
 /** Remove leading/trailing separators and collapse consecutive separators. */
+function hasTrailingSeparator(entries: MenuEntry[]): boolean {
+  if (entries.length === 0) return false
+  return isSeparator(entries[entries.length - 1])
+}
+
+function isRedundantSeparator(entry: MenuEntry, keptEntries: MenuEntry[]): boolean {
+  if (!isSeparator(entry)) return false
+  return keptEntries.length === 0 || hasTrailingSeparator(keptEntries)
+}
+
 function cleanSeparators(entries: MenuEntry[]): MenuEntry[] {
   const result: MenuEntry[] = []
   for (const entry of entries) {
-    if (isSeparator(entry)) {
-      // Skip if result is empty or last entry was also a separator
-      if (result.length === 0 || isSeparator(result[result.length - 1])) {
-        continue
-      }
+    if (!isRedundantSeparator(entry, result)) {
+      result.push(entry)
     }
-    result.push(entry)
   }
-  // Remove trailing separator
-  while (result.length > 0 && isSeparator(result[result.length - 1])) {
+  while (hasTrailingSeparator(result)) {
     result.pop()
   }
   return result

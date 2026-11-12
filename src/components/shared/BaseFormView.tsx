@@ -42,7 +42,13 @@ import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { JsonFormField } from './JsonFormField'
 import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
-import { base64ByteLength, blobPlaceholder, isBlobEnvelope } from '../../lib/blob-utils'
+import {
+  base64ByteLength,
+  blobPlaceholder,
+  isBlobEnvelope,
+  isBlobPlaceholderText,
+} from '../../lib/blob-utils'
+import { isNullish } from '../../lib/value-checks'
 import type {
   BaseFormViewProps,
   GridColumnDescriptor,
@@ -64,18 +70,15 @@ import styles from './BaseFormView.module.css'
  * enum `<Dropdown value={…}>` receive a valid controlled-component value.
  */
 function displayValue(value: unknown): string {
-  if (value === null || value === undefined) return ''
+  if (isNullish(value)) return ''
   if (typeof value === 'string') return value
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
 
-function isNullish(value: unknown): value is null | undefined {
-  return value === null || value === undefined
-}
-
 function getJsonFormDefaultValue(currentValue: unknown): string {
-  if (typeof currentValue === 'string' && currentValue.trim() !== '') {
+  const isNonBlankText = typeof currentValue === 'string' && currentValue.trim() !== ''
+  if (isNonBlankText) {
     return currentValue
   }
 
@@ -88,7 +91,7 @@ function getBlobFieldDisplayValue(value: unknown): string {
     // Table-data rows arrive with a backend-baked `[BLOB - <size>]` placeholder;
     // query-result rows inline the bytes as base64, so derive the size here to
     // keep both surfaces identical.
-    if (value.startsWith('[BLOB')) return value
+    if (isBlobPlaceholderText(value)) return value
     return blobPlaceholder(base64ByteLength(value))
   }
   if (isBlobEnvelope(value)) {
@@ -127,8 +130,8 @@ function currentFieldValue(
   columnKey: string,
   rowValue: unknown
 ): unknown {
-  if (editState && columnKey in editState.currentValues) return editState.currentValues[columnKey]
-  return rowValue
+  if (!editState) return rowValue
+  return columnKey in editState.currentValues ? editState.currentValues[columnKey] : rowValue
 }
 
 function hasEnumValues(column: GridColumnDescriptor): boolean {
@@ -165,7 +168,8 @@ function fieldStateClassName(isModified: boolean, isNull: boolean): string {
 }
 
 function jsonFieldValue(rawValue: unknown): string | null {
-  if (typeof rawValue === 'string' || rawValue === null) return rawValue
+  const isJsonText = typeof rawValue === 'string' || rawValue === null
+  if (isJsonText) return rawValue
   return displayValue(rawValue)
 }
 
@@ -298,7 +302,8 @@ export function BaseFormView({
       ...Object.keys(editState.originalValues),
     ])
     for (const key of allKeys) {
-      if (editState.currentValues[key] !== editState.originalValues[key]) {
+      const isChangedValue = editState.currentValues[key] !== editState.originalValues[key]
+      if (isChangedValue) {
         keys.add(key)
       }
     }
@@ -330,7 +335,8 @@ export function BaseFormView({
       if (!currentRow) return
       ensureEditing()
       const rowValue = currentRow[columnIndex]
-      if (currentFieldValue(editState, column.key, rowValue) === null) {
+      const isNullValue = currentFieldValue(editState, column.key, rowValue) === null
+      if (isNullValue) {
         onUpdateCell?.(column.key, resolveNonNullDefault(column, rowValue))
         return
       }
@@ -358,7 +364,8 @@ export function BaseFormView({
   }, [onDiscard])
 
   // --- Empty state ---
-  if (currentRow === null || counts.totalRows === 0) {
+  const hasNoRow = currentRow === null || counts.totalRows === 0
+  if (hasNoRow) {
     return (
       <div className={styles.formView} data-testid={testId}>
         <div className={styles.emptyState}>No rows to display</div>

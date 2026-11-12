@@ -423,7 +423,8 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       setDropObjectConfirm(null)
       // Invalidate routine parameter cache and schema metadata cache after dropping
       // a procedure or function so signature help picks up the removal.
-      if (objectType === 'procedure' || objectType === 'function') {
+      const isRoutine = objectType === 'procedure' || objectType === 'function'
+      if (isRoutine) {
         invalidateRoutineCache(connectionId)
         invalidateSchemaMetadataCache(connectionId)
       }

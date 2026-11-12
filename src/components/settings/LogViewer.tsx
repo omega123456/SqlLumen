@@ -107,7 +107,8 @@ function LogList({ errorMessage, isLoading, entries }: LogListProps) {
       />
     )
   }
-  if (!isLoading && entries.length === 0) {
+  const hasNoMatchingEntries = !isLoading && entries.length === 0
+  if (hasNoMatchingEntries) {
     return (
       <div className={styles.state} data-testid="log-viewer-empty">
         No log entries match this filter.

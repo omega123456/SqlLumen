@@ -44,7 +44,7 @@ export function AiChatMessages({
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     const element = scrollAnchorRef.current
-    if (element && typeof element.scrollIntoView === 'function') {
+    if (typeof element?.scrollIntoView === 'function') {
       element.scrollIntoView({ behavior: 'smooth' })
     }
   }, [visibleMessages])
@@ -77,7 +77,8 @@ export function AiChatMessages({
   // Determine which is the last assistant message for streaming indicator
   const lastAssistantIndex = (() => {
     for (let index = visibleMessages.length - 1; index >= 0; index--) {
-      if (visibleMessages[index].role === 'assistant') return index
+      const message = visibleMessages[index]
+      if (message.role === 'assistant') return index
     }
     return -1
   })()

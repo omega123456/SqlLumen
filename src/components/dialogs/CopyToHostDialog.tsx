@@ -884,9 +884,11 @@ export default function CopyToHostDialog({
 
   // The same-host guard: warn if the chosen target resolves to the source host.
   const targetIsSameHost = useMemo(() => {
-    if (!targetConnectionId || sourceHost === null) return false
+    if (!targetConnectionId) return false
+    if (sourceHost === null) return false
     const target = savedConnections.find((connection) => connection.id === targetConnectionId)
-    return normalizeHost(target?.host) === sourceHost
+    const targetHost = normalizeHost(target?.host)
+    return targetHost === sourceHost
   }, [savedConnections, targetConnectionId, sourceHost])
 
   // The effective target database name (existing selection or the typed new name).
@@ -919,7 +921,8 @@ export default function CopyToHostDialog({
       const names = categoryNames(objects, category)
       setSelected((previous) => {
         const next = { ...previous }
-        next[category] = previous[category].size === names.length ? new Set() : new Set(names)
+        const isWholeCategorySelected = previous[category].size === names.length
+        next[category] = isWholeCategorySelected ? new Set() : new Set(names)
         return next
       })
     },
@@ -968,7 +971,8 @@ export default function CopyToHostDialog({
 
   // Cancel a running copy.
   const handleCancel = useCallback(async () => {
-    if (!jobId || cancelPending) return
+    if (!jobId) return
+    if (cancelPending) return
     setCancelPending(true)
     try {
       await cancelCopy(jobId)

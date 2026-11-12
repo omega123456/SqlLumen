@@ -25,6 +25,7 @@ import {
   TYPES_WITHOUT_LENGTH,
 } from './table-designer-type-constants'
 import styles from './ColumnEditor.module.css'
+import { isIndexInBounds } from '../../lib/value-checks'
 
 interface ColumnEditorProps {
   tabId: string
@@ -136,9 +137,8 @@ function findOriginalColumn(
   tabState: TableDesignerTabState,
   column: TableDesignerColumnDef
 ): TableDesignerColumnDef | null {
-  if (tabState.mode !== 'alter' || !tabState.originalSchema) {
-    return null
-  }
+  if (tabState.mode !== 'alter') return null
+  if (!tabState.originalSchema) return null
 
   const originalKey = column.originalName || column.name
   if (!originalKey) {
@@ -173,6 +173,22 @@ function isModifiedCell(
   return cloneComparable(column[field]) !== cloneComparable(originalColumn[field])
 }
 
+function getDragShift(rowIndex: number, fromIndex: number, toIndex: number): number {
+  const isPassedByForwardDrag = fromIndex < rowIndex && rowIndex <= toIndex
+  if (isPassedByForwardDrag) return -1
+  const isPassedByBackwardDrag = toIndex <= rowIndex && rowIndex < fromIndex
+  if (isPassedByBackwardDrag) return 1
+  return 0
+}
+
+function isDisabledFormControl(element: HTMLElement): boolean {
+  const isFormControl =
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLButtonElement ||
+    element instanceof HTMLSelectElement
+  return isFormControl && element.disabled
+}
+
 function getSelectionAfterReorder(
   selectedIndex: number | null,
   fromIndex: number,
@@ -186,22 +202,7 @@ function getSelectionAfterReorder(
     return toIndex
   }
 
-  if (fromIndex < toIndex && selectedIndex > fromIndex && selectedIndex <= toIndex) {
-    return selectedIndex - 1
-  }
-
-  if (fromIndex > toIndex && selectedIndex >= toIndex && selectedIndex < fromIndex) {
-    return selectedIndex + 1
-  }
-
-  return selectedIndex
-}
-
-/** Rows another row slides by to open a gap while `fromIndex` is dragged towards `toIndex`. */
-function getDragShift(rowIndex: number, fromIndex: number, toIndex: number): number {
-  if (fromIndex < rowIndex && rowIndex <= toIndex) return -1
-  if (toIndex <= rowIndex && rowIndex < fromIndex) return 1
-  return 0
+  return selectedIndex + getDragShift(selectedIndex, fromIndex, toIndex)
 }
 
 function CellFrame({
@@ -301,9 +302,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const validationErrors = tabState?.validationErrors ?? {}
 
   const effectiveSelectedIndex = useMemo(() => {
-    if (selectedIndex === null || columns.length === 0) {
-      return null
-    }
+    if (selectedIndex === null) return null
+    if (columns.length === 0) return null
 
     return Math.min(selectedIndex, columns.length - 1)
   }, [columns.length, selectedIndex])
@@ -350,16 +350,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         return false
       }
 
-      if (
-        (element instanceof HTMLInputElement ||
-          element instanceof HTMLButtonElement ||
-          element instanceof HTMLSelectElement) &&
-        element.disabled
-      ) {
-        return false
-      }
-
-      return true
+      return !isDisabledFormControl(element)
     },
     [getCellElement]
   )
@@ -373,7 +364,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
       }
 
       element.focus()
-      if (element instanceof HTMLInputElement && element.type !== 'checkbox') {
+      const isTextEntryInput = element instanceof HTMLInputElement && element.type !== 'checkbox'
+      if (isTextEntryInput) {
         element.select()
       }
     },
@@ -395,7 +387,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         const nextRowIndex = Math.floor(absoluteIndex / EDITABLE_CELL_ORDER.length)
         const nextCellIndex = absoluteIndex % EDITABLE_CELL_ORDER.length
 
-        if (nextRowIndex < 0 || nextRowIndex >= columns.length) {
+        if (!isIndexInBounds(nextRowIndex, columns.length)) {
           break
         }
 
@@ -481,7 +473,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         return
       }
 
-      if (!event.shiftKey && rowIndex === columns.length - 1 && cellKey === 'comment') {
+      const isTabbingPastLastCell =
+        !event.shiftKey && rowIndex === columns.length - 1 && cellKey === 'comment'
+      if (isTabbingPastLastCell) {
         addColumn(tabId)
         ;(event.currentTarget as HTMLElement).blur()
         setPendingFocusCell({ rowIndex: columns.length, cellKey: 'name' })
@@ -607,7 +601,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     const { from, to } = rowDrag
     suppressRowClickRef.current = true
     setDrag(null)
-    if (commit && from !== to) {
+    const hasMoved = from !== to
+    if (commit && hasMoved) {
       reorderColumn(tabId, from, to)
       setSelectedIndex((current) => getSelectionAfterReorder(current, from, to))
     }
@@ -700,7 +695,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                 const captureDefaultBaseline = () => {
                   cancelDefaultCellBlur(columnIndex)
                   const key = `${columnIndex}:default`
-                  if (editStartValuesRef.current[key] === undefined) {
+                  const hasNoBaseline = editStartValuesRef.current[key] === undefined
+                  if (hasNoBaseline) {
                     setEditStartValue(columnIndex, 'default', JSON.stringify(column.defaultValue))
                   }
                 }
@@ -735,7 +731,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                     onPointerDown={(event) => {
                       suppressRowClickRef.current = false
                       const target = event.target as HTMLElement
-                      if (event.button !== 0 || target.closest(DRAG_IGNORE_SELECTOR)) return
+                      if (event.button !== 0) return
+                      if (target.closest(DRAG_IGNORE_SELECTOR)) return
                       event.preventDefault()
                       event.currentTarget.setPointerCapture(event.pointerId)
                       rowDragRef.current = { from: columnIndex, startY: event.clientY, to: null }
@@ -744,7 +741,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       const rowDrag = rowDragRef.current
                       if (!rowDrag) return
                       const offset = event.clientY - rowDrag.startY
-                      if (rowDrag.to === null && Math.abs(offset) < DRAG_THRESHOLD_PX) return
+                      const isBelowDragThreshold =
+                        rowDrag.to === null && Math.abs(offset) < DRAG_THRESHOLD_PX
+                      if (isBelowDragThreshold) return
                       // The grabbed row follows the pointer directly; the others slide via React
                       const row = event.currentTarget
                       row.style.transform = `translateY(${offset}px)`
@@ -826,10 +825,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             }}
                             onChange={(nextType) => {
                               updateColumn(tabId, columnIndex, 'type', nextType)
-                              if (
-                                column.isAutoIncrement &&
-                                (!isNumericType(nextType) || !column.isPrimaryKey)
-                              ) {
+                              const canKeepAutoIncrement =
+                                isNumericType(nextType) && column.isPrimaryKey
+                              const mustClearAutoIncrement =
+                                column.isAutoIncrement && !canKeepAutoIncrement
+                              if (mustClearAutoIncrement) {
                                 updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
                               }
                             }}
@@ -1018,7 +1018,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               onTriggerBlur={() => scheduleDefaultCellBlur(columnIndex)}
                               onTriggerKeyDown={(event) => {
                                 if (isDefaultOverride) {
-                                  if (event.key === 'Tab' || event.key === 'Escape') {
+                                  const isOverrideExitKey =
+                                    event.key === 'Tab' || event.key === 'Escape'
+                                  if (isOverrideExitKey) {
                                     event.preventDefault()
                                     event.stopPropagation()
                                     setDefaultModeOverrideIndex(null)
@@ -1074,7 +1076,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                                   })
                                 }}
                                 onKeyDown={(event) => {
-                                  if (event.altKey && event.key === 'ArrowDown') {
+                                  const isDefaultModeShortcut =
+                                    event.altKey && event.key === 'ArrowDown'
+                                  if (isDefaultModeShortcut) {
                                     event.preventDefault()
                                     setDefaultModeOverrideIndex(columnIndex)
                                     return

@@ -10,6 +10,14 @@ const COPIED_FEEDBACK_DURATION_MS = 2000
 const SQL_LANGUAGE_LABEL = 'SQL'
 const FALLBACK_LANGUAGE_LABEL = 'code'
 
+interface ElementWithChildren {
+  props: { children?: ReactNode }
+}
+
+function isElementWithChildren(node: ReactNode): node is ReactNode & ElementWithChildren {
+  return typeof node === 'object' && node !== null && 'props' in node
+}
+
 function codeLanguageLabel(language: string | undefined, isSql: boolean): string {
   if (isSql) return SQL_LANGUAGE_LABEL
   return language ?? FALLBACK_LANGUAGE_LABEL
@@ -66,8 +74,8 @@ export function AiCodeBlock({
       if (typeof node === 'number') return String(node)
       if (!node) return ''
       if (Array.isArray(node)) return node.map(extractText).join('')
-      if (typeof node === 'object' && 'props' in node) {
-        return extractText((node as { props: { children?: ReactNode } }).props.children)
+      if (isElementWithChildren(node)) {
+        return extractText(node.props.children)
       }
       return ''
     }

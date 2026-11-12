@@ -103,6 +103,8 @@ const EMBEDDING_KEYWORDS: &[&str] = &["embed", "nomic", "bge", "e5-", "e5_", "mi
 
 /// Determine the category of a model (`"chat"` or `"embedding"`).
 ///
+const CHAT_MODEL_TYPE_MARKERS: [&str; 3] = ["chat", "completion", "generate"];
+
 /// First checks server-provided metadata (type field, capabilities),
 /// then falls back to a keyword heuristic on the model ID.
 pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
@@ -112,7 +114,10 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
         if mt.contains("embed") {
             return "embedding".to_string();
         }
-        if mt.contains("chat") || mt.contains("completion") || mt.contains("generate") {
+        let names_chat_model = CHAT_MODEL_TYPE_MARKERS
+            .iter()
+            .any(|marker| mt.contains(marker));
+        if names_chat_model {
             return "chat".to_string();
         }
     }

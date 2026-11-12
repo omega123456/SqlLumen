@@ -86,7 +86,9 @@ export function useCellStoreSync(source: CellStoreSyncSource): (nextValue: unkno
   const fieldName = source.column.key
   return useCallback(
     (nextValue: unknown) => {
-      if (!tabId || !fieldName || !updateCellValue) return
+      if (!tabId) return
+      if (!fieldName) return
+      if (!updateCellValue) return
       updateCellValue(tabId, fieldName, nextValue)
       syncCellValue?.(tabId, row, fieldName, nextValue)
     },

@@ -1,14 +1,14 @@
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../stores/settings-store'
 import { MILLISECONDS_PER_MINUTE, MILLISECONDS_PER_SECOND } from './units'
+import { isPositiveFiniteNumber } from './value-checks'
 
 const FALLBACK_CACHE_TTL_MINUTES = 30
 
 const DEFAULT_CACHE_TTL_SECONDS = Number.parseInt(SETTINGS_DEFAULTS['results.cacheTTL'] ?? '', 10)
 
-export const DEFAULT_FRONTEND_CACHE_TTL_MS =
-  Number.isFinite(DEFAULT_CACHE_TTL_SECONDS) && DEFAULT_CACHE_TTL_SECONDS > 0
-    ? DEFAULT_CACHE_TTL_SECONDS * MILLISECONDS_PER_SECOND
-    : FALLBACK_CACHE_TTL_MINUTES * MILLISECONDS_PER_MINUTE
+export const DEFAULT_FRONTEND_CACHE_TTL_MS = isPositiveFiniteNumber(DEFAULT_CACHE_TTL_SECONDS)
+  ? DEFAULT_CACHE_TTL_SECONDS * MILLISECONDS_PER_SECOND
+  : FALLBACK_CACHE_TTL_MINUTES * MILLISECONDS_PER_MINUTE
 
 export interface FrontendCacheTimerApi {
   setTimeout: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>
@@ -21,7 +21,7 @@ type InactiveTimerEntry = {
 
 function normalizeTtlMs(ttlSeconds: string | null | undefined): number {
   const parsedSeconds = Number.parseInt(ttlSeconds ?? '', 10)
-  if (!Number.isFinite(parsedSeconds) || parsedSeconds <= 0) {
+  if (!isPositiveFiniteNumber(parsedSeconds)) {
     return DEFAULT_FRONTEND_CACHE_TTL_MS
   }
   return parsedSeconds * MILLISECONDS_PER_SECOND

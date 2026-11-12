@@ -74,14 +74,20 @@ export async function saveSessionState(state: SessionState): Promise<void> {
  * Load session state from the backend settings store.
  * Returns null if no state is stored or the stored value is invalid.
  */
+function isSupportedSessionState(parsed: SessionState | null): parsed is SessionState {
+  if (!parsed) return false
+  return parsed.version === 1 && Array.isArray(parsed.connections)
+}
+
 export async function loadSessionState(): Promise<SessionState | null> {
   const raw = await getSetting(SESSION_STATE_KEY)
-  if (!raw || raw === 'null') {
+  const hasNoSavedState = !raw || raw === 'null'
+  if (hasNoSavedState) {
     return null
   }
   try {
     const parsed = JSON.parse(raw) as SessionState
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.connections)) {
+    if (isSupportedSessionState(parsed)) {
       return parsed
     }
     logFrontend('warn', '[session-restore] Invalid session state version or structure, ignoring')

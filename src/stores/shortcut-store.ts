@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { bindingsMatch } from '../lib/shortcut-bindings'
 import { getSetting } from '../lib/tauri-commands'
 import type { ShortcutBinding } from '../types/schema'
 
@@ -85,13 +86,16 @@ interface ShortcutState {
   dispatchAction: (actionId: string) => void
 }
 
-/** Check if two bindings are the same key combo. */
-function bindingsMatch(left: ShortcutBinding, right: ShortcutBinding): boolean {
-  if (left.key.toLowerCase() !== right.key.toLowerCase()) return false
-  const leftModifiers = [...left.modifiers].sort()
-  const rightModifiers = [...right.modifiers].sort()
-  if (leftModifiers.length !== rightModifiers.length) return false
-  return leftModifiers.every((modifier, index) => modifier === rightModifiers[index])
+const EMPTY_SERIALIZED_SHORTCUTS = '{}'
+
+function isKnownShortcutBinding(
+  shortcuts: Record<string, ShortcutBinding>,
+  actionId: string,
+  binding: ShortcutBinding | null | undefined
+): boolean {
+  if (!(actionId in shortcuts)) return false
+  if (!binding) return false
+  return typeof binding.key === 'string'
 }
 
 /** Find an action ID that already uses a given binding (excluding `excludeActionId`). */
@@ -126,7 +130,8 @@ export const useShortcutStore = create<ShortcutState>()((set, get) => ({
   },
 
   loadShortcuts: (serialized?: string) => {
-    if (!serialized || serialized === '{}') {
+    const hasNoSavedShortcuts = !serialized || serialized === EMPTY_SERIALIZED_SHORTCUTS
+    if (hasNoSavedShortcuts) {
       set({ shortcuts: { ...DEFAULT_SHORTCUTS } })
       return
     }
@@ -135,7 +140,7 @@ export const useShortcutStore = create<ShortcutState>()((set, get) => ({
       // Merge: use parsed values where available, defaults otherwise
       const merged = { ...DEFAULT_SHORTCUTS }
       for (const [actionId, binding] of Object.entries(parsed)) {
-        if (actionId in merged && binding && typeof binding.key === 'string') {
+        if (isKnownShortcutBinding(merged, actionId, binding)) {
           merged[actionId] = binding
         }
       }
@@ -188,7 +193,9 @@ export const useShortcutStore = create<ShortcutState>()((set, get) => ({
 
   resolveConflict: () => {
     const state = get()
-    if (!state._pendingBinding || !state._pendingActionId || !state.conflictActionId) return
+    if (!state._pendingBinding) return
+    if (!state._pendingActionId) return
+    if (!state.conflictActionId) return
 
     const updated = { ...state.shortcuts }
     // Assign the pending binding to the intended action

@@ -298,9 +298,9 @@ export function SnapshotDialog() {
           void handleConfirm()
         }}
         onCancel={() => {
-          if (!isBusy && !isRestoring) {
-            setConfirm(null)
-          }
+          if (isBusy) return
+          if (isRestoring) return
+          setConfirm(null)
         }}
       />
 

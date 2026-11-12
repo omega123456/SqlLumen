@@ -1,4 +1,7 @@
-use sqllumen_lib::mysql::sqlx_type_names::is_sqlx_integer_type_name;
+use sqllumen_lib::mysql::sqlx_type_names::{
+    is_sqlx_binary_type_name, is_sqlx_decimal_type_name, is_sqlx_float_type_name,
+    is_sqlx_integer_type_name,
+};
 
 struct SerializerSource {
     path: &'static str,
@@ -44,6 +47,43 @@ const INTEGER_TYPE_NAMES: [&str; 15] = [
 const NON_INTEGER_TYPE_NAMES: [&str; 8] = [
     "VARCHAR", "TEXT", "DECIMAL", "DATETIME", "BLOB", "JSON", "BIT", "LONGTEXT",
 ];
+
+#[test]
+fn float_and_double_type_names_are_floats_and_decimals_are_not() {
+    for type_name in ["FLOAT", "DOUBLE", "FLOAT UNSIGNED", "DOUBLE UNSIGNED"] {
+        assert!(is_sqlx_float_type_name(type_name), "{type_name}");
+    }
+    for type_name in ["DECIMAL", "NUMERIC", "INT", "VARCHAR"] {
+        assert!(!is_sqlx_float_type_name(type_name), "{type_name}");
+    }
+}
+
+#[test]
+fn decimal_and_numeric_type_names_are_decimals_and_floats_are_not() {
+    for type_name in ["DECIMAL", "NUMERIC", "DECIMAL UNSIGNED", "NEWDECIMAL"] {
+        assert!(is_sqlx_decimal_type_name(type_name), "{type_name}");
+    }
+    for type_name in ["FLOAT", "DOUBLE", "BIGINT", "TEXT"] {
+        assert!(!is_sqlx_decimal_type_name(type_name), "{type_name}");
+    }
+}
+
+#[test]
+fn blob_family_and_fixed_binary_type_names_are_binary() {
+    for type_name in [
+        "BLOB",
+        "TINYBLOB",
+        "MEDIUMBLOB",
+        "LONGBLOB",
+        "BINARY",
+        "VARBINARY",
+    ] {
+        assert!(is_sqlx_binary_type_name(type_name), "{type_name}");
+    }
+    for type_name in ["VARCHAR", "TEXT", "GEOMETRY", "BIT", "JSON"] {
+        assert!(!is_sqlx_binary_type_name(type_name), "{type_name}");
+    }
+}
 
 #[test]
 fn integer_type_names_including_boolean_labelled_tinyint_are_integers() {

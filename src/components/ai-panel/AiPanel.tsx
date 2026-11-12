@@ -73,7 +73,8 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
     [connectionId]
   )
 
-  if (aiEnabled && !embeddingModel) {
+  const isMissingEmbeddingModel = aiEnabled && !embeddingModel
+  if (isMissingEmbeddingModel) {
     return (
       <div className={styles.panel} data-testid="ai-panel">
         <AiPanelHeader tabId={tabId} />

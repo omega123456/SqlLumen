@@ -29,6 +29,15 @@ function getGeneration(connectionId: string): number {
   return generationMap.get(connectionId) ?? 0
 }
 
+function isCurrentGeneration(connectionId: string, capturedGeneration: number): boolean {
+  return getGeneration(connectionId) === capturedGeneration
+}
+
+function toRoutineKind(routineType: string): 'FUNCTION' | 'PROCEDURE' {
+  const isProcedure = routineType.toUpperCase() === 'PROCEDURE'
+  return isProcedure ? 'PROCEDURE' : 'FUNCTION'
+}
+
 function incrementGeneration(connectionId: string): void {
   generationMap.set(connectionId, getGeneration(connectionId) + 1)
 }
@@ -69,17 +78,14 @@ export async function getRoutineParameters(
 
   const fetchPromise = (async (): Promise<RoutineParameterCacheEntry | null> => {
     try {
-      const ipcRoutineType: 'FUNCTION' | 'PROCEDURE' =
-        routineType.toUpperCase() === 'PROCEDURE' ? 'PROCEDURE' : 'FUNCTION'
+      const ipcRoutineType = toRoutineKind(routineType)
       const response = await getRoutineParametersWithReturnType(
         connectionId,
         database,
         routineName,
         ipcRoutineType
       )
-
-      // Check if cache was invalidated during the fetch (per-connection generation)
-      if (getGeneration(connectionId) !== capturedGeneration) {
+      if (!isCurrentGeneration(connectionId, capturedGeneration)) {
         return null
       }
 
@@ -97,7 +103,8 @@ export async function getRoutineParameters(
       // For function lookups: zero rows means the function does not exist
       // (functions always have at least the return-type row at ordinalPosition 0).
       // Don't cache so a subsequent call re-queries (the user may create it).
-      if (routineType.toLowerCase() === 'function' && rows.length === 0) {
+      const isMissingFunction = routineType.toLowerCase() === 'function' && rows.length === 0
+      if (isMissingFunction) {
         return null
       }
 
@@ -106,8 +113,7 @@ export async function getRoutineParameters(
       const parameterRows = rows.filter((parameter) => parameter.ordinalPosition > 0)
 
       // Coerce routineType to the strict union
-      const normalizedType: 'FUNCTION' | 'PROCEDURE' =
-        routineType.toUpperCase() === 'PROCEDURE' ? 'PROCEDURE' : 'FUNCTION'
+      const normalizedType = toRoutineKind(routineType)
 
       const entry: RoutineParameterCacheEntry = {
         parameters: parameterRows,
@@ -139,7 +145,8 @@ export async function getRoutineParameters(
   // Clean up pendingFetches — only delete if this exact promise is still the active
   // one for the key.  After invalidation a new promise may have replaced it.
   fetchPromise.finally(() => {
-    if (pendingFetches.get(key) === fetchPromise) {
+    const isOwnPendingFetch = pendingFetches.get(key) === fetchPromise
+    if (isOwnPendingFetch) {
       pendingFetches.delete(key)
     }
   })

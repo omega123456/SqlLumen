@@ -9,6 +9,7 @@ import {
 import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 import type { CellEditorBaseProps, CellEditorCallbackProps } from './grid-cell-editors'
 import { EnumCellEditor, NullableCellEditor } from './grid-cell-editors'
+import { isJsonSqlType } from '../../lib/grid-column-style'
 
 export type GridEditorType = 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
 
@@ -52,7 +53,7 @@ export function getCellEditorForColumn(
     }
   }
 
-  if (column && isEnumColumn(column)) {
+  if (isEnumColumn(column)) {
     return {
       editorType: foreignKey ? 'fk' : 'enum',
       renderEditCell: (props: CellEditorBaseProps) => (
@@ -73,7 +74,8 @@ export function getCellEditorForColumn(
     }
   }
 
-  if (column?.dataType.trim().toUpperCase() === 'JSON') {
+  const isJsonColumn = column !== undefined && isJsonSqlType(column.dataType)
+  if (isJsonColumn) {
     return {
       editorType: 'json',
       renderEditCell: (props: CellEditorBaseProps) => (

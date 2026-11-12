@@ -77,7 +77,8 @@ function insertionEdit(
 
 function deletionRange(change: LineChange, originalModel: monaco.editor.ITextModel): monaco.IRange {
   const { originalStartLineNumber, originalEndLineNumber } = change
-  if (originalEndLineNumber < originalModel.getLineCount()) {
+  const originalLineCount = originalModel.getLineCount()
+  if (originalEndLineNumber < originalLineCount) {
     return {
       startLineNumber: originalStartLineNumber,
       startColumn: 1,

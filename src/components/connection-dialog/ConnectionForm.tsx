@@ -27,6 +27,7 @@ import type {
 } from '../../types/connection'
 import styles from './ConnectionForm.module.css'
 import { toErrorMessage } from '../../lib/error-message'
+import { isBlank } from '../../lib/value-checks'
 
 const DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
 const DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 60
@@ -103,18 +104,22 @@ interface FormErrors {
   [key: string]: string
 }
 
+function isValidPort(port: number): boolean {
+  return port >= MIN_PORT && port <= MAX_PORT
+}
+
 function validate(data: ConnectionFormData): FormErrors {
   const errors: FormErrors = {}
-  if (!data.name.trim()) {
+  if (isBlank(data.name)) {
     errors.name = 'Connection name is required'
   }
-  if (!data.host.trim()) {
+  if (isBlank(data.host)) {
     errors.host = 'Host is required'
   }
-  if (!data.username.trim()) {
+  if (isBlank(data.username)) {
     errors.username = 'Username is required'
   }
-  if (!data.port || data.port < MIN_PORT || data.port > MAX_PORT) {
+  if (!isValidPort(data.port)) {
     errors.port = 'Port must be between 1 and 65535'
   }
   if (data.connectTimeoutSecs < 1) {

@@ -31,6 +31,7 @@ const QUOTE_CHARACTERS = new Set(["'", '"', '`'])
 const DELIMITER_DIRECTIVE_PATTERN = /^DELIMITER\s+(\S+)/i
 const WHITESPACE_PATTERN = /\s/
 const DEFAULT_DELIMITER = ';'
+const NEWLINE_NOT_FOUND = -1
 
 class StatementSplitter {
   private readonly sql: string
@@ -70,7 +71,7 @@ class StatementSplitter {
       this.skipBlockComment()
       return true
     }
-    if (this.sql.startsWith('--', this.position) || character === '#') {
+    if (this.isAtLineComment(character)) {
       this.skipToLineEnd()
       return true
     }
@@ -92,18 +93,35 @@ class StatementSplitter {
 
   private skipBlockComment(): void {
     this.position += BLOCK_COMMENT_DELIMITER_LENGTH
-    while (this.position + 1 < this.sql.length && !this.sql.startsWith('*/', this.position)) {
+    while (this.isInsideBlockComment()) {
       this.position++
     }
     this.position += BLOCK_COMMENT_DELIMITER_LENGTH
   }
 
   private skipToLineEnd(): void {
-    while (this.position < this.sql.length && this.sql[this.position] !== '\n') this.position++
+    while (this.isBeforeLineEnd()) this.position++
+  }
+
+  private isAtLineComment(character: string): boolean {
+    return this.sql.startsWith('--', this.position) || character === '#'
+  }
+
+  private isInsideBlockComment(): boolean {
+    const hasNextCharacter = this.position + 1 < this.sql.length
+    return hasNextCharacter && !this.sql.startsWith('*/', this.position)
+  }
+
+  private isBeforeLineEnd(): boolean {
+    return this.position < this.sql.length && this.sql[this.position] !== '\n'
+  }
+
+  private isAtWhitespace(): boolean {
+    return this.position < this.sql.length && WHITESPACE_PATTERN.test(this.sql[this.position])
   }
 
   private skipWhitespace(): void {
-    while (this.position < this.sql.length && WHITESPACE_PATTERN.test(this.sql[this.position])) {
+    while (this.isAtWhitespace()) {
       this.position++
     }
   }
@@ -155,7 +173,8 @@ export function findStatementAtCursor(
   // Find the last statement whose start <= cursor
   let best: StatementRange | null = null
   for (const statement of statements) {
-    if (statement.start <= cursorOffset && cursorOffset <= statement.end) {
+    const containsCursor = statement.start <= cursorOffset && cursorOffset <= statement.end
+    if (containsCursor) {
       best = statement
       break
     }
@@ -170,11 +189,15 @@ export function findStatementAtCursor(
  * Convert (line, column) cursor position (1-indexed) to a character offset in the text.
  */
 export function cursorToOffset(sql: string, line: number, column: number): number {
+  return lineStartOffset(sql, line) + column - 1
+}
+
+function lineStartOffset(sql: string, line: number): number {
   let offset = 0
-  let currentLine = 1
-  while (currentLine < line && offset < sql.length) {
-    if (sql[offset] === '\n') currentLine++
-    offset++
+  for (let currentLine = 1; currentLine < line; currentLine++) {
+    const newlineIndex = sql.indexOf('\n', offset)
+    if (newlineIndex === NEWLINE_NOT_FOUND) return sql.length
+    offset = newlineIndex + 1
   }
-  return offset + column - 1
+  return offset
 }

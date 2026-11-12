@@ -32,6 +32,7 @@ import { logFrontend } from './app-log-commands'
 import { HALF_DIVISOR } from './units'
 import type { ColumnMeta, FetchResultWindowResult, ResultWindow } from '../types/schema'
 import { toErrorMessage } from './error-message'
+import { isIndexInBounds } from './value-checks'
 
 /** Extra information passed to range listeners. */
 export interface WindowNotifyInfo {
@@ -237,8 +238,20 @@ function storeWindow(surface: Surface, window: ResultWindow): void {
   }
 }
 
+function isWithinPageBudget(surface: Surface): boolean {
+  return surface.pages.size <= RESULT_MAX_PAGES
+}
+
+function hasInflightPages(surface: Surface): boolean {
+  return surface.inflight.size > 0
+}
+
+function isAtPageFetchLimit(surface: Surface): boolean {
+  return surface.inflight.size >= MAX_CONCURRENT_PAGE_FETCHES
+}
+
 function evictPages(surface: Surface): void {
-  if (surface.pages.size <= RESULT_MAX_PAGES) return
+  if (isWithinPageBudget(surface)) return
   const protectedPages = new Set<number>()
   if (surface.lastRequested) {
     const [start, end] = surface.lastRequested
@@ -254,7 +267,7 @@ function evictPages(surface: Surface): void {
     .filter(([index]) => !protectedPages.has(index))
     .sort((left, right) => left[1].lastUsed - right[1].lastUsed)
   for (const [index] of candidates) {
-    if (surface.pages.size <= RESULT_MAX_PAGES) break
+    if (isWithinPageBudget(surface)) break
     surface.pages.delete(index)
   }
 }
@@ -267,7 +280,7 @@ function clearPendingTimer(surface: Surface): void {
 }
 
 function settlePending(surface: Surface): void {
-  if (surface.inflight.size > 0) return
+  if (hasInflightPages(surface)) return
   clearPendingTimer(surface)
   if (surface.pendingRange) {
     surface.pendingRange = null
@@ -309,7 +322,8 @@ function reseededSurface(params: SeedResultWindowParams, previous: Surface): Sur
   }
 }
 
-function hasWindowStatus(surface: Surface): boolean {
+function hasWindowStatus(surface: Surface | undefined): boolean {
+  if (!surface) return false
   return Boolean(surface.pendingRange || surface.failedRange)
 }
 
@@ -324,7 +338,7 @@ export function seedResultWindow(params: SeedResultWindowParams): void {
   const surface = previous ? reseededSurface(params, previous) : freshSurface(params)
   storeWindow(surface, params.window)
   surfaces.set(key, surface)
-  if (previous && hasWindowStatus(previous)) {
+  if (hasWindowStatus(previous)) {
     reportStatus(surface, { pendingWindowRange: null, failedWindowRange: null })
   }
   // A mounted grid re-requests its visible range on `reseeded`: after a re-run
@@ -376,7 +390,8 @@ export function getLoadedRow(
   position: number
 ): CachedRow | undefined {
   const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
-  if (!surface || position < 0 || position >= surface.viewRowCount) return undefined
+  if (!surface) return undefined
+  if (!isIndexInBounds(position, surface.viewRowCount)) return undefined
   const page = surface.pages.get(Math.floor(position / RESULT_PAGE_SIZE))
   if (!page) return undefined
   const offset = position % RESULT_PAGE_SIZE
@@ -441,15 +456,20 @@ export function subscribeToRowPatches(
   }
 }
 
+function isRegisteredSurface(surface: Surface): boolean {
+  return surfaces.get(keyOf(surface)) === surface
+}
+
 function isSurfaceCurrent(surface: Surface, generation: number): boolean {
-  return surface.generation === generation && surfaces.get(keyOf(surface)) === surface
+  return surface.generation === generation && isRegisteredSurface(surface)
 }
 
 function schedulePendingStatus(surface: Surface, fetchedRange: ViewRange): void {
   if (surface.pendingTimer || surface.pendingRange) return
   surface.pendingTimer = setTimeout(() => {
     surface.pendingTimer = null
-    if (surface.inflight.size === 0 || surfaces.get(keyOf(surface)) !== surface) return
+    const isStillLoading = hasInflightPages(surface) && isRegisteredSurface(surface)
+    if (!isStillLoading) return
     surface.pendingRange = surface.lastRequested ?? fetchedRange
     reportStatus(surface, { pendingWindowRange: surface.pendingRange })
   }, RESULT_LOADING_STATUS_DELAY_MS)
@@ -540,12 +560,18 @@ async function fetchPage(surface: Surface, pageIndex: number): Promise<void> {
   }
 }
 
+function isSurfaceForQuery(surface: Surface | undefined, queryId: string): surface is Surface {
+  if (!surface) return false
+  return surface.slot.queryId === queryId
+}
+
 function keyOf(surface: Surface): string {
   return resultSurfaceKey(surface.slot.tabId, surface.slot.resultIndex)
 }
 
 function requestPages(surface: Surface, range: ViewRange): void {
-  if (surface.viewRowCount === 0 || !surface.slot.queryId) return
+  if (surface.viewRowCount === 0) return
+  if (!surface.slot.queryId) return
   const lastPage = Math.ceil(surface.viewRowCount / RESULT_PAGE_SIZE) - 1
   const firstWanted = Math.max(0, Math.floor((range[0] - RESULT_PREFETCH_ROWS) / RESULT_PAGE_SIZE))
   const lastWanted = Math.min(
@@ -559,7 +585,7 @@ function requestPages(surface: Surface, range: ViewRange): void {
       continue
     }
     if (surface.inflight.has(pageIndex)) continue
-    if (surface.inflight.size >= MAX_CONCURRENT_PAGE_FETCHES) break
+    if (isAtPageFetchLimit(surface)) break
     void fetchPage(surface, pageIndex)
   }
 }
@@ -600,7 +626,7 @@ export function applySavedRowValues(
   updates: Readonly<Record<number, unknown>>
 ): void {
   const surface = surfaces.get(resultSurfaceKey(tabId, resultIndex))
-  if (!surface || surface.slot.queryId !== queryId) return
+  if (!isSurfaceForQuery(surface, queryId)) return
   const apply: RowPatchApply = (row) => {
     const next = row.slice()
     for (const [column, value] of Object.entries(updates)) next[Number(column)] = value
@@ -632,7 +658,8 @@ export function clearResultWindowPages(tabId: string, resultIndex: number): void
 /** Forget every surface of a tab (tab closed or results replaced). */
 export function dropTabResultWindows(tabId: string): void {
   for (const [key, surface] of surfaces) {
-    if (surface.slot.tabId !== tabId) continue
+    const isOtherTabSurface = surface.slot.tabId !== tabId
+    if (isOtherTabSurface) continue
     clearPendingTimer(surface)
     surface.generation += 1
     surfaces.delete(key)
@@ -655,7 +682,8 @@ function loadedRun(surface: Surface, start: number, end: number): CachedRow[] | 
     const page = surface.pages.get(Math.floor(position / RESULT_PAGE_SIZE))
     const offset = position % RESULT_PAGE_SIZE
     const row = page?.rows[offset]
-    if (!page || row === undefined) return null
+    if (!page) return null
+    if (row === undefined) return null
     out.push({ row: row, baseIndex: page.baseIndices[offset] })
   }
   return out

@@ -16,6 +16,7 @@ import {
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
 import { CaretDown, Check, type IconWeight } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
+import { isActivationKey, isTargetInside } from '../../lib/input-events'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 
 export interface DropdownOption {
@@ -139,9 +140,14 @@ function assignForwardedRef<T>(ref: React.ForwardedRef<T>, node: T | null): void
   }
 }
 
+function selectedValueText(props: DropdownProps): string {
+  if (isMultiSelect(props)) return props.value.join(', ')
+  return props.value
+}
+
 function fallbackTriggerLabel(props: DropdownProps): string {
-  if (isMultiSelect(props) && props.value.length > 0) return props.value.join(', ')
-  if (!isMultiSelect(props) && props.value) return props.value
+  const selectedText = selectedValueText(props)
+  if (selectedText) return selectedText
   return props.placeholder ?? props.options[0]?.label ?? ''
 }
 
@@ -226,8 +232,28 @@ function closestDialogElement(trigger: HTMLElement): HTMLElement | null {
 
 function listboxAriaLabelFor(props: CommonDropdownProps): string | undefined {
   if (props.listAriaLabel !== undefined) return props.listAriaLabel
-  if (props.labelledBy || !props.ariaLabel) return undefined
+  if (props.labelledBy) return undefined
+  if (!props.ariaLabel) return undefined
   return props.ariaLabel
+}
+
+interface OptionRenderState {
+  selected: boolean
+  focus: boolean
+  disabled: boolean
+}
+
+function buildOptionClassName(optionState: OptionRenderState, isMultiOption: boolean): string {
+  const isHighlighted = optionState.focus && !optionState.selected
+  return [
+    'ui-dropdown__option',
+    optionState.selected ? 'ui-dropdown__option--selected' : '',
+    isHighlighted ? 'ui-dropdown__option--highlighted' : '',
+    isMultiOption ? 'ui-dropdown__option--multi' : '',
+    optionState.disabled ? 'ui-dropdown__option--disabled' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function buildListboxClassName(isPortalInDialog: boolean, placement: DropdownPlacement): string {
@@ -317,11 +343,10 @@ function DropdownChrome({
     }
 
     const handleMouseDown = (event: MouseEvent) => {
-      const target = event.target
-      if (
-        target instanceof Node &&
-        (rootRef.current?.contains(target) === true || panelRef.current?.contains(target) === true)
-      ) {
+      const isInsideDropdown =
+        isTargetInside(rootRef.current, event.target) ||
+        isTargetInside(panelRef.current, event.target)
+      if (isInsideDropdown) {
         return
       }
 
@@ -343,9 +368,8 @@ function DropdownChrome({
   }, [closeListbox, workspaceTabId])
 
   useLayoutEffect(() => {
-    if (!open || !focusListOnOpen) {
-      return
-    }
+    if (!open) return
+    if (!focusListOnOpen) return
 
     queueMicrotask(() => {
       panelRef.current?.focus()
@@ -359,9 +383,8 @@ function DropdownChrome({
 
     const trigger = triggerRef.current
     const panel = panelRef.current
-    if (!trigger || !panel) {
-      return
-    }
+    if (!trigger) return
+    if (!panel) return
 
     updatePlacement()
 
@@ -483,12 +506,25 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       applyTriggerLabel(trigger, labelledBy, ariaLabel)
     }, [ariaLabel, labelledBy])
 
+    const handleTriggerBlur = (event: ReactFocusEvent<HTMLButtonElement>, open: boolean) => {
+      onTriggerBlur?.(event)
+      const isListboxKeptOpen = event.defaultPrevented || !open || focusListOnOpen
+      if (isListboxKeptOpen) {
+        return
+      }
+
+      if (isWithinDropdownTarget(event.relatedTarget)) {
+        return
+      }
+
+      closeListbox()
+    }
+
     const updatePlacement = useCallback(() => {
       const trigger = triggerRef.current
       const panel = panelRef.current
-      if (!trigger || !panel) {
-        return
-      }
+      if (!trigger) return
+      if (!panel) return
 
       // Inside a native <dialog> the panel must render into that dialog's top-layer subtree.
       const dialog = closestDialogElement(trigger)
@@ -548,7 +584,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
               return
             }
 
-            if (event.key === 'Enter' || event.key === ' ') {
+            if (isActivationKey(event.key)) {
               return
             }
 
@@ -577,23 +613,14 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
               disabled={option.disabled}
               aria-label={option.label}
               data-testid={dataTestId ? `${dataTestId}-option-${option.value}` : undefined}
-              className={({ selected, focus, disabled: optionDisabled }) =>
-                [
-                  'ui-dropdown__option',
-                  selected ? 'ui-dropdown__option--selected' : '',
-                  focus && !selected ? 'ui-dropdown__option--highlighted' : '',
-                  isMultiSelect(props) ? 'ui-dropdown__option--multi' : '',
-                  optionDisabled ? 'ui-dropdown__option--disabled' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')
-              }
+              className={(optionState) => buildOptionClassName(optionState, isMultiSelect(props))}
               onMouseDown={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
               }}
               onClick={() => {
-                if (isMultiSelect(props) && closeOnSelect) {
+                const shouldCloseAfterPick = isMultiSelect(props) && closeOnSelect
+                if (shouldCloseAfterPick) {
                   queueMicrotask(closeListbox)
                 }
               }}
@@ -668,18 +695,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                     triggerOnClick?.(event)
                   }}
                   onFocus={onTriggerFocus}
-                  onBlur={(event) => {
-                    onTriggerBlur?.(event)
-                    if (event.defaultPrevented || !open || focusListOnOpen) {
-                      return
-                    }
-
-                    if (isWithinDropdownTarget(event.relatedTarget)) {
-                      return
-                    }
-
-                    closeListbox()
-                  }}
+                  onBlur={(event) => handleTriggerBlur(event, open)}
                   onKeyDown={onTriggerKeyDown}
                 >
                   <span className="ui-dropdown__value">{selectedLabel}</span>
@@ -731,18 +747,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                   triggerOnClick?.(event)
                 }}
                 onFocus={onTriggerFocus}
-                onBlur={(event) => {
-                  onTriggerBlur?.(event)
-                  if (event.defaultPrevented || !open || focusListOnOpen) {
-                    return
-                  }
-
-                  if (isWithinDropdownTarget(event.relatedTarget)) {
-                    return
-                  }
-
-                  closeListbox()
-                }}
+                onBlur={(event) => handleTriggerBlur(event, open)}
                 onKeyDown={onTriggerKeyDown}
               >
                 <span className="ui-dropdown__value">{selectedLabel}</span>

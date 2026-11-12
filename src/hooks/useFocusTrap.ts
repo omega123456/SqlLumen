@@ -18,6 +18,15 @@ function focusWrapTarget(
   return document.activeElement === lastElement ? firstElement : null
 }
 
+function isEnabledElementWithin(
+  container: HTMLElement,
+  candidate: HTMLElement | null | undefined
+): candidate is HTMLElement {
+  if (!candidate) return false
+  if (!container.contains(candidate)) return false
+  return !candidate.hasAttribute('disabled')
+}
+
 export function useFocusTrap(
   dialogRef: React.RefObject<HTMLElement | null>,
   isOpen: boolean,
@@ -38,11 +47,7 @@ export function useFocusTrap(
       // Use requestAnimationFrame to ensure the dialog is rendered before focusing
       requestAnimationFrame(() => {
         const preferredFocus = initialFocusRef?.current
-        if (
-          preferredFocus &&
-          dialog.contains(preferredFocus) &&
-          !preferredFocus.hasAttribute('disabled')
-        ) {
+        if (isEnabledElementWithin(dialog, preferredFocus)) {
           preferredFocus.focus()
           return
         }
@@ -78,7 +83,7 @@ export function useFocusTrap(
 
       // Restore focus to the previously focused element
       const previousFocus = previousFocusRef.current
-      if (previousFocus && previousFocus instanceof HTMLElement) {
+      if (previousFocus instanceof HTMLElement) {
         previousFocus.focus()
       }
     }

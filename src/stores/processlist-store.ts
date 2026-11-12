@@ -74,6 +74,10 @@ function withMembershipToggled(ids: Set<number>, id: number): Set<number> {
   return next
 }
 
+function isCurrentFetchGeneration(connectionId: string, generation: number): boolean {
+  return useProcessListStore.getState().fetchGenerationByConnection[connectionId] === generation
+}
+
 export const useProcessListStore = create<ProcessListState>()((set, get) => ({
   rowsByConnection: {},
   lastRefreshedAtByConnection: {},
@@ -108,8 +112,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
     try {
       const rows = await getProcesslist(sessionId)
 
-      // Stale guard: if generation changed (e.g. resetConnection was called), discard results
-      if (get().fetchGenerationByConnection[connectionId] !== generation) return
+      if (!isCurrentFetchGeneration(connectionId, generation)) return
 
       const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
       const excludeIdle =
@@ -135,8 +138,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
         hasFetchedByConnection: { ...get().hasFetchedByConnection, [connectionId]: true },
       })
     } catch (error) {
-      // Stale guard on error path too
-      if (get().fetchGenerationByConnection[connectionId] !== generation) return
+      if (!isCurrentFetchGeneration(connectionId, generation)) return
 
       const message = toErrorMessage(error)
 
