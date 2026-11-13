@@ -4,8 +4,14 @@ import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
-import { executeRemember, filterCommands, findCommand } from '../../lib/slash-commands'
-import { resolveRememberScope } from '../../lib/slash-commands'
+import {
+  executeRemember,
+  filterCommands,
+  isEmptyRememberInvocation,
+  parseSlashInvocation,
+  shouldAskForRememberScope,
+  type SlashInvocation,
+} from '../../lib/slash-commands'
 import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 import { showErrorToast } from '../../stores/toast-store'
 import { Textarea } from '../common/Textarea'
@@ -29,6 +35,14 @@ const MAX_TEXTAREA_HEIGHT_PX = 140
 const SCOPE_PICKER_OWNED_KEYS = new Set(['Enter', 'Escape', 'ArrowUp', 'ArrowDown'])
 const SLASH_COMMAND_LISTBOX_ID = 'slash-command-listbox'
 const NO_HIGHLIGHT = -1
+
+function logRejectedSlashCommand(invocation: SlashInvocation, error: unknown): void {
+  const commandName = invocation.command.name
+  logFrontend(
+    'warn',
+    `[AiChatInput] slash command /${commandName} rejected: ${toErrorMessage(error)}`
+  )
+}
 
 type DropdownKeyAction = 'next' | 'previous' | 'select' | 'close'
 
@@ -314,71 +328,58 @@ export function AiChatInput({
     })
   }, [])
 
+  const clearInput = useCallback(() => {
+    setValue('')
+    resetHeight()
+  }, [resetHeight])
+
+  const runSlashInvocation = useCallback(
+    (invocation: SlashInvocation) => {
+      if (!connectionId) {
+        showErrorToast('No active connection')
+        return
+      }
+      if (isEmptyRememberInvocation(invocation)) {
+        executeRemember(invocation.commandArgs, connectionId).catch((error: unknown) =>
+          logRejectedSlashCommand(invocation, error)
+        )
+        return
+      }
+      if (shouldAskForRememberScope(invocation)) {
+        setPendingRememberContent(invocation.commandArgs.trim())
+        return
+      }
+      const submittedValue = value
+      invocation.command
+        .execute(invocation.commandArgs, connectionId)
+        .then(clearInput)
+        .catch((error: unknown) => {
+          setValue(submittedValue)
+          logRejectedSlashCommand(invocation, error)
+        })
+    },
+    [value, connectionId, clearInput]
+  )
+
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
     if (!trimmed) return
     if (!canSend) return
 
-    // Check for slash command
-    const slashMatch = trimmed.match(/^\/(\S+)\s*(.*)$/)
-    if (slashMatch) {
-      const [, commandName, commandArgs] = slashMatch
-      const command = findCommand(commandName)
-      if (command) {
-        if (!connectionId) {
-          showErrorToast('No active connection')
-          return
-        }
-        const savedValue = value
-
-        // `/remember` is scope-aware. When the default scope is "Always ask"
-        // we show an inline level picker instead of saving immediately.
-        if (commandName === 'remember') {
-          const args = commandArgs.trim()
-          if (!args) {
-            // Surface the standard empty-args error via executeRemember.
-            executeRemember(commandArgs, connectionId).catch(() => {
-              /* error already toasted */
-            })
-            return
-          }
-          const shouldAskForScope = resolveRememberScope() === 'ask'
-          if (shouldAskForScope) {
-            setPendingRememberContent(args)
-            return
-          }
-        }
-
-        command
-          .execute(commandArgs, connectionId)
-          .then(() => {
-            setValue('')
-            resetHeight()
-          })
-          .catch((error: unknown) => {
-            // Restore input on failure
-            setValue(savedValue)
-            logFrontend(
-              'warn',
-              `[AiChatInput] slash command /${commandName} rejected: ${toErrorMessage(error)}`
-            )
-          })
-        return
-      }
-    }
-
-    if (!connectionId) {
+    const slashInvocation = parseSlashInvocation(trimmed)
+    if (slashInvocation) {
+      runSlashInvocation(slashInvocation)
       return
     }
+    if (!connectionId) return
 
     useAiStore.getState().sendMessage(tabId, {
       connectionId: connectionId,
       message: trimmed,
       settings: {},
     })
-    setValue('')
-    resetHeight()
-  }, [value, connectionId, canSend, tabId, resetHeight])
+    clearInput()
+  }, [value, connectionId, canSend, tabId, clearInput, runSlashInvocation])
 
   const handleScopePick = useCallback(
     (scope: MemoryScope) => {
@@ -388,15 +389,12 @@ export function AiChatInput({
       if (!connectionId) return
       // executeRemember toasts success/failure itself.
       executeRemember(content, connectionId, scope)
-        .then(() => {
-          setValue('')
-          resetHeight()
-        })
+        .then(clearInput)
         .catch((error: unknown) => {
           logFrontend('warn', `[AiChatInput] /remember (ask) rejected: ${toErrorMessage(error)}`)
         })
     },
-    [pendingRememberContent, connectionId, resetHeight]
+    [pendingRememberContent, connectionId, clearInput]
   )
 
   const handleScopeCancel = useCallback(() => {

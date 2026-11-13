@@ -157,18 +157,24 @@ fn reexecuted_history_entry(
 }
 
 #[cfg(not(coverage))]
+async fn reexecute_single_result_with_history(
+    state: &AppState,
+    request: &ReexecuteSingleResultRequest,
+) -> Result<MultiQueryResultItem, String> {
+    let result = reexecute_single_result_impl(state, request).await;
+    let build_entry = reexecuted_history_entry(&result, request.sql.clone());
+    resolve_connection_context(state, &request.connection_id)
+        .log_single_entry_if_resolved(&state.db, build_entry);
+    result
+}
+
+#[cfg(not(coverage))]
 #[tauri::command]
 pub async fn reexecute_single_result(
     payload: ReexecuteSingleResultRequest,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResultItem, String> {
-    let result = reexecute_single_result_impl(&state, &payload).await;
-
-    let build_entry = reexecuted_history_entry(&result, payload.sql.clone());
-    resolve_connection_context(&state, &payload.connection_id)
-        .log_single_entry_if_resolved(&state.db, build_entry);
-
-    result
+    reexecute_single_result_with_history(&state, &payload).await
 }
 
 #[cfg(not(coverage))]

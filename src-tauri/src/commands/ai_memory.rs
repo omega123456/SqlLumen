@@ -2,9 +2,10 @@ use std::time::Instant;
 
 use super::helpers::resolve_session_profile;
 use crate::ai_memory::reembed::ReembedTarget;
-use crate::ai_memory::types::{AiMemory, MemoryMove, MemoryOwner, MemoryScope, MemoryVector};
+use crate::ai_memory::types::{
+    AiMemory, MemoryMove, MemoryOwner, MemoryReembedProgress, MemoryScope, MemoryVector,
+};
 use crate::ai_memory::{read_embedding_config, storage, EmbeddingConfig};
-#[cfg(not(coverage))]
 use crate::ai_memory::{reembed, search};
 use crate::db::{connection_groups, connections};
 use crate::schema_index::embeddings::{self, EmbeddingInput};
@@ -560,20 +561,37 @@ pub async fn move_memory(
     move_memory_full(&state, &payload).await
 }
 
+pub async fn search_session_memories(
+    state: &AppState,
+    request: &SearchMemoriesRequest,
+) -> Result<Vec<AiMemory>, String> {
+    let owners = resolve_search_owners(state, &request.session_id)?;
+    let memory_search = search::MemorySearch {
+        connection_id: &owners.connection_id,
+        group_id: owners.group_id.as_deref(),
+        query: &request.query,
+        limit: request.limit,
+    };
+    search::search_memories_impl(state, &memory_search).await
+}
+
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn search_memories(
     payload: SearchMemoriesRequest,
     state: State<'_, AppState>,
 ) -> Result<Vec<AiMemory>, String> {
-    let owners = resolve_search_owners(&state, &payload.session_id)?;
-    let search = search::MemorySearch {
-        connection_id: &owners.connection_id,
-        group_id: owners.group_id.as_deref(),
-        query: &payload.query,
-        limit: payload.limit,
-    };
-    search::search_memories_impl(&state, &search).await
+    search_session_memories(&state, &payload).await
+}
+
+pub async fn reembed_all_scopes<F>(state: &AppState, report_progress: F) -> Result<(), String>
+where
+    F: Fn(MemoryReembedProgress) + Clone + Send + 'static,
+{
+    for target in reembed_targets(state)? {
+        reembed::reembed_scope_impl(state, target, report_progress.clone()).await?;
+    }
+    Ok(())
 }
 
 #[cfg(not(coverage))]
@@ -582,15 +600,8 @@ pub async fn reembed_all_memories(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let targets = reembed_targets(&state)?;
-
-    for target in targets {
-        let app = app_handle.clone();
-        reembed::reembed_scope_impl(&state, target, move |progress| {
-            let _ = app.emit("ai-memory-reembed-progress", &progress);
-        })
-        .await?;
-    }
-
-    Ok(())
+    reembed_all_scopes(&state, move |progress| {
+        let _ = app_handle.emit("ai-memory-reembed-progress", &progress);
+    })
+    .await
 }

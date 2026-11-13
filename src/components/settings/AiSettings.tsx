@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { Dropdown } from '../common/Dropdown'
@@ -291,420 +291,509 @@ function ReindexRow({ buildingConnections, onRequestReindex }: ReindexRowProps) 
   )
 }
 
-// ---------------------------------------------------------------------------
-// AiSettings
-// ---------------------------------------------------------------------------
+interface NumericSettingFieldConfig {
+  settingKey: string
+  label: string
+  id: string
+  testId: string
+  min: number
+  max: number
+  step?: string
+}
 
-export function AiSettings() {
-  const setPendingChange = useSettingsStore((state) => state.setPendingChange)
+const GENERATION_FIELDS: NumericSettingFieldConfig[] = [
+  {
+    settingKey: 'ai.temperature',
+    label: 'Temperature',
+    id: 'settings-ai-temperature',
+    testId: 'settings-ai-temperature',
+    min: 0,
+    max: 2,
+    step: '0.1',
+  },
+  {
+    settingKey: 'ai.maxTokens',
+    label: 'Max tokens',
+    id: 'settings-ai-max-tokens',
+    testId: 'settings-ai-max-tokens',
+    min: 1,
+    max: 128000,
+  },
+]
 
-  const aiEnabled = useSettingValue('ai.enabled') === 'true'
-  const endpoint = useSettingValue('ai.endpoint')
-  const embeddingEndpoint = useSettingValue('ai.embeddingEndpoint')
-  const model = useSettingValue('ai.model')
-  const embeddingModel = useSettingValue('ai.embeddingModel')
-  const temperature = useSettingValue('ai.temperature')
-  const maxTokens = useSettingValue('ai.maxTokens')
-  const enableReasoning = useSettingValue('ai.enableReasoning') !== 'false'
-  const preferResponsesApi = useSettingValue('ai.preferResponsesApi') === 'true'
-  const rememberScope = resolveRememberScope(useSettingValue('ai.rememberScope'))
+const RANKING_FIELDS: NumericSettingFieldConfig[] = [
+  {
+    settingKey: 'ai.retrieval.topKPerQuery',
+    label: 'Top-K per query',
+    id: 'settings-ai-topk',
+    testId: 'settings-ai-retrieval-topk',
+    min: 1,
+    max: 100,
+  },
+  {
+    settingKey: 'ai.retrieval.topN',
+    label: 'Top-N results',
+    id: 'settings-ai-topn',
+    testId: 'settings-ai-retrieval-topn',
+    min: 1,
+    max: 100,
+  },
+  {
+    settingKey: 'ai.retrieval.fkFanoutCap',
+    label: 'FK fan-out cap',
+    id: 'settings-ai-fk-fanout',
+    testId: 'settings-ai-retrieval-fk-fanout',
+    min: 0,
+    max: 200,
+  },
+  {
+    settingKey: 'ai.retrieval.lexicalWeight',
+    label: 'Lexical weight (λ)',
+    id: 'settings-ai-lexical-weight',
+    testId: 'settings-ai-retrieval-lexical-weight',
+    min: 0,
+    max: 2,
+    step: '0.05',
+  },
+  {
+    settingKey: 'ai.retrieval.tokenBudget',
+    label: 'Token budget',
+    id: 'settings-ai-token-budget',
+    testId: 'settings-ai-retrieval-token-budget',
+    min: 500,
+    max: 100000,
+  },
+]
 
-  // Retrieval settings
-  const topKPerQuery = useSettingValue('ai.retrieval.topKPerQuery')
-  const topN = useSettingValue('ai.retrieval.topN')
-  const foreignKeyFanoutCap = useSettingValue('ai.retrieval.fkFanoutCap')
-  const lexicalWeight = useSettingValue('ai.retrieval.lexicalWeight')
-  const rerankEnabled = useSettingValue('ai.retrieval.rerankEnabled')
-  const tokenBudget = useSettingValue('ai.retrieval.tokenBudget')
-  const hydeEnabled = useSettingValue('ai.retrieval.hydeEnabled')
-  const expansionMaxQueries = useSettingValue('ai.retrieval.expansionMaxQueries')
-  const graphDepth = useSettingValue('ai.retrieval.graphDepth')
-  const feedbackBoost = useSettingValue('ai.retrieval.feedbackBoost')
-  const recentQueryWindow = useSettingValue('ai.retrieval.recentQueryWindow')
+const EXPANSION_FIELDS: NumericSettingFieldConfig[] = [
+  {
+    settingKey: 'ai.retrieval.expansionMaxQueries',
+    label: 'Max expansion queries',
+    id: 'settings-ai-expansion-max',
+    testId: 'settings-ai-retrieval-expansion-max',
+    min: 2,
+    max: 20,
+  },
+  {
+    settingKey: 'ai.retrieval.graphDepth',
+    label: 'Graph walk depth',
+    id: 'settings-ai-graph-depth',
+    testId: 'settings-ai-retrieval-graph-depth',
+    min: 1,
+    max: 3,
+  },
+  {
+    settingKey: 'ai.retrieval.feedbackBoost',
+    label: 'Feedback boost (μ)',
+    id: 'settings-ai-feedback-boost',
+    testId: 'settings-ai-retrieval-feedback-boost',
+    min: 0,
+    max: 1,
+    step: '0.05',
+  },
+  {
+    settingKey: 'ai.retrieval.recentQueryWindow',
+    label: 'Recent query window',
+    id: 'settings-ai-recent-window',
+    testId: 'settings-ai-retrieval-recent-window',
+    min: 1,
+    max: 100,
+  },
+]
 
-  const chatFetch = useFetchModels(endpoint)
+const DEFAULT_ENDPOINT_PLACEHOLDER = 'http://localhost:11434/v1'
 
-  // Independent fetch for the embedding-endpoint models. A slow or failing
-  // embedding fetch must never affect the chat-models grid above.
-  const embeddingFetch = useFetchModels(embeddingEndpoint)
+function setPendingSetting(settingKey: string, value: string): void {
+  useSettingsStore.getState().setPendingChange(settingKey, value)
+}
 
-  const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false)
+interface NumericSettingFieldProps {
+  field: NumericSettingFieldConfig
+  disabled: boolean
+}
 
-  // Subscribe to the schema index store so the Force Reindex button reflects
-  // builds triggered from anywhere (other tabs, settings changes, etc.).
-  const connections = useSchemaIndexStore((state) => state.connections)
-  const buildingConnections: ConnectionIndexState[] = Object.values(connections).filter(
-    (indexState) => indexState.status === 'building'
+function NumericSettingField({ field, disabled }: NumericSettingFieldProps) {
+  const value = useSettingValue(field.settingKey)
+  return (
+    <div className={styles.compactField}>
+      <label htmlFor={field.id} className={styles.fieldLabel}>
+        {field.label}
+      </label>
+      <TextInput
+        id={field.id}
+        type="number"
+        min={field.min}
+        max={field.max}
+        step={field.step}
+        value={value}
+        onChange={(event) => setPendingSetting(field.settingKey, event.target.value)}
+        disabled={disabled}
+        data-testid={field.testId}
+        className={styles.compactFieldInput}
+      />
+    </div>
   )
-  const isBuilding = buildingConnections.length > 0
+}
 
-  const handleForceReindex = useCallback(async () => {
-    const store = useSchemaIndexStore.getState()
-    const sessions = Object.keys(store.sessionToProfile)
-    try {
-      await Promise.all(sessions.map((sid) => store.forceRebuild(sid)))
-    } finally {
-      // Close the dialog; the button stays disabled while the store still
-      // reports any connection in the 'building' state.
-      setReindexConfirmOpen(false)
-    }
-  }, [])
+interface NumericSettingGridProps {
+  fields: NumericSettingFieldConfig[]
+  disabled: boolean
+}
 
-  const chatFetchModels = chatFetch.fetch
-  const embeddingFetchFetch = embeddingFetch.fetch
-  const embeddingFetchReset = embeddingFetch.reset
+function NumericSettingGrid({ fields, disabled }: NumericSettingGridProps) {
+  return (
+    <div className={styles.compactFieldGrid}>
+      {fields.map((field) => (
+        <NumericSettingField key={field.settingKey} field={field} disabled={disabled} />
+      ))}
+    </div>
+  )
+}
 
+interface SettingSwitchProps {
+  settingKey: string
+  label: string
+  description: string
+  isChecked: (value: string) => boolean
+  disabled?: boolean
+  testId: string
+}
+
+function SettingSwitch({
+  settingKey,
+  label,
+  description,
+  isChecked,
+  disabled,
+  testId,
+}: SettingSwitchProps) {
+  const value = useSettingValue(settingKey)
+  return (
+    <SettingsToggle
+      label={label}
+      description={description}
+      checked={isChecked(value)}
+      onChange={(checked) => setPendingSetting(settingKey, String(checked))}
+      disabled={disabled}
+      data-testid={testId}
+    />
+  )
+}
+
+function isTrueSetting(value: string): boolean {
+  return value === 'true'
+}
+
+function isNotFalseSetting(value: string): boolean {
+  return value !== 'false'
+}
+
+function useBuildingConnections(): ConnectionIndexState[] {
+  const connections = useSchemaIndexStore((state) => state.connections)
+  return Object.values(connections).filter((indexState) => indexState.status === 'building')
+}
+
+async function forceReindexAllSessions(): Promise<void> {
+  const store = useSchemaIndexStore.getState()
+  const sessionIds = Object.keys(store.sessionToProfile)
+  await Promise.all(sessionIds.map((sessionId) => store.forceRebuild(sessionId)))
+}
+
+function useModelFetchOnEndpoint(modelFetch: ModelFetch, isFetchEnabled: boolean): void {
+  const fetchModels = modelFetch.fetch
+  const resetModels = modelFetch.reset
   useEffect(() => {
-    const hasChatEndpoint = aiEnabled && !isBlank(endpoint)
-    if (hasChatEndpoint) {
-      chatFetchModels()
-    }
-  }, [aiEnabled, endpoint, chatFetchModels])
-
-  useEffect(() => {
-    const hasEmbeddingEndpoint = aiEnabled && !isBlank(embeddingEndpoint)
-    if (!hasEmbeddingEndpoint) {
-      // Blank embedding URL: invalidate any in-flight fetch and revert to the
-      // chat-fetch embedding models with no leftover loading/error state.
-      embeddingFetchReset()
+    if (!isFetchEnabled) {
+      resetModels()
       return
     }
-    embeddingFetchFetch()
-  }, [aiEnabled, embeddingEndpoint, embeddingFetchFetch, embeddingFetchReset])
+    fetchModels()
+  }, [isFetchEnabled, fetchModels, resetModels])
+}
+
+function useChatModelFetchOnEndpoint(modelFetch: ModelFetch, isFetchEnabled: boolean): void {
+  const fetchModels = modelFetch.fetch
+  useEffect(() => {
+    if (isFetchEnabled) {
+      fetchModels()
+    }
+  }, [isFetchEnabled, fetchModels])
+}
+
+function hasEnabledEndpoint(aiEnabled: boolean, endpoint: string): boolean {
+  return aiEnabled && !isBlank(endpoint)
+}
+
+interface EndpointFieldProps {
+  settingKey: string
+  id: string
+  label: string
+  placeholder: string
+  disabled: boolean
+  children?: ReactNode
+}
+
+function EndpointField({
+  settingKey,
+  id,
+  label,
+  placeholder,
+  disabled,
+  children,
+}: EndpointFieldProps) {
+  const value = useSettingValue(settingKey)
+  return (
+    <div>
+      <label htmlFor={id} className={styles.fieldLabel}>
+        {label}
+      </label>
+      <TextInput
+        id={id}
+        value={value}
+        onChange={(event) => setPendingSetting(settingKey, event.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        data-testid={id}
+        style={{ width: 360 }}
+      />
+      {children}
+    </div>
+  )
+}
+
+interface ModelListSectionProps {
+  chatFetch: ModelFetch
+  embeddingFetch: ModelFetch
+  hasEmbeddingUrl: boolean
+  onRequestReindex: () => void
+}
+
+function ModelListSection({
+  chatFetch,
+  embeddingFetch,
+  hasEmbeddingUrl,
+  onRequestReindex,
+}: ModelListSectionProps) {
+  const model = useSettingValue('ai.model')
+  const embeddingModel = useSettingValue('ai.embeddingModel')
+  const buildingConnections = useBuildingConnections()
+  const modelCategories = resolveModelCategories(chatFetch, embeddingFetch, hasEmbeddingUrl)
+  return (
+    <div className={styles.modelListSection} data-testid="ai-model-list-section">
+      <p className={styles.helperText} data-testid="ai-helper-text">
+        Models will be grouped by type: chat for conversation, embedding for schema search
+      </p>
+
+      <FetchStatus
+        modelFetch={chatFetch}
+        loadingTestId="ai-models-loading"
+        errorTestId="ai-models-error"
+        loadingText="Loading models..."
+      />
+
+      <ModelCategoryGrids
+        categories={modelCategories}
+        embeddingFetch={embeddingFetch}
+        selection={{
+          chatModel: model,
+          embeddingModel: embeddingModel,
+          onSelectChatModel: (modelId) => setPendingSetting('ai.model', modelId),
+          onSelectEmbeddingModel: (modelId) => setPendingSetting('ai.embeddingModel', modelId),
+        }}
+      />
+
+      <ReindexRow buildingConnections={buildingConnections} onRequestReindex={onRequestReindex} />
+    </div>
+  )
+}
+
+interface AiConnectionSectionProps {
+  aiEnabled: boolean
+  onRequestReindex: () => void
+}
+
+function AiConnectionSection({ aiEnabled, onRequestReindex }: AiConnectionSectionProps) {
+  const endpoint = useSettingValue('ai.endpoint')
+  const embeddingEndpoint = useSettingValue('ai.embeddingEndpoint')
+  const chatFetch = useFetchModels(endpoint)
+  const embeddingFetch = useFetchModels(embeddingEndpoint)
+  useChatModelFetchOnEndpoint(chatFetch, hasEnabledEndpoint(aiEnabled, endpoint))
+  useModelFetchOnEndpoint(embeddingFetch, hasEnabledEndpoint(aiEnabled, embeddingEndpoint))
 
   const chatUrl = endpoint.trim()
   const embeddingUrl = embeddingEndpoint.trim()
   const hasEmbeddingUrl = embeddingUrl.length > 0
+  const hasAnyUrl = Boolean(chatUrl || embeddingUrl)
+  const showsModelList = aiEnabled && hasAnyUrl
 
-  const modelCategories = resolveModelCategories(chatFetch, embeddingFetch, hasEmbeddingUrl)
+  return (
+    <SettingsSection
+      title="Connection"
+      description="Configure the base URLs for an OpenAI-compatible service (e.g. Ollama, Jan, vLLM). Enter base URLs only — paths like /chat/completions are appended automatically. A separate embedding URL is optional."
+    >
+      <EndpointField
+        settingKey="ai.endpoint"
+        id="settings-ai-endpoint"
+        label="Chat Base URL"
+        placeholder={DEFAULT_ENDPOINT_PLACEHOLDER}
+        disabled={!aiEnabled}
+      />
 
-  function handleSelectChatModel(modelId: string) {
-    setPendingChange('ai.model', modelId)
+      <EndpointField
+        settingKey="ai.embeddingEndpoint"
+        id="settings-ai-embedding-endpoint"
+        label="Embedding Base URL (optional)"
+        placeholder={chatUrl || DEFAULT_ENDPOINT_PLACEHOLDER}
+        disabled={!aiEnabled}
+      >
+        <p className={styles.helperText} data-testid="ai-embedding-helper-text">
+          When blank, the chat URL is used for embeddings. Fill this in only if your embedding
+          provider is hosted at a different address.
+        </p>
+      </EndpointField>
+
+      {showsModelList && (
+        <ModelListSection
+          chatFetch={chatFetch}
+          embeddingFetch={embeddingFetch}
+          hasEmbeddingUrl={hasEmbeddingUrl}
+          onRequestReindex={onRequestReindex}
+        />
+      )}
+    </SettingsSection>
+  )
+}
+
+function AiGenerationSection({ aiEnabled }: { aiEnabled: boolean }) {
+  return (
+    <SettingsSection title="Generation" description="Control how the AI generates responses.">
+      <NumericSettingGrid fields={GENERATION_FIELDS} disabled={!aiEnabled} />
+      <SettingSwitch
+        settingKey="ai.enableReasoning"
+        label="Enable reasoning / thinking"
+        description="When enabled, the AI's chain-of-thought reasoning is shown in a collapsible block above each response. Disable to hide reasoning output entirely."
+        isChecked={isNotFalseSetting}
+        disabled={!aiEnabled}
+        testId="settings-ai-enable-reasoning"
+      />
+      <SettingSwitch
+        settingKey="ai.preferResponsesApi"
+        label="Use Responses API when reasoning is enabled"
+        description="Off by default for better local provider compatibility and prompt cache reuse. Turn on only if your endpoint supports the Responses API well."
+        isChecked={isTrueSetting}
+        disabled={!aiEnabled}
+        testId="settings-ai-prefer-responses-api"
+      />
+    </SettingsSection>
+  )
+}
+
+function AiRetrievalSection({ aiEnabled }: { aiEnabled: boolean }) {
+  return (
+    <SettingsSection
+      title="AI retrieval"
+      description="Control how schema context is retrieved and ranked for AI queries."
+    >
+      <NumericSettingGrid fields={RANKING_FIELDS} disabled={!aiEnabled} />
+      <SettingSwitch
+        settingKey="ai.retrieval.rerankEnabled"
+        label="LLM re-rank"
+        description="Use the chat model to re-rank retrieval results (slower, may improve relevance)."
+        isChecked={isTrueSetting}
+        disabled={!aiEnabled}
+        testId="settings-ai-retrieval-rerank"
+      />
+      <SettingSwitch
+        settingKey="ai.retrieval.hydeEnabled"
+        label="HyDE (Hypothetical SQL)"
+        description="Generate a hypothetical SQL fragment as an extra search query for improved retrieval."
+        isChecked={isNotFalseSetting}
+        disabled={!aiEnabled}
+        testId="settings-ai-retrieval-hyde"
+      />
+      <NumericSettingGrid fields={EXPANSION_FIELDS} disabled={!aiEnabled} />
+    </SettingsSection>
+  )
+}
+
+function AiMemorySection({ aiEnabled }: { aiEnabled: boolean }) {
+  const rememberScope = resolveRememberScope(useSettingValue('ai.rememberScope'))
+  return (
+    <SettingsSection title="Memory" description="Choose which scope /remember saves to by default.">
+      <div>
+        <span id="settings-ai-remember-scope-label" className={styles.fieldLabel}>
+          Default /remember scope
+        </span>
+        <Dropdown
+          id="settings-ai-remember-scope"
+          labelledBy="settings-ai-remember-scope-label"
+          options={REMEMBER_SCOPE_OPTIONS}
+          value={rememberScope}
+          onChange={(value) => setPendingSetting('ai.rememberScope', value)}
+          disabled={!aiEnabled}
+          data-testid="settings-ai-remember-scope"
+        />
+      </div>
+    </SettingsSection>
+  )
+}
+
+interface ForceReindexDialogProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+function ForceReindexDialog({ isOpen, onClose }: ForceReindexDialogProps) {
+  const isBuilding = useBuildingConnections().length > 0
+  const confirmReindex = () => {
+    forceReindexAllSessions().finally(onClose)
   }
+  return (
+    <ConfirmDialog
+      isOpen={isOpen}
+      title="Force reindex vector DB"
+      message="This will wipe the current schema index and rebuild it from scratch for all active connections. This may take a few minutes."
+      confirmLabel="Reindex"
+      isDestructive
+      warningText={null}
+      isLoading={isBuilding}
+      onConfirm={confirmReindex}
+      onCancel={onClose}
+    />
+  )
+}
 
-  function handleSelectEmbeddingModel(modelId: string) {
-    setPendingChange('ai.embeddingModel', modelId)
-  }
+export function AiSettings() {
+  const aiEnabled = useSettingValue('ai.enabled') === 'true'
+  const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false)
 
   return (
     <div data-testid="settings-ai">
       <SettingsSection title="Enable AI" description="Turn the AI assistant on or off.">
-        <SettingsToggle
+        <SettingSwitch
+          settingKey="ai.enabled"
           label="Enable AI assistant"
           description="Allow AI-powered features such as query suggestions and natural language queries."
-          checked={aiEnabled}
-          onChange={(checked) => setPendingChange('ai.enabled', String(checked))}
-          data-testid="settings-ai-enabled"
+          isChecked={isTrueSetting}
+          testId="settings-ai-enabled"
         />
       </SettingsSection>
 
       <div className={!aiEnabled ? styles.disabledGroup : undefined}>
-        <SettingsSection
-          title="Connection"
-          description="Configure the base URLs for an OpenAI-compatible service (e.g. Ollama, Jan, vLLM). Enter base URLs only — paths like /chat/completions are appended automatically. A separate embedding URL is optional."
-        >
-          <div>
-            <label htmlFor="settings-ai-endpoint" className={styles.fieldLabel}>
-              Chat Base URL
-            </label>
-            <TextInput
-              id="settings-ai-endpoint"
-              value={endpoint}
-              onChange={(event) => setPendingChange('ai.endpoint', event.target.value)}
-              placeholder="http://localhost:11434/v1"
-              disabled={!aiEnabled}
-              data-testid="settings-ai-endpoint"
-              style={{ width: 360 }}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="settings-ai-embedding-endpoint" className={styles.fieldLabel}>
-              Embedding Base URL (optional)
-            </label>
-            <TextInput
-              id="settings-ai-embedding-endpoint"
-              value={embeddingEndpoint}
-              onChange={(event) => setPendingChange('ai.embeddingEndpoint', event.target.value)}
-              placeholder={chatUrl || 'http://localhost:11434/v1'}
-              disabled={!aiEnabled}
-              data-testid="settings-ai-embedding-endpoint"
-              style={{ width: 360 }}
-            />
-            <p className={styles.helperText} data-testid="ai-embedding-helper-text">
-              When blank, the chat URL is used for embeddings. Fill this in only if your embedding
-              provider is hosted at a different address.
-            </p>
-          </div>
-
-          {aiEnabled && (chatUrl || embeddingUrl) && (
-            <div className={styles.modelListSection} data-testid="ai-model-list-section">
-              <p className={styles.helperText} data-testid="ai-helper-text">
-                Models will be grouped by type: chat for conversation, embedding for schema search
-              </p>
-
-              <FetchStatus
-                modelFetch={chatFetch}
-                loadingTestId="ai-models-loading"
-                errorTestId="ai-models-error"
-                loadingText="Loading models..."
-              />
-
-              <ModelCategoryGrids
-                categories={modelCategories}
-                embeddingFetch={embeddingFetch}
-                selection={{
-                  chatModel: model,
-                  embeddingModel: embeddingModel,
-                  onSelectChatModel: handleSelectChatModel,
-                  onSelectEmbeddingModel: handleSelectEmbeddingModel,
-                }}
-              />
-
-              <ReindexRow
-                buildingConnections={buildingConnections}
-                onRequestReindex={() => setReindexConfirmOpen(true)}
-              />
-            </div>
-          )}
-        </SettingsSection>
-
-        <SettingsSection title="Generation" description="Control how the AI generates responses.">
-          <div className={styles.compactFieldGrid}>
-            <div className={styles.compactField}>
-              <label htmlFor="settings-ai-temperature" className={styles.fieldLabel}>
-                Temperature
-              </label>
-              <TextInput
-                id="settings-ai-temperature"
-                type="number"
-                min={0}
-                max={2}
-                step="0.1"
-                value={temperature}
-                onChange={(event) => setPendingChange('ai.temperature', event.target.value)}
-                disabled={!aiEnabled}
-                data-testid="settings-ai-temperature"
-                className={styles.compactFieldInput}
-              />
-            </div>
-            <div className={styles.compactField}>
-              <label htmlFor="settings-ai-max-tokens" className={styles.fieldLabel}>
-                Max tokens
-              </label>
-              <TextInput
-                id="settings-ai-max-tokens"
-                type="number"
-                min={1}
-                max={128000}
-                value={maxTokens}
-                onChange={(event) => setPendingChange('ai.maxTokens', event.target.value)}
-                disabled={!aiEnabled}
-                data-testid="settings-ai-max-tokens"
-                className={styles.compactFieldInput}
-              />
-            </div>
-          </div>
-          <SettingsToggle
-            label="Enable reasoning / thinking"
-            description="When enabled, the AI's chain-of-thought reasoning is shown in a collapsible block above each response. Disable to hide reasoning output entirely."
-            checked={enableReasoning}
-            onChange={(checked) => setPendingChange('ai.enableReasoning', String(checked))}
-            disabled={!aiEnabled}
-            data-testid="settings-ai-enable-reasoning"
-          />
-          <SettingsToggle
-            label="Use Responses API when reasoning is enabled"
-            description="Off by default for better local provider compatibility and prompt cache reuse. Turn on only if your endpoint supports the Responses API well."
-            checked={preferResponsesApi}
-            onChange={(checked) => setPendingChange('ai.preferResponsesApi', String(checked))}
-            disabled={!aiEnabled}
-            data-testid="settings-ai-prefer-responses-api"
-          />
-        </SettingsSection>
-
-        <SettingsSection
-          title="AI retrieval"
-          description="Control how schema context is retrieved and ranked for AI queries."
-        >
-          <div className={styles.compactFieldGrid}>
-            {[
-              {
-                settingKey: 'ai.retrieval.topKPerQuery',
-                label: 'Top-K per query',
-                id: 'settings-ai-topk',
-                testId: 'settings-ai-retrieval-topk',
-                min: 1,
-                max: 100,
-                value: topKPerQuery,
-              },
-              {
-                settingKey: 'ai.retrieval.topN',
-                label: 'Top-N results',
-                id: 'settings-ai-topn',
-                testId: 'settings-ai-retrieval-topn',
-                min: 1,
-                max: 100,
-                value: topN,
-              },
-              {
-                settingKey: 'ai.retrieval.fkFanoutCap',
-                label: 'FK fan-out cap',
-                id: 'settings-ai-fk-fanout',
-                testId: 'settings-ai-retrieval-fk-fanout',
-                min: 0,
-                max: 200,
-                value: foreignKeyFanoutCap,
-              },
-              {
-                settingKey: 'ai.retrieval.lexicalWeight',
-                label: 'Lexical weight (λ)',
-                id: 'settings-ai-lexical-weight',
-                testId: 'settings-ai-retrieval-lexical-weight',
-                min: 0,
-                max: 2,
-                step: '0.05',
-                value: lexicalWeight,
-              },
-              {
-                settingKey: 'ai.retrieval.tokenBudget',
-                label: 'Token budget',
-                id: 'settings-ai-token-budget',
-                testId: 'settings-ai-retrieval-token-budget',
-                min: 500,
-                max: 100000,
-                value: tokenBudget,
-              },
-            ].map((setting) => (
-              <div key={setting.settingKey} className={styles.compactField}>
-                <label htmlFor={setting.id} className={styles.fieldLabel}>
-                  {setting.label}
-                </label>
-                <TextInput
-                  id={setting.id}
-                  type="number"
-                  min={setting.min}
-                  max={setting.max}
-                  step={setting.step}
-                  value={setting.value}
-                  onChange={(event) => setPendingChange(setting.settingKey, event.target.value)}
-                  disabled={!aiEnabled}
-                  data-testid={setting.testId}
-                  className={styles.compactFieldInput}
-                />
-              </div>
-            ))}
-          </div>
-          <SettingsToggle
-            label="LLM re-rank"
-            description="Use the chat model to re-rank retrieval results (slower, may improve relevance)."
-            checked={rerankEnabled === 'true'}
-            onChange={(checked) => setPendingChange('ai.retrieval.rerankEnabled', String(checked))}
-            disabled={!aiEnabled}
-            data-testid="settings-ai-retrieval-rerank"
-          />
-          <SettingsToggle
-            label="HyDE (Hypothetical SQL)"
-            description="Generate a hypothetical SQL fragment as an extra search query for improved retrieval."
-            checked={hydeEnabled !== 'false'}
-            onChange={(checked) => setPendingChange('ai.retrieval.hydeEnabled', String(checked))}
-            disabled={!aiEnabled}
-            data-testid="settings-ai-retrieval-hyde"
-          />
-          <div className={styles.compactFieldGrid}>
-            {[
-              {
-                settingKey: 'ai.retrieval.expansionMaxQueries',
-                label: 'Max expansion queries',
-                id: 'settings-ai-expansion-max',
-                testId: 'settings-ai-retrieval-expansion-max',
-                min: 2,
-                max: 20,
-                value: expansionMaxQueries,
-              },
-              {
-                settingKey: 'ai.retrieval.graphDepth',
-                label: 'Graph walk depth',
-                id: 'settings-ai-graph-depth',
-                testId: 'settings-ai-retrieval-graph-depth',
-                min: 1,
-                max: 3,
-                value: graphDepth,
-              },
-              {
-                settingKey: 'ai.retrieval.feedbackBoost',
-                label: 'Feedback boost (μ)',
-                id: 'settings-ai-feedback-boost',
-                testId: 'settings-ai-retrieval-feedback-boost',
-                min: 0,
-                max: 1,
-                step: '0.05',
-                value: feedbackBoost,
-              },
-              {
-                settingKey: 'ai.retrieval.recentQueryWindow',
-                label: 'Recent query window',
-                id: 'settings-ai-recent-window',
-                testId: 'settings-ai-retrieval-recent-window',
-                min: 1,
-                max: 100,
-                value: recentQueryWindow,
-              },
-            ].map((setting) => (
-              <div key={setting.settingKey} className={styles.compactField}>
-                <label htmlFor={setting.id} className={styles.fieldLabel}>
-                  {setting.label}
-                </label>
-                <TextInput
-                  id={setting.id}
-                  type="number"
-                  min={setting.min}
-                  max={setting.max}
-                  step={setting.step}
-                  value={setting.value}
-                  onChange={(event) => setPendingChange(setting.settingKey, event.target.value)}
-                  disabled={!aiEnabled}
-                  data-testid={setting.testId}
-                  className={styles.compactFieldInput}
-                />
-              </div>
-            ))}
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          title="Memory"
-          description="Choose which scope /remember saves to by default."
-        >
-          <div>
-            <span id="settings-ai-remember-scope-label" className={styles.fieldLabel}>
-              Default /remember scope
-            </span>
-            <Dropdown
-              id="settings-ai-remember-scope"
-              labelledBy="settings-ai-remember-scope-label"
-              options={REMEMBER_SCOPE_OPTIONS}
-              value={rememberScope}
-              onChange={(value) => setPendingChange('ai.rememberScope', value)}
-              disabled={!aiEnabled}
-              data-testid="settings-ai-remember-scope"
-            />
-          </div>
-        </SettingsSection>
+        <AiConnectionSection
+          aiEnabled={aiEnabled}
+          onRequestReindex={() => setReindexConfirmOpen(true)}
+        />
+        <AiGenerationSection aiEnabled={aiEnabled} />
+        <AiRetrievalSection aiEnabled={aiEnabled} />
+        <AiMemorySection aiEnabled={aiEnabled} />
       </div>
 
       <AiMemoriesSettings />
 
-      <ConfirmDialog
+      <ForceReindexDialog
         isOpen={reindexConfirmOpen}
-        title="Force reindex vector DB"
-        message="This will wipe the current schema index and rebuild it from scratch for all active connections. This may take a few minutes."
-        confirmLabel="Reindex"
-        isDestructive
-        warningText={null}
-        isLoading={isBuilding}
-        onConfirm={() => void handleForceReindex()}
-        onCancel={() => setReindexConfirmOpen(false)}
+        onClose={() => setReindexConfirmOpen(false)}
       />
     </div>
   )

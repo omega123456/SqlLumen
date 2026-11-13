@@ -25,7 +25,7 @@ import { cancelQuery as cancelQueryCmd } from '../lib/query-commands'
 import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import type { TemporalColumnType } from '../lib/date-utils'
-import { hasModifiedColumns, hasPendingRowChanges } from '../lib/row-edit-state'
+import { hasModifiedColumns } from '../lib/row-edit-state'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
 import { getDefaultRowLimit, isTableDataInBottomPanel, useQueryStore } from './query-store'
@@ -42,6 +42,20 @@ import type { BlobEnvelope } from '../types/schema'
 import type { TableRequest } from '../lib/ipc/requests'
 import type { CellValueSync } from '../components/shared/editor-callbacks-context'
 import { describeQueryFailure, toErrorMessage } from '../lib/error-message'
+import {
+  createResidentRowState,
+  shouldScheduleTableDataEviction,
+} from './table-data-store/table-data-residency'
+import {
+  clearTableDataColumnHighlight,
+  consumeTableDataColumnJump,
+  evictTableDataRows,
+  patchTableDataResidency,
+  patchTableDataTab,
+  putTableDataTab,
+  removeTableDataTab,
+  requestTableDataColumnJump,
+} from './table-data-store/table-data-reducers'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -214,38 +228,8 @@ function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
   return false
 }
 
-function createResidentRowState(isActive = false): FrontendRowResidencyState {
-  return {
-    status: 'resident',
-    isActive: isActive,
-    inactiveSince: null,
-  }
-}
-
 function getTableDataSurfaceKey(tabId: string): string {
   return `table-data:${tabId}`
-}
-
-function isDirtyTableDataTab(tab: TableDataTabState): boolean {
-  return hasPendingRowChanges(tab.editState)
-}
-
-function tabRowResidency(tab: TableDataTabState): FrontendRowResidencyState {
-  return tab.rowResidency ?? createResidentRowState(false)
-}
-
-function isEvictableTableDataTab(tab: TableDataTabState): boolean {
-  const isResident = tabRowResidency(tab).status === 'resident'
-  if (!isResident) return false
-  return !isDirtyTableDataTab(tab)
-}
-
-function shouldScheduleTableDataEviction(tab: TableDataTabState): boolean {
-  return isEvictableTableDataTab(tab) && tab.rows.length > 0
-}
-
-function canEvictInactiveTableDataTab(tab: TableDataTabState): boolean {
-  return !tabRowResidency(tab).isActive && isEvictableTableDataTab(tab)
 }
 
 // ---------------------------------------------------------------------------
@@ -600,15 +584,6 @@ export interface TableDataStore {
   ) => Promise<void>
 }
 
-function withoutColumnHighlight(
-  state: TableDataStore,
-  tabId: string
-): TableDataStore | Pick<TableDataStore, 'highlightedColumnByTab'> {
-  const highlightedColumn = state.highlightedColumnByTab[tabId]
-  if (highlightedColumn == null) return state
-  return { highlightedColumnByTab: { ...state.highlightedColumnByTab, [tabId]: null } }
-}
-
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -777,18 +752,8 @@ function restoredSelectedRowKey(tab: TableDataTabState, editState: RowEditState)
 }
 
 export const useTableDataStore = create<TableDataStore>()((set, get) => {
-  /** Merge a partial update into a single tab's state. */
   const patchTab = (tabId: string, partial: Partial<TableDataTabState>) => {
-    set((state) => {
-      const existing = state.tabs[tabId]
-      if (!existing) return state
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: { ...existing, ...partial },
-        },
-      }
-    })
+    set((state) => patchTableDataTab(state, { tabId: tabId, partial: partial }))
   }
 
   const appendDraftRow = (tabId: string, { tab, rowValues, modifiedColumns }: DraftRowSeed) => {
@@ -817,23 +782,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
   }
 
   const patchTabResidency = (tabId: string, partial: Partial<FrontendRowResidencyState>) => {
-    set((state) => {
-      const existing = state.tabs[tabId]
-      if (!existing) return state
-
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: {
-            ...existing,
-            rowResidency: {
-              ...(existing.rowResidency ?? createResidentRowState(false)),
-              ...partial,
-            },
-          },
-        },
-      }
-    })
+    set((state) => patchTableDataResidency(state, { tabId: tabId, partial: partial }))
   }
 
   const cancelTableDataLifecycleTimer = (tabId: string) => {
@@ -1127,18 +1076,9 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     columnJumpRequests: {},
     highlightedColumnByTab: {},
 
-    // ------ initTab ------
-
     initTab: (tabId, table) => {
-      set((state) => ({
-        tabs: {
-          ...state.tabs,
-          [tabId]: createDefaultTabState(table),
-        },
-      }))
+      set((state) => putTableDataTab(state, { tabId: tabId, tab: createDefaultTabState(table) }))
     },
-
-    // ------ cleanupTab ------
 
     cleanupTab: (tabId) => {
       const tab = get().tabs[tabId]
@@ -1147,19 +1087,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         evictTableDataWithWarning(tab.connectionId, tabId)
       }
 
-      set((state) => {
-        const newTabs = { ...state.tabs }
-        const columnJumpRequests = { ...state.columnJumpRequests }
-        const highlightedColumnByTab = { ...state.highlightedColumnByTab }
-        delete newTabs[tabId]
-        delete columnJumpRequests[tabId]
-        delete highlightedColumnByTab[tabId]
-        return {
-          tabs: newTabs,
-          columnJumpRequests: columnJumpRequests,
-          highlightedColumnByTab: highlightedColumnByTab,
-        }
-      })
+      set((state) => removeTableDataTab(state, tabId))
     },
 
     // ------ loadTableData ------
@@ -1330,32 +1258,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     evictInactiveTableDataRows: (tabId) => {
       cancelTableDataLifecycleTimer(tabId)
-      set((state) => {
-        const tab = state.tabs[tabId]
-        if (!tab) return state
-
-        if (!canEvictInactiveTableDataTab(tab)) return state
-
-        return {
-          tabs: {
-            ...state.tabs,
-            [tabId]: {
-              ...tab,
-              rows: [],
-              rowsEvictedAt: Date.now(),
-              selectedRowKey: null,
-              checkedRowKeys: [],
-              selectedCell: null,
-              editState: null,
-              saveError: null,
-              rowResidency: {
-                ...tabRowResidency(tab),
-                status: 'evicted',
-              },
-            },
-          },
-        }
-      })
+      set((state) => evictTableDataRows(state, { tabId: tabId, evictedAt: Date.now() }))
     },
 
     restoreEvictedTableDataRows: async (tabId) => {
@@ -1675,35 +1578,15 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     },
 
     requestColumnJump: (tabId, columnKey) => {
-      set((state) => ({
-        columnJumpRequests: {
-          ...state.columnJumpRequests,
-          [tabId]: {
-            columnKey: columnKey,
-            nonce: (state.columnJumpRequests[tabId]?.nonce ?? 0) + 1,
-          },
-        },
-      }))
+      set((state) => requestTableDataColumnJump(state, { tabId: tabId, columnKey: columnKey }))
     },
 
     consumeColumnJump: (tabId) => {
-      set((state) => {
-        const request = state.columnJumpRequests[tabId]
-        if (!request) return state
-        const columnJumpRequests = { ...state.columnJumpRequests }
-        delete columnJumpRequests[tabId]
-        return {
-          columnJumpRequests: columnJumpRequests,
-          highlightedColumnByTab: {
-            ...state.highlightedColumnByTab,
-            [tabId]: request.columnKey,
-          },
-        }
-      })
+      set((state) => consumeTableDataColumnJump(state, tabId))
     },
 
     clearColumnHighlight: (tabId) => {
-      set((state) => withoutColumnHighlight(state, tabId))
+      set((state) => clearTableDataColumnHighlight(state, tabId))
     },
 
     // ------ setColumnWidth ------

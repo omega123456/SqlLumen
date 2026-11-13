@@ -13,6 +13,11 @@ import { useSchemaStore } from './schema-store'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 import { invalidateCache as invalidateSchemaMetadataCache } from '../components/query-editor/schema-metadata-cache'
 import { toErrorMessage } from '../lib/error-message'
+import {
+  initObjectEditorTab,
+  patchObjectEditorTabState,
+  removeObjectEditorTab,
+} from './object-editor-store/object-editor-reducers'
 
 // ---------------------------------------------------------------------------
 // Per-tab state
@@ -116,44 +121,14 @@ async function refreshSchemaTreeAfterSave(tab: ObjectEditorTabState): Promise<vo
 
 export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
   const patchTab = (tabId: string, partial: Partial<ObjectEditorTabState>) => {
-    set((state) => {
-      const existing = state.tabs[tabId]
-      if (!existing) return state
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: { ...existing, ...partial },
-        },
-      }
-    })
+    set((state) => patchObjectEditorTabState(state, { tabId: tabId, partial: partial }))
   }
 
   return {
     tabs: {},
 
     initTab: (tabId, meta) => {
-      set((state) => {
-        if (state.tabs[tabId]) return state
-        return {
-          tabs: {
-            ...state.tabs,
-            [tabId]: {
-              connectionId: meta.connectionId,
-              database: meta.database,
-              objectName: meta.objectName,
-              objectType: meta.objectType,
-              mode: meta.mode,
-              content: '',
-              originalContent: '',
-              isLoading: false,
-              isSaving: false,
-              error: null,
-              pendingNavigationAction: null,
-              savedObjectName: null,
-            },
-          },
-        }
-      })
+      set((state) => initObjectEditorTab(state, { tabId: tabId, meta: meta }))
     },
 
     setContent: (tabId, content) => {
@@ -250,12 +225,7 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
     },
 
     cleanupTab: (tabId) => {
-      set((state) => {
-        if (!state.tabs[tabId]) return state
-        const nextTabs = { ...state.tabs }
-        delete nextTabs[tabId]
-        return { tabs: nextTabs }
-      })
+      set((state) => removeObjectEditorTab(state, tabId))
     },
 
     requestNavigationAction: (tabId, action) => {

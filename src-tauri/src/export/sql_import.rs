@@ -11,7 +11,7 @@ use crate::mysql::sql_chars::{
     has_char_at, has_text_at, has_text_at_ignore_ascii_case, is_ascii_whitespace_at,
     is_escape_before_char, is_line_break_char,
 };
-use crate::state::{ImportError, ImportJobProgress, ImportJobStatus};
+use crate::state::{ImportError, ImportJobProgress};
 
 /// Parse a SQL script into individual statements, respecting:
 /// - DELIMITER directives (e.g. `DELIMITER //`)
@@ -303,8 +303,7 @@ pub fn execute_sql_import(
                         .write()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     if let Some(progress) = jobs.get_mut(job_id) {
-                        progress.status = ImportJobStatus::Cancelled;
-                        progress.completed_at = Some(std::time::SystemTime::now());
+                        progress.mark_cancelled();
                     }
 
                     let elapsed_ms = start_time.elapsed().as_millis() as i64;
@@ -398,8 +397,7 @@ pub fn execute_sql_import(
                         });
 
                         if stop_on_error {
-                            progress.status = ImportJobStatus::Failed;
-                            progress.completed_at = Some(std::time::SystemTime::now());
+                            progress.mark_failed();
 
                             let elapsed_ms = start_time.elapsed().as_millis() as i64;
                             tracing::info!(
@@ -452,10 +450,7 @@ pub fn execute_sql_import(
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(job_id) {
-            if progress.status == ImportJobStatus::Running {
-                progress.status = ImportJobStatus::Completed;
-                progress.completed_at = Some(std::time::SystemTime::now());
-            }
+            progress.complete_if_running();
         }
     }
 

@@ -804,29 +804,6 @@ pub fn complete_object(progress: &mut CopyJobProgress) {
     progress.rows_done = None;
 }
 
-/// Transition the job to `Completed`.
-pub fn mark_completed(progress: &mut CopyJobProgress) {
-    progress.status = CopyJobStatus::Completed;
-    progress.current_object = None;
-    progress.current_object_type = None;
-    progress.rows_total = None;
-    progress.rows_done = None;
-    progress.completed_at = Some(std::time::SystemTime::now());
-}
-
-/// Transition the job to `Failed`, recording the failing object and message.
-pub fn mark_failed(progress: &mut CopyJobProgress, message: impl Into<String>) {
-    progress.status = CopyJobStatus::Failed;
-    progress.error_message = Some(message.into());
-    progress.completed_at = Some(std::time::SystemTime::now());
-}
-
-/// Transition the job to `Cancelled`.
-pub fn mark_cancelled(progress: &mut CopyJobProgress) {
-    progress.status = CopyJobStatus::Cancelled;
-    progress.completed_at = Some(std::time::SystemTime::now());
-}
-
 /// Whether the job has been asked to cancel (checked at safe checkpoints).
 pub fn should_cancel(progress: &CopyJobProgress) -> bool {
     progress.cancel_requested
@@ -1321,9 +1298,9 @@ mod engine {
                 // already set Cancelled inside the inner loop).
                 if progress.status == CopyJobStatus::Running {
                     match result {
-                        Ok(true) => mark_completed(progress),
-                        Ok(false) => mark_cancelled(progress),
-                        Err(error) => mark_failed(progress, error),
+                        Ok(true) => progress.mark_completed(),
+                        Ok(false) => progress.mark_cancelled(),
+                        Err(error) => progress.mark_failed(error),
                     }
                 }
             }
@@ -1445,7 +1422,7 @@ mod engine {
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 let progress = map.get_mut(job_id).ok_or("Job entry missing")?;
                 if should_cancel(progress) {
-                    mark_cancelled(progress);
+                    progress.mark_cancelled();
                     return Ok(false);
                 }
                 let object = CopyObject {
@@ -1475,7 +1452,7 @@ mod engine {
                         .write()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     if let Some(progress) = map.get_mut(job_id) {
-                        mark_cancelled(progress);
+                        progress.mark_cancelled();
                     }
                     return Ok(false);
                 }

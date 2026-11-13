@@ -1,17 +1,18 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-#[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{log_single_entry, resolve_connection_context};
+use crate::commands::query_history_bridge::{
+    log_history_batch, log_history_record, run_with_history, single_row_count, HistoryRecord,
+    HistoryStatement,
+};
 use crate::commands::requests::{RoutineRequest, SchemaObjectRequest};
-#[cfg(not(coverage))]
-use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::schema_queries;
 use crate::state::AppState;
 #[cfg(not(coverage))]
 use sqlx::Executor;
+use std::time::Instant;
 #[cfg(not(coverage))]
 use tauri::State;
 
@@ -587,9 +588,106 @@ pub async fn get_routine_parameters_with_return_type_impl(
     })
 }
 
-// ---------------------------------------------------------------------------
-// Thin Tauri command wrappers
-// ---------------------------------------------------------------------------
+const UNKNOWN_OBJECT_TYPE_KEYWORD: &str = "UNKNOWN";
+
+fn object_type_keyword_or_unknown(object_type: &str) -> &'static str {
+    object_type_keyword(object_type).unwrap_or(UNKNOWN_OBJECT_TYPE_KEYWORD)
+}
+
+fn drop_if_exists_history_sql(object_type: &str, database: &str, object_name: &str) -> String {
+    let type_keyword = object_type_keyword_or_unknown(object_type);
+    format!("DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`")
+}
+
+fn drop_object_history_sql(request: &SchemaObjectRequest) -> String {
+    drop_if_exists_history_sql(
+        &request.object_type,
+        &request.database,
+        &request.object_name,
+    )
+}
+
+fn show_create_history_sql(request: &SchemaObjectRequest) -> String {
+    let type_upper = request.object_type.to_uppercase();
+    let database = &request.database;
+    let object_name = &request.object_name;
+    format!("SHOW CREATE {type_upper} `{database}`.`{object_name}`")
+}
+
+pub async fn get_object_body_with_history(
+    state: &AppState,
+    request: &SchemaObjectRequest,
+) -> Result<String, String> {
+    let started_at = Instant::now();
+    let result = get_object_body_impl(state, request).await;
+    let row_count = single_row_count(result.is_ok());
+    let record = HistoryRecord::for_outcome(show_create_history_sql(request), started_at, &result)
+        .with_row_count(row_count);
+    log_history_record(state, &request.connection_id, record);
+    result
+}
+
+struct SaveObjectHistory {
+    session_id: String,
+    body: String,
+    drop_sql: String,
+}
+
+impl SaveObjectHistory {
+    fn for_request(request: &SaveObjectRequest) -> Self {
+        Self {
+            session_id: request.connection_id.clone(),
+            body: request.body.clone(),
+            drop_sql: drop_if_exists_history_sql(
+                &request.object_type,
+                &request.database,
+                &request.object_name,
+            ),
+        }
+    }
+
+    fn records(
+        self,
+        started_at: Instant,
+        result: &Result<SaveObjectResponse, String>,
+    ) -> Vec<HistoryRecord> {
+        let save_record = HistoryRecord::for_outcome(self.body, started_at, result);
+        let Ok(response) = result else {
+            return vec![save_record];
+        };
+        let save_record = save_record.with_error_message(response.error_message.clone());
+        if !response.drop_succeeded {
+            return vec![save_record];
+        }
+        let drop_record = save_record
+            .for_statement(self.drop_sql)
+            .with_error_message(None);
+        vec![drop_record, save_record]
+    }
+}
+
+pub async fn save_object_with_history(
+    state: &AppState,
+    request: SaveObjectRequest,
+) -> Result<SaveObjectResponse, String> {
+    let history = SaveObjectHistory::for_request(&request);
+    let session_id = history.session_id.clone();
+    let started_at = Instant::now();
+    let result = save_object_impl(request, state).await;
+    log_history_batch(state, &session_id, history.records(started_at, &result));
+    result
+}
+
+pub async fn drop_object_with_history(
+    state: &AppState,
+    request: &SchemaObjectRequest,
+) -> Result<(), String> {
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: drop_object_history_sql(request),
+    };
+    run_with_history(state, statement, drop_object_impl(state, request)).await
+}
 
 #[cfg(not(coverage))]
 #[tauri::command]
@@ -597,32 +695,7 @@ pub async fn get_object_body(
     payload: SchemaObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let start = std::time::Instant::now();
-    let result = get_object_body_impl(&state, &payload).await;
-
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let type_upper = payload.object_type.to_uppercase();
-    let database = &payload.database;
-    let object_name = &payload.object_name;
-    let sql_text = format!("SHOW CREATE {type_upper} `{database}`.`{object_name}`");
-
-    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
-        &state.db,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(crate::commands::query_history_bridge::single_row_count(
-                result.is_ok(),
-            )),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
-
-    result
+    get_object_body_with_history(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
@@ -631,82 +704,7 @@ pub async fn save_object(
     request: SaveObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<SaveObjectResponse, String> {
-    let start = std::time::Instant::now();
-    let connection_id_for_log = request.connection_id.clone();
-    let sql_text = request.body.clone();
-    let object_type_for_log = request.object_type.clone();
-    let database_for_log = request.database.clone();
-    let object_name_for_log = request.object_name.clone();
-    let result = save_object_impl(request, &state).await;
-
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let context = resolve_connection_context(&state, &connection_id_for_log);
-    let database_name = context.database_name;
-
-    let Some(conn_id) = context.connection_id else {
-        tracing::warn!(
-            session_id = %connection_id_for_log,
-            "skipping query history logging: no saved connection id resolved for session"
-        );
-        return result;
-    };
-
-    match &result {
-        Ok(response) => {
-            // Log the DROP IF EXISTS as a separate history entry when it was executed
-            if response.drop_succeeded {
-                let type_keyword = object_type_keyword(&object_type_for_log).unwrap_or("UNKNOWN");
-                let drop_sql = format!(
-                    "DROP {} IF EXISTS `{}`.`{}`",
-                    type_keyword, database_for_log, object_name_for_log
-                );
-                log_single_entry(
-                    &state.db,
-                    NewHistoryEntry {
-                        connection_id: conn_id.clone(),
-                        database_name: database_name.clone(),
-                        sql_text: drop_sql,
-                        duration_ms: Some(duration_ms),
-                        row_count: Some(0),
-                        affected_rows: Some(0),
-                        success: true,
-                        error_message: None,
-                    },
-                );
-            }
-
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id: conn_id,
-                    database_name,
-                    sql_text,
-                    duration_ms: Some(duration_ms),
-                    row_count: Some(0),
-                    affected_rows: Some(0),
-                    success: response.success,
-                    error_message: response.error_message.clone(),
-                },
-            );
-        }
-        Err(error) => {
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id: conn_id,
-                    database_name,
-                    sql_text,
-                    duration_ms: Some(duration_ms),
-                    row_count: Some(0),
-                    affected_rows: Some(0),
-                    success: false,
-                    error_message: Some(error.clone()),
-                },
-            );
-        }
-    }
-
-    result
+    save_object_with_history(&state, request).await
 }
 
 #[cfg(not(coverage))]
@@ -715,30 +713,7 @@ pub async fn drop_object(
     payload: SchemaObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = drop_object_impl(&state, &payload).await;
-
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let type_keyword = object_type_keyword(&payload.object_type).unwrap_or("UNKNOWN");
-    let database = &payload.database;
-    let object_name = &payload.object_name;
-    let sql_text = format!("DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`");
-
-    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
-        &state.db,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
-
-    result
+    drop_object_with_history(&state, &payload).await
 }
 
 #[cfg(not(coverage))]

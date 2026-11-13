@@ -8,6 +8,7 @@ import { useHistoryStore } from './history-store'
 
 import { logFrontend } from '../lib/app-log-commands'
 import { toErrorMessage } from '../lib/error-message'
+import { resetProcessListConnection } from './processlist-store/processlist-reducers'
 const DEFAULT_REFRESH_INTERVAL_MS = 2000
 const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
 const ERROR_TOAST_COOLDOWN_MS = 30_000
@@ -17,7 +18,7 @@ function reconcileExistingSelectedIds(rows: ProcessRow[], selectedIds: Set<numbe
   return new Set([...selectedIds].filter((id) => existingRowIds.has(id)))
 }
 
-interface ProcessListState {
+export interface ProcessListState {
   rowsByConnection: Record<string, ProcessRow[]>
   lastRefreshedAtByConnection: Record<string, number | null>
   selectedIdsByConnection: Record<string, Set<number>>
@@ -246,34 +247,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
   },
 
   resetConnection: (connectionId: string) => {
-    set((state) => {
-      const deleteKey = <T>(rec: Record<string, T>): Record<string, T> => {
-        const copy = { ...rec }
-        delete copy[connectionId]
-        return copy
-      }
-      // Increment generation to invalidate any in-flight fetches
-      const nextGeneration = (state.fetchGenerationByConnection[connectionId] ?? 0) + 1
-      return {
-        ...state,
-        rowsByConnection: deleteKey(state.rowsByConnection),
-        lastRefreshedAtByConnection: deleteKey(state.lastRefreshedAtByConnection),
-        selectedIdsByConnection: deleteKey(state.selectedIdsByConnection),
-        refreshIntervalMsByConnection: deleteKey(state.refreshIntervalMsByConnection),
-        excludeIdleConnectionsByConnection: deleteKey(state.excludeIdleConnectionsByConnection),
-        isConfirmDialogOpenByConnection: deleteKey(state.isConfirmDialogOpenByConnection),
-        isSummaryDialogOpenByConnection: deleteKey(state.isSummaryDialogOpenByConnection),
-        sortColumnByConnection: deleteKey(state.sortColumnByConnection),
-        lastErrorToastAtByConnection: deleteKey(state.lastErrorToastAtByConnection),
-        fetchErrorByConnection: deleteKey(state.fetchErrorByConnection),
-        isFetchingByConnection: deleteKey(state.isFetchingByConnection),
-        hasFetchedByConnection: deleteKey(state.hasFetchedByConnection),
-        fetchGenerationByConnection: {
-          ...state.fetchGenerationByConnection,
-          [connectionId]: nextGeneration,
-        },
-      }
-    })
+    set((state) => resetProcessListConnection(state, connectionId))
   },
 }))
 

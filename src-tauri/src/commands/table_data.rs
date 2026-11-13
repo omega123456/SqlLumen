@@ -1,4 +1,7 @@
-use crate::commands::query_history_bridge::{resolve_connection_context, single_row_count};
+use crate::commands::query_history_bridge::{
+    log_history_record, resolve_connection_context, run_with_history, single_row_count,
+    HistoryRecord, HistoryStatement,
+};
 #[cfg(not(coverage))]
 use crate::commands::requests::ConnectionTabRequest;
 use crate::commands::run_blocking_with_state;
@@ -90,109 +93,148 @@ pub fn build_select_sql(spec: &SelectSqlSpec<'_>) -> Option<String> {
     ))
 }
 
-#[tauri::command]
-pub async fn fetch_table_data(
-    state: tauri::State<'_, AppState>,
-    payload: table_data::FetchTableDataRequest,
-) -> Result<table_data::TableDataResponse, String> {
-    let table_data::FetchTableDataRequest {
-        connection_id,
-        tab_id,
-        database,
-        table,
-        page,
-        page_size,
-        sort_column,
-        sort_direction,
-        filter_model,
-    } = payload;
-    if page_size == 0 {
-        return Err("page_size must be at least 1".to_string());
-    }
+const FIRST_PAGE: u32 = 1;
 
-    let pool = state
-        .registry
-        .get_pool(&connection_id)
-        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
-
-    let sort = match (sort_column, sort_direction) {
-        (Some(column), Some(direction)) => Some(table_data::SortInfo { column, direction }),
-        _ => None,
+fn sort_info_from(
+    sort_column: Option<String>,
+    sort_direction: Option<String>,
+) -> Option<table_data::SortInfo> {
+    let (Some(column), Some(direction)) = (sort_column, sort_direction) else {
+        return None;
     };
+    Some(table_data::SortInfo { column, direction })
+}
 
-    let filter = filter_model.unwrap_or_default();
-    let expected_invalidation_version = state
-        .table_data_cache
-        .current_invalidation_version(&connection_id, &tab_id);
+fn page_offset(page: u32, page_size: u32) -> u64 {
+    u64::from(page.saturating_sub(FIRST_PAGE)) * u64::from(page_size)
+}
 
-    let page_clamped = page.max(1);
-    let offset = (page_clamped - 1) as u64 * page_size as u64;
-    let filter_clause = table_data::translate_filter_model(&filter);
-    let select_spec = SelectSqlSpec {
-        database: &database,
-        table: &table,
-        filter: &filter,
-        sort: &sort,
+fn history_sql_for(spec: &SelectSqlSpec<'_>, fallback_sql: impl FnOnce() -> String) -> String {
+    let raw_sql = build_select_sql(spec).unwrap_or_else(fallback_sql);
+    let filter_clause = table_data::translate_filter_model(spec.filter);
+    interpolate_sql_params(&raw_sql, &filter_clause.params)
+}
+
+fn fetch_history_sql(query: &table_data::TableDataPageQuery) -> String {
+    let page_size = query.page_size;
+    let offset = page_offset(query.page.max(FIRST_PAGE), page_size);
+    let spec = SelectSqlSpec {
+        database: &query.database,
+        table: &query.table,
+        filter: &query.filter_model,
+        sort: &query.sort,
         limit: Some(PageWindow { page_size, offset }),
     };
-    let raw_sql = build_select_sql(&select_spec).unwrap_or_else(|| {
+    history_sql_for(&spec, || {
+        let database = &query.database;
+        let table = &query.table;
         format!("SELECT * FROM `{database}`.`{table}` LIMIT {page_size} OFFSET {offset}")
-    });
-    let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
+    })
+}
 
-    let context = table_data::TableDataContext {
-        pool: &pool,
-        connection_id: &connection_id,
-        metadata_cache: &state.metadata_cache,
-    };
-    let query = table_data::TableDataPageQuery {
-        tab_id: tab_id.clone(),
-        database,
-        table,
-        page,
-        page_size,
-        sort,
-        filter_model: filter,
-    };
-    let result = table_data::fetch_table_data_impl(&context, &state.running_queries, &query).await;
+struct FetchedPageCacheWrite<'a> {
+    connection_id: &'a str,
+    tab_id: &'a str,
+    expected_invalidation_version: u64,
+}
 
-    if let Ok(response) = &result {
-        let write = VersionedValue {
-            expected_invalidation_version,
-            value: response.clone(),
-        };
-        let inserted = state
-            .table_data_cache
-            .insert_if_current(CacheKey::new(&connection_id, &tab_id), write);
-        if !inserted {
-            tracing::debug!(
-                connection_id = %connection_id,
-                tab_id = %tab_id,
-                "skipped table-data cache insert after explicit cleanup"
-            );
-        }
+fn cache_fetched_page(
+    state: &AppState,
+    target: &FetchedPageCacheWrite<'_>,
+    response: &table_data::TableDataResponse,
+) {
+    let write = VersionedValue {
+        expected_invalidation_version: target.expected_invalidation_version,
+        value: response.clone(),
+    };
+    let key = CacheKey::new(target.connection_id, target.tab_id);
+    let inserted = state.table_data_cache.insert_if_current(key, write);
+    if !inserted {
+        tracing::debug!(
+            connection_id = %target.connection_id,
+            tab_id = %target.tab_id,
+            "skipped table-data cache insert after explicit cleanup"
+        );
     }
+}
 
-    resolve_connection_context(&state, &connection_id).log_single_entry_if_resolved(
+fn log_fetch_history(
+    state: &AppState,
+    statement: HistoryStatement<'_>,
+    result: &Result<table_data::TableDataResponse, String>,
+) {
+    let duration_ms = result
+        .as_ref()
+        .map(|response| response.execution_time_ms as i64)
+        .unwrap_or(0);
+    resolve_connection_context(state, statement.session_id).log_single_entry_if_resolved(
         &state.db,
         |conn_id, database_name| NewHistoryEntry {
             connection_id: conn_id,
             database_name,
-            sql_text,
-            duration_ms: Some(
-                result
-                    .as_ref()
-                    .map(|result| result.execution_time_ms as i64)
-                    .unwrap_or(0),
-            ),
+            sql_text: statement.sql_text,
+            duration_ms: Some(duration_ms),
             row_count: None,
             affected_rows: None,
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),
         },
     );
+}
 
+fn page_query_from(request: table_data::FetchTableDataRequest) -> table_data::TableDataPageQuery {
+    table_data::TableDataPageQuery {
+        tab_id: request.tab_id,
+        database: request.database,
+        table: request.table,
+        page: request.page,
+        page_size: request.page_size,
+        sort: sort_info_from(request.sort_column, request.sort_direction),
+        filter_model: request.filter_model.unwrap_or_default(),
+    }
+}
+
+pub async fn fetch_table_data_with_cache(
+    state: &AppState,
+    request: table_data::FetchTableDataRequest,
+) -> Result<table_data::TableDataResponse, String> {
+    if request.page_size == 0 {
+        return Err("page_size must be at least 1".to_string());
+    }
+    let connection_id = request.connection_id.clone();
+    let pool = connection_pool(state, &connection_id)?;
+    let query = page_query_from(request);
+    let cache_target = FetchedPageCacheWrite {
+        connection_id: &connection_id,
+        tab_id: &query.tab_id,
+        expected_invalidation_version: state
+            .table_data_cache
+            .current_invalidation_version(&connection_id, &query.tab_id),
+    };
+    let context = table_data::TableDataContext {
+        pool: &pool,
+        connection_id: &connection_id,
+        metadata_cache: &state.metadata_cache,
+    };
+    let result = table_data::fetch_table_data_impl(&context, &state.running_queries, &query).await;
+
+    if let Ok(response) = &result {
+        cache_fetched_page(state, &cache_target, response);
+    }
+    let statement = HistoryStatement {
+        session_id: &connection_id,
+        sql_text: fetch_history_sql(&query),
+    };
+    log_fetch_history(state, statement, &result);
     result
+}
+
+#[tauri::command]
+pub async fn fetch_table_data(
+    state: tauri::State<'_, AppState>,
+    payload: table_data::FetchTableDataRequest,
+) -> Result<table_data::TableDataResponse, String> {
+    fetch_table_data_with_cache(&state, payload).await
 }
 
 #[cfg(not(coverage))]
@@ -258,40 +300,18 @@ pub async fn sync_table_data_cache_after_delete<R: tauri::Runtime>(
     sync_table_data_cache_after_write(app, payload).await
 }
 
-fn log_row_write(state: &AppState, session_id: &str, write: RowWriteHistory) {
-    resolve_connection_context(state, session_id).log_single_entry_if_resolved(
-        &state.db,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text: write.sql_text,
-            duration_ms: Some(write.duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(single_row_count(write.error_message.is_none())),
-            success: write.error_message.is_none(),
-            error_message: write.error_message,
-        },
-    );
-}
-
-struct RowWriteHistory {
-    sql_text: String,
-    duration_ms: i64,
-    error_message: Option<String>,
-}
-
-impl RowWriteHistory {
-    fn new<T>(
-        sql_text: String,
-        started_at: std::time::Instant,
-        result: &Result<T, String>,
-    ) -> Self {
-        Self {
-            sql_text,
-            duration_ms: started_at.elapsed().as_millis() as i64,
-            error_message: result.as_ref().err().cloned(),
-        }
-    }
+async fn run_row_write_with_history<T>(
+    state: &AppState,
+    statement: HistoryStatement<'_>,
+    write: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let started_at = std::time::Instant::now();
+    let result = write.await;
+    let affected_rows = single_row_count(result.is_ok());
+    let record = HistoryRecord::for_outcome(statement.sql_text, started_at, &result)
+        .with_affected_rows(affected_rows);
+    log_history_record(state, statement.session_id, record);
+    result
 }
 
 fn writable_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
@@ -343,21 +363,25 @@ fn update_row_history_sql(request: &table_data::UpdateTableRowRequest) -> String
     interpolate_sql_params(&raw_sql, &history_params)
 }
 
+pub async fn update_table_row_with_history(
+    state: &AppState,
+    request: &table_data::UpdateTableRowRequest,
+) -> Result<(), String> {
+    let pool = writable_pool(state, &request.connection_id)?;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: update_row_history_sql(request),
+    };
+    let write = table_data::update_table_row_impl(&pool, request);
+    run_row_write_with_history(state, statement, write).await
+}
+
 #[tauri::command]
 pub async fn update_table_row(
     state: tauri::State<'_, AppState>,
     payload: table_data::UpdateTableRowRequest,
 ) -> Result<(), String> {
-    let pool = writable_pool(&state, &payload.connection_id)?;
-    let sql_text = update_row_history_sql(&payload);
-
-    let started_at = std::time::Instant::now();
-    let result = table_data::update_table_row_impl(&pool, &payload).await;
-
-    let write = RowWriteHistory::new(sql_text, started_at, &result);
-    log_row_write(&state, &payload.connection_id, write);
-
-    result
+    update_table_row_with_history(&state, &payload).await
 }
 
 fn insert_row_history_sql(request: &table_data::InsertTableRowRequest) -> String {
@@ -382,21 +406,25 @@ fn insert_row_history_sql(request: &table_data::InsertTableRowRequest) -> String
     interpolate_sql_params(&raw_sql, &history_params)
 }
 
+pub async fn insert_table_row_with_history(
+    state: &AppState,
+    request: &table_data::InsertTableRowRequest,
+) -> Result<Vec<(String, serde_json::Value)>, String> {
+    let pool = writable_pool(state, &request.connection_id)?;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: insert_row_history_sql(request),
+    };
+    let write = table_data::insert_table_row_impl(&pool, &state.metadata_cache, request);
+    run_row_write_with_history(state, statement, write).await
+}
+
 #[tauri::command]
 pub async fn insert_table_row(
     state: tauri::State<'_, AppState>,
     payload: table_data::InsertTableRowRequest,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
-    let pool = writable_pool(&state, &payload.connection_id)?;
-    let sql_text = insert_row_history_sql(&payload);
-
-    let started_at = std::time::Instant::now();
-    let result = table_data::insert_table_row_impl(&pool, &state.metadata_cache, &payload).await;
-
-    let write = RowWriteHistory::new(sql_text, started_at, &result);
-    log_row_write(&state, &payload.connection_id, write);
-
-    result
+    insert_table_row_with_history(&state, &payload).await
 }
 
 fn delete_row_history_sql(request: &table_data::DeleteTableRowRequest) -> String {
@@ -425,21 +453,33 @@ fn delete_row_history_sql(request: &table_data::DeleteTableRowRequest) -> String
     interpolate_sql_params(&raw_sql, &history_params)
 }
 
+pub async fn delete_table_row_with_history(
+    state: &AppState,
+    request: &table_data::DeleteTableRowRequest,
+) -> Result<(), String> {
+    let pool = writable_pool(state, &request.connection_id)?;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: delete_row_history_sql(request),
+    };
+    let write = table_data::delete_table_row_impl(&pool, request);
+    run_row_write_with_history(state, statement, write).await
+}
+
 #[tauri::command]
 pub async fn delete_table_row(
     state: tauri::State<'_, AppState>,
     payload: table_data::DeleteTableRowRequest,
 ) -> Result<(), String> {
-    let pool = writable_pool(&state, &payload.connection_id)?;
-    let sql_text = delete_row_history_sql(&payload);
+    delete_table_row_with_history(&state, &payload).await
+}
 
-    let started_at = std::time::Instant::now();
-    let result = table_data::delete_table_row_impl(&pool, &payload).await;
-
-    let write = RowWriteHistory::new(sql_text, started_at, &result);
-    log_row_write(&state, &payload.connection_id, write);
-
-    result
+pub async fn fetch_blob_value_on_connection(
+    state: &AppState,
+    request: &table_data::FetchBlobValueRequest,
+) -> Result<table_data::BlobValueResponse, String> {
+    let pool = connection_pool(state, &request.connection_id)?;
+    table_data::fetch_blob_value_impl(&pool, request).await
 }
 
 #[tauri::command]
@@ -447,8 +487,7 @@ pub async fn fetch_blob_value(
     state: tauri::State<'_, AppState>,
     payload: table_data::FetchBlobValueRequest,
 ) -> Result<table_data::BlobValueResponse, String> {
-    let pool = connection_pool(&state, &payload.connection_id)?;
-    table_data::fetch_blob_value_impl(&pool, &payload).await
+    fetch_blob_value_on_connection(&state, &payload).await
 }
 
 #[tauri::command]
@@ -461,94 +500,73 @@ pub fn write_file_bytes(payload: table_data::WriteFileBytesRequest) -> Result<()
     table_data::write_file_bytes_impl(&payload.path, &payload.base64)
 }
 
-#[tauri::command]
-pub async fn export_table_data(
-    state: tauri::State<'_, AppState>,
-    payload: table_data::ExportTableDataRequest,
-) -> Result<(), String> {
-    let table_data::ExportTableDataRequest {
-        connection_id,
-        database,
-        table,
-        format,
-        file_path,
-        include_headers,
-        table_name_for_sql,
-        filter_model,
-        sort_column,
-        sort_direction,
-        page,
+fn export_page_window(page: Option<u32>, page_size: Option<u32>) -> Option<PageWindow> {
+    let (Some(page_number), Some(page_size)) = (page, page_size) else {
+        return None;
+    };
+    Some(PageWindow {
         page_size,
-    } = payload;
-    let pool = state
-        .registry
-        .get_pool(&connection_id)
-        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+        offset: page_offset(page_number, page_size),
+    })
+}
 
-    let sort = match (sort_column, sort_direction) {
-        (Some(column), Some(direction)) => Some(table_data::SortInfo { column, direction }),
-        _ => None,
+fn export_history_sql(options: &table_data::ExportTableOptions) -> String {
+    let spec = SelectSqlSpec {
+        database: &options.database,
+        table: &options.table,
+        filter: &options.filter_model,
+        sort: &options.sort,
+        limit: export_page_window(options.page, options.page_size),
     };
-
-    let filter = filter_model.unwrap_or_default();
-
-    // Build descriptive SQL for history — includes LIMIT if page/page_size are provided
-    let limit_for_sql = match (page, page_size) {
-        (Some(page_number), Some(page_size)) => Some(PageWindow {
-            page_size,
-            offset: (page_number.saturating_sub(1)) as u64 * page_size as u64,
-        }),
-        _ => None,
-    };
-    let filter_clause = table_data::translate_filter_model(&filter);
-    let select_spec = SelectSqlSpec {
-        database: &database,
-        table: &table,
-        filter: &filter,
-        sort: &sort,
-        limit: limit_for_sql,
-    };
-    let raw_sql = build_select_sql(&select_spec).unwrap_or_else(|| {
+    history_sql_for(&spec, || {
+        let database = &options.database;
+        let table = &options.table;
+        let format = &options.format;
         format!("SELECT * FROM `{database}`.`{table}` /* export to {format} */")
-    });
-    let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
+    })
+}
 
-    let options = table_data::ExportTableOptions {
-        database,
-        table,
-        format,
-        file_path,
-        include_headers,
-        table_name_for_sql,
-        filter_model: filter,
-        sort,
-        page,
-        page_size,
+fn export_options_from(
+    request: table_data::ExportTableDataRequest,
+) -> table_data::ExportTableOptions {
+    table_data::ExportTableOptions {
+        database: request.database,
+        table: request.table,
+        format: request.format,
+        file_path: request.file_path,
+        include_headers: request.include_headers,
+        table_name_for_sql: request.table_name_for_sql,
+        filter_model: request.filter_model.unwrap_or_default(),
+        sort: sort_info_from(request.sort_column, request.sort_direction),
+        page: request.page,
+        page_size: request.page_size,
+    }
+}
+
+pub async fn export_table_data_with_history(
+    state: &AppState,
+    request: table_data::ExportTableDataRequest,
+) -> Result<(), String> {
+    let connection_id = request.connection_id.clone();
+    let pool = connection_pool(state, &connection_id)?;
+    let options = export_options_from(request);
+    let statement = HistoryStatement {
+        session_id: &connection_id,
+        sql_text: export_history_sql(&options),
     };
-
     let context = table_data::TableDataContext {
         pool: &pool,
         connection_id: &connection_id,
         metadata_cache: &state.metadata_cache,
     };
-    let start = std::time::Instant::now();
-    let result = table_data::export_table_data_impl(&context, &options).await;
+    let export = table_data::export_table_data_impl(&context, &options);
+    run_with_history(state, statement, export).await
+}
 
-    let duration_ms = start.elapsed().as_millis() as i64;
-
-    resolve_connection_context(&state, &connection_id).log_single_entry_if_resolved(
-        &state.db,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
-
-    result
+#[tauri::command]
+pub async fn export_table_data(
+    state: tauri::State<'_, AppState>,
+    payload: table_data::ExportTableDataRequest,
+) -> Result<(), String> {
+    export_table_data_with_history(&state, payload).await
 }

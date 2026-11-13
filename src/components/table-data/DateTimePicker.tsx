@@ -21,27 +21,15 @@ import { TextInput } from '../common/TextInput'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import { Button } from '../common/Button'
 import styles from './DateTimePicker.module.css'
+import { useDateTimePickerPosition } from './useDateTimePickerPosition'
 
 import 'react-datepicker/dist/react-datepicker.css'
 
 const INITIAL_FOCUS_DELAY_MS = 50
 const MIDNIGHT_TIME_INPUT = '00:00:00'
-const ESTIMATED_POPUP_HEIGHT_PX = 380
-const POPUP_WIDTH_PX = 300
-const ANCHOR_GAP_PX = 4
-const VIEWPORT_EDGE_MARGIN_PX = 8
-const MINIMUM_LEFT_PX = 4
 const LAST_HOUR_OF_DAY = HOURS_PER_DAY - 1
 const LAST_MINUTE_OF_HOUR = MINUTES_PER_HOUR - 1
 const LAST_SECOND_OF_MINUTE = SECONDS_PER_MINUTE - 1
-
-interface PopupPosition {
-  top: number
-  left: number
-  flipUp: boolean
-}
-
-const UNANCHORED_POPUP_POSITION: PopupPosition = { top: 0, left: 0, flipUp: false }
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,32 +106,6 @@ function applyCurrentTimeOfDay(target: Date, current: CurrentTimeOfDay): void {
   if (parsed) {
     target.setHours(parsed.hours, parsed.minutes, parsed.seconds)
   }
-}
-
-function shouldFlipAbove(anchorRect: DOMRect): boolean {
-  const spaceBelow = window.innerHeight - anchorRect.bottom
-  const fitsBelow = spaceBelow >= ESTIMATED_POPUP_HEIGHT_PX
-  const fitsAbove = anchorRect.top > ESTIMATED_POPUP_HEIGHT_PX
-  return !fitsBelow && fitsAbove
-}
-
-function popupTop(anchorRect: DOMRect, flipUp: boolean): number {
-  if (flipUp) return anchorRect.top - ESTIMATED_POPUP_HEIGHT_PX - ANCHOR_GAP_PX
-  return anchorRect.bottom + ANCHOR_GAP_PX
-}
-
-function popupLeft(anchorRect: DOMRect): number {
-  const overflowsViewport = anchorRect.left + POPUP_WIDTH_PX > window.innerWidth
-  const left = overflowsViewport
-    ? window.innerWidth - POPUP_WIDTH_PX - VIEWPORT_EDGE_MARGIN_PX
-    : anchorRect.left
-  return Math.max(left, MINIMUM_LEFT_PX)
-}
-
-function computePopupPosition(anchorElement: HTMLElement): PopupPosition {
-  const anchorRect = anchorElement.getBoundingClientRect()
-  const flipUp = shouldFlipAbove(anchorRect)
-  return { top: popupTop(anchorRect, flipUp), left: popupLeft(anchorRect), flipUp: flipUp }
 }
 
 // ---------------------------------------------------------------------------
@@ -240,18 +202,7 @@ export function DateTimePicker({
     applyExternalValue(value)
   }
 
-  const [position, setPosition] = useState<PopupPosition>(UNANCHORED_POPUP_POSITION)
-
-  useEffect(() => {
-    if (!anchorEl) {
-      onCancel()
-      return
-    }
-    const measureFrame = requestAnimationFrame(() => {
-      setPosition(computePopupPosition(anchorEl))
-    })
-    return () => cancelAnimationFrame(measureFrame)
-  }, [anchorEl, onCancel])
+  const position = useDateTimePickerPosition(anchorEl, onCancel)
 
   // --- Click outside (delegated to shared hook) ---
   useDismissOnOutsideClick({ ref: internalPopupRef, active: !disabled, onDismiss: onCancel })

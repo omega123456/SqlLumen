@@ -6,6 +6,7 @@ import { hasTauriApis } from '../lib/tauri-env'
 import { useSettingsStore } from './settings-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { putReembedStatus } from './ai-memory-store/ai-memory-reducers'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -16,7 +17,7 @@ export interface ReembedStatus {
   total: number
 }
 
-interface AiMemoryState {
+export interface AiMemoryState {
   /**
    * Re-embed status keyed by a generic owner key emitted in progress events
    * (`global`, `group_{id}`, or a connection id).
@@ -33,12 +34,7 @@ export const useAiMemoryStore = create<AiMemoryState>()((set) => ({
   reembedStatus: {},
 
   setReembedStatus: (ownerKey, status) => {
-    set((state) => ({
-      reembedStatus: {
-        ...state.reembedStatus,
-        [ownerKey]: status,
-      },
-    }))
+    set((state) => putReembedStatus(state, { ownerKey: ownerKey, status: status }))
   },
 }))
 

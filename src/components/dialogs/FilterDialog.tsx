@@ -18,6 +18,7 @@ import { DialogShell } from './DialogShell'
 import type { FilterCondition, FilterOperator } from '../../types/schema'
 import styles from './FilterDialog.module.css'
 import { useFormSubmit } from '../../hooks/useFormSubmit'
+import { isNullaryOperator, withConditionChanged, withoutConditionAt } from './filter-conditions'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -35,8 +36,6 @@ const OPERATORS: readonly FilterOperator[] = [
   'IS NULL',
   'IS NOT NULL',
 ]
-
-const NULLARY_OPERATORS = new Set<string>(['IS NULL', 'IS NOT NULL'])
 
 const DEFAULT_OPERATOR: FilterOperator = '=='
 
@@ -123,21 +122,12 @@ export function FilterDialog({
   }, [defaultColumn])
 
   const handleRemove = useCallback((index: number) => {
-    setConditions((previous) => previous.filter((_, conditionIndex) => conditionIndex !== index))
+    setConditions((previous) => withoutConditionAt(previous, index))
   }, [])
 
   const handleChange = useCallback((index: number, field: keyof FilterCondition, value: string) => {
-    setConditions((previous) =>
-      previous.map((condition, conditionIndex) => {
-        if (conditionIndex !== index) return condition
-        const updated = { ...condition, [field]: value }
-        const isSwitchingToNullaryOperator = field === 'operator' && NULLARY_OPERATORS.has(value)
-        if (isSwitchingToNullaryOperator) {
-          updated.value = ''
-        }
-        return updated
-      })
-    )
+    const change = { index: index, field: field, value: value }
+    setConditions((previous) => withConditionChanged(previous, change))
   }, [])
 
   const handleClearAll = useCallback(() => {
@@ -214,7 +204,7 @@ export function FilterDialog({
               {/* Condition rows */}
               <div className={styles.rows} data-testid="filter-rows">
                 {conditions.map((cond, index) => {
-                  const isNullary = NULLARY_OPERATORS.has(cond.operator)
+                  const isNullary = isNullaryOperator(cond.operator)
                   return (
                     <div className={styles.row} key={index} data-testid="filter-row">
                       {/* Column */}

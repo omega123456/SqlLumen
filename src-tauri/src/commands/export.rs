@@ -1,7 +1,10 @@
+use crate::commands::run_blocking_with_state;
+use crate::export::result_export::{self, StartResultExportInput};
 use crate::export::{ExportOptions, ExportResult};
 use crate::mysql::query_executor::SharedRow;
 use crate::state::AppState;
 use serde::Deserialize;
+use tauri::Manager;
 
 pub use crate::export::export_with_data;
 
@@ -61,34 +64,31 @@ pub fn export_results_impl(
 
 #[tauri::command]
 pub async fn export_results(
-    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
     payload: ExportResultsRequest,
 ) -> Result<ExportResult, String> {
-    let ExportData { columns, rows } = resolve_export_data(&state, &payload)?;
-    let options = payload.options;
-
-    tokio::task::spawn_blocking(move || export_with_data(&columns, &rows, options))
-        .await
-        .map_err(|error| error.to_string())?
+    run_blocking_with_state(app, move |state| export_results_impl(state, payload)).await?
 }
 
-// ── Streaming full export of truncated results ────────────────────────────────
+pub fn start_result_export_in_background<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    payload: StartResultExportInput,
+) -> Result<String, String> {
+    let prepared = result_export::start_result_export_impl(&app.state::<AppState>(), payload)?;
+    let job_id = prepared.job_id.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        result_export::run_result_export_job(&state, prepared).await;
+    });
+    Ok(job_id)
+}
 
 #[tauri::command]
 pub async fn start_result_export(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-    payload: crate::export::result_export::StartResultExportInput,
+    payload: StartResultExportInput,
 ) -> Result<String, String> {
-    use tauri::Manager;
-
-    let prepared = crate::export::result_export::start_result_export_impl(&state, payload)?;
-    let job_id = prepared.job_id.clone();
-    tauri::async_runtime::spawn(async move {
-        let state = app.state::<AppState>();
-        crate::export::result_export::run_result_export_job(&state, prepared).await;
-    });
-    Ok(job_id)
+    start_result_export_in_background(app, payload)
 }
 
 /// Progress of a streaming full export.

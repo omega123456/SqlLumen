@@ -15,6 +15,7 @@ import { logFrontend } from '../lib/app-log-commands'
 import { estimateTokenCount } from '../lib/schema-ddl-compactor'
 import { toErrorMessage } from '../lib/error-message'
 import { isAiLockStatus } from '../lib/query-tab-status'
+import { patchAiTab, putAiTab, removeAiTab } from './ai-store/ai-tab-reducers'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -164,7 +165,7 @@ interface AiEndpointModel {
   model: string
 }
 
-interface AiState {
+export interface AiState {
   tabs: Record<string, TabAiState>
 
   // Message actions
@@ -1165,9 +1166,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     const existing = get().tabs[tabId]
     if (existing) return existing
     const fresh = createDefaultTabAiState()
-    set((state) => ({
-      tabs: { ...state.tabs, [tabId]: fresh },
-    }))
+    set((state) => putAiTab(state, { tabId: tabId, tab: fresh }))
     // Clear stale expansion cache when a tab is freshly created
     clearExpansionCache(tabId)
     return fresh
@@ -1181,12 +1180,8 @@ export const useAiStore = create<AiState>()((set, get) => {
   }
 
   const patchTab = (tabId: string, partial: Partial<TabAiState>) => {
-    set((state) => ({
-      tabs: {
-        ...state.tabs,
-        [tabId]: { ...(state.tabs[tabId] ?? createDefaultTabAiState()), ...partial },
-      },
-    }))
+    const fallbackTab = createDefaultTabAiState()
+    set((state) => patchAiTab(state, { tabId: tabId, partial: partial, fallbackTab: fallbackTab }))
   }
 
   /** Safely invoke and clear the unlisten callback for a tab's event listener. */
@@ -1889,11 +1884,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         }
       }
 
-      set((state) => {
-        const newTabs = { ...state.tabs }
-        delete newTabs[tabId]
-        return { tabs: newTabs }
-      })
+      set((state) => removeAiTab(state, tabId))
     },
   }
 })

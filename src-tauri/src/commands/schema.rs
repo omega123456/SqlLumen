@@ -1,12 +1,10 @@
-#[cfg(not(coverage))]
-use crate::commands::query_history_bridge::{log_batch_entries, resolve_connection_context};
+use crate::commands::query_history_bridge::{
+    log_history_batch, run_with_history, HistoryRecord, HistoryStatement,
+};
 use crate::commands::requests::{DatabaseRequest, SchemaObjectRequest, TableRequest};
-#[cfg(not(coverage))]
-use crate::db::history::NewHistoryEntry;
-use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
-#[cfg(not(coverage))]
 use crate::mysql::metadata_cache::{
-    evict_metadata_cache_for_database, evict_metadata_cache_for_tables, TableEviction,
+    evict_metadata_cache_for_connection, evict_metadata_cache_for_database,
+    evict_metadata_cache_for_tables, TableEviction,
 };
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
@@ -16,7 +14,6 @@ use crate::mysql::schema_queries::{
 };
 use crate::state::AppState;
 use serde::Deserialize;
-#[cfg(not(coverage))]
 use std::time::Instant;
 #[cfg(not(coverage))]
 use tauri::State;
@@ -62,47 +59,6 @@ pub struct RenameTableRequest {
     pub new_name: String,
 }
 
-#[cfg(not(coverage))]
-#[derive(Clone)]
-struct SchemaStatementHistory {
-    sql_text: String,
-    duration_ms: i64,
-    error_message: Option<String>,
-}
-
-#[cfg(not(coverage))]
-impl SchemaStatementHistory {
-    fn new<T>(sql_text: String, started_at: Instant, result: &Result<T, String>) -> Self {
-        Self {
-            sql_text,
-            duration_ms: started_at.elapsed().as_millis() as i64,
-            error_message: result.as_ref().err().cloned(),
-        }
-    }
-
-    fn into_entry(self, connection_id: String, database_name: Option<String>) -> NewHistoryEntry {
-        NewHistoryEntry {
-            connection_id,
-            database_name,
-            sql_text: self.sql_text,
-            duration_ms: Some(self.duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: self.error_message.is_none(),
-            error_message: self.error_message,
-        }
-    }
-}
-
-#[cfg(not(coverage))]
-fn log_schema_statement(state: &AppState, session_id: &str, statement: SchemaStatementHistory) {
-    resolve_connection_context(state, session_id)
-        .log_single_entry_if_resolved(&state.db, |connection_id, database_name| {
-            statement.into_entry(connection_id, database_name)
-        });
-}
-
-#[cfg(not(coverage))]
 fn encoding_history_sql(statement_prefix: &str, request: &DatabaseEncodingRequest) -> String {
     let name = &request.name;
     let mut sql_text = format!("{statement_prefix} `{name}`");
@@ -581,25 +537,216 @@ pub async fn get_table_foreign_keys(
     get_table_foreign_keys_impl(&state, &payload).await
 }
 
+fn schema_info_history_sql(request: &SchemaObjectRequest) -> String {
+    let type_upper = request.object_type.to_uppercase();
+    let database = &request.database;
+    let object_name = &request.object_name;
+    format!(
+        "/* schema info */ SELECT ... FROM INFORMATION_SCHEMA FOR {type_upper} `{database}`.`{object_name}`"
+    )
+}
+
+fn evict_tables_after_success(
+    state: &AppState,
+    connection_id: &str,
+    affected_tables: &[(Option<String>, String)],
+) {
+    let eviction = TableEviction {
+        connection_id,
+        affected_tables,
+        default_database: None,
+    };
+    evict_metadata_cache_for_tables(state, &eviction);
+}
+
+pub async fn get_schema_info_with_history(
+    state: &AppState,
+    request: &SchemaObjectRequest,
+) -> Result<SchemaInfoResponse, String> {
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: schema_info_history_sql(request),
+    };
+    run_with_history(state, statement, get_schema_info_impl(state, request)).await
+}
+
+pub async fn create_database_with_history(
+    state: &AppState,
+    request: &DatabaseEncodingRequest,
+) -> Result<(), String> {
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: encoding_history_sql("CREATE DATABASE", request),
+    };
+    run_with_history(state, statement, create_database_impl(state, request)).await
+}
+
+pub async fn alter_database_with_history(
+    state: &AppState,
+    request: &DatabaseEncodingRequest,
+) -> Result<(), String> {
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: encoding_history_sql("ALTER DATABASE", request),
+    };
+    run_with_history(state, statement, alter_database_impl(state, request)).await
+}
+
+pub async fn drop_database_with_history(
+    state: &AppState,
+    request: &DropDatabaseRequest,
+) -> Result<(), String> {
+    let name = &request.name;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: format!("DROP DATABASE `{name}`"),
+    };
+    run_with_history(state, statement, drop_database_impl(state, request)).await?;
+    evict_metadata_cache_for_database(state, &request.connection_id, name);
+    Ok(())
+}
+
+fn rename_database_history_statements(request: &RenameDatabaseRequest) -> Vec<String> {
+    let old_name = &request.old_name;
+    let new_name = &request.new_name;
+    vec![
+        format!("CREATE DATABASE `{new_name}`"),
+        format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
+        format!("DROP DATABASE `{old_name}`"),
+    ]
+}
+
+pub async fn rename_database_with_history(
+    state: &AppState,
+    request: &RenameDatabaseRequest,
+) -> Result<(), String> {
+    let started_at = Instant::now();
+    let result = rename_database_impl(state, request).await;
+    let batch_record = HistoryRecord::for_outcome(String::new(), started_at, &result);
+    let records = rename_database_history_statements(request)
+        .into_iter()
+        .map(|sql_text| batch_record.for_statement(sql_text))
+        .collect();
+    log_history_batch(state, &request.connection_id, records);
+    result
+}
+
+pub async fn drop_table_with_history(
+    state: &AppState,
+    request: &TableRequest,
+) -> Result<(), String> {
+    let database = &request.database;
+    let table = &request.table;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: format!("DROP TABLE `{database}`.`{table}`"),
+    };
+    run_with_history(state, statement, drop_table_impl(state, request)).await?;
+    let affected_tables = [(Some(database.clone()), table.clone())];
+    evict_tables_after_success(state, &request.connection_id, &affected_tables);
+    Ok(())
+}
+
+pub async fn truncate_table_with_history(
+    state: &AppState,
+    request: &TableRequest,
+) -> Result<(), String> {
+    let database = &request.database;
+    let table = &request.table;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: format!("TRUNCATE TABLE `{database}`.`{table}`"),
+    };
+    run_with_history(state, statement, truncate_table_impl(state, request)).await
+}
+
+pub async fn rename_table_with_history(
+    state: &AppState,
+    request: &RenameTableRequest,
+) -> Result<(), String> {
+    let database = &request.database;
+    let old_name = &request.old_name;
+    let new_name = &request.new_name;
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: format!("RENAME TABLE `{database}`.`{old_name}` TO `{database}`.`{new_name}`"),
+    };
+    run_with_history(state, statement, rename_table_impl(state, request)).await?;
+    let affected_tables = [
+        (Some(database.clone()), old_name.clone()),
+        (Some(database.clone()), new_name.clone()),
+    ];
+    evict_tables_after_success(state, &request.connection_id, &affected_tables);
+    Ok(())
+}
+
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn get_schema_info(
     payload: SchemaObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<SchemaInfoResponse, String> {
-    let started_at = Instant::now();
-    let result = get_schema_info_impl(&state, &payload).await;
+    get_schema_info_with_history(&state, &payload).await
+}
 
-    let type_upper = payload.object_type.to_uppercase();
-    let database = &payload.database;
-    let object_name = &payload.object_name;
-    let sql_text = format!(
-        "/* schema info */ SELECT ... FROM INFORMATION_SCHEMA FOR {type_upper} `{database}`.`{object_name}`"
-    );
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn create_database(
+    payload: DatabaseEncodingRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    create_database_with_history(&state, &payload).await
+}
 
-    result
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn drop_database(
+    payload: DropDatabaseRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    drop_database_with_history(&state, &payload).await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn alter_database(
+    payload: DatabaseEncodingRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    alter_database_with_history(&state, &payload).await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn rename_database(
+    payload: RenameDatabaseRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    rename_database_with_history(&state, &payload).await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn drop_table(payload: TableRequest, state: State<'_, AppState>) -> Result<(), String> {
+    drop_table_with_history(&state, &payload).await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn truncate_table(
+    payload: TableRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    truncate_table_with_history(&state, &payload).await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn rename_table(
+    payload: RenameTableRequest,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    rename_table_with_history(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
@@ -627,179 +774,6 @@ pub async fn list_collations(
     state: State<'_, AppState>,
 ) -> Result<Vec<CollationInfo>, String> {
     list_collations_impl(&state, &connection_id).await
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn create_database(
-    payload: DatabaseEncodingRequest,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = create_database_impl(&state, &payload).await;
-
-    let sql_text = encoding_history_sql("CREATE DATABASE", &payload);
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
-
-    result
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn drop_database(
-    payload: DropDatabaseRequest,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = drop_database_impl(&state, &payload).await;
-
-    let name = &payload.name;
-    let sql_text = format!("DROP DATABASE `{name}`");
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
-
-    if result.is_ok() {
-        evict_metadata_cache_for_database(&state, &payload.connection_id, name);
-    }
-
-    result
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn alter_database(
-    payload: DatabaseEncodingRequest,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = alter_database_impl(&state, &payload).await;
-
-    let sql_text = encoding_history_sql("ALTER DATABASE", &payload);
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
-
-    result
-}
-
-#[cfg(not(coverage))]
-fn rename_database_history_statements(request: &RenameDatabaseRequest) -> Vec<String> {
-    let old_name = &request.old_name;
-    let new_name = &request.new_name;
-    vec![
-        format!("CREATE DATABASE `{new_name}`"),
-        format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
-        format!("DROP DATABASE `{old_name}`"),
-    ]
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn rename_database(
-    payload: RenameDatabaseRequest,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = rename_database_impl(&state, &payload).await;
-
-    let context = resolve_connection_context(&state, &payload.connection_id);
-    let Some(connection_id) = context.connection_id else {
-        tracing::warn!(
-            session_id = %payload.connection_id,
-            "skipping query history logging: no saved connection id resolved for session"
-        );
-        return result;
-    };
-    let batch_history = SchemaStatementHistory::new(String::new(), started_at, &result);
-    let entries: Vec<NewHistoryEntry> = rename_database_history_statements(&payload)
-        .into_iter()
-        .map(|sql_text| {
-            let statement = SchemaStatementHistory {
-                sql_text,
-                ..batch_history.clone()
-            };
-            statement.into_entry(connection_id.clone(), context.database_name.clone())
-        })
-        .collect();
-
-    log_batch_entries(&state.db, entries);
-
-    result
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn drop_table(payload: TableRequest, state: State<'_, AppState>) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = drop_table_impl(&state, &payload).await;
-
-    let database = &payload.database;
-    let table = &payload.table;
-    let sql_text = format!("DROP TABLE `{database}`.`{table}`");
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
-
-    if result.is_ok() {
-        let affected_tables = [(Some(database.clone()), table.clone())];
-        let eviction = TableEviction {
-            connection_id: &payload.connection_id,
-            affected_tables: &affected_tables,
-            default_database: None,
-        };
-        evict_metadata_cache_for_tables(&state, &eviction);
-    }
-
-    result
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn truncate_table(
-    payload: TableRequest,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = truncate_table_impl(&state, &payload).await;
-
-    let database = &payload.database;
-    let table = &payload.table;
-    let sql_text = format!("TRUNCATE TABLE `{database}`.`{table}`");
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
-
-    result
-}
-
-#[cfg(not(coverage))]
-#[tauri::command]
-pub async fn rename_table(
-    payload: RenameTableRequest,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let started_at = Instant::now();
-    let result = rename_table_impl(&state, &payload).await;
-
-    let database = &payload.database;
-    let old_name = &payload.old_name;
-    let new_name = &payload.new_name;
-    let sql_text = format!("RENAME TABLE `{database}`.`{old_name}` TO `{database}`.`{new_name}`");
-    let statement = SchemaStatementHistory::new(sql_text, started_at, &result);
-    log_schema_statement(&state, &payload.connection_id, statement);
-
-    if result.is_ok() {
-        let affected_tables = [
-            (Some(database.clone()), old_name.clone()),
-            (Some(database.clone()), new_name.clone()),
-        ];
-        let eviction = TableEviction {
-            connection_id: &payload.connection_id,
-            affected_tables: &affected_tables,
-            default_database: None,
-        };
-        evict_metadata_cache_for_tables(&state, &eviction);
-    }
-
-    result
 }
 
 #[cfg(not(coverage))]

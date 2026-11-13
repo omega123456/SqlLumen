@@ -1,0 +1,170 @@
+import type { FrontendRowResidencyState } from '../../types/schema'
+import type { QueryState, ResultExportJob, SingleResultState, TabQueryState } from '../query-store'
+import { hasOpenExportDialog, hasResultAt, hasResults, isSameResultList } from './result-lists'
+import { canEvictInactiveResult } from './result-residency'
+import { withoutKey } from '../../lib/record-utils'
+
+type QueryTabs = Pick<QueryState, 'tabs'>
+type ExportJobs = Pick<QueryState, 'exportJobs'>
+
+export interface QueryTabPatch {
+  tabId: string
+  partial: Partial<TabQueryState>
+  fallbackTab: TabQueryState
+}
+
+export interface ResultReference {
+  tabId: string
+  resultIndex: number
+}
+
+export interface QueryResultPatch extends ResultReference {
+  partial: Partial<SingleResultState>
+}
+
+export interface ResultResidencyPatch extends ResultReference {
+  partial: Partial<FrontendRowResidencyState>
+}
+
+export interface ResultEviction extends ResultReference {
+  evictedAt: number
+}
+
+export interface ResultExpiry {
+  tabId: string
+  isExpired: boolean
+}
+
+export interface ExportJobEntry {
+  tabId: string
+  job: ResultExportJob
+}
+
+export interface ExportJobPatch {
+  tabId: string
+  partial: Partial<ResultExportJob>
+}
+
+function withTab(state: QueryTabs, tabId: string, tab: TabQueryState): QueryTabs {
+  return { tabs: { ...state.tabs, [tabId]: tab } }
+}
+
+function withResults(state: QueryTabs, tabId: string, results: SingleResultState[]): QueryTabs {
+  return withTab(state, tabId, { ...state.tabs[tabId], results: results })
+}
+
+function withResultUpdated(
+  state: QueryTabs,
+  { tabId, resultIndex }: ResultReference,
+  update: (result: SingleResultState) => SingleResultState
+): QueryTabs {
+  const tab = state.tabs[tabId]
+  if (!hasResultAt(tab, resultIndex)) return state
+  const results = [...tab.results]
+  results[resultIndex] = update(results[resultIndex])
+  return withResults(state, tabId, results)
+}
+
+function withEachResultUpdated(
+  state: QueryTabs,
+  tabId: string,
+  update: (result: SingleResultState) => SingleResultState
+): QueryTabs {
+  const tab = state.tabs[tabId]
+  if (!hasResults(tab)) return state
+  const results = tab.results.map(update)
+  if (isSameResultList(results, tab.results)) return state
+  return withResults(state, tabId, results)
+}
+
+export function patchQueryTab(
+  state: QueryTabs,
+  { tabId, partial, fallbackTab }: QueryTabPatch
+): QueryTabs {
+  const existing = state.tabs[tabId] ?? fallbackTab
+  return withTab(state, tabId, { ...existing, ...partial })
+}
+
+export function patchQueryResult(
+  state: QueryTabs,
+  { tabId, resultIndex, partial }: QueryResultPatch
+): QueryTabs {
+  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) => ({
+    ...result,
+    ...partial,
+  }))
+}
+
+export function patchQueryResultResidency(
+  state: QueryTabs,
+  { tabId, resultIndex, partial }: ResultResidencyPatch
+): QueryTabs {
+  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) => ({
+    ...result,
+    rowResidency: { ...result.rowResidency, ...partial },
+  }))
+}
+
+function evictedResult(result: SingleResultState, evictedAt: number): SingleResultState {
+  if (!canEvictInactiveResult(result)) return result
+  return {
+    ...result,
+    editingRowIndex: null,
+    editingBaseIndex: null,
+    editState: null,
+    pendingWindowRange: null,
+    rowsEvictedAt: evictedAt,
+    rowResidency: { ...result.rowResidency, status: 'evicted' },
+  }
+}
+
+export function evictQueryResultRows(
+  state: QueryTabs,
+  { tabId, resultIndex, evictedAt }: ResultEviction
+): QueryTabs {
+  const tab = state.tabs[tabId]
+  if (!hasResultAt(tab, resultIndex)) return state
+  if (!canEvictInactiveResult(tab.results[resultIndex])) return state
+  return withResultUpdated(state, { tabId: tabId, resultIndex: resultIndex }, (result) =>
+    evictedResult(result, evictedAt)
+  )
+}
+
+export function setQueryResultsExpired(
+  state: QueryTabs,
+  { tabId, isExpired }: ResultExpiry
+): QueryTabs {
+  return withEachResultUpdated(state, tabId, (result) =>
+    result.isExpired === isExpired ? result : { ...result, isExpired: isExpired }
+  )
+}
+
+export function closeQueryExportDialogs(state: QueryTabs, tabId: string): QueryTabs {
+  if (!hasOpenExportDialog(state.tabs[tabId])) return state
+  return withEachResultUpdated(state, tabId, (result) =>
+    result.exportDialogOpen ? { ...result, exportDialogOpen: false } : result
+  )
+}
+
+export function removeQueryTabs(state: QueryTabs, tabIds: string[]): QueryTabs {
+  const remainingTabs = { ...state.tabs }
+  for (const tabId of tabIds) {
+    delete remainingTabs[tabId]
+  }
+  return { tabs: remainingTabs }
+}
+
+export function putExportJob(state: ExportJobs, { tabId, job }: ExportJobEntry): ExportJobs {
+  return { exportJobs: { ...state.exportJobs, [tabId]: job } }
+}
+
+export function patchExportJob(state: ExportJobs, { tabId, partial }: ExportJobPatch): ExportJobs {
+  const job = state.exportJobs[tabId]
+  if (!job) return state
+  return putExportJob(state, { tabId: tabId, job: { ...job, ...partial } })
+}
+
+export function removeExportJob(state: ExportJobs, tabId: string): ExportJobs {
+  if (!(tabId in state.exportJobs)) return state
+  return { exportJobs: withoutKey(state.exportJobs, tabId) }
+}

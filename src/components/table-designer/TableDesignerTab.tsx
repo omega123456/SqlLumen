@@ -39,22 +39,7 @@ const SUB_TAB_LABELS: Record<DesignerSubTab, string> = {
 }
 
 function clearPendingNavigationAction(tabId: string) {
-  useTableDesignerStore.setState((state) => {
-    const existing = state.tabs[tabId]
-    if (!existing) {
-      return state
-    }
-
-    return {
-      tabs: {
-        ...state.tabs,
-        [tabId]: {
-          ...existing,
-          pendingNavigationAction: null,
-        },
-      },
-    }
-  })
+  useTableDesignerStore.getState().clearNavigationAction(tabId)
 }
 
 interface DesignerTabView {

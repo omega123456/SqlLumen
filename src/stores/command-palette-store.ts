@@ -1,6 +1,7 @@
 import { create } from 'zustand'
+import { openPalette, togglePalette } from './command-palette-store/command-palette-reducers'
 
-interface CommandPaletteState {
+export interface CommandPaletteState {
   isOpen: boolean
   openInstance: number
   /** When true, the palette opens pre-filled with the active table's database/table pills. */
@@ -14,17 +15,7 @@ export const useCommandPaletteStore = create<CommandPaletteState>()((set) => ({
   isOpen: false,
   openInstance: 0,
   scopeToTable: false,
-  open: (scopeToTable = false) =>
-    set((state) => ({
-      isOpen: true,
-      openInstance: state.openInstance + 1,
-      scopeToTable: scopeToTable,
-    })),
+  open: (scopeToTable = false) => set((state) => openPalette(state, scopeToTable)),
   close: () => set({ isOpen: false }),
-  toggle: (scopeToTable = false) =>
-    set((state) =>
-      state.isOpen
-        ? { isOpen: false }
-        : { isOpen: true, openInstance: state.openInstance + 1, scopeToTable: scopeToTable }
-    ),
+  toggle: (scopeToTable = false) => set((state) => togglePalette(state, scopeToTable)),
 }))

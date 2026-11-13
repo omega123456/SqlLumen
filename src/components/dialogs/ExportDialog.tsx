@@ -143,29 +143,6 @@ function resolveExportResultIndex(tab: TabQueryState, resultIndex: number | unde
   return resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
 }
 
-function markResultExpired(tabId: string, resultIndex: number | undefined): void {
-  const tab = useQueryStore.getState().tabs[tabId]
-  if (!tab) return
-  const expiredResultIndex = resolveExportResultIndex(tab, resultIndex)
-  useQueryStore.setState((state) => {
-    const tabState = state.tabs[tabId]
-    if (!tabState) return state
-    const isResultMissing = expiredResultIndex >= tabState.results.length
-    if (isResultMissing) return state
-    const newResults = [...tabState.results]
-    newResults[expiredResultIndex] = {
-      ...newResults[expiredResultIndex],
-      isExpired: true,
-    }
-    return {
-      tabs: {
-        ...state.tabs,
-        [tabId]: { ...tabState, results: newResults },
-      },
-    }
-  })
-}
-
 function offersAllRowsExport(result: ExportResult | undefined, hasCustomExport: boolean): boolean {
   if (hasCustomExport) return false
   if (!result?.truncated) return false
@@ -345,6 +322,120 @@ function TableNameField({ format, tableName, onChange }: TableNameFieldProps) {
   )
 }
 
+interface ExportDialogHeaderProps {
+  canClose: boolean
+  onClose: () => void
+}
+
+function ExportDialogHeader({ canClose, onClose }: ExportDialogHeaderProps) {
+  return (
+    <div className={styles.header}>
+      <h2 className={styles.title}>Export results</h2>
+      {canClose && (
+        <Button variant="bare" className={styles.closeButton} onClick={onClose} aria-label="Close">
+          <X size={20} aria-hidden="true" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+interface FormatFieldProps {
+  options: DropdownOption<ExportFormat>[]
+  format: ExportFormat
+  onChange: (format: ExportFormat) => void
+}
+
+function FormatField({ options, format, onChange }: FormatFieldProps) {
+  return (
+    <div className={styles.fieldGroup}>
+      <label className={styles.label} id="export-format-label">
+        Format
+      </label>
+      <Dropdown
+        id="export-format"
+        labelledBy="export-format-label"
+        options={options}
+        value={format}
+        onChange={onChange}
+        data-testid="export-format-select"
+        className={styles.formatDropdownRoot}
+        triggerClassName={styles.formatDropdownTrigger}
+      />
+    </div>
+  )
+}
+
+interface DestinationFieldProps {
+  format: ExportFormat
+  filePath: string
+  onChange: (filePath: string) => void
+  onBrowse: () => void
+}
+
+function DestinationField({ format, filePath, onChange, onBrowse }: DestinationFieldProps) {
+  const extension = EXPORT_FORMAT_CONFIG[format].extension
+  return (
+    <div className={styles.fieldGroup}>
+      <label className={styles.label} htmlFor="export-file-path">
+        Destination
+      </label>
+      <div className={styles.destinationGroup}>
+        <span className={styles.destinationPrefix}>.{extension}</span>
+        <TextInput
+          id="export-file-path"
+          variant="bare"
+          type="text"
+          className={styles.destinationInput}
+          value={filePath}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={`query_results.${extension}`}
+          data-testid="export-file-path-input"
+        />
+        <Button
+          variant="bare"
+          className={styles.browseButton}
+          onClick={onBrowse}
+          aria-label="Browse"
+          data-testid="export-browse-button"
+        >
+          <FolderOpen size={20} aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface IncludeHeadersFieldProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+}
+
+function IncludeHeadersField({ checked, onChange }: IncludeHeadersFieldProps) {
+  return (
+    <div className={styles.checkboxRow}>
+      <Checkbox
+        id="export-include-headers"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        data-testid="export-include-headers-checkbox"
+      />
+      <label htmlFor="export-include-headers" className={styles.checkboxLabel}>
+        Include column headers in first row
+      </label>
+    </div>
+  )
+}
+
+function ExportError({ error }: { error: string | null }) {
+  if (!error) return null
+  return (
+    <div className={styles.error} data-testid="export-error">
+      {error}
+    </div>
+  )
+}
+
 interface FullExportOutcomeProps {
   exportJob: ResultExportJob | undefined
   failureBarRef: RefObject<HTMLDivElement | null>
@@ -432,6 +523,7 @@ export default function ExportDialog({
   const exportJob = useQueryStore((state) => state.exportJobs[tabId])
   const startFullExport = useQueryStore((state) => state.startFullExport)
   const cancelFullExport = useQueryStore((state) => state.cancelFullExport)
+  const markResultExpired = useQueryStore((state) => state.markResultExpired)
 
   /** "All rows" is offered only for truncated results that can be re-run. */
   const offersAllRows = offersAllRowsExport(result, onExport !== undefined)
@@ -529,7 +621,7 @@ export default function ExportDialog({
     } catch (error) {
       const errorMessage = toErrorMessage(error)
       if (errorMessage.includes(RESULTS_EXPIRED_ERROR_MARKER)) {
-        markResultExpired(tabId, resultIndex)
+        markResultExpired(tabId, resolvedResultIndex)
       }
       setError(errorMessage)
     } finally {
@@ -548,6 +640,7 @@ export default function ExportDialog({
     isAllRows,
     startFullExport,
     resolvedResultIndex,
+    markResultExpired,
   ])
 
   const handleRetryFullExport = useCallback(() => {
@@ -563,6 +656,7 @@ export default function ExportDialog({
   }, [exportJob, startFullExport, tabId])
 
   const handleSubmit = useFormSubmit(handleExport)
+  const canSubmit = Boolean(filePath) && !isExporting
 
   return (
     <DialogShell
@@ -576,20 +670,7 @@ export default function ExportDialog({
       formProps={{ onSubmit: handleSubmit }}
     >
       <div className={styles.root}>
-        {/* Header */}
-        <div className={styles.header}>
-          <h2 className={styles.title}>Export results</h2>
-          {!isFullExportRunning && (
-            <Button
-              variant="bare"
-              className={styles.closeButton}
-              onClick={onClose}
-              aria-label="Close"
-            >
-              <X size={20} aria-hidden="true" />
-            </Button>
-          )}
-        </div>
+        <ExportDialogHeader canClose={!isFullExportRunning} onClose={onClose} />
 
         {runningJob ? (
           <FullExportProgress
@@ -610,80 +691,24 @@ export default function ExportDialog({
               onUseCurrentView={() => setScope('currentView')}
             />
 
-            {/* Format */}
-            <div className={styles.fieldGroup}>
-              <label className={styles.label} id="export-format-label">
-                Format
-              </label>
-              <Dropdown
-                id="export-format"
-                labelledBy="export-format-label"
-                options={formatDropdownOptions}
-                value={format}
-                onChange={setFormat}
-                data-testid="export-format-select"
-                className={styles.formatDropdownRoot}
-                triggerClassName={styles.formatDropdownTrigger}
-              />
-            </div>
+            <FormatField options={formatDropdownOptions} format={format} onChange={setFormat} />
             <SheetLimitWarning
               isAllRows={isAllRows}
               format={format}
               onSwitchToCsv={() => setFormat('csv')}
             />
 
-            {/* Destination */}
-            <div className={styles.fieldGroup}>
-              <label className={styles.label} htmlFor="export-file-path">
-                Destination
-              </label>
-              <div className={styles.destinationGroup}>
-                <span className={styles.destinationPrefix}>
-                  .{EXPORT_FORMAT_CONFIG[format].extension}
-                </span>
-                <TextInput
-                  id="export-file-path"
-                  variant="bare"
-                  type="text"
-                  className={styles.destinationInput}
-                  value={filePath}
-                  onChange={(event) => setFilePath(event.target.value)}
-                  placeholder={`query_results.${EXPORT_FORMAT_CONFIG[format].extension}`}
-                  data-testid="export-file-path-input"
-                />
-                <Button
-                  variant="bare"
-                  className={styles.browseButton}
-                  onClick={handleBrowse}
-                  aria-label="Browse"
-                  data-testid="export-browse-button"
-                >
-                  <FolderOpen size={20} aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
+            <DestinationField
+              format={format}
+              filePath={filePath}
+              onChange={setFilePath}
+              onBrowse={handleBrowse}
+            />
 
             <TableNameField format={format} tableName={tableName} onChange={setTableName} />
 
-            {/* Include headers checkbox */}
-            <div className={styles.checkboxRow}>
-              <Checkbox
-                id="export-include-headers"
-                checked={includeHeaders}
-                onChange={(event) => setIncludeHeaders(event.target.checked)}
-                data-testid="export-include-headers-checkbox"
-              />
-              <label htmlFor="export-include-headers" className={styles.checkboxLabel}>
-                Include column headers in first row
-              </label>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className={styles.error} data-testid="export-error">
-                {error}
-              </div>
-            )}
+            <IncludeHeadersField checked={includeHeaders} onChange={setIncludeHeaders} />
+            <ExportError error={error} />
 
             <FullExportOutcome
               exportJob={exportJob}
@@ -691,11 +716,7 @@ export default function ExportDialog({
               onRetry={handleRetryFullExport}
             />
 
-            <ExportFormActions
-              canSubmit={Boolean(filePath) && !isExporting}
-              isExporting={isExporting}
-              onClose={onClose}
-            />
+            <ExportFormActions canSubmit={canSubmit} isExporting={isExporting} onClose={onClose} />
           </div>
         )}
       </div>

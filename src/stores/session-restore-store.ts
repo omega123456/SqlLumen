@@ -8,6 +8,7 @@ import { logFrontend } from '../lib/app-log-commands'
 
 import { create } from 'zustand'
 import { useSettingsStore } from './settings-store'
+import { rewriteTabList } from './workspace-store/workspace-reducers'
 import { normalizeActiveConnectionOrder, useConnectionStore } from './connection-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
@@ -745,16 +746,11 @@ async function restoreConnectionTabs(
     }
   }
 
-  useWorkspaceStore.setState((state) => ({
-    tabsByConnection: {
-      ...state.tabsByConnection,
-      [sessionId]: orderRestoredTabs(
-        state.tabsByConnection[sessionId] ?? [],
-        connectionState.tabs,
-        context
-      ),
-    },
-  }))
+  const restoreSavedOrder = (runtimeTabs: WorkspaceTab[]): WorkspaceTab[] =>
+    orderRestoredTabs(runtimeTabs, connectionState.tabs, context)
+  useWorkspaceStore.setState((state) =>
+    rewriteTabList(state, { connectionId: sessionId, transform: restoreSavedOrder })
+  )
 
   applyBottomPanelSelections(context)
 

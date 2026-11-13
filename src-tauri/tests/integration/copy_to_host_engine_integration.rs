@@ -17,10 +17,10 @@
 
 use sqllumen_lib::export::copy_to_host::{
     apply_create_if_not_exists, batch_byte_budget, begin_object, complete_object,
-    drop_if_exists_statement, has_cross_database_non_table_copy, mark_cancelled, mark_completed,
-    mark_failed, new_running_progress, plan_batches, qualified_drop_if_exists_statement,
-    qualify_table_ddl_schema, render_row, rewrite_non_table_ddl_schema, should_cancel,
-    strip_definer, validate_cross_database_non_table_copy, validate_mysql_identifier_token,
+    drop_if_exists_statement, has_cross_database_non_table_copy, new_running_progress,
+    plan_batches, qualified_drop_if_exists_statement, qualify_table_ddl_schema, render_row,
+    rewrite_non_table_ddl_schema, should_cancel, strip_definer,
+    validate_cross_database_non_table_copy, validate_mysql_identifier_token,
     validate_selection_for_options, BatchLimits, CopyObjectType, CopyOptions, CopySelection,
     InsertMode, RenderedRow, COPY_BATCH_ROW_CAP, FALLBACK_PACKET_BYTES, FK_CHECKS_DISABLE,
     FK_CHECKS_ENABLE,
@@ -505,12 +505,12 @@ fn test_fk_check_statements() {
 #[test]
 fn test_terminal_progress_states_preserve_completed_at_for_fk_restore_paths() {
     let mut completed = new_running_progress("completed".into(), 1);
-    mark_completed(&mut completed);
+    completed.mark_completed();
     assert_eq!(completed.status, CopyJobStatus::Completed);
     assert!(completed.completed_at.is_some());
 
     let mut failed = new_running_progress("failed".into(), 1);
-    mark_failed(&mut failed, "copy body failed after FK disable");
+    failed.mark_failed("copy body failed after FK disable");
     assert_eq!(failed.status, CopyJobStatus::Failed);
     assert!(failed.completed_at.is_some());
     assert_eq!(
@@ -520,7 +520,7 @@ fn test_terminal_progress_states_preserve_completed_at_for_fk_restore_paths() {
 
     let mut cancelled = new_running_progress("cancelled".into(), 1);
     cancelled.cancel_requested = true;
-    mark_cancelled(&mut cancelled);
+    cancelled.mark_cancelled();
     assert_eq!(cancelled.status, CopyJobStatus::Cancelled);
     assert!(cancelled.completed_at.is_some());
 }
@@ -678,7 +678,7 @@ fn test_progress_running_to_completed() {
     complete_object(&mut p);
     assert_eq!(p.objects_done, 3);
 
-    mark_completed(&mut p);
+    p.mark_completed();
     assert_eq!(p.status, CopyJobStatus::Completed);
     assert!(p.current_object.is_none());
     assert!(p.completed_at.is_some());
@@ -697,7 +697,7 @@ fn test_progress_running_to_failed_stops_with_message() {
         None,
     );
     complete_object(&mut p); // 1 of 5 done before failure
-    mark_failed(&mut p, "ER_NO_SUCH_TABLE: missing privilege");
+    p.mark_failed("ER_NO_SUCH_TABLE: missing privilege");
     assert_eq!(p.status, CopyJobStatus::Failed);
     assert_eq!(p.objects_done, 1, "partial progress preserved on failure");
     assert_eq!(
@@ -713,7 +713,7 @@ fn test_progress_running_to_cancelled() {
     assert!(!should_cancel(&p));
     p.cancel_requested = true;
     assert!(should_cancel(&p));
-    mark_cancelled(&mut p);
+    p.mark_cancelled();
     assert_eq!(p.status, CopyJobStatus::Cancelled);
     assert!(p.completed_at.is_some());
 }

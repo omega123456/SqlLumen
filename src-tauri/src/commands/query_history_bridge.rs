@@ -19,6 +19,7 @@ use crate::mysql::query_executor::{
 use crate::state::AppState;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// Fire-and-forget: insert a single history entry.
 pub(crate) fn single_row_count(succeeded: bool) -> i64 {
@@ -86,20 +87,128 @@ pub(crate) struct ConnectionHistoryContext {
 }
 
 impl ConnectionHistoryContext {
+    fn resolved_connection_id(&self) -> Option<String> {
+        if self.connection_id.is_none() {
+            tracing::warn!(
+                session_id = %self.session_id,
+                "skipping query history logging: no saved connection id resolved for session"
+            );
+        }
+        self.connection_id.clone()
+    }
+
     pub(crate) fn log_single_entry_if_resolved(
         self,
         db: &Arc<Mutex<Connection>>,
         build_entry: impl FnOnce(String, Option<String>) -> NewHistoryEntry,
     ) {
-        let Some(connection_id) = self.connection_id else {
-            tracing::warn!(
-                session_id = %self.session_id,
-                "skipping query history logging: no saved connection id resolved for session"
-            );
+        let Some(connection_id) = self.resolved_connection_id() else {
             return;
         };
         log_single_entry(db, build_entry(connection_id, self.database_name));
     }
+
+    fn log_batch_if_resolved(self, db: &Arc<Mutex<Connection>>, records: Vec<HistoryRecord>) {
+        let Some(connection_id) = self.resolved_connection_id() else {
+            return;
+        };
+        let entries = records
+            .into_iter()
+            .map(|record| record.into_entry(connection_id.clone(), self.database_name.clone()))
+            .collect();
+        log_batch_entries(db, entries);
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct HistoryRecord {
+    sql_text: String,
+    duration_ms: i64,
+    row_count: i64,
+    affected_rows: i64,
+    error_message: Option<String>,
+}
+
+impl HistoryRecord {
+    pub(crate) fn for_outcome<T>(
+        sql_text: String,
+        started_at: Instant,
+        result: &Result<T, String>,
+    ) -> Self {
+        Self {
+            sql_text,
+            duration_ms: started_at.elapsed().as_millis() as i64,
+            row_count: 0,
+            affected_rows: 0,
+            error_message: result.as_ref().err().cloned(),
+        }
+    }
+
+    pub(crate) fn with_row_count(self, row_count: i64) -> Self {
+        Self { row_count, ..self }
+    }
+
+    pub(crate) fn with_affected_rows(self, affected_rows: i64) -> Self {
+        Self {
+            affected_rows,
+            ..self
+        }
+    }
+
+    pub(crate) fn with_error_message(self, error_message: Option<String>) -> Self {
+        Self {
+            error_message,
+            ..self
+        }
+    }
+
+    pub(crate) fn for_statement(&self, sql_text: String) -> Self {
+        Self {
+            sql_text,
+            ..self.clone()
+        }
+    }
+
+    fn into_entry(self, connection_id: String, database_name: Option<String>) -> NewHistoryEntry {
+        NewHistoryEntry {
+            connection_id,
+            database_name,
+            sql_text: self.sql_text,
+            duration_ms: Some(self.duration_ms),
+            row_count: Some(self.row_count),
+            affected_rows: Some(self.affected_rows),
+            success: self.error_message.is_none(),
+            error_message: self.error_message,
+        }
+    }
+}
+
+pub(crate) fn log_history_record(state: &AppState, session_id: &str, record: HistoryRecord) {
+    resolve_connection_context(state, session_id)
+        .log_single_entry_if_resolved(&state.db, |connection_id, database_name| {
+            record.into_entry(connection_id, database_name)
+        });
+}
+
+pub(crate) fn log_history_batch(state: &AppState, session_id: &str, records: Vec<HistoryRecord>) {
+    resolve_connection_context(state, session_id).log_batch_if_resolved(&state.db, records);
+}
+
+pub(crate) struct HistoryStatement<'a> {
+    pub(crate) session_id: &'a str,
+    pub(crate) sql_text: String,
+}
+
+pub(crate) async fn run_with_history<T>(
+    state: &AppState,
+    statement: HistoryStatement<'_>,
+    operation: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let started_at = Instant::now();
+    let result = operation.await;
+    let record = HistoryRecord::for_outcome(statement.sql_text, started_at, &result);
+    log_history_record(state, statement.session_id, record);
+    result
 }
 
 pub(crate) fn resolve_connection_context(

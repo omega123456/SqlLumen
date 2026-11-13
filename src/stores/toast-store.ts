@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { overflowingToasts, pushVisibleToast, removeToast } from './toast-store/toast-reducers'
 export type ToastVariant = 'success' | 'error' | 'warning'
 
 export interface ToastItem {
@@ -33,16 +34,9 @@ type ToastSetter = (
 ) => void
 
 function pushToast(set: ToastSetter, get: ToastGetter, item: ToastItem): string {
-  set((state) => {
-    const next = [...state.toasts, item]
-    while (next.length > MAX_VISIBLE) {
-      const removed = next.shift()
-      if (removed) {
-        clearScheduled(removed.id)
-      }
-    }
-    return { toasts: next }
-  })
+  const displacedToasts = overflowingToasts([...get().toasts, item], MAX_VISIBLE)
+  displacedToasts.forEach((toast) => clearScheduled(toast.id))
+  set((state) => pushVisibleToast(state, { toast: item, maxVisible: MAX_VISIBLE }))
   const id = item.id
   const timeout = setTimeout(() => {
     timeouts.delete(id)
@@ -105,7 +99,7 @@ export const useToastStore = create<ToastState>()((set, get) => ({
 
   dismiss: (id) => {
     clearScheduled(id)
-    set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) }))
+    set((state) => removeToast(state, id))
   },
 }))
 

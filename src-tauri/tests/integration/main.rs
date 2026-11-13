@@ -18,6 +18,7 @@ mod commands_connection_groups_integration;
 mod commands_connections_cascade_integration;
 mod commands_connections_integration;
 mod commands_helpers_integration;
+mod commands_history_wrappers_integration;
 mod commands_logs_integration;
 mod commands_mysql_credentials_integration;
 mod commands_query_e2e_integration;

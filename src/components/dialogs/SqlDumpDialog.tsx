@@ -23,53 +23,12 @@ import { isPlaywrightBuild } from '../../lib/tauri-env'
 import { isCancelInFlight, progressPercent } from '../../lib/job-progress'
 import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
 import { useBrowseFilePath } from '../../hooks/useBrowseFilePath'
-
-interface InitialTableSelectionRequest {
-  databases: ExportableDatabase[]
-  initialDatabase?: string
-  initialTable?: string
-}
-
-function buildInitialTableSelection({
-  databases,
-  initialDatabase,
-  initialTable,
-}: InitialTableSelectionRequest): Record<string, Set<string>> {
-  if (!initialDatabase) return {}
-  const database = databases.find((candidate) => candidate.name === initialDatabase)
-  if (!database) return {}
-  if (initialTable) return { [initialDatabase]: new Set([initialTable]) }
-  return { [initialDatabase]: new Set(database.tables.map((table) => table.name)) }
-}
-
-type TableSelection = Record<string, Set<string>>
-
-function toggleTableSelection(
-  selection: TableSelection,
-  dbName: string,
-  tableName: string
-): TableSelection {
-  const copy = { ...selection }
-  const tableNames = new Set(copy[dbName] ?? [])
-  const wasSelected = tableNames.has(tableName)
-  if (wasSelected) tableNames.delete(tableName)
-  if (!wasSelected) tableNames.add(tableName)
-  delete copy[dbName]
-  if (tableNames.size > 0) copy[dbName] = tableNames
-  return copy
-}
-
-function toggleDatabaseSelection(
-  selection: TableSelection,
-  database: ExportableDatabase
-): TableSelection {
-  const copy = { ...selection }
-  const allTableNames = database.tables.map((table) => table.name)
-  const isFullySelected = copy[database.name]?.size === allTableNames.length
-  delete copy[database.name]
-  if (!isFullySelected) copy[database.name] = new Set(allTableNames)
-  return copy
-}
+import {
+  buildInitialTableSelection,
+  toggleDatabaseSelection,
+  toggleTableSelection,
+  type TableSelection,
+} from './sql-dump-selection'
 
 function dumpDefaultFileName(initialDatabase: string | undefined, timestamp: number): string {
   if (initialDatabase) return `${initialDatabase}_dump_${timestamp}.sql`

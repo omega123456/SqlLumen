@@ -35,6 +35,15 @@ import { isConnectionOfProfile, useConnectionStore } from '../../stores/connecti
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import { logFrontendError } from '../../lib/app-log-commands'
 import styles from './CopyToHostDialog.module.css'
+import {
+  categoryNames,
+  expandedWithPopulatedCategories,
+  initialExpandedCategories,
+  selectionWithCategoryToggled,
+  selectionWithObjectToggled,
+  selectionWithPreselectedObject,
+  toggledSetMember,
+} from './copy-to-host-selection'
 import { isCancelInFlight, isTerminalJobStatus, progressPercent } from '../../lib/job-progress'
 import { useJobProgressPolling } from '../../hooks/useJobProgressPolling'
 import { toErrorMessage } from '../../lib/error-message'
@@ -103,13 +112,6 @@ export interface CopyToHostDialogProps {
 }
 
 /** Return the list of object names within a category from the loaded enumeration. */
-function categoryNames(objects: CopyableObjects, category: CopyObjectCategory): string[] {
-  if (category === 'tables') {
-    return objects.tables.map((table) => table.name)
-  }
-  return objects[category]
-}
-
 interface CopyDialogOptions {
   copyType: CopyType
   dropIfExists: boolean
@@ -153,23 +155,6 @@ interface PreselectionKey {
 function preselectionKey(preSelectedObject: CopyObjectSelection | undefined): PreselectionKey {
   if (!preSelectedObject) return { category: null, name: null }
   return { category: preSelectedObject.category, name: preSelectedObject.name }
-}
-
-function initialExpandedCategories(
-  preSelectedCategory: CopyObjectCategory | null
-): Set<CopyObjectCategory> {
-  if (!preSelectedCategory) return new Set()
-  return new Set([preSelectedCategory])
-}
-
-function toggledSetMember<Member>(members: Set<Member>, member: Member): Set<Member> {
-  const next = new Set(members)
-  if (next.has(member)) {
-    next.delete(member)
-    return next
-  }
-  next.add(member)
-  return next
 }
 
 function objectCountText(count: number): string {
@@ -701,7 +686,16 @@ const IDLE_COPY_RUN: CopyRunState = {
   cancelPending: false,
 }
 
-export default function CopyToHostDialog({
+function draftKeyFor(props: CopyToHostDialogProps): string {
+  const preSelectedCategory = props.preSelectedObject?.category ?? ''
+  return `${props.isOpen}:${preSelectedCategory}`
+}
+
+export default function CopyToHostDialog(props: CopyToHostDialogProps) {
+  return <CopyToHostDialogBody key={draftKeyFor(props)} {...props} />
+}
+
+function CopyToHostDialogBody({
   isOpen,
   onClose,
   sourceConnectionId,
@@ -745,19 +739,6 @@ export default function CopyToHostDialog({
   const { category: preSelectedCategory, name: preSelectedName } =
     preselectionKey(preSelectedObject)
 
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
-    setTargetSelection(EMPTY_TARGET_SELECTION)
-    setTargetListing(EMPTY_TARGET_LISTING)
-    setSelected(createEmptyCopySelection())
-    setExpandedCategories(initialExpandedCategories(preSelectedCategory))
-    setCopyOptions(DEFAULT_COPY_OPTIONS)
-    setCopyRun(IDLE_COPY_RUN)
-  }, [isOpen, preSelectedCategory])
-
   // Resolve the source host so we can exclude it (and read-only profiles) from the target picker.
   const sourceHost = useMemo(() => {
     const active = activeConnections[sourceConnectionId]
@@ -785,24 +766,10 @@ export default function CopyToHostDialog({
         const result = await listCopyableObjects(sourceConnectionId, sourceDatabase)
         if (cancelled) return
         setObjects(result)
-        // Expand all non-empty categories by default (plus any pre-selected category) so the
-        // objects are visible; empty categories stay collapsed.
-        setExpandedCategories((previous) => {
-          const next = new Set(previous)
-          for (const category of CATEGORY_ORDER) {
-            if (categoryNames(result, category).length > 0) next.add(category)
-          }
-          return next
-        })
+        setExpandedCategories((previous) => expandedWithPopulatedCategories(previous, result))
         if (preSelectedCategory && preSelectedName) {
-          const names = categoryNames(result, preSelectedCategory)
-          if (names.includes(preSelectedName)) {
-            setSelected((previous) => {
-              const next = { ...previous }
-              next[preSelectedCategory] = new Set([preSelectedName])
-              return next
-            })
-          }
+          const preselection = { category: preSelectedCategory, name: preSelectedName }
+          setSelected((previous) => selectionWithPreselectedObject(previous, result, preselection))
         }
       } catch (error) {
         if (cancelled) return
@@ -942,23 +909,17 @@ export default function CopyToHostDialog({
 
   // Toggle a single object within a category.
   const toggleObject = useCallback((category: CopyObjectCategory, name: string) => {
-    setSelected((previous) => ({
-      ...previous,
-      [category]: toggledSetMember(previous[category], name),
-    }))
+    setSelected((previous) =>
+      selectionWithObjectToggled(previous, { category: category, name: name })
+    )
   }, [])
 
   // Toggle all objects within a category (select-all checkbox).
   const toggleCategory = useCallback(
     (category: CopyObjectCategory) => {
       if (!objects) return
-      const names = categoryNames(objects, category)
-      setSelected((previous) => {
-        const next = { ...previous }
-        const isWholeCategorySelected = previous[category].size === names.length
-        next[category] = isWholeCategorySelected ? new Set() : new Set(names)
-        return next
-      })
+      const categoryToggle = { category: category, names: categoryNames(objects, category) }
+      setSelected((previous) => selectionWithCategoryToggled(previous, categoryToggle))
     },
     [objects]
   )

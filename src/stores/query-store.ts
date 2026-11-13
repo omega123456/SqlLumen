@@ -94,9 +94,26 @@ import {
 } from '../lib/query-execution-plan'
 import { isBlobEnvelope } from '../lib/blob-utils'
 import { isAiLockStatus, isEditorLockStatus } from '../lib/query-tab-status'
-import { hasModifiedColumns, hasPendingRowChanges } from '../lib/row-edit-state'
-import { isIndexInBounds, isPresentIndex } from '../lib/value-checks'
+import { hasModifiedColumns } from '../lib/row-edit-state'
+import { isPresentIndex } from '../lib/value-checks'
 import { describeQueryFailure, toErrorMessage } from '../lib/error-message'
+import { hasOpenExportDialog, hasResultAt, hasResults } from './query-store/result-lists'
+import {
+  canEvictInactiveResult,
+  shouldScheduleResultEviction,
+} from './query-store/result-residency'
+import {
+  closeQueryExportDialogs,
+  evictQueryResultRows,
+  patchExportJob as patchExportJobOf,
+  patchQueryResult,
+  patchQueryResultResidency,
+  patchQueryTab,
+  putExportJob,
+  removeExportJob,
+  removeQueryTabs,
+  setQueryResultsExpired,
+} from './query-store/query-tab-reducers'
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
@@ -542,25 +559,6 @@ const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
  * Get the active result from a tab, or DEFAULT_RESULT_STATE if none.
  * Exported for use by components.
  */
-function isSameResultList(next: SingleResultState[], current: SingleResultState[]): boolean {
-  return next.every((result, index) => result === current[index])
-}
-
-function hasResults(tab: TabQueryState | undefined): tab is TabQueryState {
-  if (!tab) return false
-  return tab.results.length > 0
-}
-
-function hasResultAt(tab: TabQueryState | undefined, resultIndex: number): tab is TabQueryState {
-  if (!tab) return false
-  return isIndexInBounds(resultIndex, tab.results.length)
-}
-
-function hasOpenExportDialog(tab: TabQueryState | undefined): boolean {
-  if (!tab) return false
-  return tab.results.some((result) => result.exportDialogOpen)
-}
-
 export function isTableDataInBottomPanel(
   tab: TabQueryState | undefined,
   tableTabId: string
@@ -1193,7 +1191,7 @@ export interface RowActionHandle {
   finish: () => boolean
 }
 
-interface QueryState {
+export interface QueryState {
   /** Per-tab state keyed by tab ID. */
   tabs: Record<string, TabQueryState>
 
@@ -1286,6 +1284,8 @@ interface QueryState {
 
   /** Mark every result of a tab expired (routes to the "Results expired" block). */
   markResultsExpired: (tabId: string) => void
+
+  markResultExpired: (tabId: string, resultIndex: number) => void
 
   /** Retry the failed window range of the active result (the Retry band). */
   retryResultWindow: (tabId: string) => void
@@ -1402,50 +1402,19 @@ export const useQueryStore = create<QueryState>()((set, get) => {
   const resultAt = (tabId: string, resultIndex: number): SingleResultState | undefined =>
     get().tabs[tabId]?.results[resultIndex]
 
-  const isDirtyResult = (result: SingleResultState | undefined): boolean =>
-    hasPendingRowChanges(result?.editState)
-
-  const isEvictableResult = (result: SingleResultState): boolean => {
-    const isResident = result.rowResidency.status === 'resident'
-    if (!isResident) return false
-    if (result.isExpired) return false
-    return !isDirtyResult(result)
-  }
-
-  const shouldScheduleEviction = (result: SingleResultState): boolean =>
-    isEvictableResult(result) && result.viewRowCount !== 0
-
-  const canEvictInactiveResult = (result: SingleResultState): boolean =>
-    !result.rowResidency.isActive && isEvictableResult(result)
-
-  /** Merge a partial update into a single tab's state. */
   const patchTab = (tabId: string, partial: Partial<TabQueryState>) => {
-    set((state) => ({
-      tabs: {
-        ...state.tabs,
-        [tabId]: { ...(state.tabs[tabId] ?? DEFAULT_TAB_STATE), ...partial },
-      },
-    }))
+    set((state) =>
+      patchQueryTab(state, { tabId: tabId, partial: partial, fallbackTab: DEFAULT_TAB_STATE })
+    )
   }
 
-  /** Patch a specific result by index within a tab's results array. */
   const patchResultByIndex = (
     tabId: string,
     resultIndex: number,
     partial: Partial<SingleResultState>
   ) => {
-    set((state) => {
-      const tab = state.tabs[tabId]
-      if (!hasResultAt(tab, resultIndex)) return state
-      const newResults = [...tab.results]
-      newResults[resultIndex] = { ...newResults[resultIndex], ...partial }
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: { ...tab, results: newResults },
-        },
-      }
-    })
+    const resultPatch = { tabId: tabId, resultIndex: resultIndex, partial: partial }
+    set((state) => patchQueryResult(state, resultPatch))
   }
 
   const cancelResultLifecycleTimer = (tabId: string, resultIndex: number) => {
@@ -1463,27 +1432,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     resultIndex: number,
     partial: Partial<FrontendRowResidencyState>
   ) => {
-    set((state) => {
-      const tab = state.tabs[tabId]
-      if (!hasResultAt(tab, resultIndex)) return state
-      const current = tab.results[resultIndex]
-      const nextResidency = {
-        ...current.rowResidency,
-        ...partial,
-      }
-      const nextResult = {
-        ...current,
-        rowResidency: nextResidency,
-      }
-      const nextResults = [...tab.results]
-      nextResults[resultIndex] = nextResult
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: { ...tab, results: nextResults },
-        },
-      }
-    })
+    const residencyPatch = { tabId: tabId, resultIndex: resultIndex, partial: partial }
+    set((state) => patchQueryResultResidency(state, residencyPatch))
   }
 
   /** Get the active result index for a tab (safe). */
@@ -1509,42 +1459,19 @@ export const useQueryStore = create<QueryState>()((set, get) => {
   }
 
   const patchExportJob = (tabId: string, partial: Partial<ResultExportJob>) => {
-    set((state) => {
-      const job = state.exportJobs[tabId]
-      if (!job) return state
-      return { exportJobs: { ...state.exportJobs, [tabId]: { ...job, ...partial } } }
-    })
+    set((state) => patchExportJobOf(state, { tabId: tabId, partial: partial }))
   }
 
   const dropExportJob = (tabId: string) => {
     stopExportPolling(tabId)
-    set((state) => {
-      if (!(tabId in state.exportJobs)) return state
-      const exportJobs = { ...state.exportJobs }
-      delete exportJobs[tabId]
-      return { exportJobs }
-    })
+    set((state) => removeExportJob(state, tabId))
   }
 
   const isExportDialogOpenForTab = (tabId: string): boolean =>
     hasOpenExportDialog(get().tabs[tabId])
 
   const closeExportDialogsForTab = (tabId: string) => {
-    set((state) => {
-      const tab = state.tabs[tabId]
-      if (!hasOpenExportDialog(tab)) return state
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: {
-            ...tab,
-            results: tab.results.map((result) =>
-              result.exportDialogOpen ? { ...result, exportDialogOpen: false } : result
-            ),
-          },
-        },
-      }
-    })
+    set((state) => closeQueryExportDialogs(state, tabId))
   }
 
   /** Cancel a backend job without waiting (tab closed, start raced a close). */
@@ -2096,47 +2023,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
   }
 
   const clearExpiredFlags = (tabId: string) => {
-    set((state) => {
-      const tab = state.tabs[tabId]
-      if (!hasResults(tab)) return state
-
-      const nextResults = tab.results.map((result) =>
-        result.isExpired ? { ...result, isExpired: false } : result
-      )
-
-      if (isSameResultList(nextResults, tab.results)) {
-        return state
-      }
-
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: { ...tab, results: nextResults },
-        },
-      }
-    })
+    set((state) => setQueryResultsExpired(state, { tabId: tabId, isExpired: false }))
   }
 
   const markTabResultsExpired = (tabId: string) => {
-    set((state) => {
-      const tab = state.tabs[tabId]
-      if (!hasResults(tab)) return state
-
-      const nextResults = tab.results.map((result) =>
-        result.isExpired ? result : { ...result, isExpired: true }
-      )
-
-      if (isSameResultList(nextResults, tab.results)) {
-        return state
-      }
-
-      return {
-        tabs: {
-          ...state.tabs,
-          [tabId]: { ...tab, results: nextResults },
-        },
-      }
-    })
+    set((state) => setQueryResultsExpired(state, { tabId: tabId, isExpired: true }))
   }
 
   /** Clear execution-time tracking fields after a query completes (success or error). */
@@ -3617,7 +3508,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         inactiveSince: Date.now(),
       })
 
-      if (!shouldScheduleEviction(result)) return
+      if (!shouldScheduleResultEviction(result)) return
 
       frontendCacheLifecycle.scheduleInactive(getResultSurfaceKey(tabId, targetIndex), () => {
         get().evictInactiveResultRows(tabId, targetIndex)
@@ -3626,40 +3517,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
     evictInactiveResultRows: (tabId: string, resultIndex: number) => {
       cancelResultLifecycleTimer(tabId, resultIndex)
-      set((state) => {
-        const tab = state.tabs[tabId]
-        if (!hasResultAt(tab, resultIndex)) return state
+      const result = resultAt(tabId, resultIndex)
+      if (!result) return
+      if (!canEvictInactiveResult(result)) return
 
-        const result = tab.results[resultIndex]
-        if (!canEvictInactiveResult(result)) return state
-
-        // Only the page cache is dropped; result metadata (counts, view, sort,
-        // filter, scroll position) stays so reactivation can refetch the window.
-        clearResultWindowPages(tabId, resultIndex)
-        const nextResults = [...tab.results]
-        nextResults[resultIndex] = {
-          ...result,
-          editingRowIndex: null,
-          editingBaseIndex: null,
-          editState: null,
-          pendingWindowRange: null,
-          rowsEvictedAt: Date.now(),
-          rowResidency: {
-            ...result.rowResidency,
-            status: 'evicted',
-          },
-        }
-
-        return {
-          tabs: {
-            ...state.tabs,
-            [tabId]: {
-              ...tab,
-              results: nextResults,
-            },
-          },
-        }
-      })
+      clearResultWindowPages(tabId, resultIndex)
+      const eviction = { tabId: tabId, resultIndex: resultIndex, evictedAt: Date.now() }
+      set((state) => evictQueryResultRows(state, eviction))
     },
 
     restoreEvictedResultRows: async (tabId: string, resultIndex?: number) => {
@@ -3760,11 +3624,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       evictResultsCmd(connectionId, tabId).catch((error) => {
         logFrontendError('[query-store] evictResults failed (cleanupTab):', error)
       })
-      set((state) => {
-        const newTabs = { ...state.tabs }
-        delete newTabs[tabId]
-        return { tabs: newTabs }
-      })
+      set((state) => removeQueryTabs(state, [tabId]))
     },
 
     cleanupConnection: (connectionId: string, tabIds: string[]) => {
@@ -3780,13 +3640,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           logFrontendError('[query-store] evictResults failed (cleanupConnection):', error)
         })
       }
-      set((state) => {
-        const newTabs = { ...state.tabs }
-        for (const id of tabIds) {
-          delete newTabs[id]
-        }
-        return { tabs: newTabs }
-      })
+      set((state) => removeQueryTabs(state, tabIds))
     },
 
     setViewMode: (tabId: string, mode: ViewMode) => {
@@ -3938,6 +3792,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       markTabResultsExpired(tabId)
     },
 
+    markResultExpired: (tabId: string, resultIndex: number) => {
+      patchResultByIndex(tabId, resultIndex, { isExpired: true })
+    },
+
     retryResultWindow: (tabId: string) => {
       retryFailedWindow(tabId, getActiveIndex(tabId))
     },
@@ -4009,21 +3867,17 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const queryId = resultAt(tabId, request.resultIndex)?.queryId ?? ''
       const startToken = ++nextExportStartToken
       stopExportPolling(tabId)
-      set((state) => ({
-        exportJobs: {
-          ...state.exportJobs,
-          [tabId]: {
-            ...request,
-            jobId: null,
-            queryId: queryId,
-            status: 'running',
-            progress: null,
-            cancelRequested: false,
-            error: null,
-            startToken: startToken,
-          },
-        },
-      }))
+      const startingJob: ResultExportJob = {
+        ...request,
+        jobId: null,
+        queryId: queryId,
+        status: 'running',
+        progress: null,
+        cancelRequested: false,
+        error: null,
+        startToken: startToken,
+      }
+      set((state) => putExportJob(state, { tabId: tabId, job: startingJob }))
       // Cancel patches the job (a new object), so match by token, not identity.
       const isStillThisJob = () => get().exportJobs[tabId]?.startToken === startToken
 

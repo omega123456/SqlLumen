@@ -8,10 +8,7 @@ use crate::mysql::table_designer::{
 use crate::state::AppState;
 use serde::Deserialize;
 
-#[cfg(not(coverage))]
-use crate::commands::query_history_bridge::resolve_connection_context;
-#[cfg(not(coverage))]
-use crate::db::history::NewHistoryEntry;
+use crate::commands::query_history_bridge::{run_with_history, HistoryStatement};
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 #[cfg(not(coverage))]
@@ -561,37 +558,50 @@ pub async fn apply_table_ddl_impl(
     Ok(())
 }
 
+fn designer_load_history_sql(request: &LoadTableForDesignerRequest) -> String {
+    let database = &request.database;
+    let table_name = &request.table_name;
+    format!(
+        "/* table designer */ SELECT ... FROM INFORMATION_SCHEMA FOR TABLE `{database}`.`{table_name}`"
+    )
+}
+
+pub async fn load_table_for_designer_with_history(
+    state: &AppState,
+    request: &LoadTableForDesignerRequest,
+) -> Result<DesignerTableSchema, String> {
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: designer_load_history_sql(request),
+    };
+    run_with_history(
+        state,
+        statement,
+        load_table_for_designer_impl(state, request),
+    )
+    .await
+}
+
+pub async fn apply_table_ddl_with_history(
+    state: &AppState,
+    request: &ApplyTableDdlRequest,
+) -> Result<(), String> {
+    let statement = HistoryStatement {
+        session_id: &request.connection_id,
+        sql_text: request.ddl.clone(),
+    };
+    run_with_history(state, statement, apply_table_ddl_impl(state, request)).await?;
+    invalidate_metadata_cache_for_applied_table_ddl(state, request);
+    Ok(())
+}
+
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn load_table_for_designer(
     payload: LoadTableForDesignerRequest,
     state: State<'_, AppState>,
 ) -> Result<DesignerTableSchema, String> {
-    let start = std::time::Instant::now();
-    let result = load_table_for_designer_impl(&state, &payload).await;
-
-    let duration_ms = start.elapsed().as_millis() as i64;
-    let database = &payload.database;
-    let table_name = &payload.table_name;
-    let sql_text = format!(
-        "/* table designer */ SELECT ... FROM INFORMATION_SCHEMA FOR TABLE `{database}`.`{table_name}`"
-    );
-
-    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
-        &state.db,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
-
-    result
+    load_table_for_designer_with_history(&state, &payload).await
 }
 
 #[cfg(not(coverage))]
@@ -608,28 +618,5 @@ pub async fn apply_table_ddl(
     payload: ApplyTableDdlRequest,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let start = std::time::Instant::now();
-    let result = apply_table_ddl_impl(&state, &payload).await;
-
-    if result.is_ok() {
-        invalidate_metadata_cache_for_applied_table_ddl(&state, &payload);
-    }
-
-    let duration_ms = start.elapsed().as_millis() as i64;
-
-    resolve_connection_context(&state, &payload.connection_id).log_single_entry_if_resolved(
-        &state.db,
-        |conn_id, database_name| NewHistoryEntry {
-            connection_id: conn_id,
-            database_name,
-            sql_text: payload.ddl,
-            duration_ms: Some(duration_ms),
-            row_count: Some(0),
-            affected_rows: Some(0),
-            success: result.is_ok(),
-            error_message: result.as_ref().err().cloned(),
-        },
-    );
-
-    result
+    apply_table_ddl_with_history(&state, &payload).await
 }

@@ -33,6 +33,20 @@ import { logFrontend, logFrontendError, logFrontendWarning } from '../lib/app-lo
 import { toErrorMessage } from '../lib/error-message'
 import { hasModifiedColumns } from '../lib/row-edit-state'
 import { isIndexInBounds } from '../lib/value-checks'
+import {
+  isConnectionOfProfile,
+  normalizeActiveConnectionOrder,
+} from './connection-store/active-connections'
+import {
+  applyProfileDefaultDatabase,
+  attachActiveConnection,
+  normalizeConnectionOrder,
+  reorderActiveConnections,
+  setConnectionStatus,
+  setSessionDatabase,
+} from './connection-store/connection-reducers'
+
+export { isConnectionOfProfile, normalizeActiveConnectionOrder }
 let listenersSetup = false
 
 /** Reset the listeners flag — for testing only */
@@ -40,7 +54,7 @@ export function _resetListenersSetup() {
   listenersSetup = false
 }
 
-interface ConnectionState {
+export interface ConnectionState {
   // Saved data (from backend)
   savedConnections: SavedConnection[]
   connectionGroups: ConnectionGroup[]
@@ -83,10 +97,6 @@ interface ConnectionState {
 const UNSAVED_EDITS_NOT_SAVED_TITLE = 'Connection not closed'
 const UNSAVED_EDITS_NOT_SAVED_MESSAGE =
   'Could not save pending edits. Fix or discard changes before closing.'
-
-export function isConnectionOfProfile(connection: ActiveConnection, profileId: string): boolean {
-  return connection.profile.id === profileId
-}
 
 async function saveRowBeforeClose(save: () => Promise<boolean>): Promise<boolean> {
   const saved = await save()
@@ -272,18 +282,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       serverVersion: session.serverVersion,
     }
 
-    set((state) => {
-      const activeConnections = { ...state.activeConnections, [session.sessionId]: active }
-      return {
-        activeConnections: activeConnections,
-        activeConnectionOrder: normalizeActiveConnectionOrder(
-          [...state.activeConnectionOrder, session.sessionId],
-          activeConnections
-        ),
-        activeTabId: session.sessionId,
-        error: null,
-      }
-    })
+    set((state) => attachActiveConnection(state, active))
     useWorkspaceStore.getState().openHistoryTab(session.sessionId, false)
     useWorkspaceStore.getState().openProcessListTab(session.sessionId)
     useWorkspaceStore.getState().setVisibleConnectionSession(session.sessionId)
@@ -396,25 +395,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
   },
 
   reorderActiveConnection: (id: string, insertIndex: number) => {
-    set((state) => {
-      const orderedIds = normalizeActiveConnectionOrder(
-        state.activeConnectionOrder,
-        state.activeConnections
-      )
-      const fromIndex = orderedIds.indexOf(id)
-      if (fromIndex < 0) {
-        return state
-      }
-      const clampedInsertIndex = Math.max(0, Math.min(insertIndex, orderedIds.length))
-      const next = [...orderedIds]
-      next.splice(fromIndex, 1)
-      const adjustedInsertIndex =
-        fromIndex < clampedInsertIndex ? clampedInsertIndex - 1 : clampedInsertIndex
-      next.splice(adjustedInsertIndex, 0, id)
-      return {
-        activeConnectionOrder: next,
-      }
-    })
+    set((state) => reorderActiveConnections(state, { sessionId: id, insertIndex: insertIndex }))
   },
 
   moveActiveConnection: (id: string, direction: 'left' | 'right') => {
@@ -436,29 +417,11 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
   },
 
   normalizeActiveConnectionOrder: () => {
-    set((state) => ({
-      activeConnectionOrder: normalizeActiveConnectionOrder(
-        state.activeConnectionOrder,
-        state.activeConnections
-      ),
-    }))
+    set(normalizeConnectionOrder)
   },
 
   updateConnectionStatus: (event: ConnectionStatusEvent) => {
-    set((state) => {
-      const existing = state.activeConnections[event.connectionId]
-      if (!existing) return state
-
-      return {
-        activeConnections: {
-          ...state.activeConnections,
-          [event.connectionId]: {
-            ...existing,
-            status: event.status,
-          },
-        },
-      }
-    })
+    set((state) => setConnectionStatus(state, event))
   },
 
   openDialog: () => set({ dialogOpen: true }),
@@ -477,15 +440,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
     const originalSessionDatabase = currentSessionDatabase
 
-    set((state) => ({
-      activeConnections: {
-        ...state.activeConnections,
-        [sessionId]: {
-          ...state.activeConnections[sessionId],
-          sessionDatabase: trimmedName,
-        },
-      },
-    }))
+    set((state) =>
+      setSessionDatabase(state, { sessionId: sessionId, sessionDatabase: trimmedName })
+    )
 
     try {
       await selectDatabaseIPC(sessionId, trimmedName)
@@ -494,15 +451,12 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       showErrorToast('Failed to switch database', message)
 
       if (get().activeConnections[sessionId]) {
-        set((state) => ({
-          activeConnections: {
-            ...state.activeConnections,
-            [sessionId]: {
-              ...state.activeConnections[sessionId],
-              sessionDatabase: originalSessionDatabase,
-            },
-          },
-        }))
+        set((state) =>
+          setSessionDatabase(state, {
+            sessionId: sessionId,
+            sessionDatabase: originalSessionDatabase,
+          })
+        )
       }
     }
   },
@@ -517,26 +471,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     const originalDefault = active.profile.defaultDatabase
     const updatedProfile = { ...active.profile, defaultDatabase: newDefaultDb }
 
-    const patchActivesForProfile = (
-      state: { activeConnections: Record<string, ActiveConnection> },
-      profile: SavedConnection
-    ): Record<string, ActiveConnection> => {
-      const next = { ...state.activeConnections }
-      for (const sid of Object.keys(next)) {
-        if (isConnectionOfProfile(next[sid], profileId)) {
-          next[sid] = { ...next[sid], profile }
-        }
-      }
-      return next
-    }
-
-    // Update in-memory optimistically (all sessions for this profile + saved list)
-    set((state) => ({
-      activeConnections: patchActivesForProfile(state, updatedProfile),
-      savedConnections: state.savedConnections.map((connection) =>
-        connection.id === profileId ? { ...connection, defaultDatabase: newDefaultDb } : connection
-      ),
-    }))
+    set((state) => applyProfileDefaultDatabase(state, updatedProfile))
 
     // Persist via IPC — revert in-memory state on failure
     try {
@@ -564,14 +499,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       const revertedProfile = { ...updatedProfile, defaultDatabase: originalDefault }
       const current = get().activeConnections[sessionId]
       if (current) {
-        set((state) => ({
-          activeConnections: patchActivesForProfile(state, revertedProfile),
-          savedConnections: state.savedConnections.map((connection) =>
-            connection.id === profileId
-              ? { ...connection, defaultDatabase: originalDefault }
-              : connection
-          ),
-        }))
+        set((state) => applyProfileDefaultDatabase(state, revertedProfile))
       }
     }
   },
@@ -599,31 +527,6 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     }
   },
 }))
-
-export function normalizeActiveConnectionOrder(
-  activeConnectionOrder: string[],
-  activeConnections: Record<string, ActiveConnection>
-): string[] {
-  const orderedIds: string[] = []
-  const seen = new Set<string>()
-
-  for (const sessionId of activeConnectionOrder) {
-    if (!activeConnections[sessionId]) continue
-    if (seen.has(sessionId)) continue
-    seen.add(sessionId)
-    orderedIds.push(sessionId)
-  }
-
-  for (const sessionId of Object.keys(activeConnections)) {
-    if (seen.has(sessionId)) {
-      continue
-    }
-    seen.add(sessionId)
-    orderedIds.push(sessionId)
-  }
-
-  return orderedIds
-}
 
 export function useIsConnectionReadOnly(connectionId: string): boolean {
   return useConnectionStore(

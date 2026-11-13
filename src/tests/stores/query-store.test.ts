@@ -2079,6 +2079,15 @@ describe('useQueryStore — row actions', () => {
     expect(flat('tab-exp').isExpired).toBe(true)
     useQueryStore.getState().retryResultWindow('missing')
   })
+
+  it('markResultExpired expires only the given result', () => {
+    useQueryStore.getState().setContent('tab-exp-one', 'SELECT 1')
+    patchResult('tab-exp-one', { queryId: 'q-exp-one' })
+    useQueryStore.getState().markResultExpired('tab-exp-one', 0)
+    expect(flat('tab-exp-one').isExpired).toBe(true)
+    useQueryStore.getState().markResultExpired('missing', 0)
+    expect(useQueryStore.getState().tabs.missing).toBeUndefined()
+  })
 })
 
 describe('useQueryStore — totalTimeMs propagation', () => {

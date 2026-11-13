@@ -232,7 +232,7 @@ pub async fn start_sql_dump_impl(
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(progress) = jobs.get_mut(&job_id_clone) {
-            finish_dump_job(progress, result);
+            progress.finish(result);
         }
     });
 
@@ -244,25 +244,6 @@ fn dump_object_type(table_type: &str) -> DumpObjectType {
         return DumpObjectType::View;
     }
     DumpObjectType::Table
-}
-
-fn finish_dump_job(progress: &mut DumpJobProgress, result: Result<u64, String>) {
-    progress.current_table = None;
-    progress.completed_at = Some(std::time::SystemTime::now());
-    if let Ok(bytes) = result {
-        progress.bytes_written = bytes;
-    }
-    if progress.cancel_requested {
-        progress.status = DumpJobStatus::Cancelled;
-        return;
-    }
-    match result {
-        Ok(_) => progress.status = DumpJobStatus::Completed,
-        Err(error) => {
-            progress.status = DumpJobStatus::Failed;
-            progress.error_message = Some(error);
-        }
-    }
 }
 
 fn execute_dump(
@@ -920,18 +901,28 @@ pub async fn list_exportable_objects(
     list_exportable_objects_impl(&state, &connection_id).await
 }
 
+fn open_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, String> {
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))
+}
+
+pub async fn start_sql_dump_on_connection(
+    state: &AppState,
+    input: StartDumpInput,
+) -> Result<String, String> {
+    let pool = open_pool(state, &input.connection_id)?;
+    start_sql_dump_impl(state, input, pool).await
+}
+
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn start_sql_dump(
     state: tauri::State<'_, AppState>,
     input: StartDumpInput,
 ) -> Result<String, String> {
-    let pool = state
-        .registry
-        .get_pool(&input.connection_id)
-        .ok_or_else(|| format!("Connection '{}' not found", input.connection_id))?;
-
-    start_sql_dump_impl(&state, input, pool).await
+    start_sql_dump_on_connection(&state, input).await
 }
 
 #[cfg(not(coverage))]
@@ -1064,15 +1055,7 @@ pub async fn start_sql_import_impl(
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some(progress) = jobs.get_mut(&job_id_clone) {
-                if progress.status == ImportJobStatus::Running {
-                    progress.status = ImportJobStatus::Failed;
-                    progress.errors.push(crate::state::ImportError {
-                        statement_index: 0,
-                        sql_preview: String::new(),
-                        error_message: error,
-                    });
-                    progress.completed_at = Some(std::time::SystemTime::now());
-                }
+                progress.fail_if_running(error);
             }
         }
     });
@@ -1115,23 +1098,24 @@ pub fn cancel_import_impl(state: &AppState, job_id: &str) -> Result<(), String> 
 // Thin Tauri command wrappers — SQL Import
 // ---------------------------------------------------------------------------
 
+pub async fn start_sql_import_on_connection(
+    state: &AppState,
+    input: StartImportInput,
+) -> Result<String, String> {
+    if state.registry.is_read_only(&input.connection_id) {
+        return Err("Cannot import SQL on a read-only connection".to_string());
+    }
+    let pool = open_pool(state, &input.connection_id)?;
+    start_sql_import_impl(state, input, pool).await
+}
+
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn start_sql_import(
     state: tauri::State<'_, AppState>,
     input: StartImportInput,
 ) -> Result<String, String> {
-    // Guard against read-only connections
-    if state.registry.is_read_only(&input.connection_id) {
-        return Err("Cannot import SQL on a read-only connection".to_string());
-    }
-
-    let pool = state
-        .registry
-        .get_pool(&input.connection_id)
-        .ok_or_else(|| format!("Connection '{}' not found", input.connection_id))?;
-
-    start_sql_import_impl(&state, input, pool).await
+    start_sql_import_on_connection(&state, input).await
 }
 
 #[cfg(not(coverage))]

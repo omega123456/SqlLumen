@@ -9,6 +9,19 @@ import { useSettingsStore } from './settings-store'
 import { logFrontend } from '../lib/app-log-commands'
 import { PERCENT_SCALE } from '../lib/units'
 import { toErrorMessage } from '../lib/error-message'
+import {
+  getPlatformState,
+  type ReadyToFinishAction,
+  type UpdatePlatform,
+} from './update-store/update-platform'
+import {
+  clearUpToDateStatus,
+  failInstall,
+  failRestart,
+  withDetectedPlatform,
+} from './update-store/update-reducers'
+
+export type { ReadyToFinishAction }
 
 const UP_TO_DATE_STATUS_RESET_DELAY_MS = 5_000
 export type UpdateStatus =
@@ -18,8 +31,6 @@ type UpdateProgressEvent =
   | { event: 'Started'; data?: { contentLength?: number } }
   | { event: 'Progress'; data: { chunkLength: number } }
   | { event: 'Finished' }
-
-type UpdatePlatform = 'macos' | 'windows' | 'linux' | 'unknown'
 
 const KNOWN_UPDATE_PLATFORMS: ReadonlySet<string | null | undefined> = new Set<UpdatePlatform>([
   'macos',
@@ -32,7 +43,6 @@ function isKnownUpdatePlatform(
 ): platformValue is UpdatePlatform {
   return KNOWN_UPDATE_PLATFORMS.has(platformValue)
 }
-export type ReadyToFinishAction = 'relaunch' | 'manual-quit'
 
 let periodicTimer: ReturnType<typeof setInterval> | null = null
 let resetStatusTimer: ReturnType<typeof setTimeout> | null = null
@@ -58,38 +68,6 @@ function resolveUpdatePlatform(platformValue: string | null | undefined): Update
   }
 
   return 'unknown'
-}
-
-function getReadyToFinishBehavior(
-  currentPlatform: UpdatePlatform,
-  availableVersion: string | null
-): {
-  readyToFinishAction: ReadyToFinishAction
-  readyToFinishCta: string
-  readyToFinishMessage: string
-} {
-  const version = availableVersion ?? 'the latest version'
-
-  if (currentPlatform === 'linux') {
-    return {
-      readyToFinishAction: 'manual-quit',
-      readyToFinishCta: 'Got it',
-      readyToFinishMessage: `Quit and reopen SqlLumen to finish installing version ${version}.`,
-    }
-  }
-
-  return {
-    readyToFinishAction: 'relaunch',
-    readyToFinishCta: 'Restart app',
-    readyToFinishMessage: `Restart SqlLumen to finish installing version ${version}.`,
-  }
-}
-
-function getPlatformState(currentPlatform: UpdatePlatform, availableVersion: string | null) {
-  return {
-    currentPlatform,
-    ...getReadyToFinishBehavior(currentPlatform, availableVersion),
-  }
 }
 
 async function detectPlatform(): Promise<UpdatePlatform> {
@@ -127,20 +105,7 @@ function scheduleUpToDateReset(set: (partial: Partial<UpdateState>) => void): vo
   })
   resetStatusTimer = setTimeout(() => {
     resetStatusTimer = null
-    useUpdateStore.setState((currentState) => {
-      if (currentState.status !== 'up-to-date') {
-        return currentState
-      }
-
-      return {
-        ...currentState,
-        status: 'idle',
-        availableVersion: null,
-        errorMessage: null,
-        updateObject: null,
-        ...getPlatformState(currentState.currentPlatform, null),
-      }
-    })
+    useUpdateStore.setState(clearUpToDateStatus)
   }, UP_TO_DATE_STATUS_RESET_DELAY_MS)
 }
 
@@ -222,7 +187,7 @@ function settleUpdateCheckFailure(set: UpdateStateSetter, failure: UpdateCheckFa
   resetUpdateState(set)
 }
 
-interface UpdateState {
+export interface UpdateState {
   status: UpdateStatus
   currentPlatform: UpdatePlatform
   readyToFinishAction: ReadyToFinishAction
@@ -250,10 +215,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
   updateObject: null,
 
   setCurrentPlatform: (platformValue: UpdatePlatform) => {
-    set((state) => ({
-      ...state,
-      ...getPlatformState(platformValue, state.availableVersion),
-    }))
+    set((state) => withDetectedPlatform(state, platformValue))
   },
 
   checkForUpdate: async (manual: boolean) => {
@@ -352,10 +314,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       set({ updateObject: null })
 
       const currentPlatform = await detectPlatform()
-      set((state) => ({
-        ...state,
-        ...getPlatformState(currentPlatform, state.availableVersion),
-      }))
+      set((state) => withDetectedPlatform(state, currentPlatform))
 
       if (currentPlatform === 'macos') {
         await relaunch()
@@ -373,12 +332,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     } catch (error) {
       const message = toErrorMessage(error)
       logFrontend('error', `[update-store] Install failed: ${message}`)
-      set((state) => ({
-        status: 'error',
-        errorMessage: message,
-        updateObject: null,
-        ...getPlatformState(state.currentPlatform, state.availableVersion),
-      }))
+      set((state) => failInstall(state, message))
     }
   },
 
@@ -389,10 +343,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
 
     try {
       const currentPlatform = await detectPlatform()
-      set((state) => ({
-        ...state,
-        ...getPlatformState(currentPlatform, state.availableVersion),
-      }))
+      set((state) => withDetectedPlatform(state, currentPlatform))
 
       if (currentPlatform === 'linux') {
         return
@@ -402,11 +353,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     } catch (error) {
       const message = toErrorMessage(error)
       logFrontend('error', `[update-store] Restart failed: ${message}`)
-      set((state) => ({
-        status: state.status === 'ready-to-finish' ? 'ready-to-finish' : 'error',
-        errorMessage: message,
-        ...getPlatformState(state.currentPlatform, state.availableVersion),
-      }))
+      set((state) => failRestart(state, message))
     }
   },
 

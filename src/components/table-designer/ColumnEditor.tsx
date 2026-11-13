@@ -1,188 +1,64 @@
-import { ArrowDown, ArrowUp, CaretDown, DotsSixVertical, Plus, Trash } from '@phosphor-icons/react'
+import { ArrowDown, ArrowUp, Plus, Trash } from '@phosphor-icons/react'
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
 } from 'react'
 import type { DefaultValueModel, TableDesignerColumnDef } from '../../types/schema'
-import {
-  useTableDesignerStore,
-  type TableDesignerTabState,
-} from '../../stores/table-designer-store'
+import { useTableDesignerStore, type DesignerFieldEdit } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
-import { Dropdown, type DropdownOption } from '../common/Dropdown'
-import { TextInput } from '../common/TextInput'
-import { Checkbox } from '../common/Checkbox'
-import {
-  MYSQL_TYPES,
-  getSignednessValue,
-  normalizeTypeModifier,
-  NUMERIC_TYPES,
-  supportsSignedness,
-  TYPES_WITHOUT_LENGTH,
-} from './table-designer-type-constants'
 import styles from './ColumnEditor.module.css'
-import { isIndexInBounds } from '../../lib/value-checks'
-import { isTargetWithin } from '../../lib/input-events'
+import {
+  REVERTIBLE_COLUMN_FIELDS,
+  cellsInDirection,
+  clampSelection,
+  editStartKey,
+  getSelectionAfterDelete,
+  getSelectionAfterReorder,
+  isLastEditableCell,
+  sameCellsBelow,
+  selectionMoves,
+  type ActiveCell,
+  type RowDrag,
+  type SelectionMoves,
+  type TraversalDirection,
+} from './column-editor-model'
+import { ColumnRow, type ColumnRowController, type DefaultCellControls } from './ColumnEditorRow'
+import { useColumnRowDrag, type RowMove } from './useColumnRowDrag'
 
 interface ColumnEditorProps {
   tabId: string
 }
 
-const TYPES_WITHOUT_LENGTH_SET = new Set(TYPES_WITHOUT_LENGTH)
-const NUMERIC_TYPE_SET = new Set(NUMERIC_TYPES)
+interface HeaderCell {
+  label: string
+  centred: boolean
+}
 
-// Row drag: pointer travel before a press becomes a drag, and targets that keep their own pointer
-const DRAG_THRESHOLD_PX = 4
-const DRAG_IGNORE_SELECTOR = 'input, textarea, select, button, a, [role="combobox"]'
-
-const SIGNEDNESS_DROPDOWN_OPTIONS: DropdownOption[] = [
-  { value: 'SIGNED', label: 'Signed' },
-  { value: 'UNSIGNED', label: 'Unsigned' },
+const HEADER_CELLS: HeaderCell[] = [
+  { label: '#', centred: true },
+  { label: 'Name', centred: false },
+  { label: 'Type', centred: false },
+  { label: 'Length', centred: false },
+  { label: 'Signed', centred: false },
+  { label: 'Nullable', centred: true },
+  { label: 'PK', centred: true },
+  { label: 'AI', centred: true },
+  { label: 'Default', centred: false },
+  { label: 'Comment', centred: false },
+  { label: '', centred: false },
 ]
 
-const TYPE_DROPDOWN_OPTIONS: DropdownOption[] = MYSQL_TYPES.map((type) => ({
-  value: type.name,
-  label: type.name,
-  description: type.group,
-}))
+const GHOST_ROW_LABEL_SPAN = HEADER_CELLS.length - 1
 
-const DEFAULT_MODE_OPTIONS: DropdownOption[] = [
-  { value: 'NO_DEFAULT', label: 'No default' },
-  { value: 'NULL_DEFAULT', label: 'NULL' },
-  { value: 'LITERAL', label: 'Custom' },
-  { value: 'EXPRESSION', label: 'Expression' },
-]
+type EditableKeyHandler = (event: ReactKeyboardEvent<HTMLElement>, cell: ActiveCell) => void
 
-type ColumnFieldKey = keyof Pick<
-  TableDesignerColumnDef,
-  | 'name'
-  | 'type'
-  | 'typeModifier'
-  | 'length'
-  | 'nullable'
-  | 'isPrimaryKey'
-  | 'isAutoIncrement'
-  | 'defaultValue'
-  | 'comment'
->
-
-type EditableCellKey = 'name' | 'type' | 'length' | 'signedness' | 'default' | 'comment'
-
-interface RevertibleColumnField {
-  field: keyof TableDesignerColumnDef
-  parseBaseline: (originalValue: string) => unknown
-}
-
-const keepBaselineText = (originalValue: string): unknown => originalValue
-
-const REVERTIBLE_COLUMN_FIELDS: Partial<Record<EditableCellKey, RevertibleColumnField>> = {
-  name: { field: 'name', parseBaseline: keepBaselineText },
-  length: { field: 'length', parseBaseline: keepBaselineText },
-  signedness: { field: 'typeModifier', parseBaseline: keepBaselineText },
-  comment: { field: 'comment', parseBaseline: keepBaselineText },
-  default: {
-    field: 'defaultValue',
-    parseBaseline: (originalValue) => JSON.parse(originalValue) as DefaultValueModel,
-  },
-}
-
-interface ActiveCell {
-  rowIndex: number
-  cellKey: EditableCellKey
-}
-
-const EDITABLE_CELL_ORDER: EditableCellKey[] = [
-  'name',
-  'type',
-  'length',
-  'signedness',
-  'default',
-  'comment',
-]
-
-function isTypeWithoutLength(type: string): boolean {
-  return TYPES_WITHOUT_LENGTH_SET.has(type.toUpperCase())
-}
-
-function isNumericType(type: string): boolean {
-  return NUMERIC_TYPE_SET.has(type.trim().toUpperCase())
-}
-
-function isSignednessNeutralToken(token: string): boolean {
-  return token !== '' && token.toUpperCase() !== 'UNSIGNED'
-}
-
-function stripSignedness(modifier: string | null | undefined): string {
-  return (modifier ?? '').trim().split(/\s+/).filter(isSignednessNeutralToken).join(' ')
-}
-
-function applySignedness(
-  modifier: string | null | undefined,
-  nextSignedness: 'SIGNED' | 'UNSIGNED'
-): string {
-  const preserved = stripSignedness(modifier)
-  return nextSignedness === 'UNSIGNED'
-    ? ['UNSIGNED', preserved].filter(Boolean).join(' ')
-    : preserved
-}
-
-function cloneComparable(value: unknown): string {
-  return JSON.stringify(value)
-}
-
-function isOriginalColumnFor(originalColumn: TableDesignerColumnDef, originalKey: string): boolean {
-  return originalColumn.name === originalKey || originalColumn.originalName === originalKey
-}
-
-function findOriginalColumn(
-  tabState: TableDesignerTabState,
-  column: TableDesignerColumnDef
-): TableDesignerColumnDef | null {
-  if (tabState.mode !== 'alter') return null
-  if (!tabState.originalSchema) return null
-
-  const originalKey = column.originalName || column.name
-  if (!originalKey) {
-    return null
-  }
-
-  return (
-    tabState.originalSchema.columns.find((originalColumn) =>
-      isOriginalColumnFor(originalColumn, originalKey)
-    ) ?? null
-  )
-}
-
-function isModifiedCell(
-  tabState: TableDesignerTabState,
-  column: TableDesignerColumnDef,
-  field: ColumnFieldKey
-): boolean {
-  const originalColumn = findOriginalColumn(tabState, column)
-  if (!originalColumn) {
-    return tabState.mode === 'alter'
-  }
-
-  if (field === 'typeModifier') {
-    return (
-      normalizeTypeModifier(column.type, column.typeModifier) !==
-      normalizeTypeModifier(originalColumn.type, originalColumn.typeModifier)
-    )
-  }
-
-  return cloneComparable(column[field]) !== cloneComparable(originalColumn[field])
-}
-
-function getDragShift(rowIndex: number, fromIndex: number, toIndex: number): number {
-  const isPassedByForwardDrag = fromIndex < rowIndex && rowIndex <= toIndex
-  if (isPassedByForwardDrag) return -1
-  const isPassedByBackwardDrag = toIndex <= rowIndex && rowIndex < fromIndex
-  if (isPassedByBackwardDrag) return 1
-  return 0
+function cellSelector(cell: ActiveCell): string {
+  return `[data-row-index="${cell.rowIndex}"][data-cell-key="${cell.cellKey}"]`
 }
 
 function isDisabledFormControl(element: HTMLElement): boolean {
@@ -193,91 +69,107 @@ function isDisabledFormControl(element: HTMLElement): boolean {
   return isFormControl && element.disabled
 }
 
-function getSelectionAfterReorder(
-  selectedIndex: number | null,
-  fromIndex: number,
-  toIndex: number
-): number | null {
-  if (selectedIndex === null) {
-    return null
-  }
-
-  if (selectedIndex === fromIndex) {
-    return toIndex
-  }
-
-  return selectedIndex + getDragShift(selectedIndex, fromIndex, toIndex)
+function isTextEntryInput(element: HTMLElement): element is HTMLInputElement {
+  return element instanceof HTMLInputElement && element.type !== 'checkbox'
 }
 
-function CellFrame({
-  modified,
-  testId,
-  children,
-}: {
-  modified: boolean
-  testId: string
-  children: React.ReactNode
-}) {
+function traversalDirection(event: ReactKeyboardEvent<HTMLElement>): TraversalDirection {
+  return event.shiftKey ? -1 : 1
+}
+
+function openOverrideTrigger(triggerRef: RefObject<HTMLButtonElement | null>) {
+  const trigger = triggerRef.current
+  if (!trigger) return
+  trigger.focus()
+  trigger.click()
+}
+
+function dragRowHeightStyle(drag: RowDrag | null): CSSProperties | undefined {
+  if (!drag) return undefined
+  return { '--drag-row-height': `${drag.rowHeight}px` } as CSSProperties
+}
+
+interface ColumnEditorToolbarProps {
+  moves: SelectionMoves
+  onAdd: () => void
+  onMove: (direction: TraversalDirection) => void
+  onDeleteSelected: () => void
+}
+
+function ColumnEditorToolbar({ moves, onAdd, onMove, onDeleteSelected }: ColumnEditorToolbarProps) {
   return (
-    <div className={styles.cellFrame} data-testid={testId}>
-      {modified && (
-        <span className={styles.modifiedTriangle} aria-hidden data-testid={`${testId}-modified`} />
-      )}
-      {children}
+    <div className={styles.toolbar}>
+      <Button size="sm" onClick={onAdd} data-testid="column-editor-add">
+        <Plus size={16} weight="regular" />
+        <span>Add column</span>
+      </Button>
+      <Button
+        variant="subtle"
+        size="sm"
+        onClick={() => onMove(-1)}
+        disabled={!moves.canMoveUp}
+        data-testid="column-editor-move-up"
+      >
+        <ArrowUp size={16} weight="regular" />
+        <span>Move up</span>
+      </Button>
+      <Button
+        variant="subtle"
+        size="sm"
+        onClick={() => onMove(1)}
+        disabled={!moves.canMoveDown}
+        data-testid="column-editor-move-down"
+      >
+        <ArrowDown size={16} weight="regular" />
+        <span>Move down</span>
+      </Button>
+      <span className={styles.toolbarDivider} aria-hidden />
+      <Button
+        variant="subtle"
+        size="sm"
+        dangerText
+        onClick={onDeleteSelected}
+        disabled={!moves.canDelete}
+        data-testid="column-editor-delete"
+      >
+        <Trash size={16} weight="regular" />
+        <span>Delete</span>
+      </Button>
     </div>
   )
 }
 
-const DEFAULT_VALUE_FACTORIES: Record<string, (text: string) => DefaultValueModel> = {
-  NO_DEFAULT: () => ({ tag: 'NO_DEFAULT' }),
-  NULL_DEFAULT: () => ({ tag: 'NULL_DEFAULT' }),
-  LITERAL: (text) => ({ tag: 'LITERAL', value: text }),
-  EXPRESSION: (text) => ({ tag: 'EXPRESSION', value: text }),
+function ColumnEditorHead() {
+  return (
+    <thead className={styles.tableHead}>
+      <tr>
+        {HEADER_CELLS.map(({ label, centred }, index) => (
+          <th
+            key={`${label}-${index}`}
+            className={`${styles.headerCell} ${centred ? styles.centred : ''}`}
+            scope="col"
+          >
+            {label}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  )
 }
 
-function defaultValueForMode(mode: string, text: string): DefaultValueModel {
-  const createDefault = DEFAULT_VALUE_FACTORIES[mode] ?? DEFAULT_VALUE_FACTORIES.EXPRESSION
-  return createDefault(text)
+function GhostAddRow({ onAdd }: { onAdd: () => void }) {
+  return (
+    <tr className={styles.ghostRow} onClick={onAdd} data-testid="column-editor-ghost-add">
+      <td className={styles.bodyCell}>+</td>
+      <td className={styles.bodyCell} colSpan={GHOST_ROW_LABEL_SPAN}>
+        Click to add new column...
+      </td>
+    </tr>
+  )
 }
 
-function isTextDefaultMode(mode: string): boolean {
-  return mode === 'LITERAL' || mode === 'EXPRESSION'
-}
-
-function defaultValueText(defaultValue: DefaultValueModel): string {
-  return 'value' in defaultValue ? defaultValue.value : ''
-}
-
-function dragShiftFor(drag: { from: number; to: number } | null, rowIndex: number): number {
-  return drag ? getDragShift(rowIndex, drag.from, drag.to) : 0
-}
-
-function columnRowClassName(isSelected: boolean, isDragSource: boolean): string {
-  return `${styles.row} ${isSelected ? styles.selectedRow : ''} ${
-    isDragSource ? styles.dragSource : ''
-  }`
-}
-
-function dragRowStyle(dragShift: number): React.CSSProperties | undefined {
-  if (!dragShift) return undefined
-  return { transform: `translateY(calc(${dragShift} * var(--drag-row-height)))` }
-}
-
-function ariaInvalidValue(error: string | undefined): 'true' | 'false' {
-  return error ? 'true' : 'false'
-}
-
-function selectedRowInputClass(isSelected: boolean, unselectedClass: string): string {
-  return isSelected ? styles.activeInput : unselectedClass
-}
-
-function selectionMoves(selectedIndex: number | null, columnCount: number) {
-  if (selectedIndex === null) return { canMoveUp: false, canMoveDown: false, canDelete: false }
-  return {
-    canMoveUp: selectedIndex > 0,
-    canMoveDown: selectedIndex < columnCount - 1,
-    canDelete: selectedIndex < columnCount,
-  }
+function rowKeyFor(column: TableDesignerColumnDef, columnIndex: number): string {
+  return `${column.originalName || 'new'}-${columnIndex}`
 }
 
 export function ColumnEditor({ tabId }: ColumnEditorProps) {
@@ -288,10 +180,6 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const updateColumn = useTableDesignerStore((state) => state.updateColumn)
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [drag, setDrag] = useState<{ from: number; to: number; rowHeight: number } | null>(null)
-  // Live pointer state; `to` stays null until the press passes the drag threshold
-  const rowDragRef = useRef<{ from: number; startY: number; to: number | null } | null>(null)
-  const suppressRowClickRef = useRef(false)
   const [defaultModeOverrideIndex, setDefaultModeOverrideIndex] = useState<number | null>(null)
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [pendingFocusCell, setPendingFocusCell] = useState<ActiveCell | null>(null)
@@ -303,242 +191,181 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const defaultOverrideOpenedRef = useRef(false)
 
   const columns = tabState?.currentSchema.columns ?? []
-  const validationErrors = tabState?.validationErrors ?? {}
+  const columnCount = columns.length
+  const effectiveSelectedIndex = clampSelection(selectedIndex, columnCount)
+  const moves = selectionMoves(effectiveSelectedIndex, columnCount)
 
-  const effectiveSelectedIndex = useMemo(() => {
-    if (selectedIndex === null) return null
-    if (columns.length === 0) return null
-
-    return Math.min(selectedIndex, columns.length - 1)
-  }, [columns.length, selectedIndex])
-
-  const { canMoveUp, canMoveDown, canDelete } = selectionMoves(
-    effectiveSelectedIndex,
-    columns.length
-  )
-
-  // Prototype `.dz-grid th`: #, Nullable, PK and AI are centred; the rest align left.
-  const headerCells = useMemo(
-    () => [
-      { label: '#', centred: true },
-      { label: 'Name', centred: false },
-      { label: 'Type', centred: false },
-      { label: 'Length', centred: false },
-      { label: 'Signed', centred: false },
-      { label: 'Nullable', centred: true },
-      { label: 'PK', centred: true },
-      { label: 'AI', centred: true },
-      { label: 'Default', centred: false },
-      { label: 'Comment', centred: false },
-      { label: '', centred: false },
-    ],
-    []
-  )
-
-  const getCellSelector = useCallback(
-    (rowIndex: number, cellKey: EditableCellKey) =>
-      `[data-row-index="${rowIndex}"][data-cell-key="${cellKey}"]`,
-    []
-  )
+  const reorderRows = ({ from, to }: RowMove) => {
+    reorderColumn(tabId, from, to)
+    setSelectedIndex((current) => getSelectionAfterReorder(current, from, to))
+  }
+  const rowDrag = useColumnRowDrag({
+    columnCount: columnCount,
+    onSelect: setSelectedIndex,
+    onReorder: reorderRows,
+  })
 
   const getCellElement = useCallback(
-    (rowIndex: number, cellKey: EditableCellKey) =>
-      containerRef.current?.querySelector<HTMLElement>(getCellSelector(rowIndex, cellKey)) ?? null,
-    [getCellSelector]
+    (cell: ActiveCell) =>
+      containerRef.current?.querySelector<HTMLElement>(cellSelector(cell)) ?? null,
+    []
   )
 
-  const isCellFocusable = useCallback(
-    (rowIndex: number, cellKey: EditableCellKey) => {
-      const element = getCellElement(rowIndex, cellKey)
-      if (!element) {
-        return false
-      }
-
-      return !isDisabledFormControl(element)
-    },
-    [getCellElement]
-  )
+  const isCellFocusable = (cell: ActiveCell): boolean => {
+    const element = getCellElement(cell)
+    if (!element) return false
+    return !isDisabledFormControl(element)
+  }
 
   const focusCell = useCallback(
     (target: ActiveCell) => {
-      const element = getCellElement(target.rowIndex, target.cellKey)
+      const element = getCellElement(target)
       if (!element) {
         setPendingFocusCell(target)
         return
       }
-
       element.focus()
-      const isTextEntryInput = element instanceof HTMLInputElement && element.type !== 'checkbox'
-      if (isTextEntryInput) {
+      if (isTextEntryInput(element)) {
         element.select()
       }
     },
     [getCellElement]
   )
 
-  const findAdjacentCell = useCallback(
-    (rowIndex: number, cellKey: EditableCellKey, direction: -1 | 1): ActiveCell | null => {
-      const currentCellIndex = EDITABLE_CELL_ORDER.indexOf(cellKey)
-      if (currentCellIndex === -1) {
-        return null
-      }
-
-      for (
-        let absoluteIndex = rowIndex * EDITABLE_CELL_ORDER.length + currentCellIndex + direction;
-        absoluteIndex >= 0;
-        absoluteIndex += direction
-      ) {
-        const nextRowIndex = Math.floor(absoluteIndex / EDITABLE_CELL_ORDER.length)
-        const nextCellIndex = absoluteIndex % EDITABLE_CELL_ORDER.length
-
-        if (!isIndexInBounds(nextRowIndex, columns.length)) {
-          break
-        }
-
-        const nextCellKey = EDITABLE_CELL_ORDER[nextCellIndex]
-        if (!nextCellKey) {
-          continue
-        }
-
-        if (isCellFocusable(nextRowIndex, nextCellKey)) {
-          return { rowIndex: nextRowIndex, cellKey: nextCellKey }
-        }
-      }
-
-      return null
-    },
-    [columns.length, isCellFocusable]
-  )
-
-  const findSameCellInNextRow = useCallback(
-    (rowIndex: number, cellKey: EditableCellKey): ActiveCell | null => {
-      for (let nextRowIndex = rowIndex + 1; nextRowIndex < columns.length; nextRowIndex += 1) {
-        if (isCellFocusable(nextRowIndex, cellKey)) {
-          return { rowIndex: nextRowIndex, cellKey: cellKey }
-        }
-      }
-
-      return null
-    },
-    [columns.length, isCellFocusable]
-  )
-
-  const setEditStartValue = (rowIndex: number, cellKey: EditableCellKey, value: string) => {
-    editStartValuesRef.current[`${rowIndex}:${cellKey}`] = value
+  const findAdjacentCell = (from: ActiveCell, direction: TraversalDirection) => {
+    const candidates = cellsInDirection({
+      from: from,
+      direction: direction,
+      columnCount: columnCount,
+    })
+    return candidates.find(isCellFocusable) ?? null
   }
 
-  const clearEditStartValue = (rowIndex: number, cellKey: EditableCellKey) => {
-    delete editStartValuesRef.current[`${rowIndex}:${cellKey}`]
+  const findSameCellInNextRow = (from: ActiveCell) =>
+    sameCellsBelow(from, columnCount).find(isCellFocusable) ?? null
+
+  const rememberEditStart = (cell: ActiveCell, value: string) => {
+    editStartValuesRef.current[editStartKey(cell)] = value
+  }
+
+  const forgetEditStart = (cell: ActiveCell) => {
+    delete editStartValuesRef.current[editStartKey(cell)]
+  }
+
+  const clearDefaultCellBlurTimers = () => {
+    defaultCellBlurTimersRef.current.forEach(clearTimeout)
+    defaultCellBlurTimersRef.current.clear()
+  }
+
+  const cancelDefaultCellBlur = (columnIndex: number) => {
+    const timer = defaultCellBlurTimersRef.current.get(columnIndex)
+    if (timer === undefined) return
+    clearTimeout(timer)
+    defaultCellBlurTimersRef.current.delete(columnIndex)
   }
 
   const scheduleDefaultCellBlur = (columnIndex: number) => {
     const timer = setTimeout(() => {
-      clearEditStartValue(columnIndex, 'default')
+      forgetEditStart({ rowIndex: columnIndex, cellKey: 'default' })
       defaultCellBlurTimersRef.current.delete(columnIndex)
     }, 0)
     defaultCellBlurTimersRef.current.set(columnIndex, timer)
   }
 
-  const cancelDefaultCellBlur = (columnIndex: number) => {
-    const timer = defaultCellBlurTimersRef.current.get(columnIndex)
-    if (timer !== undefined) {
-      clearTimeout(timer)
-      defaultCellBlurTimersRef.current.delete(columnIndex)
+  const captureDefaultBaseline = (columnIndex: number, defaultValue: DefaultValueModel) => {
+    cancelDefaultCellBlur(columnIndex)
+    const cell: ActiveCell = { rowIndex: columnIndex, cellKey: 'default' }
+    const hasNoBaseline = editStartValuesRef.current[editStartKey(cell)] === undefined
+    if (hasNoBaseline) {
+      rememberEditStart(cell, JSON.stringify(defaultValue))
     }
   }
 
-  const revertEditableField = (rowIndex: number, cellKey: EditableCellKey) => {
-    const originalValue = editStartValuesRef.current[`${rowIndex}:${cellKey}`]
-    if (originalValue === undefined) {
+  const handleOverrideOpenChange = (open: boolean) => {
+    if (open) {
+      defaultOverrideOpenedRef.current = true
       return
     }
+    if (defaultOverrideOpenedRef.current) {
+      setDefaultModeOverrideIndex(null)
+    }
+  }
 
-    const revertField = REVERTIBLE_COLUMN_FIELDS[cellKey]
+  const revertEditableField = (cell: ActiveCell) => {
+    const originalValue = editStartValuesRef.current[editStartKey(cell)]
+    if (originalValue === undefined) return
+    const revertField = REVERTIBLE_COLUMN_FIELDS[cell.cellKey]
     if (revertField) {
       updateColumn(tabId, {
-        index: rowIndex,
+        index: cell.rowIndex,
         field: revertField.field,
         value: revertField.parseBaseline(originalValue),
       })
     }
-
-    clearEditStartValue(rowIndex, cellKey)
+    forgetEditStart(cell)
   }
 
-  const handleEditableKeyDown = (
-    event: ReactKeyboardEvent<HTMLElement>,
-    rowIndex: number,
-    cellKey: EditableCellKey
-  ) => {
-    if (event.key === 'Tab') {
-      event.preventDefault()
-      clearEditStartValue(rowIndex, cellKey)
+  const appendColumnAndFocusName = (event: ReactKeyboardEvent<HTMLElement>) => {
+    addColumn(tabId)
+    event.currentTarget.blur()
+    setPendingFocusCell({ rowIndex: columnCount, cellKey: 'name' })
+  }
 
-      const nextCell = findAdjacentCell(rowIndex, cellKey, event.shiftKey ? -1 : 1)
-      if (nextCell) {
-        event.currentTarget.blur()
-        focusCell(nextCell)
-        return
-      }
-
-      const isTabbingPastLastCell =
-        !event.shiftKey && rowIndex === columns.length - 1 && cellKey === 'comment'
-      if (isTabbingPastLastCell) {
-        addColumn(tabId)
-        event.currentTarget.blur()
-        setPendingFocusCell({ rowIndex: columns.length, cellKey: 'name' })
-      }
-
+  const handleTabKey: EditableKeyHandler = (event, cell) => {
+    event.preventDefault()
+    forgetEditStart(cell)
+    const nextCell = findAdjacentCell(cell, traversalDirection(event))
+    if (nextCell) {
+      event.currentTarget.blur()
+      focusCell(nextCell)
       return
     }
-
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      clearEditStartValue(rowIndex, cellKey)
-      event.currentTarget.blur()
-
-      const nextRowCell = findSameCellInNextRow(rowIndex, cellKey)
-      if (nextRowCell) {
-        focusCell(nextRowCell)
-      }
-
-      return
+    const isTabbingPastLastCell = !event.shiftKey && isLastEditableCell(cell, columnCount)
+    if (isTabbingPastLastCell) {
+      appendColumnAndFocusName(event)
     }
+  }
 
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      revertEditableField(rowIndex, cellKey)
-      event.currentTarget.blur()
+  const handleEnterKey: EditableKeyHandler = (event, cell) => {
+    event.preventDefault()
+    forgetEditStart(cell)
+    event.currentTarget.blur()
+    const nextRowCell = findSameCellInNextRow(cell)
+    if (nextRowCell) {
+      focusCell(nextRowCell)
     }
+  }
+
+  const handleEscapeKey: EditableKeyHandler = (event, cell) => {
+    event.preventDefault()
+    revertEditableField(cell)
+    event.currentTarget.blur()
+  }
+
+  const editableKeyHandlers: Record<string, EditableKeyHandler> = {
+    Tab: handleTabKey,
+    Enter: handleEnterKey,
+    Escape: handleEscapeKey,
+  }
+
+  const handleEditableKeyDown: EditableKeyHandler = (event, cell) => {
+    editableKeyHandlers[event.key]?.(event, cell)
   }
 
   useEffect(() => {
-    if (!pendingFocusCell) {
-      return
-    }
-
+    if (!pendingFocusCell) return
     const handle = requestAnimationFrame(() => {
       focusCell(pendingFocusCell)
       setPendingFocusCell(null)
     })
-
-    return () => {
-      cancelAnimationFrame(handle)
-    }
-  }, [columns.length, focusCell, pendingFocusCell])
+    return () => cancelAnimationFrame(handle)
+  }, [columnCount, focusCell, pendingFocusCell])
 
   useEffect(() => {
-    if (defaultModeOverrideIndex !== null) {
-      defaultOverrideOpenedRef.current = false
-      const raf = requestAnimationFrame(() => {
-        const trigger = defaultOverrideTriggerRef.current
-        if (trigger) {
-          trigger.focus()
-          trigger.click()
-        }
-      })
-      return () => cancelAnimationFrame(raf)
-    }
+    if (defaultModeOverrideIndex === null) return
+    defaultOverrideOpenedRef.current = false
+    const handle = requestAnimationFrame(() => openOverrideTrigger(defaultOverrideTriggerRef))
+    return () => cancelAnimationFrame(handle)
   }, [defaultModeOverrideIndex])
 
   useEffect(() => {
@@ -553,659 +380,90 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     return null
   }
 
-  // Returns true if this cell is currently in active edit mode
-  const isActiveCell = (rowIndex: number, cellKey: string) =>
-    activeCell?.rowIndex === rowIndex && activeCell?.cellKey === cellKey
-
-  // Returns the CSS class (active or inactive) for a cell input
-  const getCellInputClass = (rowIndex: number, cellKey: string) =>
-    isActiveCell(rowIndex, cellKey) ? styles.activeInput : styles.inactiveInput
-
   const handleAddColumn = () => {
     addColumn(tabId)
-    setSelectedIndex(columns.length)
+    setSelectedIndex(columnCount)
   }
 
   const handleDeleteAtIndex = (columnIndex: number) => {
-    cancelDefaultCellBlur(columnIndex)
-    defaultCellBlurTimersRef.current.forEach(clearTimeout)
-    defaultCellBlurTimersRef.current.clear()
+    clearDefaultCellBlurTimers()
     deleteColumn(tabId, columnIndex)
     setDefaultModeOverrideIndex((current) => (current === columnIndex ? null : current))
-
-    setSelectedIndex((current) => {
-      if (current === null) {
-        return null
-      }
-
-      if (current === columnIndex) {
-        return columnIndex > 0 ? columnIndex - 1 : null
-      }
-
-      if (current > columnIndex) {
-        return current - 1
-      }
-
-      return current
-    })
+    setSelectedIndex((current) => getSelectionAfterDelete(current, columnIndex))
   }
 
-  const handleMoveSelected = (direction: -1 | 1) => {
-    if (effectiveSelectedIndex === null) {
-      return
-    }
+  const handleDeleteSelected = () => {
+    if (effectiveSelectedIndex === null) return
+    handleDeleteAtIndex(effectiveSelectedIndex)
+  }
 
+  const handleMoveSelected = (direction: TraversalDirection) => {
+    if (effectiveSelectedIndex === null) return
     const nextIndex = effectiveSelectedIndex + direction
     reorderColumn(tabId, effectiveSelectedIndex, nextIndex)
     setSelectedIndex(nextIndex)
   }
 
-  const finishRowDrag = (row: HTMLTableRowElement, commit: boolean) => {
-    const rowDrag = rowDragRef.current
-    rowDragRef.current = null
-    row.style.transform = ''
-    if (rowDrag?.to == null) return
+  const defaultCell: DefaultCellControls = {
+    overrideIndex: defaultModeOverrideIndex,
+    overrideTriggerRef: defaultOverrideTriggerRef,
+    captureBaseline: captureDefaultBaseline,
+    scheduleBlur: scheduleDefaultCellBlur,
+    openOverride: setDefaultModeOverrideIndex,
+    closeOverride: () => setDefaultModeOverrideIndex(null),
+    handleOverrideOpenChange: handleOverrideOpenChange,
+  }
 
-    const { from, to } = rowDrag
-    suppressRowClickRef.current = true
-    setDrag(null)
-    const hasMoved = from !== to
-    if (commit && hasMoved) {
-      reorderColumn(tabId, from, to)
-      setSelectedIndex((current) => getSelectionAfterReorder(current, from, to))
-    }
+  const isActiveCell = (cell: ActiveCell) =>
+    activeCell?.rowIndex === cell.rowIndex && activeCell?.cellKey === cell.cellKey
+
+  const controller: ColumnRowController = {
+    tabId: tabId,
+    tabState: tabState,
+    updateColumn: (edit: DesignerFieldEdit<TableDesignerColumnDef>) => updateColumn(tabId, edit),
+    activateCell: (cell: ActiveCell) => {
+      setSelectedIndex(cell.rowIndex)
+      setActiveCell(cell)
+    },
+    focusCellLater: setPendingFocusCell,
+    rememberEditStart: rememberEditStart,
+    forgetEditStart: forgetEditStart,
+    handleEditableKeyDown: handleEditableKeyDown,
+    isActiveCell: isActiveCell,
+    deleteColumn: handleDeleteAtIndex,
+    defaultCell: defaultCell,
   }
 
   return (
     <div className={styles.container} data-testid="column-editor" ref={containerRef}>
-      {/* Command bar (prototype `.p-cmd`): sm buttons, subtle except Add column */}
-      <div className={styles.toolbar}>
-        <Button size="sm" onClick={handleAddColumn} data-testid="column-editor-add">
-          <Plus size={16} weight="regular" />
-          <span>Add column</span>
-        </Button>
-        <Button
-          variant="subtle"
-          size="sm"
-          onClick={() => handleMoveSelected(-1)}
-          disabled={!canMoveUp}
-          data-testid="column-editor-move-up"
-        >
-          <ArrowUp size={16} weight="regular" />
-          <span>Move up</span>
-        </Button>
-        <Button
-          variant="subtle"
-          size="sm"
-          onClick={() => handleMoveSelected(1)}
-          disabled={!canMoveDown}
-          data-testid="column-editor-move-down"
-        >
-          <ArrowDown size={16} weight="regular" />
-          <span>Move down</span>
-        </Button>
-        <span className={styles.toolbarDivider} aria-hidden />
-        <Button
-          variant="subtle"
-          size="sm"
-          dangerText
-          onClick={() => {
-            if (effectiveSelectedIndex !== null) {
-              handleDeleteAtIndex(effectiveSelectedIndex)
-            }
-          }}
-          disabled={!canDelete}
-          data-testid="column-editor-delete"
-        >
-          <Trash size={16} weight="regular" />
-          <span>Delete</span>
-        </Button>
-      </div>
+      <ColumnEditorToolbar
+        moves={moves}
+        onAdd={handleAddColumn}
+        onMove={handleMoveSelected}
+        onDeleteSelected={handleDeleteSelected}
+      />
 
       <div className={styles.gridCard}>
         <div className={styles.tableScroller} data-testid="column-editor-scroller">
           <table className={styles.table}>
-            <thead className={styles.tableHead}>
-              <tr>
-                {headerCells.map(({ label, centred }, index) => (
-                  <th
-                    key={`${label}-${index}`}
-                    className={`${styles.headerCell} ${centred ? styles.centred : ''}`}
-                    scope="col"
-                  >
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+            <ColumnEditorHead />
             <tbody
-              className={`${styles.tableBody} ${drag ? styles.dragging : ''}`}
-              style={
-                drag
-                  ? ({ '--drag-row-height': `${drag.rowHeight}px` } as React.CSSProperties)
-                  : undefined
-              }
+              className={`${styles.tableBody} ${rowDrag.drag ? styles.dragging : ''}`}
+              style={dragRowHeightStyle(rowDrag.drag)}
             >
-              {columns.map((column, columnIndex) => {
-                const nameError = validationErrors[`columns.${columnIndex}.name`]
-                const isSelected = effectiveSelectedIndex === columnIndex
-                const dragShift = dragShiftFor(drag, columnIndex)
-                const lengthDisabled = isTypeWithoutLength(column.type)
-                const signednessDisabled = !supportsSignedness(column.type)
-                const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
-                const signednessValue = getSignednessValue(column.type, column.typeModifier)
-
-                const isDefaultOverride = defaultModeOverrideIndex === columnIndex
-                const defaultMode = column.defaultValue.tag
-                const defaultText = defaultValueText(column.defaultValue)
-                const showDefaultDropdown = isDefaultOverride || !isTextDefaultMode(defaultMode)
-
-                const captureDefaultBaseline = () => {
-                  cancelDefaultCellBlur(columnIndex)
-                  const key = `${columnIndex}:default`
-                  const hasNoBaseline = editStartValuesRef.current[key] === undefined
-                  if (hasNoBaseline) {
-                    setEditStartValue(columnIndex, 'default', JSON.stringify(column.defaultValue))
-                  }
-                }
-
-                const applyDefaultModeChange = (nextMode: string) => {
-                  setDefaultModeOverrideIndex(null)
-                  updateColumn(tabId, {
-                    index: columnIndex,
-                    field: 'defaultValue',
-                    value: defaultValueForMode(nextMode, defaultText),
-                  })
-                  if (isTextDefaultMode(nextMode)) {
-                    setPendingFocusCell({ rowIndex: columnIndex, cellKey: 'default' })
-                  }
-                }
-
-                return (
-                  <tr
-                    key={`${column.originalName || 'new'}-${columnIndex}`}
-                    className={columnRowClassName(isSelected, drag?.from === columnIndex)}
-                    style={dragRowStyle(dragShift)}
-                    data-testid={`column-row-${columnIndex}`}
-                    onClick={() => {
-                      // The click that ends a drag must not select the row's old index
-                      if (suppressRowClickRef.current) {
-                        suppressRowClickRef.current = false
-                        return
-                      }
-                      setSelectedIndex(columnIndex)
-                    }}
-                    onPointerDown={(event) => {
-                      suppressRowClickRef.current = false
-                      if (event.button !== 0) return
-                      if (isTargetWithin(event.target, DRAG_IGNORE_SELECTOR)) return
-                      event.preventDefault()
-                      event.currentTarget.setPointerCapture(event.pointerId)
-                      rowDragRef.current = { from: columnIndex, startY: event.clientY, to: null }
-                    }}
-                    onPointerMove={(event) => {
-                      const rowDrag = rowDragRef.current
-                      if (!rowDrag) return
-                      const offset = event.clientY - rowDrag.startY
-                      const isBelowDragThreshold =
-                        rowDrag.to === null && Math.abs(offset) < DRAG_THRESHOLD_PX
-                      if (isBelowDragThreshold) return
-                      // The grabbed row follows the pointer directly; the others slide via React
-                      const row = event.currentTarget
-                      row.style.transform = `translateY(${offset}px)`
-                      const rowHeight = row.offsetHeight || 1
-                      const to = Math.min(
-                        Math.max(rowDrag.from + Math.round(offset / rowHeight), 0),
-                        columns.length - 1
-                      )
-                      rowDrag.to = to
-                      setDrag((current) =>
-                        current?.to === to
-                          ? current
-                          : { from: rowDrag.from, to: to, rowHeight: rowHeight }
-                      )
-                    }}
-                    onPointerUp={(event) => finishRowDrag(event.currentTarget, true)}
-                    onPointerCancel={(event) => finishRowDrag(event.currentTarget, false)}
-                  >
-                    {/* The row number swaps for the drag handle on hover (rows are draggable) */}
-                    <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>
-                      <span className={styles.rowAccent} aria-hidden />
-                      <span className={styles.rowNumber}>{columnIndex + 1}</span>
-                      <span className={styles.dragHandle} aria-hidden>
-                        <DotsSixVertical size={16} weight="bold" />
-                      </span>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'name')}
-                        testId={`cell-${columnIndex}-name`}
-                      >
-                        <TextInput
-                          type="text"
-                          variant="tableCell"
-                          value={column.name}
-                          invalid={!!nameError}
-                          className={`${selectedRowInputClass(
-                            isSelected,
-                            getCellInputClass(columnIndex, 'name')
-                          )} ${styles.nameInput}`}
-                          aria-invalid={ariaInvalidValue(nameError)}
-                          title={nameError}
-                          data-row-index={columnIndex}
-                          data-cell-key="name"
-                          data-testid={`column-name-${columnIndex}`}
-                          onFocus={() => {
-                            setSelectedIndex(columnIndex)
-                            setActiveCell({ rowIndex: columnIndex, cellKey: 'name' })
-                            setEditStartValue(columnIndex, 'name', column.name)
-                          }}
-                          onBlur={() => clearEditStartValue(columnIndex, 'name')}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'name')}
-                          onChange={(event) =>
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'name',
-                              value: event.target.value,
-                            })
-                          }
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'type')}
-                        testId={`cell-${columnIndex}-type`}
-                      >
-                        <div onClick={(event) => event.stopPropagation()}>
-                          <Dropdown
-                            id={`column-type-${tabId}-${columnIndex}`}
-                            ariaLabel="MySQL type"
-                            options={TYPE_DROPDOWN_OPTIONS}
-                            value={column.type}
-                            data-testid={`column-type-${columnIndex}`}
-                            focusListOnOpen={false}
-                            triggerProps={{
-                              'data-row-index': columnIndex,
-                              'data-cell-key': 'type',
-                              onClick: (event) => {
-                                event.stopPropagation()
-                              },
-                            }}
-                            onChange={(nextType) => {
-                              updateColumn(tabId, {
-                                index: columnIndex,
-                                field: 'type',
-                                value: nextType,
-                              })
-                              const canKeepAutoIncrement =
-                                isNumericType(nextType) && column.isPrimaryKey
-                              const mustClearAutoIncrement =
-                                column.isAutoIncrement && !canKeepAutoIncrement
-                              if (mustClearAutoIncrement) {
-                                updateColumn(tabId, {
-                                  index: columnIndex,
-                                  field: 'isAutoIncrement',
-                                  value: false,
-                                })
-                              }
-                            }}
-                            onTriggerFocus={() => {
-                              setSelectedIndex(columnIndex)
-                              setActiveCell({ rowIndex: columnIndex, cellKey: 'type' })
-                            }}
-                            onTriggerKeyDown={(event) =>
-                              handleEditableKeyDown(event, columnIndex, 'type')
-                            }
-                            triggerClassName={`${styles.cellInput} ${styles.typeInput} ${selectedRowInputClass(
-                              isSelected,
-                              styles.inactiveInput
-                            )}`}
-                          />
-                        </div>
-                      </CellFrame>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'length')}
-                        testId={`cell-${columnIndex}-length`}
-                      >
-                        <TextInput
-                          type="text"
-                          variant="tableCell"
-                          value={column.length}
-                          disabled={lengthDisabled}
-                          className={`${selectedRowInputClass(
-                            isSelected,
-                            getCellInputClass(columnIndex, 'length')
-                          )} ${styles.lengthInput}`}
-                          data-row-index={columnIndex}
-                          data-cell-key="length"
-                          data-testid={`column-length-${columnIndex}`}
-                          onFocus={() => {
-                            setSelectedIndex(columnIndex)
-                            setActiveCell({ rowIndex: columnIndex, cellKey: 'length' })
-                            setEditStartValue(columnIndex, 'length', column.length)
-                          }}
-                          onBlur={() => clearEditStartValue(columnIndex, 'length')}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => handleEditableKeyDown(event, columnIndex, 'length')}
-                          onChange={(event) =>
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'length',
-                              value: event.target.value,
-                            })
-                          }
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'typeModifier')}
-                        testId={`cell-${columnIndex}-signedness`}
-                      >
-                        <Dropdown
-                          id={`column-signedness-${tabId}-${columnIndex}`}
-                          ariaLabel="Signedness"
-                          options={SIGNEDNESS_DROPDOWN_OPTIONS}
-                          value={signednessValue}
-                          disabled={signednessDisabled}
-                          data-testid={`column-signedness-${columnIndex}`}
-                          triggerProps={{
-                            'data-row-index': columnIndex,
-                            'data-cell-key': 'signedness',
-                            onClick: (event) => {
-                              event.stopPropagation()
-                            },
-                          }}
-                          onChange={(value) => {
-                            const nextSignedness = value === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'typeModifier',
-                              value: applySignedness(column.typeModifier, nextSignedness),
-                            })
-                          }}
-                          onTriggerFocus={() => {
-                            setSelectedIndex(columnIndex)
-                            setActiveCell({ rowIndex: columnIndex, cellKey: 'signedness' })
-                            setEditStartValue(columnIndex, 'signedness', column.typeModifier ?? '')
-                          }}
-                          onTriggerBlur={() => clearEditStartValue(columnIndex, 'signedness')}
-                          onTriggerKeyDown={(event) =>
-                            handleEditableKeyDown(event, columnIndex, 'signedness')
-                          }
-                          triggerClassName={`${styles.cellInput} ${styles.signedInput} ${selectedRowInputClass(
-                            isSelected,
-                            styles.inactiveInput
-                          )}`}
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'nullable')}
-                        testId={`cell-${columnIndex}-nullable`}
-                      >
-                        <Checkbox
-                          checked={column.nullable}
-                          data-testid={`column-nullable-${columnIndex}`}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => {
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'nullable',
-                              value: event.target.checked,
-                            })
-                          }}
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'isPrimaryKey')}
-                        testId={`cell-${columnIndex}-pk`}
-                      >
-                        <Checkbox
-                          checked={column.isPrimaryKey}
-                          data-testid={`column-pk-${columnIndex}`}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => {
-                            const checked = event.target.checked
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'isPrimaryKey',
-                              value: checked,
-                            })
-                            if (checked) {
-                              updateColumn(tabId, {
-                                index: columnIndex,
-                                field: 'nullable',
-                                value: false,
-                              })
-                              return
-                            }
-                            if (column.isAutoIncrement) {
-                              updateColumn(tabId, {
-                                index: columnIndex,
-                                field: 'isAutoIncrement',
-                                value: false,
-                              })
-                            }
-                          }}
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'isAutoIncrement')}
-                        testId={`cell-${columnIndex}-ai`}
-                      >
-                        <Checkbox
-                          checked={column.isAutoIncrement}
-                          disabled={!autoIncrementEnabled}
-                          data-testid={`column-ai-${columnIndex}`}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => {
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'isAutoIncrement',
-                              value: event.target.checked,
-                            })
-                          }}
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'defaultValue')}
-                        testId={`cell-${columnIndex}-defaultValue`}
-                      >
-                        <div
-                          className={styles.defaultValueCell}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {showDefaultDropdown ? (
-                            <Dropdown
-                              id={`column-default-${tabId}-${columnIndex}`}
-                              ariaLabel="Default value"
-                              options={DEFAULT_MODE_OPTIONS}
-                              value={defaultMode}
-                              focusListOnOpen={false}
-                              data-testid={`column-default-${columnIndex}`}
-                              triggerProps={{
-                                'data-row-index': columnIndex,
-                                'data-cell-key': 'default',
-                                onClick: (event) => {
-                                  event.stopPropagation()
-                                },
-                              }}
-                              triggerClassName={`${styles.cellInput} ${selectedRowInputClass(
-                                isSelected,
-                                styles.inactiveInput
-                              )}`}
-                              onTriggerFocus={() => {
-                                captureDefaultBaseline()
-                                setSelectedIndex(columnIndex)
-                                setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
-                              }}
-                              onTriggerBlur={() => scheduleDefaultCellBlur(columnIndex)}
-                              onTriggerKeyDown={(event) => {
-                                if (isDefaultOverride) {
-                                  const isOverrideExitKey =
-                                    event.key === 'Tab' || event.key === 'Escape'
-                                  if (isOverrideExitKey) {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    setDefaultModeOverrideIndex(null)
-                                    setPendingFocusCell({
-                                      rowIndex: columnIndex,
-                                      cellKey: 'default',
-                                    })
-                                    return
-                                  }
-                                }
-                                handleEditableKeyDown(event, columnIndex, 'default')
-                              }}
-                              onChange={applyDefaultModeChange}
-                              onOpenChange={
-                                isDefaultOverride
-                                  ? (open: boolean) => {
-                                      if (open) {
-                                        defaultOverrideOpenedRef.current = true
-                                        return
-                                      }
-                                      if (defaultOverrideOpenedRef.current) {
-                                        setDefaultModeOverrideIndex(null)
-                                      }
-                                    }
-                                  : undefined
-                              }
-                              ref={isDefaultOverride ? defaultOverrideTriggerRef : undefined}
-                            />
-                          ) : (
-                            <div className={styles.defaultValueInputContainer}>
-                              <TextInput
-                                type="text"
-                                variant="tableCell"
-                                value={defaultText}
-                                data-testid={`column-default-input-${columnIndex}`}
-                                data-row-index={columnIndex}
-                                data-cell-key="default"
-                                className={selectedRowInputClass(
-                                  isSelected,
-                                  getCellInputClass(columnIndex, 'default')
-                                )}
-                                onFocus={() => {
-                                  captureDefaultBaseline()
-                                  setSelectedIndex(columnIndex)
-                                  setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
-                                }}
-                                onBlur={() => scheduleDefaultCellBlur(columnIndex)}
-                                onClick={(event) => event.stopPropagation()}
-                                onChange={(event) => {
-                                  updateColumn(tabId, {
-                                    index: columnIndex,
-                                    field: 'defaultValue',
-                                    value: {
-                                      tag: defaultMode as 'LITERAL' | 'EXPRESSION',
-                                      value: event.target.value,
-                                    },
-                                  })
-                                }}
-                                onKeyDown={(event) => {
-                                  const isDefaultModeShortcut =
-                                    event.altKey && event.key === 'ArrowDown'
-                                  if (isDefaultModeShortcut) {
-                                    event.preventDefault()
-                                    setDefaultModeOverrideIndex(columnIndex)
-                                    return
-                                  }
-                                  handleEditableKeyDown(event, columnIndex, 'default')
-                                }}
-                              />
-                              <Button
-                                tabIndex={-1}
-                                aria-label="Change default mode"
-                                data-testid={`column-default-mode-${columnIndex}`}
-                                className={styles.defaultModeIconButton}
-                                onClick={() => setDefaultModeOverrideIndex(columnIndex)}
-                              >
-                                <CaretDown size={16} weight="bold" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </CellFrame>
-                    </td>
-                    <td className={styles.bodyCell}>
-                      <CellFrame
-                        modified={isModifiedCell(tabState, column, 'comment')}
-                        testId={`cell-${columnIndex}-comment`}
-                      >
-                        <TextInput
-                          type="text"
-                          variant="tableCell"
-                          value={column.comment}
-                          className={`${selectedRowInputClass(
-                            isSelected,
-                            getCellInputClass(columnIndex, 'comment')
-                          )} ${styles.commentInput}`}
-                          data-row-index={columnIndex}
-                          data-cell-key="comment"
-                          data-testid={`column-comment-${columnIndex}`}
-                          onFocus={() => {
-                            setSelectedIndex(columnIndex)
-                            setActiveCell({ rowIndex: columnIndex, cellKey: 'comment' })
-                            setEditStartValue(columnIndex, 'comment', column.comment)
-                          }}
-                          onBlur={() => clearEditStartValue(columnIndex, 'comment')}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) =>
-                            handleEditableKeyDown(event, columnIndex, 'comment')
-                          }
-                          onChange={(event) =>
-                            updateColumn(tabId, {
-                              index: columnIndex,
-                              field: 'comment',
-                              value: event.target.value,
-                            })
-                          }
-                        />
-                      </CellFrame>
-                    </td>
-                    <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                      <Button
-                        variant="subtle"
-                        size="sm"
-                        dangerText
-                        iconOnly
-                        aria-label={`Delete column ${column.name || columnIndex + 1}`}
-                        data-testid={`column-delete-${columnIndex}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDeleteAtIndex(columnIndex)
-                        }}
-                      >
-                        <Trash size={14} weight="bold" />
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
-
-              <tr
-                className={styles.ghostRow}
-                onClick={handleAddColumn}
-                data-testid="column-editor-ghost-add"
-              >
-                <td className={styles.bodyCell}>+</td>
-                <td className={styles.bodyCell} colSpan={10}>
-                  Click to add new column...
-                </td>
-              </tr>
+              {columns.map((column, columnIndex) => (
+                <ColumnRow
+                  key={rowKeyFor(column, columnIndex)}
+                  row={{
+                    column: column,
+                    columnIndex: columnIndex,
+                    isSelected: effectiveSelectedIndex === columnIndex,
+                  }}
+                  controller={controller}
+                  rowDrag={rowDrag}
+                />
+              ))}
+              <GhostAddRow onAdd={handleAddColumn} />
             </tbody>
           </table>
         </div>

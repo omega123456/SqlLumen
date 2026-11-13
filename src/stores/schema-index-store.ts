@@ -12,6 +12,17 @@ import { hasTauriApis } from '../lib/tauri-env'
 
 import { logFrontend, logFrontendError } from '../lib/app-log-commands'
 import { toErrorMessage } from '../lib/error-message'
+import {
+  adoptSiblingBuild,
+  isBuildingOrReady,
+  markIndexBuildFailed,
+  markIndexBuilding,
+  registerIndexSession,
+  setReportedIndexStatus,
+  settleTriggeredBuildStatus,
+  unregisterIndexSession,
+  updateSessions,
+} from './schema-index-store/schema-index-reducers'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,7 +50,7 @@ export interface SchemaIndexProgress {
   tablesTotal: number
 }
 
-interface SchemaIndexStore {
+export interface SchemaIndexStore {
   // State
   connections: Record<string, ConnectionIndexState>
   profileToSessions: Record<string, string[]>
@@ -70,35 +81,6 @@ export function _resetSchemaIndexStoreForTest(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Default connection index state
-// ---------------------------------------------------------------------------
-
-function isBuildingOrReady(
-  connection: ConnectionIndexState | undefined
-): connection is ConnectionIndexState {
-  if (!connection) return false
-  return connection.status === 'building' || connection.status === 'ready'
-}
-
-function isBuildingOrStale(connection: ConnectionIndexState): boolean {
-  return connection.status === 'building' || connection.status === 'stale'
-}
-
-function createDefaultConnectionIndexState(): ConnectionIndexState {
-  return {
-    status: 'stale',
-    phase: null,
-    tablesDone: 0,
-    tablesTotal: 0,
-    lastBuildTimestamp: 0,
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Shared helper for event handlers
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -110,13 +92,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     const sessions = get().profileToSessions[profileId] ?? []
     if (sessions.length === 0) return
 
-    set((state) => {
-      const newConnections = { ...state.connections }
-      for (const sid of sessions) {
-        newConnections[sid] = update(newConnections[sid] ?? createDefaultConnectionIndexState())
-      }
-      return { connections: newConnections }
-    })
+    set((state) => updateSessions(state, { sessionIds: sessions, update: update }))
   }
 
   // ------ Event listener setup (lazy, once) ------
@@ -189,40 +165,14 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       initEventListeners()
       initSettingsSubscription()
 
-      set((state) => {
-        const existingSessions = state.profileToSessions[profileId] ?? []
-        return {
-          connections: {
-            ...state.connections,
-            [sessionId]: createDefaultConnectionIndexState(),
-          },
-          profileToSessions: {
-            ...state.profileToSessions,
-            [profileId]: [...existingSessions, sessionId],
-          },
-          sessionToProfile: {
-            ...state.sessionToProfile,
-            [sessionId]: profileId,
-          },
-        }
-      })
+      set((state) => registerIndexSession(state, { sessionId: sessionId, profileId: profileId }))
 
       // Query the real backend status asynchronously (fire-and-forget)
       getIndexStatus(sessionId)
         .then((status) => {
-          set((state) => {
-            const connection = state.connections[sessionId]
-            if (!connection) return state
-            return {
-              connections: {
-                ...state.connections,
-                [sessionId]: {
-                  ...connection,
-                  status: status.status,
-                },
-              },
-            }
-          })
+          set((state) =>
+            setReportedIndexStatus(state, { sessionId: sessionId, status: status.status })
+          )
         })
         .catch((error) => {
           const message = toErrorMessage(error)
@@ -234,31 +184,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     },
 
     unregisterSession: (sessionId) => {
-      set((state) => {
-        const profileId = state.sessionToProfile[sessionId]
-        if (!profileId) return state
-
-        const newConnections = { ...state.connections }
-        delete newConnections[sessionId]
-
-        const newSessionToProfile = { ...state.sessionToProfile }
-        delete newSessionToProfile[sessionId]
-
-        const newProfileToSessions = { ...state.profileToSessions }
-        const sessions = (newProfileToSessions[profileId] ?? []).filter(
-          (otherSessionId) => otherSessionId !== sessionId
-        )
-        delete newProfileToSessions[profileId]
-        if (sessions.length > 0) {
-          newProfileToSessions[profileId] = sessions
-        }
-
-        return {
-          connections: newConnections,
-          profileToSessions: newProfileToSessions,
-          sessionToProfile: newSessionToProfile,
-        }
-      })
+      set((state) => unregisterIndexSession(state, sessionId))
 
       const hasNoSessions = Object.keys(get().sessionToProfile).length === 0
       if (hasNoSessions && settingsUnsub) {
@@ -282,35 +208,14 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         if (sid === sessionId) continue
         const siblingConnection = state.connections[sid]
         if (isBuildingOrReady(siblingConnection)) {
-          set((state) => ({
-            connections: {
-              ...state.connections,
-              [sessionId]: {
-                ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
-                status: siblingConnection.status,
-                phase: siblingConnection.phase,
-                tablesDone: siblingConnection.tablesDone,
-                tablesTotal: siblingConnection.tablesTotal,
-                lastBuildTimestamp: siblingConnection.lastBuildTimestamp,
-              },
-            },
-          }))
+          set((current) =>
+            adoptSiblingBuild(current, { sessionId: sessionId, sibling: siblingConnection })
+          )
           return
         }
       }
 
-      set((state) => ({
-        connections: {
-          ...state.connections,
-          [sessionId]: {
-            ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
-            status: 'building' as const,
-            phase: null,
-            tablesDone: 0,
-            tablesTotal: 0,
-          },
-        },
-      }))
+      set((current) => markIndexBuilding(current, sessionId))
 
       try {
         await buildSchemaIndex(sessionId)
@@ -319,22 +224,12 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         // The backend may have returned early (e.g. not_configured) without emitting events.
         try {
           const realStatus = await getIndexStatus(sessionId)
-          set((state) => {
-            const connection = state.connections[sessionId]
-            if (!connection) return state
-            if (isBuildingOrStale(connection)) {
-              return {
-                connections: {
-                  ...state.connections,
-                  [sessionId]: {
-                    ...connection,
-                    status: realStatus.status,
-                  },
-                },
-              }
-            }
-            return state
-          })
+          set((current) =>
+            settleTriggeredBuildStatus(current, {
+              sessionId: sessionId,
+              status: realStatus.status,
+            })
+          )
         } catch (error) {
           logFrontend(
             'warn',
@@ -346,16 +241,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         logFrontendError('[schema-index-store] Failed to trigger build:', message)
         logFrontend('error', `[schema-index-store] Build failed for ${sessionId}: ${message}`)
 
-        set((state) => ({
-          connections: {
-            ...state.connections,
-            [sessionId]: {
-              ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
-              status: 'error' as const,
-              error: message,
-            },
-          },
-        }))
+        set((current) => markIndexBuildFailed(current, { sessionId: sessionId, message: message }))
       }
     },
 
@@ -365,18 +251,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         return
       }
 
-      set((state) => ({
-        connections: {
-          ...state.connections,
-          [sessionId]: {
-            ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
-            status: 'building' as const,
-            phase: null,
-            tablesDone: 0,
-            tablesTotal: 0,
-          },
-        },
-      }))
+      set((current) => markIndexBuilding(current, sessionId))
 
       try {
         await forceRebuildSchemaIndex(sessionId)
@@ -385,22 +260,12 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         // The backend may have returned early (e.g. not_configured) without emitting events.
         try {
           const realStatus = await getIndexStatus(sessionId)
-          set((state) => {
-            const connection = state.connections[sessionId]
-            if (!connection) return state
-            if (isBuildingOrStale(connection)) {
-              return {
-                connections: {
-                  ...state.connections,
-                  [sessionId]: {
-                    ...connection,
-                    status: realStatus.status,
-                  },
-                },
-              }
-            }
-            return state
-          })
+          set((current) =>
+            settleTriggeredBuildStatus(current, {
+              sessionId: sessionId,
+              status: realStatus.status,
+            })
+          )
         } catch (error) {
           logFrontend(
             'warn',
@@ -415,16 +280,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           `[schema-index-store] Force rebuild failed for ${sessionId}: ${message}`
         )
 
-        set((state) => ({
-          connections: {
-            ...state.connections,
-            [sessionId]: {
-              ...(state.connections[sessionId] ?? createDefaultConnectionIndexState()),
-              status: 'error' as const,
-              error: message,
-            },
-          },
-        }))
+        set((current) => markIndexBuildFailed(current, { sessionId: sessionId, message: message }))
       }
     },
 

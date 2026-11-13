@@ -631,6 +631,16 @@ describe('useTableDesignerStore — cleanupTab', () => {
   })
 })
 
+describe('useTableDesignerStore — navigation action', () => {
+  it('clearNavigationAction drops a pending navigation action', () => {
+    initCreateTab()
+    useTableDesignerStore.getState().requestNavigationAction('tab-1', () => undefined)
+    expect(useTableDesignerStore.getState().tabs['tab-1'].pendingNavigationAction).not.toBeNull()
+    useTableDesignerStore.getState().clearNavigationAction('tab-1')
+    expect(useTableDesignerStore.getState().tabs['tab-1'].pendingNavigationAction).toBeNull()
+  })
+})
+
 describe('useTableDesignerStore — updateTabContext', () => {
   it('updateTabContext updates mode and objectName without affecting other state', () => {
     initCreateTab()

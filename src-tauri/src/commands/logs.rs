@@ -4,6 +4,8 @@
 //! exercise the `*_impl` functions directly.
 
 use crate::commands::helpers::lock_connection;
+#[cfg(not(coverage))]
+use crate::commands::run_blocking_with_state;
 use crate::export::csv_writer::write_csv;
 use crate::logging::log_store::{self, LogPage};
 use crate::state::AppState;
@@ -115,48 +117,14 @@ pub fn export_logs_impl(state: &AppState, request: &ExportLogsRequest) -> Result
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub async fn list_logs(
-    payload: ListLogsRequest,
-    state: tauri::State<'_, AppState>,
-) -> Result<LogPage, String> {
-    let threshold = LogLevelFilter::parse(&payload.level)?.threshold();
-    let page = payload.page;
-    let logs_db = std::sync::Arc::clone(&state.logs_db);
-    // Runs off the main thread so a slow query never freezes the WebView. Note that
-    // `logs_db` is a single shared connection, so this lock serializes against log
-    // ingestion for the duration of the query.
-    tauri::async_runtime::spawn_blocking(move || {
-        let conn = logs_db.lock().map_err(|error| error.to_string())?;
-        let query = log_store::LogPageQuery {
-            page,
-            level_num: threshold,
-            now: Utc::now(),
-        };
-        log_store::list_logs(&conn, &query).map_err(|error| error.to_string())
-    })
-    .await
-    .map_err(|error| error.to_string())?
+pub async fn list_logs(payload: ListLogsRequest, app: tauri::AppHandle) -> Result<LogPage, String> {
+    run_blocking_with_state(app, move |state| list_logs_impl(state, &payload)).await?
 }
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub async fn export_logs(
-    payload: ExportLogsRequest,
-    state: tauri::State<'_, AppState>,
-) -> Result<i64, String> {
-    let range = parse_export_range(&payload.start_timestamp, &payload.end_timestamp)?;
-    let file_path = payload.file_path;
-    let logs_db = std::sync::Arc::clone(&state.logs_db);
-    tauri::async_runtime::spawn_blocking(move || {
-        let exported = {
-            let conn = logs_db.lock().map_err(|error| error.to_string())?;
-            log_store::export_logs_in_range(&conn, &range.start_timestamp, &range.end_timestamp)
-                .map_err(|error| error.to_string())?
-        };
-        write_exported_logs_csv(&file_path, &exported)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+pub async fn export_logs(payload: ExportLogsRequest, app: tauri::AppHandle) -> Result<i64, String> {
+    run_blocking_with_state(app, move |state| export_logs_impl(state, &payload)).await?
 }
 
 struct ExportRange {

@@ -1,16 +1,6 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useState, useMemo, type ReactNode } from 'react'
 import { Eye, EyeSlash, FolderOpen, Plug } from '@phosphor-icons/react'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
-import { useSettingsStore } from '../../stores/settings-store'
-import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
-import { logFrontend } from '../../lib/app-log-commands'
-import {
-  deleteConnection,
-  testConnection,
-  saveConnection as saveConnectionIPC,
-  updateConnection,
-} from '../../lib/connection-commands'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { IconButton } from '../common/IconButton'
@@ -20,25 +10,23 @@ import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { ColorPickerPopover } from './ColorPickerPopover'
 import { TestConnectionResult } from './TestConnectionResult'
-import type {
-  ConnectionFormData,
-  SavedConnection,
-  TestConnectionResult as TestConnectionResultType,
-} from '../../types/connection'
+import type { ConnectionFormData, SavedConnection } from '../../types/connection'
 import styles from './ConnectionForm.module.css'
-import { toErrorMessage } from '../../lib/error-message'
-import { isBlank } from '../../lib/value-checks'
+import {
+  DEFAULT_CONNECT_TIMEOUT_SECONDS,
+  DEFAULT_KEEPALIVE_INTERVAL_SECONDS,
+  TAB_ORDER,
+  tabHasError,
+  type ConnectionFormSeed,
+  type FormErrors,
+  type FormTab,
+  type PendingAction,
+  type SslPathField,
+  type UpdateField,
+} from './connection-editor-state'
+import { useConnectionFormActions } from './useConnectionFormActions'
 
-const DEFAULT_CONNECT_TIMEOUT_SECONDS = 10
-const DEFAULT_KEEPALIVE_INTERVAL_SECONDS = 60
-const MIN_PORT = 1
-const MAX_PORT = 65535
-
-export interface ConnectionFormSeed {
-  data: ConnectionFormData
-  sourceHadPassword: boolean
-  key: number
-}
+export type { ConnectionFormSeed }
 
 interface ConnectionFormProps {
   editingConnection?: SavedConnection
@@ -46,10 +34,6 @@ interface ConnectionFormProps {
   /** Prefill the form as a new, unsaved connection (used by Duplicate). */
   initialData?: ConnectionFormSeed
 }
-
-type FormTab = 'general' | 'ssl' | 'advanced'
-
-const TAB_ORDER: FormTab[] = ['general', 'ssl', 'advanced']
 
 const TAB_LABELS: Record<FormTab, string> = {
   general: 'General',
@@ -61,87 +45,6 @@ const ACCESS_MODE_OPTIONS = [
   { value: 'rw', label: 'Allow writes (read-write)' },
   { value: 'ro', label: 'Read-only (block writes)' },
 ]
-
-const FIELD_TAB: Record<string, FormTab> = {
-  name: 'general',
-  host: 'general',
-  port: 'general',
-  username: 'general',
-  connectTimeoutSecs: 'advanced',
-  keepaliveIntervalSecs: 'advanced',
-}
-
-function firstTabWithError(errors: FormErrors): FormTab | null {
-  const errorTabs = new Set(Object.keys(errors).map((field) => FIELD_TAB[field] ?? 'general'))
-  return TAB_ORDER.find((tab) => errorTabs.has(tab)) ?? null
-}
-
-/** Build default form data, reading connection defaults from settings store. */
-function getDefaultFormData(): ConnectionFormData {
-  const settingsState = useSettingsStore.getState()
-  const timeout = parseInt(settingsState.getSetting('connection.defaultTimeout'), 10)
-  const keepalive = parseInt(settingsState.getSetting('connection.defaultKeepalive'), 10)
-  return {
-    name: '',
-    host: '',
-    port: 3306,
-    username: '',
-    password: '',
-    defaultDatabase: null,
-    sslEnabled: false,
-    sslCaPath: null,
-    sslCertPath: null,
-    sslKeyPath: null,
-    color: null,
-    groupId: null,
-    readOnly: false,
-    connectTimeoutSecs: isNaN(timeout) ? DEFAULT_CONNECT_TIMEOUT_SECONDS : timeout,
-    keepaliveIntervalSecs: isNaN(keepalive) ? DEFAULT_KEEPALIVE_INTERVAL_SECONDS : keepalive,
-  }
-}
-
-interface FormErrors {
-  [key: string]: string
-}
-
-function isValidPort(port: number): boolean {
-  return port >= MIN_PORT && port <= MAX_PORT
-}
-
-function validate(data: ConnectionFormData): FormErrors {
-  const errors: FormErrors = {}
-  if (isBlank(data.name)) {
-    errors.name = 'Connection name is required'
-  }
-  if (isBlank(data.host)) {
-    errors.host = 'Host is required'
-  }
-  if (isBlank(data.username)) {
-    errors.username = 'Username is required'
-  }
-  if (!isValidPort(data.port)) {
-    errors.port = 'Port must be between 1 and 65535'
-  }
-  if (data.connectTimeoutSecs < 1) {
-    errors.connectTimeoutSecs = 'Connect timeout must be at least 1 second'
-  }
-  if (data.keepaliveIntervalSecs < 0) {
-    errors.keepaliveIntervalSecs = 'Keepalive interval cannot be negative'
-  }
-  return errors
-}
-
-/** Build a failure TestConnectionResult from a caught error. */
-function buildErrorResult(error: unknown): TestConnectionResultType {
-  return {
-    success: false,
-    serverVersion: null,
-    authMethod: null,
-    sslStatus: null,
-    connectionTimeMs: null,
-    errorMessage: toErrorMessage(error),
-  }
-}
 
 interface FormFieldProps {
   id: string
@@ -214,15 +117,6 @@ function SslFileField({
   )
 }
 
-type UpdateField = <K extends keyof ConnectionFormData>(
-  field: K,
-  value: ConnectionFormData[K]
-) => void
-
-type SslPathField = 'sslCaPath' | 'sslCertPath' | 'sslKeyPath'
-
-type PendingAction = 'test' | 'save' | 'connect' | 'delete'
-
 interface FormFields {
   formData: ConnectionFormData
   errors: FormErrors
@@ -240,45 +134,6 @@ interface PasswordControls {
 }
 
 const SAVED_PASSWORD_MASK = '••••••••'
-
-function formDataFromConnection(connection: SavedConnection): ConnectionFormData {
-  return {
-    name: connection.name,
-    host: connection.host,
-    port: connection.port,
-    username: connection.username,
-    password: '',
-    defaultDatabase: connection.defaultDatabase,
-    sslEnabled: connection.sslEnabled,
-    sslCaPath: connection.sslCaPath,
-    sslCertPath: connection.sslCertPath,
-    sslKeyPath: connection.sslKeyPath,
-    color: connection.color,
-    groupId: connection.groupId,
-    readOnly: connection.readOnly,
-    connectTimeoutSecs: connection.connectTimeoutSecs,
-    keepaliveIntervalSecs: connection.keepaliveIntervalSecs,
-  }
-}
-
-function seededFormData(initialData: ConnectionFormSeed | undefined): ConnectionFormData {
-  if (!initialData) return getDefaultFormData()
-  return { ...initialData.data }
-}
-
-interface CurrentConnectionInputs {
-  savedId: string | null
-  editingConnection: SavedConnection | undefined
-  deletedConnectionId: string | null
-}
-
-function resolveCurrentConnectionId(inputs: CurrentConnectionInputs): string | null {
-  if (inputs.savedId) return inputs.savedId
-  const editingId = inputs.editingConnection?.id
-  if (!editingId) return null
-  if (editingId === inputs.deletedConnectionId) return null
-  return editingId
-}
 
 interface DuplicateHintInputs {
   editingConnection: SavedConnection | undefined
@@ -677,68 +532,20 @@ function ConnectionFormFooter({
   )
 }
 
-interface DeleteConfirmState {
-  error: string | null
+function enclosingDialog(element: HTMLElement | null): HTMLDialogElement | null {
+  const dialog = element?.closest('dialog')
+  if (dialog instanceof HTMLDialogElement) return dialog
+  return null
 }
 
-interface ConnectionEditorState {
-  formData: ConnectionFormData
-  errors: FormErrors
-  activeTab: FormTab
-  testResult: TestConnectionResultType | null
-  savedId: string | null
-  hasSavedPassword: boolean
-  clearSavedPassword: boolean
-  deletedConnectionId: string | null
-  deleteConfirm: DeleteConfirmState | null
-}
-
-function createIdleEditorState(): ConnectionEditorState {
-  return {
-    formData: getDefaultFormData(),
-    errors: {},
-    activeTab: 'general',
-    testResult: null,
-    savedId: null,
-    hasSavedPassword: false,
-    clearSavedPassword: false,
-    deletedConnectionId: null,
-    deleteConfirm: null,
+function useNameAutoFocus(activeTab: FormTab): boolean {
+  const [nameAutoFocus, setNameAutoFocus] = useState(true)
+  const hasLeftGeneralTab = activeTab !== 'general'
+  const shouldStopAutoFocus = nameAutoFocus && hasLeftGeneralTab
+  if (shouldStopAutoFocus) {
+    setNameAutoFocus(false)
   }
-}
-
-function editorStateFor(
-  editingConnection: SavedConnection | undefined,
-  initialData: ConnectionFormSeed | undefined
-): ConnectionEditorState {
-  const idle = createIdleEditorState()
-  if (editingConnection) {
-    return {
-      ...idle,
-      formData: formDataFromConnection(editingConnection),
-      savedId: editingConnection.id,
-      hasSavedPassword: editingConnection.hasPassword,
-    }
-  }
-  return { ...idle, formData: seededFormData(initialData) }
-}
-
-function deletedEditorState(
-  current: ConnectionEditorState,
-  deletedConnectionId: string
-): ConnectionEditorState {
-  return {
-    ...createIdleEditorState(),
-    activeTab: current.activeTab,
-    deletedConnectionId: deletedConnectionId,
-  }
-}
-
-function withoutFieldError(errors: FormErrors, field: string): FormErrors {
-  if (!errors[field]) return errors
-  const next = { ...errors }
-  delete next[field]
-  return next
+  return nameAutoFocus
 }
 
 export function ConnectionForm({
@@ -746,29 +553,19 @@ export function ConnectionForm({
   onDeleteConnection,
   initialData,
 }: ConnectionFormProps) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const nameAutoFocusRef = useRef(true)
-  const [editor, setEditor] = useState<ConnectionEditorState>(createIdleEditorState)
-  const {
-    formData,
-    errors,
-    activeTab,
-    testResult,
-    savedId,
-    hasSavedPassword,
-    clearSavedPassword,
-    deletedConnectionId,
-    deleteConfirm,
-  } = editor
   const [showPassword, setShowPassword] = useState(false)
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
   const [dialogPortalRoot, setDialogPortalRoot] = useState<HTMLElement | null>(null)
-
-  const patchEditor = (patch: Partial<ConnectionEditorState>) =>
-    setEditor((current) => ({ ...current, ...patch }))
+  const form = useConnectionFormActions({
+    editingConnection: editingConnection,
+    initialData: initialData,
+    onDeleteConnection: onDeleteConnection,
+  })
+  const { pendingAction, currentConnectionId, updateField } = form
+  const { formData, errors, activeTab, testResult, savedId, deleteConfirm } = form.editor
+  const { hasSavedPassword, clearSavedPassword } = form.editor
+  const nameAutoFocus = useNameAutoFocus(activeTab)
 
   const connectionGroups = useConnectionStore((state) => state.connectionGroups)
-  const fetchSavedConnections = useConnectionStore((state) => state.fetchSavedConnections)
   const groupDropdownOptions = useMemo(
     () => [
       { value: '', label: 'Ungrouped' },
@@ -776,202 +573,10 @@ export function ConnectionForm({
     ],
     [connectionGroups]
   )
-  const openConnection = useConnectionStore((state) => state.openConnection)
-  const closeDialog = useConnectionStore((state) => state.closeDialog)
 
-  useEffect(() => {
-    const dialog = rootRef.current?.closest('dialog')
-    if (dialog instanceof HTMLDialogElement) {
-      setDialogPortalRoot(dialog)
-      return
-    }
-    setDialogPortalRoot(null)
+  const rootRef = useCallback((root: HTMLDivElement | null) => {
+    setDialogPortalRoot(enclosingDialog(root))
   }, [])
-
-  // Populate form when editingConnection or the duplicate seed changes.
-  // Precedence: editing > duplicate seed > defaults.
-  useEffect(() => {
-    setEditor(editorStateFor(editingConnection, initialData))
-  }, [editingConnection, initialData])
-
-  useEffect(() => {
-    nameAutoFocusRef.current = false
-  }, [])
-
-  const updateField = <K extends keyof ConnectionFormData>(
-    field: K,
-    value: ConnectionFormData[K]
-  ) => {
-    setEditor((current) => ({
-      ...current,
-      formData: { ...current.formData, [field]: value },
-      errors: withoutFieldError(current.errors, field),
-    }))
-  }
-
-  const handleBrowseFile = async (field: SslPathField) => {
-    try {
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: 'Certificates', extensions: ['pem', 'crt', 'key'] }],
-      })
-      if (typeof selected === 'string') {
-        updateField(field, selected)
-      }
-    } catch (error) {
-      logFrontend('warn', `[connection-form] Certificate file dialog failed: ${String(error)}`)
-    }
-  }
-
-  const currentConnectionId = resolveCurrentConnectionId({
-    savedId: savedId,
-    editingConnection: editingConnection,
-    deletedConnectionId: deletedConnectionId,
-  })
-
-  const handlePasswordChange = (value: string) => {
-    updateField('password', value)
-    if (clearSavedPassword) {
-      patchEditor({ clearSavedPassword: false })
-    }
-  }
-
-  const handleClearSavedPasswordChange = (checked: boolean) => {
-    patchEditor({ clearSavedPassword: checked })
-    if (checked && formData.password) {
-      updateField('password', '')
-    }
-  }
-
-  const cancelDeleteConfirm = () => {
-    if (pendingAction === 'delete') {
-      return
-    }
-    patchEditor({ deleteConfirm: null })
-  }
-
-  function runValidation(): boolean {
-    const errs = validate(formData)
-    const errorTab = firstTabWithError(errs)
-    if (errorTab) {
-      patchEditor({ errors: errs, activeTab: errorTab })
-      return false
-    }
-    patchEditor({ errors: errs })
-    return true
-  }
-
-  const tabHasError = (tab: FormTab): boolean =>
-    Object.keys(errors).some((field) => (FIELD_TAB[field] ?? 'general') === tab)
-
-  const reportFailure = (error: unknown, toastTitle: string): TestConnectionResultType => {
-    const failure = buildErrorResult(error)
-    patchEditor({ testResult: failure })
-    showErrorToast(toastTitle, failure.errorMessage ?? undefined)
-    return failure
-  }
-
-  const handleTestConnection = async () => {
-    if (!runValidation()) {
-      return
-    }
-
-    setPendingAction('test')
-    patchEditor({ testResult: null })
-    try {
-      // Use the saved keychain password only when none was freshly typed and the
-      // user isn't explicitly clearing it.
-      const useSavedPassword = hasSavedPassword && !clearSavedPassword && formData.password === ''
-      const result = await testConnection(formData, useSavedPassword ? currentConnectionId : null)
-      patchEditor({ testResult: result })
-    } catch (error) {
-      reportFailure(error, 'Connection test failed')
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  const persistConnection = async (): Promise<string> => {
-    const existingId = savedId ?? editingConnection?.id
-    if (existingId) {
-      await updateConnection(existingId, formData, { clearPassword: clearSavedPassword })
-      patchEditor({
-        hasSavedPassword: clearSavedPassword ? false : hasSavedPassword || formData.password !== '',
-      })
-      await fetchSavedConnections()
-      return existingId
-    }
-    const newId = await saveConnectionIPC(formData)
-    patchEditor({ savedId: newId, hasSavedPassword: formData.password !== '' })
-    await fetchSavedConnections()
-    return newId
-  }
-
-  const handleSave = async () => {
-    if (!runValidation()) {
-      return
-    }
-
-    setPendingAction('save')
-    try {
-      await persistConnection()
-      patchEditor({ clearSavedPassword: false })
-      showSuccessToast('Connection saved', formData.name.trim() || undefined)
-    } catch (error) {
-      reportFailure(error, 'Failed to save connection')
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  const handleConnect = async () => {
-    if (!runValidation()) {
-      return
-    }
-
-    setPendingAction('connect')
-    let connectionId: string
-    try {
-      connectionId = await persistConnection()
-      patchEditor({ clearSavedPassword: false })
-    } catch (error) {
-      reportFailure(error, 'Failed to save connection')
-      setPendingAction(null)
-      return
-    }
-
-    try {
-      await openConnection(connectionId)
-      closeDialog()
-    } catch (error) {
-      patchEditor({ testResult: buildErrorResult(error) })
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!currentConnectionId) {
-      return
-    }
-
-    setPendingAction('delete')
-    patchEditor({ deleteConfirm: { error: null } })
-    try {
-      await deleteConnection(currentConnectionId)
-      await fetchSavedConnections()
-      setEditor((current) => deletedEditorState(current, currentConnectionId))
-      onDeleteConnection?.(currentConnectionId)
-      showSuccessToast('Connection deleted')
-    } catch (error) {
-      const failure = reportFailure(error, 'Failed to delete connection')
-      patchEditor({
-        deleteConfirm: { error: failure.errorMessage ?? 'Failed to delete connection' },
-      })
-    } finally {
-      setPendingAction(null)
-    }
-  }
 
   return (
     <div ref={rootRef} className={styles.formGridRoot}>
@@ -989,11 +594,11 @@ export function ConnectionForm({
               <UnderlineTab
                 key={tab}
                 active={activeTab === tab}
-                onClick={() => patchEditor({ activeTab: tab })}
+                onClick={() => form.selectTab(tab)}
                 data-testid={`connection-form-tab-${tab}`}
               >
                 {TAB_LABELS[tab]}
-                {tabHasError(tab) && (
+                {tabHasError(errors, tab) && (
                   <span className={styles.tabErrorDot} aria-label="Has errors" />
                 )}
               </UnderlineTab>
@@ -1009,7 +614,7 @@ export function ConnectionForm({
           {activeTab === 'general' && (
             <GeneralPanel
               fields={{ formData: formData, errors: errors, updateField: updateField }}
-              nameAutoFocus={nameAutoFocusRef.current}
+              nameAutoFocus={nameAutoFocus}
               password={{
                 showPassword: showPassword,
                 hasSavedPassword: hasSavedPassword,
@@ -1019,9 +624,9 @@ export function ConnectionForm({
                   savedId: savedId,
                   initialData: initialData,
                 }),
-                onPasswordChange: handlePasswordChange,
+                onPasswordChange: form.changePassword,
                 onToggleShowPassword: () => setShowPassword((previous) => !previous),
-                onClearSavedPasswordChange: handleClearSavedPasswordChange,
+                onClearSavedPasswordChange: form.changeClearSavedPassword,
               }}
             />
           )}
@@ -1029,7 +634,7 @@ export function ConnectionForm({
           {activeTab === 'ssl' && (
             <SslPanel
               fields={{ formData: formData, errors: errors, updateField: updateField }}
-              onBrowseFile={(field) => void handleBrowseFile(field)}
+              onBrowseFile={(field) => void form.browseSslFile(field)}
             />
           )}
 
@@ -1045,10 +650,10 @@ export function ConnectionForm({
       <ConnectionFormFooter
         pendingAction={pendingAction}
         canDelete={currentConnectionId !== null}
-        onTest={() => void handleTestConnection()}
-        onDeleteRequest={() => patchEditor({ deleteConfirm: { error: null } })}
-        onConnect={() => void handleConnect()}
-        onSave={() => void handleSave()}
+        onTest={() => void form.runTestConnection()}
+        onDeleteRequest={form.requestDelete}
+        onConnect={() => void form.connect()}
+        onSave={() => void form.save()}
       />
       <ConfirmDialog
         isOpen={deleteConfirm !== null}
@@ -1064,8 +669,8 @@ export function ConnectionForm({
         isLoading={pendingAction === 'delete'}
         error={deleteConfirm?.error ?? null}
         nonDismissible={pendingAction === 'delete'}
-        onConfirm={() => void handleDelete()}
-        onCancel={cancelDeleteConfirm}
+        onConfirm={() => void form.deleteCurrentConnection()}
+        onCancel={form.cancelDeleteConfirm}
       />
     </div>
   )

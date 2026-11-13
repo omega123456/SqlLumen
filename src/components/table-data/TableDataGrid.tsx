@@ -612,6 +612,14 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
    * row if switching rows. Returns `true` if the guard passed (or no commit
    * was needed), `false` if it failed (validation error or save error).
    */
+  const reselectEditingRow = useCallback(
+    (editState: TableEditState) => {
+      if (!editState) return
+      setSelectedRow(tabId, editState.rowKey)
+    },
+    [tabId, setSelectedRow]
+  )
+
   const commitEditingRowBeforeSwitch = useCallback(
     async (currentEditState: NonNullable<TableEditState>, targetRowKey: RowKey) => {
       if (reportInvalidTemporalValue(currentEditState, columns)) {
@@ -621,11 +629,10 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       const hadPendingChanges = currentEditState.modifiedColumns.size > 0
       await commitEditingRowIfNeeded(tabId, targetRowKey)
       const updatedState = useTableDataStore.getState().tabs[tabId]
-      if (updatedState?.saveError) {
-        showError('Save failed', updatedState.saveError)
-        if (updatedState.editState) {
-          setSelectedRow(tabId, updatedState.editState.rowKey)
-        }
+      const saveError = updatedState?.saveError
+      if (saveError) {
+        showError('Save failed', saveError)
+        reselectEditingRow(updatedState.editState)
         return false
       }
       if (hadPendingChanges) {
@@ -633,7 +640,15 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       }
       return true
     },
-    [tabId, columns, commitEditingRowIfNeeded, setSelectedRow, showError, showSuccess]
+    [
+      tabId,
+      columns,
+      commitEditingRowIfNeeded,
+      setSelectedRow,
+      reselectEditingRow,
+      showError,
+      showSuccess,
+    ]
   )
 
   const validateAndCommitCurrentEdit = useCallback(

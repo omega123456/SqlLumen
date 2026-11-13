@@ -129,3 +129,32 @@ export function filterCommands(prefix: string): SlashCommand[] {
 export function findCommand(name: string): SlashCommand | undefined {
   return SLASH_COMMANDS.find((command) => command.name === name)
 }
+
+export interface SlashInvocation {
+  command: SlashCommand
+  commandArgs: string
+}
+
+const SLASH_INVOCATION_PATTERN = /^\/(\S+)\s*(.*)$/
+const REMEMBER_COMMAND_NAME = 'remember'
+
+export function parseSlashInvocation(text: string): SlashInvocation | null {
+  const invocationMatch = SLASH_INVOCATION_PATTERN.exec(text)
+  if (!invocationMatch) return null
+  const [, commandName, commandArgs] = invocationMatch
+  const command = findCommand(commandName)
+  if (!command) return null
+  return { command: command, commandArgs: commandArgs }
+}
+
+function isRememberInvocation(invocation: SlashInvocation): boolean {
+  return invocation.command.name === REMEMBER_COMMAND_NAME
+}
+
+export function isEmptyRememberInvocation(invocation: SlashInvocation): boolean {
+  return isRememberInvocation(invocation) && invocation.commandArgs.trim() === ''
+}
+
+export function shouldAskForRememberScope(invocation: SlashInvocation): boolean {
+  return isRememberInvocation(invocation) && resolveRememberScope() === 'ask'
+}

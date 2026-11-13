@@ -7,6 +7,9 @@ import {
   findCommand,
   executeRemember,
   resolveRememberScope,
+  parseSlashInvocation,
+  isEmptyRememberInvocation,
+  shouldAskForRememberScope,
 } from '../../lib/slash-commands'
 import { useSettingsStore } from '../../stores/settings-store'
 
@@ -154,5 +157,37 @@ describe('slash-commands', () => {
       )
       expect(ipc.payloads('save_memory')).toHaveLength(0)
     })
+  })
+})
+
+describe('slash invocations', () => {
+  beforeEach(() => {
+    setRememberScope('connection')
+  })
+
+  it('parses a known command with its arguments', () => {
+    const invocation = parseSlashInvocation('/remember prefer snake_case')
+    expect(invocation?.command.name).toBe('remember')
+    expect(invocation?.commandArgs).toBe('prefer snake_case')
+  })
+
+  it('does not parse plain text, an unknown command or multi-line text', () => {
+    expect(parseSlashInvocation('show me the users')).toBeNull()
+    expect(parseSlashInvocation('/unknown thing')).toBeNull()
+    expect(parseSlashInvocation('/remember first\nsecond')).toBeNull()
+  })
+
+  it('detects a /remember with nothing to remember', () => {
+    const empty = parseSlashInvocation('/remember   ')
+    const filled = parseSlashInvocation('/remember note')
+    expect(empty && isEmptyRememberInvocation(empty)).toBe(true)
+    expect(filled && isEmptyRememberInvocation(filled)).toBe(false)
+  })
+
+  it('asks for a scope only when the remember scope setting says so', () => {
+    const invocation = parseSlashInvocation('/remember note')
+    expect(invocation && shouldAskForRememberScope(invocation)).toBe(false)
+    setRememberScope('ask')
+    expect(invocation && shouldAskForRememberScope(invocation)).toBe(true)
   })
 })

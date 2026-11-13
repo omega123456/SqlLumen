@@ -115,6 +115,82 @@ pub struct ImportJobProgress {
     pub completed_at: Option<std::time::SystemTime>,
 }
 
+impl DumpJobProgress {
+    pub fn finish(&mut self, result: Result<u64, String>) {
+        self.current_table = None;
+        self.completed_at = Some(std::time::SystemTime::now());
+        if let Ok(bytes) = result {
+            self.bytes_written = bytes;
+        }
+        if self.cancel_requested {
+            self.status = DumpJobStatus::Cancelled;
+            return;
+        }
+        let Err(error) = result else {
+            self.status = DumpJobStatus::Completed;
+            return;
+        };
+        self.status = DumpJobStatus::Failed;
+        self.error_message = Some(error);
+    }
+}
+
+impl CopyJobProgress {
+    pub fn mark_completed(&mut self) {
+        self.status = CopyJobStatus::Completed;
+        self.current_object = None;
+        self.current_object_type = None;
+        self.rows_total = None;
+        self.rows_done = None;
+        self.completed_at = Some(std::time::SystemTime::now());
+    }
+
+    pub fn mark_failed(&mut self, message: impl Into<String>) {
+        self.status = CopyJobStatus::Failed;
+        self.error_message = Some(message.into());
+        self.completed_at = Some(std::time::SystemTime::now());
+    }
+
+    pub fn mark_cancelled(&mut self) {
+        self.status = CopyJobStatus::Cancelled;
+        self.completed_at = Some(std::time::SystemTime::now());
+    }
+}
+
+impl ImportJobProgress {
+    fn finish_as(&mut self, status: ImportJobStatus) {
+        self.status = status;
+        self.completed_at = Some(std::time::SystemTime::now());
+    }
+
+    pub fn mark_cancelled(&mut self) {
+        self.finish_as(ImportJobStatus::Cancelled);
+    }
+
+    pub fn mark_failed(&mut self) {
+        self.finish_as(ImportJobStatus::Failed);
+    }
+
+    pub fn complete_if_running(&mut self) {
+        if self.status != ImportJobStatus::Running {
+            return;
+        }
+        self.finish_as(ImportJobStatus::Completed);
+    }
+
+    pub fn fail_if_running(&mut self, error_message: String) {
+        if self.status != ImportJobStatus::Running {
+            return;
+        }
+        self.errors.push(ImportError {
+            statement_index: 0,
+            sql_preview: String::new(),
+            error_message,
+        });
+        self.mark_failed();
+    }
+}
+
 /// Status of a streaming full export of a truncated query result.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
