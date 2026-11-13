@@ -446,50 +446,26 @@ fn insert_entry_at(state: &sqllumen_lib::state::AppState, entry: TimedEntry<'_>)
     .expect("insert with explicit timestamp");
 }
 
+fn insert_p1_entry_at(state: &sqllumen_lib::state::AppState, sql_text: &str, timestamp: &str) {
+    insert_entry_at(
+        state,
+        TimedEntry {
+            connection_id: "p1",
+            sql_text,
+            timestamp,
+        },
+    );
+}
+
 #[test]
 fn test_list_history_since_filters_total_and_entries() {
     let state = common::test_app_state();
     // Two recent (within 24h) and three old (well beyond) entries.
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT recent_a",
-            timestamp: "2025-05-29T10:00:00+00:00",
-        },
-    );
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT recent_b",
-            timestamp: "2025-05-29T09:00:00+00:00",
-        },
-    );
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT old_a",
-            timestamp: "2025-01-01T00:00:00+00:00",
-        },
-    );
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT old_b",
-            timestamp: "2025-01-02T00:00:00+00:00",
-        },
-    );
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT old_c",
-            timestamp: "2025-01-03T00:00:00+00:00",
-        },
-    );
+    insert_p1_entry_at(&state, "SELECT recent_a", "2025-05-29T10:00:00+00:00");
+    insert_p1_entry_at(&state, "SELECT recent_b", "2025-05-29T09:00:00+00:00");
+    insert_p1_entry_at(&state, "SELECT old_a", "2025-01-01T00:00:00+00:00");
+    insert_p1_entry_at(&state, "SELECT old_b", "2025-01-02T00:00:00+00:00");
+    insert_p1_entry_at(&state, "SELECT old_c", "2025-01-03T00:00:00+00:00");
 
     // Without a cutoff, all five are visible.
     let all = list_history_impl(
@@ -527,30 +503,9 @@ fn test_list_history_since_filters_total_and_entries() {
 #[test]
 fn test_list_history_since_combined_with_search() {
     let state = common::test_app_state();
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT * FROM orders",
-            timestamp: "2025-05-29T10:00:00+00:00",
-        },
-    );
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT * FROM users",
-            timestamp: "2025-05-29T09:00:00+00:00",
-        },
-    );
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT * FROM orders",
-            timestamp: "2025-01-01T00:00:00+00:00",
-        },
-    );
+    insert_p1_entry_at(&state, "SELECT * FROM orders", "2025-05-29T10:00:00+00:00");
+    insert_p1_entry_at(&state, "SELECT * FROM users", "2025-05-29T09:00:00+00:00");
+    insert_p1_entry_at(&state, "SELECT * FROM orders", "2025-01-01T00:00:00+00:00");
 
     // search + since must compose: only recent "orders" queries.
     let page = list_history_impl(
@@ -583,14 +538,7 @@ fn test_list_history_since_paginates_within_window() {
             },
         );
     }
-    insert_entry_at(
-        &state,
-        TimedEntry {
-            connection_id: "p1",
-            sql_text: "SELECT old",
-            timestamp: "2025-01-01T00:00:00+00:00",
-        },
-    );
+    insert_p1_entry_at(&state, "SELECT old", "2025-01-01T00:00:00+00:00");
 
     let since = Some("2025-05-01T00:00:00+00:00");
     let page1 = list_history_impl(

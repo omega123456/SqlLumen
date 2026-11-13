@@ -1173,7 +1173,7 @@ fn test_start_dump_input_empty_tables_is_no_work() {
 fn test_listing_source_does_not_use_show_databases() {
     // Verify that the consolidated listing implementation no longer uses
     // `SHOW DATABASES` by checking the source file for the old pattern.
-    let source = include_str!("../../src/commands/sql_dump.rs");
+    let source = include_str!("../../src/commands/sql_dump/exportable_objects.rs");
     let listing_fn_start = source
         .find("pub async fn list_exportable_objects_impl")
         .expect("listing function must exist");
@@ -1195,7 +1195,7 @@ fn test_listing_source_does_not_use_show_databases() {
 fn test_dump_execution_does_not_use_per_object_type_lookup() {
     // Verify that the dump executor no longer contains a per-object
     // TABLE_TYPE lookup query.
-    let source = include_str!("../../src/commands/sql_dump.rs");
+    let source = include_str!("../../src/commands/sql_dump/dump_run.rs");
     let execute_fn_start = source
         .find("fn execute_dump(")
         .expect("execute_dump function must exist");
@@ -1217,7 +1217,7 @@ fn test_dump_execution_does_not_use_per_object_type_lookup() {
 fn test_listing_uses_query_log_helper() {
     // Verify that the consolidated listing query path logs through the
     // shared MySQL query logging helper.
-    let source = include_str!("../../src/commands/sql_dump.rs");
+    let source = include_str!("../../src/commands/sql_dump/exportable_objects.rs");
     let listing_fn_start = source
         .find("pub async fn list_exportable_objects_impl")
         .expect("listing function must exist");

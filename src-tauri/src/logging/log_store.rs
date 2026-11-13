@@ -129,35 +129,27 @@ pub struct LogPageQuery {
     pub now: DateTime<Utc>,
 }
 
-pub fn list_logs(conn: &Connection, query: &LogPageQuery) -> Result<LogPage> {
-    let LogPageQuery {
-        page,
-        level_num,
-        now,
-    } = *query;
-    let page = page.max(1);
-    let offset = (page - 1) * LOG_PAGE_SIZE;
+#[derive(Debug, Clone, Copy)]
+struct LogWindow {
+    universe_size: i64,
+    level_num: Option<i64>,
+    offset: i64,
+}
+
+fn log_universe_size(conn: &Connection, now: DateTime<Utc>) -> Result<i64> {
     let last_24h_cutoff = (now - Duration::hours(24)).to_rfc3339();
     let last_24h_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM log_entries WHERE timestamp >= ?1",
         params![last_24h_cutoff],
         |row| row.get(0),
     )?;
-    let universe_size = last_24h_count.max(LOG_VIEWER_MIN_UNIVERSE);
+    Ok(last_24h_count.max(LOG_VIEWER_MIN_UNIVERSE))
+}
 
-    let total = match level_num {
-        Some(threshold) => conn.query_row(
-            "SELECT COUNT(*) FROM (
-                SELECT id, level_num
-                FROM log_entries
-                ORDER BY timestamp DESC, id DESC
-                LIMIT ?1
-            ) universe
-            WHERE level_num >= ?2",
-            params![universe_size, threshold],
-            |row| row.get(0),
-        )?,
-        None => conn.query_row(
+fn count_logs_in_window(conn: &Connection, window: LogWindow) -> Result<i64> {
+    let universe_size = window.universe_size;
+    let Some(threshold) = window.level_num else {
+        return conn.query_row(
             "SELECT COUNT(*) FROM (
                 SELECT id
                 FROM log_entries
@@ -166,32 +158,30 @@ pub fn list_logs(conn: &Connection, query: &LogPageQuery) -> Result<LogPage> {
             ) universe",
             params![universe_size],
             |row| row.get(0),
-        )?,
+        );
     };
+    conn.query_row(
+        "SELECT COUNT(*) FROM (
+            SELECT id, level_num
+            FROM log_entries
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ?1
+        ) universe
+        WHERE level_num >= ?2",
+        params![universe_size, threshold],
+        |row| row.get(0),
+    )
+}
 
-    let entries = match level_num {
-        Some(threshold) => {
-            let mut stmt = conn.prepare(
-                "SELECT id, timestamp, level, target, message
-             FROM (
-                SELECT id, timestamp, level, level_num, target, message
-                FROM log_entries
-                ORDER BY timestamp DESC, id DESC
-                LIMIT ?1
-             ) universe
-             WHERE level_num >= ?2
-             ORDER BY timestamp DESC, id DESC
-             LIMIT ?3 OFFSET ?4",
-            )?;
-            let rows = stmt.query_map(
-                params![universe_size, threshold, LOG_PAGE_SIZE, offset],
-                map_log_row,
-            )?;
-            rows.collect::<Result<Vec<_>>>()?
-        }
-        None => {
-            let mut stmt = conn.prepare(
-                "SELECT id, timestamp, level, target, message
+fn page_logs_in_window(conn: &Connection, window: LogWindow) -> Result<Vec<LogEntry>> {
+    let LogWindow {
+        universe_size,
+        level_num,
+        offset,
+    } = window;
+    let Some(threshold) = level_num else {
+        let mut stmt = conn.prepare(
+            "SELECT id, timestamp, level, target, message
              FROM (
                 SELECT id, timestamp, level, target, message
                 FROM log_entries
@@ -200,16 +190,39 @@ pub fn list_logs(conn: &Connection, query: &LogPageQuery) -> Result<LogPage> {
              ) universe
              ORDER BY timestamp DESC, id DESC
              LIMIT ?2 OFFSET ?3",
-            )?;
-            let rows =
-                stmt.query_map(params![universe_size, LOG_PAGE_SIZE, offset], map_log_row)?;
-            rows.collect::<Result<Vec<_>>>()?
-        }
+        )?;
+        let rows = stmt.query_map(params![universe_size, LOG_PAGE_SIZE, offset], map_log_row)?;
+        return rows.collect::<Result<Vec<_>>>();
     };
+    let mut stmt = conn.prepare(
+        "SELECT id, timestamp, level, target, message
+         FROM (
+            SELECT id, timestamp, level, level_num, target, message
+            FROM log_entries
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ?1
+         ) universe
+         WHERE level_num >= ?2
+         ORDER BY timestamp DESC, id DESC
+         LIMIT ?3 OFFSET ?4",
+    )?;
+    let rows = stmt.query_map(
+        params![universe_size, threshold, LOG_PAGE_SIZE, offset],
+        map_log_row,
+    )?;
+    rows.collect::<Result<Vec<_>>>()
+}
 
+pub fn list_logs(conn: &Connection, query: &LogPageQuery) -> Result<LogPage> {
+    let page = query.page.max(1);
+    let window = LogWindow {
+        universe_size: log_universe_size(conn, query.now)?,
+        level_num: query.level_num,
+        offset: (page - 1) * LOG_PAGE_SIZE,
+    };
     Ok(LogPage {
-        entries,
-        total,
+        total: count_logs_in_window(conn, window)?,
+        entries: page_logs_in_window(conn, window)?,
         page,
         page_size: LOG_PAGE_SIZE,
     })

@@ -49,6 +49,70 @@ pub struct RerankInput<'a> {
     pub question: &'a str,
 }
 
+const RERANK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
+const RERANK_MAX_TOKENS: u32 = 512;
+const RERANK_SYSTEM_PROMPT: &str = "You rank database tables by relevance to a user question. \
+    Return JSON {\"ranked\":[chunkId,...]} containing a subset of the input ids \
+    in best-first order.";
+
+fn rerank_candidates_json(candidates: &[SearchResult]) -> String {
+    let candidate_list: Vec<RerankCandidate> = candidates
+        .iter()
+        .map(|candidate| RerankCandidate {
+            id: candidate.chunk_id,
+            name: format!("`{}`.`{}`", candidate.db_name, candidate.table_name),
+            summary: candidate_summary(&candidate.ddl_text),
+        })
+        .collect();
+    serde_json::to_string(&candidate_list).unwrap_or_else(|_| "[]".to_string())
+}
+
+fn rerank_request_body(model: &str, user_prompt: String) -> serde_json::Value {
+    let mut request_body_obj = serde_json::json!({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": RERANK_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.0,
+        "max_tokens": RERANK_MAX_TOKENS
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default();
+    crate::ai::client::apply_reasoning_off_compatibility(&mut request_body_obj);
+    serde_json::Value::Object(request_body_obj)
+}
+
+async fn fetch_rerank_body(
+    client: &reqwest::Client,
+    url: &str,
+    request_body: &serde_json::Value,
+) -> Option<String> {
+    let result =
+        tokio::time::timeout(RERANK_TIMEOUT, client.post(url).json(request_body).send()).await;
+    let response = match result {
+        Ok(Ok(resp)) => resp,
+        Ok(Err(error)) => {
+            tracing::warn!(error = %error, "rerank_with_llm: HTTP request failed, falling back to original order");
+            return None;
+        }
+        Err(_) => {
+            tracing::warn!(
+                "rerank_with_llm: request timed out (6s), falling back to original order"
+            );
+            return None;
+        }
+    };
+    match response.text().await {
+        Ok(text) => Some(text),
+        Err(error) => {
+            tracing::warn!(error = %error, "rerank_with_llm: failed to read response body");
+            None
+        }
+    }
+}
+
 pub async fn rerank_with_llm(
     client: &reqwest::Client,
     backend: RerankBackend<'_>,
@@ -63,78 +127,16 @@ pub async fn rerank_with_llm(
         return candidates;
     }
 
-    // Build the candidate list for the prompt
-    let candidate_list: Vec<RerankCandidate> = candidates
-        .iter()
-        .map(|candidate| {
-            let summary = candidate_summary(&candidate.ddl_text);
-            RerankCandidate {
-                id: candidate.chunk_id,
-                name: format!("`{}`.`{}`", candidate.db_name, candidate.table_name),
-                summary,
-            }
-        })
-        .collect();
-
-    let candidates_json =
-        serde_json::to_string(&candidate_list).unwrap_or_else(|_| "[]".to_string());
-
-    let system_prompt = "You rank database tables by relevance to a user question. \
-        Return JSON {\"ranked\":[chunkId,...]} containing a subset of the input ids \
-        in best-first order.";
-
+    let candidates_json = rerank_candidates_json(&candidates);
     let user_prompt = format!("Question: \"{question}\"\nCandidates: {candidates_json}");
-
-    let mut request_body_obj = serde_json::json!({
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.0,
-        "max_tokens": 512
-    })
-    .as_object()
-    .cloned()
-    .unwrap_or_default();
-    crate::ai::client::apply_reasoning_off_compatibility(&mut request_body_obj);
-    let request_body = serde_json::Value::Object(request_body_obj);
-
+    let request_body = rerank_request_body(model, user_prompt);
     let url = format!("{}/chat/completions", endpoint.trim_end_matches('/'));
-
-    // 6 second timeout
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(6),
-        client.post(&url).json(&request_body).send(),
-    )
-    .await;
-
-    let response = match result {
-        Ok(Ok(resp)) => resp,
-        Ok(Err(error)) => {
-            tracing::warn!(error = %error, "rerank_with_llm: HTTP request failed, falling back to original order");
-            return candidates;
-        }
-        Err(_) => {
-            tracing::warn!(
-                "rerank_with_llm: request timed out (6s), falling back to original order"
-            );
-            return candidates;
-        }
-    };
-
-    let body = match response.text().await {
-        Ok(text) => text,
-        Err(error) => {
-            tracing::warn!(error = %error, "rerank_with_llm: failed to read response body");
-            return candidates;
-        }
+    let Some(body) = fetch_rerank_body(client, &url, &request_body).await else {
+        return candidates;
     };
 
     // Parse response: look for {"ranked": [...]} in the assistant message content
-    let ranked_ids = parse_rerank_response(&body);
-
-    match ranked_ids {
+    match parse_rerank_response(&body) {
         Some(ids) if !ids.is_empty() => reorder_by_ids(candidates, &ids),
         _ => {
             tracing::warn!(
@@ -187,16 +189,12 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
     }
 
     // Try to find JSON object in the text
-    if let Some(start) = content.find('{') {
-        if let Some(end) = content.rfind('}') {
-            let json_str = &content[start..=end];
-            if let Ok(output) = serde_json::from_str::<RerankOutput>(json_str) {
-                return Some(output.ranked);
-            }
-        }
-    }
-
-    None
+    let start = content.find('{')?;
+    let end = content.rfind('}')?;
+    let json_str = content.get(start..=end)?;
+    serde_json::from_str::<RerankOutput>(json_str)
+        .ok()
+        .map(|output| output.ranked)
 }
 
 /// Reorder candidates according to the given ID order.

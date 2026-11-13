@@ -105,6 +105,6 @@ panic = "abort"
 strip = true
 
 [lints.clippy]
-excessive_nesting = "allow"
-too_many_lines = "allow"
+excessive_nesting = "warn"
+too_many_lines = "warn"
 allow_attributes = "deny"

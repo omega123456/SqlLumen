@@ -45,6 +45,17 @@ impl CacheInner {
     fn is_full(&self) -> bool {
         self.map.len() >= self.capacity
     }
+
+    fn evict_least_recently_used(&mut self) {
+        let lru_key = self
+            .map
+            .iter()
+            .min_by_key(|(_, entry)| entry.last_used)
+            .map(|(key, _)| key.clone());
+        if let Some(key) = lru_key {
+            self.map.remove(&key);
+        }
+    }
 }
 
 impl Default for EmbeddingCache {
@@ -97,15 +108,7 @@ impl EmbeddingCache {
         }
 
         if inner.is_full() {
-            // Evict LRU entry
-            let lru_key = inner
-                .map
-                .iter()
-                .min_by_key(|(_, entry)| entry.last_used)
-                .map(|(key, _)| key.clone());
-            if let Some(key) = lru_key {
-                inner.map.remove(&key);
-            }
+            inner.evict_least_recently_used();
         }
 
         inner.map.insert(

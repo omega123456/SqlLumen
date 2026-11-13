@@ -3,9 +3,11 @@
 // Each integration test binary only uses a subset of helpers; unused items are expected.
 
 pub mod blob_step_helpers;
+pub mod editor_session_fixtures;
 pub mod fake_credentials;
 pub mod log_capture;
 pub mod mock_mysql_server;
+pub mod mock_session;
 pub mod schema_index_chunks;
 
 use rusqlite::Connection;
@@ -185,5 +187,37 @@ pub fn sample_save_input() -> SaveConnectionInput {
         sort_order: 0,
         connect_timeout_secs: Some(10),
         keepalive_interval_secs: Some(60),
+    }
+}
+
+pub fn insert_memory_vector_or_panic(
+    conn: &Connection,
+    vec_table: &str,
+    vector: sqllumen_lib::ai_memory::types::MemoryVector<'_>,
+) {
+    sqllumen_lib::ai_memory::storage::insert_memory_vector(conn, vec_table, &vector)
+        .expect("insert memory vector");
+}
+
+pub fn new_connection_data(
+    name: &str,
+    group_id: Option<String>,
+) -> sqllumen_lib::db::connections::NewConnectionData {
+    sqllumen_lib::db::connections::NewConnectionData {
+        name: name.to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
     }
 }

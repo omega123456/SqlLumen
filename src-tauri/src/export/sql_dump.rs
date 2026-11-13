@@ -239,18 +239,23 @@ pub fn write_insert_batch<W: Write>(
             write!(writer, ",")?;
         }
         write!(writer, "\n(")?;
-        for (column_index, value) in row.iter().enumerate() {
-            if column_index > 0 {
-                write!(writer, ", ")?;
-            }
-            write_value(writer, value)?;
-        }
+        write_row_values(writer, row)?;
         write!(writer, ")")?;
         count += 1;
     }
     writeln!(writer, ";")?;
 
     Ok(count)
+}
+
+fn write_row_values<W: Write>(writer: &mut W, row: &[SqlDumpValue]) -> io::Result<()> {
+    for (column_index, value) in row.iter().enumerate() {
+        if column_index > 0 {
+            write!(writer, ", ")?;
+        }
+        write_value(writer, value)?;
+    }
+    Ok(())
 }
 
 /// Write batched INSERT statements for a table's data.

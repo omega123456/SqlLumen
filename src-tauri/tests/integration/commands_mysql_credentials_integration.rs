@@ -1491,7 +1491,29 @@ async fn open_connection_impl_surfaces_database_read_errors() {
     assert!(error.contains("no such table"));
 }
 
-#[tokio::test]
+#[cfg(not(coverage))]
+const RECONNECT_WINDOW: Duration = Duration::from_secs(8);
+#[cfg(not(coverage))]
+const RECONNECT_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+#[cfg(not(coverage))]
+async fn status_once_reconnected_or_window_ends(
+    app: &tauri::App<tauri::test::MockRuntime>,
+    connection_id: &str,
+) -> Option<ConnectionStatus> {
+    let deadline = tokio::time::Instant::now() + RECONNECT_WINDOW;
+    loop {
+        let status = app.state::<AppState>().registry.get_status(connection_id);
+        let is_settled =
+            status == Some(ConnectionStatus::Connected) || tokio::time::Instant::now() >= deadline;
+        if is_settled {
+            return status;
+        }
+        tokio::time::sleep(RECONNECT_POLL_INTERVAL).await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
 #[cfg(not(coverage))]
 async fn health_reconnect_uses_profile_id_credential_key() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
@@ -1540,10 +1562,8 @@ async fn health_reconnect_uses_profile_id_credential_key() {
         tauri::AppHandle::clone(app.handle()),
     );
 
-    // 1s keepalive + failed ping (~≤1s with connect_timeout) + 5s reconnect backoff + pool swap
-    tokio::time::sleep(Duration::from_secs(8)).await;
     assert_eq!(
-        app.state::<AppState>().registry.get_status(&connection_id),
+        status_once_reconnected_or_window_ends(&app, &connection_id).await,
         Some(ConnectionStatus::Connected)
     );
     token.cancel();

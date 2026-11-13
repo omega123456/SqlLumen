@@ -96,6 +96,13 @@ async fn resolve_session_profile_ignores_poisoned_map_and_falls_back_to_registry
         },
     );
 
+    poison_session_profile_map(&state);
+
+    let resolved = resolve_session_profile(&state, "sess-3").expect("profile should resolve");
+    assert_eq!(resolved, "profile-after-poison");
+}
+
+fn poison_session_profile_map(state: &sqllumen_lib::state::AppState) {
     std::thread::scope(|scope| {
         let map = &state.session_profile_map;
         let handle = scope.spawn(move || {
@@ -107,7 +114,4 @@ async fn resolve_session_profile_ignores_poisoned_map_and_falls_back_to_registry
             "thread should panic to poison mutex"
         );
     });
-
-    let resolved = resolve_session_profile(&state, "sess-3").expect("profile should resolve");
-    assert_eq!(resolved, "profile-after-poison");
 }

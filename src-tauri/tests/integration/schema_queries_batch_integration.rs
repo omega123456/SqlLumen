@@ -211,11 +211,10 @@ async fn fk_batch_error() {
 // ── Index batch: multiple databases ─────────────────────────────────────────
 
 #[cfg(not(coverage))]
-#[tokio::test]
-async fn index_batch_multiple_databases() {
-    let steps = vec![MockQueryStep {
-        query: "SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, NON_UNIQUE, INDEX_TYPE, COLUMN_NAME, CARDINALITY FROM information_schema.STATISTICS WHERE TABLE_SCHEMA IN (?, ?) ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
-        columns: vec![
+fn two_database_statistics_step() -> MockQueryStep {
+    MockQueryStep::with_rows(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, NON_UNIQUE, INDEX_TYPE, COLUMN_NAME, CARDINALITY FROM information_schema.STATISTICS WHERE TABLE_SCHEMA IN (?, ?) ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
+        vec![
             text_col("TABLE_SCHEMA"),
             text_col("TABLE_NAME"),
             text_col("INDEX_NAME"),
@@ -224,7 +223,7 @@ async fn index_batch_multiple_databases() {
             text_col("COLUMN_NAME"),
             int_col("CARDINALITY"),
         ],
-        rows: vec![
+        vec![
             vec![
                 MockCell::Bytes(b"app"),
                 MockCell::Bytes(b"users"),
@@ -262,9 +261,13 @@ async fn index_batch_multiple_databases() {
                 MockCell::I64(1000),
             ],
         ],
-        error: None,
-        affected_rows: None,
-    }];
+    )
+}
+
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn index_batch_multiple_databases() {
+    let steps = vec![two_database_statistics_step()];
 
     let server = MockMySqlServer::start_script(steps).await;
     let pool = pool_for(server.port);

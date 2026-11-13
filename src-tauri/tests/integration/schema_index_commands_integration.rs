@@ -305,45 +305,7 @@ async fn get_index_status_resolves_profile_from_registry() {
 
     // Don't register in session_profile_map — but register a connection in the registry
     // with a matching session_id → profile_id
-    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
-
-    state.registry.insert(
-        "sess-from-registry".to_string(),
-        RegistryEntry {
-            pool,
-            session_id: "sess-from-registry".to_string(),
-            profile_id: "profile-registry".to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: StoredConnectionParams {
-                profile_id: "profile-registry".to_string(),
-                host: "127.0.0.1".to_string(),
-                port: 13306,
-                username: "dummy".to_string(),
-                has_password: false,
-                keychain_ref: None,
-                default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
-                connect_timeout_secs: 10,
-                keepalive_interval_secs: 60,
-            },
-            read_only: false,
-        },
-    );
+    register_dummy_session(&state, "sess-from-registry", "profile-registry");
 
     // No meta for this profile → should be stale
     let result = get_index_status_impl(&state, "sess-from-registry".to_string());
@@ -359,45 +321,7 @@ async fn list_indexed_tables_empty_for_unknown_profile() {
     let state = test_state();
 
     // Register a session → profile mapping
-    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
-
-    state.registry.insert(
-        "sess-empty".to_string(),
-        RegistryEntry {
-            pool,
-            session_id: "sess-empty".to_string(),
-            profile_id: "profile-empty".to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: StoredConnectionParams {
-                profile_id: "profile-empty".to_string(),
-                host: "127.0.0.1".to_string(),
-                port: 13306,
-                username: "dummy".to_string(),
-                has_password: false,
-                keychain_ref: None,
-                default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
-                connect_timeout_secs: 10,
-                keepalive_interval_secs: 60,
-            },
-            read_only: false,
-        },
-    );
+    register_dummy_session(&state, "sess-empty", "profile-empty");
 
     let result = list_indexed_tables_impl(&state, "sess-empty".to_string());
     assert!(result.is_ok());
@@ -410,46 +334,8 @@ async fn list_indexed_tables_returns_chunks() {
     let state = test_state_with_vec();
 
     // Register a session in registry
-    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
-
-    state.registry.insert(
-        "sess-chunks".to_string(),
-        RegistryEntry {
-            pool,
-            session_id: "sess-chunks".to_string(),
-            profile_id: "profile-chunks".to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: StoredConnectionParams {
-                profile_id: "profile-chunks".to_string(),
-                host: "127.0.0.1".to_string(),
-                port: 13306,
-                username: "dummy".to_string(),
-                has_password: false,
-                keychain_ref: None,
-                default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
-                connect_timeout_secs: 10,
-                keepalive_interval_secs: 60,
-            },
-            read_only: false,
-        },
-    );
+    register_dummy_session(&state, "sess-chunks", "profile-chunks");
 
     // Create vec table and insert a chunk
     {
@@ -575,45 +461,7 @@ fn build_token_cancellation_on_cleanup() {
 async fn close_connection_decrements_ref_count() {
     let state = test_state();
 
-    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-    let opts = MySqlConnectOptions::new()
-        .host("127.0.0.1")
-        .port(13306)
-        .username("dummy")
-        .password("dummy");
-    let pool = MySqlPoolOptions::new().connect_lazy_with(opts);
-
-    state.registry.insert(
-        "sess-close".to_string(),
-        RegistryEntry {
-            pool,
-            session_id: "sess-close".to_string(),
-            profile_id: "profile-close".to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: StoredConnectionParams {
-                profile_id: "profile-close".to_string(),
-                host: "127.0.0.1".to_string(),
-                port: 13306,
-                username: "dummy".to_string(),
-                has_password: false,
-                keychain_ref: None,
-                default_database: None,
-                ssl: SslSettings {
-                    enabled: false,
-                    ca_path: None,
-                    cert_path: None,
-                    key_path: None,
-                },
-                connect_timeout_secs: 10,
-                keepalive_interval_secs: 60,
-            },
-            read_only: false,
-        },
-    );
+    register_dummy_session(&state, "sess-close", "profile-close");
 
     // Set up session tracking
     {
@@ -659,63 +507,8 @@ async fn close_connection_decrements_ref_count() {
 async fn close_connection_does_not_cancel_when_other_sessions_exist() {
     let state = test_state();
 
-    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-
-    let make_pool = || {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
-    };
-
-    let make_params = || StoredConnectionParams {
-        profile_id: "profile-multi".to_string(),
-        host: "127.0.0.1".to_string(),
-        port: 13306,
-        username: "dummy".to_string(),
-        has_password: false,
-        keychain_ref: None,
-        default_database: None,
-        ssl: SslSettings {
-            enabled: false,
-            ca_path: None,
-            cert_path: None,
-            key_path: None,
-        },
-        connect_timeout_secs: 10,
-        keepalive_interval_secs: 60,
-    };
-
-    // Register two sessions for the same profile
-    state.registry.insert(
-        "sess-a".to_string(),
-        RegistryEntry {
-            pool: make_pool(),
-            session_id: "sess-a".to_string(),
-            profile_id: "profile-multi".to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: make_params(),
-            read_only: false,
-        },
-    );
-    state.registry.insert(
-        "sess-b".to_string(),
-        RegistryEntry {
-            pool: make_pool(),
-            session_id: "sess-b".to_string(),
-            profile_id: "profile-multi".to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: make_params(),
-            read_only: false,
-        },
-    );
+    register_dummy_session(&state, "sess-a", "profile-multi");
+    register_dummy_session(&state, "sess-b", "profile-multi");
 
     {
         let mut map = state.session_profile_map.lock().unwrap();
@@ -1152,11 +945,9 @@ fn force_rebuild_cancels_inflight_build_token() {
     );
 
     // Simulate what force_rebuild does: remove and cancel existing token
-    {
-        let mut tokens = state.index_build_tokens.lock().unwrap();
-        if let Some(old_token) = tokens.remove(profile_id) {
-            old_token.cancel();
-        }
+    let old_token = state.index_build_tokens.lock().unwrap().remove(profile_id);
+    if let Some(old_token) = old_token {
+        old_token.cancel();
     }
 
     assert!(
@@ -1208,11 +999,9 @@ async fn force_rebuild_wipe_then_early_return_when_no_model() {
     assert_eq!(resolved, profile_id);
 
     // Step 2: cancel old token (none exists, but the code handles that)
-    {
-        let mut tokens = state.index_build_tokens.lock().unwrap();
-        if let Some(old_token) = tokens.remove(profile_id) {
-            old_token.cancel();
-        }
+    let old_token = state.index_build_tokens.lock().unwrap().remove(profile_id);
+    if let Some(old_token) = old_token {
+        old_token.cancel();
     }
 
     // Step 3: wipe chunks

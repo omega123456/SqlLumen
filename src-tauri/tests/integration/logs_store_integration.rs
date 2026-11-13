@@ -32,33 +32,55 @@ fn test_conn() -> Connection {
     conn
 }
 
+fn paged_log_timestamp(now: chrono::DateTime<Utc>, index: i64) -> chrono::DateTime<Utc> {
+    let is_recent = index < 960;
+    if is_recent {
+        return now - Duration::hours(1) + Duration::seconds(index);
+    }
+    now - Duration::hours(48) - Duration::seconds(index - 960)
+}
+
+fn paged_log_level(index: i64) -> TestLevel<'static> {
+    let is_error = index % 3 == 0;
+    if is_error {
+        return TestLevel {
+            name: "ERROR",
+            num: 50,
+        };
+    }
+    TestLevel {
+        name: "INFO",
+        num: 30,
+    }
+}
+
+fn paged_log_rows(
+    now: chrono::DateTime<Utc>,
+) -> Vec<sqllumen_lib::logging::log_store::NewLogEntry> {
+    (0..1040)
+        .map(|index| {
+            log_entry(
+                paged_log_timestamp(now, index),
+                paged_log_level(index),
+                &format!("message-{index}"),
+            )
+        })
+        .collect()
+}
+
+fn first_message(page: &sqllumen_lib::logging::log_store::LogPage) -> Option<&str> {
+    page.entries.first().map(|entry| entry.message.as_str())
+}
+
+fn last_message(page: &sqllumen_lib::logging::log_store::LogPage) -> Option<&str> {
+    page.entries.last().map(|entry| entry.message.as_str())
+}
+
 #[test]
 fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
     let mut conn = test_conn();
     let now = Utc.with_ymd_and_hms(2026, 6, 6, 12, 0, 0).unwrap();
-    let recent_start = now - Duration::hours(1);
-    let mut rows = Vec::new();
-
-    for index in 0..1040 {
-        let timestamp = if index < 960 {
-            recent_start + Duration::seconds(index as i64)
-        } else {
-            now - Duration::hours(48) - Duration::seconds((index - 960) as i64)
-        };
-        let (level, level_num) = if index % 3 == 0 {
-            ("ERROR", 50)
-        } else {
-            ("INFO", 30)
-        };
-        rows.push(log_entry(
-            timestamp,
-            TestLevel {
-                name: level,
-                num: level_num,
-            },
-            &format!("message-{index}"),
-        ));
-    }
+    let rows = paged_log_rows(now);
 
     insert_log_entries(&mut conn, &rows).expect("insert log entries");
 
@@ -75,20 +97,8 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
     assert_eq!(first_page.page_size, LOG_PAGE_SIZE);
     assert_eq!(first_page.total, 334);
     assert_eq!(first_page.entries.len() as i64, LOG_PAGE_SIZE);
-    assert_eq!(
-        first_page
-            .entries
-            .first()
-            .map(|entry| entry.message.as_str()),
-        Some("message-957")
-    );
-    assert_eq!(
-        first_page
-            .entries
-            .last()
-            .map(|entry| entry.message.as_str()),
-        Some("message-900")
-    );
+    assert_eq!(first_message(&first_page), Some("message-957"));
+    assert_eq!(last_message(&first_page), Some("message-900"));
     assert!(first_page
         .entries
         .iter()
@@ -123,13 +133,7 @@ fn list_logs_pages_newest_first_with_threshold_and_universe_cap() {
     )
     .expect("list unfiltered page");
     assert_eq!(unfiltered_page.total, 1000);
-    assert_eq!(
-        unfiltered_page
-            .entries
-            .first()
-            .map(|entry| entry.message.as_str()),
-        Some("message-959")
-    );
+    assert_eq!(first_message(&unfiltered_page), Some("message-959"));
 }
 
 #[test]

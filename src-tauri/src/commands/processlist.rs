@@ -110,19 +110,10 @@ fn kill_query_sql(id: u64, has_rds_kill: bool) -> String {
     format!("KILL QUERY {id}")
 }
 
-pub async fn kill_queries_impl(
-    state: &AppState,
-    request: KillQueriesRequest,
-) -> Result<Vec<KillResult>, String> {
-    let KillQueriesRequest { session_id, ids } = request;
-    let session_id = session_id.as_str();
-    let pool = state
-        .registry
-        .get_pool(session_id)
-        .ok_or_else(|| format!("Connection '{session_id}' not found"))?;
+async fn detect_rds_kill(pool: &sqlx::MySqlPool) -> bool {
     crate::mysql::query_log::log_outgoing_sql(RDS_KILL_PROCEDURE_CHECK_SQL);
-    let has_rds_kill = match sqlx::query(RDS_KILL_PROCEDURE_CHECK_SQL)
-        .fetch_optional(&pool)
+    match sqlx::query(RDS_KILL_PROCEDURE_CHECK_SQL)
+        .fetch_optional(pool)
         .await
     {
         Ok(Some(row)) => {
@@ -135,36 +126,50 @@ pub async fn kill_queries_impl(
             tracing::warn!(%error, "Failed to check for mysql.rds_kill");
             false
         }
-    };
+    }
+}
+
+async fn execute_kill(pool: &sqlx::MySqlPool, id: u64, sql: &str) -> KillResult {
+    crate::mysql::query_log::log_outgoing_sql(sql);
+    match sqlx::query(sqlx::AssertSqlSafe(sql)).execute(pool).await {
+        Ok(result) => {
+            crate::mysql::query_log::log_execute_result(&result);
+            KillResult {
+                id,
+                success: true,
+                error: None,
+            }
+        }
+        Err(error) => {
+            crate::mysql::query_log::log_execute_error(&error);
+            tracing::warn!(id, error = %error, "Failed to kill query");
+            KillResult {
+                id,
+                success: false,
+                error: Some(error.to_string()),
+            }
+        }
+    }
+}
+
+pub async fn kill_queries_impl(
+    state: &AppState,
+    request: KillQueriesRequest,
+) -> Result<Vec<KillResult>, String> {
+    let KillQueriesRequest { session_id, ids } = request;
+    let session_id = session_id.as_str();
+    let pool = state
+        .registry
+        .get_pool(session_id)
+        .ok_or_else(|| format!("Connection '{session_id}' not found"))?;
+    let has_rds_kill = detect_rds_kill(&pool).await;
     let history_context = resolve_connection_context(state, session_id);
 
     let mut results = Vec::with_capacity(ids.len());
     for id in ids {
         let sql = kill_query_sql(id, has_rds_kill);
-        crate::mysql::query_log::log_outgoing_sql(&sql);
         let start = std::time::Instant::now();
-        let result = match sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
-            .execute(&pool)
-            .await
-        {
-            Ok(result) => {
-                crate::mysql::query_log::log_execute_result(&result);
-                KillResult {
-                    id,
-                    success: true,
-                    error: None,
-                }
-            }
-            Err(error) => {
-                crate::mysql::query_log::log_execute_error(&error);
-                tracing::warn!(id, error = %error, "Failed to kill query");
-                KillResult {
-                    id,
-                    success: false,
-                    error: Some(error.to_string()),
-                }
-            }
-        };
+        let result = execute_kill(&pool, id, &sql).await;
         history_context.clone().log_single_entry_if_resolved(
             &state.db,
             |connection_id, database_name| NewHistoryEntry {

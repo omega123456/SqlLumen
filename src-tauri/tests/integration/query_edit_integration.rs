@@ -7,6 +7,31 @@ use sqllumen_lib::mysql::query_executor::{
 use std::collections::HashMap;
 use std::sync::Arc;
 
+fn users_q1_result(rows: Vec<Vec<serde_json::Value>>) -> StoredResult {
+    StoredResult::new(sqllumen_lib::mysql::query_executor::StoredResultParts {
+        query_id: "q1".to_string(),
+        columns: vec![
+            ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
+            },
+            ColumnMeta {
+                name: "name".to_string(),
+                data_type: "VARCHAR".to_string(),
+            },
+            ColumnMeta {
+                name: "email".to_string(),
+                data_type: "VARCHAR".to_string(),
+            },
+        ],
+        rows: crate::common::shared_rows(rows),
+        execution_time_ms: 10,
+        total_time_ms: 10,
+        affected_rows: 0,
+        auto_limit_applied: false,
+    })
+}
+
 // ── update_result_cell_impl tests ──────────────────────────────────────────────
 
 #[test]
@@ -16,41 +41,18 @@ fn update_result_cell_successful() {
     // Insert a stored result
     state.result_cache.insert(
         sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
-        vec![StoredResult::new(
-            sqllumen_lib::mysql::query_executor::StoredResultParts {
-                query_id: "q1".to_string(),
-                columns: vec![
-                    ColumnMeta {
-                        name: "id".to_string(),
-                        data_type: "INT".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "name".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "email".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                ],
-                rows: crate::common::shared_rows(vec![
-                    vec![
-                        serde_json::json!(1),
-                        serde_json::json!("Alice"),
-                        serde_json::json!("alice@example.com"),
-                    ],
-                    vec![
-                        serde_json::json!(2),
-                        serde_json::json!("Bob"),
-                        serde_json::json!("bob@example.com"),
-                    ],
-                ]),
-                execution_time_ms: 10,
-                total_time_ms: 10,
-                affected_rows: 0,
-                auto_limit_applied: false,
-            },
-        )],
+        vec![users_q1_result(vec![
+            vec![
+                serde_json::json!(1),
+                serde_json::json!("Alice"),
+                serde_json::json!("alice@example.com"),
+            ],
+            vec![
+                serde_json::json!(2),
+                serde_json::json!("Bob"),
+                serde_json::json!("bob@example.com"),
+            ],
+        ])],
     );
 
     // Update name in row 0
@@ -153,34 +155,11 @@ fn update_result_cell_multiple_columns() {
     // Insert a stored result
     state.result_cache.insert(
         sqllumen_lib::mysql::result_cache::CacheKey::new("conn-1", "tab-1"),
-        vec![StoredResult::new(
-            sqllumen_lib::mysql::query_executor::StoredResultParts {
-                query_id: "q1".to_string(),
-                columns: vec![
-                    ColumnMeta {
-                        name: "id".to_string(),
-                        data_type: "INT".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "name".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "email".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                ],
-                rows: crate::common::shared_rows(vec![vec![
-                    serde_json::json!(1),
-                    serde_json::json!("Alice"),
-                    serde_json::json!("alice@example.com"),
-                ]]),
-                execution_time_ms: 10,
-                total_time_ms: 10,
-                affected_rows: 0,
-                auto_limit_applied: false,
-            },
-        )],
+        vec![users_q1_result(vec![vec![
+            serde_json::json!(1),
+            serde_json::json!("Alice"),
+            serde_json::json!("alice@example.com"),
+        ]])],
     );
 
     // Update both name and email at once

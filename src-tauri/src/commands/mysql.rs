@@ -18,6 +18,9 @@ use crate::mysql::registry::OpenConnectionSession;
 use crate::mysql::registry::RegistryEntry;
 use crate::mysql::registry::StoredConnectionParams;
 use crate::state::AppState;
+
+#[cfg(not(coverage))]
+const DEFAULT_TEST_CONNECT_TIMEOUT_SECS: u64 = 10;
 use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
 use sqlx::Row;
@@ -91,13 +94,15 @@ fn health_monitor_token(
 }
 
 #[cfg(not(coverage))]
+const SERVER_VERSION_COLUMN: DiagnosticColumn = DiagnosticColumn {
+    sql: "SELECT VERSION()",
+    column_index: 0,
+};
+
+#[cfg(not(coverage))]
 async fn fetch_server_version(pool: &sqlx::MySqlPool) -> String {
-    query_log::log_outgoing_sql("SELECT VERSION()");
-    let row = sqlx::query("SELECT VERSION()").fetch_one(pool).await.ok();
-    if let Some(ref found_row) = row {
-        query_log::log_mysql_rows(std::slice::from_ref(found_row));
-    }
-    row.and_then(|found_row| found_row.try_get::<String, _>(0).ok())
+    fetch_diagnostic_value(pool, SERVER_VERSION_COLUMN)
+        .await
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
@@ -126,27 +131,21 @@ fn ssl_status_label(cipher: String) -> String {
     cipher
 }
 
-/// Test a MySQL connection with the given parameters.
-/// Creates a temporary pool, runs diagnostic queries, and drops the pool.
 #[cfg(not(coverage))]
-pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionResult {
-    // When testing a saved connection without a freshly typed password, resolve the
-    // stored password from secure storage so the test uses real credentials.
-    let password = match resolve_test_connection_password(&input) {
-        Ok(password) => password,
-        Err(error) => {
-            return TestConnectionResult {
-                success: false,
-                server_version: None,
-                auth_method: None,
-                ssl_status: None,
-                connection_time_ms: None,
-                error_message: Some(error),
-            };
-        }
-    };
+fn failed_test_connection(error_message: String) -> TestConnectionResult {
+    TestConnectionResult {
+        success: false,
+        server_version: None,
+        auth_method: None,
+        ssl_status: None,
+        connection_time_ms: None,
+        error_message: Some(error_message),
+    }
+}
 
-    let params = ConnectionParams {
+#[cfg(not(coverage))]
+fn test_connection_params(input: TestConnectionInput, password: String) -> ConnectionParams {
+    ConnectionParams {
         host: input.host,
         port: input.port,
         username: input.username,
@@ -158,58 +157,63 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
             cert_path: input.ssl_cert_path,
             key_path: input.ssl_key_path,
         },
-        connect_timeout_secs: input.connect_timeout_secs.unwrap_or(10).max(1),
+        connect_timeout_secs: input
+            .connect_timeout_secs
+            .unwrap_or(DEFAULT_TEST_CONNECT_TIMEOUT_SECS)
+            .max(1),
+    }
+}
+
+#[cfg(not(coverage))]
+struct DiagnosticColumn {
+    sql: &'static str,
+    column_index: usize,
+}
+
+#[cfg(not(coverage))]
+async fn fetch_diagnostic_value(
+    pool: &sqlx::MySqlPool,
+    column: DiagnosticColumn,
+) -> Option<String> {
+    query_log::log_outgoing_sql(column.sql);
+    let row = sqlx::query(column.sql).fetch_one(pool).await.ok()?;
+    query_log::log_mysql_rows(std::slice::from_ref(&row));
+    row.try_get::<String, _>(column.column_index).ok()
+}
+
+/// Test a MySQL connection with the given parameters.
+/// Creates a temporary pool, runs diagnostic queries, and drops the pool.
+#[cfg(not(coverage))]
+pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionResult {
+    // When testing a saved connection without a freshly typed password, resolve the
+    // stored password from secure storage so the test uses real credentials.
+    let password = match resolve_test_connection_password(&input) {
+        Ok(password) => password,
+        Err(error) => return failed_test_connection(error),
     };
+    let params = test_connection_params(input, password);
 
     let start = Instant::now();
-
     let pool = match pool::create_pool(&params).await {
         Ok(created_pool) => created_pool,
-        Err(error) => {
-            return TestConnectionResult {
-                success: false,
-                server_version: None,
-                auth_method: None,
-                ssl_status: None,
-                connection_time_ms: None,
-                error_message: Some(format!("Connection failed: {error}")),
-            };
-        }
+        Err(error) => return failed_test_connection(format!("Connection failed: {error}")),
     };
-
     let connection_time_ms = start.elapsed().as_millis() as u64;
 
     // Run diagnostic queries — failures are non-fatal (report what we can)
-    query_log::log_outgoing_sql("SELECT VERSION()");
-    let server_version = sqlx::query("SELECT VERSION()")
-        .fetch_one(&pool)
+    let server_version = fetch_diagnostic_value(&pool, SERVER_VERSION_COLUMN).await;
+    let ssl_cipher_column = DiagnosticColumn {
+        sql: "SHOW STATUS LIKE 'Ssl_cipher'",
+        column_index: 1,
+    };
+    let ssl_status = fetch_diagnostic_value(&pool, ssl_cipher_column)
         .await
-        .ok()
-        .and_then(|row| {
-            query_log::log_mysql_rows(std::slice::from_ref(&row));
-            row.try_get::<String, _>(0).ok()
-        });
-
-    query_log::log_outgoing_sql("SHOW STATUS LIKE 'Ssl_cipher'");
-    let ssl_status = sqlx::query("SHOW STATUS LIKE 'Ssl_cipher'")
-        .fetch_one(&pool)
-        .await
-        .ok()
-        .and_then(|row| {
-            query_log::log_mysql_rows(std::slice::from_ref(&row));
-            row.try_get::<String, _>(1).ok()
-        })
         .map(ssl_status_label);
-
-    query_log::log_outgoing_sql("SELECT CURRENT_USER()");
-    let auth_method = sqlx::query("SELECT CURRENT_USER()")
-        .fetch_one(&pool)
-        .await
-        .ok()
-        .and_then(|row| {
-            query_log::log_mysql_rows(std::slice::from_ref(&row));
-            row.try_get::<String, _>(0).ok()
-        });
+    let current_user_column = DiagnosticColumn {
+        sql: "SELECT CURRENT_USER()",
+        column_index: 0,
+    };
+    let auth_method = fetch_diagnostic_value(&pool, current_user_column).await;
 
     // Always close the temp pool
     pool.close().await;
@@ -342,17 +346,7 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
         return;
     };
 
-    // Decrement ref count
-    let should_cleanup = match state.session_ref_counts.lock() {
-        Ok(mut counts) => match counts.get_mut(&profile_id) {
-            Some(count) => {
-                *count = count.saturating_sub(1);
-                *count == 0
-            }
-            None => false,
-        },
-        Err(_) => false,
-    };
+    let should_cleanup = release_profile_session_reference(state, &profile_id);
 
     // Remove session → profile mapping
     if let Ok(mut map) = state.session_profile_map.lock() {
@@ -360,17 +354,31 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
     }
 
     if should_cleanup {
-        // Cancel build token if any
-        if let Ok(mut tokens) = state.index_build_tokens.lock() {
-            if let Some(token) = tokens.remove(&profile_id) {
-                token.cancel();
-            }
-        }
+        cancel_profile_index_build(state, &profile_id);
+    }
+}
 
-        // Clean up ref count entry
-        if let Ok(mut counts) = state.session_ref_counts.lock() {
-            counts.remove(&profile_id);
-        }
+fn release_profile_session_reference(state: &AppState, profile_id: &str) -> bool {
+    let Ok(mut counts) = state.session_ref_counts.lock() else {
+        return false;
+    };
+    let Some(count) = counts.get_mut(profile_id) else {
+        return false;
+    };
+    *count = count.saturating_sub(1);
+    *count == 0
+}
+
+fn cancel_profile_index_build(state: &AppState, profile_id: &str) {
+    let build_token = match state.index_build_tokens.lock() {
+        Ok(mut tokens) => tokens.remove(profile_id),
+        Err(_) => None,
+    };
+    if let Some(token) = build_token {
+        token.cancel();
+    }
+    if let Ok(mut counts) = state.session_ref_counts.lock() {
+        counts.remove(profile_id);
     }
 }
 

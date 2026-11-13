@@ -153,20 +153,18 @@ pub fn evict_metadata_cache_for_database(
     connection_id: &str,
     database: &str,
 ) -> MetadataCacheInvalidatedPayload {
-    let mut removed_tables = Vec::new();
-    {
+    let removed_tables: Vec<String> = {
         let entries = state
             .metadata_cache
             .entries
             .read()
             .expect("metadata cache lock poisoned");
-        for key in entries.keys() {
-            let is_in_database = key.connection_id == connection_id && key.database == database;
-            if is_in_database {
-                removed_tables.push(key.table.clone());
-            }
-        }
-    }
+        entries
+            .keys()
+            .filter(|key| key.connection_id == connection_id && key.database == database)
+            .map(|key| key.table.clone())
+            .collect()
+    };
 
     for table in &removed_tables {
         state

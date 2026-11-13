@@ -94,6 +94,20 @@ struct XlsxSink {
     stopped: bool,
 }
 
+fn write_xlsx_header_row(
+    worksheet: &mut rust_xlsxwriter::Worksheet,
+    columns: &[String],
+) -> Result<(), String> {
+    let bold = Format::new().set_bold();
+    for (column_index, col_name) in columns.iter().enumerate() {
+        worksheet
+            .write_string_with_format(0, column_index as u16, col_name, &bold)
+            .map_err(xlsx_err)?;
+    }
+    worksheet.set_freeze_panes(1, 0).map_err(xlsx_err)?;
+    Ok(())
+}
+
 impl XlsxSink {
     fn new(columns: &[String], include_headers: bool, row_limit: u32) -> Result<Self, String> {
         let mut workbook = Workbook::new();
@@ -103,13 +117,7 @@ impl XlsxSink {
         worksheet.set_name("Query Results").map_err(xlsx_err)?;
         let mut next_row = 0;
         if include_headers {
-            let bold = Format::new().set_bold();
-            for (column_index, col_name) in columns.iter().enumerate() {
-                worksheet
-                    .write_string_with_format(0, column_index as u16, col_name, &bold)
-                    .map_err(xlsx_err)?;
-            }
-            worksheet.set_freeze_panes(1, 0).map_err(xlsx_err)?;
+            write_xlsx_header_row(worksheet, columns)?;
             next_row = 1;
         }
         Ok(Self {
@@ -129,15 +137,15 @@ impl XlsxSink {
             self.stopped = true;
             return Ok(RowWrite::SheetLimitReached);
         }
-        if let Some(sample) = self.sample.as_mut() {
-            sample.push(row.to_vec());
-            let is_sample_complete = sample.len() >= XLSX_WIDTH_SAMPLE_ROWS;
-            if is_sample_complete {
-                self.flush_sample()?;
-            }
+        let Some(sample) = self.sample.as_mut() else {
+            self.write_sheet_row(row)?;
             return Ok(RowWrite::Written);
+        };
+        sample.push(row.to_vec());
+        let is_sample_complete = sample.len() >= XLSX_WIDTH_SAMPLE_ROWS;
+        if is_sample_complete {
+            self.flush_sample()?;
         }
-        self.write_sheet_row(row)?;
         Ok(RowWrite::Written)
     }
 
@@ -188,6 +196,32 @@ enum SinkKind {
     Xlsx(Box<XlsxSink>),
 }
 
+fn create_csv_sink(
+    path: &Path,
+    columns: &[String],
+    include_headers: bool,
+) -> Result<SinkKind, String> {
+    let mut wtr = csv::WriterBuilder::new()
+        .has_headers(false)
+        .from_writer(create_file(path)?);
+    if include_headers {
+        wtr.write_record(columns)
+            .map_err(io_err("Failed to write CSV"))?;
+    }
+    Ok(SinkKind::Csv(Box::new(wtr)))
+}
+
+fn create_sql_sink(spec: &RowSinkSpec<'_>) -> Result<SinkKind, String> {
+    let table_name = spec.table_name.unwrap_or(DEFAULT_SQL_TABLE_NAME);
+    if table_name.is_empty() {
+        return Err("Failed to write SQL: table_name must not be empty".to_string());
+    }
+    Ok(SinkKind::Sql {
+        out: create_file(spec.path)?,
+        prefix: sql_writer::sql_insert_prefix(table_name, spec.columns),
+    })
+}
+
 /// An incremental writer for one export file.
 pub struct RowSink {
     kind: SinkKind,
@@ -218,33 +252,15 @@ impl RowSink {
             path,
             columns,
             include_headers,
-            table_name,
+            ..
         } = *spec;
         let kind = match format {
-            ExportFormat::Csv => {
-                let mut wtr = csv::WriterBuilder::new()
-                    .has_headers(false)
-                    .from_writer(create_file(path)?);
-                if include_headers {
-                    wtr.write_record(columns)
-                        .map_err(io_err("Failed to write CSV"))?;
-                }
-                SinkKind::Csv(Box::new(wtr))
-            }
+            ExportFormat::Csv => create_csv_sink(path, columns, include_headers)?,
             ExportFormat::Json => SinkKind::Json {
                 out: create_file(path)?,
                 columns: columns.to_vec(),
             },
-            ExportFormat::SqlInsert => {
-                let table_name = table_name.unwrap_or(DEFAULT_SQL_TABLE_NAME);
-                if table_name.is_empty() {
-                    return Err("Failed to write SQL: table_name must not be empty".to_string());
-                }
-                SinkKind::Sql {
-                    out: create_file(path)?,
-                    prefix: sql_writer::sql_insert_prefix(table_name, columns),
-                }
-            }
+            ExportFormat::SqlInsert => create_sql_sink(spec)?,
             ExportFormat::Xlsx => SinkKind::Xlsx(Box::new(XlsxSink::new(
                 columns,
                 include_headers,

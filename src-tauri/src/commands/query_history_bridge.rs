@@ -15,11 +15,14 @@ use crate::mysql::metadata_cache::{
 use crate::mysql::query_executor::{
     execute_call_query_impl, execute_multi_query_impl, execute_query_impl, ExecuteCallQueryRequest,
     ExecuteMultiQueryRequest, ExecuteQueryRequest, ExecuteQueryResult, MultiQueryResult,
+    MultiQueryResultItem,
 };
 use crate::state::AppState;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+const MULTI_QUERY_BATCH_LABEL: &str = "(multi-query batch)";
 
 /// Fire-and-forget: insert a single history entry.
 pub(crate) fn single_row_count(succeeded: bool) -> i64 {
@@ -29,26 +32,47 @@ pub(crate) fn single_row_count(succeeded: bool) -> i64 {
     0
 }
 
+fn insert_history_entry_now(db: &Mutex<Connection>, entry: &NewHistoryEntry) {
+    let conn = match db.lock() {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(error = %error, "failed to acquire db lock for query history logging");
+            return;
+        }
+    };
+    if let Err(error) = history::insert_history(&conn, entry) {
+        tracing::warn!(
+            error = %error,
+            connection_id = %entry.connection_id,
+            "failed to insert query history entry"
+        );
+    }
+}
+
+fn insert_history_batch_now(db: &Mutex<Connection>, entries: &[NewHistoryEntry]) {
+    let conn = match db.lock() {
+        Ok(conn) => conn,
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "failed to acquire db lock for batch query history logging"
+            );
+            return;
+        }
+    };
+    if let Err(error) = history::insert_history_batch(&conn, entries) {
+        tracing::warn!(
+            error = %error,
+            count = entries.len(),
+            "failed to batch-insert query history entries"
+        );
+    }
+}
+
 pub(crate) fn log_single_entry(db: &Arc<Mutex<Connection>>, entry: NewHistoryEntry) {
     let db = Arc::clone(db);
     tauri::async_runtime::spawn(async move {
-        match db.lock() {
-            Ok(conn) => {
-                if let Err(error) = history::insert_history(&conn, &entry) {
-                    tracing::warn!(
-                        error = %error,
-                        connection_id = %entry.connection_id,
-                        "failed to insert query history entry"
-                    );
-                }
-            }
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "failed to acquire db lock for query history logging"
-                );
-            }
-        }
+        insert_history_entry_now(&db, &entry);
     });
 }
 
@@ -59,23 +83,7 @@ pub(crate) fn log_batch_entries(db: &Arc<Mutex<Connection>>, entries: Vec<NewHis
     }
     let db = Arc::clone(db);
     tauri::async_runtime::spawn(async move {
-        match db.lock() {
-            Ok(conn) => {
-                if let Err(error) = history::insert_history_batch(&conn, &entries) {
-                    tracing::warn!(
-                        error = %error,
-                        count = entries.len(),
-                        "failed to batch-insert query history entries"
-                    );
-                }
-            }
-            Err(error) => {
-                tracing::warn!(
-                    error = %error,
-                    "failed to acquire db lock for batch query history logging"
-                );
-            }
-        }
+        insert_history_batch_now(&db, &entries);
     });
 }
 
@@ -141,6 +149,47 @@ impl HistoryRecord {
             row_count: 0,
             affected_rows: 0,
             error_message: result.as_ref().err().cloned(),
+        }
+    }
+
+    fn failed(sql_text: String, error: &str) -> Self {
+        Self {
+            sql_text,
+            duration_ms: 0,
+            row_count: 0,
+            affected_rows: 0,
+            error_message: Some(error.to_string()),
+        }
+    }
+
+    fn for_query_result(sql_text: String, result: &ExecuteQueryResult) -> Self {
+        Self {
+            sql_text,
+            duration_ms: result.total_time_ms as i64,
+            row_count: result.total_rows as i64,
+            affected_rows: result.affected_rows as i64,
+            error_message: None,
+        }
+    }
+
+    fn for_multi_query_item(item: &MultiQueryResultItem) -> Self {
+        Self {
+            sql_text: item.source_sql.clone(),
+            duration_ms: item.total_time_ms as i64,
+            row_count: item.total_rows,
+            affected_rows: item.affected_rows as i64,
+            error_message: item.error.clone(),
+        }
+    }
+
+    fn for_call_query(sql_text: String, multi: &MultiQueryResult) -> Self {
+        let results = &multi.results;
+        Self {
+            sql_text,
+            duration_ms: results.iter().map(|item| item.total_time_ms as i64).sum(),
+            row_count: results.iter().map(|item| item.total_rows).sum(),
+            affected_rows: results.iter().map(|item| item.affected_rows as i64).sum(),
+            error_message: results.iter().find_map(|item| item.error.clone()),
         }
     }
 
@@ -247,8 +296,6 @@ pub fn invalidate_metadata_cache_for_executed_sql(state: &AppState, session_id: 
     }
 }
 
-// ── execute_query bridge ──────────────────────────────────────────────────────
-
 pub async fn execute_query_bridge(
     state: &AppState,
     request: &ExecuteQueryRequest,
@@ -257,62 +304,29 @@ pub async fn execute_query_bridge(
     let sql = request.sql.as_str();
     let result = execute_query_impl(state, request).await;
 
-    let ConnectionHistoryContext {
-        connection_id,
-        database_name,
-        ..
-    } = resolve_connection_context(state, session_id);
-
     // Still invalidate the metadata cache on success regardless of history logging.
     if result.is_ok() {
         invalidate_metadata_cache_for_executed_sql(state, session_id, sql);
     }
 
-    let Some(connection_id) = connection_id else {
-        tracing::warn!(
-            session_id,
-            "skipping query history logging: no saved connection id resolved for session"
-        );
-        return result;
+    let record = match &result {
+        Ok(query_result) => HistoryRecord::for_query_result(sql.to_string(), query_result),
+        Err(error) => HistoryRecord::failed(sql.to_string(), error),
     };
-
-    match &result {
-        Ok(result) => {
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id,
-                    database_name,
-                    sql_text: sql.to_string(),
-                    duration_ms: Some(result.total_time_ms as i64),
-                    row_count: Some(result.total_rows as i64),
-                    affected_rows: Some(result.affected_rows as i64),
-                    success: true,
-                    error_message: None,
-                },
-            );
-        }
-        Err(error) => {
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id,
-                    database_name,
-                    sql_text: sql.to_string(),
-                    duration_ms: Some(0),
-                    row_count: Some(0),
-                    affected_rows: Some(0),
-                    success: false,
-                    error_message: Some(error.clone()),
-                },
-            );
-        }
-    }
-
+    log_history_record(state, session_id, record);
     result
 }
 
-// ── execute_multi_query bridge ────────────────────────────────────────────────
+fn invalidate_metadata_cache_for_successful_statements(
+    state: &AppState,
+    session_id: &str,
+    multi: &MultiQueryResult,
+) {
+    let successful_statements = multi.results.iter().filter(|item| item.error.is_none());
+    for item in successful_statements {
+        invalidate_metadata_cache_for_executed_sql(state, session_id, &item.source_sql);
+    }
+}
 
 pub async fn execute_multi_query_bridge(
     state: &AppState,
@@ -321,145 +335,38 @@ pub async fn execute_multi_query_bridge(
     let session_id = request.connection_id.as_str();
     let result = execute_multi_query_impl(state, request).await;
 
-    let ConnectionHistoryContext {
-        connection_id,
-        database_name,
-        ..
-    } = resolve_connection_context(state, session_id);
-
-    // Still invalidate the metadata cache for successful statements regardless of history logging.
-    if let Ok(multi) = &result {
-        for item in &multi.results {
-            if item.error.is_none() {
-                invalidate_metadata_cache_for_executed_sql(state, session_id, &item.source_sql);
-            }
-        }
-    }
-
-    let Some(connection_id) = connection_id else {
-        tracing::warn!(
-            session_id,
-            "skipping query history logging: no saved connection id resolved for session"
-        );
-        return result;
-    };
-
     match &result {
         Ok(multi) => {
-            let entries: Vec<NewHistoryEntry> = multi
+            // Still invalidate the metadata cache for successful statements regardless of history logging.
+            invalidate_metadata_cache_for_successful_statements(state, session_id, multi);
+            let records = multi
                 .results
                 .iter()
-                .map(|item| NewHistoryEntry {
-                    connection_id: connection_id.clone(),
-                    database_name: database_name.clone(),
-                    sql_text: item.source_sql.clone(),
-                    duration_ms: Some(item.total_time_ms as i64),
-                    row_count: Some(item.total_rows),
-                    affected_rows: Some(item.affected_rows as i64),
-                    success: item.error.is_none(),
-                    error_message: item.error.clone(),
-                })
+                .map(HistoryRecord::for_multi_query_item)
                 .collect();
-            log_batch_entries(&state.db, entries);
+            log_history_batch(state, session_id, records);
         }
         Err(error) => {
-            // Top-level error — we don't have per-statement results.
-            // Log a single error entry with no SQL (we don't know which statement failed).
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id,
-                    database_name,
-                    sql_text: "(multi-query batch)".to_string(),
-                    duration_ms: Some(0),
-                    row_count: Some(0),
-                    affected_rows: Some(0),
-                    success: false,
-                    error_message: Some(error.clone()),
-                },
-            );
+            // A top-level error has no per-statement results, so the failing statement is unknown.
+            let record = HistoryRecord::failed(MULTI_QUERY_BATCH_LABEL.to_string(), error);
+            log_history_record(state, session_id, record);
         }
     }
-
     result
 }
-
-// ── execute_call_query bridge ─────────────────────────────────────────────────
 
 pub async fn execute_call_query_bridge(
     state: &AppState,
     request: &ExecuteCallQueryRequest,
 ) -> Result<MultiQueryResult, String> {
     let session_id = request.connection_id.as_str();
-    let sql = request.sql.as_str();
+    let sql = request.sql.to_string();
     let result = execute_call_query_impl(state, request).await;
 
-    let ConnectionHistoryContext {
-        connection_id,
-        database_name,
-        ..
-    } = resolve_connection_context(state, session_id);
-
-    let Some(connection_id) = connection_id else {
-        tracing::warn!(
-            session_id,
-            "skipping query history logging: no saved connection id resolved for session"
-        );
-        return result;
+    let record = match &result {
+        Ok(multi) => HistoryRecord::for_call_query(sql, multi),
+        Err(error) => HistoryRecord::failed(sql, error),
     };
-
-    match &result {
-        Ok(multi) => {
-            // Aggregate: sum total time, total rows from all result sets.
-            let total_time: i64 = multi
-                .results
-                .iter()
-                .map(|result| result.total_time_ms as i64)
-                .sum();
-            let total_rows: i64 = multi.results.iter().map(|result| result.total_rows).sum();
-            let total_affected: i64 = multi
-                .results
-                .iter()
-                .map(|result| result.affected_rows as i64)
-                .sum();
-            let has_error = multi.results.iter().any(|result| result.error.is_some());
-            let error_msg = multi
-                .results
-                .iter()
-                .filter_map(|result| result.error.as_ref())
-                .next()
-                .cloned();
-
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id,
-                    database_name,
-                    sql_text: sql.to_string(),
-                    duration_ms: Some(total_time),
-                    row_count: Some(total_rows),
-                    affected_rows: Some(total_affected),
-                    success: !has_error,
-                    error_message: error_msg,
-                },
-            );
-        }
-        Err(error) => {
-            log_single_entry(
-                &state.db,
-                NewHistoryEntry {
-                    connection_id,
-                    database_name,
-                    sql_text: sql.to_string(),
-                    duration_ms: Some(0),
-                    row_count: Some(0),
-                    affected_rows: Some(0),
-                    success: false,
-                    error_message: Some(error.clone()),
-                },
-            );
-        }
-    }
-
+    log_history_record(state, session_id, record);
     result
 }

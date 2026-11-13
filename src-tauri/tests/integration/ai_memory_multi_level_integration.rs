@@ -1,13 +1,35 @@
 //! Integration tests for multi-level `ai_memory` — scope-aware storage,
 //! move, and group cascade.
 
+use crate::common::insert_memory_vector_or_panic;
 use rusqlite::{params, Connection};
 use sqllumen_lib::ai_memory::storage;
-use sqllumen_lib::ai_memory::types::{AiMemory, MemoryScope};
+use sqllumen_lib::ai_memory::types::{AiMemory, MemoryOwner, MemoryScope, MemoryVector};
 use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 
 /// Register sqlite-vec, open an in-memory DB, run all migrations.
+fn global_owner() -> MemoryOwner<'static> {
+    MemoryOwner {
+        scope: MemoryScope::Global,
+        owner_id: None,
+    }
+}
+
+fn group_owner(group_id: &str) -> MemoryOwner<'_> {
+    MemoryOwner {
+        scope: MemoryScope::Group,
+        owner_id: Some(group_id),
+    }
+}
+
+fn connection_owner(connection_id: &str) -> MemoryOwner<'_> {
+    MemoryOwner {
+        scope: MemoryScope::Connection,
+        owner_id: Some(connection_id),
+    }
+}
+
 fn setup_db() -> Connection {
     init_sqlite_vec();
     let mut conn = Connection::open_in_memory().expect("open in-memory db");
@@ -32,13 +54,46 @@ struct ScopedVecTable<'a> {
     vec_table: &'a str,
 }
 
-fn knn_contents(conn: &Connection, table: ScopedVecTable<'_>, query: &[f32]) -> Vec<String> {
-    let ScopedVecTable { scope, vec_table } = table;
-    let row_table = match scope {
+fn row_table_for(scope: MemoryScope) -> &'static str {
+    match scope {
         MemoryScope::Connection => "connection_memories",
         MemoryScope::Group => "group_memories",
         MemoryScope::Global => "global_memories",
-    };
+    }
+}
+
+struct ContentDistance {
+    content: String,
+    distance: f64,
+}
+
+fn knn_content_distances(
+    conn: &Connection,
+    table: ScopedVecTable<'_>,
+    query: &[f32],
+) -> Vec<ContentDistance> {
+    let ScopedVecTable { scope, vec_table } = table;
+    let row_table = row_table_for(scope);
+    let bytes: Vec<u8> = query.iter().flat_map(|f: &f32| f.to_le_bytes()).collect();
+    let sql = format!(
+        "SELECT m.content, v.distance FROM {vec_table} v JOIN {row_table} m ON m.id = v.id \
+         WHERE v.embedding MATCH ?1 AND k = ?2 ORDER BY v.distance"
+    );
+    let mut stmt = conn.prepare(&sql).unwrap();
+    stmt.query_map(params![bytes, 5i64], |row| {
+        Ok(ContentDistance {
+            content: row.get(0)?,
+            distance: row.get(1)?,
+        })
+    })
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap()
+}
+
+fn knn_contents(conn: &Connection, table: ScopedVecTable<'_>, query: &[f32]) -> Vec<String> {
+    let ScopedVecTable { scope, vec_table } = table;
+    let row_table = row_table_for(scope);
     let bytes: Vec<u8> = query.iter().flat_map(|f: &f32| f.to_le_bytes()).collect();
     let sql = format!(
         "SELECT m.content FROM {vec_table} v JOIN {row_table} m ON m.id = v.id \
@@ -111,15 +166,7 @@ fn vec_table_for_scope_resolves_and_validates() {
 #[test]
 fn insert_list_delete_connection_scope() {
     let conn = setup_db();
-    let id = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("c-1"),
-        },
-        "Conn note",
-    )
-    .unwrap();
+    let id = storage::insert_memory_scoped(&conn, connection_owner("c-1"), "Conn note").unwrap();
     let list = storage::list_memories_scoped(&conn, MemoryScope::Connection, Some("c-1")).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].scope, MemoryScope::Connection);
@@ -137,15 +184,7 @@ fn insert_list_delete_connection_scope() {
 #[test]
 fn insert_list_delete_group_scope() {
     let conn = setup_db();
-    let id = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        "Group note",
-    )
-    .unwrap();
+    let id = storage::insert_memory_scoped(&conn, group_owner("g-1"), "Group note").unwrap();
     let list = storage::list_memories_scoped(&conn, MemoryScope::Group, Some("g-1")).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].scope, MemoryScope::Group);
@@ -163,15 +202,7 @@ fn insert_list_delete_group_scope() {
 #[test]
 fn insert_list_delete_global_scope() {
     let conn = setup_db();
-    let id = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        "Global note",
-    )
-    .unwrap();
+    let id = storage::insert_memory_scoped(&conn, global_owner(), "Global note").unwrap();
     let list = storage::list_memories_scoped(&conn, MemoryScope::Global, None).unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].scope, MemoryScope::Global);
@@ -189,48 +220,16 @@ fn insert_list_delete_global_scope() {
 #[test]
 fn list_scoped_filters_by_owner() {
     let conn = setup_db();
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("c-1"),
-        },
-        "A",
-    )
-    .unwrap();
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("c-2"),
-        },
-        "B",
-    )
-    .unwrap();
+    storage::insert_memory_scoped(&conn, connection_owner("c-1"), "A").unwrap();
+    storage::insert_memory_scoped(&conn, connection_owner("c-2"), "B").unwrap();
     assert_eq!(
         storage::list_memories_scoped(&conn, MemoryScope::Connection, Some("c-1"))
             .unwrap()
             .len(),
         1
     );
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        "G1",
-    )
-    .unwrap();
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-2"),
-        },
-        "G2",
-    )
-    .unwrap();
+    storage::insert_memory_scoped(&conn, group_owner("g-1"), "G1").unwrap();
+    storage::insert_memory_scoped(&conn, group_owner("g-2"), "G2").unwrap();
     assert_eq!(
         storage::list_memories_scoped(&conn, MemoryScope::Group, Some("g-2"))
             .unwrap()
@@ -302,29 +301,13 @@ fn ensure_vec_table_named_reports_error_for_invalid_table() {
 #[test]
 fn get_by_id_and_texts_per_scope() {
     let conn = setup_db();
-    let gid = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        "GG",
-    )
-    .unwrap();
+    let gid = storage::insert_memory_scoped(&conn, group_owner("g-1"), "GG").unwrap();
     let fetched = storage::get_memory_by_id_scoped(&conn, MemoryScope::Group, gid)
         .unwrap()
         .unwrap();
     assert_eq!(fetched.content, "GG");
 
-    let glob = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        "World",
-    )
-    .unwrap();
+    let glob = storage::insert_memory_scoped(&conn, global_owner(), "World").unwrap();
     let texts = storage::get_memory_texts_scoped(&conn, MemoryScope::Global, None).unwrap();
     assert_eq!(texts, vec![(glob, "World".to_string())]);
 }
@@ -336,91 +319,41 @@ fn ensure_and_insert_vector_each_scope() {
     let conn = setup_db();
     let dim = 4;
 
-    let g_id = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        "x",
-    )
-    .unwrap();
-    let g_table = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        dim,
-    )
-    .unwrap();
+    let g_id = storage::insert_memory_scoped(&conn, global_owner(), "x").unwrap();
+    let g_table = storage::ensure_vec_table_for_scope(&conn, global_owner(), dim).unwrap();
     assert_eq!(g_table, "ai_memory_vectors_global");
-    storage::insert_memory_vector(
+    insert_memory_vector_or_panic(
         &conn,
         &g_table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: g_id,
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
+    );
 
-    let gr_id = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        "y",
-    )
-    .unwrap();
-    let gr_table = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        dim,
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    let gr_id = storage::insert_memory_scoped(&conn, group_owner("g-1"), "y").unwrap();
+    let gr_table = storage::ensure_vec_table_for_scope(&conn, group_owner("g-1"), dim).unwrap();
+    insert_memory_vector_or_panic(
         &conn,
         &gr_table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: gr_id,
             embedding: &[0.0, 1.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
+    );
 
     assert!(table_exists(&conn, &g_table));
     assert!(table_exists(&conn, &gr_table));
 
     // delete vector scoped clears it (and is graceful for missing tables).
-    storage::delete_memory_vector_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        g_id,
-    )
-    .unwrap();
+    storage::delete_memory_vector_scoped(&conn, global_owner(), g_id).unwrap();
     let remaining: i64 = conn
         .query_row(&format!("SELECT COUNT(*) FROM {g_table}"), [], |row| {
             row.get(0)
         })
         .unwrap();
     assert_eq!(remaining, 0);
-    storage::delete_memory_vector_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("missing"),
-        },
-        1,
-    )
-    .unwrap();
+    storage::delete_memory_vector_scoped(&conn, connection_owner("missing"), 1).unwrap();
 }
 
 // ── Move ──────────────────────────────────────────────────────────────────
@@ -432,47 +365,26 @@ fn move_transfers_row_and_vector_and_is_knn_searchable() {
     let embedding = vec![1.0f32, 0.0, 0.0, 0.0];
 
     // Source: a connection memory with a vector.
-    let src_id = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("c-1"),
-        },
-        "Moved note",
-    )
-    .unwrap();
-    let src_table = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("c-1"),
-        },
-        dim,
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    let src_id =
+        storage::insert_memory_scoped(&conn, connection_owner("c-1"), "Moved note").unwrap();
+    let src_table =
+        storage::ensure_vec_table_for_scope(&conn, connection_owner("c-1"), dim).unwrap();
+    insert_memory_vector_or_panic(
         &conn,
         &src_table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: src_id,
             embedding: &embedding,
         },
-    )
-    .unwrap();
+    );
 
     // Move to global (caller-provided embedding bytes).
     let moved = storage::move_memory(
         &mut conn,
         &sqllumen_lib::ai_memory::types::MemoryMove {
             memory_id: src_id,
-            from: sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Connection,
-                owner_id: Some("c-1"),
-            },
-            to: sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Global,
-                owner_id: None,
-            },
+            from: connection_owner("c-1"),
+            to: global_owner(),
             embedding: &embedding,
         },
     )
@@ -514,14 +426,8 @@ fn move_errors_for_missing_source() {
         &mut conn,
         &sqllumen_lib::ai_memory::types::MemoryMove {
             memory_id: 9999,
-            from: sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Connection,
-                owner_id: Some("c-1"),
-            },
-            to: sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Global,
-                owner_id: None,
-            },
+            from: connection_owner("c-1"),
+            to: global_owner(),
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
     );
@@ -534,53 +440,20 @@ fn move_errors_for_missing_source() {
 fn group_cascade_deletes_rows_and_drops_vec_table() {
     let conn = setup_db();
     let dim = 4;
-    let id1 = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        "A",
-    )
-    .unwrap();
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        "B",
-    )
-    .unwrap();
+    let id1 = storage::insert_memory_scoped(&conn, group_owner("g-1"), "A").unwrap();
+    storage::insert_memory_scoped(&conn, group_owner("g-1"), "B").unwrap();
     // A different group is untouched.
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-2"),
-        },
-        "Keep",
-    )
-    .unwrap();
+    storage::insert_memory_scoped(&conn, group_owner("g-2"), "Keep").unwrap();
 
-    let table = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("g-1"),
-        },
-        dim,
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    let table = storage::ensure_vec_table_for_scope(&conn, group_owner("g-1"), dim).unwrap();
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id1,
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
+    );
     assert!(table_exists(&conn, &table));
 
     storage::delete_memories_for_group(&conn, "g-1").unwrap();
@@ -609,15 +482,14 @@ fn connection_rows_and_vectors_preserved_under_new_table_name() {
     let id = storage::insert_memory(&conn, "c-1", "Preserved").unwrap();
     let table = storage::ensure_vec_table(&conn, "c-1", dim).unwrap();
     assert_eq!(table, "ai_memory_vectors_c_1");
-    storage::insert_memory_vector(
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id,
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
+    );
 
     // Listing returns the unified AiMemory.
     let list: Vec<AiMemory> = storage::list_memories(&conn, "c-1").unwrap();
@@ -636,28 +508,8 @@ use sqllumen_lib::commands::ai_memory::{
     resolve_search_owners, save_memory_impl, MemoryMovePlan, MoveMemoryRequest, SavedMemory,
 };
 use sqllumen_lib::db::connection_groups::insert_group;
-use sqllumen_lib::db::connections::{insert_connection, NewConnectionData};
+use sqllumen_lib::db::connections::insert_connection;
 use sqllumen_lib::db::settings;
-
-fn new_conn_data(name: &str, group_id: Option<String>) -> NewConnectionData {
-    NewConnectionData {
-        name: name.to_string(),
-        host: "localhost".to_string(),
-        port: 3306,
-        username: "root".to_string(),
-        default_database: None,
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
-        color: None,
-        group_id,
-        read_only: false,
-        sort_order: 0,
-        connect_timeout_secs: None,
-        keepalive_interval_secs: None,
-    }
-}
 
 fn map_session(state: &sqllumen_lib::state::AppState, session: &str, profile: &str) {
     state
@@ -678,7 +530,7 @@ fn save_memory_impl_connection_scope_writes_connection_row() {
     let state = common::test_app_state();
     let conn_id = {
         let conn = state.db.lock().unwrap();
-        insert_connection(&conn, &new_conn_data("Local", None)).unwrap()
+        insert_connection(&conn, &common::new_connection_data("Local", None)).unwrap()
     };
     map_session(&state, "sess-1", &conn_id);
     set_embedding_config(&state);
@@ -708,7 +560,7 @@ fn save_memory_impl_global_scope_writes_global_row() {
     let state = common::test_app_state();
     let conn_id = {
         let conn = state.db.lock().unwrap();
-        insert_connection(&conn, &new_conn_data("Local", None)).unwrap()
+        insert_connection(&conn, &common::new_connection_data("Local", None)).unwrap()
     };
     map_session(&state, "sess-1", &conn_id);
     set_embedding_config(&state);
@@ -740,7 +592,11 @@ fn save_memory_impl_group_scope_writes_group_row() {
     };
     let conn_id = {
         let conn = state.db.lock().unwrap();
-        insert_connection(&conn, &new_conn_data("Local", Some(group_id.clone()))).unwrap()
+        insert_connection(
+            &conn,
+            &common::new_connection_data("Local", Some(group_id.clone())),
+        )
+        .unwrap()
     };
     map_session(&state, "sess-1", &conn_id);
     set_embedding_config(&state);
@@ -773,7 +629,7 @@ fn save_memory_group_scope_without_group_errors_and_writes_nothing() {
     let state = common::test_app_state();
     let conn_id = {
         let conn = state.db.lock().unwrap();
-        insert_connection(&conn, &new_conn_data("Local", None)).unwrap()
+        insert_connection(&conn, &common::new_connection_data("Local", None)).unwrap()
     };
     map_session(&state, "sess-1", &conn_id);
     set_embedding_config(&state);
@@ -834,44 +690,26 @@ fn delete_memory_impl_per_scope_removes_row_and_vector() {
     let (gid, glob_id) = {
         let conn = state.db.lock().unwrap();
         let gid = storage::insert_group_memory(&conn, "g-1", "Group mem").unwrap();
-        let table = storage::ensure_vec_table_for_scope(
-            &conn,
-            sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Group,
-                owner_id: Some("g-1"),
-            },
-            4,
-        )
-        .unwrap();
-        storage::insert_memory_vector(
+        let table = storage::ensure_vec_table_for_scope(&conn, group_owner("g-1"), 4).unwrap();
+        insert_memory_vector_or_panic(
             &conn,
             &table,
-            &sqllumen_lib::ai_memory::types::MemoryVector {
+            MemoryVector {
                 memory_id: gid,
                 embedding: &[1.0, 0.0, 0.0, 0.0],
             },
-        )
-        .unwrap();
+        );
 
         let glob_id = storage::insert_global_memory(&conn, "Global mem").unwrap();
-        let gtable = storage::ensure_vec_table_for_scope(
-            &conn,
-            sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Global,
-                owner_id: None,
-            },
-            4,
-        )
-        .unwrap();
-        storage::insert_memory_vector(
+        let gtable = storage::ensure_vec_table_for_scope(&conn, global_owner(), 4).unwrap();
+        insert_memory_vector_or_panic(
             &conn,
             &gtable,
-            &sqllumen_lib::ai_memory::types::MemoryVector {
+            MemoryVector {
                 memory_id: glob_id,
                 embedding: &[0.0, 1.0, 0.0, 0.0],
             },
-        )
-        .unwrap();
+        );
         (gid, glob_id)
     };
 
@@ -959,37 +797,22 @@ fn move_memory_storage_relocates_and_is_retrievable() {
     let conn_handle = setup_db();
     let mut conn = conn_handle;
     let src = storage::insert_global_memory(&conn, "Relocate me").unwrap();
-    let gtable = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        4,
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    let gtable = storage::ensure_vec_table_for_scope(&conn, global_owner(), 4).unwrap();
+    insert_memory_vector_or_panic(
         &conn,
         &gtable,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: src,
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
+    );
 
     let moved = storage::move_memory(
         &mut conn,
         &sqllumen_lib::ai_memory::types::MemoryMove {
             memory_id: src,
-            from: sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Global,
-                owner_id: None,
-            },
-            to: sqllumen_lib::ai_memory::types::MemoryOwner {
-                scope: MemoryScope::Group,
-                owner_id: Some("g-dest"),
-            },
+            from: global_owner(),
+            to: group_owner("g-dest"),
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
     )
@@ -1022,92 +845,63 @@ fn merged_knn_orders_levels_by_distance() {
     let gp = storage::insert_group_memory(&conn, "grp", "group").unwrap();
     let c = storage::insert_memory(&conn, "cn", "connection").unwrap();
 
-    let gt = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Global,
-            owner_id: None,
-        },
-        dim,
-    )
-    .unwrap();
-    let gpt = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some("grp"),
-        },
-        dim,
-    )
-    .unwrap();
-    let ct = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Connection,
-            owner_id: Some("cn"),
-        },
-        dim,
-    )
-    .unwrap();
+    let gt = storage::ensure_vec_table_for_scope(&conn, global_owner(), dim).unwrap();
+    let gpt = storage::ensure_vec_table_for_scope(&conn, group_owner("grp"), dim).unwrap();
+    let ct = storage::ensure_vec_table_for_scope(&conn, connection_owner("cn"), dim).unwrap();
 
     // Query vector [1,0,0,0]; pick embeddings so connection is closest, then group, then global.
-    storage::insert_memory_vector(
+    insert_memory_vector_or_panic(
         &conn,
         &ct,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: c,
             embedding: &[1.0, 0.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    );
+    insert_memory_vector_or_panic(
         &conn,
         &gpt,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: gp,
             embedding: &[0.9, 0.1, 0.0, 0.0],
         },
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    );
+    insert_memory_vector_or_panic(
         &conn,
         &gt,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: g,
             embedding: &[0.0, 1.0, 0.0, 0.0],
         },
-    )
-    .unwrap();
+    );
 
     let query = [1.0f32, 0.0, 0.0, 0.0];
-    let mut merged: Vec<(String, f64)> = Vec::new();
-    for (scope, table) in [
-        (MemoryScope::Global, gt.clone()),
-        (MemoryScope::Group, gpt.clone()),
-        (MemoryScope::Connection, ct.clone()),
-    ] {
-        let row_table = match scope {
-            MemoryScope::Connection => "connection_memories",
-            MemoryScope::Group => "group_memories",
-            MemoryScope::Global => "global_memories",
-        };
-        let bytes: Vec<u8> = query.iter().flat_map(|f: &f32| f.to_le_bytes()).collect();
-        let sql = format!(
-            "SELECT m.content, v.distance FROM {table} v JOIN {row_table} m ON m.id = v.id \
-             WHERE v.embedding MATCH ?1 AND k = ?2 ORDER BY v.distance"
-        );
-        let mut stmt = conn.prepare(&sql).unwrap();
-        let rows = stmt
-            .query_map(params![bytes, 5i64], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-            })
-            .unwrap();
-        for r in rows {
-            merged.push(r.unwrap());
-        }
-    }
-    merged.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-    let order: Vec<String> = merged.into_iter().map(|(c, _)| c).collect();
+    let mut merged = knn_content_distances(
+        &conn,
+        ScopedVecTable {
+            scope: MemoryScope::Global,
+            vec_table: &gt,
+        },
+        &query,
+    );
+    merged.extend(knn_content_distances(
+        &conn,
+        ScopedVecTable {
+            scope: MemoryScope::Group,
+            vec_table: &gpt,
+        },
+        &query,
+    ));
+    merged.extend(knn_content_distances(
+        &conn,
+        ScopedVecTable {
+            scope: MemoryScope::Connection,
+            vec_table: &ct,
+        },
+        &query,
+    ));
+    merged.sort_by(|left, right| left.distance.partial_cmp(&right.distance).unwrap());
+    let order: Vec<String> = merged.into_iter().map(|match_| match_.content).collect();
     assert_eq!(order, vec!["connection", "group", "global"]);
 }
 
@@ -1120,7 +914,11 @@ fn resolve_search_owners_returns_connection_and_group() {
     };
     let conn_id = {
         let conn = state.db.lock().unwrap();
-        insert_connection(&conn, &new_conn_data("Local", Some(group_id.clone()))).unwrap()
+        insert_connection(
+            &conn,
+            &common::new_connection_data("Local", Some(group_id.clone())),
+        )
+        .unwrap()
     };
     map_session(&state, "sess-1", &conn_id);
 
@@ -1138,7 +936,11 @@ fn reembed_targets_covers_global_groups_and_connections() {
     };
     let conn_id = {
         let conn = state.db.lock().unwrap();
-        insert_connection(&conn, &new_conn_data("Local", Some(group_id.clone()))).unwrap()
+        insert_connection(
+            &conn,
+            &common::new_connection_data("Local", Some(group_id.clone())),
+        )
+        .unwrap()
     };
 
     let targets = reembed_targets(&state).unwrap();

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
+use opensrv_mysql::ErrorKind;
 use serde_json::json;
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 use sqllumen_lib::commands::mysql::{close_connection_impl, open_connection_impl};
@@ -30,55 +30,16 @@ use sqllumen_lib::mysql::query_executor::{
 use sqllumen_lib::state::{AppState, ResultExportJobProgress, ResultExportStatus};
 
 use crate::common;
+use crate::common::editor_session_fixtures::{
+    call_query, connection_id_step, database_step, editor_query, n_column, n_row, n_stream,
+    single_row_step, EDITOR_TAB,
+};
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryStep, MockScript, MockStreamRows,
-    MockStreamStep,
+    MockMySqlServer, MockQueryStep, MockScript, MockStreamRows, MockStreamStep,
 };
 
-const TAB: &str = "tab-1";
 const QID: &str = "stored-query";
-
-fn n_column() -> Vec<MockColumnDef> {
-    vec![MockColumnDef {
-        name: "n",
-        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-        colflags: ColumnFlags::empty(),
-    }]
-}
-
-fn n_row(index: usize) -> Vec<MockCell> {
-    vec![MockCell::I64(index as i64)]
-}
-
-fn connection_id_step() -> MockQueryStep {
-    MockQueryStep {
-        query: "SELECT CONNECTION_ID()",
-        columns: vec![MockColumnDef {
-            name: "CONNECTION_ID()",
-            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-            colflags: ColumnFlags::UNSIGNED_FLAG,
-        }],
-        rows: vec![vec![MockCell::U64(42)]],
-        error: None,
-        affected_rows: None,
-    }
-}
-
-/// `SELECT DATABASE()` answers `database` (`None` = NULL) on every call.
-fn database_step(database: Option<&'static [u8]>) -> MockQueryStep {
-    MockQueryStep {
-        query: "SELECT DATABASE()",
-        columns: vec![MockColumnDef {
-            name: "DATABASE()",
-            coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-            colflags: ColumnFlags::empty(),
-        }],
-        rows: vec![vec![database.map_or(MockCell::Null, MockCell::Bytes)]],
-        error: None,
-        affected_rows: None,
-    }
-}
 
 /// A kill-aware stream paused `pause` after every row.
 fn killable_stream(query: &'static str, rows: usize, pause: Duration) -> MockStreamStep {
@@ -163,7 +124,7 @@ fn cache_truncated(state: &AppState, conn: &str, run: TruncatedRun<'_>) {
     stored.source_sql = sql.to_string();
     stored.run_database = database;
     state.result_cache.insert(
-        sqllumen_lib::mysql::result_cache::CacheKey::new(conn, TAB),
+        sqllumen_lib::mysql::result_cache::CacheKey::new(conn, EDITOR_TAB),
         vec![stored],
     );
 }
@@ -172,7 +133,7 @@ fn input(conn: &str, query_id: &str, target: &Path) -> StartResultExportInput {
     StartResultExportInput {
         slot: sqllumen_lib::mysql::result_view::ResultSlotKey {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             result_index: 0,
             query_id: query_id.to_string(),
         },
@@ -252,7 +213,7 @@ async fn a_truncated_result_is_rerun_in_full_with_monotonic_progress() {
         &state,
         &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             sql: sql.to_string(),
             row_limit: Some(500),
             view_spec: None,
@@ -303,14 +264,7 @@ async fn the_export_switches_to_the_run_database_and_restores_the_previous_one()
     let (server, state, conn) = open(
         script(
             vec![database_step(Some(b"crm"))],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big",
-                n_column(),
-                MockStreamRows {
-                    count: 12,
-                    make_row: n_row,
-                },
-            )],
+            vec![n_stream("SELECT n FROM big", 12)],
         ),
         5,
     )
@@ -367,14 +321,7 @@ async fn a_stored_null_database_issues_no_use() {
     let (server, state, conn) = open(
         script(
             vec![database_step(Some(b"crm"))],
-            vec![MockStreamStep::new(
-                "SELECT 1 AS n FROM DUAL",
-                n_column(),
-                MockStreamRows {
-                    count: 7,
-                    make_row: n_row,
-                },
-            )],
+            vec![n_stream("SELECT 1 AS n FROM DUAL", 7)],
         ),
         5,
     )
@@ -408,14 +355,7 @@ async fn a_null_previous_database_skips_the_restore_with_a_warning() {
     let (server, state, conn) = open(
         script(
             vec![database_step(None)],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big",
-                n_column(),
-                MockStreamRows {
-                    count: 3,
-                    make_row: n_row,
-                },
-            )],
+            vec![n_stream("SELECT n FROM big", 3)],
         ),
         5,
     )
@@ -522,24 +462,11 @@ async fn a_late_cancel_kill_is_absorbed_before_the_session_is_released() {
     let mut late_kill = script(
         vec![
             database_step(Some(b"shop")),
-            MockQueryStep {
-                query: "SELECT 1 AS ok LIMIT 1",
-                columns: n_column(),
-                rows: vec![vec![MockCell::I64(1)]],
-                error: None,
-                affected_rows: None,
-            },
+            single_row_step("SELECT 1 AS ok LIMIT 1"),
         ],
         vec![MockStreamStep {
             throttle: Some((1, Duration::from_millis(2))),
-            ..MockStreamStep::new(
-                "SELECT n FROM big",
-                n_column(),
-                MockStreamRows {
-                    count: 200,
-                    make_row: n_row,
-                },
-            )
+            ..n_stream("SELECT n FROM big", 200)
         }],
     );
     late_kill.kill_hits_next_statement = true;
@@ -580,18 +507,9 @@ async fn a_late_cancel_kill_is_absorbed_before_the_session_is_released() {
     );
 
     // The next query on the shared session is not interrupted.
-    let next = execute_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT 1 AS ok LIMIT 1".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
-    )
-    .await
-    .expect("the next query runs");
+    let next = execute_query_impl(&state, &editor_query(&conn, "SELECT 1 AS ok LIMIT 1"))
+        .await
+        .expect("the next query runs");
     assert_eq!(next.total_rows, 1);
 }
 
@@ -602,14 +520,7 @@ async fn a_mid_stream_failure_ends_failed_and_cleans_up() {
             vec![database_step(Some(b"crm"))],
             vec![MockStreamStep {
                 end_error: Some((ErrorKind::ER_LOCK_DEADLOCK, b"Deadlock found")),
-                ..MockStreamStep::new(
-                    "SELECT n FROM big",
-                    n_column(),
-                    MockStreamRows {
-                        count: 10,
-                        make_row: n_row,
-                    },
-                )
+                ..n_stream("SELECT n FROM big", 10)
             }],
         ),
         5,
@@ -655,14 +566,7 @@ async fn a_failed_database_switch_fails_the_export_without_rerunning() {
                     affected_rows: None,
                 },
             ],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big",
-                n_column(),
-                MockStreamRows {
-                    count: 3,
-                    make_row: n_row,
-                },
-            )],
+            vec![n_stream("SELECT n FROM big", 3)],
         ),
         5,
     )
@@ -694,22 +598,8 @@ async fn call_and_locking_results_are_refused() {
         script(
             vec![],
             vec![
-                MockStreamStep::new(
-                    "SELECT n FROM big LIMIT 1000000 FOR UPDATE",
-                    n_column(),
-                    MockStreamRows {
-                        count: 8,
-                        make_row: n_row,
-                    },
-                ),
-                MockStreamStep::new(
-                    "CALL fill_report()",
-                    n_column(),
-                    MockStreamRows {
-                        count: 8,
-                        make_row: n_row,
-                    },
-                ),
+                n_stream("SELECT n FROM big LIMIT 1000000 FOR UPDATE", 8),
+                n_stream("CALL fill_report()", 8),
             ],
         ),
         5,
@@ -719,13 +609,7 @@ async fn call_and_locking_results_are_refused() {
 
     let locked = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000 FOR UPDATE".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000 FOR UPDATE"),
     )
     .await
     .expect("locking run");
@@ -734,17 +618,9 @@ async fn call_and_locking_results_are_refused() {
         .expect_err("locking refused");
     assert_eq!(error, FULL_EXPORT_UNAVAILABLE_MESSAGE);
 
-    let call = execute_call_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "CALL fill_report()".to_string(),
-            row_limit: Some(500),
-        },
-    )
-    .await
-    .expect("call run");
+    let call = execute_call_query_impl(&state, &call_query(&conn, "CALL fill_report()"))
+        .await
+        .expect("call run");
     assert!(call.results[0].truncated);
     let error = start_result_export_impl(
         &state,

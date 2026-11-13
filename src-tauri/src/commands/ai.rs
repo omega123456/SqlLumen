@@ -114,6 +114,23 @@ fn has_embedding_capability_flag(
         == Some(true)
 }
 
+fn has_embedding_capability_type(
+    capabilities: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    capabilities
+        .get("type")
+        .and_then(|value| value.as_str())
+        .is_some_and(|capability_type| capability_type.to_lowercase().contains("embed"))
+}
+
+fn capabilities_declare_embedding(capabilities: Option<&serde_json::Value>) -> bool {
+    let Some(capabilities) = capabilities.and_then(|value| value.as_object()) else {
+        return false;
+    };
+    // Some servers expose { "embedding": true } or { "type": "embedding" }
+    has_embedding_capability_flag(capabilities) || has_embedding_capability_type(capabilities)
+}
+
 /// First checks server-provided metadata (type field, capabilities),
 /// then falls back to a keyword heuristic on the model ID.
 pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
@@ -132,18 +149,8 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
     }
 
     // 2. Check capabilities object
-    if let Some(ref caps) = entry.capabilities {
-        if let Some(obj) = caps.as_object() {
-            // Some servers expose { "embedding": true } or { "type": "embedding" }
-            if has_embedding_capability_flag(obj) {
-                return "embedding".to_string();
-            }
-            if let Some(cap_type) = obj.get("type").and_then(|value| value.as_str()) {
-                if cap_type.to_lowercase().contains("embed") {
-                    return "embedding".to_string();
-                }
-            }
-        }
+    if capabilities_declare_embedding(entry.capabilities.as_ref()) {
+        return "embedding".to_string();
     }
 
     // 3. Fall back to keyword heuristic on the model ID

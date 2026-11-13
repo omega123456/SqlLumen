@@ -10,7 +10,7 @@
 
 use std::time::{Duration, Instant};
 
-use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
+use opensrv_mysql::ErrorKind;
 use serde_json::json;
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 use sqllumen_lib::commands::mysql::open_connection_impl;
@@ -23,63 +23,14 @@ use sqllumen_lib::mysql::result_view::ResultViewSpec;
 use sqllumen_lib::state::AppState;
 
 use crate::common;
+use crate::common::editor_session_fixtures::{
+    call_query, connection_id_step, database_step, editor_query, n_column, n_row, n_stream,
+    single_row_step, EDITOR_TAB,
+};
 use crate::common::log_capture::LogCaptureGuard;
 use crate::common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryStep, MockScript, MockStreamRows,
-    MockStreamStep,
+    MockMySqlServer, MockQueryStep, MockScript, MockStreamRows, MockStreamStep,
 };
-
-const TAB: &str = "tab-1";
-
-fn n_column() -> Vec<MockColumnDef> {
-    vec![MockColumnDef {
-        name: "n",
-        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-        colflags: ColumnFlags::empty(),
-    }]
-}
-
-fn n_row(index: usize) -> Vec<MockCell> {
-    vec![MockCell::I64(index as i64)]
-}
-
-fn connection_id_step() -> MockQueryStep {
-    MockQueryStep {
-        query: "SELECT CONNECTION_ID()",
-        columns: vec![MockColumnDef {
-            name: "CONNECTION_ID()",
-            coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-            colflags: ColumnFlags::UNSIGNED_FLAG,
-        }],
-        rows: vec![vec![MockCell::U64(42)]],
-        error: None,
-        affected_rows: None,
-    }
-}
-
-fn database_step(database: Option<&'static [u8]>) -> MockQueryStep {
-    MockQueryStep {
-        query: "SELECT DATABASE()",
-        columns: vec![MockColumnDef {
-            name: "DATABASE()",
-            coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-            colflags: ColumnFlags::empty(),
-        }],
-        rows: vec![vec![database.map_or(MockCell::Null, MockCell::Bytes)]],
-        error: None,
-        affected_rows: None,
-    }
-}
-
-fn single_row_step(query: &'static str) -> MockQueryStep {
-    MockQueryStep {
-        query,
-        columns: n_column(),
-        rows: vec![vec![MockCell::I64(1)]],
-        error: None,
-        affected_rows: None,
-    }
-}
 
 /// A stream of `rows` rows, paused 5 ms per row and stopped by `KILL QUERY`.
 fn killable_stream(query: &'static str, rows: usize) -> MockStreamStep {
@@ -142,7 +93,7 @@ async fn open(script: MockScript, ceiling: usize) -> (MockMySqlServer, AppState,
 fn stored(state: &AppState, conn: &str, index: usize) -> StoredResult {
     state
         .result_cache
-        .get(conn, TAB)
+        .get(conn, EDITOR_TAB)
         .into_entry()
         .expect("cached result")
         .value[index]
@@ -184,13 +135,7 @@ async fn select_over_the_ceiling_is_truncated_killed_and_the_session_stays_usabl
 
     let result = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000"),
     )
     .await
     .expect("truncated success");
@@ -216,18 +161,9 @@ async fn select_over_the_ceiling_is_truncated_killed_and_the_session_stays_usabl
     assert_eq!(cached.source_sql, "SELECT n FROM big LIMIT 1000000");
     assert_eq!(cached.run_database, RunDatabase::Named("shop".to_string()));
 
-    let next = execute_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT 1 AS ok LIMIT 1".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
-    )
-    .await
-    .expect("the next run on the session succeeds");
+    let next = execute_query_impl(&state, &editor_query(&conn, "SELECT 1 AS ok LIMIT 1"))
+        .await
+        .expect("the next run on the session succeeds");
     assert!(!next.truncated);
     assert_eq!(next.total_rows, 1);
     assert!(started.elapsed() < Duration::from_secs(2));
@@ -248,14 +184,7 @@ async fn a_failed_kill_falls_back_to_draining_and_is_still_a_truncated_success()
                     ..single_row_step("KILL QUERY 42")
                 },
             ],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big LIMIT 1000000",
-                n_column(),
-                MockStreamRows {
-                    count: 50,
-                    make_row: n_row,
-                },
-            )],
+            vec![n_stream("SELECT n FROM big LIMIT 1000000", 50)],
         ),
         5,
     )
@@ -263,13 +192,7 @@ async fn a_failed_kill_falls_back_to_draining_and_is_still_a_truncated_success()
 
     let result = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000"),
     )
     .await
     .expect("truncated success");
@@ -291,14 +214,7 @@ async fn exactly_at_the_ceiling_is_not_truncated_and_reads_no_database() {
     let (server, state, conn) = open(
         script(
             vec![database_step(Some(b"shop"))],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big LIMIT 1000000",
-                n_column(),
-                MockStreamRows {
-                    count: 5,
-                    make_row: n_row,
-                },
-            )],
+            vec![n_stream("SELECT n FROM big LIMIT 1000000", 5)],
         ),
         5,
     )
@@ -306,13 +222,7 @@ async fn exactly_at_the_ceiling_is_not_truncated_and_reads_no_database() {
 
     let result = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000"),
     )
     .await
     .expect("success");
@@ -334,14 +244,7 @@ async fn a_late_ceiling_kill_is_absorbed_before_the_database_probe() {
             single_row_step("SELECT 1 AS ok LIMIT 1"),
         ],
         // The whole stream is already sent when the KILL arrives.
-        vec![MockStreamStep::new(
-            "SELECT n FROM big LIMIT 1000000",
-            n_column(),
-            MockStreamRows {
-                count: 6,
-                make_row: n_row,
-            },
-        )],
+        vec![n_stream("SELECT n FROM big LIMIT 1000000", 6)],
     );
     late_kill.kill_hits_next_statement = true;
     let (server, state, conn) = open(late_kill, 5).await;
@@ -350,7 +253,7 @@ async fn a_late_ceiling_kill_is_absorbed_before_the_database_probe() {
         &state,
         &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             statements: vec![
                 "SELECT n FROM big LIMIT 1000000".to_string(),
                 "SELECT 1 AS ok LIMIT 1".to_string(),
@@ -381,14 +284,7 @@ async fn a_late_ceiling_kill_is_absorbed_before_the_database_probe() {
 async fn a_late_ceiling_kill_after_a_locking_select_does_not_fail_the_next_statement() {
     let mut late_kill = script(
         vec![single_row_step("SELECT 1 AS ok LIMIT 1")],
-        vec![MockStreamStep::new(
-            "SELECT n FROM big LIMIT 1000000 FOR UPDATE",
-            n_column(),
-            MockStreamRows {
-                count: 6,
-                make_row: n_row,
-            },
-        )],
+        vec![n_stream("SELECT n FROM big LIMIT 1000000 FOR UPDATE", 6)],
     );
     late_kill.kill_hits_next_statement = true;
     let (server, state, conn) = open(late_kill, 5).await;
@@ -397,7 +293,7 @@ async fn a_late_ceiling_kill_after_a_locking_select_does_not_fail_the_next_state
         &state,
         &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             statements: vec![
                 "SELECT n FROM big LIMIT 1000000 FOR UPDATE".to_string(),
                 "SELECT 1 AS ok LIMIT 1".to_string(),
@@ -435,14 +331,7 @@ async fn an_oversized_last_call_set_is_drained_and_earlier_and_later_items_survi
             ],
             vec![MockStreamStep {
                 leading_ok_affected: vec![3, 1],
-                ..MockStreamStep::new(
-                    "CALL fill_report()",
-                    n_column(),
-                    MockStreamRows {
-                        count: 40,
-                        make_row: n_row,
-                    },
-                )
+                ..n_stream("CALL fill_report()", 40)
             }],
         ),
         5,
@@ -453,7 +342,7 @@ async fn an_oversized_last_call_set_is_drained_and_earlier_and_later_items_survi
         &state,
         &sqllumen_lib::mysql::query_executor::ExecuteMultiQueryRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             statements: vec![
                 "SELECT 1 AS a LIMIT 1".to_string(),
                 "CALL fill_report()".to_string(),
@@ -483,17 +372,9 @@ async fn an_oversized_last_call_set_is_drained_and_earlier_and_later_items_survi
     assert_eq!(count(&server, "SELECT DATABASE()"), 0);
     assert_eq!(result.results[2].total_rows, 1);
 
-    let only_call = execute_call_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "CALL fill_report()".to_string(),
-            row_limit: Some(500),
-        },
-    )
-    .await
-    .expect("call");
+    let only_call = execute_call_query_impl(&state, &call_query(&conn, "CALL fill_report()"))
+        .await
+        .expect("call");
     assert_eq!(only_call.results.len(), 1);
     assert!(only_call.results[0].truncated);
 }
@@ -501,17 +382,7 @@ async fn an_oversized_last_call_set_is_drained_and_earlier_and_later_items_survi
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_auto_limit_is_clamped_to_the_ceiling_inside_the_impl() {
     let (server, state, conn) = open(
-        script(
-            vec![],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big LIMIT 5",
-                n_column(),
-                MockStreamRows {
-                    count: 5,
-                    make_row: n_row,
-                },
-            )],
-        ),
+        script(vec![], vec![n_stream("SELECT n FROM big LIMIT 5", 5)]),
         5,
     )
     .await;
@@ -520,7 +391,7 @@ async fn the_auto_limit_is_clamped_to_the_ceiling_inside_the_impl() {
         &state,
         &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             sql: "SELECT n FROM big".to_string(),
             row_limit: Some(1_000),
             view_spec: None,
@@ -563,13 +434,7 @@ async fn the_setting_is_read_at_startup_and_updated_live() {
     assert_eq!(state.result_cache.row_ceiling(), 2_000);
     let untruncated = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000"),
     )
     .await
     .expect("run");
@@ -587,13 +452,7 @@ async fn the_setting_is_read_at_startup_and_updated_live() {
     .expect("save setting");
     let truncated = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000"),
     )
     .await
     .expect("run");
@@ -620,22 +479,24 @@ async fn an_explicit_limit_5000_returns_every_row_with_the_default_settings() {
     )
     .await;
 
-    let result = execute_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 5000".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
-    )
-    .await
-    .expect("run");
+    let result = execute_query_impl(&state, &editor_query(&conn, "SELECT n FROM big LIMIT 5000"))
+        .await
+        .expect("run");
     assert!(!result.truncated);
     assert_eq!(result.total_rows, 5_000);
     assert_eq!(result.view_row_count, 5_000);
     assert_eq!(result.first_window.rows.len(), 1_000);
+}
+
+async fn run_big_select(
+    state: std::sync::Arc<AppState>,
+    conn: String,
+) -> Result<sqllumen_lib::mysql::query_executor::ExecuteQueryResult, String> {
+    execute_query_impl(
+        &state,
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000"),
+    )
+    .await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -650,24 +511,8 @@ async fn a_user_cancel_during_a_run_is_still_query_cancelled() {
     .await;
     let state = std::sync::Arc::new(state);
 
-    let runner = {
-        let state = std::sync::Arc::clone(&state);
-        let conn = conn.clone();
-        tokio::spawn(async move {
-            execute_query_impl(
-                &state,
-                &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-                    connection_id: conn.to_string(),
-                    tab_id: TAB.to_string(),
-                    sql: "SELECT n FROM big LIMIT 1000000".to_string(),
-                    row_limit: Some(500),
-                    view_spec: None,
-                },
-            )
-            .await
-        })
-    };
-    let key = (conn.clone(), TAB.to_string());
+    let runner = tokio::spawn(run_big_select(std::sync::Arc::clone(&state), conn.clone()));
+    let key = (conn.clone(), EDITOR_TAB.to_string());
     let deadline = Instant::now() + Duration::from_secs(1);
     while !state.running_queries.read().await.contains_key(&key) {
         assert!(Instant::now() < deadline, "query never started");
@@ -679,7 +524,7 @@ async fn a_user_cancel_during_a_run_is_still_query_cancelled() {
             &state,
             &sqllumen_lib::commands::requests::ConnectionTabRequest {
                 connection_id: conn.to_string(),
-                tab_id: TAB.to_string()
+                tab_id: EDITOR_TAB.to_string()
             }
         )
         .await,
@@ -700,38 +545,10 @@ async fn locking_and_call_results_carry_blocked_reasons_and_never_probe_the_data
         script(
             vec![],
             vec![
-                MockStreamStep::new(
-                    "SELECT n FROM big LIMIT 1000000 FOR UPDATE",
-                    n_column(),
-                    MockStreamRows {
-                        count: 6,
-                        make_row: n_row,
-                    },
-                ),
-                MockStreamStep::new(
-                    "SELECT n FROM big LIMIT 3 LOCK IN SHARE MODE",
-                    n_column(),
-                    MockStreamRows {
-                        count: 2,
-                        make_row: n_row,
-                    },
-                ),
-                MockStreamStep::new(
-                    "SELECT n FROM big LIMIT 3 FOR SHARE",
-                    n_column(),
-                    MockStreamRows {
-                        count: 2,
-                        make_row: n_row,
-                    },
-                ),
-                MockStreamStep::new(
-                    "CALL small()",
-                    n_column(),
-                    MockStreamRows {
-                        count: 2,
-                        make_row: n_row,
-                    },
-                ),
+                n_stream("SELECT n FROM big LIMIT 1000000 FOR UPDATE", 6),
+                n_stream("SELECT n FROM big LIMIT 3 LOCK IN SHARE MODE", 2),
+                n_stream("SELECT n FROM big LIMIT 3 FOR SHARE", 2),
+                n_stream("CALL small()", 2),
             ],
         ),
         5,
@@ -740,13 +557,7 @@ async fn locking_and_call_results_carry_blocked_reasons_and_never_probe_the_data
 
     let locked = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LIMIT 1000000 FOR UPDATE".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LIMIT 1000000 FOR UPDATE"),
     )
     .await
     .expect("locking run");
@@ -758,18 +569,9 @@ async fn locking_and_call_results_carry_blocked_reasons_and_never_probe_the_data
 
     // Auto-LIMIT goes before the locking clause ("… LIMIT 3 FOR SHARE").
     state.result_cache.set_row_ceiling(3);
-    let share = execute_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big FOR SHARE".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
-    )
-    .await
-    .expect("auto-limited locking run");
+    let share = execute_query_impl(&state, &editor_query(&conn, "SELECT n FROM big FOR SHARE"))
+        .await
+        .expect("auto-limited locking run");
     assert_eq!(share.applied_row_limit, Some(3));
     assert!(!share.truncated);
     assert_eq!(
@@ -779,13 +581,7 @@ async fn locking_and_call_results_carry_blocked_reasons_and_never_probe_the_data
 
     let lock_mode = execute_query_impl(
         &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "SELECT n FROM big LOCK IN SHARE MODE".to_string(),
-            row_limit: Some(500),
-            view_spec: None,
-        },
+        &editor_query(&conn, "SELECT n FROM big LOCK IN SHARE MODE"),
     )
     .await
     .expect("lock in share mode run");
@@ -795,17 +591,9 @@ async fn locking_and_call_results_carry_blocked_reasons_and_never_probe_the_data
         Some(FullExportBlockedReason::Locking)
     );
 
-    let call = execute_call_query_impl(
-        &state,
-        &sqllumen_lib::mysql::query_executor::ExecuteCallQueryRequest {
-            connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
-            sql: "CALL small()".to_string(),
-            row_limit: Some(500),
-        },
-    )
-    .await
-    .expect("call");
+    let call = execute_call_query_impl(&state, &call_query(&conn, "CALL small()"))
+        .await
+        .expect("call");
     assert!(!call.results[0].truncated);
     assert_eq!(
         call.results[0].full_export_blocked_reason,
@@ -818,17 +606,7 @@ async fn locking_and_call_results_carry_blocked_reasons_and_never_probe_the_data
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn execute_and_reexecute_with_a_view_spec_return_a_presorted_prefiltered_window() {
     let (_server, state, conn) = open(
-        script(
-            vec![],
-            vec![MockStreamStep::new(
-                "SELECT n FROM big LIMIT 10",
-                n_column(),
-                MockStreamRows {
-                    count: 10,
-                    make_row: n_row,
-                },
-            )],
-        ),
+        script(vec![], vec![n_stream("SELECT n FROM big LIMIT 10", 10)]),
         100_000,
     )
     .await;
@@ -837,7 +615,7 @@ async fn execute_and_reexecute_with_a_view_spec_return_a_presorted_prefiltered_w
         &state,
         &sqllumen_lib::mysql::query_executor::ExecuteQueryRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             sql: "SELECT n FROM big LIMIT 10".to_string(),
             row_limit: Some(500),
             view_spec: sort_desc(),
@@ -854,7 +632,7 @@ async fn execute_and_reexecute_with_a_view_spec_return_a_presorted_prefiltered_w
         &state,
         &sqllumen_lib::mysql::query_executor::ReexecuteSingleResultRequest {
             connection_id: conn.to_string(),
-            tab_id: TAB.to_string(),
+            tab_id: EDITOR_TAB.to_string(),
             result_index: 0,
             sql: "SELECT n FROM big LIMIT 10".to_string(),
             row_limit: Some(500),

@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::BufWriter;
 use tokio::net::tcp::OwnedWriteHalf;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 
 #[derive(Debug, Clone)]
 pub struct MockColumnDef {
@@ -151,6 +151,20 @@ impl From<MockQueryResponse> for MockQueryStep {
 }
 
 impl MockQueryStep {
+    pub fn with_rows(
+        query: &'static str,
+        columns: Vec<MockColumnDef>,
+        rows: Vec<Vec<MockCell>>,
+    ) -> Self {
+        Self {
+            query,
+            columns,
+            rows,
+            error: None,
+            affected_rows: None,
+        }
+    }
+
     /// Build a step that completes with an OK packet reporting `affected_rows`.
     /// Reached by both `on_query` and the prepared-statement `on_execute` path
     /// via the shared `write_step`.
@@ -328,23 +342,26 @@ impl MockMySqlBackend {
             kill.pending.store(false, Ordering::SeqCst);
         }
         let mut writer = results.start(columns).await?;
-        for index in 0..step.rows.count {
-            if step.stops_on_kill && kill.pending.swap(false, Ordering::SeqCst) {
-                return writer
-                    .finish_error(ErrorKind::ER_QUERY_INTERRUPTED, &QUERY_INTERRUPTED_MESSAGE)
-                    .await;
-            }
-            Self::write_rows(&mut writer, &[(step.rows.make_row)(index)]).await?;
-            if let Some((rows_per_tick, pause)) = step.throttle {
-                if (index + 1) % rows_per_tick.max(1) == 0 {
-                    tokio::time::sleep(pause).await;
-                }
-            }
+        let rows_end = write_stream_rows(&mut writer, step, kill).await?;
+        if rows_end == StreamRowsEnd::Killed {
+            return writer
+                .finish_error(ErrorKind::ER_QUERY_INTERRUPTED, &QUERY_INTERRUPTED_MESSAGE)
+                .await;
         }
         if let Some((kind, message)) = step.end_error {
             return writer.finish_error(kind, &message).await;
         }
         writer.finish().await
+    }
+
+    async fn pause_after_throttled_row(throttle: Option<(usize, Duration)>, index: usize) {
+        let Some((rows_per_tick, pause)) = throttle else {
+            return;
+        };
+        let completes_tick = (index + 1).is_multiple_of(rows_per_tick.max(1));
+        if completes_tick {
+            tokio::time::sleep(pause).await;
+        }
     }
 
     fn normalize_query(query: &str) -> String {
@@ -361,14 +378,10 @@ impl MockMySqlBackend {
     fn placeholder_params(query: &str) -> Vec<Column> {
         let mut quote: Option<char> = None;
         let mut count = 0;
-        for ch in query.chars() {
-            match (quote, ch) {
-                (Some(q), c) if c == q => quote = None,
-                (Some(_), _) => {}
-                (None, '\'' | '"' | '`') => quote = Some(ch),
-                (None, '?') => count += 1,
-                _ => {}
-            }
+        for character in query.chars() {
+            let is_placeholder = quote.is_none() && character == '?';
+            count += usize::from(is_placeholder);
+            quote = Self::next_quote_state(quote, character);
         }
         (0..count)
             .map(|_| Column {
@@ -378,6 +391,15 @@ impl MockMySqlBackend {
                 colflags: ColumnFlags::empty(),
             })
             .collect()
+    }
+
+    fn next_quote_state(quote: Option<char>, character: char) -> Option<char> {
+        match (quote, character) {
+            (Some(open_quote), current) if current == open_quote => None,
+            (Some(open_quote), _) => Some(open_quote),
+            (None, '\'' | '"' | '`') => Some(character),
+            (None, _) => None,
+        }
     }
 
     fn find_step(&self, query: &str) -> Option<MockQueryStep> {
@@ -447,20 +469,28 @@ impl MockMySqlBackend {
         rows: &[Vec<MockCell>],
     ) -> io::Result<()> {
         for row in rows {
-            for cell in row {
-                match cell {
-                    MockCell::Null => writer.write_col(Option::<u8>::None)?,
-                    MockCell::I8(value) => writer.write_col(*value)?,
-                    MockCell::U32(value) => writer.write_col(*value)?,
-                    MockCell::I64(value) => writer.write_col(*value)?,
-                    MockCell::U64(value) => writer.write_col(*value)?,
-                    MockCell::F64(value) => writer.write_col(*value)?,
-                    MockCell::DateTime(value) => writer.write_col(*value)?,
-                    MockCell::Time(value) => writer.write_col(*value)?,
-                    MockCell::Bytes(value) => writer.write_col(*value)?,
-                }
-            }
+            Self::write_row_cells(writer, row)?;
             writer.end_row().await?;
+        }
+        Ok(())
+    }
+
+    fn write_row_cells(
+        writer: &mut RowWriter<'_, BufWriter<OwnedWriteHalf>>,
+        row: &[MockCell],
+    ) -> io::Result<()> {
+        for cell in row {
+            match cell {
+                MockCell::Null => writer.write_col(Option::<u8>::None)?,
+                MockCell::I8(value) => writer.write_col(*value)?,
+                MockCell::U32(value) => writer.write_col(*value)?,
+                MockCell::I64(value) => writer.write_col(*value)?,
+                MockCell::U64(value) => writer.write_col(*value)?,
+                MockCell::F64(value) => writer.write_col(*value)?,
+                MockCell::DateTime(value) => writer.write_col(*value)?,
+                MockCell::Time(value) => writer.write_col(*value)?,
+                MockCell::Bytes(value) => writer.write_col(*value)?,
+            }
         }
         Ok(())
     }
@@ -730,36 +760,13 @@ impl MockMySqlServer {
         let kill = Arc::clone(&backend.kill);
         let accepted = Arc::clone(&connections);
         let connection_tasks = Arc::new(Mutex::new(Vec::new()));
-        let tasks = Arc::clone(&connection_tasks);
-        let accept_task = tokio::spawn(async move {
-            loop {
-                let (stream, _) = match listener.accept().await {
-                    Ok(parts) => parts,
-                    Err(_) => {
-                        break;
-                    }
-                };
-                accepted.fetch_add(1, Ordering::SeqCst);
-                let backend = backend.clone();
-                let task = tokio::spawn(async move {
-                    let (reader, writer) = stream.into_split();
-                    // Zero capacity keeps the shim's `BufWriter<OwnedWriteHalf>`
-                    // type while every packet goes straight to the socket, so a
-                    // throttled stream reaches the client row by row (opensrv
-                    // itself only flushes at the end of a command).
-                    let writer = BufWriter::with_capacity(0, writer);
-                    if let Err(error) =
-                        AsyncMysqlIntermediary::run_on(backend, reader, writer).await
-                    {
-                        eprintln!("mock mysql server error: {error}");
-                    }
-                });
-                tasks
-                    .lock()
-                    .expect("connection tasks lock poisoned")
-                    .push(task);
-            }
-        });
+        let accept_loop = AcceptLoop {
+            listener,
+            backend,
+            accepted,
+            tasks: Arc::clone(&connection_tasks),
+        };
+        let accept_task = tokio::spawn(accept_loop.run());
 
         Self {
             port,
@@ -798,6 +805,58 @@ impl MockMySqlServer {
             .lock()
             .expect("text queries lock poisoned")
             .clone()
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum StreamRowsEnd {
+    Completed,
+    Killed,
+}
+
+async fn write_stream_rows(
+    writer: &mut RowWriter<'_, BufWriter<OwnedWriteHalf>>,
+    step: &MockStreamStep,
+    kill: &MockKillState,
+) -> io::Result<StreamRowsEnd> {
+    for index in 0..step.rows.count {
+        let is_killed = step.stops_on_kill && kill.pending.swap(false, Ordering::SeqCst);
+        if is_killed {
+            return Ok(StreamRowsEnd::Killed);
+        }
+        MockMySqlBackend::write_rows(writer, &[(step.rows.make_row)(index)]).await?;
+        MockMySqlBackend::pause_after_throttled_row(step.throttle, index).await;
+    }
+    Ok(StreamRowsEnd::Completed)
+}
+
+struct AcceptLoop {
+    listener: TcpListener,
+    backend: MockMySqlBackend,
+    accepted: Arc<AtomicUsize>,
+    tasks: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>,
+}
+
+impl AcceptLoop {
+    async fn run(self) {
+        while let Ok((stream, _)) = self.listener.accept().await {
+            self.accepted.fetch_add(1, Ordering::SeqCst);
+            let task = tokio::spawn(serve_connection(self.backend.clone(), stream));
+            self.tasks
+                .lock()
+                .expect("connection tasks lock poisoned")
+                .push(task);
+        }
+    }
+}
+
+async fn serve_connection(backend: MockMySqlBackend, stream: TcpStream) {
+    let (reader, writer) = stream.into_split();
+    // opensrv only flushes at the end of a command, so zero capacity sends throttled rows one by one.
+    let writer = BufWriter::with_capacity(0, writer);
+    let served = AsyncMysqlIntermediary::run_on(backend, reader, writer).await;
+    if let Err(error) = served {
+        eprintln!("mock mysql server error: {error}");
     }
 }
 

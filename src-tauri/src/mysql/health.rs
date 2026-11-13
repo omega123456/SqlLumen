@@ -176,6 +176,13 @@ async fn health_loop<R: Runtime>(
     }
 }
 
+#[cfg(not(coverage))]
+enum ReconnectAttempt {
+    Connected,
+    Retry,
+    Stop,
+}
+
 /// Reconnection loop with exponential backoff: 5 s → 15 s → 30 s (cap).
 /// Returns `true` if reconnection succeeded, `false` if cancelled.
 #[cfg(not(coverage))]
@@ -183,85 +190,79 @@ async fn reconnect_loop<R: Runtime>(
     monitor: &HealthMonitor<'_, R>,
     token: &CancellationToken,
 ) -> bool {
-    let connection_id = monitor.connection_id;
-    let app_handle = monitor.app_handle;
     let mut attempt: u32 = 0;
-
     loop {
-        if token.is_cancelled() {
-            return false;
+        match reconnect_attempt(monitor, token, attempt).await {
+            ReconnectAttempt::Connected => return true,
+            ReconnectAttempt::Stop => return false,
+            ReconnectAttempt::Retry => attempt = attempt.saturating_add(1),
         }
+    }
+}
 
-        // Set status to Reconnecting
-        let delay = backoff_duration(attempt);
-        monitor.update_and_emit(
-            ConnectionStatus::Reconnecting,
-            Some(&format!(
-                "Reconnecting in {}s (attempt {})...",
-                delay.as_secs(),
-                attempt + 1
-            )),
-        );
+#[cfg(not(coverage))]
+async fn wait_for_backoff(delay: std::time::Duration, token: &CancellationToken) -> bool {
+    tokio::select! {
+        _ = tokio::time::sleep(delay) => !token.is_cancelled(),
+        _ = token.cancelled() => false,
+    }
+}
 
-        // Wait for backoff duration, exit early if cancelled
-        tokio::select! {
-            _ = tokio::time::sleep(delay) => {}
-            _ = token.cancelled() => { return false; }
+#[cfg(not(coverage))]
+async fn reconnect_attempt<R: Runtime>(
+    monitor: &HealthMonitor<'_, R>,
+    token: &CancellationToken,
+    attempt: u32,
+) -> ReconnectAttempt {
+    if token.is_cancelled() {
+        return ReconnectAttempt::Stop;
+    }
+    let delay = backoff_duration(attempt);
+    let status_message = format!(
+        "Reconnecting in {}s (attempt {})...",
+        delay.as_secs(),
+        attempt + 1
+    );
+    monitor.update_and_emit(ConnectionStatus::Reconnecting, Some(&status_message));
+    if !wait_for_backoff(delay, token).await {
+        return ReconnectAttempt::Stop;
+    }
+
+    let connection_id = monitor.connection_id;
+    let stored_params = monitor
+        .app_handle
+        .state::<AppState>()
+        .registry
+        .get_connection_params(connection_id);
+    // The connection may have been removed from the registry while reconnecting.
+    let Some(stored_params) = stored_params else {
+        return ReconnectAttempt::Stop;
+    };
+
+    // Build ConnectionParams from stored params, re-reading password by saved profile id.
+    let password = match credentials::resolve_password(
+        stored_params.profile_id.as_str(),
+        stored_params.has_password,
+    ) {
+        Ok(password) => password,
+        Err(error) => {
+            monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&error));
+            return ReconnectAttempt::Stop;
         }
+    };
 
-        if token.is_cancelled() {
-            return false;
+    let conn_params = stored_params.to_connection_params(password);
+    match pool::create_pool(&conn_params).await {
+        Ok(new_pool) => {
+            let state = monitor.app_handle.state::<AppState>();
+            state.registry.replace_pool(connection_id, new_pool);
+            monitor.update_and_emit(ConnectionStatus::Connected, None);
+            ReconnectAttempt::Connected
         }
-
-        // Get stored connection params for reconnection
-        let params = {
-            let state = app_handle.state::<AppState>();
-            state.registry.get_connection_params(connection_id)
-        };
-
-        let stored_params = match params {
-            Some(active_pool) => active_pool,
-            None => {
-                // Connection removed from registry while reconnecting
-                return false;
-            }
-        };
-
-        // Build ConnectionParams from stored params, re-reading password by saved profile id.
-        let password = match credentials::resolve_password(
-            stored_params.profile_id.as_str(),
-            stored_params.has_password,
-        ) {
-            Ok(password) => password,
-            Err(error) => {
-                monitor.update_and_emit(ConnectionStatus::Disconnected, Some(&error));
-                return false;
-            }
-        };
-
-        let conn_params = stored_params.to_connection_params(password);
-
-        // Try to create a new pool
-        match pool::create_pool(&conn_params).await {
-            Ok(new_pool) => {
-                // Replace pool in registry, set status to Connected
-                {
-                    let state = app_handle.state::<AppState>();
-                    state.registry.replace_pool(connection_id, new_pool);
-                }
-                monitor.update_and_emit(ConnectionStatus::Connected, None);
-                return true;
-            }
-            Err(error) => {
-                // Reconnection failed — emit event and continue loop
-                monitor.emit_status(
-                    "reconnecting",
-                    Some(&format!("Reconnection failed: {error}")),
-                );
-
-                attempt = attempt.saturating_add(1);
-                // Continue to next iteration with increased backoff
-            }
+        Err(error) => {
+            let failure = format!("Reconnection failed: {error}");
+            monitor.emit_status("reconnecting", Some(&failure));
+            ReconnectAttempt::Retry
         }
     }
 }

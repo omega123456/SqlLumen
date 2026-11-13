@@ -548,21 +548,23 @@ fn test_generate_all_chunks_with_fks() {
 
 // ── Incremental build simulation (chunk generation + hash diffing) ───────
 
+fn db_table_input(table_name: &str, create_table_sql: &str) -> TableDdlInput {
+    TableDdlInput {
+        db_name: "db".to_string(),
+        table_name: table_name.to_string(),
+        create_table_sql: create_table_sql.to_string(),
+    }
+}
+
 #[test]
 fn test_incremental_build_simulation() {
     // Simulate first build: two tables
     let inputs_v1 = vec![
-        TableDdlInput {
-            db_name: "db".to_string(),
-            table_name: "users".to_string(),
-            create_table_sql: "CREATE TABLE `users` (`id` int) ENGINE=InnoDB".to_string(),
-        },
-        TableDdlInput {
-            db_name: "db".to_string(),
-            table_name: "orders".to_string(),
-            create_table_sql: "CREATE TABLE `orders` (`id` int, `user_id` int) ENGINE=InnoDB"
-                .to_string(),
-        },
+        db_table_input("users", "CREATE TABLE `users` (`id` int) ENGINE=InnoDB"),
+        db_table_input(
+            "orders",
+            "CREATE TABLE `orders` (`id` int, `user_id` int) ENGINE=InnoDB",
+        ),
     ];
 
     let builder::GeneratedChunks {
@@ -577,21 +579,15 @@ fn test_incremental_build_simulation() {
 
     // Simulate second build: users unchanged, orders modified, new table products
     let inputs_v2 = vec![
-        TableDdlInput {
-            db_name: "db".to_string(),
-            table_name: "users".to_string(),
-            create_table_sql: "CREATE TABLE `users` (`id` int) ENGINE=InnoDB".to_string(),
-        },
-        TableDdlInput {
-            db_name: "db".to_string(),
-            table_name: "orders".to_string(),
-            create_table_sql: "CREATE TABLE `orders` (`id` int, `user_id` int, `total` decimal(10,2)) ENGINE=InnoDB".to_string(),
-        },
-        TableDdlInput {
-            db_name: "db".to_string(),
-            table_name: "products".to_string(),
-            create_table_sql: "CREATE TABLE `products` (`id` int, `name` varchar(255)) ENGINE=InnoDB".to_string(),
-        },
+        db_table_input("users", "CREATE TABLE `users` (`id` int) ENGINE=InnoDB"),
+        db_table_input(
+            "orders",
+            "CREATE TABLE `orders` (`id` int, `user_id` int, `total` decimal(10,2)) ENGINE=InnoDB",
+        ),
+        db_table_input(
+            "products",
+            "CREATE TABLE `products` (`id` int, `name` varchar(255)) ENGINE=InnoDB",
+        ),
     ];
 
     let builder::GeneratedChunks {

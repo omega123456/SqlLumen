@@ -127,6 +127,13 @@ fn test_delete_group_nullifies_connections() {
     assert!(record.group_id.is_none());
 }
 
+fn group_memory_owner(group_id: &str) -> sqllumen_lib::ai_memory::types::MemoryOwner<'_> {
+    sqllumen_lib::ai_memory::types::MemoryOwner {
+        scope: sqllumen_lib::ai_memory::types::MemoryScope::Group,
+        owner_id: Some(group_id),
+    }
+}
+
 #[test]
 fn test_delete_group_cascades_group_memories_and_vec_table() {
     use sqllumen_lib::ai_memory::storage;
@@ -138,24 +145,10 @@ fn test_delete_group_cascades_group_memories_and_vec_table() {
     let other_id = insert_group(&conn, "Other Group").expect("should insert");
 
     // Group-level memories + vec table for the group being deleted.
-    let m1 = storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some(&group_id),
-        },
-        "A",
-    )
-    .expect("insert group memory");
-    let table = storage::ensure_vec_table_for_scope(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some(&group_id),
-        },
-        4,
-    )
-    .expect("ensure vec table");
+    let m1 = storage::insert_memory_scoped(&conn, group_memory_owner(&group_id), "A")
+        .expect("insert group memory");
+    let table = storage::ensure_vec_table_for_scope(&conn, group_memory_owner(&group_id), 4)
+        .expect("ensure vec table");
     storage::insert_memory_vector(
         &conn,
         &table,
@@ -167,15 +160,8 @@ fn test_delete_group_cascades_group_memories_and_vec_table() {
     .expect("insert vector");
 
     // A memory in another group must survive.
-    storage::insert_memory_scoped(
-        &conn,
-        sqllumen_lib::ai_memory::types::MemoryOwner {
-            scope: MemoryScope::Group,
-            owner_id: Some(&other_id),
-        },
-        "Keep",
-    )
-    .expect("insert other group memory");
+    storage::insert_memory_scoped(&conn, group_memory_owner(&other_id), "Keep")
+        .expect("insert other group memory");
 
     delete_group(&conn, &group_id).expect("should delete");
 

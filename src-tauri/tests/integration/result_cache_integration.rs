@@ -454,6 +454,29 @@ fn slot_write_missing_entry_or_slot_is_refused() {
     );
 }
 
+fn edit_row_in_first_slot(cache: &ResultCache, version: u64, row: usize) -> SlotWrite<()> {
+    cache
+        .modify_slot_in_place_if_current(
+            &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
+                connection_id: "conn1",
+                tab_id: "tab1",
+                expected_invalidation_version: version,
+                index: 0,
+                expected_query_id: None,
+                base_view_version: None,
+            },
+            |slot| set_row_to_its_number(slot, row),
+        )
+        .expect("edit closure succeeds")
+}
+
+fn set_row_to_its_number(slot: &mut StoredResult, row: usize) -> Result<(), String> {
+    let mut next = (*slot.rows).clone();
+    next[row] = vec![serde_json::json!(row + 1)].into();
+    slot.rows = std::sync::Arc::new(next);
+    Ok(())
+}
+
 #[test]
 fn slot_write_concurrent_edits_do_not_lose_updates() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -471,26 +494,7 @@ fn slot_write_concurrent_edits_do_not_lose_updates() {
     let handles: Vec<_> = (0..row_count)
         .map(|row| {
             let cache = std::sync::Arc::clone(&cache);
-            thread::spawn(move || {
-                cache
-                    .modify_slot_in_place_if_current(
-                        &sqllumen_lib::mysql::result_cache::SlotWriteTarget {
-                            connection_id: "conn1",
-                            tab_id: "tab1",
-                            expected_invalidation_version: version,
-                            index: 0,
-                            expected_query_id: None,
-                            base_view_version: None,
-                        },
-                        |slot| {
-                            let mut next = (*slot.rows).clone();
-                            next[row] = vec![serde_json::json!(row + 1)].into();
-                            slot.rows = std::sync::Arc::new(next);
-                            Ok(())
-                        },
-                    )
-                    .expect("edit closure succeeds")
-            })
+            thread::spawn(move || edit_row_in_first_slot(&cache, version, row))
         })
         .collect();
     for handle in handles {

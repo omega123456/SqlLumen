@@ -11,7 +11,7 @@ use sqllumen_lib::schema_index::search::{multi_query_search_configured, SearchCo
 use sqllumen_lib::schema_index::storage;
 
 use crate::common;
-use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
+use crate::common::schema_index_chunks::insert_default_table_chunk;
 
 const DIM: usize = 4;
 
@@ -58,34 +58,10 @@ fn test_rrf_multi_query_hit_beats_single_query_top_rank() {
 
     // "users" is close to query vectors 0, 1, 2 (moderate match on each)
     // "orders" is a perfect match for query 0 only
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: blend_vec(0, 1, 0.6),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", blend_vec(0, 1, 0.6));
+    insert_default_table_chunk(&conn, "orders", unit_vec(0));
     // Add a filler chunk so ranks are meaningful
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "products",
-            embedding: unit_vec(3),
-        },
-    );
+    insert_default_table_chunk(&conn, "products", unit_vec(3));
 
     // 3 query vectors — "users" will be hit by all 3, "orders" only by query 0
     let query_vectors = vec![
@@ -139,33 +115,9 @@ fn test_rrf_single_query_preserves_cosine_order() {
 
     // With a single query, RRF degenerates to rank-based ordering which should
     // match cosine distance ordering.
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "best_match",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "medium_match",
-            embedding: blend_vec(0, 1, 0.7),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "poor_match",
-            embedding: unit_vec(2),
-        },
-    );
+    insert_default_table_chunk(&conn, "best_match", unit_vec(0));
+    insert_default_table_chunk(&conn, "medium_match", blend_vec(0, 1, 0.7));
+    insert_default_table_chunk(&conn, "poor_match", unit_vec(2));
 
     let query_vectors = vec![unit_vec(0)];
 
@@ -197,15 +149,7 @@ fn test_rrf_single_query_preserves_cosine_order() {
 #[test]
 fn test_rrf_empty_queries_returns_empty() {
     let conn = setup_db();
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
 
     let config = SearchConfig {
         top_k_per_query: 5,

@@ -252,7 +252,7 @@ fn test_app_state_exposes_copy_jobs_map() {
 
 #[test]
 fn test_enumeration_excludes_views_in_source() {
-    let source = include_str!("../../src/commands/copy_to_host.rs");
+    let source = include_str!("../../src/commands/copy_to_host/object_listing.rs");
     assert!(
         source.contains("TABLE_TYPE = 'BASE TABLE'"),
         "tables query must filter to base tables (exclude views)"
@@ -261,7 +261,7 @@ fn test_enumeration_excludes_views_in_source() {
 
 #[test]
 fn test_enumeration_excludes_system_schemas_in_source() {
-    let source = include_str!("../../src/commands/copy_to_host.rs");
+    let source = include_str!("../../src/commands/copy_to_host/object_listing.rs");
     // Every information_schema query must guard against system schemas.
     let occurrences = source
         .matches("NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys')")
@@ -274,11 +274,17 @@ fn test_enumeration_excludes_system_schemas_in_source() {
 
 #[test]
 fn test_enumeration_logs_through_query_log_helper() {
-    let source = include_str!("../../src/commands/copy_to_host.rs");
-    let occurrences = source.matches("query_log::log_outgoing_sql").count();
+    let source = include_str!("../../src/commands/copy_to_host/object_listing.rs");
     assert!(
-        occurrences >= 4,
-        "every enumeration query must log via query_log (found {occurrences})"
+        source.contains("query_log::log_outgoing_sql(query.sql)"),
+        "the shared enumeration fetch must log via query_log"
+    );
+    let enumeration_queries = source
+        .matches(": SchemaObjectQuery = SchemaObjectQuery {")
+        .count();
+    assert!(
+        enumeration_queries >= 4,
+        "every enumeration query must go through the shared logged fetch (found {enumeration_queries})"
     );
 }
 

@@ -353,15 +353,10 @@ async fn the_job_waits_for_an_in_flight_cancel_kill_before_releasing_the_session
     set_job_thread(&jobs, "job-1", None);
 
     let finished = Arc::new(AtomicBool::new(false));
-    let waiter = {
-        let cancel = Arc::clone(&cancel);
-        let finished = Arc::clone(&finished);
-        tokio::spawn(async move {
-            let drained = wait_for_cancel_kills(&cancel, "job-1", Duration::from_secs(2)).await;
-            finished.store(true, Ordering::SeqCst);
-            drained
-        })
-    };
+    let waiter = tokio::spawn(wait_for_cancel_kills_then_mark_finished(
+        Arc::clone(&cancel),
+        Arc::clone(&finished),
+    ));
     tokio::time::sleep(Duration::from_millis(30)).await;
     assert!(
         !finished.load(Ordering::SeqCst),
@@ -372,6 +367,15 @@ async fn the_job_waits_for_an_in_flight_cancel_kill_before_releasing_the_session
         waiter.await.expect("waiter"),
         "the wait ends when the KILL finishes"
     );
+}
+
+async fn wait_for_cancel_kills_then_mark_finished(
+    cancel: Arc<sqllumen_lib::state::ResultExportCancel>,
+    finished: Arc<AtomicBool>,
+) -> bool {
+    let drained = wait_for_cancel_kills(&cancel, "job-1", Duration::from_secs(2)).await;
+    finished.store(true, Ordering::SeqCst);
+    drained
 }
 
 #[tokio::test]

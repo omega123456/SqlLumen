@@ -247,6 +247,22 @@ mod binary_projection_integration {
         }
     }
 
+    fn nullable_column_row(
+        name: &'static [u8],
+        data_type: &'static [u8],
+        column_type: &'static [u8],
+    ) -> Vec<MockCell> {
+        vec![
+            MockCell::Bytes(name),
+            MockCell::Bytes(data_type),
+            MockCell::Bytes(column_type),
+            MockCell::Bytes(b"YES"),
+            MockCell::Bytes(b""),
+            MockCell::Null,
+            MockCell::Bytes(b""),
+        ]
+    }
+
     fn primary_key_step(pk_column: &'static [u8]) -> MockQueryStep {
         MockQueryStep {
             query: PRIMARY_KEY_QUERY,
@@ -321,15 +337,7 @@ mod binary_projection_integration {
                     MockCell::Null,
                     MockCell::Bytes(b"auto_increment"),
                 ],
-                vec![
-                    MockCell::Bytes(b"data"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
+                nullable_column_row(b"data", b"blob", b"blob"),
             ]),
             primary_key_step(b"id"),
             MockQueryStep {
@@ -429,15 +437,7 @@ mod binary_projection_integration {
                     MockCell::Null,
                     MockCell::Bytes(b"auto_increment"),
                 ],
-                vec![
-                    MockCell::Bytes(b"data"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
+                nullable_column_row(b"data", b"blob", b"blob"),
             ]),
             primary_key_step(b"id"),
             MockQueryStep {
@@ -480,15 +480,7 @@ mod binary_projection_integration {
                     MockCell::Null,
                     MockCell::Bytes(b"auto_increment"),
                 ],
-                vec![
-                    MockCell::Bytes(b"data"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
+                nullable_column_row(b"data", b"blob", b"blob"),
             ]),
             primary_key_step(b"id"),
             MockQueryStep {
@@ -515,81 +507,71 @@ mod binary_projection_integration {
         assert_eq!(*response.rows, vec![vec![json!(9), json!("[BLOB - 14 B]")]]);
     }
 
+    fn mixed_table_columns_step() -> MockQueryStep {
+        info_schema_columns_step(vec![
+            vec![
+                MockCell::Bytes(b"id"),
+                MockCell::Bytes(b"int"),
+                MockCell::Bytes(b"int(11)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b"PRI"),
+                MockCell::Null,
+                MockCell::Bytes(b"auto_increment"),
+            ],
+            vec![
+                MockCell::Bytes(b"name"),
+                MockCell::Bytes(b"varchar"),
+                MockCell::Bytes(b"varchar(255)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b""),
+                MockCell::Null,
+                MockCell::Bytes(b""),
+            ],
+            nullable_column_row(b"avatar", b"blob", b"blob"),
+            nullable_column_row(b"bio", b"text", b"text"),
+        ])
+    }
+
+    fn mixed_table_page_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT `id`, `name`, OCTET_LENGTH(`avatar`) AS `avatar`, `bio` FROM `app_db`.`assets` LIMIT 50 OFFSET 0",
+            vec![
+                MockColumnDef {
+                    name: "id",
+                    coltype: ColumnType::MYSQL_TYPE_LONG,
+                    colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "name",
+                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                    colflags: ColumnFlags::NOT_NULL_FLAG,
+                },
+                MockColumnDef {
+                    name: "avatar",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "bio",
+                    coltype: ColumnType::MYSQL_TYPE_BLOB,
+                    colflags: ColumnFlags::empty(),
+                },
+            ],
+            vec![vec![
+                MockCell::U32(3),
+                MockCell::Bytes(b"Ada"),
+                MockCell::U64(512),
+                MockCell::Bytes(b"Engineer and writer"),
+            ]],
+        )
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fetch_table_data_projects_only_binary_columns_in_mixed_tables() {
         let response = fetch_table_data_response(vec![
-            info_schema_columns_step(vec![
-                vec![
-                    MockCell::Bytes(b"id"),
-                    MockCell::Bytes(b"int"),
-                    MockCell::Bytes(b"int(11)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b"PRI"),
-                    MockCell::Null,
-                    MockCell::Bytes(b"auto_increment"),
-                ],
-                vec![
-                    MockCell::Bytes(b"name"),
-                    MockCell::Bytes(b"varchar"),
-                    MockCell::Bytes(b"varchar(255)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"avatar"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"bio"),
-                    MockCell::Bytes(b"text"),
-                    MockCell::Bytes(b"text"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-            ]),
+            mixed_table_columns_step(),
             primary_key_step(b"id"),
-            MockQueryStep {
-                query: "SELECT `id`, `name`, OCTET_LENGTH(`avatar`) AS `avatar`, `bio` FROM `app_db`.`assets` LIMIT 50 OFFSET 0",
-                columns: vec![
-                    MockColumnDef {
-                        name: "id",
-                        coltype: ColumnType::MYSQL_TYPE_LONG,
-                        colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "name",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "avatar",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "bio",
-                        coltype: ColumnType::MYSQL_TYPE_BLOB,
-                        colflags: ColumnFlags::empty(),
-                    },
-                ],
-                rows: vec![vec![
-                    MockCell::U32(3),
-                    MockCell::Bytes(b"Ada"),
-                    MockCell::U64(512),
-                    MockCell::Bytes(b"Engineer and writer"),
-                ]],
-                error: None,
-                affected_rows: None,
-            },
+            mixed_table_page_step(),
         ])
         .await;
 
@@ -604,126 +586,84 @@ mod binary_projection_integration {
         );
     }
 
+    fn all_binary_types_columns_step() -> MockQueryStep {
+        info_schema_columns_step(vec![
+            vec![
+                MockCell::Bytes(b"id"),
+                MockCell::Bytes(b"int"),
+                MockCell::Bytes(b"int(11)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b"PRI"),
+                MockCell::Null,
+                MockCell::Bytes(b"auto_increment"),
+            ],
+            nullable_column_row(b"blob_col", b"blob", b"blob"),
+            nullable_column_row(b"tinyblob_col", b"tinyblob", b"tinyblob"),
+            nullable_column_row(b"mediumblob_col", b"mediumblob", b"mediumblob"),
+            nullable_column_row(b"longblob_col", b"longblob", b"longblob"),
+            nullable_column_row(b"binary_col", b"binary", b"binary(8)"),
+            nullable_column_row(b"varbinary_col", b"varbinary", b"varbinary(64)"),
+        ])
+    }
+
+    fn all_binary_types_page_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT `id`, OCTET_LENGTH(`blob_col`) AS `blob_col`, OCTET_LENGTH(`tinyblob_col`) AS `tinyblob_col`, OCTET_LENGTH(`mediumblob_col`) AS `mediumblob_col`, OCTET_LENGTH(`longblob_col`) AS `longblob_col`, OCTET_LENGTH(`binary_col`) AS `binary_col`, OCTET_LENGTH(`varbinary_col`) AS `varbinary_col` FROM `app_db`.`assets` LIMIT 50 OFFSET 0",
+            vec![
+                MockColumnDef {
+                    name: "id",
+                    coltype: ColumnType::MYSQL_TYPE_LONG,
+                    colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "blob_col",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "tinyblob_col",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "mediumblob_col",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "longblob_col",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "binary_col",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "varbinary_col",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+            ],
+            vec![vec![
+                MockCell::U32(5),
+                MockCell::U64(1),
+                MockCell::U64(2),
+                MockCell::U64(3),
+                MockCell::U64(4),
+                MockCell::U64(8),
+                MockCell::U64(64),
+            ]],
+        )
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn fetch_table_data_projects_all_supported_non_pk_binary_types() {
         let response = fetch_table_data_response(vec![
-            info_schema_columns_step(vec![
-                vec![
-                    MockCell::Bytes(b"id"),
-                    MockCell::Bytes(b"int"),
-                    MockCell::Bytes(b"int(11)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b"PRI"),
-                    MockCell::Null,
-                    MockCell::Bytes(b"auto_increment"),
-                ],
-                vec![
-                    MockCell::Bytes(b"blob_col"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"tinyblob_col"),
-                    MockCell::Bytes(b"tinyblob"),
-                    MockCell::Bytes(b"tinyblob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"mediumblob_col"),
-                    MockCell::Bytes(b"mediumblob"),
-                    MockCell::Bytes(b"mediumblob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"longblob_col"),
-                    MockCell::Bytes(b"longblob"),
-                    MockCell::Bytes(b"longblob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"binary_col"),
-                    MockCell::Bytes(b"binary"),
-                    MockCell::Bytes(b"binary(8)"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"varbinary_col"),
-                    MockCell::Bytes(b"varbinary"),
-                    MockCell::Bytes(b"varbinary(64)"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-            ]),
+            all_binary_types_columns_step(),
             primary_key_step(b"id"),
-            MockQueryStep {
-                query: "SELECT `id`, OCTET_LENGTH(`blob_col`) AS `blob_col`, OCTET_LENGTH(`tinyblob_col`) AS `tinyblob_col`, OCTET_LENGTH(`mediumblob_col`) AS `mediumblob_col`, OCTET_LENGTH(`longblob_col`) AS `longblob_col`, OCTET_LENGTH(`binary_col`) AS `binary_col`, OCTET_LENGTH(`varbinary_col`) AS `varbinary_col` FROM `app_db`.`assets` LIMIT 50 OFFSET 0",
-                columns: vec![
-                    MockColumnDef {
-                        name: "id",
-                        coltype: ColumnType::MYSQL_TYPE_LONG,
-                        colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "blob_col",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "tinyblob_col",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "mediumblob_col",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "longblob_col",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "binary_col",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "varbinary_col",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                ],
-                rows: vec![vec![
-                    MockCell::U32(5),
-                    MockCell::U64(1),
-                    MockCell::U64(2),
-                    MockCell::U64(3),
-                    MockCell::U64(4),
-                    MockCell::U64(8),
-                    MockCell::U64(64),
-                ]],
-                error: None,
-                affected_rows: None,
-            },
+            all_binary_types_page_step(),
         ])
         .await;
 
@@ -741,54 +681,60 @@ mod binary_projection_integration {
         );
     }
 
+    fn binary_key_columns_step() -> MockQueryStep {
+        info_schema_columns_step(vec![
+            vec![
+                MockCell::Bytes(b"uuid"),
+                MockCell::Bytes(b"binary"),
+                MockCell::Bytes(b"binary(16)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b"PRI"),
+                MockCell::Null,
+                MockCell::Bytes(b""),
+            ],
+            vec![
+                MockCell::Bytes(b"name"),
+                MockCell::Bytes(b"varchar"),
+                MockCell::Bytes(b"varchar(255)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b""),
+                MockCell::Null,
+                MockCell::Bytes(b""),
+            ],
+        ])
+    }
+
+    fn binary_key_refetch_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT `uuid`, `name` FROM `app_db`.`assets` WHERE `uuid` = ?",
+            vec![
+                MockColumnDef {
+                    name: "uuid",
+                    coltype: ColumnType::MYSQL_TYPE_BLOB,
+                    colflags: ColumnFlags::BINARY_FLAG | ColumnFlags::PRI_KEY_FLAG,
+                },
+                MockColumnDef {
+                    name: "name",
+                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                    colflags: ColumnFlags::NOT_NULL_FLAG,
+                },
+            ],
+            vec![vec![
+                MockCell::Bytes(&[
+                    0xde, 0xad, 0xbe, 0xef, 0xaa, 0xbb, 0xcc, 0xdd, 0x10, 0x20, 0x30, 0x40, 0x50,
+                    0x60, 0x70, 0x80,
+                ]),
+                MockCell::Bytes(b"inserted binary pk"),
+            ]],
+        )
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn insert_table_row_refetch_preserves_binary_primary_key_as_hex() {
         let server = MockMySqlServer::start_script(vec![
-            info_schema_columns_step(vec![
-                vec![
-                    MockCell::Bytes(b"uuid"),
-                    MockCell::Bytes(b"binary"),
-                    MockCell::Bytes(b"binary(16)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b"PRI"),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"name"),
-                    MockCell::Bytes(b"varchar"),
-                    MockCell::Bytes(b"varchar(255)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-            ]),
+            binary_key_columns_step(),
             primary_key_step(b"uuid"),
-            MockQueryStep {
-                query: "SELECT `uuid`, `name` FROM `app_db`.`assets` WHERE `uuid` = ?",
-                columns: vec![
-                    MockColumnDef {
-                        name: "uuid",
-                        coltype: ColumnType::MYSQL_TYPE_BLOB,
-                        colflags: ColumnFlags::BINARY_FLAG | ColumnFlags::PRI_KEY_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "name",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                ],
-                rows: vec![vec![
-                    MockCell::Bytes(&[
-                        0xde, 0xad, 0xbe, 0xef, 0xaa, 0xbb, 0xcc, 0xdd, 0x10, 0x20, 0x30, 0x40,
-                        0x50, 0x60, 0x70, 0x80,
-                    ]),
-                    MockCell::Bytes(b"inserted binary pk"),
-                ]],
-                error: None,
-                affected_rows: None,
-            },
+            binary_key_refetch_step(),
         ])
         .await;
 
@@ -833,68 +779,66 @@ mod binary_projection_integration {
         );
     }
 
+    fn payload_columns_step() -> MockQueryStep {
+        info_schema_columns_step(vec![
+            vec![
+                MockCell::Bytes(b"id"),
+                MockCell::Bytes(b"int"),
+                MockCell::Bytes(b"int(11)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b"PRI"),
+                MockCell::Null,
+                MockCell::Bytes(b""),
+            ],
+            nullable_column_row(b"payload", b"blob", b"blob"),
+            vec![
+                MockCell::Bytes(b"name"),
+                MockCell::Bytes(b"varchar"),
+                MockCell::Bytes(b"varchar(255)"),
+                MockCell::Bytes(b"NO"),
+                MockCell::Bytes(b""),
+                MockCell::Null,
+                MockCell::Bytes(b""),
+            ],
+        ])
+    }
+
+    fn payload_refetch_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT `id`, OCTET_LENGTH(`payload`) AS `payload`, `name` FROM `app_db`.`assets` WHERE `id` = ?",
+            vec![
+                MockColumnDef {
+                    name: "id",
+                    coltype: ColumnType::MYSQL_TYPE_LONG,
+                    colflags: ColumnFlags::NOT_NULL_FLAG
+                    | ColumnFlags::PRI_KEY_FLAG
+                    | ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "payload",
+                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                    colflags: ColumnFlags::UNSIGNED_FLAG,
+                },
+                MockColumnDef {
+                    name: "name",
+                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                    colflags: ColumnFlags::NOT_NULL_FLAG,
+                },
+            ],
+            vec![vec![
+                MockCell::U32(42),
+                MockCell::U64(6),
+                MockCell::Bytes(b"payload row"),
+            ]],
+        )
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn insert_table_row_refetch_projects_non_pk_binary_columns_with_placeholders() {
         let server = MockMySqlServer::start_script(vec![
-            info_schema_columns_step(vec![
-                vec![
-                    MockCell::Bytes(b"id"),
-                    MockCell::Bytes(b"int"),
-                    MockCell::Bytes(b"int(11)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b"PRI"),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"payload"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"blob"),
-                    MockCell::Bytes(b"YES"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-                vec![
-                    MockCell::Bytes(b"name"),
-                    MockCell::Bytes(b"varchar"),
-                    MockCell::Bytes(b"varchar(255)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b""),
-                    MockCell::Null,
-                    MockCell::Bytes(b""),
-                ],
-            ]),
+            payload_columns_step(),
             primary_key_step(b"id"),
-            MockQueryStep {
-                query: "SELECT `id`, OCTET_LENGTH(`payload`) AS `payload`, `name` FROM `app_db`.`assets` WHERE `id` = ?",
-                columns: vec![
-                    MockColumnDef {
-                        name: "id",
-                        coltype: ColumnType::MYSQL_TYPE_LONG,
-                        colflags: ColumnFlags::NOT_NULL_FLAG
-                            | ColumnFlags::PRI_KEY_FLAG
-                            | ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "payload",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "name",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                ],
-                rows: vec![vec![
-                    MockCell::U32(42),
-                    MockCell::U64(6),
-                    MockCell::Bytes(b"payload row"),
-                ]],
-                error: None,
-                affected_rows: None,
-            },
+            payload_refetch_step(),
         ])
         .await;
 

@@ -445,6 +445,34 @@ fn shared_maintenance_refresh_can_spare_table_data_cache_after_result_eviction()
     );
 }
 
+fn users_tab_sync_request(
+    rows: Vec<Vec<serde_json::Value>>,
+    execution_time_ms: u64,
+) -> SyncTableDataCacheRequest {
+    let sample = sample_response(1);
+    SyncTableDataCacheRequest {
+        connection_id: "conn-1".to_string(),
+        tab_id: "tab-1".to_string(),
+        database: "app_db".to_string(),
+        table: "users".to_string(),
+        columns: sample.columns,
+        rows,
+        current_page: 1,
+        page_size: 50,
+        primary_key: sample.primary_key,
+        execution_time_ms,
+    }
+}
+
+fn users_tab_restore_request() -> sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+    sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
+        connection_id: "conn-1".to_string(),
+        tab_id: "tab-1".to_string(),
+        database: "app_db".to_string(),
+        table: "users".to_string(),
+    }
+}
+
 #[test]
 fn cache_sync_updates_rows_after_insert_update_and_delete() {
     let state = common::test_app_state();
@@ -453,40 +481,21 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
         sample_response(1),
     );
 
-    let sample_columns = sample_response(1).columns;
-    let sample_primary_key = sample_response(1).primary_key;
-
     let inserted = sync_table_data_cache_after_write_impl(
         &state,
-        SyncTableDataCacheRequest {
-            connection_id: "conn-1".to_string(),
-            tab_id: "tab-1".to_string(),
-            database: "app_db".to_string(),
-            table: "users".to_string(),
-            columns: sample_columns.clone(),
-            rows: vec![
+        users_tab_sync_request(
+            vec![
                 vec![serde_json::json!(1), serde_json::json!(1.25)],
                 vec![serde_json::json!(2), serde_json::json!(9.5)],
             ],
-            current_page: 1,
-            page_size: 50,
-            primary_key: sample_primary_key.clone(),
-            execution_time_ms: 20,
-        },
+            20,
+        ),
     );
     assert_eq!(inserted.status, CacheStatus::Synced);
 
-    let after_insert = restore_table_data_cache_impl(
-        &state,
-        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
-            connection_id: "conn-1".to_string(),
-            tab_id: "tab-1".to_string(),
-            database: "app_db".to_string(),
-            table: "users".to_string(),
-        },
-    )
-    .data
-    .expect("insert sync should keep data available");
+    let after_insert = restore_table_data_cache_impl(&state, &users_tab_restore_request())
+        .data
+        .expect("insert sync should keep data available");
     assert_eq!(after_insert.rows.len(), 2);
     assert_eq!(
         after_insert.rows[1],
@@ -495,35 +504,19 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
 
     let updated = sync_table_data_cache_after_write_impl(
         &state,
-        SyncTableDataCacheRequest {
-            connection_id: "conn-1".to_string(),
-            tab_id: "tab-1".to_string(),
-            database: "app_db".to_string(),
-            table: "users".to_string(),
-            columns: sample_columns.clone(),
-            rows: vec![
+        users_tab_sync_request(
+            vec![
                 vec![serde_json::json!(1), serde_json::json!(4.2)],
                 vec![serde_json::json!(2), serde_json::json!(9.5)],
             ],
-            current_page: 1,
-            page_size: 50,
-            primary_key: sample_primary_key.clone(),
-            execution_time_ms: 25,
-        },
+            25,
+        ),
     );
     assert_eq!(updated.status, CacheStatus::Synced);
 
-    let after_update = restore_table_data_cache_impl(
-        &state,
-        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
-            connection_id: "conn-1".to_string(),
-            tab_id: "tab-1".to_string(),
-            database: "app_db".to_string(),
-            table: "users".to_string(),
-        },
-    )
-    .data
-    .expect("update sync should keep data available");
+    let after_update = restore_table_data_cache_impl(&state, &users_tab_restore_request())
+        .data
+        .expect("update sync should keep data available");
     assert_eq!(
         after_update.rows[0],
         vec![serde_json::json!(1), serde_json::json!(4.2)]
@@ -532,32 +525,13 @@ fn cache_sync_updates_rows_after_insert_update_and_delete() {
 
     let deleted = sync_table_data_cache_after_write_impl(
         &state,
-        SyncTableDataCacheRequest {
-            connection_id: "conn-1".to_string(),
-            tab_id: "tab-1".to_string(),
-            database: "app_db".to_string(),
-            table: "users".to_string(),
-            columns: sample_columns,
-            rows: vec![vec![serde_json::json!(2), serde_json::json!(9.5)]],
-            current_page: 1,
-            page_size: 50,
-            primary_key: sample_primary_key,
-            execution_time_ms: 30,
-        },
+        users_tab_sync_request(vec![vec![serde_json::json!(2), serde_json::json!(9.5)]], 30),
     );
     assert_eq!(deleted.status, CacheStatus::Synced);
 
-    let after_delete = restore_table_data_cache_impl(
-        &state,
-        &sqllumen_lib::mysql::table_data::RestoreTableDataCacheRequest {
-            connection_id: "conn-1".to_string(),
-            tab_id: "tab-1".to_string(),
-            database: "app_db".to_string(),
-            table: "users".to_string(),
-        },
-    )
-    .data
-    .expect("delete sync should keep data available");
+    let after_delete = restore_table_data_cache_impl(&state, &users_tab_restore_request())
+        .data
+        .expect("delete sync should keep data available");
     assert_eq!(
         *after_delete.rows,
         vec![vec![serde_json::json!(2), serde_json::json!(9.5)]]

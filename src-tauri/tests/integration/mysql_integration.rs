@@ -523,39 +523,13 @@ async fn test_schema_text_decode_accepts_varbinary_like_information_schema() {
 #[cfg(not(coverage))]
 #[tokio::test]
 async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
-    let url = match std::env::var("MYSQL_TEST_URL") {
-        Ok(u) => u,
-        Err(_) => {
-            eprintln!(
-                "Skipping insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk: MYSQL_TEST_URL not set"
-            );
-            return;
-        }
+    let Some(target) =
+        mysql_test_target("insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk")
+    else {
+        return;
     };
-
-    let db_name = {
-        let after_scheme = match url.strip_prefix("mysql://") {
-            Some(s) => s,
-            None => {
-                eprintln!("Skipping: MYSQL_TEST_URL must start with mysql://");
-                return;
-            }
-        };
-        let host_and_rest = match after_scheme.split_once('@') {
-            Some((_, r)) => r,
-            None => after_scheme,
-        };
-        let Some((_host_port, path)) = host_and_rest.split_once('/') else {
-            eprintln!("Skipping: MYSQL_TEST_URL has no database path");
-            return;
-        };
-        let db = path.split('?').next().unwrap_or(path).trim();
-        if db.is_empty() {
-            eprintln!("Skipping: MYSQL_TEST_URL must include a database name");
-            return;
-        }
-        db.to_string()
-    };
+    let url = target.url;
+    let db_name = target.database_name;
 
     use sqllumen_lib::mysql::metadata_cache::MetadataCache;
     use sqllumen_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
@@ -569,18 +543,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
 
     let table = format!("__ins_unsigned_ai_{}", uuid::Uuid::new_v4().simple());
 
-    let create_sql = format!(
-        "CREATE TABLE `{}`.`{}` ( \
-         `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, \
-         `label` VARCHAR(64) NOT NULL, \
-         PRIMARY KEY (`id`) \
-         ) ENGINE=InnoDB",
-        db_name, table
-    );
-    sqlx::query(sqlx::AssertSqlSafe(create_sql.as_str()))
-        .execute(&pool)
-        .await
-        .expect("CREATE TABLE for unsigned AI insert test");
+    create_unsigned_auto_increment_table(&pool, &db_name, &table).await;
 
     let mut values = HashMap::new();
     values.insert("label".to_string(), serde_json::json!("unsigned_ai_smoke"));
@@ -621,4 +584,51 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
         "expected positive numeric id in returned row, got {:?}",
         id_cell
     );
+}
+
+#[cfg(not(coverage))]
+async fn create_unsigned_auto_increment_table(pool: &sqlx::MySqlPool, db_name: &str, table: &str) {
+    let create_sql = format!(
+        "CREATE TABLE `{}`.`{}` ( \
+         `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, \
+         `label` VARCHAR(64) NOT NULL, \
+         PRIMARY KEY (`id`) \
+         ) ENGINE=InnoDB",
+        db_name, table
+    );
+    sqlx::query(sqlx::AssertSqlSafe(create_sql.as_str()))
+        .execute(pool)
+        .await
+        .expect("CREATE TABLE for unsigned AI insert test");
+}
+
+#[cfg(not(coverage))]
+struct MySqlTestTarget {
+    url: String,
+    database_name: String,
+}
+
+#[cfg(not(coverage))]
+fn mysql_test_target(test_name: &str) -> Option<MySqlTestTarget> {
+    let Ok(url) = std::env::var("MYSQL_TEST_URL") else {
+        eprintln!("Skipping {test_name}: MYSQL_TEST_URL not set");
+        return None;
+    };
+    let Some(after_scheme) = url.strip_prefix("mysql://") else {
+        eprintln!("Skipping: MYSQL_TEST_URL must start with mysql://");
+        return None;
+    };
+    let host_and_rest = after_scheme
+        .split_once('@')
+        .map_or(after_scheme, |(_, rest)| rest);
+    let Some((_host_port, path)) = host_and_rest.split_once('/') else {
+        eprintln!("Skipping: MYSQL_TEST_URL has no database path");
+        return None;
+    };
+    let database_name = path.split('?').next().unwrap_or(path).trim().to_string();
+    if database_name.is_empty() {
+        eprintln!("Skipping: MYSQL_TEST_URL must include a database name");
+        return None;
+    }
+    Some(MySqlTestTarget { url, database_name })
 }

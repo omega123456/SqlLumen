@@ -22,6 +22,9 @@ use sqlx::Row;
 #[cfg(not(coverage))]
 use tauri::State;
 
+mod row_decoding;
+pub use row_decoding::*;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadTableForDesignerRequest {
@@ -71,335 +74,40 @@ fn get_pool(state: &AppState, connection_id: &str) -> Result<sqlx::MySqlPool, St
         .ok_or_else(|| format!("Connection '{connection_id}' is not open"))
 }
 
-pub fn parse_column_type(column_type: &str) -> ParsedColumnType {
-    let trimmed = column_type.trim();
-
-    match (trimmed.find('('), trimmed.rfind(')')) {
-        (Some(open), Some(close)) if close > open => ParsedColumnType {
-            base_type: trimmed[..open].trim().to_ascii_uppercase(),
-            length: trimmed[(open + 1)..close].trim().to_string(),
-            type_modifier: trimmed[(close + 1)..].trim().to_ascii_uppercase(),
-        },
-        _ => {
-            let parts = trimmed
-                .split_whitespace()
-                .map(|part| part.to_ascii_uppercase())
-                .collect::<Vec<_>>();
-
-            let modifier_start = parts
-                .iter()
-                .position(|part| matches!(part.as_str(), "UNSIGNED" | "ZEROFILL" | "BINARY"));
-
-            match modifier_start {
-                Some(index) if index > 0 => ParsedColumnType::without_length(
-                    parts[..index].join(" "),
-                    parts[index..].join(" "),
-                ),
-                _ => ParsedColumnType::without_length(trimmed.to_ascii_uppercase(), String::new()),
-            }
-        }
-    }
-}
-
-#[cfg(not(coverage))]
-fn is_current_temporal_default(value: &str) -> bool {
-    value.eq_ignore_ascii_case("CURRENT_TIMESTAMP")
-        || value.to_ascii_uppercase().starts_with("CURRENT_TIMESTAMP(")
-        || value.eq_ignore_ascii_case("CURRENT_DATE")
-        || value.eq_ignore_ascii_case("CURRENT_TIME")
-}
-
-#[cfg(not(coverage))]
-fn parse_default_value(default_value: Option<String>) -> DefaultValueModel {
-    match default_value {
-        None => DefaultValueModel::NoDefault,
-        Some(value) if value.eq_ignore_ascii_case("NULL") => {
-            DefaultValueModel::Expression { value }
-        }
-        Some(value) if is_current_temporal_default(&value) => {
-            DefaultValueModel::Expression { value }
-        }
-        Some(value) => DefaultValueModel::Literal { value },
-    }
-}
-
-#[cfg(not(coverage))]
-fn normalize_default_value(
-    extra: Option<&str>,
-    default_value: Option<String>,
-) -> DefaultValueModel {
-    let extra_text = extra.unwrap_or_default().to_ascii_lowercase();
-    match default_value {
-        Some(value) if extra_text.contains("default_generated") => {
-            DefaultValueModel::Expression { value }
-        }
-        Some(value) if value.eq_ignore_ascii_case("NULL") => DefaultValueModel::NullDefault,
-        other => parse_default_value(other),
-    }
-}
-
-#[cfg(not(coverage))]
-fn decode_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String> {
-    match row.try_get::<String, _>(column) {
-        Ok(value) => Ok(value),
-        Err(_) => {
-            let bytes: Vec<u8> = row.try_get(column).map_err(|error| {
-                format!("Failed to decode column '{column}' as UTF-8 text: {error}")
-            })?;
-            Ok(String::from_utf8_lossy(&bytes).into_owned())
-        }
-    }
-}
-
-#[cfg(not(coverage))]
-fn decode_optional_text_cell_named(row: &MySqlRow, column: &str) -> Result<Option<String>, String> {
-    match row.try_get::<Option<String>, _>(column) {
-        Ok(value) => Ok(value),
-        Err(_) => match row.try_get::<Option<Vec<u8>>, _>(column) {
-            Ok(value) => Ok(value.map(|bytes| String::from_utf8_lossy(&bytes).into_owned())),
-            Err(error) => Err(format!(
-                "Failed to decode optional column '{column}' as UTF-8 text: {error}"
-            )),
-        },
-    }
-}
-
-#[cfg(not(coverage))]
-fn build_index_type(index_name: &str, non_unique: i64, index_type: &str) -> String {
-    if index_name == "PRIMARY" {
-        return "PRIMARY".to_string();
-    }
-    if non_unique == 0 {
-        return "UNIQUE".to_string();
-    }
-    if index_type.eq_ignore_ascii_case("FULLTEXT") {
-        return "FULLTEXT".to_string();
-    }
-    "INDEX".to_string()
-}
-
-#[cfg(not(coverage))]
-type IndexRowGroup = (String, i64, String, Vec<String>);
-
-#[cfg(not(coverage))]
-fn designer_index_from_group(group: IndexRowGroup) -> DesignerIndexDef {
-    let (name, non_unique, index_type, columns) = group;
-    DesignerIndexDef {
-        index_type: build_index_type(&name, non_unique, &index_type),
-        name,
-        columns,
-    }
-}
-
-#[cfg(not(coverage))]
-fn charset_for_collation(collation: &str) -> String {
-    if collation.is_empty() {
-        return String::new();
-    }
-    table_designer::derive_charset_from_collation(collation)
-}
-
 #[cfg(not(coverage))]
 pub async fn load_table_for_designer_impl(
     state: &AppState,
     request: &LoadTableForDesignerRequest,
 ) -> Result<DesignerTableSchema, String> {
     let pool = get_pool(state, &request.connection_id)?;
-    let database = request.database.as_str();
-    let table_name = request.table_name.as_str();
-    let binds = [database.to_string(), table_name.to_string()];
-
-    let columns_sql = table_designer::load_columns_query();
-    query_log::log_outgoing_sql_bound(columns_sql, &binds);
-    let column_rows = sqlx::query(columns_sql)
-        .bind(database)
-        .bind(table_name)
-        .fetch_all(&pool)
-        .await
-        .map_err(|error| error.to_string())?;
-
-    let metadata_sql = table_designer::load_table_metadata_query();
-    query_log::log_outgoing_sql_bound(metadata_sql, &binds);
-    let metadata_row = sqlx::query(metadata_sql)
-        .bind(database)
-        .bind(table_name)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("Table '{database}.{table_name}' was not found"))?;
-
-    let indexes_sql = table_designer::load_indexes_query();
-    query_log::log_outgoing_sql_bound(indexes_sql, &binds);
-    let index_rows = sqlx::query(indexes_sql)
-        .bind(database)
-        .bind(table_name)
-        .fetch_all(&pool)
-        .await
-        .map_err(|error| error.to_string())?;
-
-    let foreign_keys_sql = table_designer::load_foreign_keys_query();
-    query_log::log_outgoing_sql_bound(foreign_keys_sql, &binds);
-    let foreign_key_rows = sqlx::query(foreign_keys_sql)
-        .bind(database)
-        .bind(table_name)
-        .fetch_all(&pool)
-        .await
-        .map_err(|error| error.to_string())?;
-
-    let columns = column_rows
-        .into_iter()
-        .map(|row| {
-            let name = decode_text_cell_named(&row, "COLUMN_NAME")?;
-            let column_type = decode_text_cell_named(&row, "COLUMN_TYPE")?;
-            let is_nullable = decode_text_cell_named(&row, "IS_NULLABLE")?;
-            let column_key = decode_text_cell_named(&row, "COLUMN_KEY")?;
-            let column_default = decode_optional_text_cell_named(&row, "COLUMN_DEFAULT")?;
-            let extra = decode_optional_text_cell_named(&row, "EXTRA")?;
-            let comment = decode_optional_text_cell_named(&row, "COLUMN_COMMENT")?;
-            let ParsedColumnType {
-                base_type,
-                length,
-                type_modifier,
-            } = parse_column_type(&column_type);
-            let is_auto_increment = extra
-                .as_deref()
-                .unwrap_or_default()
-                .to_ascii_lowercase()
-                .contains("auto_increment");
-
-            Ok(DesignerColumnDef {
-                original_name: name.clone(),
-                name,
-                r#type: base_type,
-                type_modifier,
-                length,
-                nullable: is_nullable.eq_ignore_ascii_case("YES"),
-                is_primary_key: column_key.eq_ignore_ascii_case("PRI"),
-                is_auto_increment,
-                default_value: normalize_default_value(extra.as_deref(), column_default),
-                comment: comment.unwrap_or_default(),
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-
-    let mut indexes = Vec::new();
-    let mut current_index: Option<IndexRowGroup> = None;
-
-    for row in index_rows {
-        let index_name = decode_text_cell_named(&row, "INDEX_NAME")?;
-        let non_unique: i64 = row
-            .try_get("NON_UNIQUE")
-            .map_err(|error| error.to_string())?;
-        let column_name = decode_text_cell_named(&row, "COLUMN_NAME")?;
-        let index_type = decode_text_cell_named(&row, "INDEX_TYPE")?;
-
-        let same_index = current_index
-            .as_ref()
-            .map(|(name, _, _, _)| *name == index_name)
-            .unwrap_or(false);
-
-        if same_index {
-            if let Some((_, _, _, columns)) = current_index.as_mut() {
-                columns.push(column_name);
-            }
-            continue;
-        }
-        if let Some(previous_index) = current_index.take() {
-            indexes.push(designer_index_from_group(previous_index));
-        }
-        current_index = Some((index_name, non_unique, index_type, vec![column_name]));
-    }
-
-    if let Some(last_index) = current_index {
-        indexes.push(designer_index_from_group(last_index));
-    }
-
-    let mut foreign_keys = Vec::new();
-    let mut current_foreign_key: Option<DesignerForeignKeyDef> = None;
-    let mut current_foreign_key_count = 0usize;
-
-    for row in foreign_key_rows {
-        let foreign_key_name = decode_text_cell_named(&row, "CONSTRAINT_NAME")?;
-        let source_column = decode_text_cell_named(&row, "COLUMN_NAME")?;
-        let referenced_database = decode_text_cell_named(&row, "REFERENCED_TABLE_SCHEMA")?;
-        let referenced_table = decode_text_cell_named(&row, "REFERENCED_TABLE_NAME")?;
-        let referenced_column = decode_text_cell_named(&row, "REFERENCED_COLUMN_NAME")?;
-        let on_delete = decode_text_cell_named(&row, "DELETE_RULE")?;
-        let on_update = decode_text_cell_named(&row, "UPDATE_RULE")?;
-
-        match current_foreign_key.as_mut() {
-            Some(existing) if existing.name == foreign_key_name => {
-                current_foreign_key_count += 1;
-                existing.is_composite = true;
-            }
-            Some(_) => {
-                if let Some(existing) = current_foreign_key.take() {
-                    foreign_keys.push(existing);
-                }
-                current_foreign_key = Some(DesignerForeignKeyDef {
-                    name: foreign_key_name,
-                    source_column,
-                    referenced_database,
-                    referenced_table,
-                    referenced_column,
-                    on_delete,
-                    on_update,
-                    is_composite: false,
-                });
-                current_foreign_key_count = 1;
-            }
-            None => {
-                current_foreign_key = Some(DesignerForeignKeyDef {
-                    name: foreign_key_name,
-                    source_column,
-                    referenced_database,
-                    referenced_table,
-                    referenced_column,
-                    on_delete,
-                    on_update,
-                    is_composite: false,
-                });
-                current_foreign_key_count = 1;
-            }
-        }
-
-        if current_foreign_key_count > 1 {
-            if let Some(existing) = current_foreign_key.as_mut() {
-                existing.is_composite = true;
-            }
-        }
-    }
-
-    if let Some(existing) = current_foreign_key {
-        foreign_keys.push(existing);
-    }
-
-    let collation =
-        decode_optional_text_cell_named(&metadata_row, "TABLE_COLLATION")?.unwrap_or_default();
-
-    let properties = DesignerTableProperties {
-        engine: decode_optional_text_cell_named(&metadata_row, "ENGINE")?.unwrap_or_default(),
-        charset: charset_for_collation(&collation),
-        collation,
-        auto_increment: match metadata_row.try_get::<Option<u64>, _>("AUTO_INCREMENT") {
-            Ok(value) => value,
-            Err(unsigned_error) => metadata_row
-                .try_get::<Option<i64>, _>("AUTO_INCREMENT")
-                .map_err(|_| unsigned_error.to_string())?
-                .and_then(|value| u64::try_from(value).ok()),
-        },
-        row_format: decode_optional_text_cell_named(&metadata_row, "ROW_FORMAT")?
-            .unwrap_or_default(),
-        comment: decode_optional_text_cell_named(&metadata_row, "TABLE_COMMENT")?
-            .unwrap_or_default(),
+    let lookup = DesignerTableLookup {
+        pool: &pool,
+        database: &request.database,
+        table_name: &request.table_name,
     };
 
+    let column_rows = lookup
+        .fetch_all(table_designer::load_columns_query())
+        .await?;
+    let metadata_row = lookup.fetch_metadata_row().await?;
+    let index_rows = lookup
+        .fetch_all(table_designer::load_indexes_query())
+        .await?;
+    let foreign_key_rows = lookup
+        .fetch_all(table_designer::load_foreign_keys_query())
+        .await?;
+
+    let columns = column_rows
+        .iter()
+        .map(designer_column_from_row)
+        .collect::<Result<Vec<_>, String>>()?;
+
     Ok(DesignerTableSchema {
-        table_name: table_name.to_string(),
+        table_name: request.table_name.clone(),
         columns,
-        indexes,
-        foreign_keys,
-        properties,
+        indexes: designer_indexes_from_rows(&index_rows)?,
+        foreign_keys: designer_foreign_keys_from_rows(&foreign_key_rows)?,
+        properties: table_properties_from_row(&metadata_row)?,
     })
 }
 

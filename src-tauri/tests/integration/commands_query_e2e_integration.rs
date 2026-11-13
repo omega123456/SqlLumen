@@ -998,24 +998,28 @@ async fn query_editor_concurrent_runs_queue_on_the_shared_session() {
     let conn_id = open_result.session_id.as_str();
     let connections_before = server.connection_count();
 
-    std::thread::scope(|scope| {
-        for tab in ["tab-1", "tab-2", "tab-3"] {
-            let webview = webview.clone();
-            scope.spawn(move || {
-                run_single(
-                    &webview,
-                    SingleRun {
-                        connection_id: conn_id,
-                        tab_id: tab,
-                        sql: "SET @x = 1",
-                    },
-                )
-            });
-        }
-    });
+    run_set_concurrently_on_tabs(&webview, conn_id, &["tab-1", "tab-2", "tab-3"]);
 
     assert_eq!(server.connection_count(), connections_before + 1);
     assert_eq!(session_setup_count(&server), 1);
+}
+
+fn run_set_concurrently_on_tabs(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    connection_id: &str,
+    tab_ids: &[&str],
+) {
+    std::thread::scope(|scope| {
+        for tab_id in tab_ids {
+            let webview = webview.clone();
+            let run = SingleRun {
+                connection_id,
+                tab_id,
+                sql: "SET @x = 1",
+            };
+            scope.spawn(move || run_single(&webview, run));
+        }
+    });
 }
 
 const QUEUE_WAIT_DEADLINE: std::time::Duration = std::time::Duration::from_millis(1500);
@@ -1086,22 +1090,7 @@ async fn cancel_query_cancels_a_run_queued_behind_another_window() {
         .await
         .expect("first window should acquire the session");
 
-    let queued_result = std::thread::scope(|scope| {
-        let queued_run = scope.spawn(|| {
-            try_run_single(
-                &webview,
-                SingleRun {
-                    connection_id: conn_id,
-                    tab_id: QUEUED_TAB_ID,
-                    sql: QUEUED_SQL,
-                },
-            )
-        });
-        cancel_once_queued(&webview, conn_id, QUEUED_TAB_ID);
-        queued_run
-            .join()
-            .expect("queued run thread should not panic")
-    });
+    let queued_result = run_queued_then_cancel(&webview, conn_id);
     drop(busy_session);
 
     let error = queued_result.expect_err("cancelled queued run should fail");
@@ -1119,6 +1108,28 @@ async fn cancel_query_cancels_a_run_queued_behind_another_window() {
             sql: QUEUED_SQL,
         },
     );
+}
+
+fn run_queued_then_cancel(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    connection_id: &str,
+) -> Result<ExecuteQueryResultDto, serde_json::Value> {
+    std::thread::scope(|scope| {
+        let queued_run = scope.spawn(|| {
+            try_run_single(
+                webview,
+                SingleRun {
+                    connection_id,
+                    tab_id: QUEUED_TAB_ID,
+                    sql: QUEUED_SQL,
+                },
+            )
+        });
+        cancel_once_queued(webview, connection_id, QUEUED_TAB_ID);
+        queued_run
+            .join()
+            .expect("queued run thread should not panic")
+    })
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

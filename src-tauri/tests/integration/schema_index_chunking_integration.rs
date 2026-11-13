@@ -521,23 +521,33 @@ fn generate_text_for_embedding_without_comment_uses_default() {
 
 // ── replace_fk_edges_for_connection ─────────────────────────────────────
 
+fn conn1_db_edge(source_column: &str, target_column: &str, constraint_name: &str) -> FkEdge {
+    let (src_tbl, src_col) = source_column
+        .split_once('.')
+        .expect("source is table.column");
+    let (dst_tbl, dst_col) = target_column
+        .split_once('.')
+        .expect("target is table.column");
+    FkEdge {
+        connection_id: "conn-1".to_string(),
+        src_db: "db".to_string(),
+        src_tbl: src_tbl.to_string(),
+        src_col: src_col.to_string(),
+        dst_db: "db".to_string(),
+        dst_tbl: dst_tbl.to_string(),
+        dst_col: dst_col.to_string(),
+        constraint_name: constraint_name.to_string(),
+        on_delete: None,
+        on_update: None,
+    }
+}
+
 #[test]
 fn replace_fk_edges_for_connection_replaces_all() {
     let conn = setup_db();
 
     // Insert edges for two different tables
-    let edges1 = vec![FkEdge {
-        connection_id: "conn-1".to_string(),
-        src_db: "db".to_string(),
-        src_tbl: "a".to_string(),
-        src_col: "x".to_string(),
-        dst_db: "db".to_string(),
-        dst_tbl: "b".to_string(),
-        dst_col: "id".to_string(),
-        constraint_name: "fk1".to_string(),
-        on_delete: None,
-        on_update: None,
-    }];
+    let edges1 = vec![conn1_db_edge("a.x", "b.id", "fk1")];
     storage::replace_fk_edges_for_table(
         &conn,
         &sqllumen_lib::schema_index::storage::IndexedTableRef {
@@ -549,18 +559,7 @@ fn replace_fk_edges_for_connection_replaces_all() {
     )
     .expect("insert 1");
 
-    let edges2 = vec![FkEdge {
-        connection_id: "conn-1".to_string(),
-        src_db: "db".to_string(),
-        src_tbl: "c".to_string(),
-        src_col: "y".to_string(),
-        dst_db: "db".to_string(),
-        dst_tbl: "d".to_string(),
-        dst_col: "id".to_string(),
-        constraint_name: "fk2".to_string(),
-        on_delete: None,
-        on_update: None,
-    }];
+    let edges2 = vec![conn1_db_edge("c.y", "d.id", "fk2")];
     storage::replace_fk_edges_for_table(
         &conn,
         &sqllumen_lib::schema_index::storage::IndexedTableRef {
@@ -573,18 +572,7 @@ fn replace_fk_edges_for_connection_replaces_all() {
     .expect("insert 2");
 
     // Now replace all edges for the connection at once
-    let new_edges = vec![FkEdge {
-        connection_id: "conn-1".to_string(),
-        src_db: "db".to_string(),
-        src_tbl: "e".to_string(),
-        src_col: "z".to_string(),
-        dst_db: "db".to_string(),
-        dst_tbl: "f".to_string(),
-        dst_col: "id".to_string(),
-        constraint_name: "fk3".to_string(),
-        on_delete: None,
-        on_update: None,
-    }];
+    let new_edges = vec![conn1_db_edge("e.z", "f.id", "fk3")];
     storage::replace_fk_edges_for_connection(&conn, "conn-1", &new_edges).expect("replace all");
 
     let all = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("get");

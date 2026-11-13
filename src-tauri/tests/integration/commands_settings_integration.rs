@@ -117,35 +117,7 @@ fn test_settings_impls_surface_poisoned_db_lock_errors() {
 
     let state = AppState {
         db: poisoned_db,
-        logs_db: Arc::new(Mutex::new(common::test_db())),
-        registry: ConnectionRegistry::new(),
-        app_handle: None,
-        result_cache: std::sync::Arc::new(
-            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
-                1800,
-                std::env::temp_dir().join("sqllumen-test-settings-results"),
-            ),
-        ),
-        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
-            1800,
-            std::env::temp_dir().join("sqllumen-test-settings-table-data"),
-        )),
-        metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
-        log_filter_reload: Mutex::new(None),
-        running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
-        editor_sessions: Default::default(),
-        dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
-        import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
-        result_export_jobs: std::sync::Arc::new(std::sync::RwLock::new(
-            std::collections::HashMap::new(),
-        )),
-        copy_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
-        ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
-        http_client: sqllumen_lib::http_client(),
-        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+        ..common::test_app_state()
     };
 
     let get_error = get_setting_impl(&state, "theme").expect_err("get should fail");

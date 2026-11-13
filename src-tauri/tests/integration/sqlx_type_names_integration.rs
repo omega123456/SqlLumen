@@ -10,12 +10,12 @@ struct SerializerSource {
 
 const SQLX_ROW_SERIALIZER_SOURCES: [SerializerSource; 3] = [
     SerializerSource {
-        path: "mysql/table_data.rs",
-        source: include_str!("../../src/mysql/table_data.rs"),
+        path: "mysql/table_data/serialization.rs",
+        source: include_str!("../../src/mysql/table_data/serialization.rs"),
     },
     SerializerSource {
-        path: "commands/sql_dump.rs",
-        source: include_str!("../../src/commands/sql_dump.rs"),
+        path: "commands/sql_dump/dump_values.rs",
+        source: include_str!("../../src/commands/sql_dump/dump_values.rs"),
     },
     SerializerSource {
         path: "mysql/query_log.rs",
@@ -24,7 +24,7 @@ const SQLX_ROW_SERIALIZER_SOURCES: [SerializerSource; 3] = [
 ];
 
 const PRIVATE_INTEGER_CHECK: &str = "type_name.contains(\"INT\")";
-const SHARED_INTEGER_CHECK: &str = "is_sqlx_integer_type_name(&type_name)";
+const SHARED_INTEGER_CHECK: &str = "is_sqlx_integer_type_name(";
 
 const INTEGER_TYPE_NAMES: [&str; 15] = [
     "BOOLEAN",

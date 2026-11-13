@@ -350,26 +350,23 @@ mod wiremock_tests {
         assert_eq!(resp.status(), 200);
 
         let body = resp.text().await.expect("should read body");
-        let lines: Vec<&str> = body.lines().collect();
-
-        // Parse each line
-        use sqllumen_lib::ai::types::{parse_sse_line, SseParsed};
-        let mut tokens = Vec::new();
-        for line in lines {
-            match parse_sse_line(line) {
-                Ok(SseParsed::Chunk(chunk)) => {
-                    for choice in &chunk.choices {
-                        if let Some(c) = &choice.delta.content {
-                            tokens.push(c.clone());
-                        }
-                    }
-                }
-                Ok(SseParsed::Done) => break,
-                _ => {}
-            }
-        }
+        let tokens = streamed_content_tokens(&body);
 
         assert_eq!(tokens.join(""), "Hello world");
+    }
+
+    fn streamed_content_tokens(body: &str) -> Vec<String> {
+        use sqllumen_lib::ai::types::{parse_sse_line, SseParsed};
+        body.lines()
+            .map(parse_sse_line)
+            .take_while(|parsed| !matches!(parsed, Ok(SseParsed::Done)))
+            .filter_map(|parsed| match parsed {
+                Ok(SseParsed::Chunk(chunk)) => Some(chunk),
+                _ => None,
+            })
+            .flat_map(|chunk| chunk.choices)
+            .filter_map(|choice| choice.delta.content)
+            .collect()
     }
 
     /// Verify that a non-200 response is detectable.
@@ -426,6 +423,37 @@ mod stream_integration {
             prefer_responses_api: true,
             enable_reasoning: true,
         }
+    }
+
+    fn message(role: &str, content: &str) -> IpcMessage {
+        IpcMessage {
+            role: role.to_string(),
+            content: content.to_string(),
+        }
+    }
+
+    fn helpful_greeting_history() -> Vec<IpcMessage> {
+        vec![
+            message("system", "You are helpful"),
+            message("user", "Hello"),
+            message("assistant", "Hi"),
+        ]
+    }
+
+    fn event_stream_response(lines: &[&str]) -> ResponseTemplate {
+        ResponseTemplate::new(200)
+            .set_body_string(lines.join(""))
+            .insert_header("content-type", "text/event-stream")
+    }
+
+    fn history_request(
+        stream_id: &str,
+        endpoint: &str,
+        messages: Vec<IpcMessage>,
+    ) -> AiChatRequest {
+        let mut request = sample_request(stream_id, endpoint);
+        request.messages = messages;
+        request
     }
 
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
@@ -937,19 +965,17 @@ mod stream_integration {
         assert!(result.is_ok(), "comment in residual should be skipped");
     }
 
+    fn numbered_token_chunk(index: usize) -> String {
+        format!("data: {{\"choices\":[{{\"delta\":{{\"content\":\"tok{index}\"}}}}]}}\n\n")
+    }
+
     /// Large number of chunks to exercise the flush interval path.
     #[tokio::test]
     async fn stream_flushes_buffer_on_interval() {
         let server = MockServer::start().await;
 
         // Build a body with many small chunks — the flush logic triggers on elapsed time
-        let mut body = String::new();
-        for i in 0..20 {
-            body.push_str(&format!(
-                "data: {{\"choices\":[{{\"delta\":{{\"content\":\"tok{}\"}}}}]}}\n\n",
-                i
-            ));
-        }
+        let mut body: String = (0..20).map(numbered_token_chunk).collect();
         body.push_str("data: [DONE]\n");
 
         Mock::given(method("POST"))
@@ -1333,52 +1359,25 @@ mod stream_integration {
                     {"role": "user", "content": "Follow up"}
                 ]
             })))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(
-                        [
-                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback follow-up\"}}]}\n",
-                            "\n",
-                            "data: [DONE]\n",
-                        ]
-                        .join(""),
-                    )
-                    .insert_header("content-type", "text/event-stream"),
-            )
+            .respond_with(event_stream_response(&[
+                "data: {\"choices\":[{\"delta\":{\"content\":\"fallback follow-up\"}}]}\n",
+                "\n",
+                "data: [DONE]\n",
+            ]))
             .expect(1)
             .mount(&server)
             .await;
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = AiChatRequest {
-            messages: vec![
-                IpcMessage {
-                    role: "system".to_string(),
-                    content: "You are helpful".to_string(),
-                },
-                IpcMessage {
-                    role: "user".to_string(),
-                    content: "Hello".to_string(),
-                },
-                IpcMessage {
-                    role: "assistant".to_string(),
-                    content: "Hi".to_string(),
-                },
-                IpcMessage {
-                    role: "user".to_string(),
-                    content: "Follow up".to_string(),
-                },
-            ],
-            endpoint: format!("{}/v1", server.uri()),
-            model: "test-model".to_string(),
-            temperature: 0.7,
-            max_tokens: 100,
-            stream_id: "stream-followup-fallback".to_string(),
-            previous_response_id: Some("resp_prev".to_string()),
-            prefer_responses_api: true,
-            enable_reasoning: true,
-        };
+        let mut messages = helpful_greeting_history();
+        messages.push(message("user", "Follow up"));
+        let mut request = history_request(
+            "stream-followup-fallback",
+            &format!("{}/v1", server.uri()),
+            messages,
+        );
+        request.previous_response_id = Some("resp_prev".to_string());
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(
@@ -1680,48 +1679,22 @@ mod stream_integration {
                     }
                 ]
             })))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(
-                        [
-                            "event: response.completed\n",
-                            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_full_history\"}}\n",
-                            "\n",
-                        ]
-                        .join(""),
-                    )
-                    .insert_header("content-type", "text/event-stream"),
-            )
+            .respond_with(event_stream_response(&[
+                "event: response.completed\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_full_history\"}}\n",
+                "\n",
+            ]))
             .expect(1)
             .mount(&server)
             .await;
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = AiChatRequest {
-            messages: vec![
-                IpcMessage {
-                    role: "system".to_string(),
-                    content: "You are helpful".to_string(),
-                },
-                IpcMessage {
-                    role: "user".to_string(),
-                    content: "Hello".to_string(),
-                },
-                IpcMessage {
-                    role: "assistant".to_string(),
-                    content: "Hi".to_string(),
-                },
-            ],
-            endpoint: format!("{}/v1", server.uri()),
-            model: "test-model".to_string(),
-            temperature: 0.7,
-            max_tokens: 100,
-            stream_id: "stream-full-history".to_string(),
-            previous_response_id: None,
-            prefer_responses_api: true,
-            enable_reasoning: true,
-        };
+        let request = history_request(
+            "stream-full-history",
+            &format!("{}/v1", server.uri()),
+            helpful_greeting_history(),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok());
@@ -1750,48 +1723,23 @@ mod stream_integration {
                     }
                 ]
             })))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(
-                        [
-                            "event: response.completed\n",
-                            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_replayed_history\"}}\n",
-                            "\n",
-                        ]
-                        .join(""),
-                    )
-                    .insert_header("content-type", "text/event-stream"),
-            )
+            .respond_with(event_stream_response(&[
+                "event: response.completed\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_replayed_history\"}}\n",
+                "\n",
+            ]))
             .expect(1)
             .mount(&server)
             .await;
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = AiChatRequest {
-            messages: vec![
-                IpcMessage {
-                    role: "system".to_string(),
-                    content: "You are helpful".to_string(),
-                },
-                IpcMessage {
-                    role: "user".to_string(),
-                    content: "Hello".to_string(),
-                },
-                IpcMessage {
-                    role: "assistant".to_string(),
-                    content: "Hi".to_string(),
-                },
-            ],
-            endpoint: format!("{}/v1", server.uri()),
-            model: "test-model".to_string(),
-            temperature: 0.7,
-            max_tokens: 100,
-            stream_id: "stream-replayed-history".to_string(),
-            previous_response_id: Some("resp_prev".to_string()),
-            prefer_responses_api: true,
-            enable_reasoning: true,
-        };
+        let mut request = history_request(
+            "stream-replayed-history",
+            &format!("{}/v1", server.uri()),
+            helpful_greeting_history(),
+        );
+        request.previous_response_id = Some("resp_prev".to_string());
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok());
@@ -3011,18 +2959,17 @@ fn responses_reasoning_text_for_completed_does_not_use_top_level_answer_text() {
     );
 }
 
+fn content_text_before_streaming(event_type: &str, json: &serde_json::Value) -> String {
+    extract_responses_content_text_for_event(Some(event_type), json, false)
+}
+
 #[test]
 fn responses_content_text_for_event_skips_reasoning_events() {
     let reasoning_done_json = serde_json::json!({
         "text": "reasoning should stay hidden"
     });
-
     assert_eq!(
-        extract_responses_content_text_for_event(
-            Some("response.reasoning_text.done"),
-            &reasoning_done_json,
-            false,
-        ),
+        content_text_before_streaming("response.reasoning_text.done", &reasoning_done_json),
         ""
     );
 
@@ -3032,13 +2979,8 @@ fn responses_content_text_for_event_skips_reasoning_events() {
             "content": [{ "type": "output_text", "text": "assistant answer" }]
         }
     });
-
     assert_eq!(
-        extract_responses_content_text_for_event(
-            Some("response.output_item.done"),
-            &message_done_json,
-            false,
-        ),
+        content_text_before_streaming("response.output_item.done", &message_done_json),
         "assistant answer"
     );
     assert_eq!(
@@ -3056,63 +2998,34 @@ fn responses_content_text_for_event_skips_reasoning_events() {
             "content": [{ "type": "reasoning_text", "text": "hidden" }]
         }
     });
-
     assert_eq!(
-        extract_responses_content_text_for_event(
-            Some("response.output_item.done"),
-            &reasoning_item_done_json,
-            false,
-        ),
+        content_text_before_streaming("response.output_item.done", &reasoning_item_done_json),
         ""
     );
 
     let reasoning_part_done_json = serde_json::json!({
-        "part": {
-            "type": "reasoning_text",
-            "text": "still hidden"
-        }
+        "part": { "type": "reasoning_text", "text": "still hidden" }
     });
-
     assert_eq!(
-        extract_responses_content_text_for_event(
-            Some("response.content_part.done"),
-            &reasoning_part_done_json,
-            false,
-        ),
+        content_text_before_streaming("response.content_part.done", &reasoning_part_done_json),
         ""
     );
 
     let visible_text_part_json = serde_json::json!({
         "item_id": "msg_123",
-        "part": {
-            "type": "text",
-            "text": "assistant text"
-        }
+        "part": { "type": "text", "text": "assistant text" }
     });
-
     assert_eq!(
-        extract_responses_content_text_for_event(
-            Some("response.content_part.added"),
-            &visible_text_part_json,
-            false,
-        ),
+        content_text_before_streaming("response.content_part.added", &visible_text_part_json),
         "assistant text"
     );
 
     let reasoning_text_part_json = serde_json::json!({
         "item_id": "rs_123",
-        "part": {
-            "type": "text",
-            "text": "should stay hidden"
-        }
+        "part": { "type": "text", "text": "should stay hidden" }
     });
-
     assert_eq!(
-        extract_responses_content_text_for_event(
-            Some("response.content_part.added"),
-            &reasoning_text_part_json,
-            false,
-        ),
+        content_text_before_streaming("response.content_part.added", &reasoning_text_part_json),
         ""
     );
 }

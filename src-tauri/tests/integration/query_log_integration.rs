@@ -17,42 +17,26 @@ async fn query_log_simple_emitters_run() {
     query_log::log_sqlx_describe("DESCRIBE t");
 }
 
+fn plain_column(name: &'static str, coltype: ColumnType) -> MockColumnDef {
+    MockColumnDef {
+        name,
+        coltype,
+        colflags: ColumnFlags::empty(),
+    }
+}
+
 #[tokio::test]
 async fn query_log_rows_and_execute_hit_formatting_paths() {
     let _capture = LogCaptureGuard::start();
     let response = MockQueryResponse {
         query: "SELECT qlog_probe",
         columns: vec![
-            MockColumnDef {
-                name: "big_i",
-                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "dbl",
-                coltype: ColumnType::MYSQL_TYPE_DOUBLE,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "dec_str",
-                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "blob_col",
-                coltype: ColumnType::MYSQL_TYPE_BLOB,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "txt",
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "bad_txt",
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::empty(),
-            },
+            plain_column("big_i", ColumnType::MYSQL_TYPE_LONGLONG),
+            plain_column("dbl", ColumnType::MYSQL_TYPE_DOUBLE),
+            plain_column("dec_str", ColumnType::MYSQL_TYPE_NEWDECIMAL),
+            plain_column("blob_col", ColumnType::MYSQL_TYPE_BLOB),
+            plain_column("txt", ColumnType::MYSQL_TYPE_VAR_STRING),
+            plain_column("bad_txt", ColumnType::MYSQL_TYPE_VAR_STRING),
         ],
         row: vec![
             MockCell::I64(-42),
@@ -100,16 +84,8 @@ async fn query_log_formats_timestamp_columns_without_decode_errors() {
                 coltype: ColumnType::MYSQL_TYPE_TIMESTAMP,
                 colflags: ColumnFlags::NOT_NULL_FLAG,
             },
-            MockColumnDef {
-                name: "updated_at",
-                coltype: ColumnType::MYSQL_TYPE_TIMESTAMP,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "is_admin",
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::empty(),
-            },
+            plain_column("updated_at", ColumnType::MYSQL_TYPE_TIMESTAMP),
+            plain_column("is_admin", ColumnType::MYSQL_TYPE_VAR_STRING),
         ],
         row: vec![
             MockCell::DateTime(
@@ -168,21 +144,9 @@ async fn query_log_formats_decimal_columns_without_decode_errors() {
                 coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
                 colflags: ColumnFlags::NOT_NULL_FLAG,
             },
-            MockColumnDef {
-                name: "consumption",
-                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "cost",
-                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
-                colflags: ColumnFlags::empty(),
-            },
-            MockColumnDef {
-                name: "created_at",
-                coltype: ColumnType::MYSQL_TYPE_TIMESTAMP,
-                colflags: ColumnFlags::empty(),
-            },
+            plain_column("consumption", ColumnType::MYSQL_TYPE_NEWDECIMAL),
+            plain_column("cost", ColumnType::MYSQL_TYPE_NEWDECIMAL),
+            plain_column("created_at", ColumnType::MYSQL_TYPE_TIMESTAMP),
         ],
         row: vec![
             MockCell::U32(128),

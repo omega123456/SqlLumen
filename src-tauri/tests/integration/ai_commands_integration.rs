@@ -289,14 +289,31 @@ async fn chat_impl_cleans_up_token_after_successful_stream() {
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
     assert!(result.is_ok());
 
+    assert!(
+        wait_until_stream_token_removed(&state, stream_id).await,
+        "token should be cleaned up after successful stream completion"
+    );
+}
+
+async fn wait_until_stream_token_removed(state: &AppState, stream_id: &str) -> bool {
     for _ in 0..20 {
-        if !state.ai_requests.lock().unwrap().contains_key(stream_id) {
-            return;
+        let is_removed = !state.ai_requests.lock().unwrap().contains_key(stream_id);
+        if is_removed {
+            return true;
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
+    false
+}
 
-    panic!("token should be cleaned up after successful stream completion");
+fn find_active_users_request(endpoint: String) -> AiQueryExpandRequest {
+    AiQueryExpandRequest {
+        endpoint,
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    }
 }
 
 // ── Multiple concurrent streams ───────────────────────────────────────────
@@ -754,13 +771,7 @@ async fn query_expand_disables_reasoning_on_request() {
         .await;
 
     let state = test_state();
-    let req = AiQueryExpandRequest {
-        endpoint: format!("{}/v1", server.uri()),
-        model: "test-model".to_string(),
-        system_prompt: "You are a SQL assistant.".to_string(),
-        user_message: "Find active users".to_string(),
-        conversation_context: None,
-    };
+    let req = find_active_users_request(format!("{}/v1", server.uri()));
 
     let result = ai_query_expand_impl(&state, req).await;
     assert!(
@@ -784,13 +795,7 @@ async fn query_expand_disables_reasoning_on_request() {
         .await;
 
     let state2 = test_state();
-    let req2 = AiQueryExpandRequest {
-        endpoint: format!("{}/v1", server2.uri()),
-        model: "test-model".to_string(),
-        system_prompt: "You are a SQL assistant.".to_string(),
-        user_message: "Find active users".to_string(),
-        conversation_context: None,
-    };
+    let req2 = find_active_users_request(format!("{}/v1", server2.uri()));
 
     let _ = ai_query_expand_impl(&state2, req2).await;
 

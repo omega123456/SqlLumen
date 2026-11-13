@@ -736,20 +736,21 @@ fn test_begin_object_non_table_has_no_row_counters() {
 
 #[test]
 fn test_table_copy_source_counts_rows_for_live_progress_totals() {
-    let source = include_str!("../../src/export/copy_to_host.rs");
+    let table_copy_source = include_str!("../../src/export/copy_to_host/engine/table_copy.rs");
+    let copy_run_source = include_str!("../../src/export/copy_to_host/engine/copy_run.rs");
     assert!(
-        source.contains("SELECT COUNT(*) AS row_count"),
+        table_copy_source.contains("SELECT COUNT(*) AS row_count"),
         "table copy should count exact source rows for rowsTotal progress"
     );
     assert!(
-        source.contains("begin_object(progress, object, rows_total);"),
+        copy_run_source.contains("begin_object(progress, object, rows_total);"),
         "table copy should pass the counted rows_total into progress when object work begins"
     );
 }
 
 #[test]
 fn test_copy_engine_reuses_live_target_pool_without_use_statement() {
-    let source = include_str!("../../src/export/copy_to_host.rs");
+    let source = include_str!("../../src/export/copy_to_host/engine/target_setup.rs");
     assert!(
         source.contains("state.registry.get_pool_by_profile(target_profile_id)"),
         "target resolution must reuse a live pool for the selected saved profile when available"
@@ -766,7 +767,7 @@ fn test_copy_engine_reuses_live_target_pool_without_use_statement() {
 
 #[test]
 fn test_copy_engine_keeps_internal_pool_fallback() {
-    let source = include_str!("../../src/export/copy_to_host.rs");
+    let source = include_str!("../../src/export/copy_to_host/engine/target_setup.rs");
     assert!(
         source.contains("open_pool_for_profile(state, target_profile_id).await?"),
         "target resolution must still open an internal pool when no live profile session exists"
@@ -779,7 +780,7 @@ fn test_copy_engine_keeps_internal_pool_fallback() {
 
 #[test]
 fn test_copy_engine_fully_qualifies_target_table_statements() {
-    let source = include_str!("../../src/export/copy_to_host.rs");
+    let source = include_str!("../../src/export/copy_to_host/engine/table_copy.rs");
     assert!(source
         .contains("qualified_drop_if_exists_statement(object_type, target_database, &escaped)"));
     assert!(source.contains("TRUNCATE TABLE {safe_target_db}.{safe_target_table}"));

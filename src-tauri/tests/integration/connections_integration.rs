@@ -5,16 +5,8 @@ use sqllumen_lib::db::connections::{self, NewConnectionData};
 
 // --- Connection CRUD Integration Tests ---
 
-#[test]
-fn test_full_connection_crud_workflow() {
-    let conn = common::test_db();
-
-    // Initially empty
-    let list = connections::list_connections(&conn).expect("should list connections");
-    assert!(list.is_empty(), "connections should be empty initially");
-
-    // Create a connection
-    let data = NewConnectionData {
+fn production_connection_data() -> NewConnectionData {
+    NewConnectionData {
         name: "Production DB".to_string(),
         host: "db.example.com".to_string(),
         port: 3306,
@@ -30,7 +22,39 @@ fn test_full_connection_crud_workflow() {
         sort_order: 0,
         connect_timeout_secs: Some(15),
         keepalive_interval_secs: Some(30),
-    };
+    }
+}
+
+fn production_update_data() -> connections::UpdateConnectionData {
+    connections::UpdateConnectionData {
+        name: "Production DB (Updated)".to_string(),
+        host: "db2.example.com".to_string(),
+        port: 3307,
+        username: "root".to_string(),
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: true,
+        sort_order: 1,
+        connect_timeout_secs: Some(5),
+        keepalive_interval_secs: Some(120),
+    }
+}
+
+#[test]
+fn test_full_connection_crud_workflow() {
+    let conn = common::test_db();
+
+    // Initially empty
+    let list = connections::list_connections(&conn).expect("should list connections");
+    assert!(list.is_empty(), "connections should be empty initially");
+
+    // Create a connection
+    let data = production_connection_data();
     let id = connections::insert_connection(&conn, &data).expect("should insert connection");
     assert!(!id.is_empty(), "should return UUID");
 
@@ -52,23 +76,7 @@ fn test_full_connection_crud_workflow() {
     assert_eq!(record.keepalive_interval_secs, Some(30));
 
     // Update it
-    let update = connections::UpdateConnectionData {
-        name: "Production DB (Updated)".to_string(),
-        host: "db2.example.com".to_string(),
-        port: 3307,
-        username: "root".to_string(),
-        default_database: None,
-        ssl_enabled: false,
-        ssl_ca_path: None,
-        ssl_cert_path: None,
-        ssl_key_path: None,
-        color: None,
-        group_id: None,
-        read_only: true,
-        sort_order: 1,
-        connect_timeout_secs: Some(5),
-        keepalive_interval_secs: Some(120),
-    };
+    let update = production_update_data();
     connections::update_connection(&conn, &id, &update).expect("should update");
 
     // Verify update

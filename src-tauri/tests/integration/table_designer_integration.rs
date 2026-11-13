@@ -1575,221 +1575,161 @@ mod command_wrapper_integration {
         session_id: String,
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn load_table_for_designer_decodes_unsigned_auto_increment_metadata_via_ipc() {
-        let server = MockMySqlServer::start_script(vec![
-            MockQueryStep {
-                query: "SELECT VERSION()",
-                columns: vec![MockColumnDef {
-                    name: "VERSION()",
-                    coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                    colflags: ColumnFlags::NOT_NULL_FLAG,
-                }],
-                rows: vec![vec![MockCell::Bytes(b"8.0.36-mock")]],
-                error: None,
-                affected_rows: None,
-            },
-            MockQueryStep {
-                query: sqllumen_lib::mysql::table_designer::load_columns_query(),
-                columns: vec![
-                    MockColumnDef {
-                        name: "COLUMN_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "COLUMN_TYPE",
-                        coltype: ColumnType::MYSQL_TYPE_BLOB,
-                        colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::BINARY_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "IS_NULLABLE",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "COLUMN_KEY",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "COLUMN_DEFAULT",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::empty(),
-                    },
-                    MockColumnDef {
-                        name: "EXTRA",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "COLUMN_COMMENT",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::empty(),
-                    },
-                ],
-                rows: vec![
-                    vec![
-                        MockCell::Bytes(b"id"),
-                        MockCell::Bytes(b"int(11) unsigned"),
-                        MockCell::Bytes(b"NO"),
-                        MockCell::Bytes(b"PRI"),
-                        MockCell::Null,
-                        MockCell::Bytes(b"auto_increment"),
-                        MockCell::Bytes(b"primary key"),
-                    ],
-                    vec![
-                        MockCell::Bytes(b"created_at"),
-                        MockCell::Bytes(b"timestamp"),
-                        MockCell::Bytes(b"NO"),
-                        MockCell::Bytes(b""),
-                        MockCell::Bytes(b"CURRENT_TIMESTAMP"),
-                        MockCell::Bytes(b"DEFAULT_GENERATED"),
-                        MockCell::Bytes(b"created time"),
-                    ],
-                    vec![
-                        MockCell::Bytes(b"tracking_id"),
-                        MockCell::Bytes(b"char(36)"),
-                        MockCell::Bytes(b"NO"),
-                        MockCell::Bytes(b""),
-                        MockCell::Bytes(b"UUID()"),
-                        MockCell::Bytes(b"DEFAULT_GENERATED"),
-                        MockCell::Bytes(b"tracking identifier"),
-                    ],
-                ],
-                error: None,
-                affected_rows: None,
-            },
-            MockQueryStep {
-                query: sqllumen_lib::mysql::table_designer::load_table_metadata_query(),
-                columns: vec![
-                    MockColumnDef {
-                        name: "ENGINE",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::empty(),
-                    },
-                    MockColumnDef {
-                        name: "TABLE_COLLATION",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::empty(),
-                    },
-                    MockColumnDef {
-                        name: "AUTO_INCREMENT",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::UNSIGNED_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "ROW_FORMAT",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::empty(),
-                    },
-                    MockColumnDef {
-                        name: "TABLE_COMMENT",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::empty(),
-                    },
-                ],
-                rows: vec![vec![
-                    MockCell::Bytes(b"InnoDB"),
-                    MockCell::Bytes(b"utf8mb4_unicode_ci"),
-                    MockCell::U64(7),
-                    MockCell::Bytes(b"Dynamic"),
-                    MockCell::Bytes(b"users table"),
-                ]],
-                error: None,
-                affected_rows: None,
-            },
-            MockQueryStep {
-                query: sqllumen_lib::mysql::table_designer::load_indexes_query(),
-                columns: vec![
-                    MockColumnDef {
-                        name: "INDEX_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "NON_UNIQUE",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "COLUMN_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "INDEX_TYPE",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "SEQ_IN_INDEX",
-                        coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                ],
-                rows: vec![vec![
-                    MockCell::Bytes(b"PRIMARY"),
-                    MockCell::I64(0),
-                    MockCell::Bytes(b"id"),
-                    MockCell::Bytes(b"BTREE"),
-                    MockCell::I64(1),
-                ]],
-                error: None,
-                affected_rows: None,
-            },
-            MockQueryStep {
-                query: sqllumen_lib::mysql::table_designer::load_foreign_keys_query(),
-                columns: vec![
-                    MockColumnDef {
-                        name: "CONSTRAINT_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "COLUMN_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "REFERENCED_TABLE_SCHEMA",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "REFERENCED_TABLE_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "REFERENCED_COLUMN_NAME",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "DELETE_RULE",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                    MockColumnDef {
-                        name: "UPDATE_RULE",
-                        coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                        colflags: ColumnFlags::NOT_NULL_FLAG,
-                    },
-                ],
-                rows: vec![],
-                error: None,
-                affected_rows: None,
-            },
-        ])
-        .await;
+    fn column_def(name: &'static str, coltype: ColumnType, colflags: ColumnFlags) -> MockColumnDef {
+        MockColumnDef {
+            name,
+            coltype,
+            colflags,
+        }
+    }
 
+    fn required_text_column(name: &'static str) -> MockColumnDef {
+        column_def(
+            name,
+            ColumnType::MYSQL_TYPE_VAR_STRING,
+            ColumnFlags::NOT_NULL_FLAG,
+        )
+    }
+
+    fn optional_text_column(name: &'static str) -> MockColumnDef {
+        column_def(
+            name,
+            ColumnType::MYSQL_TYPE_VAR_STRING,
+            ColumnFlags::empty(),
+        )
+    }
+
+    fn required_integer_column(name: &'static str) -> MockColumnDef {
+        column_def(
+            name,
+            ColumnType::MYSQL_TYPE_LONGLONG,
+            ColumnFlags::NOT_NULL_FLAG,
+        )
+    }
+
+    fn version_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            "SELECT VERSION()",
+            vec![required_text_column("VERSION()")],
+            vec![vec![MockCell::Bytes(b"8.0.36-mock")]],
+        )
+    }
+
+    fn designer_columns_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            sqllumen_lib::mysql::table_designer::load_columns_query(),
+            vec![
+                required_text_column("COLUMN_NAME"),
+                column_def(
+                    "COLUMN_TYPE",
+                    ColumnType::MYSQL_TYPE_BLOB,
+                    ColumnFlags::NOT_NULL_FLAG | ColumnFlags::BINARY_FLAG,
+                ),
+                required_text_column("IS_NULLABLE"),
+                required_text_column("COLUMN_KEY"),
+                optional_text_column("COLUMN_DEFAULT"),
+                required_text_column("EXTRA"),
+                optional_text_column("COLUMN_COMMENT"),
+            ],
+            vec![
+                vec![
+                    MockCell::Bytes(b"id"),
+                    MockCell::Bytes(b"int(11) unsigned"),
+                    MockCell::Bytes(b"NO"),
+                    MockCell::Bytes(b"PRI"),
+                    MockCell::Null,
+                    MockCell::Bytes(b"auto_increment"),
+                    MockCell::Bytes(b"primary key"),
+                ],
+                vec![
+                    MockCell::Bytes(b"created_at"),
+                    MockCell::Bytes(b"timestamp"),
+                    MockCell::Bytes(b"NO"),
+                    MockCell::Bytes(b""),
+                    MockCell::Bytes(b"CURRENT_TIMESTAMP"),
+                    MockCell::Bytes(b"DEFAULT_GENERATED"),
+                    MockCell::Bytes(b"created time"),
+                ],
+                vec![
+                    MockCell::Bytes(b"tracking_id"),
+                    MockCell::Bytes(b"char(36)"),
+                    MockCell::Bytes(b"NO"),
+                    MockCell::Bytes(b""),
+                    MockCell::Bytes(b"UUID()"),
+                    MockCell::Bytes(b"DEFAULT_GENERATED"),
+                    MockCell::Bytes(b"tracking identifier"),
+                ],
+            ],
+        )
+    }
+
+    fn designer_metadata_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            sqllumen_lib::mysql::table_designer::load_table_metadata_query(),
+            vec![
+                optional_text_column("ENGINE"),
+                optional_text_column("TABLE_COLLATION"),
+                column_def(
+                    "AUTO_INCREMENT",
+                    ColumnType::MYSQL_TYPE_LONGLONG,
+                    ColumnFlags::UNSIGNED_FLAG,
+                ),
+                optional_text_column("ROW_FORMAT"),
+                optional_text_column("TABLE_COMMENT"),
+            ],
+            vec![vec![
+                MockCell::Bytes(b"InnoDB"),
+                MockCell::Bytes(b"utf8mb4_unicode_ci"),
+                MockCell::U64(7),
+                MockCell::Bytes(b"Dynamic"),
+                MockCell::Bytes(b"users table"),
+            ]],
+        )
+    }
+
+    fn designer_indexes_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            sqllumen_lib::mysql::table_designer::load_indexes_query(),
+            vec![
+                required_text_column("INDEX_NAME"),
+                required_integer_column("NON_UNIQUE"),
+                required_text_column("COLUMN_NAME"),
+                required_text_column("INDEX_TYPE"),
+                required_integer_column("SEQ_IN_INDEX"),
+            ],
+            vec![vec![
+                MockCell::Bytes(b"PRIMARY"),
+                MockCell::I64(0),
+                MockCell::Bytes(b"id"),
+                MockCell::Bytes(b"BTREE"),
+                MockCell::I64(1),
+            ]],
+        )
+    }
+
+    fn designer_foreign_keys_step() -> MockQueryStep {
+        MockQueryStep::with_rows(
+            sqllumen_lib::mysql::table_designer::load_foreign_keys_query(),
+            vec![
+                required_text_column("CONSTRAINT_NAME"),
+                required_text_column("COLUMN_NAME"),
+                required_text_column("REFERENCED_TABLE_SCHEMA"),
+                required_text_column("REFERENCED_TABLE_NAME"),
+                required_text_column("REFERENCED_COLUMN_NAME"),
+                required_text_column("DELETE_RULE"),
+                required_text_column("UPDATE_RULE"),
+            ],
+            vec![],
+        )
+    }
+
+    fn load_users_schema_via_ipc(port: u16) -> DesignerTableSchema {
         let (_app, webview) = build_app();
 
         let profile_id: String = invoke_tauri_command(
             &webview,
             "save_connection",
-            json!({ "data": save_input_json(server.port) }),
+            json!({ "data": save_input_json(port) }),
         )
         .expect("save_connection IPC should succeed");
 
@@ -1804,7 +1744,7 @@ mod command_wrapper_integration {
         )
         .expect("open_connection IPC should succeed");
 
-        let schema: DesignerTableSchema = invoke_tauri_command(
+        invoke_tauri_command(
             &webview,
             "load_table_for_designer",
             json!({
@@ -1815,10 +1755,10 @@ mod command_wrapper_integration {
                 }
             }),
         )
-        .expect("load_table_for_designer IPC should decode unsigned AUTO_INCREMENT metadata");
+        .expect("load_table_for_designer IPC should decode unsigned AUTO_INCREMENT metadata")
+    }
 
-        assert_eq!(schema.table_name, "users");
-        assert_eq!(schema.columns.len(), 3);
+    fn assert_id_and_created_at_columns(schema: &DesignerTableSchema) {
         assert_eq!(schema.columns[0].name, "id");
         assert_eq!(schema.columns[0].r#type, "INT");
         assert_eq!(schema.columns[0].type_modifier, "UNSIGNED");
@@ -1844,6 +1784,9 @@ mod command_wrapper_integration {
             }
         );
         assert_eq!(schema.columns[1].comment, "created time");
+    }
+
+    fn assert_tracking_column_properties_and_indexes(schema: &DesignerTableSchema) {
         assert_eq!(schema.columns[2].name, "tracking_id");
         assert_eq!(schema.columns[2].r#type, "CHAR");
         assert_eq!(schema.columns[2].length, "36");
@@ -1864,6 +1807,25 @@ mod command_wrapper_integration {
         assert_eq!(schema.indexes[0].name, "PRIMARY");
         assert_eq!(schema.indexes[0].index_type, "PRIMARY");
         assert_eq!(schema.indexes[0].columns, vec!["id".to_string()]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn load_table_for_designer_decodes_unsigned_auto_increment_metadata_via_ipc() {
+        let server = MockMySqlServer::start_script(vec![
+            version_step(),
+            designer_columns_step(),
+            designer_metadata_step(),
+            designer_indexes_step(),
+            designer_foreign_keys_step(),
+        ])
+        .await;
+
+        let schema = load_users_schema_via_ipc(server.port);
+
+        assert_eq!(schema.table_name, "users");
+        assert_eq!(schema.columns.len(), 3);
+        assert_id_and_created_at_columns(&schema);
+        assert_tracking_column_properties_and_indexes(&schema);
 
         let ddl = generate_create_table_ddl(&schema, "app_db");
         assert!(ddl.contains("`id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT"));

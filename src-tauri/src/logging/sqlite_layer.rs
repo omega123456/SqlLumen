@@ -67,18 +67,24 @@ where
         };
 
         if let Err(error) = self.sender.try_send(entry) {
-            match error {
-                TrySendError::Full(_) => {
-                    let dropped = self.dropped_messages.fetch_add(1, Ordering::Relaxed) + 1;
-                    eprintln!(
-                        "[WARN] {SQLITE_LAYER_TARGET}: sqlite log channel full, dropped log record count={dropped}"
-                    );
-                }
-                TrySendError::Disconnected(_) => {
-                    eprintln!(
-                        "[WARN] {SQLITE_LAYER_TARGET}: sqlite log channel disconnected; dropping log record"
-                    );
-                }
+            self.report_dropped_entry(error);
+        }
+    }
+}
+
+impl SqliteLogLayer {
+    fn report_dropped_entry(&self, error: TrySendError<NewLogEntry>) {
+        match error {
+            TrySendError::Full(_) => {
+                let dropped = self.dropped_messages.fetch_add(1, Ordering::Relaxed) + 1;
+                eprintln!(
+                    "[WARN] {SQLITE_LAYER_TARGET}: sqlite log channel full, dropped log record count={dropped}"
+                );
+            }
+            TrySendError::Disconnected(_) => {
+                eprintln!(
+                    "[WARN] {SQLITE_LAYER_TARGET}: sqlite log channel disconnected; dropping log record"
+                );
             }
         }
     }
@@ -109,47 +115,75 @@ pub fn init_sqlite_layer(log_db_path: &Path) -> Result<SqliteLogging, String> {
 }
 
 fn run_writer_loop(write_conn: &mut rusqlite::Connection, receiver: Receiver<NewLogEntry>) {
-    let mut buffer = Vec::with_capacity(BATCH_SIZE);
-    let mut last_flush = Instant::now();
-    let mut last_prune = Instant::now();
+    let mut writer = LogWriter {
+        write_conn,
+        receiver,
+        buffer: Vec::with_capacity(BATCH_SIZE),
+        last_flush: Instant::now(),
+        last_prune: Instant::now(),
+    };
+    while writer.process_next() {
+        writer.prune_if_due();
+    }
+}
 
-    loop {
-        match receiver.recv_timeout(FLUSH_INTERVAL) {
+struct LogWriter<'a> {
+    write_conn: &'a mut rusqlite::Connection,
+    receiver: Receiver<NewLogEntry>,
+    buffer: Vec<NewLogEntry>,
+    last_flush: Instant,
+    last_prune: Instant,
+}
+
+impl LogWriter<'_> {
+    fn process_next(&mut self) -> bool {
+        match self.receiver.recv_timeout(FLUSH_INTERVAL) {
             Ok(entry) => {
-                buffer.push(entry);
-                drain_receiver(&receiver, &mut buffer);
-
-                let should_flush =
-                    is_batch_full(&buffer) || has_elapsed(last_flush, FLUSH_INTERVAL);
-                if should_flush {
-                    flush_buffer(write_conn, &mut buffer);
-                    last_flush = Instant::now();
-                }
+                self.accept(entry);
+                true
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                if !buffer.is_empty() {
-                    flush_buffer(write_conn, &mut buffer);
-                    last_flush = Instant::now();
-                }
+                self.flush_pending();
+                true
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                if !buffer.is_empty() {
-                    flush_buffer(write_conn, &mut buffer);
-                }
-                break;
+                self.flush_pending();
+                false
             }
         }
+    }
 
-        if has_elapsed(last_prune, PRUNE_INTERVAL) {
-            if let Err(error) = prune_logs(write_conn, Utc::now()) {
-                tracing::warn!(
-                    target: SQLITE_LAYER_TARGET,
-                    error = %error,
-                    "failed to prune log database"
-                );
-            }
-            last_prune = Instant::now();
+    fn accept(&mut self, entry: NewLogEntry) {
+        self.buffer.push(entry);
+        drain_receiver(&self.receiver, &mut self.buffer);
+        let should_flush =
+            is_batch_full(&self.buffer) || has_elapsed(self.last_flush, FLUSH_INTERVAL);
+        if should_flush {
+            flush_buffer(self.write_conn, &mut self.buffer);
+            self.last_flush = Instant::now();
         }
+    }
+
+    fn flush_pending(&mut self) {
+        if self.buffer.is_empty() {
+            return;
+        }
+        flush_buffer(self.write_conn, &mut self.buffer);
+        self.last_flush = Instant::now();
+    }
+
+    fn prune_if_due(&mut self) {
+        if !has_elapsed(self.last_prune, PRUNE_INTERVAL) {
+            return;
+        }
+        if let Err(error) = prune_logs(self.write_conn, Utc::now()) {
+            tracing::warn!(
+                target: SQLITE_LAYER_TARGET,
+                error = %error,
+                "failed to prune log database"
+            );
+        }
+        self.last_prune = Instant::now();
     }
 }
 

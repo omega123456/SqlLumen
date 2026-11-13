@@ -97,18 +97,19 @@ fn extract_rename_targets(
     operations: &[AlterTableOperation],
 ) -> Vec<AffectedTable> {
     let mut tables = vec![split_object_name(name)];
+    tables.extend(operations.iter().filter_map(renamed_table_target));
+    tables
+}
 
-    for operation in operations {
-        if let AlterTableOperation::RenameTable { table_name } = operation {
-            match table_name {
-                RenameTableNameKind::As(name) | RenameTableNameKind::To(name) => {
-                    tables.push(split_object_name(name));
-                }
-            }
+fn renamed_table_target(operation: &AlterTableOperation) -> Option<AffectedTable> {
+    let AlterTableOperation::RenameTable { table_name } = operation else {
+        return None;
+    };
+    match table_name {
+        RenameTableNameKind::As(name) | RenameTableNameKind::To(name) => {
+            Some(split_object_name(name))
         }
     }
-
-    tables
 }
 
 fn push_object_name(affected_tables: &mut Vec<AffectedTable>, name: &ObjectName) {

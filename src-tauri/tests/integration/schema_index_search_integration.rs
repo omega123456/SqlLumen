@@ -12,7 +12,9 @@ use sqllumen_lib::schema_index::storage;
 use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
 
 use crate::common;
-use crate::common::schema_index_chunks::{insert_table_chunk, TestTableChunk};
+use crate::common::schema_index_chunks::{
+    insert_default_table_chunk, insert_table_chunk, TestTableChunk, DEFAULT_CONNECTION_ID,
+};
 
 const DIM: usize = 4;
 
@@ -138,6 +140,90 @@ fn insert_fk_edge(conn: &Connection, fixture: FkEdgeFixture<'_>) {
     .expect("insert fk edge");
 }
 
+fn insert_conn1_table_chunk(conn: &Connection, qualified_table: &str, embedding: Vec<f32>) -> i64 {
+    let (db_name, table_name) = qualified_table
+        .split_once('.')
+        .expect("qualified table is db.table");
+    insert_table_chunk(
+        conn,
+        TestTableChunk {
+            connection_id: DEFAULT_CONNECTION_ID,
+            db_name,
+            table_name,
+            embedding,
+        },
+    )
+}
+
+struct QualifiedForeignKey<'a> {
+    from: &'a str,
+    to: &'a str,
+    constraint_name: &'a str,
+}
+
+struct QualifiedColumn<'a> {
+    db_name: &'a str,
+    table_name: &'a str,
+    column_name: &'a str,
+}
+
+fn qualified_column(qualified: &str) -> QualifiedColumn<'_> {
+    let mut parts = qualified.splitn(3, '.');
+    let db_name = parts.next().expect("database name");
+    let table_name = parts.next().expect("table name");
+    let column_name = parts.next().expect("column name");
+    QualifiedColumn {
+        db_name,
+        table_name,
+        column_name,
+    }
+}
+
+fn insert_conn1_fk_edge(conn: &Connection, foreign_key: QualifiedForeignKey<'_>) {
+    let source = qualified_column(foreign_key.from);
+    let target = qualified_column(foreign_key.to);
+    insert_fk_edge(
+        conn,
+        FkEdgeFixture {
+            connection_id: DEFAULT_CONNECTION_ID,
+            src_db: source.db_name,
+            src_tbl: source.table_name,
+            src_col: source.column_name,
+            dst_db: target.db_name,
+            dst_tbl: target.table_name,
+            dst_col: target.column_name,
+            constraint_name: foreign_key.constraint_name,
+        },
+    );
+}
+
+fn insert_conn1_fk_edge_without_rules(conn: &Connection, foreign_key: QualifiedForeignKey<'_>) {
+    let source = qualified_column(foreign_key.from);
+    let target = qualified_column(foreign_key.to);
+    let edge = FkEdge {
+        connection_id: DEFAULT_CONNECTION_ID.to_string(),
+        src_db: source.db_name.to_string(),
+        src_tbl: source.table_name.to_string(),
+        src_col: source.column_name.to_string(),
+        dst_db: target.db_name.to_string(),
+        dst_tbl: target.table_name.to_string(),
+        dst_col: target.column_name.to_string(),
+        constraint_name: foreign_key.constraint_name.to_string(),
+        on_delete: None,
+        on_update: None,
+    };
+    storage::replace_fk_edges_for_table(
+        conn,
+        &sqllumen_lib::schema_index::storage::IndexedTableRef {
+            connection_id: DEFAULT_CONNECTION_ID,
+            db_name: source.db_name,
+            table_name: source.table_name,
+        },
+        &[edge],
+    )
+    .unwrap();
+}
+
 // ── Empty index ─────────────────────────────────────────────────────────
 
 #[test]
@@ -166,15 +252,7 @@ fn test_empty_index_returns_empty() {
 #[test]
 fn test_empty_queries_returns_empty() {
     let conn = setup_db();
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
     let results: Vec<SearchResult> = multi_query_search(
         &conn,
         &sqllumen_lib::schema_index::search::SearchQueries {
@@ -199,33 +277,9 @@ fn test_single_query_returns_top_k() {
     let conn = setup_db();
 
     // Insert 3 table chunks with different embeddings
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "products",
-            embedding: unit_vec(2),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", unit_vec(1));
+    insert_default_table_chunk(&conn, "products", unit_vec(2));
 
     // Query along axis 0 — should match "users" best
     let query = vec![unit_vec(0)];
@@ -270,24 +324,8 @@ fn test_multi_query_dedup_keeps_best_score() {
     let conn = setup_db();
 
     // Insert 2 table chunks
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", unit_vec(1));
 
     // Two queries: both should match "users" (axis 0) but second is slightly off-axis
     let query_exact = unit_vec(0); // perfect match to users
@@ -333,42 +371,10 @@ fn test_top_n_selection() {
     let conn = setup_db();
 
     // Insert 4 table chunks along different axes
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t0",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t1",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t2",
-            embedding: unit_vec(2),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t3",
-            embedding: unit_vec(3),
-        },
-    );
+    insert_default_table_chunk(&conn, "t0", unit_vec(0));
+    insert_default_table_chunk(&conn, "t1", unit_vec(1));
+    insert_default_table_chunk(&conn, "t2", unit_vec(2));
+    insert_default_table_chunk(&conn, "t3", unit_vec(3));
 
     // Query along axis 0
     let query = vec![unit_vec(0)];
@@ -406,60 +412,26 @@ fn test_fk_fanout_includes_related_fk_chunks() {
     let conn = setup_db();
 
     // Insert table chunks
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", unit_vec(1));
 
     // Insert FK edge: orders → users
-    insert_fk_edge(
+    insert_conn1_fk_edge(
         &conn,
-        FkEdgeFixture {
-            connection_id: "conn-1",
-            src_db: "testdb",
-            src_tbl: "orders",
-            src_col: "user_id",
-            dst_db: "testdb",
-            dst_tbl: "users",
-            dst_col: "id",
+        QualifiedForeignKey {
+            from: "testdb.orders.user_id",
+            to: "testdb.users.id",
             constraint_name: "fk_user_id",
         },
     );
 
     // Also insert a third table linked via FK to orders but far from query
-    insert_table_chunk(
+    insert_default_table_chunk(&conn, "order_items", unit_vec(3));
+    insert_conn1_fk_edge(
         &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "order_items",
-            embedding: unit_vec(3),
-        },
-    );
-    insert_fk_edge(
-        &conn,
-        FkEdgeFixture {
-            connection_id: "conn-1",
-            src_db: "testdb",
-            src_tbl: "order_items",
-            src_col: "order_id",
-            dst_db: "testdb",
-            dst_tbl: "orders",
-            dst_col: "id",
+        QualifiedForeignKey {
+            from: "testdb.order_items.order_id",
+            to: "testdb.orders.id",
             constraint_name: "fk_order_id",
         },
     );
@@ -496,28 +468,12 @@ fn test_fk_fanout_is_capped() {
     let conn = setup_db();
 
     // Insert one table chunk (close to query)
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
 
     // Insert 3 related table chunks (far from query) and FK edges pointing to users
     for i in 0..3 {
         let tbl_name = format!("related_table_{i}");
-        insert_table_chunk(
-            &conn,
-            TestTableChunk {
-                connection_id: "conn-1",
-                db_name: "testdb",
-                table_name: &tbl_name,
-                embedding: unit_vec(3),
-            },
-        );
+        insert_default_table_chunk(&conn, &tbl_name, unit_vec(3));
         insert_fk_edge(
             &conn,
             FkEdgeFixture {
@@ -582,24 +538,8 @@ fn test_result_ordering() {
     let conn = setup_db();
 
     // Insert table chunks
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.7),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", blend_vec(0, 1, 0.7));
 
     // Insert FK chunk
     insert_fk_chunk(
@@ -663,15 +603,7 @@ fn test_connection_isolation() {
     storage::create_vec_table(&conn, "conn-2", DIM).expect("create vec table for conn-2");
 
     // Insert chunks for two different connections with similar embeddings
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
     insert_table_chunk(
         &conn,
         TestTableChunk {
@@ -718,15 +650,7 @@ fn test_fk_in_top_n_not_duplicated_by_fanout() {
     let conn = setup_db();
 
     // Insert a table chunk
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
 
     // Insert FK chunk with embedding close to query (so it appears in KNN top-N)
     let fk_id = insert_fk_chunk(
@@ -773,15 +697,7 @@ fn test_fk_fanout_includes_fk_for_referenced_table() {
     let conn = setup_db();
 
     // "orders" table is in top-N
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "orders", unit_vec(0));
 
     // FK chunk: orders → users (orders is the source table)
     // This FK should be picked up because "orders" is in the top-N
@@ -828,15 +744,7 @@ fn test_score_is_distance_based_similarity() {
     let conn = setup_db();
 
     // Insert a chunk with a known unit vector
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
 
     // Query with the exact same vector — L2 distance should be 0, score should be 1.0
     let query = vec![unit_vec(0)];
@@ -907,15 +815,7 @@ fn test_score_is_distance_based_similarity() {
 fn test_search_result_fields() {
     let conn = setup_db();
 
-    let chunk_id = insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "mydb",
-            table_name: "accounts",
-            embedding: unit_vec(0),
-        },
-    );
+    let chunk_id = insert_conn1_table_chunk(&conn, "mydb.accounts", unit_vec(0));
 
     let query = vec![unit_vec(0)];
     let results = multi_query_search(
@@ -1029,24 +929,8 @@ fn test_fk_fanout_dedup_within_fanout() {
     let conn = setup_db();
 
     // Insert two table chunks that will both be in top-N
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.8),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", blend_vec(0, 1, 0.8));
 
     // Insert FK chunk: orders → users (should be found via BOTH "orders" and "users" fan-out)
     let fk_id = insert_fk_chunk(
@@ -1093,15 +977,7 @@ fn test_fk_chunks_in_top_n_sorted_after_table_chunks() {
     let conn = setup_db();
 
     // Insert a table chunk
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
 
     // Insert FK chunk with embedding close to query (so it enters KNN top-N)
     insert_fk_chunk(
@@ -1154,42 +1030,10 @@ fn test_multi_query_multiple_axes() {
     let conn = setup_db();
 
     // Insert chunks along different axes
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "products",
-            embedding: unit_vec(2),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "reviews",
-            embedding: unit_vec(3),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", unit_vec(1));
+    insert_default_table_chunk(&conn, "products", unit_vec(2));
+    insert_default_table_chunk(&conn, "reviews", unit_vec(3));
 
     // Two queries along different axes — should find chunks near both
     let queries = vec![unit_vec(0), unit_vec(2)];
@@ -1221,33 +1065,13 @@ fn test_query_text_boosts_exact_table_name_matches() {
 
     // Both tables have similar cosine scores (both along axis 0)
     // so the lexical boost should differentiate them
-    insert_table_chunk(
+    insert_conn1_table_chunk(&conn, "sykes_reservations.itinerary", blend_vec(0, 3, 0.8));
+    insert_conn1_table_chunk(
         &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sykes_reservations",
-            table_name: "itinerary",
-            embedding: blend_vec(0, 3, 0.8),
-        },
+        "sykes_reservations.itinerary_date_history",
+        blend_vec(0, 3, 0.8),
     );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sykes_reservations",
-            table_name: "itinerary_date_history",
-            embedding: blend_vec(0, 3, 0.8),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sykes_portal",
-            table_name: "session_rfx",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "sykes_portal.session_rfx", unit_vec(1));
 
     let query_vectors = vec![unit_vec(0), unit_vec(1)];
     let query_texts = vec![
@@ -1291,24 +1115,8 @@ fn test_query_text_boost_prefers_schema_qualified_exact_match() {
     let conn = setup_db();
 
     // Both tables have similar cosine scores so lexical boost differentiates
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sales",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.5),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "support",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.5),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "sales.orders", blend_vec(0, 1, 0.5));
+    insert_conn1_table_chunk(&conn, "support.orders", blend_vec(0, 1, 0.5));
 
     let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["SELECT * FROM sales.orders".to_string()];
@@ -1347,24 +1155,12 @@ fn test_query_text_boost_prefers_schema_qualified_exact_match() {
 fn test_query_text_boosts_segment_matches_for_related_table_names() {
     let conn = setup_db();
 
-    insert_table_chunk(
+    insert_conn1_table_chunk(
         &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sykes_reservations",
-            table_name: "itinerary_date_history",
-            embedding: unit_vec(2),
-        },
+        "sykes_reservations.itinerary_date_history",
+        unit_vec(2),
     );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sykes_reservations",
-            table_name: "booking_history",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "sykes_reservations.booking_history", unit_vec(0));
 
     let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["find rows from itinerary linked to session".to_string()];
@@ -1399,24 +1195,8 @@ fn test_top_n_with_fk_only_knn_results() {
     let conn = setup_db();
 
     // Insert related table chunks but make FK chunks the only KNN winners.
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: unit_vec(3),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "items",
-            embedding: unit_vec(3),
-        },
-    );
+    insert_default_table_chunk(&conn, "orders", unit_vec(3));
+    insert_default_table_chunk(&conn, "items", unit_vec(3));
 
     insert_fk_chunk(
         &conn,
@@ -1477,24 +1257,8 @@ fn test_query_text_boost_prefers_schema_qualified_tokens_without_sql_keywords() 
     let conn = setup_db();
 
     // Both tables have similar cosine so lexical differentiates
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sales",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.5),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "support",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.5),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "sales.orders", blend_vec(0, 1, 0.5));
+    insert_conn1_table_chunk(&conn, "support.orders", blend_vec(0, 1, 0.5));
 
     let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["sales.orders revenue total".to_string()];
@@ -1535,15 +1299,7 @@ fn test_query_text_boost_prefers_schema_qualified_tokens_without_sql_keywords() 
 fn test_single_chunk_single_query() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "solo",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "solo", unit_vec(0));
 
     let query = vec![unit_vec(0)];
     let results = multi_query_search(
@@ -1580,33 +1336,9 @@ fn test_fk_fanout_cap_zero() {
     let conn = setup_db();
 
     // Insert enough table chunks to fill the top-N entirely with table results
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.8),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "products",
-            embedding: blend_vec(0, 2, 0.7),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
+    insert_default_table_chunk(&conn, "orders", blend_vec(0, 1, 0.8));
+    insert_default_table_chunk(&conn, "products", blend_vec(0, 2, 0.7));
 
     // Insert many FK chunks far from query, so they don't appear in KNN
     for i in 0..5 {
@@ -1659,15 +1391,7 @@ fn test_fk_fanout_cap_zero() {
 fn test_multiple_fk_chunks_same_table_pair() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_default_table_chunk(&conn, "users", unit_vec(0));
 
     // Two FK constraints from orders → users
     insert_fk_chunk(
@@ -1767,42 +1491,10 @@ fn test_top_k_per_query_limit() {
     let conn = setup_db();
 
     // Insert many chunks
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t0",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t1",
-            embedding: blend_vec(0, 1, 0.9),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t2",
-            embedding: blend_vec(0, 1, 0.8),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "testdb",
-            table_name: "t3",
-            embedding: blend_vec(0, 1, 0.7),
-        },
-    );
+    insert_default_table_chunk(&conn, "t0", unit_vec(0));
+    insert_default_table_chunk(&conn, "t1", blend_vec(0, 1, 0.9));
+    insert_default_table_chunk(&conn, "t2", blend_vec(0, 1, 0.8));
+    insert_default_table_chunk(&conn, "t3", blend_vec(0, 1, 0.7));
 
     // With top_k_per_query=2, only 2 KNN hits per query vector
     let query = vec![unit_vec(0)];
@@ -1836,24 +1528,8 @@ fn extended_search_applies_hint_boost_to_reorder_results() {
     let conn = setup_db();
 
     // Two tables with similar embeddings — users slightly closer to query
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.95),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.users", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.orders", blend_vec(0, 1, 0.95));
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -1897,47 +1573,17 @@ fn extended_search_graph_walk_adds_related_tables() {
     let conn = setup_db();
 
     // A -> B edge, only A is close to query
-    insert_table_chunk(
+    insert_conn1_table_chunk(&conn, "db1.A", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.B", unit_vec(2)); // far from query
+
+    insert_conn1_fk_edge_without_rules(
         &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "A",
-            embedding: unit_vec(0),
+        QualifiedForeignKey {
+            from: "db1.A.id",
+            to: "db1.B.a_id",
+            constraint_name: "fk_A_B",
         },
     );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "B",
-            embedding: unit_vec(2),
-        },
-    ); // far from query
-
-    let edge = FkEdge {
-        connection_id: "conn-1".to_string(),
-        src_db: "db1".to_string(),
-        src_tbl: "A".to_string(),
-        src_col: "id".to_string(),
-        dst_db: "db1".to_string(),
-        dst_tbl: "B".to_string(),
-        dst_col: "a_id".to_string(),
-        constraint_name: "fk_A_B".to_string(),
-        on_delete: None,
-        on_update: None,
-    };
-    storage::replace_fk_edges_for_table(
-        &conn,
-        &sqllumen_lib::schema_index::storage::IndexedTableRef {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "A",
-        },
-        &[edge],
-    )
-    .unwrap();
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -1983,56 +1629,18 @@ fn extended_search_editor_tables_become_graph_seeds() {
 
     // Three tables: X (close to query), Y (far), Z (far)
     // Y -> Z edge exists. Y is an "editor table" hint.
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "X",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "Y",
-            embedding: unit_vec(2),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "Z",
-            embedding: unit_vec(3),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.X", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.Y", unit_vec(2));
+    insert_conn1_table_chunk(&conn, "db1.Z", unit_vec(3));
 
-    let edge = FkEdge {
-        connection_id: "conn-1".to_string(),
-        src_db: "db1".to_string(),
-        src_tbl: "Y".to_string(),
-        src_col: "id".to_string(),
-        dst_db: "db1".to_string(),
-        dst_tbl: "Z".to_string(),
-        dst_col: "y_id".to_string(),
-        constraint_name: "fk_Y_Z".to_string(),
-        on_delete: None,
-        on_update: None,
-    };
-    storage::replace_fk_edges_for_table(
+    insert_conn1_fk_edge_without_rules(
         &conn,
-        &sqllumen_lib::schema_index::storage::IndexedTableRef {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "Y",
+        QualifiedForeignKey {
+            from: "db1.Y.id",
+            to: "db1.Z.y_id",
+            constraint_name: "fk_Y_Z",
         },
-        &[edge],
-    )
-    .unwrap();
+    );
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -2094,24 +1702,8 @@ fn extended_search_empty_vectors_returns_empty() {
 fn extended_search_with_accepted_tables_boost() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "alpha",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "beta",
-            embedding: blend_vec(0, 1, 0.95),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.alpha", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.beta", blend_vec(0, 1, 0.95));
 
     let query = vec![unit_vec(0)];
     let config = SearchConfigExt {
@@ -2156,24 +1748,8 @@ fn lexical_direct_table_match_boosts_score() {
     let conn = setup_db();
 
     // Insert two table chunks with similar embeddings
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: blend_vec(0, 1, 0.9),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.users", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.orders", blend_vec(0, 1, 0.9));
 
     let query_texts = vec!["SELECT * FROM orders".to_string()];
     let query_vecs = vec![unit_vec(0)]; // points at users
@@ -2202,24 +1778,8 @@ fn lexical_direct_table_match_boosts_score() {
 fn lexical_qualified_identifier_match() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "customers",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "products",
-            embedding: blend_vec(0, 1, 0.8),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.customers", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.products", blend_vec(0, 1, 0.8));
 
     let query_texts = vec!["SELECT * FROM db1.products JOIN db1.customers ON true".to_string()];
     let query_vecs = vec![unit_vec(0)]; // points at customers
@@ -2249,24 +1809,8 @@ fn lexical_qualified_identifier_match() {
 fn lexical_identifier_token_segment_match() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "user_profiles",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "order_items",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.user_profiles", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.order_items", unit_vec(1));
 
     // Query mentions "profiles" which is a segment of "user_profiles"
     let query_texts = vec!["show me profiles data".to_string()];
@@ -2299,24 +1843,8 @@ fn lexical_identifier_token_segment_match() {
 fn lexical_boost_with_fk_enrichment() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "customers",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.orders", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.customers", unit_vec(1));
     insert_fk_chunk(
         &conn,
         FkChunkFixture {
@@ -2329,16 +1857,11 @@ fn lexical_boost_with_fk_enrichment() {
             embedding: blend_vec(0, 1, 0.5),
         },
     );
-    insert_fk_edge(
+    insert_conn1_fk_edge(
         &conn,
-        FkEdgeFixture {
-            connection_id: "conn-1",
-            src_db: "db1",
-            src_tbl: "orders",
-            src_col: "customer_id",
-            dst_db: "db1",
-            dst_tbl: "customers",
-            dst_col: "id",
+        QualifiedForeignKey {
+            from: "db1.orders.customer_id",
+            to: "db1.customers.id",
             constraint_name: "fk_orders_customers",
         },
     );
@@ -2374,24 +1897,8 @@ fn lexical_boost_with_fk_enrichment() {
 fn lexical_dotted_identifier_in_natural_text() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "mydb",
-            table_name: "accounts",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "mydb",
-            table_name: "transactions",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "mydb.accounts", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "mydb.transactions", unit_vec(1));
 
     // Natural language query with a dotted identifier
     let query_texts = vec!["look up mydb.accounts balance".to_string()];
@@ -2425,57 +1932,23 @@ fn extended_search_graph_walk_with_lexical_and_hints() {
     let conn = setup_db();
 
     // Create a chain: A -> B -> C
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "A",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "B",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "C",
-            embedding: unit_vec(2),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.A", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.B", unit_vec(1));
+    insert_conn1_table_chunk(&conn, "db1.C", unit_vec(2));
 
-    insert_fk_edge(
+    insert_conn1_fk_edge(
         &conn,
-        FkEdgeFixture {
-            connection_id: "conn-1",
-            src_db: "db1",
-            src_tbl: "A",
-            src_col: "b_id",
-            dst_db: "db1",
-            dst_tbl: "B",
-            dst_col: "id",
+        QualifiedForeignKey {
+            from: "db1.A.b_id",
+            to: "db1.B.id",
             constraint_name: "fk_a_b",
         },
     );
-    insert_fk_edge(
+    insert_conn1_fk_edge(
         &conn,
-        FkEdgeFixture {
-            connection_id: "conn-1",
-            src_db: "db1",
-            src_tbl: "B",
-            src_col: "c_id",
-            dst_db: "db1",
-            dst_tbl: "C",
-            dst_col: "id",
+        QualifiedForeignKey {
+            from: "db1.B.c_id",
+            to: "db1.C.id",
             constraint_name: "fk_b_c",
         },
     );
@@ -2529,24 +2002,8 @@ fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
     // should add the referenced table chunk automatically.
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "customers",
-            embedding: unit_vec(2),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.orders", unit_vec(1));
+    insert_conn1_table_chunk(&conn, "db1.customers", unit_vec(2));
     // FK chunk with ref_db_name/ref_table_name pointing at customers
     insert_fk_chunk(
         &conn,
@@ -2594,24 +2051,8 @@ fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
 fn lexical_boost_backtick_qualified_identifier() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sales",
-            table_name: "invoices",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "sales",
-            table_name: "payments",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "sales.invoices", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "sales.payments", unit_vec(1));
 
     let query_texts = vec!["SELECT * FROM `sales`.`invoices`".to_string()];
     let query_vecs = vec![unit_vec(1)]; // points at payments
@@ -2643,33 +2084,9 @@ fn lexical_boost_backtick_qualified_identifier() {
 fn search_with_multiple_query_texts_and_vectors() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "products",
-            embedding: unit_vec(2),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.users", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.orders", unit_vec(1));
+    insert_conn1_table_chunk(&conn, "db1.products", unit_vec(2));
 
     // Multiple queries — both vectors and texts
     let query_texts = vec![
@@ -2702,15 +2119,7 @@ fn search_with_multiple_query_texts_and_vectors() {
 fn configured_search_with_zero_lexical_weight() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "items",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.items", unit_vec(0));
 
     let query_texts = vec!["SELECT * FROM items".to_string()];
     let query_vecs = vec![unit_vec(0)];
@@ -2746,24 +2155,8 @@ fn configured_search_with_zero_lexical_weight() {
 fn with_hints_applies_feedback_boost() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.users", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.orders", unit_vec(1));
 
     let query = vec![blend_vec(0, 1, 0.6)]; // slightly closer to users
     let query_texts = vec!["find users".to_string()];
@@ -2828,33 +2221,9 @@ fn with_hints_empty_results() {
 fn apply_graph_expansion_adds_related_tables() {
     let conn = setup_db();
 
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "orders",
-            embedding: unit_vec(1),
-        },
-    );
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "products",
-            embedding: unit_vec(2),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.users", unit_vec(0));
+    insert_conn1_table_chunk(&conn, "db1.orders", unit_vec(1));
+    insert_conn1_table_chunk(&conn, "db1.products", unit_vec(2));
 
     // FK: orders → users
     storage::replace_fk_edges_for_connection(
@@ -2911,15 +2280,7 @@ fn apply_graph_expansion_adds_related_tables() {
 #[test]
 fn apply_graph_expansion_zero_depth_noop() {
     let conn = setup_db();
-    insert_table_chunk(
-        &conn,
-        TestTableChunk {
-            connection_id: "conn-1",
-            db_name: "db1",
-            table_name: "users",
-            embedding: unit_vec(0),
-        },
-    );
+    insert_conn1_table_chunk(&conn, "db1.users", unit_vec(0));
 
     let initial = vec![SearchResult {
         chunk_id: 1,

@@ -33,3 +33,18 @@ pub fn insert_table_chunk(conn: &Connection, chunk: TestTableChunk<'_>) -> i64 {
     };
     storage::insert_chunk(conn, &insert).expect("insert table chunk")
 }
+
+pub const DEFAULT_CONNECTION_ID: &str = "conn-1";
+pub const DEFAULT_DATABASE: &str = "testdb";
+
+pub fn insert_default_table_chunk(conn: &Connection, table_name: &str, embedding: Vec<f32>) -> i64 {
+    insert_table_chunk(
+        conn,
+        TestTableChunk {
+            connection_id: DEFAULT_CONNECTION_ID,
+            db_name: DEFAULT_DATABASE,
+            table_name,
+            embedding,
+        },
+    )
+}

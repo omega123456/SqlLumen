@@ -421,6 +421,38 @@ fn test_migration_013_purges_orphans_and_keeps_valid_and_global_rows() {
     assert_eq!(global, 1, "global favorite should survive purge");
 }
 
+fn insert_history_row(conn: &Connection, connection_id: &str, sql_text: &str) {
+    conn.execute(
+        "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, success)
+         VALUES (?1, 'mydb', ?2, '2026-01-01T00:00:00Z', 1)",
+        params![connection_id, sql_text],
+    )
+    .expect("insert query_history row");
+}
+
+fn insert_chunk_row(conn: &Connection, connection_id: &str, chunk_number: u32) {
+    conn.execute(
+        "INSERT INTO schema_index_chunks
+            (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id)
+         VALUES (?1, ?2, 'db', 't', 'table', 'CREATE TABLE t (id INT)', ?3, 'model')",
+        params![
+            connection_id,
+            format!("k{chunk_number}"),
+            format!("h{chunk_number}")
+        ],
+    )
+    .expect("insert schema_index_chunks row");
+}
+
+fn sqlite_sequence_value(conn: &Connection, table_name: &str) -> i64 {
+    conn.query_row(
+        "SELECT seq FROM sqlite_sequence WHERE name = ?1",
+        params![table_name],
+        |row| row.get(0),
+    )
+    .expect("sqlite_sequence value")
+}
+
 #[test]
 fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
     // Regression: the migration rebuilds AUTOINCREMENT tables via INSERT...SELECT
@@ -438,49 +470,15 @@ fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
     let orphan_id = "orphan-seq-id";
 
     // query_history: id=1 valid (survives), id=2 orphan (purged, highest id).
-    conn.execute(
-        "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, success)
-         VALUES (?1, 'mydb', 'SELECT 1', '2026-01-01T00:00:00Z', 1)",
-        params![valid_id],
-    )
-    .expect("seed valid query_history");
-    conn.execute(
-        "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, success)
-         VALUES (?1, 'mydb', 'SELECT 2', '2026-01-01T00:00:00Z', 1)",
-        params![orphan_id],
-    )
-    .expect("seed orphan query_history");
+    insert_history_row(&conn, &valid_id, "SELECT 1");
+    insert_history_row(&conn, orphan_id, "SELECT 2");
 
     // schema_index_chunks: id=1 valid (survives), id=2 orphan (purged, highest).
-    conn.execute(
-        "INSERT INTO schema_index_chunks
-            (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id)
-         VALUES (?1, 'k1', 'db', 't', 'table', 'CREATE TABLE t (id INT)', 'h1', 'model')",
-        params![valid_id],
-    )
-    .expect("seed valid chunk");
-    conn.execute(
-        "INSERT INTO schema_index_chunks
-            (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id)
-         VALUES (?1, 'k2', 'db', 't', 'table', 'CREATE TABLE t (id INT)', 'h2', 'model')",
-        params![orphan_id],
-    )
-    .expect("seed orphan chunk");
+    insert_chunk_row(&conn, &valid_id, 1);
+    insert_chunk_row(&conn, orphan_id, 2);
 
-    let original_qh_hwm: i64 = conn
-        .query_row(
-            "SELECT seq FROM sqlite_sequence WHERE name = 'query_history'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("query_history seq");
-    let original_chunk_hwm: i64 = conn
-        .query_row(
-            "SELECT seq FROM sqlite_sequence WHERE name = 'schema_index_chunks'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("schema_index_chunks seq");
+    let original_qh_hwm: i64 = sqlite_sequence_value(&conn, "query_history");
+    let original_chunk_hwm: i64 = sqlite_sequence_value(&conn, "schema_index_chunks");
     assert_eq!(original_qh_hwm, 2, "query_history high-water before purge");
     assert_eq!(original_chunk_hwm, 2, "chunks high-water before purge");
 
@@ -490,20 +488,8 @@ fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
         .expect("re-apply migration 013 body");
 
     // sqlite_sequence must still report the original high-water mark.
-    let qh_seq: i64 = conn
-        .query_row(
-            "SELECT seq FROM sqlite_sequence WHERE name = 'query_history'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("query_history seq after purge");
-    let chunk_seq: i64 = conn
-        .query_row(
-            "SELECT seq FROM sqlite_sequence WHERE name = 'schema_index_chunks'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("schema_index_chunks seq after purge");
+    let qh_seq: i64 = sqlite_sequence_value(&conn, "query_history");
+    let chunk_seq: i64 = sqlite_sequence_value(&conn, "schema_index_chunks");
     assert_eq!(
         qh_seq, 2,
         "query_history seq must retain original high-water"
@@ -512,25 +498,14 @@ fn test_migration_013_retains_autoincrement_high_water_after_orphan_purge() {
 
     // A subsequent insert must get an id GREATER than the original high-water,
     // proving the purged orphan id (2) is not reused.
-    conn.execute(
-        "INSERT INTO query_history (connection_id, database_name, sql_text, timestamp, success)
-         VALUES (?1, 'mydb', 'SELECT 3', '2026-01-01T00:00:00Z', 1)",
-        params![valid_id],
-    )
-    .expect("insert new query_history after purge");
+    insert_history_row(&conn, &valid_id, "SELECT 3");
     let new_qh_id = conn.last_insert_rowid();
     assert!(
         new_qh_id > original_qh_hwm,
         "new query_history id ({new_qh_id}) must exceed original high-water ({original_qh_hwm})"
     );
 
-    conn.execute(
-        "INSERT INTO schema_index_chunks
-            (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id)
-         VALUES (?1, 'k3', 'db', 't', 'table', 'CREATE TABLE t (id INT)', 'h3', 'model')",
-        params![valid_id],
-    )
-    .expect("insert new chunk after purge");
+    insert_chunk_row(&conn, &valid_id, 3);
     let new_chunk_id = conn.last_insert_rowid();
     assert!(
         new_chunk_id > original_chunk_hwm,

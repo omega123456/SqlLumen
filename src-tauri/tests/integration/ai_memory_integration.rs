@@ -1,8 +1,9 @@
 //! Integration tests for `ai_memory` — storage CRUD + vec0 operations.
 
+use crate::common::insert_memory_vector_or_panic;
 use rusqlite::{params, Connection};
 use sqllumen_lib::ai_memory::storage;
-use sqllumen_lib::ai_memory::types::{AiMemory, MemoryScope};
+use sqllumen_lib::ai_memory::types::{AiMemory, MemoryScope, MemoryVector};
 use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 
@@ -159,15 +160,14 @@ fn insert_memory_vector_works() {
     let id = storage::insert_memory(&conn, "conn-1", "Test").unwrap();
     let table = storage::ensure_vec_table(&conn, "conn-1", 4).unwrap();
     let embedding = test_embedding(4, 1.0);
-    storage::insert_memory_vector(
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id,
             embedding: &embedding,
         },
-    )
-    .unwrap();
+    );
 
     // Verify the vector exists
     let count: i64 = conn
@@ -185,15 +185,14 @@ fn delete_memory_vector_removes_entry() {
     let conn = setup_db();
     let id = storage::insert_memory(&conn, "conn-1", "Test").unwrap();
     let table = storage::ensure_vec_table(&conn, "conn-1", 4).unwrap();
-    storage::insert_memory_vector(
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id,
             embedding: &test_embedding(4, 1.0),
         },
-    )
-    .unwrap();
+    );
 
     storage::delete_memory_vector(&conn, "conn-1", id).unwrap();
 
@@ -228,6 +227,32 @@ fn get_memory_texts_returns_id_content_pairs() {
     assert_eq!(texts[1].1, "Second");
 }
 
+fn two_nearest_connection_memories(conn: &Connection, table: &str, query: &[f32]) -> Vec<AiMemory> {
+    let query_bytes: Vec<u8> = query.iter().flat_map(|f: &f32| f.to_le_bytes()).collect();
+
+    let sql = format!(
+        "SELECT m.id, m.connection_id, m.content, m.created_at, m.source \
+         FROM {table} v JOIN connection_memories m ON m.id = v.id \
+         WHERE v.embedding MATCH ?1 AND k = ?2 \
+         ORDER BY v.distance"
+    );
+    let mut stmt = conn.prepare(&sql).unwrap();
+    stmt.query_map(params![query_bytes, 2i64], |row| {
+        Ok(AiMemory {
+            id: row.get(0)?,
+            scope: MemoryScope::Connection,
+            connection_id: row.get::<_, Option<String>>(1)?,
+            group_id: None,
+            content: row.get(2)?,
+            created_at: row.get(3)?,
+            source: row.get(4)?,
+        })
+    })
+    .unwrap()
+    .collect::<Result<Vec<_>, _>>()
+    .unwrap()
+}
+
 // ── KNN search (direct vec table query) ──────────────────────────────────
 
 #[test]
@@ -245,63 +270,34 @@ fn knn_search_returns_nearest_vectors() {
     let emb2 = vec![0.9, 0.1, 0.0, 0.0]; // close to emb1
     let emb3 = vec![0.0, 0.0, 0.0, 1.0]; // far from emb1
 
-    storage::insert_memory_vector(
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id1,
             embedding: &emb1,
         },
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    );
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id2,
             embedding: &emb2,
         },
-    )
-    .unwrap();
-    storage::insert_memory_vector(
+    );
+    insert_memory_vector_or_panic(
         &conn,
         &table,
-        &sqllumen_lib::ai_memory::types::MemoryVector {
+        MemoryVector {
             memory_id: id3,
             embedding: &emb3,
         },
-    )
-    .unwrap();
+    );
 
     // Search for something close to emb1
     let query_emb = [1.0, 0.0, 0.0, 0.0];
-    let query_bytes: Vec<u8> = query_emb
-        .iter()
-        .flat_map(|f: &f32| f.to_le_bytes())
-        .collect();
-
-    let sql = format!(
-        "SELECT m.id, m.connection_id, m.content, m.created_at, m.source \
-         FROM {table} v JOIN connection_memories m ON m.id = v.id \
-         WHERE v.embedding MATCH ?1 AND k = ?2 \
-         ORDER BY v.distance"
-    );
-    let mut stmt = conn.prepare(&sql).unwrap();
-    let results: Vec<AiMemory> = stmt
-        .query_map(params![query_bytes, 2i64], |row| {
-            Ok(AiMemory {
-                id: row.get(0)?,
-                scope: MemoryScope::Connection,
-                connection_id: row.get::<_, Option<String>>(1)?,
-                group_id: None,
-                content: row.get(2)?,
-                created_at: row.get(3)?,
-                source: row.get(4)?,
-            })
-        })
-        .unwrap()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
+    let results = two_nearest_connection_memories(&conn, &table, &query_emb);
 
     assert_eq!(results.len(), 2);
     // First result should be "Alpha" (exact match), second "Beta" (close)
@@ -397,15 +393,14 @@ fn delete_memory_impl_removes_memory_and_vector() {
         let conn = state.db.lock().unwrap();
         let id = storage::insert_memory(&conn, "conn-1", "To delete").unwrap();
         let table = storage::ensure_vec_table(&conn, "conn-1", 4).unwrap();
-        storage::insert_memory_vector(
+        insert_memory_vector_or_panic(
             &conn,
             &table,
-            &sqllumen_lib::ai_memory::types::MemoryVector {
+            MemoryVector {
                 memory_id: id,
                 embedding: &test_embedding(4, 1.0),
             },
-        )
-        .unwrap();
+        );
         id
     };
     delete_memory_impl(
