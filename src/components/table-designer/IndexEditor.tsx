@@ -10,6 +10,7 @@ import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import styles from './IndexEditor.module.css'
 import { isEven } from '../../lib/units'
+import { isBlank } from '../../lib/value-checks'
 
 const MAX_LISTED_COLUMN_LABELS = 2
 const FIRST_SECONDARY_INDEX_ROW_NUMBER = 2
@@ -59,6 +60,10 @@ function cloneComparable(value: unknown): string {
   return JSON.stringify(value)
 }
 
+function isSameIndex(left: TableDesignerIndexDef, right: TableDesignerIndexDef): boolean {
+  return left.name === right.name || cloneComparable(left) === cloneComparable(right)
+}
+
 function isNewIndex(tabState: TableDesignerTabState, index: TableDesignerIndexDef): boolean {
   if (tabState.mode !== 'alter') return false
   if (!tabState.originalSchema) return false
@@ -67,10 +72,7 @@ function isNewIndex(tabState: TableDesignerTabState, index: TableDesignerIndexDe
     (originalIndex) => originalIndex.indexType !== 'PRIMARY'
   )
 
-  return !originalIndexes.some(
-    (originalIndex) =>
-      originalIndex.name === index.name || cloneComparable(originalIndex) === cloneComparable(index)
-  )
+  return !originalIndexes.some((originalIndex) => isSameIndex(originalIndex, index))
 }
 
 interface IndexRowPosition {
@@ -298,7 +300,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
     [tabState?.currentSchema.columns]
   )
   const columnNames = useMemo(
-    () => columns.map((column) => column.name).filter((name) => name.trim() !== ''),
+    () => columns.map((column) => column.name).filter((name) => !isBlank(name)),
     [columns]
   )
 

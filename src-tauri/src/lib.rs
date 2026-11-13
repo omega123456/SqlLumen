@@ -76,6 +76,14 @@ pub fn resolved_app_data_dir(base: &Path) -> PathBuf {
     }
 }
 
+pub fn is_empty_path(path: &Path) -> bool {
+    path.as_os_str().is_empty()
+}
+
+pub fn is_not_found_error(error: &std::io::Error) -> bool {
+    error.kind() == std::io::ErrorKind::NotFound
+}
+
 /// Initialize the SQLite database for the application.
 /// Opens the database at the given app data directory and runs all pending migrations.
 /// Returns the raw Connection — caller assembles AppState.

@@ -301,7 +301,8 @@ pub async fn wait_for_cancel_kills(
         // Register for the notification before checking, so a KILL that
         // finishes in between still wakes this task.
         let notified = cancel.kill_done.notified();
-        if cancel.kills_in_flight.load(Ordering::SeqCst) == 0 {
+        let kills_in_flight = cancel.kills_in_flight.load(Ordering::SeqCst);
+        if kills_in_flight == 0 {
             return true;
         }
         if tokio::time::timeout_at(deadline, notified).await.is_err() {
@@ -314,14 +315,16 @@ pub async fn wait_for_cancel_kills(
     }
 }
 
+fn is_running_on_connection(job: &ResultExportJobProgress, connection_id: &str) -> bool {
+    job.status == ResultExportStatus::Running && job.connection_id == connection_id
+}
+
 /// Ids of the running jobs of one connection.
 pub fn running_job_ids_for_connection(jobs: &ResultExportJobs, connection_id: &str) -> Vec<String> {
     let map = jobs.read().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut ids: Vec<String> = map
         .values()
-        .filter(|job| {
-            job.status == ResultExportStatus::Running && job.connection_id == connection_id
-        })
+        .filter(|job| is_running_on_connection(job, connection_id))
         .map(|job| job.job_id.clone())
         .collect();
     ids.sort();
@@ -536,7 +539,7 @@ impl ExportPipeline {
     fn remove_temp_file(&self) {
         match std::fs::remove_file(&self.temp_path) {
             Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) if crate::is_not_found_error(&error) => {}
             Err(error) => tracing::warn!(
                 job_id = self.job_id,
                 path = %self.temp_path.display(),
@@ -640,7 +643,7 @@ pub async fn run_result_export_job(state: &AppState, prepared: PreparedResultExp
 
 #[cfg(coverage)]
 fn missing_live_session_message(state: &AppState, connection_id: &str) -> String {
-    if state.registry.contains(connection_id) {
+    if state.has_open_connection(connection_id) {
         return "Full export needs a live MySQL session.".to_string();
     }
     format!("Connection '{connection_id}' not found in registry")
@@ -672,8 +675,8 @@ async fn rerun_into_pipeline(
         interrupted: false,
         own_kill_sent: false,
     };
-    // A cancel that arrived while the job was queued had no thread to KILL.
-    if !prepared.cancel.requested.load(Ordering::SeqCst) {
+    let was_cancelled_while_queued = prepared.cancel.requested.load(Ordering::SeqCst);
+    if !was_cancelled_while_queued {
         match switch_to_run_database(&mut session.conn, prepared).await {
             Ok(previous) => {
                 restore_to = previous;
@@ -728,6 +731,11 @@ async fn use_database_on(
     })
 }
 
+#[cfg(not(coverage))]
+fn is_other_database(current: Option<&str>, database: &str) -> bool {
+    current != Some(database)
+}
+
 /// Read the session's current database and switch to the stored run
 /// database when it differs. Returns what to restore afterwards: `None` when
 /// no `USE` was issued, `Some(previous)` otherwise (`previous` is `None` when
@@ -751,7 +759,7 @@ async fn switch_to_run_database(
         .flatten();
 
     match &prepared.run_database {
-        RunDatabase::Named(database) if current.as_deref() != Some(database.as_str()) => {
+        RunDatabase::Named(database) if is_other_database(current.as_deref(), database) => {
             use_database_on(conn, database).await.map_err(|error| {
                 tracing::warn!(
                     job_id = prepared.job_id,
@@ -811,6 +819,15 @@ struct StreamEnd {
     interrupted: bool,
     /// The job sent its own KILL (sheet limit or write failure).
     own_kill_sent: bool,
+}
+
+#[cfg(not(coverage))]
+fn is_interrupted_by_own_kill(
+    error: &mysql_async::Error,
+    stopping: bool,
+    cancel_requested: impl Fn() -> bool,
+) -> bool {
+    crate::mysql::multi_result::is_query_interrupted(error) && (stopping || cancel_requested())
 }
 
 /// Re-run the source SQL (no auto-LIMIT, no ceiling) and write every row.
@@ -911,7 +928,7 @@ async fn stream_rerun(
                 }
             }
             Ok(None) => break,
-            Err(error) if is_query_interrupted(&error) && (stopping || cancel_requested()) => {
+            Err(error) if is_interrupted_by_own_kill(&error, stopping, cancel_requested) => {
                 crate::mysql::query_log::log_mysql_async_error(&error);
                 interrupted = true;
                 break;

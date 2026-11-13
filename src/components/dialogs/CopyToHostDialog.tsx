@@ -31,7 +31,7 @@ import {
   type CopyObjectSelection,
 } from '../../lib/copy-to-host-commands'
 import { listDatabases } from '../../lib/schema-commands'
-import { useConnectionStore } from '../../stores/connection-store'
+import { isConnectionOfProfile, useConnectionStore } from '../../stores/connection-store'
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import { logFrontendError } from '../../lib/app-log-commands'
 import styles from './CopyToHostDialog.module.css'
@@ -68,6 +68,10 @@ const INSERT_MODE_OPTIONS: DropdownOption[] = [
 function normalizeHost(host: string | null | undefined): string | null {
   const normalized = host?.trim().toLowerCase()
   return normalized ? normalized : null
+}
+
+function isOutsideSourceHost(host: string, sourceHost: string | null): boolean {
+  return sourceHost === null || normalizeHost(host) !== sourceHost
 }
 
 /** Static elevated-surface section card — a titled panel (no collapse behavior). */
@@ -725,8 +729,8 @@ export default function CopyToHostDialog({
 
   const activeTargetSessionId = useMemo(() => {
     if (!targetConnectionId) return null
-    const active = Object.values(activeConnections).find(
-      (connection) => connection.profile.id === targetConnectionId
+    const active = Object.values(activeConnections).find((connection) =>
+      isConnectionOfProfile(connection, targetConnectionId)
     )
     return active?.id ?? null
   }, [activeConnections, targetConnectionId])
@@ -855,11 +859,10 @@ export default function CopyToHostDialog({
     pollFailureMessage: '[copy-to-host] Failed to poll progress:',
   })
 
-  // Target connection options exclude the source host and any read-only connection.
   const targetConnectionOptions = useMemo<DropdownOption[]>(() => {
     const options = savedConnections
       .filter((connection) => !connection.readOnly)
-      .filter((connection) => sourceHost === null || normalizeHost(connection.host) !== sourceHost)
+      .filter((connection) => isOutsideSourceHost(connection.host, sourceHost))
       .map((connection) => ({
         value: connection.id,
         label: connection.name,

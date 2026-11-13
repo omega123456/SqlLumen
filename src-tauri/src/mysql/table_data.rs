@@ -542,6 +542,14 @@ pub enum BlobBind {
     Null,
 }
 
+fn is_over_blob_fetch_cap(byte_count: usize) -> bool {
+    byte_count > BLOB_FETCH_CAP
+}
+
+fn is_blob_envelope(object: &serde_json::Map<String, serde_json::Value>) -> bool {
+    object.get(BLOB_ENVELOPE_MARKER) == Some(&serde_json::Value::Bool(true))
+}
+
 /// Inspect a JSON value and, if it is a recognised blob-envelope, decode it into
 /// a [`BlobBind`]. Returns:
 /// - `None` when the value is **not** a blob-envelope (caller falls back to its
@@ -556,8 +564,7 @@ pub fn decode_blob_envelope(value: &serde_json::Value) -> Option<Result<BlobBind
     use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 
     let obj = value.as_object()?;
-    // Only treat objects explicitly marked as blob-envelopes.
-    if obj.get(BLOB_ENVELOPE_MARKER) != Some(&serde_json::Value::Bool(true)) {
+    if !is_blob_envelope(obj) {
         return None;
     }
 
@@ -1053,6 +1060,20 @@ pub fn validate_blob_envelopes(values: &HashMap<String, serde_json::Value>) -> R
 
 // ── fetch_table_pk_impl (internal helper, real impl only) ──────────────────────
 
+#[cfg(not(coverage))]
+fn is_auto_increment_key_column(column: &TableDataColumnMeta, key_columns: &[String]) -> bool {
+    key_columns.contains(&column.name) && column.is_auto_increment
+}
+
+#[cfg(not(coverage))]
+fn ensure_single_row_affected(result: &sqlx::mysql::MySqlQueryResult) -> Result<(), String> {
+    let rows_affected = result.rows_affected();
+    if rows_affected != 1 {
+        return Err(format!("Expected 1 row affected, got {rows_affected}"));
+    }
+    Ok(())
+}
+
 /// Query INFORMATION_SCHEMA for primary key, unique key fallback, and column metadata.
 ///
 /// Returns `(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>)`.
@@ -1159,7 +1180,7 @@ pub async fn fetch_table_pk_impl(
     if !primary_key_columns.is_empty() {
         let has_auto_increment = columns
             .iter()
-            .any(|column| primary_key_columns.contains(&column.name) && column.is_auto_increment);
+            .any(|column| is_auto_increment_key_column(column, &primary_key_columns));
 
         return Ok((
             Some(PrimaryKeyInfo {
@@ -1224,7 +1245,7 @@ pub async fn fetch_table_pk_impl(
         if all_not_null {
             let has_auto_increment = columns
                 .iter()
-                .any(|column| cols.contains(&column.name) && column.is_auto_increment);
+                .any(|column| is_auto_increment_key_column(column, cols));
 
             return Ok((
                 Some(PrimaryKeyInfo {
@@ -1506,14 +1527,7 @@ pub async fn update_table_row_impl(
         .map_err(|error| format!("Update failed: {error}"))?;
     crate::mysql::query_log::log_execute_result(&result);
 
-    if result.rows_affected() != 1 {
-        return Err(format!(
-            "Expected 1 row affected, got {}",
-            result.rows_affected()
-        ));
-    }
-
-    Ok(())
+    ensure_single_row_affected(&result)
 }
 
 /// Coverage stub for update.
@@ -1725,14 +1739,7 @@ pub async fn delete_table_row_impl(
         .map_err(|error| format!("Delete failed: {error}"))?;
     crate::mysql::query_log::log_execute_result(&result);
 
-    if result.rows_affected() != 1 {
-        return Err(format!(
-            "Expected 1 row affected, got {}",
-            result.rows_affected()
-        ));
-    }
-
-    Ok(())
+    ensure_single_row_affected(&result)
 }
 
 /// Coverage stub for delete.
@@ -2131,7 +2138,7 @@ pub async fn fetch_blob_value_impl(
         Some(len) => len as u64,
     };
 
-    if byte_length as usize > BLOB_FETCH_CAP {
+    if is_over_blob_fetch_cap(byte_length as usize) {
         return Ok(BlobValueResponse {
             base64: None,
             byte_length,
@@ -2207,14 +2214,14 @@ pub fn read_file_bytes_impl(path: &str) -> Result<String, String> {
         tracing::error!(path = %path, error = %error, "Failed to read file metadata for blob read");
         format!("Failed to read file metadata: {error}")
     })?;
-    if metadata.len() as usize > BLOB_FETCH_CAP {
+    if is_over_blob_fetch_cap(metadata.len() as usize) {
         return Err("File exceeds the 10 MB limit".to_string());
     }
     let bytes = std::fs::read(file_path).map_err(|error| {
         tracing::error!(path = %path, error = %error, "Failed to read file bytes for blob read");
         format!("Failed to read file: {error}")
     })?;
-    if bytes.len() > BLOB_FETCH_CAP {
+    if is_over_blob_fetch_cap(bytes.len()) {
         return Err("File exceeds the 10 MB limit".to_string());
     }
     Ok(B64.encode(&bytes))
@@ -2231,7 +2238,7 @@ pub fn write_file_bytes_impl(path: &str, base64: &str) -> Result<(), String> {
 
     let file_path = std::path::Path::new(path);
     if let Some(parent) = file_path.parent() {
-        if !parent.as_os_str().is_empty() {
+        if !crate::is_empty_path(parent) {
             std::fs::create_dir_all(parent).map_err(|error| {
                 tracing::error!(path = %path, error = %error, "Failed to create parent dirs for blob write");
                 format!("Failed to create directories: {error}")

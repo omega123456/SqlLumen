@@ -108,7 +108,8 @@ async fn close_pool(pool: sqlx::MySqlPool) {
 
 #[cfg(not(coverage))]
 fn resolve_test_connection_password(input: &TestConnectionInput) -> Result<String, String> {
-    if !input.password.is_empty() {
+    let has_typed_password = !input.password.is_empty();
+    if has_typed_password {
         return Ok(input.password.clone());
     }
     let Some(profile_id) = input.profile_id.as_deref() else {
@@ -377,7 +378,7 @@ fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
     // Cancel running full exports first, while the pool their KILL needs exists.
     crate::export::result_export::cancel_result_exports_for_connection(state, connection_id).await;
-    if !state.registry.contains(connection_id) {
+    if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' is not open"));
     }
     // Clean up schema index session tracking

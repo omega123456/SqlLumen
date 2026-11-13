@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::mysql::query_executor::strip_non_executable_comments;
 use crate::mysql::sql_chars::{
-    has_char_at, is_escape_before_char, is_identifier_char, is_identifier_or_dollar_char,
-    is_identifier_start_char, is_string_quote_char, is_whitespace_at,
+    has_char_at, has_text_at_ignore_ascii_case, is_escape_before_char, is_identifier_char,
+    is_identifier_char_at, is_identifier_or_dollar_char, is_identifier_start_char, is_past_end,
+    is_string_quote_char, is_whitespace_at,
 };
 
 /// A table reference extracted from a SQL statement.
@@ -111,7 +112,7 @@ pub fn extract_tables(sql: &str) -> Vec<TableReference> {
 /// Get the first keyword (uppercased) from a trimmed SQL string.
 fn first_keyword_upper(sql: &str) -> String {
     sql.chars()
-        .take_while(|character| character.is_alphanumeric() || *character == '_')
+        .take_while(|character| is_identifier_char(*character))
         .collect::<String>()
         .to_uppercase()
 }
@@ -130,29 +131,15 @@ fn is_keyword_at_word_start(chars: &[char], position: usize, keyword: &str) -> b
 
 /// Check if position after keyword end is a word boundary.
 fn is_word_boundary_after(chars: &[char], end: usize) -> bool {
-    if end >= chars.len() {
-        return true;
-    }
-    !is_identifier_char(chars[end])
+    !is_identifier_char_at(chars, end)
 }
 
 /// Check if a keyword matches at position `i` (case-insensitive), with word boundaries.
 fn matches_keyword_at(chars: &[char], position: usize, keyword: &str) -> bool {
-    let kw_len = keyword.len();
-    if position + kw_len > chars.len() {
-        return false;
-    }
-
-    // Compare characters case-insensitively
-    let kw_chars: Vec<char> = keyword.chars().collect();
-    for offset in 0..kw_len {
-        if !chars[position + offset].eq_ignore_ascii_case(&kw_chars[offset]) {
-            return false;
-        }
-    }
-
-    // Check word boundaries
-    is_word_boundary_before(chars, position) && is_word_boundary_after(chars, position + kw_len)
+    let keyword_end = position + keyword.len();
+    has_text_at_ignore_ascii_case(chars, position, keyword)
+        && is_word_boundary_before(chars, position)
+        && is_word_boundary_after(chars, keyword_end)
 }
 
 /// Try to match a JOIN keyword at position `i`. Returns the position after the keyword if matched.
@@ -280,7 +267,7 @@ fn skip_whitespace(chars: &[char], mut position: usize) -> usize {
 fn skip_quoted(chars: &[char], position: usize) -> usize {
     let quote = chars[position];
     let mut pos = position + 1;
-    while pos < chars.len() {
+    while !is_past_end(chars, pos) {
         if is_escape_before_char(chars, pos) {
             pos += 2;
             continue;
@@ -297,7 +284,7 @@ fn skip_quoted(chars: &[char], position: usize) -> usize {
 /// Returns the position after the closing backtick.
 fn skip_backtick(chars: &[char], position: usize) -> usize {
     let mut pos = position + 1;
-    while pos < chars.len() {
+    while !is_past_end(chars, pos) {
         if chars[pos] == '`' {
             let is_escaped_backtick = has_char_at(chars, pos + 1, '`');
             if is_escaped_backtick {
@@ -318,7 +305,7 @@ fn skip_parenthesized(chars: &[char], position: usize) -> usize {
     let mut depth = 1;
     let mut pos = position + 1;
     while depth > 0 {
-        if pos >= chars.len() {
+        if is_past_end(chars, pos) {
             break;
         }
         match chars[pos] {
@@ -349,7 +336,7 @@ fn parse_table_list(
     loop {
         position = skip_whitespace(chars, position);
 
-        if position >= chars.len() {
+        if is_past_end(chars, position) {
             break;
         }
 
@@ -409,7 +396,7 @@ fn parse_single_table_ref(
 ) -> usize {
     position = skip_whitespace(chars, position);
 
-    if position >= chars.len() {
+    if is_past_end(chars, position) {
         return position;
     }
 
@@ -436,7 +423,7 @@ fn parse_single_table_ref(
     let first_ident = first_ident.unwrap();
     position = after_first;
 
-    let has_schema_dot = position < chars.len() && chars[position] == '.';
+    let has_schema_dot = has_char_at(chars, position, '.');
     if !has_schema_dot {
         tables.push(TableReference {
             database: None,
@@ -464,7 +451,7 @@ fn parse_single_table_ref(
 /// Read an identifier (plain or backtick-quoted) at position `i`.
 /// Returns (Some(name), position_after) or (None, i) if no identifier found.
 fn read_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
-    if position >= chars.len() {
+    if is_past_end(chars, position) {
         return (None, position);
     }
 
@@ -480,13 +467,13 @@ fn read_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
 fn read_backtick_identifier(chars: &[char], position: usize) -> (Option<String>, usize) {
     let mut pos = position + 1;
     let mut name = String::new();
-    while pos < chars.len() {
+    while !is_past_end(chars, pos) {
         if chars[pos] != '`' {
             name.push(chars[pos]);
             pos += 1;
             continue;
         }
-        let is_escaped_backtick = pos + 1 < chars.len() && chars[pos + 1] == '`';
+        let is_escaped_backtick = has_char_at(chars, pos + 1, '`');
         if !is_escaped_backtick {
             return (non_empty_name(name), pos + 1);
         }
@@ -509,6 +496,10 @@ fn read_plain_identifier(chars: &[char], position: usize) -> (Option<String>, us
     (non_empty_name(name), pos)
 }
 
+fn is_identifier_opening_char(character: char) -> bool {
+    character == '`' || is_identifier_start_char(character)
+}
+
 fn non_empty_name(name: String) -> Option<String> {
     Some(name).filter(|name| !name.is_empty())
 }
@@ -519,7 +510,7 @@ fn skip_alias(chars: &[char], mut position: usize) -> usize {
     let saved = position;
     position = skip_whitespace(chars, position);
 
-    if position >= chars.len() {
+    if is_past_end(chars, position) {
         return position;
     }
 
@@ -537,7 +528,7 @@ fn skip_alias(chars: &[char], mut position: usize) -> usize {
 
     let starts_implicit_alias = chars
         .get(position)
-        .is_some_and(|character| *character == '`' || is_identifier_start_char(*character));
+        .is_some_and(|character| is_identifier_opening_char(*character));
     if starts_implicit_alias {
         // Peek at the identifier
         let (maybe_alias, after_alias) = read_identifier(chars, position);

@@ -108,6 +108,14 @@ pub struct RegistryEntry {
     pub read_only: bool,
 }
 
+impl RegistryEntry {
+    fn is_reusable_for_profile(&self, profile_id: &str) -> bool {
+        self.profile_id == profile_id
+            && self.status == ConnectionStatus::Connected
+            && !self.read_only
+    }
+}
+
 /// Thread-safe registry of active MySQL connections.
 ///
 /// Uses `std::sync::RwLock` for interior mutability. Locks are held only
@@ -240,11 +248,7 @@ impl ConnectionRegistry {
     pub fn get_pool_by_profile(&self, profile_id: &str) -> Option<MySqlPool> {
         let map = self.entries.read().expect("registry lock poisoned");
         map.values()
-            .find(|entry| {
-                entry.profile_id == profile_id
-                    && entry.status == ConnectionStatus::Connected
-                    && !entry.read_only
-            })
+            .find(|entry| entry.is_reusable_for_profile(profile_id))
             .map(|entry| entry.pool.clone())
     }
 }

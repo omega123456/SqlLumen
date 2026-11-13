@@ -128,7 +128,7 @@ pub fn apply_no_think_to_json_messages(body: &mut serde_json::Map<String, serde_
     if let Some(msg) = messages
         .iter_mut()
         .rev()
-        .find(|message| message.get("role").and_then(|role| role.as_str()) == Some("user"))
+        .find(|message| is_user_message(message))
     {
         if let Some(obj) = msg.as_object_mut() {
             if let Some(content) = obj.get("content").and_then(|content| content.as_str()) {
@@ -258,8 +258,20 @@ pub fn extract_reasoning_text_from_parts(parts: &[serde_json::Value]) -> String 
     text
 }
 
+fn is_reasoning_item(item: &serde_json::Value) -> bool {
+    item.get("type").and_then(|value| value.as_str()) == Some("reasoning")
+}
+
+fn is_user_message(message: &serde_json::Value) -> bool {
+    message.get("role").and_then(|role| role.as_str()) == Some("user")
+}
+
+fn is_flush_due(last_flush: Instant) -> bool {
+    last_flush.elapsed() >= FLUSH_INTERVAL
+}
+
 pub fn extract_reasoning_text_from_item(item: &serde_json::Value) -> String {
-    if item.get("type").and_then(|value| value.as_str()) != Some("reasoning") {
+    if !is_reasoning_item(item) {
         return String::new();
     }
 
@@ -345,7 +357,7 @@ fn extract_text_from_response_part(part: &serde_json::Value, allowed_types: &[&s
 }
 
 fn extract_text_from_message_item(item: &serde_json::Value) -> String {
-    if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
+    if is_reasoning_item(item) {
         return String::new();
     }
 
@@ -466,8 +478,7 @@ pub fn extract_responses_final_text(json: &serde_json::Value) -> String {
     if let Some(response) = json.get("response") {
         if let Some(output) = response.get("output").and_then(|value| value.as_array()) {
             for item in output {
-                // Skip reasoning output items — they are not answer text
-                if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
+                if is_reasoning_item(item) {
                     continue;
                 }
                 if let Some(content_parts) = item.get("content").and_then(|value| value.as_array())
@@ -484,8 +495,7 @@ pub fn extract_responses_final_text(json: &serde_json::Value) -> String {
 
     if let Some(output) = json.get("output").and_then(|value| value.as_array()) {
         for item in output {
-            // Skip reasoning output items — they are not answer text
-            if item.get("type").and_then(|value| value.as_str()) == Some("reasoning") {
+            if is_reasoning_item(item) {
                 continue;
             }
             if let Some(content_parts) = item.get("content").and_then(|value| value.as_array()) {
@@ -884,8 +894,7 @@ async fn stream_chat_inner<R: Runtime>(
                                 }
                             }
 
-                            // Flush buffers at ~50ms intervals
-                            if last_flush.elapsed() >= FLUSH_INTERVAL {
+                            if is_flush_due(last_flush) {
                                 flush_buffer(
                                     app_handle,
                                     stream_id,
@@ -1130,7 +1139,7 @@ fn process_responses_payload<R: Runtime>(
 
     state.content_buffer.push_str(&text_to_append);
 
-    if state.last_flush.elapsed() >= FLUSH_INTERVAL {
+    if is_flush_due(state.last_flush) {
         flush_buffer(
             app_handle,
             stream_id,

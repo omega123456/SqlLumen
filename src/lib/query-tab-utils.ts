@@ -1,5 +1,10 @@
 import { useWorkspaceStore } from '../stores/workspace-store'
 import { useQueryStore } from '../stores/query-store'
+import type { WorkspaceTab } from '../types/schema'
+
+function isQueryEditorTabWithId(tab: WorkspaceTab, tabId: string | null): boolean {
+  return tab.id === tabId && tab.type === 'query-editor'
+}
 
 /**
  * Inserts the given SQL into the connection's active query-editor tab,
@@ -10,7 +15,7 @@ export function insertSqlIntoEditor(connectionId: string, sqlText: string, label
   const { activeTabByConnection, tabsByConnection, openQueryTab } = useWorkspaceStore.getState()
   const activeTabId = activeTabByConnection[connectionId]
   const tabs = tabsByConnection[connectionId] ?? []
-  const activeTab = tabs.find((tab) => tab.id === activeTabId && tab.type === 'query-editor')
+  const activeTab = tabs.find((tab) => isQueryEditorTabWithId(tab, activeTabId))
 
   if (activeTab && activeTabId) {
     const existing = useQueryStore.getState().tabs[activeTabId]?.content ?? ''

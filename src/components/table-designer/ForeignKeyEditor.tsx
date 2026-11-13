@@ -12,6 +12,7 @@ import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import styles from './ForeignKeyEditor.module.css'
 import { isEven } from '../../lib/units'
+import { isBlank } from '../../lib/value-checks'
 
 interface ForeignKeyEditorProps {
   tabId: string
@@ -448,7 +449,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
 
   const { columns, foreignKeys, connectionId, databaseName } = foreignKeyEditorSource(tabState)
   const columnNames = useMemo(
-    () => columns.map((column) => column.name).filter((name) => name.trim() !== ''),
+    () => columns.map((column) => column.name).filter((name) => !isBlank(name)),
     [columns]
   )
 

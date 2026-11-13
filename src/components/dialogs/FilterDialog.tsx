@@ -49,6 +49,11 @@ const OPERATOR_DROPDOWN_OPTIONS: DropdownOption[] = OPERATORS.map((op) => ({
 const PANEL_WIDTH = 'min(50vw, 720px)'
 const PANEL_HEIGHT = 'min(50vh, 560px)'
 
+function isFocusableInput(input: HTMLInputElement | null): input is HTMLInputElement {
+  if (!input) return false
+  return !input.disabled
+}
+
 function copyConditions(conditions: FilterCondition[]): FilterCondition[] {
   return conditions.map((condition) => ({ ...condition }))
 }
@@ -155,7 +160,7 @@ export function FilterDialog({
     if (conditions.length === 0) return
     if (hasAutoFocusedForOpenRef.current) return
 
-    const firstFocusableInput = valueInputRefs.current.find((input) => input && !input.disabled)
+    const firstFocusableInput = valueInputRefs.current.find(isFocusableInput)
     if (!firstFocusableInput) return
 
     let innerFrameId = 0

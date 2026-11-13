@@ -111,12 +111,12 @@ function isNumericType(type: string): boolean {
   return NUMERIC_TYPE_SET.has(type.trim().toUpperCase())
 }
 
+function isSignednessNeutralToken(token: string): boolean {
+  return token !== '' && token.toUpperCase() !== 'UNSIGNED'
+}
+
 function stripSignedness(modifier: string | null | undefined): string {
-  return (modifier ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter((token) => token !== '' && token.toUpperCase() !== 'UNSIGNED')
-    .join(' ')
+  return (modifier ?? '').trim().split(/\s+/).filter(isSignednessNeutralToken).join(' ')
 }
 
 function applySignedness(
@@ -133,6 +133,10 @@ function cloneComparable(value: unknown): string {
   return JSON.stringify(value)
 }
 
+function isOriginalColumnFor(originalColumn: TableDesignerColumnDef, originalKey: string): boolean {
+  return originalColumn.name === originalKey || originalColumn.originalName === originalKey
+}
+
 function findOriginalColumn(
   tabState: TableDesignerTabState,
   column: TableDesignerColumnDef
@@ -146,9 +150,8 @@ function findOriginalColumn(
   }
 
   return (
-    tabState.originalSchema.columns.find(
-      (originalColumn) =>
-        originalColumn.name === originalKey || originalColumn.originalName === originalKey
+    tabState.originalSchema.columns.find((originalColumn) =>
+      isOriginalColumnFor(originalColumn, originalKey)
     ) ?? null
   )
 }

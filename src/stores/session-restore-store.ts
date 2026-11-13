@@ -25,6 +25,7 @@ import { isScopedTableDataTab, isScopedTableDataTabOf } from '../lib/workspace-t
 import type { WorkspaceTab } from '../types/schema'
 import type { OpenConnectionSession } from '../types/connection'
 import { toErrorMessage } from '../lib/error-message'
+import { isSchemaInfoTabOfObject, isTableDataTabOfObject } from '../lib/workspace-tab-matching'
 
 const SESSION_AUTOSAVE_INTERVAL_MINUTES = 5
 export const SESSION_AUTOSAVE_INTERVAL_MS =
@@ -581,11 +582,8 @@ function restoreSchemaInfoTab(context: TabRestoreContext, tabState: SavedSchemaI
     objectType: tabState.objectType as
       'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event',
   })
-  const created = sessionTabs(context.sessionId).find(
-    (tab) =>
-      tab.type === 'schema-info' &&
-      tab.databaseName === tabState.databaseName &&
-      tab.objectName === tabState.objectName
+  const created = sessionTabs(context.sessionId).find((tab) =>
+    isSchemaInfoTabOfObject(tab, tabState)
   )
   return rememberRestoredTab(context, tabState.tabId, created)
 }
@@ -609,15 +607,22 @@ function restoreSavedTab(context: TabRestoreContext, tabState: SessionTabState):
   return null
 }
 
+function isSavedTableTabRestoredAs(
+  savedTab: SessionTabState,
+  context: TabRestoreContext,
+  runtimeTabId: string
+): savedTab is SavedTableDataTab {
+  if (savedTab.type !== 'table-data') return false
+  return context.savedToRuntimeTabId.get(savedTab.tabId) === runtimeTabId
+}
+
 function savedTableTabFor(
   savedTabs: SessionTabState[],
   context: TabRestoreContext,
   runtimeTabId: string
 ): SavedTableDataTab | undefined {
-  return savedTabs.find(
-    (savedTab): savedTab is SavedTableDataTab =>
-      savedTab.type === 'table-data' &&
-      context.savedToRuntimeTabId.get(savedTab.tabId) === runtimeTabId
+  return savedTabs.find((savedTab): savedTab is SavedTableDataTab =>
+    isSavedTableTabRestoredAs(savedTab, context, runtimeTabId)
   )
 }
 
@@ -671,11 +676,12 @@ function activateFlattenedTableTab(
 ): void {
   if (context.bottomPanelEnabled) return
   if (savedActiveTab?.type !== 'table-data') return
-  const flattenedActiveTable = sessionTabs(context.sessionId).find(
-    (tab) =>
-      tab.type === 'table-data' &&
-      tab.databaseName === savedActiveTab.databaseName &&
-      tab.objectName === savedActiveTab.tableName
+  const savedTableIdentity = {
+    databaseName: savedActiveTab.databaseName,
+    objectName: savedActiveTab.tableName,
+  }
+  const flattenedActiveTable = sessionTabs(context.sessionId).find((tab) =>
+    isTableDataTabOfObject(tab, savedTableIdentity)
   )
   if (flattenedActiveTable) {
     useWorkspaceStore.getState().setActiveTab(context.sessionId, flattenedActiveTable.id)

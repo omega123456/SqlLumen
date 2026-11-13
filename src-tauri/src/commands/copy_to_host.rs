@@ -58,6 +58,10 @@ pub fn is_base_table(table_type: &str) -> bool {
     !table_type.to_ascii_uppercase().contains("VIEW")
 }
 
+fn is_named_base_table(name: &str, table_type: &str) -> bool {
+    !name.is_empty() && is_base_table(table_type)
+}
+
 /// Build a [`CopyableTable`] list from decoded `(table_name, table_type, estimated_rows)`
 /// triples, excluding views and clamping negative row estimates to zero.
 ///
@@ -65,7 +69,7 @@ pub fn is_base_table(table_type: &str) -> bool {
 /// MySQL pool (the `_impl` only decodes rows and delegates here).
 pub fn build_copyable_tables(rows: &[(String, String, i64)]) -> Vec<CopyableTable> {
     rows.iter()
-        .filter(|(name, table_type, _)| !name.is_empty() && is_base_table(table_type))
+        .filter(|(name, table_type, _)| is_named_base_table(name, table_type))
         .map(|(name, _, estimated_rows)| CopyableTable {
             name: name.clone(),
             estimated_rows: (*estimated_rows).max(0) as u64,

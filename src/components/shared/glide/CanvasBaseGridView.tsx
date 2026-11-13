@@ -130,6 +130,10 @@ function isSelectedRowClass(rowClass: string | undefined): boolean {
   return rowClass?.includes('selected') === true
 }
 
+function isEditingRowClass(rowClass: string | undefined): boolean {
+  return rowClass?.includes('editing-row') === true
+}
+
 function cellCopyData(cell: GridCell): string {
   if (!('copyData' in cell)) return ''
   return typeof cell.copyData === 'string' ? cell.copyData : ''
@@ -1220,11 +1224,8 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const autoSizeSampleRows = useMemo<readonly GridRow[]>(() => {
     if (!isWindowed) return rowsProp
     const sample: GridRow[] = []
-    for (
-      let index = 0;
-      index < source.rowCount && sample.length < AUTO_SIZE_SAMPLE_LIMIT;
-      index++
-    ) {
+    const sampleRowCount = Math.min(source.rowCount, AUTO_SIZE_SAMPLE_LIMIT)
+    for (let index = 0; index < sampleRowCount; index++) {
       const row = source.getRow(index)
       if (!row) break
       sample.push(row)
@@ -1271,7 +1272,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   )
 
   const isRowEditing = useCallback(
-    (row: GridRow): boolean => getRowClass?.(row)?.includes('editing-row') === true,
+    (row: GridRow): boolean => isEditingRowClass(getRowClass?.(row)),
     [getRowClass]
   )
 

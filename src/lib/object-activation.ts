@@ -4,6 +4,7 @@ import { useTableDataStore } from '../stores/table-data-store'
 import { showWarningToast } from '../stores/toast-store'
 import { useWorkspaceStore } from '../stores/workspace-store'
 import type { NodeType, ObjectType, WorkspaceTab } from '../types/schema'
+import { isTableDataTabOfObject } from './workspace-tab-matching'
 
 const TABLE_DATA_OBJECT_TYPES = new Set<ObjectType>(['table', 'view'])
 const SCHEMA_INFO_OBJECT_TYPES = new Set<ObjectType>(['procedure', 'function', 'trigger', 'event'])
@@ -177,8 +178,9 @@ export function activateColumnFromPalette(
   openObjectDefaultTab(connectionId, database, 'table', table, table)
 
   const workspace = useWorkspaceStore.getState()
-  const matchingTabs = (workspace.tabsByConnection[connectionId] ?? []).filter(
-    (tab) => tab.type === 'table-data' && tab.databaseName === database && tab.objectName === table
+  const tableIdentity = { databaseName: database, objectName: table }
+  const matchingTabs = (workspace.tabsByConnection[connectionId] ?? []).filter((tab) =>
+    isTableDataTabOfObject(tab, tableIdentity)
   )
   const activeTabId = workspace.activeTabByConnection[connectionId]
   const tab = matchingTabs.find((candidate) => candidate.id === activeTabId) ?? matchingTabs[0]

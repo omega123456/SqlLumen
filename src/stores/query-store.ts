@@ -536,6 +536,10 @@ const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
  * Get the active result from a tab, or DEFAULT_RESULT_STATE if none.
  * Exported for use by components.
  */
+function isSameResultList(next: SingleResultState[], current: SingleResultState[]): boolean {
+  return next.every((result, index) => result === current[index])
+}
+
 function hasResults(tab: TabQueryState | undefined): tab is TabQueryState {
   if (!tab) return false
   return tab.results.length > 0
@@ -2021,7 +2025,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         result.isExpired ? { ...result, isExpired: false } : result
       )
 
-      if (nextResults.every((result, index) => result === tab.results[index])) {
+      if (isSameResultList(nextResults, tab.results)) {
         return state
       }
 
@@ -2043,7 +2047,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         result.isExpired ? result : { ...result, isExpired: true }
       )
 
-      if (nextResults.every((result, index) => result === tab.results[index])) {
+      if (isSameResultList(nextResults, tab.results)) {
         return state
       }
 

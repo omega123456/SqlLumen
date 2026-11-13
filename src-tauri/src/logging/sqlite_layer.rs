@@ -49,7 +49,8 @@ where
 {
     fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
         let metadata = event.metadata();
-        if metadata.target() == SQLITE_LAYER_TARGET {
+        let is_log_writer_event = metadata.target() == SQLITE_LAYER_TARGET;
+        if is_log_writer_event {
             return;
         }
 
@@ -116,7 +117,7 @@ fn run_writer_loop(write_conn: &mut rusqlite::Connection, receiver: Receiver<New
                 drain_receiver(&receiver, &mut buffer);
 
                 let should_flush =
-                    buffer.len() >= BATCH_SIZE || last_flush.elapsed() >= FLUSH_INTERVAL;
+                    is_batch_full(&buffer) || has_elapsed(last_flush, FLUSH_INTERVAL);
                 if should_flush {
                     flush_buffer(write_conn, &mut buffer);
                     last_flush = Instant::now();
@@ -136,7 +137,7 @@ fn run_writer_loop(write_conn: &mut rusqlite::Connection, receiver: Receiver<New
             }
         }
 
-        if last_prune.elapsed() >= PRUNE_INTERVAL {
+        if has_elapsed(last_prune, PRUNE_INTERVAL) {
             if let Err(error) = prune_logs(write_conn, Utc::now()) {
                 tracing::warn!(
                     target: SQLITE_LAYER_TARGET,
@@ -149,8 +150,16 @@ fn run_writer_loop(write_conn: &mut rusqlite::Connection, receiver: Receiver<New
     }
 }
 
+fn is_batch_full(buffer: &[NewLogEntry]) -> bool {
+    buffer.len() >= BATCH_SIZE
+}
+
+fn has_elapsed(since: Instant, interval: Duration) -> bool {
+    since.elapsed() >= interval
+}
+
 fn drain_receiver(receiver: &Receiver<NewLogEntry>, buffer: &mut Vec<NewLogEntry>) {
-    while buffer.len() < BATCH_SIZE {
+    while !is_batch_full(buffer) {
         match receiver.try_recv() {
             Ok(entry) => buffer.push(entry),
             Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
@@ -201,12 +210,16 @@ impl MessageVisitor {
     }
 
     fn record_debug_value(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        if field.name() == "message" {
+        if is_message_field(field) {
             self.message = Some(format!("{value:?}").trim_matches('"').to_string());
             return;
         }
         self.fields.push(format!("{}={value:?}", field.name()));
     }
+}
+
+fn is_message_field(field: &Field) -> bool {
+    field.name() == "message"
 }
 
 impl Visit for MessageVisitor {
@@ -215,7 +228,7 @@ impl Visit for MessageVisitor {
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "message" {
+        if is_message_field(field) {
             self.message = Some(value.to_string());
             return;
         }

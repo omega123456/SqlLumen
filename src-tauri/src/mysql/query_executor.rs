@@ -264,6 +264,18 @@ fn is_dash_comment_start(character: char, next_character: Option<char>) -> bool 
     character == '-' && next_character == Some('-')
 }
 
+fn is_executable_or_hint_marker(character: char) -> bool {
+    matches!(character, '!' | '+')
+}
+
+fn is_whitespace_or_control(character: char) -> bool {
+    character.is_whitespace() || character.is_control()
+}
+
+fn is_statement_terminator_padding(character: char) -> bool {
+    character == ';' || character.is_whitespace()
+}
+
 pub fn strip_non_executable_comments(sql: &str) -> String {
     let mut result = String::with_capacity(sql.len());
     let mut chars = sql.chars().peekable();
@@ -299,7 +311,7 @@ type SqlChars<'a> = std::iter::Peekable<std::str::Chars<'a>>;
 fn copy_or_drop_block_comment(chars: &mut SqlChars<'_>, result: &mut String) {
     let is_executable_or_hint = chars
         .peek()
-        .is_some_and(|&character| character == '!' || character == '+');
+        .is_some_and(|&character| is_executable_or_hint_marker(character));
     if !is_executable_or_hint {
         skip_past_block_comment_end(chars);
         result.push(' ');
@@ -362,7 +374,7 @@ pub fn get_first_keyword(sql: &str) -> String {
         // Extract first word
         let first_word: String = after_ws
             .chars()
-            .take_while(|character| character.is_alphanumeric() || *character == '_')
+            .take_while(|character| is_identifier_char(*character))
             .collect();
         if !first_word.is_empty() {
             return first_word.to_uppercase();
@@ -393,7 +405,8 @@ pub fn find_with_main_keyword(sql: &str) -> String {
 
     // Skip past "WITH" keyword
     let remaining: String = chars[position..].iter().collect();
-    if !remaining.to_uppercase().starts_with("WITH") {
+    let starts_with_with_keyword = remaining.to_uppercase().starts_with("WITH");
+    if !starts_with_with_keyword {
         return String::new();
     }
     position += 4;
@@ -525,7 +538,7 @@ pub fn has_multiple_statements(sql: &str) -> bool {
             None if matches!(ch, '\'' | '"' | '`') => quote = Some(ch),
             None if ch == ';' => {
                 return !stripped[position + 1..]
-                    .trim_matches(|character: char| character == ';' || character.is_whitespace())
+                    .trim_matches(is_statement_terminator_padding)
                     .is_empty();
             }
             None => {}
@@ -569,17 +582,30 @@ pub fn has_locking_clause(sql: &str) -> bool {
     // backticks have no backslash escapes. The contents of executable comments
     // (`/*! */`) and optimizer hints (`/*+ */`) are scanned like normal SQL.
     let tokens = LockingClauseTokenizer::new(sql).tokenize();
+    (0..tokens.len()).any(|token_index| is_locking_clause_at(&tokens, token_index))
+}
 
-    let is = |token_index: usize, kw: &str| {
-        tokens.get(token_index).and_then(|token| token.as_deref()) == Some(kw)
-    };
-    (0..tokens.len()).any(|token_index| {
-        (is(token_index, "FOR") && (is(token_index + 1, "UPDATE") || is(token_index + 1, "SHARE")))
-            || (is(token_index, "LOCK")
-                && is(token_index + 1, "IN")
-                && is(token_index + 2, "SHARE")
-                && is(token_index + 3, "MODE"))
-    })
+const LOCKING_CLAUSE_KEYWORDS: [&[&str]; 3] = [
+    &["FOR", "UPDATE"],
+    &["FOR", "SHARE"],
+    &["LOCK", "IN", "SHARE", "MODE"],
+];
+
+fn is_locking_clause_at(tokens: &[Option<String>], token_index: usize) -> bool {
+    LOCKING_CLAUSE_KEYWORDS
+        .iter()
+        .any(|keywords| has_keywords_at(tokens, token_index, keywords))
+}
+
+fn has_keywords_at(tokens: &[Option<String>], start_index: usize, keywords: &[&str]) -> bool {
+    keywords
+        .iter()
+        .enumerate()
+        .all(|(offset, keyword)| is_keyword_token_at(tokens, start_index + offset, keyword))
+}
+
+fn is_keyword_token_at(tokens: &[Option<String>], token_index: usize, keyword: &str) -> bool {
+    tokens.get(token_index).and_then(|token| token.as_deref()) == Some(keyword)
 }
 
 struct LockingClauseTokenizer<'a> {
@@ -676,7 +702,7 @@ impl<'a> LockingClauseTokenizer<'a> {
         ahead.next();
         let starts_comment = ahead
             .peek()
-            .is_none_or(|character| character.is_whitespace() || character.is_control());
+            .is_none_or(|character| is_whitespace_or_control(*character));
         if starts_comment {
             self.skip_line();
         }
@@ -685,7 +711,7 @@ impl<'a> LockingClauseTokenizer<'a> {
     fn skip_block_comment(&mut self) {
         let is_executable_or_hint = self
             .chars
-            .next_if(|&character| character == '!' || character == '+')
+            .next_if(|&character| is_executable_or_hint_marker(character))
             .is_some();
         if is_executable_or_hint {
             return;
@@ -824,10 +850,10 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
         "SET" => {
             // Allow SET unless it targets global/persist scope or password
             let words: Vec<&str> = trimmed.split_whitespace().collect();
-            if words.len() < 2 {
-                return true; // bare SET, allow
-            }
-            let second = words[1].to_uppercase();
+            let Some(second_word) = words.get(1) else {
+                return true;
+            };
+            let second = second_word.to_uppercase();
 
             // Block SET GLOBAL, SET PERSIST, SET PERSIST_ONLY, SET PASSWORD
             if matches!(
@@ -868,7 +894,8 @@ fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, column_index: usize) -> 
 
 #[cfg(not(coverage))]
 fn decode_required_identifier(row: &sqlx::mysql::MySqlRow, index: usize) -> Option<String> {
-    decode_unchecked_string(row, index).filter(|value| !value.trim().is_empty())
+    decode_unchecked_string(row, index)
+        .filter(|value| !crate::mysql::sql_chars::is_blank_identifier(value))
 }
 
 #[cfg(not(coverage))]
@@ -887,7 +914,7 @@ pub async fn execute_query_impl(
     row_limit: usize,
     view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
 ) -> Result<ExecuteQueryResult, String> {
-    if !state.registry.contains(connection_id) {
+    if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' not found"));
     }
 
@@ -1377,11 +1404,14 @@ pub async fn fetch_schema_metadata_full_impl(
     })
 }
 
+const MAX_READ_FILE_BYTES: u64 = 50 * 1024 * 1024;
+
 pub fn read_file_impl(path: &str) -> Result<String, String> {
     let file_path = std::path::Path::new(path);
     let metadata = std::fs::metadata(file_path)
         .map_err(|error| format!("Failed to read file metadata: {error}"))?;
-    if metadata.len() > 50 * 1024 * 1024 {
+    let file_size = metadata.len();
+    if file_size > MAX_READ_FILE_BYTES {
         return Err("File exceeds the 50 MB limit".to_string());
     }
     let bytes =
@@ -1392,7 +1422,7 @@ pub fn read_file_impl(path: &str) -> Result<String, String> {
 pub fn write_file_impl(path: &str, content: &str) -> Result<(), String> {
     let file_path = std::path::Path::new(path);
     if let Some(parent) = file_path.parent() {
-        if !parent.as_os_str().is_empty() {
+        if !crate::is_empty_path(parent) {
             std::fs::create_dir_all(parent)
                 .map_err(|error| format!("Failed to create directories: {error}"))?;
         }
@@ -1639,10 +1669,10 @@ pub fn update_result_cell_impl(
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
     let resolved_index = result_index.unwrap_or(0);
-    if resolved_index >= entry.value.len() {
+    let result_count = entry.value.len();
+    if resolved_index >= result_count {
         return Err(format!(
-            "Result index {resolved_index} out of range (total: {})",
-            entry.value.len()
+            "Result index {resolved_index} out of range (total: {result_count})"
         ));
     }
     drop(entry);
@@ -1668,8 +1698,8 @@ pub fn update_result_cell_impl(
             }
             let mut edited: Vec<serde_json::Value> = current.to_vec();
             for (col_index, new_value) in updates {
-                if col_index < edited.len() {
-                    edited[col_index] = new_value;
+                if let Some(cell) = edited.get_mut(col_index) {
+                    *cell = new_value;
                 }
             }
             let mut next: Vec<SharedRow> = (*slot.rows).clone();
@@ -1772,10 +1802,10 @@ fn capture_reexecute_target(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
     let result_vec = &entry.value;
-    if result_index >= result_vec.len() {
+    let result_count = result_vec.len();
+    if result_index >= result_count {
         return Err(format!(
-            "Result index {result_index} out of range (total: {})",
-            result_vec.len()
+            "Result index {result_index} out of range (total: {result_count})"
         ));
     }
     Ok(result_vec[result_index].query_id.clone())
@@ -1806,24 +1836,25 @@ fn replace_reexecuted_slot(
         }
     };
     let mut result_vec = entry.value.clone();
-    if result_index >= result_vec.len() {
+    let result_count = result_vec.len();
+    if result_index >= result_count {
         tracing::warn!(
             tab_id,
             result_index,
-            result_vec_len = result_vec.len(),
+            result_vec_len = result_count,
             "reexecute_single_result: result_index out of range after await — discarding stale result"
         );
         return Err(format!(
-            "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
-            result_vec.len()
+            "Result index {result_index} out of range after re-execution (total: {result_count}) — a newer query may have replaced the results"
         ));
     }
-    if result_vec[result_index].query_id != expected_query_id {
+    let actual_query_id = &result_vec[result_index].query_id;
+    if actual_query_id != expected_query_id {
         tracing::warn!(
             tab_id,
             result_index,
             expected_query_id = %expected_query_id,
-            actual_query_id = %result_vec[result_index].query_id,
+            actual_query_id = %actual_query_id,
             "reexecute_single_result: query_id mismatch after await — discarding stale result"
         );
         return Err("Result was replaced by a newer query during re-execution".to_string());
@@ -1849,7 +1880,7 @@ pub async fn reexecute_single_result_impl(
     row_limit: usize,
     view_spec: Option<crate::mysql::result_view::ResultViewSpec>,
 ) -> Result<MultiQueryResultItem, String> {
-    if !state.registry.contains(connection_id) {
+    if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' not found"));
     }
 

@@ -17,7 +17,7 @@ import type {
 import { logFrontendError } from '../lib/app-log-commands'
 import { MYSQL_IDENTIFIER_MAX_LENGTH } from '../lib/sql-utils'
 import { toErrorMessage } from '../lib/error-message'
-import { isIndexInBounds, isObjectRecord } from '../lib/value-checks'
+import { isIndexInBounds, isNonEmptyList, isObjectRecord } from '../lib/value-checks'
 
 const DDL_REGENERATE_DEBOUNCE_MS = 300
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
@@ -648,7 +648,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
             ...index,
             columns: index.columns.filter((name) => name !== removedColumn.name),
           }))
-          .filter((index) => index.columns.length > 0)
+          .filter((index) => isNonEmptyList(index.columns))
 
         schema.foreignKeys = schema.foreignKeys.filter(
           (foreignKey) => foreignKey.sourceColumn !== removedColumn.name

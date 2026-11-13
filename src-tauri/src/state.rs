@@ -226,3 +226,9 @@ pub struct AppState {
     /// Cache for query embedding vectors (avoids re-embedding identical queries).
     pub embedding_cache: crate::schema_index::embeddings_cache::EmbeddingCache,
 }
+
+impl AppState {
+    pub fn has_open_connection(&self, connection_id: &str) -> bool {
+        self.registry.contains(connection_id)
+    }
+}

@@ -131,7 +131,8 @@ impl XlsxSink {
         }
         if let Some(sample) = self.sample.as_mut() {
             sample.push(row.to_vec());
-            if sample.len() >= XLSX_WIDTH_SAMPLE_ROWS {
+            let is_sample_complete = sample.len() >= XLSX_WIDTH_SAMPLE_ROWS;
+            if is_sample_complete {
                 self.flush_sample()?;
             }
             return Ok(RowWrite::Written);

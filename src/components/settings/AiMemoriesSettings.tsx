@@ -3,7 +3,7 @@ import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
 import { MemorySection } from './memory/MemorySection'
 import type { MemoryDragPayload } from './memory/MemoryRow'
-import { useConnectionStore } from '../../stores/connection-store'
+import { isConnectionOfProfile, useConnectionStore } from '../../stores/connection-store'
 import {
   deleteMemory,
   listConnectionMemories,
@@ -16,6 +16,7 @@ import type { AiMemory, MemoryScope } from '../../lib/ai-memory-commands'
 import { showErrorToast } from '../../stores/toast-store'
 import { logFrontend } from '../../lib/app-log-commands'
 import styles from './AiMemoriesSettings.module.css'
+import type { ActiveConnection } from '../../types/connection'
 
 interface MemoryStore {
   global: AiMemory[]
@@ -24,6 +25,10 @@ interface MemoryStore {
 }
 
 const EMPTY_STORE: MemoryStore = { global: [], group: {}, connection: {} }
+
+function isConnectionInGroup(connection: ActiveConnection, groupId: string): boolean {
+  return connection.profile.groupId === groupId
+}
 
 function findMemoryById(memories: AiMemory[] | undefined, memoryId: AiMemory['id']) {
   return memories?.find((candidate) => candidate.id === memoryId)
@@ -134,12 +139,14 @@ export function AiMemoriesSettings() {
       if (scope === 'global') {
         return sessions[0]?.[0] ?? null
       }
+      if (ownerId === undefined) {
+        return null
+      }
       if (scope === 'connection') {
-        const match = sessions.find(([, connection]) => connection.profile.id === ownerId)
+        const match = sessions.find(([, connection]) => isConnectionOfProfile(connection, ownerId))
         return match?.[0] ?? null
       }
-      // group
-      const match = sessions.find(([, connection]) => connection.profile.groupId === ownerId)
+      const match = sessions.find(([, connection]) => isConnectionInGroup(connection, ownerId))
       return match?.[0] ?? null
     },
     [activeConnections]

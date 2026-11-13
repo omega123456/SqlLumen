@@ -280,11 +280,10 @@ export function MonacoEditorWrapper({
   const editorLineHeight = useSettingsStore((state) =>
     parseFloat(state.getSetting('editor.lineHeight'))
   )
-  const editorWordWrap = useSettingsStore((state) => state.getSetting('editor.wordWrap') === 'true')
-  const editorMinimap = useSettingsStore((state) => state.getSetting('editor.minimap') === 'true')
-  const editorLineNumbers = useSettingsStore(
-    (state) => state.getSetting('editor.lineNumbers') === 'true'
-  )
+  const editorWordWrap = useSettingsStore((state) => state.getSetting('editor.wordWrap')) === 'true'
+  const editorMinimap = useSettingsStore((state) => state.getSetting('editor.minimap')) === 'true'
+  const editorLineNumbers =
+    useSettingsStore((state) => state.getSetting('editor.lineNumbers')) === 'true'
   const executeQueryShortcut = useShortcutStore((state) => state.shortcuts['execute-query'])
   const formatQueryShortcut = useShortcutStore((state) => state.shortcuts['format-query'])
   const newQueryTabShortcut = useShortcutStore((state) => state.shortcuts['new-query-tab'])

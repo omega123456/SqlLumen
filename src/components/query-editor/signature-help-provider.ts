@@ -18,6 +18,7 @@ import { getPendingBootstrap } from '../../lib/schema-cache-bootstrap'
 import { getModelConnectionId, getSelectedDatabase } from './completion-service'
 import { splitStatements, findStatementAtCursor } from './sql-parser-utils'
 import { useConnectionStore } from '../../stores/connection-store'
+import { isSameTextIgnoringCase } from '../../lib/value-checks'
 
 const DOUBLED_QUOTE_LENGTH = 2
 const BLOCK_COMMENT_DELIMITER_LENGTH = 2
@@ -576,18 +577,21 @@ async function awaitSchemaCache(connectionId: string, token: CancellationToken):
   return !token.isCancellationRequested
 }
 
+function isRoutineForLookup(
+  routine: { name: string; routineType: string },
+  lookup: RoutineLookup
+): boolean {
+  const isSameRoutineType = routine.routineType.toUpperCase() === lookup.routineType.toUpperCase()
+  return isSameTextIgnoringCase(routine.name, lookup.functionName) && isSameRoutineType
+}
+
 function hasCachedRoutine(
   cache: ReturnType<typeof getCache>,
   database: string,
   lookup: RoutineLookup
 ): boolean {
   const routines = cache.routines[database] ?? []
-  const functionNameLower = lookup.functionName.toLowerCase()
-  return routines.some(
-    (routine) =>
-      routine.name.toLowerCase() === functionNameLower &&
-      routine.routineType.toUpperCase() === lookup.routineType.toUpperCase()
-  )
+  return routines.some((routine) => isRoutineForLookup(routine, lookup))
 }
 
 async function findCachedRoutineDatabase(

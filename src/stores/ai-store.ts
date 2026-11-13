@@ -476,9 +476,13 @@ function collectExpansionQueries(
   return Array.from(new Set(allQueries)).slice(0, options.maxQueries)
 }
 
+function isDifferentTrimmedText(text: string, trimmedReference: string): boolean {
+  return text.trim() !== trimmedReference
+}
+
 function hasDerivedExpansion(queries: string[], userMessage: string): boolean {
   const trimmedUserMessage = userMessage.trim()
-  return queries.some((query) => query.trim() !== trimmedUserMessage)
+  return queries.some((query) => isDifferentTrimmedText(query, trimmedUserMessage))
 }
 
 /**
@@ -957,10 +961,12 @@ type ContextMessageDraft = Pick<AiMessage, 'role' | 'content' | 'kind'>
 const TURN_CONTEXT_KINDS = new Set<string>(['schema-context', 'memory-context', 'attached-context'])
 const REMOVABLE_TURN_CONTEXT_KINDS = new Set<string>(['schema-context', 'memory-context'])
 
+function isBaseSystemMessage(message: AiMessage): boolean {
+  return message.role === 'system' && !isPromptOnlyContextMessage(message)
+}
+
 function findBaseSystemPrompt(messages: AiMessage[]): string {
-  const systemMessage = messages.find(
-    (message) => message.role === 'system' && !isPromptOnlyContextMessage(message)
-  )
+  const systemMessage = messages.find(isBaseSystemMessage)
   return systemMessage?.content ?? ''
 }
 
@@ -1060,10 +1066,12 @@ function resolveMaxTokens(override: number | undefined): number {
   return isNaN(maxTokens) ? DEFAULT_MAX_TOKENS : maxTokens
 }
 
+function isUserTypedMessage(message: AiMessage): boolean {
+  return message.role === 'user' && !isPromptOnlyContextMessage(message)
+}
+
 function findLastUserMessage(messages: AiMessage[]): AiMessage | undefined {
-  return [...messages]
-    .reverse()
-    .find((message) => message.role === 'user' && !isPromptOnlyContextMessage(message))
+  return [...messages].reverse().find(isUserTypedMessage)
 }
 
 function isTurnContextMessage(message: AiMessage): boolean {
@@ -1201,9 +1209,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     const currentTab = get().tabs[tabId]
     if (!currentTab) return
 
-    const existingIndex = currentTab.messages.findIndex(
-      (message) => message.role === 'system' && !isPromptOnlyContextMessage(message)
-    )
+    const existingIndex = currentTab.messages.findIndex(isBaseSystemMessage)
     if (existingIndex >= 0) {
       // System prompt already exists — do nothing (immutable)
       return
@@ -1650,9 +1656,9 @@ export const useAiStore = create<AiState>()((set, get) => {
       const indicesToRemove = findRemovableTurnContextIndices(tab.messages, lastUserIndex)
       const removed = collectRemovedContextIds(tab.messages, indicesToRemove)
       const removeSet = new Set(indicesToRemove)
-      const remainingMessages = tab.messages.filter(
-        (_, index) => !removeSet.has(index) && index < lastUserIndex
-      )
+      const isKeptBeforeLastUser = (_: AiMessage, index: number): boolean =>
+        !removeSet.has(index) && index < lastUserIndex
+      const remainingMessages = tab.messages.filter(isKeptBeforeLastUser)
 
       patchTab(tabId, {
         ...activeRequestResetFragment(),

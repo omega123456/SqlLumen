@@ -169,6 +169,10 @@ impl CopySelection {
             + self.events.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.total() == 0
+    }
+
     /// Flatten the selection into an ordered `(type, name)` work list.
     ///
     /// Tables come first so the data phase (which runs under
@@ -236,7 +240,7 @@ pub fn validate_selection_for_options(
     selection: &CopySelection,
     options: &CopyOptions,
 ) -> Result<(), String> {
-    if selection.total() == 0 {
+    if selection.is_empty() {
         return Err("Select at least one object to copy".to_string());
     }
 
@@ -271,6 +275,10 @@ fn is_plain_identifier_byte(byte: u8) -> bool {
 
 fn is_ascii_whitespace_byte_at(bytes: &[u8], position: usize) -> bool {
     bytes.get(position).is_some_and(u8::is_ascii_whitespace)
+}
+
+fn has_byte_at(bytes: &[u8], position: usize, expected: u8) -> bool {
+    bytes.get(position) == Some(&expected)
 }
 
 /// Validate a charset/collation token before interpolating it as an unquoted SQL
@@ -319,7 +327,7 @@ pub fn strip_definer(ddl: &str) -> String {
     while is_ascii_whitespace_byte_at(bytes, position) {
         position += 1;
     }
-    if bytes.get(position) != Some(&b'=') {
+    if !has_byte_at(bytes, position, b'=') {
         return ddl.to_string();
     }
     position += 1;
@@ -328,12 +336,13 @@ pub fn strip_definer(ddl: &str) -> String {
         position += 1;
     }
     // consume the user@host spec, allowing whitespace inside quoted identifiers
-    let has_definer_spec = position < bytes.len() && !is_ascii_whitespace_byte_at(bytes, position);
+    let byte_count = bytes.len();
+    let has_definer_spec = position < byte_count && !is_ascii_whitespace_byte_at(bytes, position);
     if !has_definer_spec {
         return ddl.to_string();
     }
     let mut quote: Option<u8> = None;
-    while position < bytes.len() {
+    while position < byte_count {
         let byte = bytes[position];
         match quote {
             Some(open_quote) => {
@@ -343,7 +352,7 @@ pub fn strip_definer(ddl: &str) -> String {
                 }
                 // MySQL escapes quote characters in quoted identifiers by
                 // doubling them; keep the doubled pair inside the quote.
-                let is_doubled_quote = position < bytes.len() && bytes[position] == open_quote;
+                let is_doubled_quote = has_byte_at(bytes, position, open_quote);
                 if is_doubled_quote {
                     position += 1;
                     continue;
@@ -494,7 +503,8 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
         .take_while(|byte| byte.is_ascii_whitespace())
         .count();
     let dot_pos = first_end + ws_after_first;
-    if !ddl[dot_pos..].starts_with('.') {
+    let is_schema_qualified = ddl[dot_pos..].starts_with('.');
+    if !is_schema_qualified {
         return Some((name_start, first_end));
     }
     let after_dot = dot_pos + 1;
@@ -507,13 +517,18 @@ fn find_create_header_identifier(ddl: &str, search_start: usize) -> Option<(usiz
     Some((name_start, object_end))
 }
 
+fn is_unquoted_identifier_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_' || character == '$'
+}
+
 fn parse_mysql_identifier_end(sql: &str, start: usize) -> Option<usize> {
     if sql[start..].starts_with('`') {
         let mut index = start + 1;
         let bytes = sql.as_bytes();
-        while index < sql.len() {
+        let byte_count = bytes.len();
+        while index < byte_count {
             if bytes[index] == b'`' {
-                let is_escaped_backtick = bytes.get(index + 1) == Some(&b'`');
+                let is_escaped_backtick = has_byte_at(bytes, index + 1, b'`');
                 if is_escaped_backtick {
                     index += 2;
                     continue;
@@ -527,7 +542,7 @@ fn parse_mysql_identifier_end(sql: &str, start: usize) -> Option<usize> {
 
     let identifier_len: usize = sql[start..]
         .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '$')
+        .take_while(|character| is_unquoted_identifier_char(*character))
         .map(char::len_utf8)
         .sum();
     let end = start + identifier_len;
@@ -587,7 +602,8 @@ pub fn qualify_table_ddl_schema(ddl: &str, target_database: &str, table_name: &s
     let name_start = header_start + ws_len;
     let escaped_table = table_name.replace('`', "``");
     let unqualified = format!("`{escaped_table}`");
-    if !ddl[name_start..].starts_with(&unqualified) {
+    let starts_with_unqualified_name = ddl[name_start..].starts_with(&unqualified);
+    if !starts_with_unqualified_name {
         return ddl.to_string();
     }
 

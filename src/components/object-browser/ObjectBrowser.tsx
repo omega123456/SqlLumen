@@ -83,6 +83,10 @@ type ActiveConnectionState = ReturnType<
 
 const EDITABLE_TARGET_SELECTOR = 'input, textarea, [contenteditable="true"]'
 
+function hasDatasetValue(element: HTMLElement, key: string, value: string): boolean {
+  return element.dataset[key] === value
+}
+
 function columnScopeRoot(columnNode: SchemaTreeNode, nodes: TreeNodeMap | null): string | null {
   return nodes?.[columnNode.parentId ?? '']?.parentId ?? null
 }
@@ -389,7 +393,7 @@ export function ObjectBrowser({
       if (!treeScrollElement) return
       const section = Array.from(
         treeScrollElement.querySelectorAll<HTMLElement>('[data-database-section]')
-      ).find((element) => element.dataset.databaseSection === nodeId)
+      ).find((element) => hasDatasetValue(element, 'databaseSection', nodeId))
       if (!section) return
 
       const delta =
@@ -415,7 +419,7 @@ export function ObjectBrowser({
 
     const row = Array.from(
       treeScrollElement.querySelectorAll<HTMLElement>('[role="treeitem"]')
-    ).find((element) => element.dataset.testid === `tree-node-${revealRequest.nodeId}`)
+    ).find((element) => hasDatasetValue(element, 'testid', `tree-node-${revealRequest.nodeId}`))
     if (!row) {
       if (filterText) {
         setFilter('', connectionId)

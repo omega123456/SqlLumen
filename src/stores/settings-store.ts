@@ -105,11 +105,13 @@ export const SETTINGS_VALIDATORS: Record<string, (value: string) => string | nul
   },
 }
 
+function isKeyInSection(settingKey: string, section: SettingsSection): boolean {
+  return sectionForKey(settingKey) === section
+}
+
 /** Returns all default keys for a given section. */
 function keysForSection(section: SettingsSection): string[] {
-  return Object.keys(SETTINGS_DEFAULTS).filter(
-    (settingKey) => sectionForKey(settingKey) === section
-  )
+  return Object.keys(SETTINGS_DEFAULTS).filter((settingKey) => isKeyInSection(settingKey, section))
 }
 
 // ---------------------------------------------------------------------------

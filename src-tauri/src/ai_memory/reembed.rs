@@ -108,13 +108,13 @@ where
         message
     })?;
 
-    if all_embeddings.len() != total {
+    let embedding_count = all_embeddings.len();
+    if embedding_count != total {
         let error = format!(
             "Embedding count mismatch: expected {} embeddings, got {}",
-            total,
-            all_embeddings.len()
+            total, embedding_count
         );
-        tracing::error!(owner_key, model = %model, expected = total, got = all_embeddings.len(), "reembed_memories: embedding count mismatch");
+        tracing::error!(owner_key, model = %model, expected = total, got = embedding_count, "reembed_memories: embedding count mismatch");
         progress_callback(make_progress("error", 0, total, Some(error.clone())));
         return Err(error);
     }

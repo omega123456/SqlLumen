@@ -29,8 +29,10 @@ function buildHighlightFlags(
 ): boolean[] {
   const flags = Array.from({ length: name.length }, () => false)
 
+  const lastNameIndex = name.length - 1
   for (const [start, end] of matchIndices) {
-    for (let index = start; index <= end && index < name.length; index += 1) {
+    const lastHighlightedIndex = Math.min(end, lastNameIndex)
+    for (let index = start; index <= lastHighlightedIndex; index += 1) {
       flags[index] = true
     }
   }

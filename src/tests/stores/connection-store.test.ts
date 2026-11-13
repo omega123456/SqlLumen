@@ -2,7 +2,11 @@
  * Tests for connection-store: close-connection guard with dirty non-active query results.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useConnectionStore, _resetListenersSetup } from '../../stores/connection-store'
+import {
+  isConnectionOfProfile,
+  useConnectionStore,
+  _resetListenersSetup,
+} from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { resetWorkspaceStore } from '../helpers/workspace-test-utils'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
@@ -895,5 +899,13 @@ describe('useConnectionStore — connectionsWithUnsavedEdits', () => {
     })
 
     expect(useConnectionStore.getState().connectionsWithUnsavedEdits()).toEqual(['session-1'])
+  })
+})
+
+describe('isConnectionOfProfile', () => {
+  it('matches a session to the profile it was opened from', () => {
+    const connection = makeActiveConnection('session-1', 'profile-1', 'Local')
+    expect(isConnectionOfProfile(connection, 'profile-1')).toBe(true)
+    expect(isConnectionOfProfile(connection, 'profile-2')).toBe(false)
   })
 })

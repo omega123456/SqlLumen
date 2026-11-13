@@ -202,7 +202,8 @@ fn js_number_body(digits: &str, point_position: i32) -> String {
 fn js_exponential_body(digits: &str, exponent: i32) -> String {
     let exponent_sign = js_exponent_sign(exponent);
     let exponent_magnitude = exponent.abs();
-    if digits.len() == 1 {
+    let has_single_digit = digits.len() == 1;
+    if has_single_digit {
         return format!("{digits}e{exponent_sign}{exponent_magnitude}");
     }
     format!(

@@ -4,7 +4,7 @@ import { useSettingsStore } from '../../stores/settings-store'
 import { AiMessageBubble } from './AiMessageBubble'
 import { AiWelcomeState } from './AiWelcomeState'
 import { AiErrorBanner } from './AiErrorBanner'
-import type { AiMessage } from '../../stores/ai-store'
+import type { AiMessage, TabAiState } from '../../stores/ai-store'
 import styles from './AiChatMessages.module.css'
 
 export interface AiChatMessagesProps {
@@ -23,6 +23,10 @@ const HIDDEN_PROMPT_ONLY_KINDS = new Set<NonNullable<AiMessage['kind']>>([
   'attached-context',
 ])
 
+function hasAttachedContextIn(tab: TabAiState | undefined): boolean {
+  return tab?.attachedContext != null
+}
+
 export function AiChatMessages({
   tabId,
   connectionId,
@@ -36,7 +40,7 @@ export function AiChatMessages({
   const scrollAnchorRef = useRef<HTMLDivElement>(null)
   const [internalSuggestion, setInternalSuggestion] = useState('')
 
-  const hasAttachedContext = useAiStore((state) => state.tabs[tabId]?.attachedContext != null)
+  const hasAttachedContext = useAiStore((state) => hasAttachedContextIn(state.tabs[tabId]))
   const visibleMessages = messages.filter(
     (message) => !(message.kind && HIDDEN_PROMPT_ONLY_KINDS.has(message.kind))
   )

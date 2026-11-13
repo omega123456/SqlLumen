@@ -95,7 +95,8 @@ fn routine_chunk_type(routine_type: &str) -> ChunkType {
 
 #[cfg(not(coverage))]
 fn show_create_routine_keyword(routine_type: &str) -> &'static str {
-    if routine_type.to_uppercase() == "PROCEDURE" {
+    let is_procedure = routine_type.to_uppercase() == "PROCEDURE";
+    if is_procedure {
         return "PROCEDURE";
     }
     "FUNCTION"
@@ -1314,6 +1315,11 @@ pub async fn build_index(
     })
 }
 
+#[cfg(not(coverage))]
+fn is_foreign_key_of_table(foreign_key: &FkInput, table_chunk: &GeneratedTableChunk) -> bool {
+    foreign_key.db_name == table_chunk.db_name && foreign_key.table_name == table_chunk.table_name
+}
+
 /// Rebuild the index for specific tables only (partial rebuild).
 #[cfg(not(coverage))]
 pub async fn rebuild_tables(
@@ -1388,12 +1394,9 @@ pub async fn rebuild_tables(
             .lock()
             .map_err(|error| format!("SQLite lock: {error}"))?;
         for tc in &table_chunks {
-            // Collect edges for this table from fk_chunks
             let edges: Vec<FkEdge> = foreign_key_chunks
                 .iter()
-                .filter(|(_, _, _, foreign_key)| {
-                    foreign_key.db_name == tc.db_name && foreign_key.table_name == tc.table_name
-                })
+                .filter(|(_, _, _, foreign_key)| is_foreign_key_of_table(foreign_key, tc))
                 .flat_map(|(_, _, _, foreign_key)| {
                     foreign_key
                         .columns

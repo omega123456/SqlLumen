@@ -26,3 +26,15 @@ export function isObjectRecord(value: unknown): value is Record<string, unknown>
 export function isPositiveFiniteNumber(value: number): boolean {
   return Number.isFinite(value) && value > 0
 }
+
+export function isPositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && value > 0
+}
+
+export function isNonEmptyList(list: readonly unknown[]): boolean {
+  return list.length > 0
+}
+
+export function isSameTextIgnoringCase(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase()
+}

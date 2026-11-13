@@ -22,8 +22,14 @@ import {
   isPinnedWorkspaceTab,
   isScopedTableDataTab,
   isScopedTableDataTabOf,
+  isTabInStack,
   type WorkspaceTabStackKey,
 } from '../lib/workspace-tab-stacks'
+import {
+  isSameObjectIdentity,
+  isTableDataTabOfObject,
+  type ObjectTabIdentity,
+} from '../lib/workspace-tab-matching'
 
 export type WorkspaceFocusSurface = 'editor' | 'ai-input'
 
@@ -207,14 +213,12 @@ function getNextActiveTabIdAfterClose(
   })
 
   if (stackKey) {
-    const stackKeyForCandidate = (tab: WorkspaceTab): WorkspaceTabStackKey | null =>
-      getWorkspaceStackKeyForTab(tab, {
+    const isInClosingStack = (tab: WorkspaceTab): boolean =>
+      isTabInStack(tab, stackKey, {
         hideScopedTableDataTabs: isTableTabsInBottomPanelEnabled(),
       })
 
-    const sameStackAfterClose = remainingTabs
-      .slice(closingIndex)
-      .find((tab) => stackKeyForCandidate(tab) === stackKey)
+    const sameStackAfterClose = remainingTabs.slice(closingIndex).find(isInClosingStack)
 
     if (sameStackAfterClose) {
       return sameStackAfterClose.id
@@ -223,7 +227,7 @@ function getNextActiveTabIdAfterClose(
     const sameStackBeforeClose = remainingTabs
       .slice(0, closingIndex)
       .reverse()
-      .find((tab) => stackKeyForCandidate(tab) === stackKey)
+      .find(isInClosingStack)
 
     if (sameStackBeforeClose) {
       return sameStackBeforeClose.id
@@ -447,19 +451,15 @@ function getStandaloneTableActivationTarget(
     return null
   }
 
-  const visibleScopedTableTab = tabs.find(
-    (tab) =>
-      tab.type === 'table-data' &&
-      tab.id === activeBottomPanelItem.tabId &&
-      tab.parentQueryTabId === activeTab.id &&
-      tab.connectionId === connectionId
-  )
-
-  if (!visibleScopedTableTab) {
+  const bottomPanelTab = tabs.find((tab) => tab.id === activeBottomPanelItem.tabId)
+  if (!isScopedTableDataTabOf(bottomPanelTab, activeTab.id)) {
+    return null
+  }
+  if (bottomPanelTab.connectionId !== connectionId) {
     return null
   }
 
-  return remapTableTabId(visibleScopedTableTab.id)
+  return remapTableTabId(bottomPanelTab.id)
 }
 
 function cleanupRemovedTableTabs(tabIds: string[]) {
@@ -688,12 +688,13 @@ function enforceTabLimit(connectionId: string, newTabId: string): void {
   if (!stackKey) return
   if (stackKey === 'queries') return
 
-  const group = tabs.filter((tab) => getWorkspaceStackKeyForTab(tab, options) === stackKey)
+  const group = tabs.filter((tab) => isTabInStack(tab, stackKey, options))
   const overflow = group.length - limit
   if (overflow <= 0) return
 
+  const canEvict = (tab: WorkspaceTab): boolean => tab.id !== newTabId && !hasUnsavedChanges(tab)
   group
-    .filter((tab) => tab.id !== newTabId && !hasUnsavedChanges(tab))
+    .filter(canEvict)
     .sort((left, right) => (tabLastUsedAt[left.id] ?? 0) - (tabLastUsedAt[right.id] ?? 0))
     .slice(0, overflow)
     .forEach((tab) => forceCloseTab(connectionId, tab.id))
@@ -727,10 +728,6 @@ interface WorkspaceTabRemoval {
 
 function forceCloseWorkspaceTab(connectionId: string, tabId: string): void {
   useWorkspaceStore.getState().forceCloseTab(connectionId, tabId)
-}
-
-function isUnclosableTab(tab: WorkspaceTab): boolean {
-  return tab.type === 'history' || tab.type === 'processlist'
 }
 
 function hasModifiedTableDataRow(tabId: string): boolean {
@@ -950,9 +947,21 @@ function removeWorkspaceTab(removal: WorkspaceTabRemoval): void {
   }
 }
 
-function isTabForObject(tab: WorkspaceTab, target: DroppedObjectTarget): tab is ObjectScopedTab {
+function isTabForObject(tab: WorkspaceTab, target: ObjectTabIdentity): tab is ObjectScopedTab {
   if (!isObjectScopedTab(tab)) return false
-  return tab.databaseName === target.databaseName && tab.objectName === target.objectName
+  return isSameObjectIdentity(tab, target)
+}
+
+function isStandaloneTableTabOf(
+  candidate: WorkspaceTab,
+  identity: ObjectTabIdentity
+): candidate is TableDataTab {
+  if (!isTableDataTabOfObject(candidate, identity)) return false
+  return candidate.parentQueryTabId === undefined
+}
+
+function isGroupLedBy(group: WorkspaceTab[], tabId: string): boolean {
+  return group[0]?.id === tabId
 }
 
 function isViewTableDataTab(tab: ObjectScopedTab): boolean {
@@ -1039,18 +1048,23 @@ function isSameObjectTab(
   return true
 }
 
+function isMatchingOpenObjectTab(
+  candidate: WorkspaceTab,
+  tab: OpenableTab,
+  parentQueryTabId: string | undefined
+): candidate is ObjectScopedTab {
+  if (!isTabForObject(candidate, tab)) return false
+  if (candidate.type !== tab.type) return false
+  return isSameObjectTab(candidate, tab, parentQueryTabId)
+}
+
 function findOpenObjectTab(
   tabs: WorkspaceTab[],
   tab: OpenableTab,
   parentQueryTabId: string | undefined
 ): ObjectScopedTab | undefined {
-  return tabs.find(
-    (candidate): candidate is ObjectScopedTab =>
-      isObjectScopedTab(candidate) &&
-      candidate.databaseName === tab.databaseName &&
-      candidate.objectName === tab.objectName &&
-      candidate.type === tab.type &&
-      isSameObjectTab(candidate, tab, parentQueryTabId)
+  return tabs.find((candidate): candidate is ObjectScopedTab =>
+    isMatchingOpenObjectTab(candidate, tab, parentQueryTabId)
   )
 }
 
@@ -1142,11 +1156,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const existingStandaloneTab =
       tab.parentQueryTabId === undefined
         ? (get().tabsByConnection[tab.connectionId] ?? []).find(
-            (candidate): candidate is TableDataTab =>
-              candidate.type === 'table-data' &&
-              candidate.parentQueryTabId === undefined &&
-              candidate.databaseName === tab.databaseName &&
-              candidate.objectName === tab.objectName
+            (candidate): candidate is TableDataTab => isStandaloneTableTabOf(candidate, tab)
           )
         : undefined
 
@@ -1349,7 +1359,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const tabs = get().tabsByConnection[connectionId] || []
     const closingTab = tabs.find((tab) => tab.id === tabId)
     if (!closingTab) return
-    if (isUnclosableTab(closingTab)) return
+    if (isPinnedWorkspaceTab(closingTab)) return
 
     const prepareClose = CLOSE_PREPARERS[closingTab.type]
     const closeOutcome = prepareClose?.(connectionId, closingTab, tabs)
@@ -1368,7 +1378,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const tabs = get().tabsByConnection[connectionId] || []
     const closingTab = tabs.find((tab) => tab.id === tabId)
     if (!closingTab) return
-    if (isUnclosableTab(closingTab)) return
+    if (isPinnedWorkspaceTab(closingTab)) return
 
     cleanupTabStore(connectionId, closingTab)
     useAiStore.getState().cleanupTab(tabId)
@@ -1483,7 +1493,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
             return [[tab]]
           })
 
-          const sourceGroupIndex = groupedMovableTabs.findIndex((group) => group[0]?.id === tabId)
+          const sourceGroupIndex = groupedMovableTabs.findIndex((group) =>
+            isGroupLedBy(group, tabId)
+          )
           if (sourceGroupIndex < 0) {
             return tabs
           }
@@ -1524,22 +1536,21 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const shouldRemove = (tab: WorkspaceTab): boolean =>
       isObjectScopedTab(tab) && tab.databaseName === databaseName
 
-    tabs
-      .filter((tab) => tab.type === 'table-data' && tab.databaseName === databaseName)
+    const removedTabs = tabs.filter(shouldRemove)
+
+    removedTabs
+      .filter((tab) => tab.type === 'table-data')
       .forEach((tab) => useTableDataStore.getState().cleanupTab(tab.id))
 
-    tabs
-      .filter((tab) => tab.type === 'table-designer' && tab.databaseName === databaseName)
+    removedTabs
+      .filter((tab) => tab.type === 'table-designer')
       .forEach((tab) => useTableDesignerStore.getState().cleanupTab(tab.id))
 
-    tabs
-      .filter((tab) => tab.type === 'object-editor' && tab.databaseName === databaseName)
+    removedTabs
+      .filter((tab) => tab.type === 'object-editor')
       .forEach((tab) => useObjectEditorStore.getState().cleanupTab(tab.id))
 
-    // Clean up AI state for all tabs being closed
-    tabs
-      .filter((tab) => isObjectScopedTab(tab) && tab.databaseName === databaseName)
-      .forEach((tab) => useAiStore.getState().cleanupTab(tab.id))
+    removedTabs.forEach((tab) => useAiStore.getState().cleanupTab(tab.id))
 
     const previousActiveTabId = state.activeTabByConnection[connectionId] ?? null
     const previousSurface = previousActiveTabId

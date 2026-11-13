@@ -650,13 +650,23 @@ pub async fn query_schema_info(
 #[cfg(not(coverage))]
 pub async fn validate_charset(pool: &MySqlPool, charset: &str) -> Result<(), String> {
     let charsets = query_list_charsets(pool).await?;
-    if !charsets
+    let is_known_charset = charsets
         .iter()
-        .any(|known_charset| known_charset.charset.eq_ignore_ascii_case(charset))
-    {
+        .any(|known_charset| known_charset.charset.eq_ignore_ascii_case(charset));
+    if !is_known_charset {
         return Err(format!("Invalid character set: '{charset}'"));
     }
     Ok(())
+}
+
+#[cfg(not(coverage))]
+fn is_collation_in_charset(
+    known_collation: &CollationInfo,
+    collation: &str,
+    charset: &str,
+) -> bool {
+    known_collation.name.eq_ignore_ascii_case(collation)
+        && known_collation.charset.eq_ignore_ascii_case(charset)
 }
 
 /// Validate that a collation exists for a given charset on the server.
@@ -669,10 +679,9 @@ pub async fn validate_collation(
 ) -> Result<(), String> {
     let collations = query_list_collations(pool).await?;
     let valid = match charset {
-        Some(cs) => collations.iter().any(|known_collation| {
-            known_collation.name.eq_ignore_ascii_case(collation)
-                && known_collation.charset.eq_ignore_ascii_case(cs)
-        }),
+        Some(cs) => collations
+            .iter()
+            .any(|known_collation| is_collation_in_charset(known_collation, collation, cs)),
         None => collations
             .iter()
             .any(|known_collation| known_collation.name.eq_ignore_ascii_case(collation)),

@@ -248,10 +248,8 @@ pub fn minus_sign(is_negative: bool) -> &'static str {
 #[cfg(not(coverage))]
 pub(crate) fn map_mysql_error(error: &mysql_async::Error) -> String {
     crate::mysql::query_log::log_mysql_async_error(error);
-    if let mysql_async::Error::Server(ref server_error) = error {
-        if server_error.code == 1317 {
-            return "Query cancelled".to_string();
-        }
+    if is_query_interrupted(error) {
+        return "Query cancelled".to_string();
     }
     format!("Query failed: {error}")
 }
@@ -341,10 +339,12 @@ struct DecodedRows {
     overflowed: bool,
 }
 
-/// True for MySQL error 1317 (ER_QUERY_INTERRUPTED).
+#[cfg(not(coverage))]
+const ER_QUERY_INTERRUPTED: u16 = 1317;
+
 #[cfg(not(coverage))]
 pub(crate) fn is_query_interrupted(error: &mysql_async::Error) -> bool {
-    matches!(error, mysql_async::Error::Server(server_err) if server_err.code == 1317)
+    matches!(error, mysql_async::Error::Server(server_err) if server_err.code == ER_QUERY_INTERRUPTED)
 }
 
 /// Issue `KILL QUERY <thread_id>` over a pool connection after the ceiling was
@@ -1034,11 +1034,12 @@ where
         .await
         .map_err(|error| map_mysql_error(&error))?
     {
-        if serialized_rows.len() >= ceiling {
+        let stored_row_count = serialized_rows.len();
+        if stored_row_count >= ceiling {
             overflowed = true;
             break;
         }
-        crate::mysql::query_log::log_mysql_async_row(serialized_rows.len(), &row);
+        crate::mysql::query_log::log_mysql_async_row(stored_row_count, &row);
         serialized_rows.push(serialize_row(&row, col_types));
     }
     crate::mysql::query_log::log_mysql_async_row_count(serialized_rows.len());

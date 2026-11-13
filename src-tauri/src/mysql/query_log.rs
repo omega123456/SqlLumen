@@ -143,7 +143,8 @@ pub(crate) fn format_mysql_time(value: sqlx::mysql::types::MySqlTime) -> String 
     let sign = crate::mysql::multi_result::minus_sign(value.sign().is_negative());
     let hours = value.hours();
 
-    if value.microseconds() == 0 {
+    let microseconds = value.microseconds();
+    if microseconds == 0 {
         return format!(
             "{sign}{hours:02}:{:02}:{:02}",
             value.minutes(),
@@ -151,10 +152,9 @@ pub(crate) fn format_mysql_time(value: sqlx::mysql::types::MySqlTime) -> String 
         );
     }
     format!(
-        "{sign}{hours:02}:{:02}:{:02}.{:06}",
+        "{sign}{hours:02}:{:02}:{:02}.{microseconds:06}",
         value.minutes(),
-        value.seconds(),
-        value.microseconds()
+        value.seconds()
     )
 }
 

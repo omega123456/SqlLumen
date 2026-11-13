@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use crate::commands::query_history_bridge;
 use crate::db::history::NewHistoryEntry;
 use crate::mysql::sql_chars::{
-    has_char_at, is_ascii_whitespace_at, is_escape_before_char, is_line_break_char,
+    has_char_at, has_text_at, has_text_at_ignore_ascii_case, is_ascii_whitespace_at,
+    is_escape_before_char, is_line_break_char,
 };
 use crate::state::{ImportError, ImportJobProgress, ImportJobStatus};
 
@@ -34,7 +35,7 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
         // --- Check for DELIMITER directive at the start of a line (or start of input) ---
         let is_delimiter_keyword = is_at_line_start(&chars, position)
-            && remaining_starts_with_ci(&chars, position, "DELIMITER");
+            && has_text_at_ignore_ascii_case(&chars, position, "DELIMITER");
         if is_delimiter_keyword {
             let after = position + "DELIMITER".len();
             if is_ascii_whitespace_at(&chars, after) {
@@ -204,7 +205,7 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
         }
 
         // --- Check for delimiter match ---
-        if remaining_starts_with(&chars, position, &delimiter) {
+        if has_text_at(&chars, position, &delimiter) {
             let trimmed = current.trim().to_string();
             if !trimmed.is_empty() {
                 statements.push(trimmed);
@@ -556,7 +557,7 @@ fn is_at_line_start(chars: &[char], position: usize) -> bool {
         if is_line_break_char(chars[scan_position]) {
             return true;
         }
-        if !chars[scan_position].is_ascii_whitespace() {
+        if !is_ascii_whitespace_at(chars, scan_position) {
             return false;
         }
     }
@@ -564,53 +565,27 @@ fn is_at_line_start(chars: &[char], position: usize) -> bool {
     true
 }
 
-/// Case-insensitive prefix match at position `i`.
-fn remaining_starts_with_ci(chars: &[char], position: usize, pattern: &str) -> bool {
-    let pat_chars: Vec<char> = pattern.chars().collect();
-    if position + pat_chars.len() > chars.len() {
-        return false;
-    }
-    for (offset, pc) in pat_chars.iter().enumerate() {
-        if !chars[position + offset].eq_ignore_ascii_case(pc) {
-            return false;
-        }
-    }
-    true
-}
-
-/// Exact prefix match at position `i`.
-fn remaining_starts_with(chars: &[char], position: usize, pattern: &str) -> bool {
-    let pat_chars: Vec<char> = pattern.chars().collect();
-    if position + pat_chars.len() > chars.len() {
-        return false;
-    }
-    for (offset, pc) in pat_chars.iter().enumerate() {
-        if chars[position + offset] != *pc {
-            return false;
-        }
-    }
-    true
-}
-
 const LOG_PREVIEW_CHARS: usize = 80;
 const ERROR_PREVIEW_CHARS: usize = 120;
 
 fn statement_preview(sql: &str, max_len: usize, ellipsis: &str) -> String {
-    if sql.len() <= max_len {
+    let fits_preview = sql.len() <= max_len;
+    if fits_preview {
         return sql.to_string();
     }
     format!("{}{ellipsis}", &sql[..max_len])
 }
 
 fn find_block_comment_close(chars: &[char], start: usize) -> usize {
+    let char_count = chars.len();
     let mut position = start;
-    while position < chars.len() {
+    while position < char_count {
         let closes_comment =
-            chars[position] == '*' && position + 1 < chars.len() && chars[position + 1] == '/';
+            has_char_at(chars, position, '*') && has_char_at(chars, position + 1, '/');
         if closes_comment {
             return position;
         }
         position += 1;
     }
-    chars.len()
+    char_count
 }

@@ -36,6 +36,8 @@ import { SlashCommandDropdown } from './SlashCommandDropdown'
 import { PALETTE_KEYS } from './palette-keys'
 import { buildSlashOptions, TYPE_ALIASES } from './slash-options'
 import styles from './CommandPalette.module.css'
+import { isScopedTableDataTabOf } from '../../lib/workspace-tab-stacks'
+import { isSameTextIgnoringCase } from '../../lib/value-checks'
 
 const MAX_FILTER_PILLS = 2
 const QUERY_DEBOUNCE_MS = 80
@@ -119,12 +121,8 @@ function scopedBottomPanelTableTab(
   if (activeTab?.type !== 'query-editor') return undefined
   const bottomPanelItem = useQueryStore.getState().tabs[activeTab.id]?.activeBottomPanelItem
   if (bottomPanelItem?.type !== 'table-data') return undefined
-  return tabs.find(
-    (tab): tab is TableDataTab =>
-      tab.type === 'table-data' &&
-      tab.id === bottomPanelItem.tabId &&
-      tab.parentQueryTabId === activeTab.id
-  )
+  const bottomPanelTab = tabs.find((tab) => tab.id === bottomPanelItem.tabId)
+  return isScopedTableDataTabOf(bottomPanelTab, activeTab.id) ? bottomPanelTab : undefined
 }
 
 function resolveActiveTableTab(
@@ -140,7 +138,8 @@ function getInitialPills(connectionId: string | null): CommandPaletteFilterPillV
 
   const workspace = useWorkspaceStore.getState()
   const tabs = workspace.tabsByConnection[connectionId] ?? []
-  const activeTab = tabs.find((tab) => tab.id === workspace.activeTabByConnection[connectionId])
+  const activeTabId = workspace.activeTabByConnection[connectionId]
+  const activeTab = tabs.find((tab) => tab.id === activeTabId)
   const tableTab = resolveActiveTableTab(tabs, activeTab)
 
   if (!tableTab) return []
@@ -172,16 +171,32 @@ function slashTokenPill(
 ): CommandPaletteFilterPillValue | null {
   const typeMatch = TYPE_ALIASES.get(token)
   if (typeMatch) return typeMatch
-  const databaseMatch = databases.find((database) => database.toLowerCase() === token)
+  const databaseMatch = databases.find((database) => isSameTextIgnoringCase(database, token))
   if (!databaseMatch) return null
   return { kind: 'database', value: databaseMatch, label: databaseMatch }
+}
+
+function isSchemaCachePending(connectionId: string | null): boolean {
+  if (connectionId === null) return false
+  return getCache(connectionId).status !== 'ready'
+}
+
+function isObjectOfTable(object: SearchableObject, database: string, table: string): boolean {
+  return object.database === database && object.name === table
+}
+
+function isSamePill(
+  pill: CommandPaletteFilterPillValue,
+  candidate: CommandPaletteFilterPillValue
+): boolean {
+  return pill.kind === candidate.kind && pill.value === candidate.value
 }
 
 function hasPill(
   pills: ReadonlyArray<CommandPaletteFilterPillValue>,
   candidate: CommandPaletteFilterPillValue
 ): boolean {
-  return pills.some((pill) => pill.kind === candidate.kind && pill.value === candidate.value)
+  return pills.some((pill) => isSamePill(pill, candidate))
 }
 
 interface ActiveResultSelection {
@@ -359,9 +374,7 @@ function CommandPaletteSession({
   const [searchableObjects, setSearchableObjects] =
     useState<SearchableObject[]>(readSearchableObjects)
   const [databases, setDatabases] = useState<string[]>(readDatabases)
-  const [isLoading, setIsLoading] = useState(
-    () => activeConnectionId !== null && getCache(activeConnectionId).status !== 'ready'
-  )
+  const [isLoading, setIsLoading] = useState(() => isSchemaCachePending(activeConnectionId))
 
   useEffect(() => {
     if (!activeConnectionId) {
@@ -400,11 +413,10 @@ function CommandPaletteSession({
     if (!activeConnectionId) return []
     if (!databasePill) return []
     if (!tablePill) return []
-    if (
-      !searchableObjects.some(
-        (object) => object.database === databasePill.value && object.name === tablePill.label
-      )
-    ) {
+    const hasSelectedTable = searchableObjects.some((object) =>
+      isObjectOfTable(object, databasePill.value, tablePill.label)
+    )
+    if (!hasSelectedTable) {
       return []
     }
 

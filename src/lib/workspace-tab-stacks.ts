@@ -1,4 +1,5 @@
 import type { TableDataTab, WorkspaceTab } from '../types/schema'
+import { isNonEmptyList } from './value-checks'
 
 export type WorkspaceTabStackKey = 'queries' | 'tables' | 'designers' | 'schema' | 'objects'
 
@@ -102,8 +103,16 @@ export function groupWorkspaceTabsByStack(
   }
 
   return WORKSPACE_TAB_STACK_ORDER.map((key) => ({ key: key, tabs: groups.get(key) ?? [] })).filter(
-    (group) => group.tabs.length > 0
+    (group) => isNonEmptyList(group.tabs)
   )
+}
+
+export function isTabInStack(
+  tab: WorkspaceTab,
+  stackKey: WorkspaceTabStackKey,
+  options: WorkspaceTabStackResolutionOptions = {}
+): boolean {
+  return getWorkspaceStackKeyForTab(tab, options) === stackKey
 }
 
 export function getWorkspaceStackMemberIds(
@@ -112,29 +121,19 @@ export function getWorkspaceStackMemberIds(
 ): Record<WorkspaceTabStackKey, Set<string>> {
   return {
     queries: new Set(
-      tabs
-        .filter((tab) => getWorkspaceStackKeyForTab(tab, options) === 'queries')
-        .map((tab) => tab.id)
+      tabs.filter((tab) => isTabInStack(tab, 'queries', options)).map((tab) => tab.id)
     ),
     tables: new Set(
-      tabs
-        .filter((tab) => getWorkspaceStackKeyForTab(tab, options) === 'tables')
-        .map((tab) => tab.id)
+      tabs.filter((tab) => isTabInStack(tab, 'tables', options)).map((tab) => tab.id)
     ),
     designers: new Set(
-      tabs
-        .filter((tab) => getWorkspaceStackKeyForTab(tab, options) === 'designers')
-        .map((tab) => tab.id)
+      tabs.filter((tab) => isTabInStack(tab, 'designers', options)).map((tab) => tab.id)
     ),
     schema: new Set(
-      tabs
-        .filter((tab) => getWorkspaceStackKeyForTab(tab, options) === 'schema')
-        .map((tab) => tab.id)
+      tabs.filter((tab) => isTabInStack(tab, 'schema', options)).map((tab) => tab.id)
     ),
     objects: new Set(
-      tabs
-        .filter((tab) => getWorkspaceStackKeyForTab(tab, options) === 'objects')
-        .map((tab) => tab.id)
+      tabs.filter((tab) => isTabInStack(tab, 'objects', options)).map((tab) => tab.id)
     ),
   }
 }
@@ -145,7 +144,7 @@ export function getWorkspaceStackActivationTarget(
   recentTabId: string | null | undefined,
   options: WorkspaceTabStackResolutionOptions = {}
 ): WorkspaceTab | null {
-  const members = tabs.filter((tab) => getWorkspaceStackKeyForTab(tab, options) === stackKey)
+  const members = tabs.filter((tab) => isTabInStack(tab, stackKey, options))
   if (members.length === 0) {
     return null
   }

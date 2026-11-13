@@ -53,6 +53,7 @@ type ParseFallbackMode =
 // ---------------------------------------------------------------------------
 
 import type { TabType } from '../../types/schema'
+import { isSameTextIgnoringCase } from '../../lib/value-checks'
 
 interface ModelContext {
   connectionId: string
@@ -322,7 +323,7 @@ function getParseFallbackMode(
     return { type: 'none' }
   }
 
-  const matchedDatabase = databases.find((db) => db.toLowerCase() === identifier.toLowerCase())
+  const matchedDatabase = databases.find((db) => isSameTextIgnoringCase(db, identifier))
   if (matchedDatabase) {
     return { type: 'tables', database: matchedDatabase }
   }
@@ -1139,7 +1140,7 @@ function findTableByLowerName(
   tableNameLower: string
 ): { name: string } | undefined {
   const tables = cache.tables[database] ?? []
-  return tables.find((table) => table.name.toLowerCase() === tableNameLower)
+  return tables.find((table) => isSameTextIgnoringCase(table.name, tableNameLower))
 }
 
 function tableDotCompletions(
@@ -1174,8 +1175,8 @@ function handleDotNotation(request: DotNotationRequest): ICompletionItem[] | nul
     return columnCompletionItems(cache, tableKey, quoteIdentifiers)
   }
 
-  const matchedDatabase = cache.databases.find(
-    (database) => database.toLowerCase() === target.prefixLower
+  const matchedDatabase = cache.databases.find((database) =>
+    isSameTextIgnoringCase(database, target.prefixLower)
   )
   if (matchedDatabase) return databaseDotCompletions(request, matchedDatabase)
   if (isInTableReferenceClause(request.caret.statementPrefix)) return null

@@ -5,6 +5,7 @@ import { ResultPanel } from './ResultPanel'
 import { TableDataTab } from '../table-data/TableDataTab'
 import type { TableDataTab as TableDataTabType } from '../../types/schema'
 import styles from './QueryBottomPanel.module.css'
+import { isScopedTableDataTabOf } from '../../lib/workspace-tab-stacks'
 
 interface QueryBottomPanelProps {
   queryTabId: string
@@ -29,9 +30,8 @@ export function QueryBottomPanel({
   const connectionTabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? [])
   const scopedTableTabs = useMemo(
     () =>
-      connectionTabs.filter(
-        (tab): tab is TableDataTabType =>
-          tab.type === 'table-data' && tab.parentQueryTabId === queryTabId
+      connectionTabs.filter((tab): tab is TableDataTabType =>
+        isScopedTableDataTabOf(tab, queryTabId)
       ),
     [connectionTabs, queryTabId]
   )

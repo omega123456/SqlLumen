@@ -105,6 +105,15 @@ const EMBEDDING_KEYWORDS: &[&str] = &["embed", "nomic", "bge", "e5-", "e5_", "mi
 ///
 const CHAT_MODEL_TYPE_MARKERS: [&str; 3] = ["chat", "completion", "generate"];
 
+fn has_embedding_capability_flag(
+    capabilities: &serde_json::Map<String, serde_json::Value>,
+) -> bool {
+    capabilities
+        .get("embedding")
+        .and_then(|value| value.as_bool())
+        == Some(true)
+}
+
 /// First checks server-provided metadata (type field, capabilities),
 /// then falls back to a keyword heuristic on the model ID.
 pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
@@ -126,7 +135,7 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
     if let Some(ref caps) = entry.capabilities {
         if let Some(obj) = caps.as_object() {
             // Some servers expose { "embedding": true } or { "type": "embedding" }
-            if obj.get("embedding").and_then(|value| value.as_bool()) == Some(true) {
+            if has_embedding_capability_flag(obj) {
                 return "embedding".to_string();
             }
             if let Some(cap_type) = obj.get("type").and_then(|value| value.as_str()) {

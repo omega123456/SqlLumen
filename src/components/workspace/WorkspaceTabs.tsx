@@ -56,6 +56,16 @@ export interface WorkspaceTabsProps {
   children?: ReactNode
 }
 
+function isBottomPanelTableTab(tab: WorkspaceTab): boolean {
+  return tab.type === 'table-data' && tab.parentQueryTabId !== undefined
+}
+
+function isVisibleNonPinnedTab(tab: WorkspaceTab, hideTableDataTabs: boolean): boolean {
+  if (isPinnedWorkspaceTab(tab)) return false
+  if (!hideTableDataTabs) return true
+  return !isBottomPanelTableTab(tab)
+}
+
 function pinnedTabIdOf(activeTab: WorkspaceTab | null): string | null {
   if (!activeTab) return null
   if (!isPinnedWorkspaceTab(activeTab)) return null
@@ -113,11 +123,7 @@ export function WorkspaceTabs({
     (state) => state.stackRecencyByConnection[connectionId] ?? EMPTY_STACK_RECENCY
   )
 
-  const visibleNonPinnedTabs = tabs.filter(
-    (tab) =>
-      !isPinnedWorkspaceTab(tab) &&
-      !(hideTableDataTabs && tab.type === 'table-data' && tab.parentQueryTabId !== undefined)
-  )
+  const visibleNonPinnedTabs = tabs.filter((tab) => isVisibleNonPinnedTab(tab, hideTableDataTabs))
   const pinnedTabs = tabs.filter(isPinnedWorkspaceTab)
   const stackGroups = useMemo(
     () =>
@@ -145,10 +151,7 @@ export function WorkspaceTabs({
   const shownStackTabs = stackTabsFor(stackGroups, shownStackKey)
 
   const allMovableTabIds = useMemo(
-    () =>
-      tabs
-        .filter((tab) => tab.type !== 'history' && tab.type !== 'processlist')
-        .map((tab) => tab.id),
+    () => tabs.filter((tab) => !isPinnedWorkspaceTab(tab)).map((tab) => tab.id),
     [tabs]
   )
 

@@ -44,6 +44,10 @@ function entryKey(connectionId: string, dbName: string, tableName: string): stri
 }
 
 /** Whether an entry has exceeded the 30-minute TTL. */
+function isActiveEntryOf(entry: AcceptedEntry, connectionId: string, now: number): boolean {
+  return entry.connectionId === connectionId && !isExpired(entry, now)
+}
+
 function isExpired(entry: AcceptedEntry, now: number = Date.now()): boolean {
   return now - entry.lastSeenAt >= EXPIRY_MS
 }
@@ -86,7 +90,7 @@ export const useAiFeedbackStore = create<AiFeedbackState>()((set, get) => ({
   getAcceptedTables: (connectionId) => {
     const now = Date.now()
     return get()
-      .entries.filter((entry) => entry.connectionId === connectionId && !isExpired(entry, now))
+      .entries.filter((entry) => isActiveEntryOf(entry, connectionId, now))
       .map((entry) => ({
         dbName: entry.dbName,
         tableName: entry.tableName,

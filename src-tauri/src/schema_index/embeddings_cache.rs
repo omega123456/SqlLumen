@@ -29,6 +29,12 @@ struct CacheInner {
     capacity: usize,
 }
 
+impl CacheInner {
+    fn is_full(&self) -> bool {
+        self.map.len() >= self.capacity
+    }
+}
+
 impl Default for EmbeddingCache {
     fn default() -> Self {
         Self::new()
@@ -79,7 +85,7 @@ impl EmbeddingCache {
             return;
         }
 
-        if inner.map.len() >= inner.capacity {
+        if inner.is_full() {
             // Evict LRU entry
             let lru_key = inner
                 .map

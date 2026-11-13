@@ -5,8 +5,11 @@ import {
   isNonEmptyString,
   isNullish,
   isObjectRecord,
+  isNonEmptyList,
   isPositiveFiniteNumber,
+  isPositiveNumber,
   isPresentIndex,
+  isSameTextIgnoringCase,
 } from '../../lib/value-checks'
 
 describe('isPositiveFiniteNumber', () => {
@@ -97,5 +100,34 @@ describe('isPresentIndex', () => {
     expect(isPresentIndex(null)).toBe(false)
     expect(isPresentIndex(undefined)).toBe(false)
     expect(isPresentIndex(-1)).toBe(false)
+  })
+})
+
+describe('isPositiveNumber', () => {
+  it('accepts numbers above zero', () => {
+    expect(isPositiveNumber(3)).toBe(true)
+    expect(isPositiveNumber(0.25)).toBe(true)
+  })
+
+  it('rejects zero, negatives and non-numbers', () => {
+    expect(isPositiveNumber(0)).toBe(false)
+    expect(isPositiveNumber(-1)).toBe(false)
+    expect(isPositiveNumber('5')).toBe(false)
+    expect(isPositiveNumber(null)).toBe(false)
+  })
+})
+
+describe('isNonEmptyList', () => {
+  it('is true only when the list has items', () => {
+    expect(isNonEmptyList([0])).toBe(true)
+    expect(isNonEmptyList([])).toBe(false)
+  })
+})
+
+describe('isSameTextIgnoringCase', () => {
+  it('compares text without regard to letter case', () => {
+    expect(isSameTextIgnoringCase('Users', 'users')).toBe(true)
+    expect(isSameTextIgnoringCase('USERS', 'Users')).toBe(true)
+    expect(isSameTextIgnoringCase('users', 'orders')).toBe(false)
   })
 })

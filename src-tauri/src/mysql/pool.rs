@@ -58,7 +58,8 @@ pub fn build_connect_options(params: &ConnectionParams) -> MySqlConnectOptions {
         .port(params.port)
         .username(&params.username);
 
-    if !params.password.is_empty() {
+    let has_password = !params.password.is_empty();
+    if has_password {
         opts = opts.password(&params.password);
     }
 

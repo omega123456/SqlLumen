@@ -1,7 +1,8 @@
 use sqllumen_lib::mysql::sql_chars::{
-    has_char_at, is_ascii_whitespace_at, is_escape_before_char, is_identifier_char,
-    is_identifier_char_at, is_identifier_or_dollar_char, is_identifier_start_char,
-    is_line_break_char, is_quote_char, is_string_quote_char, is_whitespace_at,
+    has_char_at, has_text_at, has_text_at_ignore_ascii_case, is_ascii_whitespace_at,
+    is_blank_identifier, is_escape_before_char, is_identifier_char, is_identifier_char_at,
+    is_identifier_or_dollar_char, is_identifier_start_char, is_line_break_char, is_past_end,
+    is_quote_char, is_string_quote_char, is_whitespace_at,
 };
 
 fn chars_of(text: &str) -> Vec<char> {
@@ -91,4 +92,37 @@ fn escape_before_char_needs_a_following_char() {
     assert!(is_escape_before_char(&chars_of("\\n"), 0));
     assert!(!is_escape_before_char(&chars_of("a\\"), 1));
     assert!(!is_escape_before_char(&chars_of("ab"), 0));
+}
+
+#[test]
+fn blank_identifiers_are_empty_or_whitespace_only() {
+    assert!(is_blank_identifier(""));
+    assert!(is_blank_identifier("  \t"));
+    assert!(!is_blank_identifier(" id "));
+}
+
+#[test]
+fn past_end_starts_at_the_char_count() {
+    let chars = chars_of("ab");
+    assert!(!is_past_end(&chars, 1));
+    assert!(is_past_end(&chars, 2));
+    assert!(is_past_end(&chars, 3));
+}
+
+#[test]
+fn text_at_matches_exactly_and_is_false_when_it_runs_past_the_end() {
+    let chars = chars_of("a $$ b");
+    assert!(has_text_at(&chars, 2, "$$"));
+    assert!(!has_text_at(&chars, 1, "$$"));
+    assert!(!has_text_at(&chars, 5, "b c"));
+    assert!(!has_text_at(&chars, 9, "b"));
+}
+
+#[test]
+fn text_at_ignore_ascii_case_matches_any_case_and_is_false_past_the_end() {
+    let chars = chars_of("delimiter //");
+    assert!(has_text_at_ignore_ascii_case(&chars, 0, "DELIMITER"));
+    assert!(!has_text_at_ignore_ascii_case(&chars, 1, "DELIMITER"));
+    assert!(!has_text_at_ignore_ascii_case(&chars, 10, "///"));
+    assert!(!has_text_at_ignore_ascii_case(&chars, 20, "/"));
 }

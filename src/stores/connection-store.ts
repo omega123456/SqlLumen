@@ -18,7 +18,7 @@ import type {
 import type { WorkspaceTab } from '../types/schema'
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
-import { useQueryStore } from './query-store'
+import { useQueryStore, type SingleResultState } from './query-store'
 import { useTableDataStore } from './table-data-store'
 import { useObjectEditorStore } from './object-editor-store'
 import { useSchemaIndexStore } from './schema-index-store'
@@ -84,7 +84,7 @@ const UNSAVED_EDITS_NOT_SAVED_TITLE = 'Connection not closed'
 const UNSAVED_EDITS_NOT_SAVED_MESSAGE =
   'Could not save pending edits. Fix or discard changes before closing.'
 
-function isConnectionOfProfile(connection: ActiveConnection, profileId: string): boolean {
+export function isConnectionOfProfile(connection: ActiveConnection, profileId: string): boolean {
   return connection.profile.id === profileId
 }
 
@@ -101,9 +101,9 @@ async function settleQueryEditorTabBeforeClose(tabId: string): Promise<boolean> 
   if (!queryTabState?.results) return true
 
   const activeIndex = queryTabState.activeResultIndex ?? 0
-  const hasNonActiveDirty = queryTabState.results.some(
-    (result, index) => index !== activeIndex && hasModifiedColumns(result.editState)
-  )
+  const isDirtyNonActiveResult = (result: SingleResultState, index: number): boolean =>
+    index !== activeIndex && hasModifiedColumns(result.editState)
+  const hasNonActiveDirty = queryTabState.results.some(isDirtyNonActiveResult)
   if (hasNonActiveDirty) {
     const confirmed = globalThis.confirm(
       'You have unsaved changes in non-active query results. Close connection anyway? Unsaved changes will be lost.'
@@ -131,9 +131,9 @@ const SETTLE_TAB_BEFORE_CLOSE: Partial<
 
 function confirmDiscardingObjectEditorChanges(workspaceTabs: WorkspaceTab[]): boolean {
   const objectEditorState = useObjectEditorStore.getState()
-  const hasDirtyObjectEditorTab = workspaceTabs.some(
-    (tab) => tab.type === 'object-editor' && objectEditorState.isDirty(tab.id)
-  )
+  const isDirtyObjectEditorTab = (tab: WorkspaceTab): boolean =>
+    tab.type === 'object-editor' && objectEditorState.isDirty(tab.id)
+  const hasDirtyObjectEditorTab = workspaceTabs.some(isDirtyObjectEditorTab)
   if (!hasDirtyObjectEditorTab) return true
   return globalThis.confirm(
     'You have unsaved changes in object editor tabs. Close connection anyway?'

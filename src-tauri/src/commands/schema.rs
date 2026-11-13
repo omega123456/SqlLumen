@@ -593,7 +593,7 @@ pub async fn rename_table_impl(
 }
 
 pub fn invalidate_metadata_cache_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
-    if !state.registry.contains(connection_id) {
+    if !state.has_open_connection(connection_id) {
         return Err(format!("Connection '{connection_id}' is not open"));
     }
 

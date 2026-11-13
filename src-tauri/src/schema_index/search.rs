@@ -43,6 +43,12 @@ struct QualifiedIdentifier {
     table_name: String,
 }
 
+impl QualifiedIdentifier {
+    fn has_table_name(&self) -> bool {
+        !self.table_name.is_empty()
+    }
+}
+
 const SQL_STOPWORDS: &[&str] = &[
     "select",
     "from",
@@ -513,8 +519,8 @@ pub fn multi_query_search_configured(
             .filter_map(|(id, _)| chunk_db.get(id).cloned())
             .collect();
 
-        // Apply database-affinity boost only when multiple databases are present
-        if db_freq.len() > 1 {
+        let spans_multiple_databases = db_freq.len() > 1;
+        if spans_multiple_databases {
             const DB_AFFINITY_BOOST: f64 = 0.02;
             for (chunk_id, score) in best_scores.iter_mut() {
                 if let Some(db_name) = chunk_db.get(chunk_id) {
@@ -621,7 +627,8 @@ pub fn multi_query_search_configured(
                 .entry(candidate.table_name.clone())
                 .or_insert((candidate.score, candidate.db_name.clone()));
             top_n.push(candidate);
-            if top_n.len() >= config.top_n_results {
+            let has_enough_results = top_n.len() >= config.top_n_results;
+            if has_enough_results {
                 break;
             }
         }
@@ -860,7 +867,7 @@ fn extract_direct_table_candidates(query_texts: &[String]) -> HashSet<QualifiedI
         for capture in regex.captures_iter(query_text) {
             if let Some(identifier) = capture.get(1) {
                 let normalized = parse_qualified_identifier(identifier.as_str());
-                if !normalized.table_name.is_empty() {
+                if normalized.has_table_name() {
                     candidates.insert(normalized);
                 }
             }
@@ -871,10 +878,9 @@ fn extract_direct_table_candidates(query_texts: &[String]) -> HashSet<QualifiedI
                 continue;
             }
 
-            let normalized = parse_qualified_identifier(token.trim_matches(|character: char| {
-                character.is_ascii_punctuation() && character != '.' && character != '`'
-            }));
-            if !normalized.table_name.is_empty() {
+            let normalized =
+                parse_qualified_identifier(token.trim_matches(is_surrounding_punctuation));
+            if normalized.has_table_name() {
                 candidates.insert(normalized);
             }
         }
@@ -902,6 +908,10 @@ fn extract_identifier_tokens(query_texts: &[String]) -> HashSet<String> {
     }
 
     tokens
+}
+
+fn is_surrounding_punctuation(character: char) -> bool {
+    character.is_ascii_punctuation() && character != '.' && character != '`'
 }
 
 fn parse_qualified_identifier(identifier: &str) -> QualifiedIdentifier {
@@ -985,8 +995,7 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
     if table_name == token {
         return 1.0;
     }
-    // Simple plural normalization: "brand" matches "brands" and vice versa
-    if normalize_plural(table_name) == normalize_plural(token) {
+    if is_same_word_ignoring_plural(table_name, token) {
         return PLURAL_MATCH_QUALITY;
     }
     // Token is a prefix of the table name (e.g. "rfx" → "rfxtracking")
@@ -1003,7 +1012,7 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
         if segment == token {
             return 1.0;
         }
-        if normalize_plural(segment) == normalize_plural(token) {
+        if is_same_word_ignoring_plural(segment, token) {
             return SEGMENT_PLURAL_MATCH_QUALITY;
         }
         let is_segment_prefix = token.len() >= MIN_PREFIX_MATCH_CHARS && segment.starts_with(token);
@@ -1013,6 +1022,10 @@ fn fuzzy_name_match(table_name: &str, token: &str) -> f64 {
         }
     }
     0.0
+}
+
+fn is_same_word_ignoring_plural(word: &str, other_word: &str) -> bool {
+    normalize_plural(word) == normalize_plural(other_word)
 }
 
 /// Naive plural normalization: strip trailing 's' if the word is long enough.

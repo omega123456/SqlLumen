@@ -48,6 +48,7 @@ import { shortcutLabelParts } from '../../lib/shortcut-labels'
 import { getContextMenuPortalRoot } from '../../lib/context-menu-utils'
 import { getWorkspaceTabIconDescriptor } from './workspace-tab-icons'
 import styles from './WorkspaceTabs.module.css'
+import { isPinnedWorkspaceTab } from '../../lib/workspace-tab-stacks'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -524,7 +525,7 @@ export function WorkspaceTabRail({
     const isDragSource = draggingTabId === tab.id
     const dropIndicator = dropIndicatorFor(tab.id)
     const isRenaming = renamingTabId === tab.id
-    const isPinned = tab.type === 'history' || tab.type === 'processlist'
+    const isPinned = isPinnedWorkspaceTab(tab)
     return (
       <UnderlineTab
         key={tab.id}

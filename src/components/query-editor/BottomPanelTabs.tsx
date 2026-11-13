@@ -10,6 +10,7 @@ import { isActivationKey, isMiddleMouseButton } from '../../lib/input-events'
 import { hasResultColumns } from '../../lib/query-result-column-utils'
 import styles from './BottomPanelTabs.module.css'
 import workspaceTabStyles from '../workspace/WorkspaceTabs.module.css'
+import { isScopedTableDataTabOf } from '../../lib/workspace-tab-stacks'
 
 interface BottomPanelTabsProps {
   queryTabId: string
@@ -78,10 +79,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
   const connectionTabs = useWorkspaceStore((state) => state.tabsByConnection[connectionId] ?? [])
   const tableDataTabs = useMemo(
     () =>
-      connectionTabs.filter(
-        (tab): tab is TableDataTab =>
-          tab.type === 'table-data' && tab.parentQueryTabId === queryTabId
-      ),
+      connectionTabs.filter((tab): tab is TableDataTab => isScopedTableDataTabOf(tab, queryTabId)),
     [connectionTabs, queryTabId]
   )
 

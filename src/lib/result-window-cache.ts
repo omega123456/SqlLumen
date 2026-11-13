@@ -255,11 +255,9 @@ function evictPages(surface: Surface): void {
   const protectedPages = new Set<number>()
   if (surface.lastRequested) {
     const [start, end] = surface.lastRequested
-    for (
-      let page = Math.floor(start / RESULT_PAGE_SIZE);
-      page <= Math.floor(Math.max(start, end - 1) / RESULT_PAGE_SIZE);
-      page++
-    ) {
+    const firstPage = Math.floor(start / RESULT_PAGE_SIZE)
+    const lastPage = Math.floor(Math.max(start, end - 1) / RESULT_PAGE_SIZE)
+    for (let page = firstPage; page <= lastPage; page++) {
       protectedPages.add(page)
     }
   }

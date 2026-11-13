@@ -72,9 +72,9 @@ function isSameRowKey(
   const aKeys = Object.keys(left).sort()
   const bKeys = Object.keys(right).sort()
   if (aKeys.length !== bKeys.length) return false
-  return aKeys.every(
-    (key, index) => key === bKeys[index] && JSON.stringify(left[key]) === JSON.stringify(right[key])
-  )
+  const isSameEntryAt = (key: string, index: number): boolean =>
+    key === bKeys[index] && isSameJsonValue(left[key], right[key])
+  return aKeys.every(isSameEntryAt)
 }
 
 function isSameJsonValue(left: unknown, right: unknown): boolean {

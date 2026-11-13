@@ -106,12 +106,20 @@ function isSelectedRowInView(selectedRowIndex: number | null, viewRowCount: numb
   return selectedRowIndex >= 0 && selectedRowIndex < viewRowCount
 }
 
+function isInsertEligibleNonPrimaryColumn(
+  column: TableDataColumnMeta,
+  editBoundColumnIndexMap: Map<string, number>
+): boolean {
+  if (column.isPrimaryKey) return false
+  return editBoundColumnIndexMap.has(column.name.toLowerCase())
+}
+
 function hasInsertEligibleNonPrimaryColumns(
   editTableColumns: TableDataColumnMeta[],
   editBoundColumnIndexMap: Map<string, number>
 ): boolean {
-  return editTableColumns.some(
-    (column) => !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
+  return editTableColumns.some((column) =>
+    isInsertEligibleNonPrimaryColumn(column, editBoundColumnIndexMap)
   )
 }
 

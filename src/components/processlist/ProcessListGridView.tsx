@@ -8,7 +8,7 @@ import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
 import { isPlaywrightBuild } from '../../lib/tauri-env'
-import { isNonEmptyString, isNullish } from '../../lib/value-checks'
+import { isNonEmptyString, isNullish, isPositiveNumber } from '../../lib/value-checks'
 
 const FALLBACK_HEADER_HEIGHT_PX = 32
 const FALLBACK_ROW_HEIGHT_PX = 28
@@ -136,7 +136,7 @@ function withSelection(selectedIds: Set<number>, id: number, isSelected: boolean
 function parseColumnWidths(host: HTMLElement): number[] {
   const parsedWidths: unknown = JSON.parse(host.dataset.glideColumnWidth ?? '[]')
   if (!Array.isArray(parsedWidths)) return []
-  return parsedWidths.filter((width): width is number => typeof width === 'number' && width > 0)
+  return parsedWidths.filter(isPositiveNumber)
 }
 
 function cssPixelsOr(rootStyles: CSSStyleDeclaration, property: string, fallback: number): number {

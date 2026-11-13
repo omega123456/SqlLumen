@@ -101,18 +101,19 @@ pub async fn embed_texts_with_timeout(
         return Ok(vec![]);
     }
 
+    let text_count = texts.len();
     tracing::debug!(
         model = %model,
-        total_inputs = texts.len(),
+        total_inputs = text_count,
         "embed_texts: starting (OpenAI-compatible /v1/embeddings)"
     );
 
-    let mut all_embeddings: Vec<(usize, Vec<f32>)> = Vec::with_capacity(texts.len());
-    let mut batch_size = MAX_BATCH_SIZE.min(texts.len());
+    let mut all_embeddings: Vec<(usize, Vec<f32>)> = Vec::with_capacity(text_count);
+    let mut batch_size = MAX_BATCH_SIZE.min(text_count);
     let mut offset = 0;
 
-    while offset < texts.len() {
-        let end = (offset + batch_size).min(texts.len());
+    while offset < text_count {
+        let end = (offset + batch_size).min(text_count);
         let batch: Vec<String> = texts[offset..end].to_vec();
         let batch_len = batch.len();
 
@@ -146,7 +147,7 @@ pub async fn embed_texts_with_timeout(
                 }
                 offset += batch_len;
                 // Reset batch size for next chunk
-                batch_size = MAX_BATCH_SIZE.min(texts.len() - offset);
+                batch_size = MAX_BATCH_SIZE.min(text_count - offset);
             }
             Err(error) if is_retryable_status(&error) => {
                 tracing::warn!(
@@ -170,7 +171,7 @@ pub async fn embed_texts_with_timeout(
                         return Err(EmbeddingError::RetriesExhausted(last_error.to_string()));
                     }
 
-                    let retry_end = (offset + current_batch_size).min(texts.len());
+                    let retry_end = (offset + current_batch_size).min(text_count);
                     let retry_batch: Vec<String> = texts[offset..retry_end].to_vec();
                     let retry_batch_len = retry_batch.len();
 
@@ -323,10 +324,13 @@ async fn send_embedding_request(
     Ok(api_response)
 }
 
-/// Check whether an error is a retryable HTTP 400/413 status.
+const HTTP_BAD_REQUEST: u16 = 400;
+const HTTP_PAYLOAD_TOO_LARGE: u16 = 413;
+const RETRYABLE_HTTP_STATUSES: [u16; 2] = [HTTP_BAD_REQUEST, HTTP_PAYLOAD_TOO_LARGE];
+
 fn is_retryable_status(error: &EmbeddingError) -> bool {
     matches!(
         error,
-        EmbeddingError::HttpStatus { status, .. } if *status == 400 || *status == 413
+        EmbeddingError::HttpStatus { status, .. } if RETRYABLE_HTTP_STATUSES.contains(status)
     )
 }

@@ -193,6 +193,10 @@ function runningExportJob(exportJob: ResultExportJob | undefined): ResultExportJ
   return exportJob
 }
 
+function isUnavailableFormat(format: ExportFormat, isView: boolean | undefined): boolean {
+  return Boolean(isView) && format === 'sql-insert'
+}
+
 function formatDescription(key: ExportFormat, offersAllRows: boolean): string {
   const isAllRowsWorkbook = offersAllRows && key === 'xlsx'
   if (isAllRowsWorkbook) return XLSX_ALL_ROWS_DESCRIPTION
@@ -448,15 +452,14 @@ export default function ExportDialog({
   }, [exportJobStatus])
 
   useEffect(() => {
-    const isFormatUnavailableForView = isView && format === 'sql-insert'
-    if (isFormatUnavailableForView) {
+    if (isUnavailableFormat(format, isView)) {
       setFormat('csv')
     }
   }, [isView, format])
 
   const formatDropdownOptions: DropdownOption[] = useMemo(
     () =>
-      FORMAT_KEYS.filter((key) => !(isView && key === 'sql-insert')).map((key) => ({
+      FORMAT_KEYS.filter((key) => !isUnavailableFormat(key, isView)).map((key) => ({
         value: key,
         label: EXPORT_FORMAT_CONFIG[key].label,
         description: formatDescription(key, offersAllRows),

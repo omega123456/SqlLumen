@@ -35,11 +35,19 @@ type WorkspaceTabType = ReturnType<
   typeof useWorkspaceStore.getState
 >['tabsByConnection'][string][number]['type']
 
+function isDirtyDesignerTab(tabId: string): boolean {
+  return useTableDesignerStore.getState().tabs[tabId]?.isDirty === true
+}
+
 const UNSAVED_TAB_CHECKS: Partial<Record<WorkspaceTabType, (tabId: string) => boolean>> = {
   'table-data': (tabId) =>
     hasPendingRowChanges(useTableDataStore.getState().tabs[tabId]?.editState),
-  'table-designer': (tabId) => useTableDesignerStore.getState().tabs[tabId]?.isDirty === true,
+  'table-designer': isDirtyDesignerTab,
   'object-editor': (tabId) => useObjectEditorStore.getState().isDirty(tabId),
+}
+
+function hasUnsavedWorkspaceChanges(tab: { id: string; type: WorkspaceTabType }): boolean {
+  return UNSAVED_TAB_CHECKS[tab.type]?.(tab.id) === true
 }
 
 function countQueryTabWork() {
@@ -52,7 +60,7 @@ function countQueryTabWork() {
 
 function countUnsavedWorkspaceTabs(): number {
   const workspaceTabs = Object.values(useWorkspaceStore.getState().tabsByConnection).flat()
-  return workspaceTabs.filter((tab) => UNSAVED_TAB_CHECKS[tab.type]?.(tab.id) === true).length
+  return workspaceTabs.filter(hasUnsavedWorkspaceChanges).length
 }
 
 function buildPendingWorkSummary(): PendingWorkSummary {

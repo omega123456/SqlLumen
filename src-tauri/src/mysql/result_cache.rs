@@ -654,8 +654,8 @@ where
         value: V,
     ) -> bool {
         let key = (connection_id.to_string(), tab_id.to_string());
-        if self.current_invalidation_version(connection_id, tab_id) != expected_invalidation_version
-        {
+        let current_invalidation_version = self.current_invalidation_version(connection_id, tab_id);
+        if current_invalidation_version != expected_invalidation_version {
             return false;
         }
 
@@ -802,6 +802,10 @@ where
         lru.iter().cloned().collect()
     }
 
+    fn has_idled_past_minimum(&self, touched_at: Instant, now: Instant) -> bool {
+        now.saturating_duration_since(touched_at) >= self.ram_pressure_min_idle
+    }
+
     /// Run cache maintenance and RAM-pressure eviction.
     pub fn run_maintenance(&self, snapshot: &mut dyn MemorySnapshot) {
         self.cache.run_pending_tasks();
@@ -836,10 +840,7 @@ where
                     .filter(|key| {
                         last_touched
                             .get(*key)
-                            .map(|touched_at| {
-                                now.saturating_duration_since(*touched_at)
-                                    >= self.ram_pressure_min_idle
-                            })
+                            .map(|touched_at| self.has_idled_past_minimum(*touched_at, now))
                             .unwrap_or(false)
                     })
                     .take(EVICTION_BATCH_SIZE)
@@ -943,7 +944,7 @@ where
 
         let session_dir = self.spill_dir.join(&self.session_id);
         if let Err(error) = fs::remove_dir_all(&session_dir) {
-            if error.kind() != std::io::ErrorKind::NotFound {
+            if !crate::is_not_found_error(&error) {
                 tracing::warn!(
                     error = %error,
                     path = %session_dir.display(),
@@ -1005,8 +1006,8 @@ impl GenericCache<Vec<StoredResult>> {
             .lock()
             .expect("in_place_write_lock poisoned");
 
-        if self.current_invalidation_version(connection_id, tab_id) != expected_invalidation_version
-        {
+        let current_invalidation_version = self.current_invalidation_version(connection_id, tab_id);
+        if current_invalidation_version != expected_invalidation_version {
             tracing::debug!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,

@@ -1,4 +1,5 @@
 use crate::mysql::schema_queries::safe_identifier;
+use crate::mysql::sql_chars::is_blank_identifier;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -92,7 +93,7 @@ fn validate_identifier(name: &str, label: &str) -> Result<(), String> {
 }
 
 fn validate_optional_identifier(name: &str, label: &str) -> Result<(), String> {
-    if identifier_is_blank(name) {
+    if is_blank_identifier(name) {
         return Ok(());
     }
 
@@ -148,7 +149,7 @@ pub fn generate_create_table_ddl(schema: &DesignerTableSchema, database: &str) -
         return String::new();
     }
 
-    if identifier_is_blank(&schema.table_name) {
+    if is_blank_identifier(&schema.table_name) {
         return String::new();
     }
 
@@ -251,7 +252,7 @@ pub fn generate_alter_table_ddl(
         return (String::new(), vec![]);
     }
 
-    if identifier_is_blank(&current.table_name) {
+    if is_blank_identifier(&current.table_name) {
         return (String::new(), vec![]);
     }
 
@@ -408,25 +409,29 @@ fn quote_identifier(name: &str) -> String {
     safe_identifier(name).unwrap_or_else(|error| panic!("Invalid identifier '{name}': {error}"))
 }
 
-fn identifier_is_blank(name: &str) -> bool {
-    name.trim().is_empty()
-}
-
 fn is_generatable_index(index: &DesignerIndexDef) -> bool {
-    !identifier_is_blank(&index.name)
+    !is_blank_identifier(&index.name)
         && !index.columns.is_empty()
         && index
             .columns
             .iter()
-            .all(|column| !identifier_is_blank(column))
+            .all(|column| !is_blank_identifier(column))
+}
+
+fn is_secondary_index(index: &DesignerIndexDef) -> bool {
+    normalize_index_type(&index.index_type) != "PRIMARY"
+}
+
+fn is_renamed_column(column: &DesignerColumnDef) -> bool {
+    !column.original_name.is_empty() && column.original_name != column.name
 }
 
 fn is_generatable_foreign_key(foreign_key: &DesignerForeignKeyDef) -> bool {
     !foreign_key.is_composite
-        && !identifier_is_blank(&foreign_key.name)
-        && !identifier_is_blank(&foreign_key.source_column)
-        && !identifier_is_blank(&foreign_key.referenced_table)
-        && !identifier_is_blank(&foreign_key.referenced_column)
+        && !is_blank_identifier(&foreign_key.name)
+        && !is_blank_identifier(&foreign_key.source_column)
+        && !is_blank_identifier(&foreign_key.referenced_table)
+        && !is_blank_identifier(&foreign_key.referenced_column)
 }
 
 fn column_position_clause(columns: &[DesignerColumnDef], index: usize) -> String {
@@ -440,7 +445,7 @@ fn referenced_database_name<'a>(
     foreign_key: &'a DesignerForeignKeyDef,
     database: &'a str,
 ) -> &'a str {
-    if identifier_is_blank(&foreign_key.referenced_database) {
+    if is_blank_identifier(&foreign_key.referenced_database) {
         return database;
     }
     &foreign_key.referenced_database
@@ -489,10 +494,12 @@ fn default_clause(default_value: &DefaultValueModel) -> Option<String> {
 
 fn column_type_clause(column: &DesignerColumnDef) -> String {
     let mut type_clause = column.r#type.clone();
-    if !column.length.is_empty() {
+    let has_length = !column.length.is_empty();
+    if has_length {
         type_clause = format!("{type_clause}({})", column.length);
     }
-    if !column.type_modifier.is_empty() {
+    let has_type_modifier = !column.type_modifier.is_empty();
+    if has_type_modifier {
         type_clause = format!("{type_clause} {}", column.type_modifier);
     }
     type_clause
@@ -521,7 +528,8 @@ fn format_column_definition(column: &DesignerColumnDef, identifier_name: &str) -
         parts.push("AUTO_INCREMENT".to_string());
     }
 
-    if !column.comment.is_empty() {
+    let has_comment = !column.comment.is_empty();
+    if has_comment {
         parts.push(format!("COMMENT '{}'", escape_sql_string(&column.comment)));
     }
 
@@ -531,22 +539,27 @@ fn format_column_definition(column: &DesignerColumnDef, identifier_name: &str) -
 fn build_create_table_options(properties: &DesignerTableProperties) -> Vec<String> {
     let mut options = Vec::new();
 
-    if !properties.engine.is_empty() {
+    let has_engine = !properties.engine.is_empty();
+    if has_engine {
         options.push(format!("ENGINE={}", properties.engine));
     }
-    if !properties.charset.is_empty() {
+    let has_charset = !properties.charset.is_empty();
+    if has_charset {
         options.push(format!("DEFAULT CHARSET={}", properties.charset));
     }
-    if !properties.collation.is_empty() {
+    let has_collation = !properties.collation.is_empty();
+    if has_collation {
         options.push(format!("COLLATE={}", properties.collation));
     }
     if let Some(auto_increment) = properties.auto_increment {
         options.push(format!("AUTO_INCREMENT={auto_increment}"));
     }
-    if !properties.row_format.is_empty() {
+    let has_row_format = !properties.row_format.is_empty();
+    if has_row_format {
         options.push(format!("ROW_FORMAT={}", properties.row_format));
     }
-    if !properties.comment.is_empty() {
+    let has_comment = !properties.comment.is_empty();
+    if has_comment {
         options.push(format!(
             "COMMENT='{}'",
             escape_sql_string(&properties.comment)
@@ -560,7 +573,7 @@ fn collect_rename_warnings(current: &DesignerTableSchema) -> Vec<String> {
     current
         .columns
         .iter()
-        .filter(|column| !column.original_name.is_empty() && column.original_name != column.name)
+        .filter(|column| is_renamed_column(column))
         .map(|column| {
             format!(
                 "Column '{}' was renamed to '{}'. Because MySQL rename-column syntax is not supported in this version, this will be executed as DROP COLUMN + ADD COLUMN. Existing data in this column will be permanently lost.",
@@ -616,7 +629,7 @@ fn diff_drop_indexes(original: &DesignerTableSchema, current: &DesignerTableSche
         .indexes
         .iter()
         .filter(|index| is_generatable_index(index))
-        .filter(|index| normalize_index_type(&index.index_type) != "PRIMARY")
+        .filter(|index| is_secondary_index(index))
         .map(|index| (index.name.as_str(), index))
         .collect::<HashMap<_, _>>();
 
@@ -624,7 +637,7 @@ fn diff_drop_indexes(original: &DesignerTableSchema, current: &DesignerTableSche
         .indexes
         .iter()
         .filter(|index| is_generatable_index(index))
-        .filter(|index| normalize_index_type(&index.index_type) != "PRIMARY")
+        .filter(|index| is_secondary_index(index))
     {
         match current_indexes.get(index.name.as_str()) {
             Some(current_index) if indexes_equal(index, current_index) => {}
@@ -652,7 +665,7 @@ fn diff_add_indexes(original: &DesignerTableSchema, current: &DesignerTableSchem
         .indexes
         .iter()
         .filter(|index| is_generatable_index(index))
-        .filter(|index| normalize_index_type(&index.index_type) != "PRIMARY")
+        .filter(|index| is_secondary_index(index))
         .map(|index| (index.name.as_str(), index))
         .collect::<HashMap<_, _>>();
 
@@ -660,7 +673,7 @@ fn diff_add_indexes(original: &DesignerTableSchema, current: &DesignerTableSchem
         .indexes
         .iter()
         .filter(|index| is_generatable_index(index))
-        .filter(|index| normalize_index_type(&index.index_type) != "PRIMARY")
+        .filter(|index| is_secondary_index(index))
     {
         let should_add = match original_indexes.get(index.name.as_str()) {
             Some(original_index) => !indexes_equal(original_index, index),

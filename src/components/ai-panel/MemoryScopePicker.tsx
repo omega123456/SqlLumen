@@ -30,6 +30,13 @@ interface ScopeOption {
   icon: Icon
 }
 
+function isEnabledOptionFor(
+  option: ScopeOption & { disabled: boolean },
+  scope: MemoryScope | undefined
+): boolean {
+  return option.scope === scope && !option.disabled
+}
+
 const BASE_OPTIONS: ScopeOption[] = [
   { scope: 'connection', label: 'Connection', icon: DatabaseIcon },
   { scope: 'group', label: 'Group', icon: FolderOpenIcon },
@@ -78,15 +85,11 @@ export function MemoryScopePicker({
   )
 
   const initialIndex = useMemo(() => {
-    const fromDefault = options.findIndex(
-      (option) => option.scope === defaultScope && !option.disabled
-    )
+    const fromDefault = options.findIndex((option) => isEnabledOptionFor(option, defaultScope))
     if (fromDefault >= 0) {
       return fromDefault
     }
-    const connectionIndex = options.findIndex(
-      (option) => option.scope === 'connection' && !option.disabled
-    )
+    const connectionIndex = options.findIndex((option) => isEnabledOptionFor(option, 'connection'))
     if (connectionIndex >= 0) {
       return connectionIndex
     }

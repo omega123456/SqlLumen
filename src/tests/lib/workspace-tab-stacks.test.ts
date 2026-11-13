@@ -7,6 +7,7 @@ import {
   isPinnedWorkspaceTab,
   isScopedTableDataTab,
   isScopedTableDataTabOf,
+  isTabInStack,
 } from '../../lib/workspace-tab-stacks'
 import type { WorkspaceTab } from '../../types/schema'
 
@@ -186,5 +187,25 @@ describe('workspace-tab-stacks', () => {
         label: 'Objects',
       },
     })
+  })
+})
+
+describe('isTabInStack', () => {
+  it('is true for the stack the tab resolves to', () => {
+    const queryTab = makeTab({ id: 'q1', type: 'query-editor', label: 'Q', connectionId: 'c1' })
+    expect(isTabInStack(queryTab, 'queries')).toBe(true)
+    expect(isTabInStack(queryTab, 'tables')).toBe(false)
+  })
+
+  it('honours hidden scoped table-data tabs', () => {
+    const scopedTab = makeTab({
+      id: 't1',
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'c1',
+      parentQueryTabId: 'q1',
+    })
+    expect(isTabInStack(scopedTab, 'tables')).toBe(true)
+    expect(isTabInStack(scopedTab, 'tables', { hideScopedTableDataTabs: true })).toBe(false)
   })
 })

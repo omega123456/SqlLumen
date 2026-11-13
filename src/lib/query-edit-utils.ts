@@ -6,6 +6,7 @@ import type {
 } from '../types/schema'
 import { stripLeadingSqlComments } from './sql-utils'
 import { coerceValueForColumn } from '../stores/table-data-store'
+import { isSameTextIgnoringCase } from './value-checks'
 
 const BACKTICK_PAIR_LENGTH = 2
 const COMMENT_MARKER_LENGTH = 2
@@ -233,7 +234,9 @@ function buildAliasMapFromSql(
 
     if (target.length === 1) {
       const tableName = target[0].toLowerCase()
-      const resolved = queryTablesInOrder.find((table) => table.table.toLowerCase() === tableName)
+      const resolved = queryTablesInOrder.find((table) =>
+        isSameTextIgnoringCase(table.table, tableName)
+      )
       if (resolved) {
         map.set(alias, { database: resolved.database, table: resolved.table })
       }
@@ -660,9 +663,7 @@ export function buildRowEditState(
   for (const primaryKeyColumn of primaryKeyColumnNames) {
     const index =
       boundColumnIndexMap?.get(primaryKeyColumn.toLowerCase()) ??
-      resultColumns.findIndex(
-        (column) => column.name.toLowerCase() === primaryKeyColumn.toLowerCase()
-      )
+      resultColumns.findIndex((column) => isSameTextIgnoringCase(column.name, primaryKeyColumn))
     if (index !== -1) {
       rowKey[primaryKeyColumn] = row[index]
     }

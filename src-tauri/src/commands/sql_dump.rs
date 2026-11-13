@@ -98,8 +98,8 @@ pub async fn list_exportable_objects_impl(
         let schema_name: String =
             decode_mysql_text_cell_named(row, "SCHEMA_NAME").unwrap_or_default();
 
-        // Start a new database group when the schema name changes
-        if current_db.as_deref() != Some(&schema_name) {
+        let starts_new_database = current_db.as_deref() != Some(&schema_name);
+        if starts_new_database {
             current_db = Some(schema_name.clone());
             result.push(ExportableDatabase {
                 name: schema_name.clone(),
@@ -606,7 +606,8 @@ where
                 Some(row) => {
                     batch.push(serialize(&row));
 
-                    if batch.len() >= INSERT_BATCH_SIZE {
+                    let is_batch_full = batch.len() >= INSERT_BATCH_SIZE;
+                    if is_batch_full {
                         insert_writer.flush_batch(file, &batch)?;
                         batch.clear();
 

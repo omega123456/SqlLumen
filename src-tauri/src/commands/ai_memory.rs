@@ -132,10 +132,10 @@ pub async fn save_memory_full(
         .await
         .map_err(|error| error.to_string())?;
 
-        if vecs.len() != 1 {
+        let embedding_count = vecs.len();
+        if embedding_count != 1 {
             return Err(format!(
-                "Expected 1 embedding from embed_texts, got {}",
-                vecs.len()
+                "Expected 1 embedding from embed_texts, got {embedding_count}"
             ));
         }
 

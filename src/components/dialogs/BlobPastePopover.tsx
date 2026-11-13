@@ -47,6 +47,11 @@ export interface BlobPastePopoverProps {
   anchorRef: React.RefObject<HTMLElement | null>
 }
 
+function isFocusableElement(element: HTMLElement): boolean {
+  if (element.hasAttribute('disabled')) return false
+  return element.tabIndex >= 0
+}
+
 export function BlobPastePopover({
   isOpen,
   onClose,
@@ -107,7 +112,7 @@ export function BlobPastePopover({
     if (!popover) return []
 
     return Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-      (element) => !element.hasAttribute('disabled') && element.tabIndex >= 0
+      isFocusableElement
     )
   }, [])
 

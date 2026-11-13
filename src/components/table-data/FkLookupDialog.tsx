@@ -513,7 +513,8 @@ export function FkLookupDialog({
   const handleApply = useCallback(() => {
     if (selectedRowKey === null) return
     if (isReadOnly) return
-    const selectedRow = rows.find((row) => computeRowKey(row) === selectedRowKey)
+    const isSelectedRow = (row: LookupRow): boolean => computeRowKey(row) === selectedRowKey
+    const selectedRow = rows.find(isSelectedRow)
     if (!selectedRow) return
     const value = selectedRow[referencedColumn]
     onApply(value)

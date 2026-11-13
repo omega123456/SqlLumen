@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 const SUMMARY_MAX_CHARS: usize = 200;
 
 fn candidate_summary(ddl_text: &str) -> String {
-    if ddl_text.len() <= SUMMARY_MAX_CHARS {
+    let fits_summary = ddl_text.len() <= SUMMARY_MAX_CHARS;
+    if fits_summary {
         return ddl_text.to_string();
     }
     let truncated = ddl_text

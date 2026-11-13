@@ -108,11 +108,11 @@ function parseDragPayload(dataTransfer: DataTransfer): MemoryDragPayload | null 
 }
 
 function hasMemoryDragType(dataTransfer: DataTransfer): boolean {
-  for (let typeIndex = 0; typeIndex < dataTransfer.types.length; typeIndex += 1) {
-    const dragType = dataTransfer.types[typeIndex]
-    if (dragType === MEMORY_DRAG_MIME_TYPE) return true
-  }
-  return false
+  return Array.from(dataTransfer.types).includes(MEMORY_DRAG_MIME_TYPE)
+}
+
+function shouldStartCollapsed(collapsible: boolean, memoryCount: number): boolean {
+  return collapsible && memoryCount > AUTO_COLLAPSE_MEMORY_COUNT
 }
 
 const SCOPE_TONE_CLASS: Record<MemoryScope, string> = {
@@ -256,8 +256,8 @@ export function MemorySection({
   onDrop,
   children,
 }: MemorySectionProps) {
-  const [collapsed, setCollapsed] = useState(
-    () => collapsible && memories.length > AUTO_COLLAPSE_MEMORY_COUNT
+  const [collapsed, setCollapsed] = useState(() =>
+    shouldStartCollapsed(collapsible, memories.length)
   )
   const [addOpen, setAddOpen] = useState(false)
   const [draft, setDraft] = useState('')
